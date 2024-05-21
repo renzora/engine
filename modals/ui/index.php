@@ -4,8 +4,6 @@ if ($auth) {
 ?>
 <div data-window='ui_window'>
 <div class='fixed top-0 right-0 mt-2 z-10 flex items-center'>
-<button class="green_button p-3 text-xs rounded shadow float-right mr-2" onclick="modal.load('gameEditor','game_editor_window');">Game Editor</button>
-<button class="green_button p-3 text-xs rounded shadow float-right mr-2" onclick="modal.load('inventory');">Inventory</button>
 
 </div>
 
@@ -24,6 +22,19 @@ if ($auth) {
 
       <div onclick="modal.load('market')" aria-label="Market" class="icon gift hint--right"></div>
     </div>
+
+    <div class="py-2 relative cursor-pointer">
+    <span id="market_notif" class="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 badge rounded bg-red-600 border border-gray-900 shadow-md mt-3 ml-1 p-1 text-white text-xs hidden" style="z-index: 1;"></span>
+
+      <div onclick="modal.load('inventory')" aria-label="Inventory" class="icon gift hint--right"></div>
+    </div>
+
+    <div class="py-2 relative cursor-pointer">
+    <span id="market_notif" class="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 badge rounded bg-red-600 border border-gray-900 shadow-md mt-3 ml-1 p-1 text-white text-xs hidden" style="z-index: 1;"></span>
+
+      <div onclick="modal.load('editMode', 'edit_mode_window')" aria-label="Edit Mode" class="icon gift hint--right"></div>
+    </div>
+    
 
     <div class="py-2 cursor-pointer">
       <div onclick="modal.load('settings')" aria-label="Game Settings" class="icon settings hint--right"></div>

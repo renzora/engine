@@ -35,7 +35,7 @@ function replaceColors($image, $toReplace, $replacements) {
 }
 
 $body = isset($_GET['body']) ? (int)$_GET['body'] : 1;
-$skinFilename = ($body === 0) ? '../assets/img/sprites/character_head.png' : '../assets/img/sprites/character_new.png';
+$skinFilename = ($body === 0) ? '../assets/img/sprites/character_head.png' : '../assets/img/sprites/character.png';
 $skinImage = imagecreatefrompng($skinFilename);
 if ($skinImage === false) {
     die('Failed to load skin image');

@@ -2,6 +2,11 @@ var camera = {
     cameraX: 0,
     cameraY: 0,
     update: function() {
+
+        if (editor.isEditMode) {
+
+        } else {
+        
         // Calculate the scaled window dimensions
         var scaledWindowWidth = window.innerWidth / game.zoomLevel;
         var scaledWindowHeight = window.innerHeight / game.zoomLevel;
@@ -13,16 +18,17 @@ var camera = {
             var yOffset = game.worldHeight < scaledWindowHeight ? (scaledWindowHeight - game.worldHeight) / 2 : 0;
             
             // Adjust camera to center the map
-            game.cameraX = -xOffset;
-            game.cameraY = -yOffset;
+            this.cameraX = -xOffset;
+            this.cameraY = -yOffset;
         } else {
             // Center the camera on the sprite, considering the scaled window size
-            this.cameraX = sprite.x + sprite.size / 2 - scaledWindowWidth / 2;
-            this.cameraY = sprite.y + sprite.size / 2 - scaledWindowHeight / 2;
+            this.cameraX = sprite.x + sprite.width / 2 - scaledWindowWidth / 2;
+            this.cameraY = sprite.y + sprite.height / 2 - scaledWindowHeight / 2;
             
             // Ensure the camera doesn't go outside the world bounds
             this.cameraX = Math.max(0, Math.min(this.cameraX, game.worldWidth - scaledWindowWidth));
             this.cameraY = Math.max(0, Math.min(this.cameraY, game.worldHeight - scaledWindowHeight));
         }
+    }
     }
 }

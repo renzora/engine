@@ -4,19 +4,17 @@ var game = {
     timestamp: 0,
     lastTime: 0,
     deltaTime: 0,
-    worldWidth: 480,
-    worldHeight: 480,
-    zoomLevel: 6,
+    worldWidth: 640,
+    worldHeight: 640,
+    zoomLevel: 4,
     roomData: undefined,
 
     init: function () {
-
         assets.preload([
-            { name: 'sprite', path: 'img/sprites/test_character2.png' },
+            { name: 'sprite', path: 'img/sprites/character.png' },
             { name: 'tileset', path: 'img/sprites/items.png' },
             { name: 'items', path: 'json/items.json' },
             { name: 'roomData', path: 'json/roomData.json' },
-            { name: 'test', path: 'img/sprites/test.png' },
         ], () => {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
@@ -55,19 +53,19 @@ var game = {
                     const tile = itemTiles[index];
                     if(tile && Array.isArray(tile.w) && tile.w.length === 4) {
                         const [nOffset, eOffset, sOffset, wOffset] = tile.w;
-
+    
                         const tileRect = {
                             x: parseInt(position.x, 10) * 16,
                             y: parseInt(position.y, 10) * 16,
                             width: 16,
                             height: 16
                         };
-
+    
                         const spriteRect = {
                             x: x,
                             y: y,
-                            width: sprite.size * sprite.scale,
-                            height: sprite.size * sprite.scale
+                            width: sprite.width * sprite.scale,
+                            height: sprite.height * sprite.scale
                         };
     
                         return spriteRect.x < tileRect.x + tileRect.width - eOffset &&
@@ -75,13 +73,13 @@ var game = {
                                spriteRect.y < tileRect.y + tileRect.height - sOffset &&
                                spriteRect.y + spriteRect.height > tileRect.y + nOffset;
                     }
-
+    
                     return false;
                 });
             });
         }
         return collisionDetected;
-    },
+    },    
     
     render: function() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -126,7 +124,25 @@ var game = {
     
         renderQueue.sort((a, b) => a.z - b.z);
         renderQueue.forEach(item => item.draw());
-    
         this.ctx.imageSmoothingEnabled = false;
+    
+        // Draw selection rectangle if in progress
+        if (input.isSelecting && input.selectionStart && input.selectionEnd) {
+            const startX = Math.min(input.selectionStart.x, input.selectionEnd.x);
+            const startY = Math.min(input.selectionStart.y, input.selectionEnd.y);
+            const endX = Math.max(input.selectionStart.x, input.selectionEnd.x) + 16;
+            const endY = Math.max(input.selectionStart.y, input.selectionEnd.y) + 16;
+    
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.lineWidth = 2 / this.zoomLevel;
+            this.ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+        }
+    
+        // Highlight selected tiles
+        input.selectedTiles.forEach(tile => {
+            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.1)'; // Semi-transparent green
+            this.ctx.fillRect(tile.x, tile.y, 16, 16);
+        });
     }
+    
 };
