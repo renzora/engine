@@ -11,9 +11,9 @@ var game = {
 
     init: function () {
         assets.preload([
-            { name: 'sprite', path: 'img/sprites/character.png' },
-            { name: 'tileset', path: 'img/sprites/items.png' },
-            { name: 'items', path: 'json/items.json' },
+            { name: 'sprite', path: 'img/sprites/gen.php?hairstyle=29&outfit=2&tone=1' },
+            { name: 'terrain', path: 'img/tiles/terrain.png' },
+            { name: 'objectData', path: 'json/objectData.json' },
             { name: 'roomData', path: 'json/roomData.json' },
         ], () => {
             console.log("All assets loaded");
@@ -46,7 +46,7 @@ var game = {
         let collisionDetected = false;
         if(game.roomData && game.roomData.items) {
             collisionDetected = game.roomData.items.some(roomItem => {
-                const itemTiles = assets.load('items')[roomItem.id];
+                const itemTiles = assets.load('objectData')[roomItem.id];
                 if (!itemTiles) return false;
     
                 return roomItem.p.some((position, index) => {
@@ -86,12 +86,11 @@ var game = {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
-        debug.grid();
     
         let renderQueue = [];
     
         this.roomData.items.forEach(roomItem => {
-            const itemTiles = assets.load('items')[roomItem.id];
+            const itemTiles = assets.load('objectData')[roomItem.id];
             if (itemTiles) {
                 roomItem.p.forEach((position, index) => {
                     const tile = itemTiles[index];
@@ -100,24 +99,27 @@ var game = {
                         const posY = parseInt(position.y, 10) * 16;
     
                         renderQueue.push({
-                            tileIndex: tile.t,
+                            tileIndex: tile.i,
                             posX: posX,
                             posY: posY,
                             z: tile.z,
                             draw: function() {
                                 const srcX = (this.tileIndex % 150) * 16;
                                 const srcY = Math.floor(this.tileIndex / 150) * 16;
-                                game.ctx.drawImage(assets.load('tileset'), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
+                                game.ctx.drawImage(assets.load(tile.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
                             }
                         });
                     }
                 });
             }
         });
+
+        
     
         renderQueue.push({
             z: 1,
             draw: function() {
+                debug.grid();
                 sprite.draw();
             }
         });
@@ -125,24 +127,24 @@ var game = {
         renderQueue.sort((a, b) => a.z - b.z);
         renderQueue.forEach(item => item.draw());
         this.ctx.imageSmoothingEnabled = false;
+        
     
-        // Draw selection rectangle if in progress
-        if (input.isSelecting && input.selectionStart && input.selectionEnd) {
-            const startX = Math.min(input.selectionStart.x, input.selectionEnd.x);
-            const startY = Math.min(input.selectionStart.y, input.selectionEnd.y);
-            const endX = Math.max(input.selectionStart.x, input.selectionEnd.x) + 16;
-            const endY = Math.max(input.selectionStart.y, input.selectionEnd.y) + 16;
+        if (editor.isSelecting && editor.selectionStart && editor.selectionEnd) {
+            const startX = Math.min(editor.selectionStart.x, editor.selectionEnd.x);
+            const startY = Math.min(editor.selectionStart.y, editor.selectionEnd.y);
+            const endX = Math.max(editor.selectionStart.x, editor.selectionEnd.x) + 16;
+            const endY = Math.max(editor.selectionStart.y, editor.selectionEnd.y) + 16;
     
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            this.ctx.lineWidth = 2 / this.zoomLevel;
+            this.ctx.lineWidth = 4 / this.zoomLevel;
             this.ctx.strokeRect(startX, startY, endX - startX, endY - startY);
         }
     
-        // Highlight selected tiles
-        input.selectedTiles.forEach(tile => {
-            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.1)'; // Semi-transparent green
+        editor.selectedTiles.forEach(tile => {
+            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
             this.ctx.fillRect(tile.x, tile.y, 16, 16);
         });
+        
     }
     
 };

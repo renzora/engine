@@ -8,14 +8,11 @@ var input = {
         'ArrowRight': "right",
         'ArrowDown': "down",
     },
-    selectionStart: null,
-    selectionEnd: null,
-    isSelecting: false,
-    selectedTiles: [],
-    tempSelectedTiles: [],
     isShiftPressed: false,
     isCtrlPressed: false,
     isAltPressed: false,
+    isDragging: false,
+
     init: function() {
         document.addEventListener("keydown", (e) => this.keyDown(e));
         document.addEventListener("keyup", (e) => this.keyUp(e));
@@ -29,26 +26,39 @@ var input = {
         window.addEventListener('resize', (e) => game.resizeCanvas(e));
     },
 
-
     loaded: function(e) {
         this.init();
+        editor.history = [];
+        editor.redoStack = [];
         network.init();
     },
 
     keyDown: function(e) {
-        if(e.altKey) {
-            if(e.key === 'c') { ui.modal('mishell/index.php', 'mishell_window')}
+        e.preventDefault(); // Prevent default behavior for all keydown events
+
+        if (e.ctrlKey) {
+            if (e.shiftKey && e.key === 'Z') {
+                editor.redo();
+            } else if (e.key === 'z') {
+                editor.undo();
+            }
+            return; // Exit early to prevent other actions on Ctrl+Z or Ctrl+Shift+Z
+        }
+
+        if (e.altKey) {
+            if (e.key === 'c') {
+                ui.modal('mishell/index.php', 'mishell_window');
+            }
         } else if (e.key === 'Tab') {
-            e.preventDefault(); // Prevent the default browser behavior
-            modal.load('editMode', 'edit_mode_window')
+            e.preventDefault();
+            modal.load('editMode', 'edit_mode_window');
         } else {
             const dir = this.keys[e.code];
             if (dir) {
                 sprite.addDirection(dir);
             }
         }
-        
-        // Track Shift, Ctrl, and Alt keys
+
         if (e.key === 'Shift') {
             this.isShiftPressed = true;
         } else if (e.key === 'Control') {
@@ -57,33 +67,34 @@ var input = {
             this.isAltPressed = true;
         }
     },
-    
+
     keyUp: function(e) {
-        if(e.keyCode === 27) { // ESC key
+        e.preventDefault(); // Prevent default behavior for all keyup events
+
+        if (e.keyCode === 27) { // ESC key
             let maxZIndex = -Infinity;
             let maxZIndexElement = null;
             let attributeName = null;
-        
+
             document.querySelectorAll('[data-window]').forEach(function(element) {
                 let zIndex = parseInt(window.getComputedStyle(element).zIndex, 10);
-                if(zIndex > maxZIndex) {
+                if (zIndex > maxZIndex) {
                     maxZIndex = zIndex;
                     maxZIndexElement = element;
                     attributeName = element.getAttribute('data-window');
                 }
             });
-        
-            if(maxZIndexElement) {
-                ui.closeModal(attributeName);
+
+            if (maxZIndexElement) {
+                modal.closeModal(attributeName);
             }
         } else {
             const dir = this.keys[e.code];
-            if(dir) {
+            if (dir) {
                 sprite.removeDirection(dir);
             }
         }
-        
-        // Track Shift, Ctrl, and Alt keys
+
         if (e.key === 'Shift') {
             this.isShiftPressed = false;
         } else if (e.key === 'Control') {
@@ -94,7 +105,9 @@ var input = {
     },
 
     mouseDown: function(e) {
-        if (e.button === 0 && editor.currentMode === Modes.SELECT) {
+        const isEventOnCanvas = e.target === game.canvas || game.canvas.contains(e.target);
+
+        if (e.button === 0 && editor.currentMode === Modes.SELECT && isEventOnCanvas) {
             const rect = game.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
             const y = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
@@ -102,25 +115,24 @@ var input = {
             const tileY = Math.floor(y / 16) * 16;
 
             if (this.isShiftPressed) {
-                this.selectionEnd = { x: tileX, y: tileY };
-                this.updateSelectedTiles();
+                editor.selectionEnd = { x: tileX, y: tileY };
+                editor.updateSelectedTiles();
             } else if (this.isCtrlPressed) {
-                this.selectionEnd = { x: tileX, y: tileY };
-                this.updateSelectedTiles(true);
+                editor.selectionEnd = { x: tileX, y: tileY };
+                editor.updateSelectedTiles(true);
             } else {
-                this.selectionStart = { x: tileX, y: tileY };
-                this.selectionEnd = { x: tileX, y: tileY };
-                this.isSelecting = true;
-                
-                // Handle Alt key for appending to the selection
+                editor.selectionStart = { x: tileX, y: tileY };
+                editor.selectionEnd = { x: tileX, y: tileY };
+                editor.isSelecting = true;
+
                 if (this.isAltPressed) {
-                    this.tempSelectedTiles = [...this.selectedTiles];
+                    editor.tempSelectedTiles = [...editor.selectedTiles];
                 } else {
-                    this.tempSelectedTiles = [];
+                    editor.tempSelectedTiles = [];
                 }
             }
         }
-        
+
         if ((e.button === 1) || (editor.isEditMode && editor.currentMode === Modes.NAVIGATE)) {
             this.isDragging = true;
             this.startX = e.clientX;
@@ -128,9 +140,9 @@ var input = {
             document.body.classList.add('move-cursor');
         }
     },
-    
+
     mouseMove: function(e) {
-        if (this.isSelecting && editor.currentMode === Modes.SELECT) {
+        if (editor.isSelecting && editor.currentMode === Modes.SELECT) {
             const rect = game.canvas.getBoundingClientRect();
             const x = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
             const y = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
@@ -138,100 +150,82 @@ var input = {
             const tileY = Math.floor(y / 16) * 16;
 
             if (this.isCtrlPressed) {
-                this.selectionEnd = { x: tileX, y: tileY };
-                this.updateSelectedTiles(true);
+                editor.selectionEnd = { x: tileX, y: tileY };
+                editor.updateSelectedTiles(true);
             } else {
-                this.selectionEnd = { x: tileX, y: tileY };
-                this.updateSelectedTiles();
+                editor.selectionEnd = { x: tileX, y: tileY };
+                editor.updateSelectedTiles();
             }
         }
-        
+
         if (editor.isEditMode && this.isDragging) {
             const dx = (this.startX - e.clientX) / game.zoomLevel;
             const dy = (this.startY - e.clientY) / game.zoomLevel;
-      
+
             camera.cameraX = Math.max(0, Math.min(game.worldWidth - window.innerWidth / game.zoomLevel, camera.cameraX + dx));
             camera.cameraY = Math.max(0, Math.min(game.worldHeight - window.innerHeight / game.zoomLevel, camera.cameraY + dy));
-      
+
             this.startX = e.clientX;
             this.startY = e.clientY;
         }
     },
 
-    updateSelectedTiles: function(isLineSelect = false) {
-        let newSelection = [];
-        
-        if (isLineSelect) {
-            const x1 = this.selectionStart.x;
-            const y1 = this.selectionStart.y;
-            const x2 = this.selectionEnd.x;
-            const y2 = this.selectionEnd.y;
-            
-            const dx = Math.abs(x2 - x1);
-            const dy = Math.abs(y2 - y1);
-            const sx = (x1 < x2) ? 16 : -16;
-            const sy = (y1 < y2) ? 16 : -16;
-            let err = dx - dy;
-
-            let x = x1;
-            let y = y1;
-
-            while (true) {
-                newSelection.push({ x: x, y: y });
-
-                if (x === x2 && y === y2) break;
-
-                const e2 = 2 * err;
-
-                if (e2 > -dy) {
-                    err -= dy;
-                    x += sx;
-                }
-
-                if (e2 < dx) {
-                    err += dx;
-                    y += sy;
-                }
-            }
-        } else {
-            const startX = Math.min(this.selectionStart.x, this.selectionEnd.x);
-            const startY = Math.min(this.selectionStart.y, this.selectionEnd.y);
-            const endX = Math.max(this.selectionStart.x, this.selectionEnd.x);
-            const endY = Math.max(this.selectionStart.y, this.selectionEnd.y);
-
-            for (let x = startX; x <= endX; x += 16) {
-                for (let y = startY; y <= endY; y += 16) {
-                    newSelection.push({ x: x, y: y });
-                }
-            }
-        }
-
-        if (this.isAltPressed) {
-            this.selectedTiles = [...this.tempSelectedTiles, ...newSelection];
-        } else {
-            this.selectedTiles = newSelection;
-        }
-
-        console.log("Selected tiles:", this.selectedTiles);
-    },
-    
     mouseUp: function(e) {
-        if (editor.isEditMode && this.isSelecting) {
-            this.isSelecting = false;
-            this.updateSelectedTiles(this.isCtrlPressed);
+        if (editor.isEditMode && editor.isSelecting) {
+            editor.isSelecting = false;
+            editor.updateSelectedTiles(this.isCtrlPressed);
+
+            const latestSelection = [...editor.selectedTiles];
+            const previousSelection = editor.history[editor.history.length - 1];
+
+            if (JSON.stringify(latestSelection) !== JSON.stringify(previousSelection)) {
+                editor.history.push(latestSelection);
+                editor.redoStack = [];
+            }
         }
         this.isDragging = false;
         document.body.classList.remove('move-cursor');
     },
 
     mouseWheelScroll: function(e) {
-        if(editor.isEditMode) {
-            const zoomStep = 1;
-            game.zoomLevel += (e.deltaY > 0) ? -zoomStep : zoomStep;
-            game.zoomLevel = Math.max(3, Math.min(10, game.zoomLevel));
+        const isEventOnCanvas = e.target === game.canvas || game.canvas.contains(e.target);
+
+        if (isEventOnCanvas) {
+            e.preventDefault(); // Prevent default scroll behavior for all cases
+
+            if (this.isAltPressed) {
+                const panSpeed = 10;
+                camera.cameraX += e.deltaY > 0 ? panSpeed : -panSpeed;
+                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - window.innerWidth / game.zoomLevel));
+            } else if (e.ctrlKey) {
+                const zoomStep = 1;
+                const rect = game.canvas.getBoundingClientRect();
+                const cursorX = (e.clientX - rect.left) / game.zoomLevel;
+                const cursorY = (e.clientY - rect.top) / game.zoomLevel;
+
+                const prevZoomLevel = game.zoomLevel;
+                game.zoomLevel += (e.deltaY > 0) ? -zoomStep : zoomStep;
+                game.zoomLevel = Math.max(3, Math.min(10, game.zoomLevel));
+
+                const zoomFactor = game.zoomLevel / prevZoomLevel;
+
+                // Adjust camera position to keep the cursor focused
+                camera.cameraX = cursorX - (cursorX - camera.cameraX) * zoomFactor;
+                camera.cameraY = cursorY - (cursorY - camera.cameraY) * zoomFactor;
+
+                // Ensure the camera doesn't go outside the world bounds
+                const scaledWindowWidth = window.innerWidth / game.zoomLevel;
+                const scaledWindowHeight = window.innerHeight / game.zoomLevel;
+                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - scaledWindowWidth));
+                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - scaledWindowHeight));
+            } else {
+                const panSpeed = 10;
+                camera.cameraY += e.deltaY > 0 ? panSpeed : -panSpeed;
+                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - window.innerHeight / game.zoomLevel));
+            }
         }
     },
-    
+
     leftClick: function(e) {
         console.log("left button clicked");
         if(e.target.matches('[data-close], [data-esc]')) {
@@ -240,11 +234,11 @@ var input = {
             modal.close(parent);
         }
     },
-    
+
     rightClick: function(e, x, y) {
         e.preventDefault();
     },
-    
+
     doubleClick: function(e, x, y) {
 
     }

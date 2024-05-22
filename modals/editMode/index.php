@@ -65,18 +65,29 @@ body.move-cursor {
         });
     },
     unmount: function() {
-      modal.show('ui_window');
-      game.zoomLevel = 4;
-        editor.isEditMode = false;
-        editor.currentMode = null;
+    modal.show('ui_window');
+    game.zoomLevel = 4;
+    editor.isEditMode = false;
+    editor.currentMode = null;
 
-        Object.keys(modeButtons).forEach(mode => {
-            var handler = modeChangeHandlers[mode];
-            if (handler) {
-                modeButtons[mode].removeEventListener('click', handler);
-            }
-        });
-    },
+    // Reset editor data
+    editor.selectedTiles = [];
+    editor.selectionStart = null;
+    editor.selectionEnd = null;
+    editor.history = [];
+    editor.redoStack = [];
+    editor.tempSelectedTiles = [];
+
+    // Clear any other instances of data used by the editor
+    // ...
+
+    Object.keys(modeButtons).forEach(mode => {
+        var handler = modeChangeHandlers[mode];
+        if (handler) {
+            modeButtons[mode].removeEventListener('click', handler);
+        }
+    });
+},
     changeMode: function(newMode) {
         // Reset styles for all buttons
         Object.values(modeButtons).forEach(button => {

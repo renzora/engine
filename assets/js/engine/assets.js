@@ -21,17 +21,21 @@ var assets = {
     },
 
     getFileType: function(path) {
-        const extension = path.split('.').pop();
-        if (['png', 'jpg', 'jpeg', 'gif'].includes(extension)) {
-            return 'image';
+        // Split the path by '?' to get the file extension
+        const pathParts = path.split('?');
+        const extension = pathParts[0].split('.').pop();
+      
+        if (['png', 'jpg', 'jpeg', 'gif', 'php'].includes(extension)) {
+          return 'image';
         } else if (extension === 'json') {
-            return 'json';
+          return 'json';
         } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
-            return 'audio';
+          return 'audio';
         }
+      
         console.error('Unsupported file type:', extension);
         return null;
-    },
+      },
 
     loadImage: function(asset, callback) {
         const img = new Image();

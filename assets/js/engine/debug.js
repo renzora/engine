@@ -10,7 +10,7 @@ var debug = {
         if(debugFPS) { debugFPS.innerHTML = "FPS: " + game.fps.toFixed(3); }
     },
     grid: function() {
-        game.ctx.strokeStyle = 'rgba(204, 204, 204, 0.2)';
+        game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
         game.ctx.lineWidth = 1;
     
         for(var x = 0; x <= game.worldWidth; x += 16) {

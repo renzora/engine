@@ -35,7 +35,7 @@ function replaceColors($image, $toReplace, $replacements) {
 }
 
 $body = isset($_GET['body']) ? (int)$_GET['body'] : 1;
-$skinFilename = ($body === 0) ? '../assets/img/sprites/character_head.png' : '../assets/img/sprites/character.png';
+$skinFilename = ($body === 0) ? './character_head.png' : './character.png';
 $skinImage = imagecreatefrompng($skinFilename);
 if ($skinImage === false) {
     die('Failed to load skin image');
@@ -71,13 +71,13 @@ $hairStyle = isset($_GET['hairstyle']) ? (int)$_GET['hairstyle'] : 1;
 $hairColor = isset($_GET['haircolor']) ? (int)$_GET['haircolor'] : 1;
 $outfit = isset($_GET['outfit']) ? (int)$_GET['outfit'] : 1;
 
-$hairFilename = "../assets/img/sprites/hair/{$hairStyle}.png";
+$hairFilename = "./hair/{$hairStyle}.png";
 $hairImage = imagecreatefrompng($hairFilename);
 if ($hairImage === false) {
     die('Failed to load hair image');
 }
 
-$outfitFilename = '../assets/img/sprites/outfit/'.$outfit.'.png';
+$outfitFilename = './outfit/'.$outfit.'.png';
 if ($body !== 0) {
     $outfitImage = imagecreatefrompng($outfitFilename);
     if ($outfitImage === false) {
