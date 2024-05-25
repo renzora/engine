@@ -34,8 +34,11 @@ var input = {
     },
 
     keyDown: function(e) {
-        e.preventDefault(); // Prevent default behavior for all keydown events
-
+        // Check if the target is an input or textarea element
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault(); // Prevent default behavior for non-input elements
+        }
+    
         if (e.ctrlKey) {
             if (e.shiftKey && e.key === 'Z') {
                 editor.redo();
@@ -44,7 +47,7 @@ var input = {
             }
             return; // Exit early to prevent other actions on Ctrl+Z or Ctrl+Shift+Z
         }
-
+    
         if (e.altKey) {
             if (e.key === 'c') {
                 ui.modal('mishell/index.php', 'mishell_window');
@@ -55,10 +58,10 @@ var input = {
         } else {
             const dir = this.keys[e.code];
             if (dir) {
-                sprite.addDirection(dir);
+                game.sprites[0].addDirection(dir); // Control the main sprite
             }
         }
-
+    
         if (e.key === 'Shift') {
             this.isShiftPressed = true;
         } else if (e.key === 'Control') {
@@ -67,15 +70,18 @@ var input = {
             this.isAltPressed = true;
         }
     },
-
+    
     keyUp: function(e) {
-        e.preventDefault(); // Prevent default behavior for all keyup events
-
+        // Check if the target is an input or textarea element
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault(); // Prevent default behavior for non-input elements
+        }
+    
         if (e.keyCode === 27) { // ESC key
             let maxZIndex = -Infinity;
             let maxZIndexElement = null;
             let attributeName = null;
-
+    
             document.querySelectorAll('[data-window]').forEach(function(element) {
                 let zIndex = parseInt(window.getComputedStyle(element).zIndex, 10);
                 if (zIndex > maxZIndex) {
@@ -84,17 +90,17 @@ var input = {
                     attributeName = element.getAttribute('data-window');
                 }
             });
-
+    
             if (maxZIndexElement) {
                 modal.closeModal(attributeName);
             }
         } else {
             const dir = this.keys[e.code];
             if (dir) {
-                sprite.removeDirection(dir);
+                game.sprites[0].removeDirection(dir); // Control the main sprite
             }
         }
-
+    
         if (e.key === 'Shift') {
             this.isShiftPressed = false;
         } else if (e.key === 'Control') {

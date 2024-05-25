@@ -4,8 +4,10 @@ if ($auth) {
 ?>
 <div data-window='ui_window'>
 <div class='fixed top-0 right-0 mt-2 z-10 flex items-center'>
+    <button id="moveLeftBtn" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="modal.load('debug/sprite_debug.php', 'sprite_debug_window');">Sprite Debug</button>
+  </div>
 
-</div>
+
 
     <div class='fixed bottom-0 left-0 m-3 z-10 flex items-center'>
 

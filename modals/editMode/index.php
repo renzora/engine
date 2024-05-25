@@ -17,6 +17,7 @@ if ($auth) {
         <button type="button" id="pickup_button" class="mode-button shadow appearance-none border rounded py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline" style="background: #276b49; border: 1px rgba(0,0,0,0.5) solid;">Pick Up</button>
         <button type="button" id="drop_button" class="mode-button shadow appearance-none border rounded py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline" style="background: #276b49; border: 1px rgba(0,0,0,0.5) solid;">Drop</button>
         <button type="button" id="navigate_button" class="mode-button shadow appearance-none border rounded py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline" style="background: #276b49; border: 1px rgba(0,0,0,0.5) solid;">Pan</button>
+        <button type="button" class="mode-button shadow appearance-none border rounded py-2 px-3 text-white leading-tight focus:outline-none focus:shadow-outline" style="background: #276b49; border: 1px rgba(0,0,0,0.5) solid;" onclick="modal.load('editMode/manager.php','editMode_manager_window')">Manager</button>
       </div>
     </div>
 
