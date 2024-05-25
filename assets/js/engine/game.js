@@ -6,14 +6,17 @@ var game = {
     deltaTime: 0,
     worldWidth: 640,
     worldHeight: 640,
-    zoomLevel: 4,
+    zoomLevel: 5,
     roomData: undefined,
-    sprites: {},  // Change from array to object
+    sprites: {},
 
     init: function () {
         assets.preload([
             { name: 'character', path: 'img/sprites/character.png' },
             { name: 'hair', path: 'img/sprites/hair.png' },
+            { name: 'hats', path: 'img/sprites/hats.png' },
+            { name: 'glasses', path: 'img/sprites/glasses.png' },
+            { name: 'facial', path: 'img/sprites/facial.png' },
             { name: 'outfit', path: 'img/sprites/outfit.png' },
             { name: '1', path: 'img/tiles/1.png' },
             { name: 'objectData', path: 'json/objectData.json' },
@@ -32,7 +35,15 @@ var game = {
     },
 
     createMainSprite: function() {
-        this.mainSprite = Sprite({ x: 300, y: 150, hairstyle: 3, outfit: 0 });
+        this.mainSprite = Sprite({
+            x: 300,
+            y: 110,
+            hairstyle: 5,
+            outfit: 3,
+            facialHair: 1,
+            hat: 0,
+            glasses: 0
+        });
         this.sprites['main'] = this.mainSprite;
     },
 
@@ -105,24 +116,22 @@ var game = {
 
     collision: function(x, y, sprite) {
         let collisionDetected = false;
-        const extraHeadroom = 2; // How much closer sprites can get
+        const extraHeadroom = 2;
     
-        // Define the collision box for the sprite with reduced height for closer proximity
         const spriteCollisionBox = {
             x: x,
-            y: y + extraHeadroom, // Reduce collision box from top
+            y: y + extraHeadroom,
             width: sprite.width * sprite.scale,
-            height: sprite.height * sprite.scale - 2 * extraHeadroom // Reduce collision box from bottom
+            height: sprite.height * sprite.scale - 2 * extraHeadroom
         };
     
         const objectCollisionBox = {
             x: x,
-            y: y + sprite.height * sprite.scale / 2, // Start from halfway down the sprite
+            y: y + sprite.height * sprite.scale / 2,
             width: sprite.width * sprite.scale,
             height: sprite.height * sprite.scale / 2
         };
     
-        // Check collision with room items
         if (game.roomData && game.roomData.items) {
             collisionDetected = game.roomData.items.some(roomItem => {
                 const itemTiles = assets.load('objectData')[roomItem.id];
@@ -161,16 +170,15 @@ var game = {
             });
         }
     
-        // Check collision with other sprites
         if (!collisionDetected) {
             for (let id in game.sprites) {
                 if (game.sprites[id] !== sprite) {
                     const otherSprite = game.sprites[id];
                     const otherCollisionBox = {
                         x: otherSprite.x,
-                        y: otherSprite.y + extraHeadroom, // Reduce collision box from top
+                        y: otherSprite.y + extraHeadroom,
                         width: otherSprite.width * otherSprite.scale,
-                        height: otherSprite.height * otherSprite.scale - 2 * extraHeadroom // Reduce collision box from bottom
+                        height: otherSprite.height * otherSprite.scale - 2 * extraHeadroom
                     };
     
                     if (
@@ -222,7 +230,7 @@ var game = {
             }
         });
 
-        debug.grid();
+        //debug.grid();
 
         for (let id in this.sprites) {
             renderQueue.push({

@@ -13,50 +13,77 @@ var Sprite = function (options) {
         moving: false,
         stopping: false,
         directions: {},
-        hairstyle: options.hairstyle || 3,
-        outfit: options.outfit || 0,
+        hairstyle: options.hairstyle || 1,
+        outfit: options.outfit || 1,
+        facialHair: options.facialHair || 0,
+        hat: options.hat || 0, // New property for hat
+        glasses: options.glasses || 0, // New property for glasses
 
         directionMap: {
-            'S': 0, // Down
-            'E': 6, // Right (Starts from column 7, 0-based index)
-            'N': 12, // Up (Starts from column 13, 0-based index)
-            'W': 6  // Left (Uses the same frames as Right but flipped)
+            'S': 0,
+            'E': 6,
+            'N': 12,
+            'W': 6  // (Uses the same frames as Right but flipped)
         },
 
         draw: function() {
             let bodyImage = assets.load('character');
             let hairImage = assets.load('hair');
             let outfitImage = assets.load('outfit');
-            if (!bodyImage || !hairImage || !outfitImage) return;
+            let facialHairImage = assets.load('facial');
+            let hatImage = assets.load('hats'); // Load hat image
+            let glassesImage = assets.load('glasses'); // Load glasses image
+
+            if (!bodyImage || !hairImage || !outfitImage || !facialHairImage || !hatImage || !glassesImage) return;
 
             let directionOffset = this.directionMap[this.direction] ?? 0;
             let frameColumn = directionOffset + (Math.floor(this.currentFrame) % 6);
             let sx = frameColumn * this.width;
-            let sy = 0; // All frames are on the first row
+            let sy = 0;
 
             let tempCanvas = document.createElement('canvas');
             let tempCtx = tempCanvas.getContext('2d');
             tempCanvas.width = this.width;
             tempCanvas.height = this.height;
 
-            // Draw the body
             tempCtx.drawImage(bodyImage, sx, sy, this.width, this.height, 0, 0, this.width, this.height);
 
-            // Draw the hair
-            let hairSy = this.hairstyle * this.height; // Row for the hairstyle
-            tempCtx.drawImage(hairImage, sx, hairSy, this.width, this.height, 0, 0, this.width, this.height);
+            // Draw hair if hairstyle is not 0
+            if (this.hairstyle !== 0) {
+                let hairSy = (this.hairstyle - 1) * 17;
+                tempCtx.drawImage(hairImage, sx, hairSy, this.width, 17, 0, 0, this.width, 17);
+            }
 
-            // Draw the outfit
-            let outfitSy = this.outfit * this.height; // Row for the outfit
-            tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, this.height, 0, 0, this.width, this.height);
+            // Draw outfit if outfit is not 0
+            if (this.outfit !== 0) {
+                let outfitSy = (this.outfit - 1) * this.height;
+                tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, this.height, 0, 0, this.width, this.height);
+            }
+
+            // Draw facial hair if facialHair is not 0
+            if (this.facialHair !== 0) {
+                let facialHairSy = (this.facialHair - 1) * 8;
+                tempCtx.drawImage(facialHairImage, sx, facialHairSy, this.width, 8, 0, 12, this.width, 8);
+            }
+
+            // Draw glasses if glasses is not 0
+            if (this.glasses !== 0) {
+                let glassesSy = (this.glasses - 1) * 16; // Each glasses row is 16px
+                tempCtx.drawImage(glassesImage, sx, glassesSy, this.width, 16, 0, 6, this.width, 16); // Moved down by 4 pixels
+            }
+
+            // Draw hat if hat is not 0
+            if (this.hat !== 0) {
+                let hatSy = (this.hat - 1) * 16; // Each hat row is 16px
+                tempCtx.drawImage(hatImage, sx, hatSy, this.width, 16, 0, 0, this.width, 16);
+            }
 
             game.ctx.save();
             game.ctx.translate(this.x, this.y);
 
-            // Flip horizontally for left direction
             if (this.direction === 'W') {
                 game.ctx.scale(-this.scale, this.scale);
-                game.ctx.translate(-this.width * this.scale, 0); // Adjust position after flipping
+                game.ctx.translate(-this.width * this.scale, 0);
             } else {
                 game.ctx.scale(this.scale, this.scale);
             }
@@ -109,12 +136,12 @@ var Sprite = function (options) {
                         this.frameCounter = 0;
                     }
                 } else if (this.currentFrame < 0 || this.currentFrame >= 6) {
-                    this.currentFrame = 0; // Start loop animation
+                    this.currentFrame = 0;
                 } else if (this.frameCounter >= 1) {
                     if (this.currentFrame < 5) {
                         this.currentFrame++;
                     } else {
-                        this.currentFrame = 0; // Loop back to the start of the loop animation
+                        this.currentFrame = 0;
                     }
                     this.frameCounter = 0;
                 }
@@ -122,7 +149,7 @@ var Sprite = function (options) {
                 if (this.currentFrame < 5) {
                     this.currentFrame++;
                 } else {
-                    this.stopping = false; // Stop animation completed
+                    this.stopping = false;
                 }
                 this.frameCounter = 0;
             }
@@ -158,13 +185,11 @@ var Sprite = function (options) {
             newX = isNaN(newX) ? this.x : newX;
             newY = isNaN(newY) ? this.y : newY;
         
-            // Collision check before applying new position
             if (!game.collision(newX, newY, this)) {
                 this.x = newX;
                 this.y = newY;
             }
         
-            // Ensure sprite stays within world bounds
             this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
             this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
         

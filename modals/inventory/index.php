@@ -1,113 +1,250 @@
-<?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
-if ($auth) {
-?>
-  <div data-window='inventory_window' class='window window_bg' style='width: 400px; background: #222; border: 0;'>
-
-    <div data-part='handle' class='window_title' style='background-image: radial-gradient(#111 1px, transparent 0) !important;'>
-      <div class='float-right'>
-        <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
-      </div>
-      <div data-part='title' class='title_bg window_border' style='background: #222; color: #ede8d6;'>Inventory</div>
+<div data-window='inventory_window' class='window window_bg' style='width: 400px; background: #222; border: 0;'>
+  <div data-part='handle' class='window_title' style='background-image: radial-gradient(#111 1px, transparent 0) !important;'>
+    <div class='float-right'>
+      <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
     </div>
-    <div class='clearfix'></div>
-    <div class='relative p-4'>
+    <div data-part='title' class='title_bg window_border' style='background: #222; color: #ede8d6;'>Inventory</div>
+  </div>
+  <div class='clearfix'></div>
+  <div class='window_body relative p-4'>
 
-      <!-- Tabbed Menu -->
-      <div class="tabs mb-4">
-        <input type="text" class="p-2 mb-3 w-full" style="background: #333;" placeholder="search..." />
-        <div class="flex">
-          <button class="tab-button px-4 py-2 bg-blue-500 text-white" data-category="category1">Objects</button>
-        </div>
+    <!-- Tabbed Menu -->
+    <div class="tabs mb-4">
+      <input type="text" class="p-2 mb-3 w-full" style="background: #333;" placeholder="search..." />
+      <div class="flex">
+        <button class="tab-button px-4 py-2 bg-blue-500 text-white" data-category="category1">Objects</button>
       </div>
-
-      <!-- Inventory Grids -->
-      <div class="inventory-grid grid grid-cols-4 gap-2" style="height: 400px; overflow-y: auto;">
-        <!-- Items will be appended here dynamically -->
-      </div>
-
     </div>
 
-    <script>
-      var inventory_window = {
-        start: function() {
-          var itemData = assets.load('objectData');
-          var tilesetImage = assets.load('1'); // Directly get the image element
+    <!-- Inventory Grids -->
+    <div class="inventory-grid grid grid-cols-4 gap-2" style="height: 400px; overflow-y: auto;">
+      <!-- Items will be appended here dynamically -->
+    </div>
 
-          var gridContainer = document.querySelector('.inventory-grid');
-          var tileSize = 16;
-          var tilesPerRow = 150;
+  </div>
 
-          for (var category in itemData) {
-            if (itemData.hasOwnProperty(category)) {
-              var itemGroupElement = document.createElement('div');
-              itemGroupElement.classList.add('inventory-item-group', 'bg-gray-800', 'p-2', 'text-white', 'rounded', 'mb-2');
+  <script>
+var inventory_window = {
+  start: function() {
+    var itemData = assets.load('objectData');
+    var tilesetImage = assets.load('1'); // Directly get the image element
 
-              // Determine the bounding box of the object
-              var minX = Math.min(...itemData[category].map(item => item.a));
-              var minY = Math.min(...itemData[category].map(item => item.b));
-              var maxX = Math.max(...itemData[category].map(item => item.a));
-              var maxY = Math.max(...itemData[category].map(item => item.b));
+    var gridContainer = document.querySelector('.inventory-grid');
+    var tileSize = 16;
+    var tilesPerRow = 150;
 
-              var itemWidth = (maxX - minX + 1) * tileSize;
-              var itemHeight = (maxY - minY + 1) * tileSize;
+    for (var category in itemData) {
+      if (itemData.hasOwnProperty(category)) {
+        var itemGroupElement = document.createElement('div');
+        itemGroupElement.classList.add('inventory-item-group', 'bg-gray-800', 'p-2', 'text-white', 'rounded', 'mb-2');
 
-              var itemCanvas = document.createElement('canvas');
-              var context = itemCanvas.getContext('2d');
-              itemCanvas.width = itemWidth;
-              itemCanvas.height = itemHeight;
+        // Determine the bounding box of the object
+        var minX = Math.min(...itemData[category].map(item => item.a));
+        var minY = Math.min(...itemData[category].map(item => item.b));
+        var maxX = Math.max(...itemData[category].map(item => item.a));
+        var maxY = Math.max(...itemData[category].map(item => item.b));
 
-              itemData[category].forEach(function(item) {
-                var tileIndex = item.i;
-                var tileX = (tileIndex % tilesPerRow) * tileSize;
-                var tileY = Math.floor(tileIndex / tilesPerRow) * tileSize;
+        var itemWidth = (maxX - minX + 1) * tileSize;
+        var itemHeight = (maxY - minY + 1) * tileSize;
 
-                // Position the tile on the canvas based on 'a' and 'b' coordinates
-                var canvasX = (item.a - minX) * tileSize;
-                var canvasY = (item.b - minY) * tileSize;
+        var itemCanvas = document.createElement('canvas');
+        var context = itemCanvas.getContext('2d');
+        itemCanvas.width = itemWidth;
+        itemCanvas.height = itemHeight;
 
-                console.log(`Category: ${category}, Tile Index: ${tileIndex}, a: ${item.a}, b: ${item.b}, Canvas Position: (${canvasX}, ${canvasY})`);
+        itemData[category].forEach(function(item) {
+          var tileIndex = item.i;
+          var tileX = (tileIndex % tilesPerRow) * tileSize;
+          var tileY = Math.floor(tileIndex / tilesPerRow) * tileSize;
 
-                context.drawImage(tilesetImage, tileX, tileY, tileSize, tileSize, canvasX, canvasY, tileSize, tileSize);
-              });
+          // Position the tile on the canvas based on 'a' and 'b' coordinates
+          var canvasX = (item.a - minX) * tileSize;
+          var canvasY = (item.b - minY) * tileSize;
 
-              var itemElement = document.createElement('div');
-              itemElement.classList.add('inventory-item', 'm-1');
+          context.drawImage(tilesetImage, tileX, tileY, tileSize, tileSize, canvasX, canvasY, tileSize, tileSize);
+        });
 
-              itemElement.style.width = '100%';
-              itemElement.style.height = 'auto';
-              itemElement.style.position = 'relative';
+        var itemElement = document.createElement('div');
+        itemElement.classList.add('inventory-item', 'm-1');
+        itemElement.style.width = `${itemWidth}px`;
+        itemElement.style.height = `${itemHeight}px`;
+        itemElement.style.position = 'relative';
+        itemElement.dataset.category = category; // Set the category as data attribute
 
-              itemElement.appendChild(itemCanvas);
-              itemGroupElement.appendChild(itemElement);
+        itemElement.appendChild(itemCanvas);
+        itemGroupElement.appendChild(itemElement);
 
-              var categoryTitle = document.createElement('div');
-              categoryTitle.classList.add('category-title', 'text-white', 'font-bold', 'mb-1');
-              categoryTitle.innerText = category;
+        var categoryTitle = document.createElement('div');
+        categoryTitle.classList.add('category-title', 'text-white', 'font-bold', 'mb-1');
+        categoryTitle.innerText = category;
 
-              gridContainer.appendChild(itemGroupElement);
-            }
-          }
-        },
-        unmount: function() {
-          // Cleanup if necessary
+        itemGroupElement.appendChild(categoryTitle);
+        gridContainer.appendChild(itemGroupElement);
+      }
+    }
+
+    this.setupDragAndDrop(tileSize);
+  },
+
+  setupDragAndDrop: function(tileSize) {
+    let selectedItem = null;
+    let offsetX, offsetY;
+
+    const onMouseDown = function(event) {
+      const originalItem = event.currentTarget;
+      selectedItem = originalItem.cloneNode(true);
+
+      // Clone the canvas from the original item to the selected item
+      const originalCanvas = originalItem.querySelector('canvas');
+      const clonedCanvas = selectedItem.querySelector('canvas');
+      clonedCanvas.width = originalCanvas.width;
+      clonedCanvas.height = originalCanvas.height;
+      clonedCanvas.getContext('2d').drawImage(originalCanvas, 0, 0);
+
+      selectedItem.style.position = 'absolute';
+      selectedItem.style.pointerEvents = 'none';
+      selectedItem.style.zIndex = 1000;
+      selectedItem.dataset.category = originalItem.dataset.category; // Set the category on the clone
+
+      document.body.appendChild(selectedItem);
+
+      offsetX = event.offsetX;
+      offsetY = event.offsetY;
+
+      moveSelectedItem(event);
+    };
+
+    const onMouseMove = function(event) {
+      if (selectedItem) {
+        moveSelectedItem(event);
+      }
+    };
+
+    const onMouseUp = function(event) {
+      if (selectedItem) {
+        const zoomLevel = game.zoomLevel;
+        const cameraX = camera.cameraX;
+        const cameraY = camera.cameraY;
+
+        const dropX = (event.clientX - offsetX + window.scrollX) / zoomLevel + cameraX;
+        const dropY = (event.clientY - offsetY + window.scrollY) / zoomLevel + cameraY;
+
+        const snappedX = Math.round(dropX / tileSize);
+        const snappedY = Math.round(dropY / tileSize);
+
+        console.log(`Dropped position: X=${snappedX}, Y=${snappedY}`);
+
+        const newItem = {
+          id: selectedItem.dataset.category, // Correctly assign the category as the ID
+          p: calculateTilePositions(selectedItem, snappedX, snappedY, tileSize)
+        };
+
+        addNewItemToRoomData(newItem);
+
+        selectedItem.remove();
+        selectedItem = null;
+      }
+    };
+
+    function moveSelectedItem(event) {
+      const zoomLevel = game.zoomLevel;
+      const cameraX = camera.cameraX;
+      const cameraY = camera.cameraY;
+
+      const canvasX = (event.clientX - offsetX + window.scrollX) / zoomLevel + cameraX;
+      const canvasY = (event.clientY - offsetY + window.scrollY) / zoomLevel + cameraY;
+
+      const snappedX = Math.round(canvasX / tileSize) * tileSize;
+      const snappedY = Math.round(canvasY / tileSize) * tileSize;
+
+      selectedItem.style.left = `${(snappedX - cameraX) * zoomLevel}px`;
+      selectedItem.style.top = `${(snappedY - cameraY) * zoomLevel}px`;
+
+      selectedItem.style.transform = `scale(${zoomLevel})`;
+      selectedItem.style.transformOrigin = 'top left';
+
+      console.log(`Cursor position: X=${event.clientX}, Y=${event.clientY}`);
+      console.log(`Snapped position: X=${snappedX}, Y=${snappedY}`);
+    }
+
+    function calculateTilePositions(item, baseX, baseY, tileSize) {
+      const positions = [];
+      const canvas = item.querySelector('canvas');
+      const width = canvas.width;
+      const height = canvas.height;
+      const cols = width / tileSize;
+      const rows = height / tileSize;
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = baseX + col;
+          const y = baseY + row;
+          positions.push({ x: x, y: y });
         }
       }
+      return positions;
+    }
 
-      // Initialize the inventory window
-      inventory_window.start();
-    </script>
+    function addNewItemToRoomData(item) {
+      game.roomData.items.push(item);
+      console.log('New item added to roomData:', item);
+      saveRoomData();
+    }
 
-    <style>
-      .inventory-item canvas {
-        width: 100%; /* Ensure the canvas takes the full width of the container */
-        height: auto; /* Maintain the aspect ratio */
-        display: block;
-      }
-    </style>
+    function saveRoomData() {
+      const dataToSend = JSON.stringify(game.roomData);
+      console.log('Data being sent to server:', dataToSend); // Log the data being sent
 
-    <div class='resize-handle'></div>
-  </div>
-<?php
-}
-?>
+      ui.ajax({
+        outputType: 'json',
+        method: 'POST',
+        url: 'modals/inventory/ajax/save_map.php',
+        data: dataToSend,
+        headers: {
+          'Content-Type': 'application/json' // Ensure the content type is JSON
+        },
+        success: function(data) {
+          console.log('Room data saved successfully:', data);
+        },
+        error: function(data) {
+          console.error('Error saving room data:', data);
+        }
+      });
+    }
+
+    this.mouseDownHandler = onMouseDown;
+    this.mouseMoveHandler = onMouseMove;
+    this.mouseUpHandler = onMouseUp;
+
+    document.querySelectorAll('.inventory-item').forEach(item => {
+      item.addEventListener('mousedown', this.mouseDownHandler);
+    });
+
+    document.addEventListener('mousemove', this.mouseMoveHandler);
+    document.addEventListener('mouseup', this.mouseUpHandler);
+  },
+
+  unmount: function() {
+    document.querySelectorAll('.inventory-item').forEach(item => {
+      item.removeEventListener('mousedown', this.mouseDownHandler);
+    });
+
+    document.removeEventListener('mousemove', this.mouseMoveHandler);
+    document.removeEventListener('mouseup', this.mouseUpHandler);
+  }
+};
+
+// Initialize the inventory window
+inventory_window.start();
+  </script>
+
+  <style>
+    .inventory-item canvas {
+      width: 100%; /* Ensure the canvas takes the full width of the container */
+      height: auto; /* Maintain the aspect ratio */
+      display: block;
+    }
+  </style>
+
+  <div class='resize-handle'></div>
+</div>
