@@ -7,7 +7,6 @@
   </div>
   <div class='clearfix'></div>
   <div class='window_body relative p-4'>
-
     <!-- Tabbed Menu -->
     <div class="tabs mb-4">
       <input type="text" class="p-2 mb-3 w-full" style="background: #333;" placeholder="search..." />
@@ -20,13 +19,14 @@
     <div class="inventory-grid grid grid-cols-4 gap-2" style="height: 400px; overflow-y: auto;">
       <!-- Items will be appended here dynamically -->
     </div>
-
   </div>
 
   <script>
 var inventory_window = {
   start: function() {
     var itemData = assets.load('objectData');
+    console.log('Loaded itemData:', itemData);
+
     var tilesetImage = assets.load('1'); // Directly get the image element
 
     var gridContainer = document.querySelector('.inventory-grid');
@@ -35,14 +35,25 @@ var inventory_window = {
 
     for (var category in itemData) {
       if (itemData.hasOwnProperty(category)) {
+        var items = itemData[category]; // Access the array of items in the category
+        if (items.length === 0) continue;
+
+        console.log('Processing category:', category);
+        console.log('Items in category:', items);
+
         var itemGroupElement = document.createElement('div');
         itemGroupElement.classList.add('inventory-item-group', 'bg-gray-800', 'p-2', 'text-white', 'rounded', 'mb-2');
 
         // Determine the bounding box of the object
-        var minX = Math.min(...itemData[category].map(item => item.a));
-        var minY = Math.min(...itemData[category].map(item => item.b));
-        var maxX = Math.max(...itemData[category].map(item => item.a));
-        var maxY = Math.max(...itemData[category].map(item => item.b));
+        var allA = items.map(item => item.a).flat();
+        var allB = items.map(item => item.b).flat();
+        
+        var minX = Math.min(...allA);
+        var minY = Math.min(...allB);
+        var maxX = Math.max(...allA);
+        var maxY = Math.max(...allB);
+
+        console.log('Bounding box for category:', category, { minX, minY, maxX, maxY });
 
         var itemWidth = (maxX - minX + 1) * tileSize;
         var itemHeight = (maxY - minY + 1) * tileSize;
@@ -52,16 +63,19 @@ var inventory_window = {
         itemCanvas.width = itemWidth;
         itemCanvas.height = itemHeight;
 
-        itemData[category].forEach(function(item) {
-          var tileIndex = item.i;
-          var tileX = (tileIndex % tilesPerRow) * tileSize;
-          var tileY = Math.floor(tileIndex / tilesPerRow) * tileSize;
+        items.forEach(function(item, index) {
+          item.i.forEach((tileIndex, i) => {
+            var tileX = (tileIndex % tilesPerRow) * tileSize;
+            var tileY = Math.floor(tileIndex / tilesPerRow) * tileSize;
 
-          // Position the tile on the canvas based on 'a' and 'b' coordinates
-          var canvasX = (item.a - minX) * tileSize;
-          var canvasY = (item.b - minY) * tileSize;
+            // Position the tile on the canvas based on 'a' and 'b' coordinates
+            var canvasX = (item.a[i] - minX) * tileSize;
+            var canvasY = (item.b[i] - minY) * tileSize;
 
-          context.drawImage(tilesetImage, tileX, tileY, tileSize, tileSize, canvasX, canvasY, tileSize, tileSize);
+            console.log('Drawing tile for item:', item, { tileIndex, tileX, tileY, canvasX, canvasY });
+
+            context.drawImage(tilesetImage, tileX, tileY, tileSize, tileSize, canvasX, canvasY, tileSize, tileSize);
+          });
         });
 
         var itemElement = document.createElement('div');
@@ -136,8 +150,11 @@ var inventory_window = {
 
         const newItem = {
           id: selectedItem.dataset.category, // Correctly assign the category as the ID
-          p: calculateTilePositions(selectedItem, snappedX, snappedY, tileSize)
+          x: [],
+          y: []
         };
+
+        calculateTilePositions(selectedItem, snappedX, snappedY, tileSize, newItem.x, newItem.y);
 
         addNewItemToRoomData(newItem);
 
@@ -167,22 +184,20 @@ var inventory_window = {
       console.log(`Snapped position: X=${snappedX}, Y=${snappedY}`);
     }
 
-    function calculateTilePositions(item, baseX, baseY, tileSize) {
-      const positions = [];
+    function calculateTilePositions(item, baseX, baseY, tileSize, xArray, yArray) {
       const canvas = item.querySelector('canvas');
       const width = canvas.width;
       const height = canvas.height;
       const cols = width / tileSize;
       const rows = height / tileSize;
 
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const x = baseX + col;
-          const y = baseY + row;
-          positions.push({ x: x, y: y });
-        }
+      // Generate unique x and y coordinates
+      for (let col = 0; col < cols; col++) {
+        xArray.push(baseX + col);
       }
-      return positions;
+      for (let row = 0; row < rows; row++) {
+        yArray.push(baseY + row);
+      }
     }
 
     function addNewItemToRoomData(item) {
