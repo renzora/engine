@@ -24,18 +24,6 @@ if ($auth) {
 
       <div onclick="modal.load('ui/survival.php','survival_window'); modal.close('ui_window');" aria-label="Survival Mode" class="icon gift hint--right"></div>
     </div>
-
-    <div class="py-2 relative cursor-pointer">
-    <span id="market_notif" class="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 badge rounded bg-red-600 border border-gray-900 shadow-md mt-3 ml-1 p-1 text-white text-xs hidden" style="z-index: 1;"></span>
-
-      <div onclick="modal.load('inventory')" aria-label="Inventory" class="icon gift hint--right"></div>
-    </div>
-
-    <div class="py-2 relative cursor-pointer">
-    <span id="market_notif" class="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 badge rounded bg-red-600 border border-gray-900 shadow-md mt-3 ml-1 p-1 text-white text-xs hidden" style="z-index: 1;"></span>
-
-      <div onclick="modal.load('editMode', 'edit_mode_window')" aria-label="Edit Mode" class="icon gift hint--right"></div>
-    </div>
     
 
     <div class="py-2 cursor-pointer">

@@ -22,12 +22,8 @@ var game = {
     cameraY: 0,
     targetCameraX: 0,
     targetCameraY: 0,
-    targetAim: false,
     targetX: 0,
     targetY: 0,
-    targetRadius: 10, // Radius of the target circle
-    maxRange: 400, // Maximum range of the aim line
-    handOffsetY: 5, // Move the line 5 pixels down
     roomData: undefined,
     sprites: {},
 
@@ -294,6 +290,14 @@ var game = {
         return start * (1 - t) + end * t;
     },
 
+    handleAimAttack: function () {
+        for (let id in this.sprites) {
+            if (this.sprites[id].isEnemy) {
+                this.sprites[id].handleAimAttack();
+            }
+        }
+    },
+
     render: function() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -362,103 +366,101 @@ var game = {
         weather.updateStars();
         weather.updateRain();
         weather.updateSnow();
+        this.handleAimAttack();
     
         // Draw target aimer if active
-        if (game.targetAim) {
-            const mainSprite = this.sprites['main'];
-            if (mainSprite) {
-                const handOffsetX = -5; // Move the line 5 pixels to the left
-                const handX = mainSprite.x + mainSprite.width / 2 + handOffsetX;
-                const handY = mainSprite.y + mainSprite.height / 2 + game.handOffsetY;
+        const mainSprite = this.sprites['main'];
+        if (mainSprite && mainSprite.targetAim) {
+            const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
+            const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
     
-                const deltaX = game.targetX - handX;
-                const deltaY = game.targetY - handY;
-                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const deltaX = mainSprite.targetX - handX;
+            const deltaY = mainSprite.targetY - handY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     
-                // Calculate the adjusted target position
-                let adjustedTargetX = game.targetX;
-                let adjustedTargetY = game.targetY;
-                if (distance > game.maxRange) {
-                    const ratio = game.maxRange / distance;
-                    adjustedTargetX = handX + deltaX * ratio;
-                    adjustedTargetY = handY + deltaY * ratio;
-                }
+            // Calculate the adjusted target position
+            let adjustedTargetX = mainSprite.targetX;
+            let adjustedTargetY = mainSprite.targetY;
+            if (distance > mainSprite.maxRange) {
+                const ratio = mainSprite.maxRange / distance;
+                adjustedTargetX = handX + deltaX * ratio;
+                adjustedTargetY = handY + deltaY * ratio;
+            }
     
-                // Function to check for collision with non-walkable map objects
-                const isObstructed = (x, y) => {
-                    if (this.roomData && this.roomData.items) {
-                        for (const roomItem of this.roomData.items) {
-                            const itemData = assets.load('objectData')[roomItem.id];
-                            if (!itemData) continue;
+            // Function to check for collision with non-walkable map objects
+            const isObstructed = (x, y) => {
+                if (this.roomData && this.roomData.items) {
+                    for (const roomItem of this.roomData.items) {
+                        const itemData = assets.load('objectData')[roomItem.id];
+                        if (!itemData) continue;
     
-                            const xCoordinates = roomItem.x || [];
-                            const yCoordinates = roomItem.y || [];
+                        const xCoordinates = roomItem.x || [];
+                        const yCoordinates = roomItem.y || [];
     
-                            for (let i = 0; i < xCoordinates.length; i++) {
-                                const itemX = parseInt(xCoordinates[i], 10) * 16;
-                                const itemY = parseInt(yCoordinates[i], 10) * 16;
-                                const tileRect = {
-                                    x: itemX,
-                                    y: itemY,
-                                    width: 16,
-                                    height: 16
-                                };
+                        for (let i = 0; i < xCoordinates.length; i++) {
+                            const itemX = parseInt(xCoordinates[i], 10) * 16;
+                            const itemY = parseInt(yCoordinates[i], 10) * 16;
+                            const tileRect = {
+                                x: itemX,
+                                y: itemY,
+                                width: 16,
+                                height: 16
+                            };
     
-                                // Check if the point is within the tile's bounds
-                                if (
-                                    x >= tileRect.x &&
-                                    x <= tileRect.x + tileRect.width &&
-                                    y >= tileRect.y &&
-                                    y <= tileRect.y + tileRect.height
-                                ) {
-                                    const tileData = itemData[0]; // Assuming single tile data for simplicity
-                                    // Check if the tile is walkable
-                                    if (tileData.w !== 1) { // Assuming w=1 means walkable, otherwise it's not
-                                        return { obstructed: true, collisionX: x, collisionY: y };
-                                    }
+                            // Check if the point is within the tile's bounds
+                            if (
+                                x >= tileRect.x &&
+                                x <= tileRect.x + tileRect.width &&
+                                y >= tileRect.y &&
+                                y <= tileRect.y + tileRect.height
+                            ) {
+                                const tileData = itemData[0]; // Assuming single tile data for simplicity
+                                // Check if the tile is walkable
+                                if (tileData.w !== 1) { // Assuming w=1 means walkable, otherwise it's not
+                                    return { obstructed: true, collisionX: x, collisionY: y };
                                 }
                             }
                         }
                     }
-                    return { obstructed: false };
-                };
-    
-                // Check for obstruction along the line of sight
-                let finalTargetX = adjustedTargetX;
-                let finalTargetY = adjustedTargetY;
-                const steps = Math.ceil(distance);
-                let obstructionDetected = false;
-    
-                for (let i = 1; i <= steps; i++) {
-                    const stepX = handX + (deltaX * i) / steps;
-                    const stepY = handY + (deltaY * i) / steps;
-                    const result = isObstructed(stepX, stepY);
-                    if (result.obstructed) {
-                        finalTargetX = result.collisionX;
-                        finalTargetY = result.collisionY;
-                        obstructionDetected = true;
-                        break;
-                    }
                 }
+                return { obstructed: false };
+            };
     
-                // Do not show the aim if the obstruction is very close
-                if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
-                    return;
+            // Check for obstruction along the line of sight
+            let finalTargetX = adjustedTargetX;
+            let finalTargetY = adjustedTargetY;
+            const steps = Math.ceil(distance);
+            let obstructionDetected = false;
+    
+            for (let i = 1; i <= steps; i++) {
+                const stepX = handX + (deltaX * i) / steps;
+                const stepY = handY + (deltaY * i) / steps;
+                const result = isObstructed(stepX, stepY);
+                if (result.obstructed) {
+                    finalTargetX = result.collisionX;
+                    finalTargetY = result.collisionY;
+                    obstructionDetected = true;
+                    break;
                 }
-    
-                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-                this.ctx.setLineDash([5, 5]); // Dotted line
-                this.ctx.beginPath();
-                this.ctx.moveTo(handX, handY);
-                this.ctx.lineTo(finalTargetX, finalTargetY);
-                this.ctx.stroke();
-                this.ctx.setLineDash([]); // Reset line dash
-    
-                // Draw target radius at the final target position
-                this.ctx.beginPath();
-                this.ctx.arc(finalTargetX, finalTargetY, game.targetRadius, 0, 2 * Math.PI);
-                this.ctx.stroke();
             }
+    
+            // Do not show the aim if the obstruction is very close
+            if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
+                return;
+            }
+    
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.setLineDash([5, 5]); // Dotted line
+            this.ctx.beginPath();
+            this.ctx.moveTo(handX, handY);
+            this.ctx.lineTo(finalTargetX, finalTargetY);
+            this.ctx.stroke();
+            this.ctx.setLineDash([]); // Reset line dash
+    
+            // Draw target radius at the final target position
+            this.ctx.beginPath();
+            this.ctx.arc(finalTargetX, finalTargetY, mainSprite.targetRadius, 0, 2 * Math.PI);
+            this.ctx.stroke();
         }
     
         if (game.isEditMode && edit_mode_window.isSelecting && edit_mode_window.selectionStart && edit_mode_window.selectionEnd) {
@@ -490,7 +492,7 @@ var game = {
                 debug_window.tiles();
             }
         }
-    },    
+    },      
 
     loop: function(timestamp) {
         if (!this.lastTime) {

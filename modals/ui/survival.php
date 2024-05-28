@@ -14,7 +14,18 @@ var survival_window = {
     start: function() {
         this.addEventListeners();
         console.log('Survival window started.');
-        ui.notif("Welcome to survival mode!", "bottom-center")
+        ui.notif("Welcome to survival mode!", "bottom-center");
+
+        // Set target aim values for the axe
+        const mainSprite = game.sprites['main'];
+        if (mainSprite) {
+            mainSprite.targetAim = true;
+            mainSprite.targetRadius = 5; // Smaller radius for close proximity
+            mainSprite.maxRange = 32;     // Shorter range for an axe
+            console.log('Axe target aim values set:', mainSprite.targetRadius, mainSprite.maxRange);
+        } else {
+            console.error('Main sprite not found.');
+        }
     },
 
     unmount: function() {
@@ -43,50 +54,69 @@ var survival_window = {
     },
 
     attemptChopTree: function() {
-        const facingTreeIndex = this.isFacingTree(game.sprites['main'], game.roomData);
-        if (facingTreeIndex !== -1) {
-            console.log('Sprite is facing a tree at index:', facingTreeIndex);
+        const mainSprite = game.sprites['main'];
+        if (mainSprite.targetAim) {
+            const targetTreeIndex = this.getTreeWithMostCoverage(mainSprite, game.roomData);
+            if (targetTreeIndex !== -1) {
+                console.log('Target aim is covering a tree at index:', targetTreeIndex);
 
-            if (this.currentTreeIndex === null || this.currentTreeIndex !== facingTreeIndex) {
-                this.currentTreeIndex = facingTreeIndex;
-                this.currentClicks = 0; // Reset click counter for new tree
-                this.showChoppingBar(facingTreeIndex);
+                if (this.currentTreeIndex === null || this.currentTreeIndex !== targetTreeIndex) {
+                    this.currentTreeIndex = targetTreeIndex;
+                    this.currentClicks = 0; // Reset click counter for new tree
+                    this.showChoppingBar(targetTreeIndex);
+                }
+
+                this.currentClicks++;
+                console.log(`Chop attempt ${this.currentClicks}/${this.requiredClicks}`);
+
+                const tree = game.roomData.items[targetTreeIndex];
+                game.utils.shakeItem('tree', tree.x[0], tree.y[0], 1, 100); // Shake the tree with intensity 1
+
+                const progress = 100 - (this.currentClicks / this.requiredClicks) * 100;
+                this.updateChoppingBar(progress);
+                this.showFloatingXP(this.getTreePosition(targetTreeIndex));
+
+                if (this.currentClicks >= this.requiredClicks) {
+                    this.scatterAndRemoveTree(targetTreeIndex);
+                    this.currentTreeIndex = null; // Reset current tree
+                }
+            } else {
+                console.log('No tree within the target aim radius.');
+                this.resetChoppingState();
             }
-
-            this.currentClicks++;
-            console.log(`Chop attempt ${this.currentClicks}/${this.requiredClicks}`);
-
-            const tree = game.roomData.items[facingTreeIndex];
-            game.utils.shakeItem('tree', tree.x[0], tree.y[0], 1, 100); // Shake the tree with intensity 1
-
-            const progress = 100 - (this.currentClicks / this.requiredClicks) * 100;
-            this.updateChoppingBar(progress);
-            this.showFloatingXP(this.getTreePosition(facingTreeIndex));
-
-            if (this.currentClicks >= this.requiredClicks) {
-                this.scatterAndRemoveTree(facingTreeIndex);
-                this.currentTreeIndex = null; // Reset current tree
-            }
-        } else {
-            console.log('No tree in the direction the sprite is facing.');
-            this.resetChoppingState();
         }
     },
 
-    isFacingTree: function(sprite, roomData) {
-        const directionOffsets = {
-            'N': { x: 0, y: -1 },
-            'S': { x: 0, y: 1 },
-            'E': { x: 1, y: 0 },
-            'W': { x: -1, y: 0 },
-        };
-        const offset = directionOffsets[sprite.direction];
-        const targetX = Math.floor((sprite.x + offset.x * 16) / 16);
-        const targetY = Math.floor((sprite.y + offset.y * 16) / 16);
+    getTreeWithMostCoverage: function(sprite, roomData) {
+        const targetRadius = sprite.targetRadius;
+        const targetX = sprite.targetX;
+        const targetY = sprite.targetY;
 
-        return roomData.items.findIndex(item => 
-            item.id === 'tree' && item.x.includes(targetX) && item.y.includes(targetY)
-        );
+        let maxCoverage = 0;
+        let bestTreeIndex = -1;
+
+        roomData.items.forEach((item, index) => {
+            if (item.id === 'tree') {
+                let coverage = 0;
+
+                item.x.forEach((x, idx) => {
+                    const itemX = x * 16;
+                    const itemY = item.y[idx] * 16;
+                    const distance = Math.sqrt((itemX - targetX) ** 2 + (itemY - targetY) ** 2);
+
+                    if (distance <= targetRadius) {
+                        coverage++;
+                    }
+                });
+
+                if (coverage > maxCoverage) {
+                    maxCoverage = coverage;
+                    bestTreeIndex = index;
+                }
+            }
+        });
+
+        return bestTreeIndex;
     },
 
     showChoppingBar: function(treeIndex) {
@@ -199,7 +229,7 @@ survival_window.start();
 
     </script>
 
-  </div>
+</div>
 <?php
 }
 ?>

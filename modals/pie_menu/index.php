@@ -199,10 +199,11 @@ var pie_menu_window = {
                     } else if (this.currentHoveredAction === 'action5') {
                         modal.load('settings');
                     } else if (this.currentHoveredAction === 'action6') {
-                        if(game.targetAim) {
-                            game.targetAim = false;
+                        const mainSprite = game.sprites['main'];
+                        if (mainSprite) {
+                            mainSprite.targetAim = !mainSprite.targetAim;
                         } else {
-                            game.targetAim = true;
+                            console.log('Main sprite not found');
                         }
                     } else {
                         console.log('No action selected');

@@ -20,6 +20,23 @@ var sprite = {
             hat: options.hat || 0,
             glasses: options.glasses || 0,
 
+            // New properties for enemies
+            isEnemy: options.isEnemy || false,
+            health: options.health || 100,
+            maxHealth: options.maxHealth || 100,
+            attack: options.attack || 10,
+            defense: options.defense || 5,
+            intensity: options.intensity || 1,
+
+            // New properties for target aim
+            targetAim: false,
+            targetX: 0,
+            targetY: 0,
+            targetRadius: 10,
+            maxRange: 400,
+            handOffsetX: -5,
+            handOffsetY: 5,
+
             directionMap: {
                 'S': 0,
                 'E': 6,
@@ -91,6 +108,15 @@ var sprite = {
                 game.ctx.fill();
 
                 game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
+
+                // Draw health bar if the sprite is an enemy
+                if (this.isEnemy) {
+                    game.ctx.fillStyle = 'red';
+                    game.ctx.fillRect(0, -10, this.width, 5);
+                    game.ctx.fillStyle = 'green';
+                    game.ctx.fillRect(0, -10, this.width * (this.health / this.maxHealth), 5);
+                }
+
                 game.ctx.restore();
             },
 
@@ -192,6 +218,93 @@ var sprite = {
 
                 if (dx === 0 && dy === 0) {
                     this.movementFrameCounter = 0;
+                }
+
+                if (this.isEnemy) {
+                    this.chasePlayer();
+                }
+            },
+
+            takeDamage: function (damage) {
+                let actualDamage = damage - this.defense;
+                actualDamage = Math.max(0, actualDamage);
+                this.health -= actualDamage;
+                if (this.health <= 0) {
+                    this.health = 0;
+                    this.die();
+                }
+            },
+
+            die: function () {
+                // Implement the enemy's death logic here
+                // For example, remove the sprite from the game
+                delete game.sprites[this.id];
+            },
+
+            attackTarget: function (target) {
+                if (this.isEnemy && target) {
+                    target.takeDamage(this.attack);
+                }
+            },
+
+            chasePlayer: function () {
+                const player = game.sprites['main'];
+                if (!player) return;
+
+                const deltaX = player.x - this.x;
+                const deltaY = player.y - this.y;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+                this.removeDirection('up');
+                this.removeDirection('down');
+                this.removeDirection('left');
+                this.removeDirection('right');
+
+                if (distance < 200) {  // Chase if within 200 pixels
+                    if (deltaX > 0) {
+                        this.addDirection('right');
+                    } else {
+                        this.addDirection('left');
+                    }
+                    if (deltaY > 0) {
+                        this.addDirection('down');
+                    } else {
+                        this.addDirection('up');
+                    }
+
+                    // Attack if within a certain range
+                    if (distance < 30) {
+                        this.attackTarget(player);
+                    }
+                }
+            },
+
+            handleAimAttack: function () {
+                const mainSprite = game.sprites['main'];
+                if (!mainSprite || !mainSprite.targetAim) return;
+
+                const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
+                const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
+                const deltaX = mainSprite.targetX - handX;
+                const deltaY = mainSprite.targetY - handY;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+                if (distance <= mainSprite.maxRange) {
+                    const targetRadius = mainSprite.targetRadius;
+                    const aimDistance = Math.sqrt(
+                        (this.x + this.width / 2 - mainSprite.targetX) ** 2 +
+                        (this.y + this.height / 2 - mainSprite.targetY) ** 2
+                    );
+
+                    if (aimDistance <= targetRadius) {
+                        const headDistance = Math.sqrt(
+                            (this.x + this.width / 2 - mainSprite.targetX) ** 2 +
+                            (this.y - mainSprite.targetY) ** 2
+                        );
+                        let damage = mainSprite.attack * (1 - (headDistance / targetRadius));
+                        damage = Math.max(0, damage);
+                        this.takeDamage(damage);
+                    }
                 }
             }
         };

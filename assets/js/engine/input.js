@@ -78,11 +78,16 @@ var input = {
         }
 
         if (e.key === 'F') {
-            game.targetAim = !game.targetAim; // Toggle target aiming mode
-            if (game.targetAim) {
-                console.log('Target aim activated');
+            const mainSprite = game.sprites['main'];
+            if (mainSprite) {
+                mainSprite.targetAim = !mainSprite.targetAim; // Toggle target aiming mode
+                if (mainSprite.targetAim) {
+                    console.log('Target aim activated');
+                } else {
+                    console.log('Target aim deactivated');
+                }
             } else {
-                console.log('Target aim deactivated');
+                console.error('Main sprite not found.');
             }
         }
     },
@@ -148,10 +153,11 @@ var input = {
         }
 
         // Update mouse coordinates for target aiming
-        if (game.targetAim) {
+        const mainSprite = game.sprites['main'];
+        if (mainSprite && mainSprite.targetAim) {
             const rect = game.canvas.getBoundingClientRect();
-            game.targetX = (e.clientX - rect.left) / game.zoomLevel + game.cameraX;
-            game.targetY = (e.clientY - rect.top) / game.zoomLevel + game.cameraY;
+            mainSprite.targetX = (e.clientX - rect.left) / game.zoomLevel + game.cameraX;
+            mainSprite.targetY = (e.clientY - rect.top) / game.zoomLevel + game.cameraY;
         }
     },
 

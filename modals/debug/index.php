@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if($auth) {
 ?>
-  <div data-window='debug_window' class='window position-fixed bottom-12 right-2' style='width: 250px;height: 370px; background: #bba229;'>
+  <div data-window='debug_window' class='window position-fixed bottom-0 right-2' style='width: 250px;background: #bba229; margin-bottom: 10px;'>
   
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -13,6 +13,7 @@ if($auth) {
     <div class='clearfix'></div>
     <div class='position-relative'>
       <div class='container text-light window_body p-2'>
+      <button id='register_connect' onclick="modal.load('debug/sprite_debug.php', 'sprite_debug_window');" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md">Sprite Debug</button>
         <div id="gameFps"></div>
         <div class="clearfix mt-2"></div>
         <div class="debug-controls mt-2">
