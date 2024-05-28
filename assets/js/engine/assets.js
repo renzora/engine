@@ -42,11 +42,11 @@ var assets = {
         img.onload = () => {
             this.assetLoaded(asset, img, callback);
         };
-        img.src = 'assets/' + asset.path;
+        img.src = network.noCache('assets/' + asset.path);
     },
 
     loadJSON: function(asset, callback) {
-        fetch('assets/' + asset.path)
+        fetch(network.noCache('assets/' + asset.path))
             .then(response => response.json())
             .then(data => {
                 this.assetLoaded(asset, data, callback);

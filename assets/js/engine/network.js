@@ -64,5 +64,13 @@ send: function(message) {
       var value = "; " + document.cookie;
       var parts = value.split("; " + name + "=");
       if (parts.length == 2) return parts.pop().split(";").shift();
+  },
+  noCache: function(url) {
+    const timestamp = new Date().getTime();
+    if (url.includes('?')) {
+      return `${url}t=${timestamp}`;
+    } else {
+      return `${url}?t=${timestamp}`;
+    }
   }
 };

@@ -4,7 +4,7 @@ if ($auth) {
 ?>
 <div data-window='ui_window'>
 <div class='fixed top-0 right-0 mt-2 z-10 flex items-center'>
-    <button id="moveLeftBtn" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="modal.load('debug/sprite_debug.php', 'sprite_debug_window');">Sprite Debug</button>
+
   </div>
 
 
@@ -22,7 +22,7 @@ if ($auth) {
     <div class="py-2 relative cursor-pointer">
     <span id="market_notif" class="absolute top-0 left-0 transform -translate-x-1/2 -translate-y-1/2 badge rounded bg-red-600 border border-gray-900 shadow-md mt-3 ml-1 p-1 text-white text-xs hidden" style="z-index: 1;"></span>
 
-      <div onclick="modal.load('market')" aria-label="Market" class="icon gift hint--right"></div>
+      <div onclick="modal.load('ui/survival.php','survival_window'); modal.close('ui_window');" aria-label="Survival Mode" class="icon gift hint--right"></div>
     </div>
 
     <div class="py-2 relative cursor-pointer">

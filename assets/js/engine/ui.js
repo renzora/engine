@@ -59,19 +59,30 @@ var ui = {
             document.body.appendChild(newScript);
         });
     },
+
     unmount: function(id) {
-        if(window[id] && typeof window[id].unmount === 'function') {
+      if (window[id] && typeof window[id].unmount === 'function') {
           window[id].unmount();
-        }
-        
-        var obj = window[id];
-      
-        for (var prop in obj) {
-          if (typeof obj[prop] === "function") {
-            delete obj[prop];
+      }
+  
+      var obj = window[id];
+  
+      // Clear properties of the object
+      for (var prop in obj) {
+          if (obj.hasOwnProperty(prop)) {
+              if (typeof obj[prop] === "function") {
+                  delete obj[prop];
+              } else if (Array.isArray(obj[prop])) {
+                  obj[prop] = [];
+              } else if (typeof obj[prop] === "object" && obj[prop] !== null) {
+                  obj[prop] = {};
+              } else {
+                  obj[prop] = null;
+              }
           }
-        }
-    },
+      }
+  },
+
     ajax: async function({ url, method = 'GET', data = null, outputType = 'text', success, error }) {
         try {
       

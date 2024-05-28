@@ -265,7 +265,7 @@
   <script>
 var editMode_manager_window = {
   selectedTiles: [],
-  highestIValue: -1, // Initialize with -1 to handle the case of an empty objectData.json
+  highestIValue: 0, // Initialize with 0 for the first tile
 
   start: function() {
     let isDragging = false;
@@ -494,23 +494,16 @@ var editMode_manager_window = {
       }
 
       try {
-        const response = await fetch('assets/json/objectData.json');
+        const response = await fetch(network.noCache('assets/json/objectData.json'));
         const objectData = await response.json();
 
-        // Find the highest i value in the existing data
-        editMode_manager_window.highestIValue = -1;  // Adjusted to -1 to handle the case of an empty objectData.json
-        for (const key in objectData) {
-          const objects = objectData[key];
-          for (const obj of objects) {
-            const maxI = Math.max(...obj.i);
-            if (maxI > editMode_manager_window.highestIValue) {
-              editMode_manager_window.highestIValue = maxI;
-            }
-          }
-        }
+        // Update the highestIValue if the objectData.json is not empty
+        editMode_manager_window.highestIValue = Object.values(objectData).flat().reduce((max, obj) => {
+          return Math.max(max, ...obj.i);
+        }, 0);
 
         // Load the tileset image
-        const tilesetImageResponse = await fetch(`/assets/img/tiles/${tilesetName}.png`);
+        const tilesetImageResponse = await fetch(network.noCache(`/assets/img/tiles/${tilesetName}.png`));
         const tilesetImageBlob = await tilesetImageResponse.blob();
         const tilesetImageUrl = URL.createObjectURL(tilesetImageBlob);
         const img = new Image();
@@ -618,6 +611,20 @@ var editMode_manager_window = {
               });
 
               console.log("Updated objectData.json with new tiles:", newTiles);
+
+              // Clear the tile array and index
+              editMode_manager_window.selectedTiles = [];
+              editMode_manager_window.highestIValue += newTiles.i.length;
+
+              // Remove red opaque background and deselect any values
+              const selectionCtx = document.getElementById('selectionCanvas').getContext('2d');
+              selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+
+              // Clear input fields
+              document.getElementById('tileName').value = '';
+              document.getElementById('tileDescription').value = '';
+              propertiesPanel.style.display = 'none';
+
             } else {
               alert('Error: ' + uploadResult.error);
             }
@@ -632,18 +639,18 @@ var editMode_manager_window = {
 
     editMode_manager_window.loadTilesetObjects = async function() {
       const tilesetName = document.getElementById('editTilesetSelect').value.replace('.png', '');
-    
+
       try {
-        const response = await fetch('assets/json/objectData.json');
+        const response = await fetch(network.noCache('assets/json/objectData.json'));
         const objectData = await response.json();
         const objectGrid = document.getElementById('objectGrid');
         objectGrid.innerHTML = '';
-    
+
         const groupedObjects = {};
-    
+
         for (const key in objectData) {
           const objects = objectData[key];
-    
+
           objects.forEach(obj => {
             if (obj.t === tilesetName) {
               if (!groupedObjects[key]) {
@@ -653,30 +660,30 @@ var editMode_manager_window = {
             }
           });
         }
-    
+
         for (const key in groupedObjects) {
           const group = groupedObjects[key];
-    
+
           group.forEach(obj => {
             const minX = Math.min(...obj.a);
             const minY = Math.min(...obj.b);
             const maxX = Math.max(...obj.a) + 1;
             const maxY = Math.max(...obj.b) + 1;
-    
+
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-    
+
             canvas.width = (maxX - minX) * 16;
             canvas.height = (maxY - minY) * 16;
-    
+
             const img = new Image();
-            img.src = `/assets/img/tiles/${tilesetName}.png`;
+            img.src = network.noCache(`/assets/img/tiles/${tilesetName}.png`);
             img.onload = function() {
               obj.a.forEach((a, index) => {
                 const b = obj.b[index];
                 const sourceX = (obj.i[index] % (img.width / 16)) * 16;
                 const sourceY = Math.floor(obj.i[index] / (img.width / 16)) * 16;
-    
+
                 ctx.drawImage(
                   img,
                   sourceX, sourceY, 16, 16,
@@ -684,23 +691,23 @@ var editMode_manager_window = {
                 );
               });
             };
-    
+
             img.onerror = function() {
               console.error('Failed to load image:', img.src);
             };
-    
+
             const gridItem = document.createElement('div');
             gridItem.className = 'object-grid-item';
             gridItem.appendChild(canvas);
-    
+
             gridItem.addEventListener('click', () => {
               editMode_manager_window.showPropertiesForObject(key, obj, tilesetName);
             });
-    
+
             const label = document.createElement('span');
             label.textContent = key;
             gridItem.appendChild(label);
-    
+
             objectGrid.appendChild(gridItem);
           });
         }
@@ -712,31 +719,31 @@ var editMode_manager_window = {
     editMode_manager_window.showPropertiesForObject = function(name, objectGroup, tilesetName) {
       const propertiesPanel = document.getElementById('editPropertiesPanel');
       propertiesPanel.style.display = 'block';
-    
+
       document.getElementById('editTileName').value = name;
       document.getElementById('editTileDescription').value = '';
-    
+
       const previewCanvas = document.getElementById('editPreviewCanvas');
       const previewCtx = previewCanvas.getContext('2d');
-    
+
       const minX = Math.min(...objectGroup.a);
       const minY = Math.min(...objectGroup.b);
       const maxX = Math.max(...objectGroup.a) + 1;
       const maxY = Math.max(...objectGroup.b) + 1;
-    
+
       previewCanvas.width = (maxX - minX) * 16;
       previewCanvas.height = (maxY - minY) * 16;
-    
+
       previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
-    
+
       const img = new Image();
-      img.src = `/assets/img/tiles/${tilesetName}.png`;
+      img.src = network.noCache(`/assets/img/tiles/${tilesetName}.png`);
       img.onload = function() {
         objectGroup.a.forEach((a, index) => {
           const b = objectGroup.b[index];
           const sourceX = (objectGroup.i[index] % (img.width / 16)) * 16;
           const sourceY = Math.floor(objectGroup.i[index] / (img.width / 16)) * 16;
-    
+
           previewCtx.drawImage(
             img,
             sourceX, sourceY, 16, 16,
@@ -744,7 +751,7 @@ var editMode_manager_window = {
           );
         });
       };
-    
+
       document.getElementById('gridView').style.display = 'none';
       document.getElementById('propertiesView').style.display = 'flex';
     };
