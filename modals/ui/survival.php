@@ -31,6 +31,13 @@ var survival_window = {
     unmount: function() {
         this.removeEventListeners();
         console.log('Survival window unmounted.');
+        const mainSprite = game.sprites['main'];
+        if(mainSprite) {
+            mainSprite.targetAim = !mainSprite.targetAim;
+        } else {
+            console.log('Main sprite not found');
+        }
+        modal.load('ui');
     },
 
     addEventListeners: function() {

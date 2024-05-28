@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='ui_window'>
+<div data-window='ui_window' data-close="false">
 <div class='fixed top-0 right-0 mt-2 z-10 flex items-center'>
 
   </div>

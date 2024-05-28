@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='pie_menu_window'>
+<div data-window='pie_menu_window' data-close="false">
 
 <div id="pieMenu" class="pie-menu">
     <div class="pie-menu-ring"></div>
@@ -157,6 +157,7 @@ var pie_menu_window = {
         pieMenu.style.display = 'flex'; // Make it visible
         // Increase delay to ensure the display change is acknowledged
         setTimeout(() => {
+            modal.front('pie_menu_window'); // Pass the correct element
             pieMenu.classList.add('show');
             this.pieMenuVisible = true;
         }, 20);
@@ -178,7 +179,7 @@ var pie_menu_window = {
         this.pieMenuKeyDownListener = e => {
             if (e.key === 'Alt' && !e.repeat) {
                 e.preventDefault(); // Prevent default Alt key behavior
-                this.showPieMenu(e.clientX, e.clientY); // Show the pie menu at the mouse position
+                this.showPieMenu(e.clientX, e.clientY);
             }
         };
 
@@ -189,7 +190,7 @@ var pie_menu_window = {
                     // Execute the action stored in currentHoveredAction
                     console.log(`Executing action: ${this.currentHoveredAction}`);
                     if (this.currentHoveredAction === 'action1') {
-                        modal.load('edit_mode');
+                        modal.load('editMode/index.php', 'edit_mode_window');
                     } else if (this.currentHoveredAction === 'action2') {
                         modal.load('mishell');
                     } else if (this.currentHoveredAction === 'action3') {

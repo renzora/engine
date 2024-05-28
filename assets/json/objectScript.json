@@ -1,0 +1,10 @@
+{
+    "tree": {
+        "actions": {
+            "chop": {
+                "requiredItem": "axe",
+                "result": "log"
+            }
+        }
+    }
+}

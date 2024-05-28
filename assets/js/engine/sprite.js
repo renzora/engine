@@ -1,12 +1,12 @@
 var sprite = {
     create: function (options) {
         return {
-            x: options.x || 300,
-            y: options.y || 150,
+            x: options.x !== undefined ? options.x : 300,
+            y: options.y !== undefined ? options.y : 150,
             width: 16,
             height: 26,
             scale: 1,
-            speed: 90,
+            speed: 80,
             currentFrame: 0,
             direction: 'S',
             animationSpeed: 0.2,
@@ -19,16 +19,12 @@ var sprite = {
             facialHair: options.facialHair || 0,
             hat: options.hat || 0,
             glasses: options.glasses || 0,
-
-            // New properties for enemies
             isEnemy: options.isEnemy || false,
             health: options.health || 100,
             maxHealth: options.maxHealth || 100,
             attack: options.attack || 10,
             defense: options.defense || 5,
             intensity: options.intensity || 1,
-
-            // New properties for target aim
             targetAim: false,
             targetX: 0,
             targetY: 0,
@@ -36,6 +32,9 @@ var sprite = {
             maxRange: 400,
             handOffsetX: -5,
             handOffsetY: 5,
+            currentItem: 'axe',
+            directions: {},
+            joystickDirections: {},
 
             directionMap: {
                 'S': 0,
@@ -120,13 +119,59 @@ var sprite = {
                 game.ctx.restore();
             },
 
+            setDirections: function (directions) {
+                this.joystickDirections = directions;
+                this.updateDirection();
+                this.moving = true;
+                this.stopping = false;
+            },
+    
+            clearJoystickDirections: function () {
+                this.joystickDirections = {};
+                this.updateDirection();
+                this.moving = Object.keys(this.directions).length > 0;
+                this.stopping = Object.keys(this.directions).length === 0;
+            },
+    
+            // Update direction based on both keyboard and joystick inputs
+            updateDirection: function () {
+                const directions = { ...this.directions, ...this.joystickDirections };
+    
+                if (directions['up'] && directions['right']) {
+                    this.direction = 'N';
+                } else if (directions['down'] && directions['right']) {
+                    this.direction = 'S';
+                } else if (directions['down'] && directions['left']) {
+                    this.direction = 'W';
+                } else if (directions['up'] && directions['left']) {
+                    this.direction = 'N';
+                } else if (directions['up']) {
+                    this.direction = 'N';
+                } else if (directions['down']) {
+                    this.direction = 'S';
+                } else if (directions['left']) {
+                    this.direction = 'W';
+                } else if (directions['right']) {
+                    this.direction = 'E';
+                }
+            },
+    
             addDirection: function (direction) {
                 this.directions[direction] = true;
                 this.updateDirection();
                 this.moving = true;
                 this.stopping = false;
             },
-
+    
+            addDirections: function (directions) {
+                directions.forEach(direction => {
+                    this.directions[direction] = true;
+                });
+                this.updateDirection();
+                this.moving = true;
+                this.stopping = false;
+            },
+    
             removeDirection: function (direction) {
                 delete this.directions[direction];
                 this.updateDirection();
@@ -135,16 +180,23 @@ var sprite = {
                     this.moving = false;
                 }
             },
-
-            updateDirection: function () {
-                if (this.directions['up']) this.direction = 'N';
-                if (this.directions['down']) this.direction = 'S';
-                if (this.directions['left']) this.direction = 'W';
-                if (this.directions['right']) this.direction = 'E';
-                if (this.directions['up'] && this.directions['right']) this.direction = 'N';
-                if (this.directions['down'] && this.directions['right']) this.direction = 'S';
-                if (this.directions['down'] && this.directions['left']) this.direction = 'W';
-                if (this.directions['up'] && this.directions['left']) this.direction = 'N';
+    
+            removeDirections: function (directions) {
+                directions.forEach(direction => {
+                    delete this.directions[direction];
+                });
+                this.updateDirection();
+                if (Object.keys(this.directions).length === 0) {
+                    this.stopping = true;
+                    this.moving = false;
+                }
+            },
+    
+            clearDirections: function () {
+                this.directions = {};
+                this.updateDirection();
+                this.moving = false;
+                this.stopping = true;
             },
 
             animate: function () {
@@ -179,51 +231,61 @@ var sprite = {
 
             update: function () {
                 let deltatime = game.deltaTime / 1000;
-
+            
                 let dx = 0;
                 let dy = 0;
-
+            
                 if (this.directions['right']) dx += this.speed * deltatime;
                 if (this.directions['left']) dx -= this.speed * deltatime;
                 if (this.directions['down']) dy += this.speed * deltatime;
                 if (this.directions['up']) dy -= this.speed * deltatime;
-
+            
                 if (dx !== 0 && dy !== 0) {
                     const norm = Math.sqrt(dx * dx + dy * dy);
                     dx = (dx / norm) * this.speed * deltatime;
                     dy = (dy / norm) * this.speed * deltatime;
                 }
-
+            
                 dx = isNaN(dx) ? 0 : dx;
                 dy = isNaN(dy) ? 0 : dy;
-
+            
                 this.vx = dx;
                 this.vy = dy;
-
+            
                 let newX = this.x + this.vx;
                 let newY = this.y + this.vy;
-
+            
                 newX = isNaN(newX) ? this.x : newX;
                 newY = isNaN(newY) ? this.y : newY;
-
+            
                 if (!game.collision(newX, newY, this)) {
                     this.x = newX;
                     this.y = newY;
+            
+                    // Update target position to follow sprite movement
+                    if (this.targetAim) {
+                        this.targetX += this.vx;
+                        this.targetY += this.vy;
+            
+                        // Ensure the target stays within the bounds of the game world
+                        this.targetX = Math.max(0, Math.min(game.worldWidth, this.targetX));
+                        this.targetY = Math.max(0, Math.min(game.worldHeight, this.targetY));
+                    }
                 }
-
+            
                 this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
                 this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
-
+            
                 this.animate();
-
+            
                 if (dx === 0 && dy === 0) {
                     this.movementFrameCounter = 0;
                 }
-
+            
                 if (this.isEnemy) {
                     this.chasePlayer();
                 }
-            },
+            },            
 
             takeDamage: function (damage) {
                 let actualDamage = damage - this.defense;

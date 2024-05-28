@@ -50,12 +50,12 @@ if($auth) {
         var lerpControl = document.getElementById('lerpControl');
         var storedLerpFactor = localStorage.getItem('lerpFactor') || 0.1;
         lerpControl.value = storedLerpFactor;
-        camera.lerpFactor = parseFloat(storedLerpFactor);
+        game.lerpFactor = parseFloat(storedLerpFactor);
 
         lerpControl.addEventListener('input', function() {
           var lerpFactor = parseFloat(lerpControl.value);
           localStorage.setItem('lerpFactor', lerpFactor);
-          camera.lerpFactor = lerpFactor;
+          game.lerpFactor = lerpFactor;
         });
 
         var colorControl = document.getElementById('colorControl');

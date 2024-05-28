@@ -680,6 +680,14 @@ video {
   bottom: 3rem;
 }
 
+.bottom-2 {
+  bottom: 0.5rem;
+}
+
+.bottom-5 {
+  bottom: 1.25rem;
+}
+
 .left-0 {
   left: 0px;
 }
@@ -722,14 +730,6 @@ video {
 
 .top-5 {
   top: 1.25rem;
-}
-
-.bottom-5 {
-  bottom: 1.25rem;
-}
-
-.bottom-2 {
-  bottom: 0.5rem;
 }
 
 .z-10 {
@@ -938,6 +938,10 @@ video {
   height: 8rem;
 }
 
+.h-5 {
+  height: 1.25rem;
+}
+
 .h-6 {
   height: 1.5rem;
 }
@@ -964,10 +968,6 @@ video {
 
 .h-screen {
   height: 100vh;
-}
-
-.h-5 {
-  height: 1.25rem;
 }
 
 .w-1 {
@@ -1022,6 +1022,10 @@ video {
   width: 12rem;
 }
 
+.w-5 {
+  width: 1.25rem;
+}
+
 .w-6 {
   width: 1.5rem;
 }
@@ -1036,10 +1040,6 @@ video {
 
 .w-full {
   width: 100%;
-}
-
-.w-5 {
-  width: 1.25rem;
 }
 
 .flex-1 {
@@ -1639,6 +1639,11 @@ video {
   color: rgb(34 197 94 / var(--tw-text-opacity));
 }
 
+.text-indigo-600 {
+  --tw-text-opacity: 1;
+  color: rgb(79 70 229 / var(--tw-text-opacity));
+}
+
 .text-slate-300 {
   --tw-text-opacity: 1;
   color: rgb(203 213 225 / var(--tw-text-opacity));
@@ -1662,11 +1667,6 @@ video {
 .text-white {
   --tw-text-opacity: 1;
   color: rgb(255 255 255 / var(--tw-text-opacity));
-}
-
-.text-indigo-600 {
-  --tw-text-opacity: 1;
-  color: rgb(79 70 229 / var(--tw-text-opacity));
 }
 
 .underline {
@@ -1725,6 +1725,11 @@ video {
   --tw-ring-offset-shadow: var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
   --tw-ring-shadow: var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);
   box-shadow: var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow, 0 0 #0000);
+}
+
+.blur {
+  --tw-blur: blur(8px);
+  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
 
 .grayscale {
@@ -2059,6 +2064,41 @@ canvas {
   width: 1em;
   content: '...';
   animation: ellipsis 1.5s infinite;
+}
+
+#customCursor {
+  position: absolute;
+  width: 20px;
+  /* Width of the cursor */
+  height: 20px;
+  /* Height of the cursor */
+  background-color: white;
+  /* Bright color for visibility */
+  -webkit-clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+          clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  /* Triangle shape */
+  transform: translate(-50%, -50%) rotate(-45deg);
+  /* Rotate left */
+  z-index: 10000;
+  pointer-events: none;
+  box-shadow: 0 0 8px 2px rgba(0, 255, 0, 0.6);
+  /* Shadow effect */
+  animation: pulseCursor 1.5s infinite ease-in-out;
+  /* An example animation */
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+  /* Smooth transition */
+}
+
+@keyframes pulseCursor {
+  0%, 100% {
+    transform: translate(-50%, -50%) rotate(-45deg) scale(1);
+    box-shadow: 0 0 8px 2px rgba(0, 255, 0, 0.6);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) rotate(-45deg) scale(1.2);
+    box-shadow: 0 0 12px 3px rgba(0, 255, 0, 0.8);
+  }
 }
 
 [class*=hint--]{

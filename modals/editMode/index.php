@@ -280,7 +280,7 @@ var edit_mode_window = {
             });
 
             if (maxZIndexElement) {
-                modal.closeModal(attributeName);
+                modal.close(attributeName);
             }
         } else {
             const dir = input.keys[e.code];

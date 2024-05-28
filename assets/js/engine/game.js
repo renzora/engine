@@ -37,6 +37,7 @@ var game = {
             { name: 'outfit', path: 'img/sprites/outfit.png' },
             { name: '1', path: 'img/tiles/1.png' },
             { name: 'objectData', path: 'json/objectData.json' },
+            { name: 'objectScript', path: 'json/objectScript.json' },
             { name: 'roomData', path: 'json/roomData.json' },
         ], () => {
             console.log("All assets loaded");
@@ -47,11 +48,21 @@ var game = {
             this.roomData = assets.load('roomData');
             this.createMainSprite();
             this.createNPCSprite();
+    
+            weather.starsActive = true;
+            weather.fogActive = true;
+            weather.rainActive = true;
+            weather.snowActive = true;
+            weather.nightActive = true;
+    
             weather.createStars();
-            weather.initRain(0.2); // Initialize rain with 20% opacity
-            weather.createSnow(0.2); // Initialize snow with 20% opacity
-            this.applyBlackAndWhiteMode(); // Apply the filter initially
+            weather.createFog(0.05);
+            weather.createRain(0.7);
+            weather.createSnow(0.2);
+    
+            this.applyBlackAndWhiteMode();
             this.setBlackAndWhiteMode(this.isBlackAndWhite);
+    
             this.utils = new this.Utils();
             this.loop();
         });
@@ -221,8 +232,8 @@ var game = {
 
     createMainSprite: function () {
         this.mainSprite = sprite.create({
-            x: 80,
-            y: 0,
+            x: 300,
+            y: 500,
             hairstyle: 5,
             outfit: 3,
             facialHair: 1,
@@ -362,10 +373,12 @@ var game = {
         renderQueue.forEach(item => item.draw());
         this.ctx.imageSmoothingEnabled = false;
     
-        // Draw weather effects
-        weather.updateStars();
-        weather.updateRain();
-        weather.updateSnow();
+        weather.applyNightColorFilter(); // Apply the night color filter
+        weather.drawSnow();
+        weather.drawRain();
+        weather.drawFog();
+        weather.drawStars();
+        weather.drawLightning();
         this.handleAimAttack();
     
         // Draw target aimer if active
@@ -492,8 +505,8 @@ var game = {
                 debug_window.tiles();
             }
         }
-    },      
-
+    },    
+    
     loop: function(timestamp) {
         if (!this.lastTime) {
             this.lastTime = timestamp;
@@ -508,14 +521,16 @@ var game = {
         }
     
         this.updateAnimatedTiles(this.deltaTime);
-        weather.updateStars();
-        weather.updateRain();
         weather.updateSnow();
+        weather.updateRain();
+        weather.updateFog();
+        weather.updateStars();
+        weather.updateLightning();
         this.updateCamera();
         this.render();
         requestAnimationFrame(this.loop.bind(this));
     },
-
+    
     updateAnimatedTiles: function(deltaTime) {
         if (!this.roomData || !this.roomData.items) return;
 
@@ -544,7 +559,7 @@ var game = {
     collision: function(x, y, sprite) {
         let collisionDetected = false;
         const extraHeadroom = 2;
-
+    
         // Define the collision box for the sprite
         const spriteCollisionBox = {
             x: x,
@@ -552,24 +567,24 @@ var game = {
             width: sprite.width * sprite.scale,
             height: sprite.height * sprite.scale - 2 * extraHeadroom
         };
-
+    
         const objectCollisionBox = {
             x: x,
             y: y + sprite.height * sprite.scale / 2,
             width: sprite.width * sprite.scale,
             height: sprite.height * sprite.scale / 2
         };
-
+    
         if (this.roomData && this.roomData.items) {
             collisionDetected = this.roomData.items.some(roomItem => {
                 const itemData = assets.load('objectData')[roomItem.id];
                 if (!itemData) return false;
-
+    
                 const xCoordinates = roomItem.x || [];
                 const yCoordinates = roomItem.y || [];
-
+    
                 let index = 0;
-
+    
                 return yCoordinates.some((yCoord, j) => {
                     return xCoordinates.some((xCoord, i) => {
                         const tileData = itemData[0]; // Assuming we are dealing with the first tile data group
@@ -581,7 +596,7 @@ var game = {
                             width: 16,
                             height: 16
                         };
-
+    
                         let collisionArray;
                         if (Array.isArray(tileData.w) && tileData.w.length > 0) {
                             collisionArray = tileData.w[index % tileData.w.length];
@@ -591,9 +606,9 @@ var game = {
                                 collisionArray = [16, 16, 16, 16]; // Fully walkable
                             }
                         }
-
+    
                         index++;
-
+    
                         if (collisionArray) {
                             const [nOffset, eOffset, sOffset, wOffset] = collisionArray;
                             return (
@@ -603,13 +618,13 @@ var game = {
                                 objectCollisionBox.y + objectCollisionBox.height > tileRect.y + nOffset
                             );
                         }
-
+    
                         return false;
                     });
                 });
             });
         }
-
+    
         if (!collisionDetected) {
             for (let id in this.sprites) {
                 if (this.sprites[id] !== sprite) {
@@ -620,7 +635,7 @@ var game = {
                         width: otherSprite.width * otherSprite.scale,
                         height: otherSprite.height * otherSprite.scale - 2 * extraHeadroom
                     };
-
+    
                     if (
                         spriteCollisionBox.x < otherCollisionBox.x + otherCollisionBox.width &&
                         spriteCollisionBox.x + spriteCollisionBox.width > otherCollisionBox.x &&
@@ -633,7 +648,11 @@ var game = {
                 }
             }
         }
-
+    
+        if (collisionDetected) {
+            input.vibrateController(200, 1.0); // Trigger vibration for 200ms with full strength
+        }
+    
         return collisionDetected;
-    },
+    }    
 };
