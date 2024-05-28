@@ -28,7 +28,9 @@ var network = {
       }
 
       modal.load('ui');
+      modal.load('pie_menu');
       console.log("Connected to Main renzora server");
+      ui.notif("Connected to main renzora server", "bottom-center");
       game.init();
   },
 

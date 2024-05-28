@@ -22,6 +22,12 @@ var game = {
     cameraY: 0,
     targetCameraX: 0,
     targetCameraY: 0,
+    targetAim: false,
+    targetX: 0,
+    targetY: 0,
+    targetRadius: 10, // Radius of the target circle
+    maxRange: 400, // Maximum range of the aim line
+    handOffsetY: 5, // Move the line 5 pixels down
     roomData: undefined,
     sprites: {},
 
@@ -251,6 +257,8 @@ var game = {
     },
 
     updateCamera: function() {
+        if(!game.isEditMode) {
+
         var scaledWindowWidth = window.innerWidth / game.zoomLevel;
         var scaledWindowHeight = window.innerHeight / game.zoomLevel;
 
@@ -278,6 +286,7 @@ var game = {
 
         if (typeof debug_window !== 'undefined' && debug_window.camera) {
             debug_window.camera();
+        }
         }
     },
 
@@ -354,11 +363,109 @@ var game = {
         weather.updateRain();
         weather.updateSnow();
     
+        // Draw target aimer if active
+        if (game.targetAim) {
+            const mainSprite = this.sprites['main'];
+            if (mainSprite) {
+                const handOffsetX = -5; // Move the line 5 pixels to the left
+                const handX = mainSprite.x + mainSprite.width / 2 + handOffsetX;
+                const handY = mainSprite.y + mainSprite.height / 2 + game.handOffsetY;
+    
+                const deltaX = game.targetX - handX;
+                const deltaY = game.targetY - handY;
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+                // Calculate the adjusted target position
+                let adjustedTargetX = game.targetX;
+                let adjustedTargetY = game.targetY;
+                if (distance > game.maxRange) {
+                    const ratio = game.maxRange / distance;
+                    adjustedTargetX = handX + deltaX * ratio;
+                    adjustedTargetY = handY + deltaY * ratio;
+                }
+    
+                // Function to check for collision with non-walkable map objects
+                const isObstructed = (x, y) => {
+                    if (this.roomData && this.roomData.items) {
+                        for (const roomItem of this.roomData.items) {
+                            const itemData = assets.load('objectData')[roomItem.id];
+                            if (!itemData) continue;
+    
+                            const xCoordinates = roomItem.x || [];
+                            const yCoordinates = roomItem.y || [];
+    
+                            for (let i = 0; i < xCoordinates.length; i++) {
+                                const itemX = parseInt(xCoordinates[i], 10) * 16;
+                                const itemY = parseInt(yCoordinates[i], 10) * 16;
+                                const tileRect = {
+                                    x: itemX,
+                                    y: itemY,
+                                    width: 16,
+                                    height: 16
+                                };
+    
+                                // Check if the point is within the tile's bounds
+                                if (
+                                    x >= tileRect.x &&
+                                    x <= tileRect.x + tileRect.width &&
+                                    y >= tileRect.y &&
+                                    y <= tileRect.y + tileRect.height
+                                ) {
+                                    const tileData = itemData[0]; // Assuming single tile data for simplicity
+                                    // Check if the tile is walkable
+                                    if (tileData.w !== 1) { // Assuming w=1 means walkable, otherwise it's not
+                                        return { obstructed: true, collisionX: x, collisionY: y };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    return { obstructed: false };
+                };
+    
+                // Check for obstruction along the line of sight
+                let finalTargetX = adjustedTargetX;
+                let finalTargetY = adjustedTargetY;
+                const steps = Math.ceil(distance);
+                let obstructionDetected = false;
+    
+                for (let i = 1; i <= steps; i++) {
+                    const stepX = handX + (deltaX * i) / steps;
+                    const stepY = handY + (deltaY * i) / steps;
+                    const result = isObstructed(stepX, stepY);
+                    if (result.obstructed) {
+                        finalTargetX = result.collisionX;
+                        finalTargetY = result.collisionY;
+                        obstructionDetected = true;
+                        break;
+                    }
+                }
+    
+                // Do not show the aim if the obstruction is very close
+                if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
+                    return;
+                }
+    
+                this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                this.ctx.setLineDash([5, 5]); // Dotted line
+                this.ctx.beginPath();
+                this.ctx.moveTo(handX, handY);
+                this.ctx.lineTo(finalTargetX, finalTargetY);
+                this.ctx.stroke();
+                this.ctx.setLineDash([]); // Reset line dash
+    
+                // Draw target radius at the final target position
+                this.ctx.beginPath();
+                this.ctx.arc(finalTargetX, finalTargetY, game.targetRadius, 0, 2 * Math.PI);
+                this.ctx.stroke();
+            }
+        }
+    
         if (game.isEditMode && edit_mode_window.isSelecting && edit_mode_window.selectionStart && edit_mode_window.selectionEnd) {
-            const startX = Math.min(editor.selectionStart.x, editor.selectionEnd.x);
-            const startY = Math.min(editor.selectionStart.y, editor.selectionEnd.y);
-            const endX = Math.max(editor.selectionStart.x, editor.selectionEnd.x) + 16;
-            const endY = Math.max(editor.selectionStart.y, editor.selectionEnd.y) + 16;
+            const startX = Math.min(edit_mode_window.selectionStart.x, edit_mode_window.selectionEnd.x);
+            const startY = Math.min(edit_mode_window.selectionStart.y, edit_mode_window.selectionEnd.y);
+            const endX = Math.max(edit_mode_window.selectionStart.x, edit_mode_window.selectionEnd.x) + 16;
+            const endY = Math.max(edit_mode_window.selectionStart.y, edit_mode_window.selectionEnd.y) + 16;
     
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.lineWidth = 4 / this.zoomLevel;

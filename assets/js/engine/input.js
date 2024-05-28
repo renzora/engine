@@ -1,5 +1,3 @@
-document.addEventListener('DOMContentLoaded', (e) => { input.loaded(e) });
-
 var input = {
     pressedDirections: [],
     keys: {
@@ -7,6 +5,10 @@ var input = {
         'ArrowLeft': "left",
         'ArrowRight': "right",
         'ArrowDown': "down",
+        'w': "up",
+        'a': "left",
+        's': "down",
+        'd': "right"
     },
     isShiftPressed: false,
     isCtrlPressed: false,
@@ -31,18 +33,19 @@ var input = {
         network.init();
     },
 
+    keyUp: function(e) {
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault(); // Prevent default action for keyUp
+            this.handleKeyUp(e);
+        }
+    },
+
     keyDown: function(e) {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             if (e.key === 'Tab') {
                 e.preventDefault();
             }
             this.handleKeyDown(e);
-        }
-    },
-
-    keyUp: function(e) {
-        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-            this.handleKeyUp(e);
         }
     },
 
@@ -72,6 +75,15 @@ var input = {
             this.isCtrlPressed = true;
         } else if (e.key === 'Alt') {
             this.isAltPressed = true;
+        }
+
+        if (e.key === 'F') {
+            game.targetAim = !game.targetAim; // Toggle target aiming mode
+            if (game.targetAim) {
+                console.log('Target aim activated');
+            } else {
+                console.log('Target aim deactivated');
+            }
         }
     },
 
@@ -134,6 +146,13 @@ var input = {
             this.startX = e.clientX;
             this.startY = e.clientY;
         }
+
+        // Update mouse coordinates for target aiming
+        if (game.targetAim) {
+            const rect = game.canvas.getBoundingClientRect();
+            game.targetX = (e.clientX - rect.left) / game.zoomLevel + game.cameraX;
+            game.targetY = (e.clientY - rect.top) / game.zoomLevel + game.cameraY;
+        }
     },
 
     mouseUp: function(e) {
@@ -193,7 +212,7 @@ var input = {
         e.preventDefault();
     },
 
-    doubleClick: function(e) {
-
-    }
+    doubleClick: function(e) {}
 };
+
+document.addEventListener('DOMContentLoaded', (e) => { input.loaded(e) });
