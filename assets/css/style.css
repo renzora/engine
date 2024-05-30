@@ -11,7 +11,6 @@ html, body {
   font-family: tahoma;
   font-size: 14px;
   letter-spacing: 1px;
-  font-smooth: never;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: grayscale;
   image-rendering: pixelated;
@@ -121,32 +120,103 @@ canvas {
   background: url('../img/icons/icons.png');
   image-rendering: pixelated;
 }
+
 .globe {
   width: 32px;
   background-position: 0 0;
-  transform: scale(1.4);
 }
 .globe:hover {
   background-position: 0 -32px;
 }
 
-.gift {
+.friends {
   width: 32px;
-  background-position: -288px 0;
-  transform: scale(1.6);
+  background-position: -32px 0;
 }
-.gift:hover {
-  background-position: -288px -32px;
+.friends:hover {
+  background-position: -32px -32px;
+}
+
+.admin {
+  width: 32px;
+  background-position: -64px 0;
+}
+.admin:hover {
+  background-position: -64px -32px;
+}
+
+.mod {
+  width: 32px;
+  background-position: -96px 0;
+}
+.mod:hover {
+  background-position: -96px -32px;
+}
+
+.editor {
+  width: 32px;
+  background-position: -128px 0;
+}
+.editor:hover {
+  background-position: -128px -32px;
+}
+
+.chat {
+  width: 32px;
+  background-position: -160px 0;
+}
+.chat:hover {
+  background-position: -160px -32px;
 }
 
 .settings {
   width: 32px;
   background-position: -192px 0;
-  transform: scale(1.4);
 }
 .settings:hover {
   background-position: -192px -32px;
 }
+
+.gift {
+  width: 32px;
+  background-position: -288px 0;
+}
+.gift:hover {
+  background-position: -288px -32px;
+}
+
+.avatar {
+  width: 32px;
+  background-position: -320px 0;
+}
+.avatar:hover {
+  background-position: -320px -32px;
+}
+
+.music {
+  width: 32px;
+  background-position: -352px 0;
+}
+.music:hover {
+  background-position: -352px -32px;
+}
+
+.sword {
+  width: 32px;
+  background-position: -384px 0;
+}
+.sword:hover {
+  background-position: -384px -32px;
+}
+
+.inventory {
+  width: 32px;
+  background-position: -416px 0;
+}
+.inventory:hover {
+  background-position: -416px -32px;
+}
+
 .close_dark {
   width: 22px;
   height: 22px;
@@ -155,8 +225,6 @@ canvas {
 .close_dark:hover {
   background-position: -224px -32px;
 }
-
-
 
 .tile-image {
   position: absolute;
@@ -284,29 +352,23 @@ canvas {
   animation: ellipsis 1.5s infinite;
 }
 
-#customCursor {
+.text-highlight::after {
+  content: "";
   position: absolute;
-  width: 20px; /* Width of the cursor */
-  height: 20px; /* Height of the cursor */
-  background-color: white; /* Bright color for visibility */
-  clip-path: polygon(50% 0%, 0% 100%, 100% 100%); /* Triangle shape */
-  transform: translate(-50%, -50%) rotate(-45deg); /* Rotate left */
-  z-index: 10000;
-  pointer-events: none;
-  box-shadow: 0 0 8px 2px rgba(0, 255, 0, 0.6); /* Shadow effect */
-  animation: pulseCursor 1.5s infinite ease-in-out; /* An example animation */
-  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out; /* Smooth transition */
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: blue;
 }
 
-@keyframes pulseCursor {
-  0%, 100% {
-      transform: translate(-50%, -50%) rotate(-45deg) scale(1);
-      box-shadow: 0 0 8px 2px rgba(0, 255, 0, 0.6);
-  }
-  50% {
-      transform: translate(-50%, -50%) rotate(-45deg) scale(1.2);
-      box-shadow: 0 0 12px 3px rgba(0, 255, 0, 0.8);
-  }
+.border-opacity {
+  border-color: rgba(0, 0, 0, 0.5);
+}
+
+.drag-strip {
+  cursor: ns-resize; /* Change cursor to ns-resize to indicate vertical resizing */
+  height: 10px; /* Make the strip taller for better visibility */
 }
 
 [class*=hint--]{position:relative;display:inline-block}[class*=hint--]:after,[class*=hint--]:before{position:absolute;-webkit-transform:translate3d(0,0,0);-moz-transform:translate3d(0,0,0);transform:translate3d(0,0,0);visibility:hidden;opacity:0;z-index:1000000;pointer-events:none;-webkit-transition:.3s ease;-moz-transition:.3s ease;transition:.3s ease;-webkit-transition-delay:0s;-moz-transition-delay:0s;transition-delay:0s}[class*=hint--]:hover:after,[class*=hint--]:hover:before{visibility:visible;opacity:1;-webkit-transition-delay:.1s;-moz-transition-delay:.1s;transition-delay:.1s}[class*=hint--]:before{content:'';position:absolute;background:0 0;border:6px solid transparent;z-index:1000001}[class*=hint--]:after{background:#000;color:#fff;padding:5px;font-size:11px;white-space:nowrap}[class*=hint--][aria-label]:after{content:attr(aria-label)}[class*=hint--][data-hint]:after{content:attr(data-hint)}[aria-label='']:after,[aria-label='']:before,[data-hint='']:after,[data-hint='']:before{display:none!important}.hint--top-left:before,.hint--top-right:before,.hint--top:before{border-top-color:#000}.hint--bottom-left:before,.hint--bottom-right:before,.hint--bottom:before{border-bottom-color:#000}.hint--top:after,.hint--top:before{bottom:100%;left:50%}.hint--top:before{margin-bottom:-11px;left:calc(50% - 6px)}.hint--top:after{-webkit-transform:translateX(-50%);-moz-transform:translateX(-50%);transform:translateX(-50%)}.hint--top:hover:before{-webkit-transform:translateY(-8px);-moz-transform:translateY(-8px);transform:translateY(-8px)}.hint--top:hover:after{-webkit-transform:translateX(-50%) translateY(-8px);-moz-transform:translateX(-50%) translateY(-8px);transform:translateX(-50%) translateY(-8px)}.hint--bottom:after,.hint--bottom:before{top:100%;left:50%}.hint--bottom:before{margin-top:-11px;left:calc(50% - 6px)}.hint--bottom:after{-webkit-transform:translateX(-50%);-moz-transform:translateX(-50%);transform:translateX(-50%)}.hint--bottom:hover:before{-webkit-transform:translateY(8px);-moz-transform:translateY(8px);transform:translateY(8px)}.hint--bottom:hover:after{-webkit-transform:translateX(-50%) translateY(8px);-moz-transform:translateX(-50%) translateY(8px);transform:translateX(-50%) translateY(8px)}.hint--right:before{border-right-color:#000;margin-left:-11px;margin-bottom:-6px}.hint--right:after{margin-bottom:-14px}.hint--right:after,.hint--right:before{left:100%;bottom:50%}.hint--right:hover:after,.hint--right:hover:before{-webkit-transform:translateX(8px);-moz-transform:translateX(8px);transform:translateX(8px)}.hint--left:before{border-left-color:#000;margin-right:-11px;margin-bottom:-6px}.hint--left:after{margin-bottom:-14px}.hint--left:after,.hint--left:before{right:100%;bottom:50%}.hint--left:hover:after,.hint--left:hover:before{-webkit-transform:translateX(-8px);-moz-transform:translateX(-8px);transform:translateX(-8px)}.hint--top-left:after,.hint--top-left:before{bottom:100%;left:50%}.hint--top-left:before{margin-bottom:-11px;left:calc(50% - 6px)}.hint--top-left:after{-webkit-transform:translateX(-100%);-moz-transform:translateX(-100%);transform:translateX(-100%);margin-left:12px}.hint--top-left:hover:before{-webkit-transform:translateY(-8px);-moz-transform:translateY(-8px);transform:translateY(-8px)}.hint--top-left:hover:after{-webkit-transform:translateX(-100%) translateY(-8px);-moz-transform:translateX(-100%) translateY(-8px);transform:translateX(-100%) translateY(-8px)}.hint--top-right:after,.hint--top-right:before{bottom:100%;left:50%}.hint--top-right:before{margin-bottom:-11px;left:calc(50% - 6px)}.hint--top-right:after{-webkit-transform:translateX(0);-moz-transform:translateX(0);transform:translateX(0);margin-left:-12px}.hint--top-right:hover:after,.hint--top-right:hover:before{-webkit-transform:translateY(-8px);-moz-transform:translateY(-8px);transform:translateY(-8px)}.hint--bottom-left:after,.hint--bottom-left:before{top:100%;left:50%}.hint--bottom-left:before{margin-top:-11px;left:calc(50% - 6px)}.hint--bottom-left:after{-webkit-transform:translateX(-100%);-moz-transform:translateX(-100%);transform:translateX(-100%);margin-left:12px}.hint--bottom-left:hover:before{-webkit-transform:translateY(8px);-moz-transform:translateY(8px);transform:translateY(8px)}.hint--bottom-left:hover:after{-webkit-transform:translateX(-100%) translateY(8px);-moz-transform:translateX(-100%) translateY(8px);transform:translateX(-100%) translateY(8px)}.hint--bottom-right:after,.hint--bottom-right:before{top:100%;left:50%}.hint--bottom-right:before{margin-top:-11px;left:calc(50% - 6px)}.hint--bottom-right:after{-webkit-transform:translateX(0);-moz-transform:translateX(0);transform:translateX(0);margin-left:-12px}.hint--bottom-right:hover:after,.hint--bottom-right:hover:before{-webkit-transform:translateY(8px);-moz-transform:translateY(8px);transform:translateY(8px)}.hint--large:after,.hint--medium:after,.hint--small:after{white-space:normal;line-height:1.4em;word-wrap:break-word}.hint--small:after{width:80px}.hint--medium:after{width:150px}.hint--large:after{width:300px}.hint--always:after,.hint--always:before{opacity:1;visibility:visible}.hint--always.hint--top:before{-webkit-transform:translateY(-8px);-moz-transform:translateY(-8px);transform:translateY(-8px)}.hint--always.hint--top:after{-webkit-transform:translateX(-50%) translateY(-8px);-moz-transform:translateX(-50%) translateY(-8px);transform:translateX(-50%) translateY(-8px)}.hint--always.hint--top-left:before{-webkit-transform:translateY(-8px);-moz-transform:translateY(-8px);transform:translateY(-8px)}.hint--always.hint--top-left:after{-webkit-transform:translateX(-100%) translateY(-8px);-moz-transform:translateX(-100%) translateY(-8px);transform:translateX(-100%) translateY(-8px)}.hint--always.hint--top-right:after,.hint--always.hint--top-right:before{-webkit-transform:translateY(-8px);-moz-transform:translateY(-8px);transform:translateY(-8px)}.hint--always.hint--bottom:before{-webkit-transform:translateY(8px);-moz-transform:translateY(8px);transform:translateY(8px)}.hint--always.hint--bottom:after{-webkit-transform:translateX(-50%) translateY(8px);-moz-transform:translateX(-50%) translateY(8px);transform:translateX(-50%) translateY(8px)}.hint--always.hint--bottom-left:before{-webkit-transform:translateY(8px);-moz-transform:translateY(8px);transform:translateY(8px)}.hint--always.hint--bottom-left:after{-webkit-transform:translateX(-100%) translateY(8px);-moz-transform:translateX(-100%) translateY(8px);transform:translateX(-100%) translateY(8px)}.hint--always.hint--bottom-right:after,.hint--always.hint--bottom-right:before{-webkit-transform:translateY(8px);-moz-transform:translateY(8px);transform:translateY(8px)}.hint--always.hint--left:after,.hint--always.hint--left:before{-webkit-transform:translateX(-8px);-moz-transform:translateX(-8px);transform:translateX(-8px)}.hint--always.hint--right:after,.hint--always.hint--right:before{-webkit-transform:translateX(8px);-moz-transform:translateX(8px);transform:translateX(8px)}

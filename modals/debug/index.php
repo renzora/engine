@@ -14,10 +14,23 @@ if($auth) {
     <div class='position-relative'>
       <div class='container text-light window_body p-2'>
         <button id='register_connect' onclick="modal.load('debug/sprite_debug.php', 'sprite_debug_window');" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md">Sprite Debug</button>
-        <div id="gameFps"></div>
+
+        <button class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="network.sendReloadRequest();">Reload Game Data</button>
+
+        <button id='vibrate_test' onclick="debug_window.vibrateTest();" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md">Vibrate Test</button>
+
+        <div class="debug-controls mt-2">
+        <!-- Increase/Decrease Energy Buttons -->
+        <button id='increase_energy' onclick="debug_window.changeEnergy(10);" class="green_button text-white font-bold py-2 px-3 rounded w-48 mt-2 shadow-md">Energy++</button>
+        <button id='decrease_energy' onclick="debug_window.changeEnergy(-10);" class="green_button text-white font-bold py-2 px-3 rounded w-48 mt-2 shadow-md">Energy--</button>
+        
+        <!-- Increase/Decrease Health Buttons -->
+        <button id='increase_health' onclick="debug_window.changeHealth(10);" class="green_button text-white font-bold py-2 px-3 rounded w-48 mt-2 shadow-md">Health++</button>
+        <button id='decrease_health' onclick="debug_window.changeHealth(-10);" class="green_button text-white font-bold py-2 px-3 rounded w-48 mt-2 shadow-md">Health--</button>
+    </div>
+
         <div class="clearfix mt-2"></div>
         <div class="debug-controls mt-2">
-          <label><input type="checkbox" id="toggleFPS" checked> Show FPS</label><br>
           <label><input type="checkbox" id="toggleGrid"> Show Grid</label><br>
           <label><input type="checkbox" id="toggleCollision"> Show Collision</label><br>
           <label><input type="checkbox" id="toggleSnow"> Show Snow</label><br>
@@ -32,8 +45,6 @@ if($auth) {
     <script>
       var debug_window = {
         start: function() {
-          // Initialize debug functions here
-          this.updateFps();
           this.bindControls();
           this.initializeCheckboxes();
         },
@@ -67,14 +78,6 @@ if($auth) {
           document.getElementById('toggleFog').checked = weather.fogActive;
           document.getElementById('toggleStars').checked = weather.starsActive;
           document.getElementById('toggleNight').checked = game.isNightActive;
-        },
-        toggleFPS: function(event) {
-          if (event.target.checked) {
-            this.updateFps();
-          } else {
-            cancelAnimationFrame(this.fpsAnimationFrame);
-            document.getElementById('gameFps').innerHTML = '';
-          }
         },
         toggleGrid: function(event) {
           game.showGrid = event.target.checked;
@@ -117,6 +120,29 @@ if($auth) {
         toggleNight: function(event) {
           game.isNightActive = event.target.checked;
         },
+        changeEnergy: function(amount) {
+        const player = game.sprites['main']; // Ensure the player sprite is accessible
+        if (player) {
+            player.updateEnergy(amount);
+        }
+    },
+    
+    changeHealth: function(amount) {
+        const player = game.sprites['main']; // Ensure the player sprite is accessible
+        if (player) {
+            player.updateHealth(amount);  // Ensure this method exists in your player object
+        }
+    },
+    vibrateTest: function() {
+      const gamepad = navigator.getGamepads()[0];
+
+      gamepad.vibrationActuator.playEffect("dual-rumble", {
+  startDelay: 0,
+  duration: 2000,
+  weakMagnitude: 1.0,
+  strongMagnitude: 1.0,
+});
+    },
         sprite: function(sprite) {
           const spriteX = sprite.x;
           const spriteY = sprite.y;
@@ -139,17 +165,6 @@ if($auth) {
         },
         camera: function() {
           // Implementation for debugging camera
-        },
-        updateFps: function() {
-          var debugFPS = document.getElementById('gameFps');
-          if (debugFPS) {
-            if (typeof game.fps !== 'undefined') {
-              debugFPS.innerHTML = "FPS: " + game.fps.toFixed(3);
-            } else {
-              debugFPS.innerHTML = "FPS: N/A";
-            }
-          }
-          this.fpsAnimationFrame = requestAnimationFrame(this.updateFps.bind(this));
         },
         grid: function() {
           game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';

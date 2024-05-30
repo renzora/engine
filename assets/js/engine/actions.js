@@ -1,4 +1,3 @@
-// actions.js
 const actions = {
     chopTree: function(x, y) {
         game.utils.addItem('log', { x: x, y: y });

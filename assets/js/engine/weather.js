@@ -252,11 +252,49 @@ var weather = {
 
     applyNightColorFilter: function() {
         if (!this.nightActive) return;
+    
+        const { hours, minutes } = game.gameTime;
+        const totalMinutes = hours * 60 + minutes;
+    
+        let nightOpacity = 0;
+        let nightColor = 'rgba(0, 0, 50, 0)';
+    
+        if (totalMinutes >= 1320 || totalMinutes < 360) { // 10 PM to 6 AM
+            nightOpacity = 0.9;
+            nightColor = `rgba(0, 0, 50, ${nightOpacity})`;
+        } else if (totalMinutes >= 360 && totalMinutes < 480) { // 6 AM to 8 AM
+            nightOpacity = (480 - totalMinutes) / 120 * 0.9;
+            nightColor = `rgba(0, 0, 50, ${nightOpacity})`;
+        } else if (totalMinutes >= 480 && totalMinutes < 1080) { // 8 AM to 6 PM
+            nightOpacity = 0;
+            nightColor = `rgba(0, 0, 50, ${nightOpacity})`;
+        } else if (totalMinutes >= 1080 && totalMinutes < 1200) { // 6 PM to 8 PM
+            nightOpacity = (totalMinutes - 1080) / 120 * 0.7;
+            nightColor = `rgba(255, 94, 0, ${nightOpacity})`; // Warm orange for sunset
+        } else if (totalMinutes >= 1200 && totalMinutes < 1320) { // 8 PM to 10 PM
+            nightOpacity = 0.7 + (totalMinutes - 1200) / 120 * 0.2;
+            nightColor = `rgba(0, 0, 50, ${nightOpacity})`; // Transition to dark blue
+        }
+    
         game.ctx.save();
         game.ctx.globalCompositeOperation = 'source-over';
-        game.ctx.fillStyle = this.nightColor;
-        game.ctx.globalAlpha = this.nightOpacity;
+        game.ctx.fillStyle = nightColor;
+        game.ctx.globalAlpha = nightOpacity;
         game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+    
+        // Add transparent circle in the middle
+        const centerX = game.canvas.width / 2;
+        const centerY = game.canvas.height / 2;
+        const radius = 100; // Radius of the transparent circle
+    
+        game.ctx.globalCompositeOperation = 'destination-out'; // Make circle transparent
+        game.ctx.beginPath();
+        game.ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+        game.ctx.fill();
+    
         game.ctx.restore();
     }
+    
+    
+    
 };

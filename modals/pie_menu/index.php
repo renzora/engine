@@ -56,7 +56,6 @@ if ($auth) {
   left: 50%;
   width: 660px;
   height: 660px;
-  z-index: 20;
   opacity: 0;
   transform: translate(-50%, -50%) scale(0); /* Start scaled down */
   border-radius: 50%;

@@ -1,12 +1,4 @@
-const npcArea = {
-    x: 280,
-    y: 355,
-    width: 80,
-    height: 190
-};
-
 var game = {
-    isBlackAndWhite: localStorage.getItem('blackAndWhite') === 'true',
     lerpFactor: parseFloat(localStorage.getItem('lerpFactor')) || 0.1,
     needsFilterUpdate: true,
     canvas: undefined,
@@ -26,8 +18,63 @@ var game = {
     targetY: 0,
     roomData: undefined,
     sprites: {},
+    playerid: null,
+    viewportXStart: null,
+    viewportXEnd: null,
+    viewportYStart: null,
+    viewportYEnd: null,
+    gameTime: {
+        hours: 7,
+        minutes: 0,
+        seconds: 0,
+        days: 0,
+        speedMultiplier: 100, // Game time progresses 10 times faster than real time
+        daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        update: function(deltaTime) {
+            const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
+            this.seconds += gameSeconds;
 
-    init: function () {
+            if (this.seconds >= 60) {
+                this.minutes += Math.floor(this.seconds / 60);
+                this.seconds = this.seconds % 60;
+            }
+            if (this.minutes >= 60) {
+                this.hours += Math.floor(this.minutes / 60);
+                this.minutes = this.minutes % 60;
+            }
+            if (this.hours >= 24) {
+                this.days += Math.floor(this.hours / 24);
+                this.hours = this.hours % 24;
+            }
+        },
+        display: function() {
+            const pad = (num) => String(num).padStart(2, '0');
+            const dayOfWeek = this.daysOfWeek[this.days % 7];
+            return `${dayOfWeek} ${pad(this.hours)}:${pad(this.minutes)}`;
+        }
+    },
+
+    reloadGameData: function() {
+        // Specify the assets you want to reload
+        const assetsToReload = ['objectData', 'roomData']; // Add other assets as needed
+
+        assets.reloadAssets(assetsToReload, () => {
+            console.log("Game data reloaded");
+            this.roomData = assets.load('roomData');
+            // Perform any additional updates necessary for your game
+            this.updateGameElements();
+        });
+    },
+
+    updateGameElements: function() {
+        // Any specific updates to game elements after reloading data can be added here
+        console.log("Game elements updated");
+        // Example: this.refreshSprites(); if you need to update sprites specifically
+    },
+
+    init: function() {
+        this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
+
         assets.preload([
             { name: 'character', path: 'img/sprites/character.png' },
             { name: 'hair', path: 'img/sprites/hair.png' },
@@ -46,216 +93,122 @@ var game = {
             document.body.appendChild(this.canvas);
             this.resizeCanvas();
             this.roomData = assets.load('roomData');
-            this.createMainSprite();
-            this.createNPCSprite();
-    
+
+            // Create player sprite
+            const playerOptions = {
+                id: this.playerid,
+                x: 300,
+                y: 500,
+                isPlayer: true,
+                speed: 90
+            };
+            sprite.create(playerOptions);
+            
+            for (let i = 0; i < 100; i++) {
+                const npc = {
+                    id: `npc${i}`,
+                    x: Math.floor(Math.random() * 500), // Random x coordinate
+                    y: Math.floor(Math.random() * 400), // Random y coordinate
+                    isPlayer: false,
+                    hairstyle: Math.floor(Math.random() * 29), // Assuming there are 5 different hairstyles
+                    outfit: Math.floor(Math.random() * 3), // Assuming there are 5 different outfits
+                    facialHair: Math.floor(Math.random() * 1), // Assuming there are 3 different facial hair options
+                    hat: Math.floor(Math.random() * 2), // Assuming there are 2 different hat options
+                    glasses: Math.floor(Math.random() * 2), // Assuming there are 2 different glasses options
+                    area: {
+                        x: Math.floor(Math.random() * 400), // Random x coordinate for area
+                        y: Math.floor(Math.random() * 400), // Random y coordinate for area
+                        width: 500,
+                        height: 500
+                    },
+                    messages: [
+                        "Hello!",
+                        "How are you?",
+                        "Nice to meet you!",
+                        "Good day!",
+                        "What's up?",
+                        "Have you seen the weather?",
+                        "I love this place!",
+                        "Let's go on an adventure!",
+                        "Do you like games?",
+                        "This town is great!",
+                        "I need a vacation.",
+                        "Have you heard any news?",
+                        "I'm feeling lucky today.",
+                        "Do you have any pets?",
+                        "I just saw a bird!",
+                        "Let's chat for a while.",
+                        "I found a treasure!",
+                        "Do you like to read?",
+                        "I enjoy a good meal.",
+                        "The stars are beautiful.",
+                        "Do you like music?",
+                        "I met a new friend.",
+                        "This place is magical.",
+                        "I'm learning something new.",
+                        "Have you traveled far?",
+                        "Let's explore together!",
+                        "Do you have any hobbies?",
+                        "I love the outdoors.",
+                        "What a lovely day!",
+                        "Do you enjoy puzzles?",
+                        "I'm feeling happy.",
+                        "I saw a rainbow!",
+                        "Have you seen a ghost?",
+                        "I'm practicing magic.",
+                        "I enjoy a good story.",
+                        "This place is full of wonders.",
+                        "Let's go for a walk.",
+                        "Do you believe in magic?",
+                        "I found a hidden path.",
+                        "Do you like to dance?",
+                        "I'm looking for adventure.",
+                        "The flowers are blooming.",
+                        "I saw a shooting star.",
+                        "Do you like to cook?",
+                        "I'm collecting items.",
+                        "Let's have some fun!",
+                        "I'm learning to draw.",
+                        "Have you seen any animals?",
+                        "This place is amazing.",
+                        "I love making new friends."
+                    ]
+                };
+                sprite.create(npc);
+            }
+
             weather.starsActive = true;
             weather.fogActive = true;
             weather.rainActive = true;
             weather.snowActive = true;
             weather.nightActive = true;
-    
+
             weather.createStars();
             weather.createFog(0.05);
             weather.createRain(0.7);
             weather.createSnow(0.2);
-    
-            this.applyBlackAndWhiteMode();
-            this.setBlackAndWhiteMode(this.isBlackAndWhite);
-    
-            this.utils = new this.Utils();
+
             this.loop();
-        });
-    },
 
-    Utils: function() {
-        // Find an item in roomData by its ID and coordinates
-        this.findItem = function(itemId, x, y) {
-            if (!game.roomData || !game.roomData.items) return null;
+            const mainSprite = game.sprites[this.playerid];
+            if (mainSprite) {
+                mainSprite.updateHealth(0);  // Ensure update occurs
+                mainSprite.updateHealth(mainSprite.health);  
+                mainSprite.updateEnergy(mainSprite.energy);  
+            }
 
-            return game.roomData.items.find(item => {
-                return item.id === itemId && item.x.includes(x) && item.y.includes(y);
+            // Send initial player state to the server
+            network.send({
+                command: 'playerStateUpdate',
+                data: {
+                    id: this.playerid,
+                    ...this.sprites[this.playerid]
+                }
             });
-        };
 
-        this.moveItem = function(itemId, oldX, oldY, newX, newY) {
-            const item = this.findItem(itemId, oldX, oldY);
-            if (item) {
-                const xIndex = item.x.indexOf(oldX);
-                const yIndex = item.y.indexOf(oldY);
-                if (xIndex !== -1 && yIndex !== -1) {
-                    item.x[xIndex] = newX;
-                    item.y[yIndex] = newY;
-                }
-            }
-        };
-
-        this.animateItem = function(itemId, oldX, oldY, toX, toY, duration) {
-            const item = this.findItem(itemId, oldX, oldY);
-            if (!item) return;
-
-            const startX = item.x.slice(); // copy array
-            const startY = item.y.slice(); // copy array
-            const deltaX = toX - startX[0];
-            const deltaY = toY - startY[0];
-            const startTime = performance.now();
-
-            function animate() {
-                const currentTime = performance.now();
-                const elapsedTime = currentTime - startTime;
-                const progress = Math.min(elapsedTime / duration, 1);
-
-                for (let i = 0; i < item.x.length; i++) {
-                    item.x[i] = startX[i] + deltaX * progress;
-                    item.y[i] = startY[i] + deltaY * progress;
-                }
-
-                if (progress < 1) {
-                    requestAnimationFrame(animate);
-                }
-            }
-
-            requestAnimationFrame(animate);
-        };
-
-        this.addItem = function(itemId, itemData) {
-            if (game.roomData && game.roomData.items) {
-                const newItem = {
-                    id: itemId,
-                    x: itemData.x,
-                    y: itemData.y,
-                    // Add any other relevant properties from itemData
-                };
-                game.roomData.items.push(newItem);
-            }
-        };
-
-        this.removeItem = function(itemId, x, y) {
-            if (game.roomData && game.roomData.items) {
-                const itemIndex = game.roomData.items.findIndex(item => {
-                    return item.id === itemId && item.x.includes(x) && item.y.includes(y);
-                });
-                if (itemIndex !== -1) {
-                    game.roomData.items.splice(itemIndex, 1);
-                }
-            }
-        };
-
-        this.shakeItem = function(itemId, x, y, intensity = 1, duration = 100) {
-            const item = this.findItem(itemId, x, y);
-            if (!item) return;
-
-            const originalX = item.x.slice();
-            const originalY = item.y.slice();
-            const startTime = performance.now();
-
-            function shake() {
-                const currentTime = performance.now();
-                const elapsedTime = currentTime - startTime;
-                const progress = Math.min(elapsedTime / duration, 1);
-                const angle = Math.random() * Math.PI * 2;
-
-                for (let i = 0; i < item.x.length; i++) {
-                    item.x[i] = originalX[i] + Math.cos(angle) * intensity * (1 - progress);
-                    item.y[i] = originalY[i] + Math.sin(angle) * intensity * (1 - progress);
-                }
-
-                if (progress < 1) {
-                    requestAnimationFrame(shake);
-                } else {
-                    for (let i = 0; i < item.x.length; i++) {
-                        item.x[i] = originalX[i];
-                        item.y[i] = originalY[i];
-                    }
-                }
-            }
-
-            requestAnimationFrame(shake);
-        };
-
-        this.scatterItem = function(itemId, x, y, scatterDistance = 3) {
-            const item = this.findItem(itemId, x, y);
-            if (!item) return;
-
-            const originalX = item.x.slice();
-            const originalY = item.y.slice();
-
-            for (let i = 0; i < item.x.length; i++) {
-                const angle = Math.random() * Math.PI * 2;
-                const distance = Math.random() * scatterDistance;
-                const newX = originalX[i] + Math.cos(angle) * distance;
-                const newY = originalY[i] + Math.sin(angle) * distance;
-
-                const startX = originalX[i];
-                const startY = originalY[i];
-                const deltaX = newX - startX;
-                const deltaY = newY - startY;
-                const startTime = performance.now();
-
-                function animate() {
-                    const currentTime = performance.now();
-                    const elapsedTime = currentTime - startTime;
-                    const progress = Math.min(elapsedTime / 500, 1);
-
-                    item.x[i] = startX + deltaX * progress;
-                    item.y[i] = startY + deltaY * progress;
-
-                    if (progress < 1) {
-                        requestAnimationFrame(animate);
-                    }
-                }
-
-                requestAnimationFrame(animate);
-            }
-        };
-    },
-
-    setBlackAndWhiteMode: function(value) {
-        this.isBlackAndWhite = value;
-        this.needsFilterUpdate = true;
-        localStorage.setItem('blackAndWhite', value); // Ensure the setting is saved when changed
-        this.applyBlackAndWhiteMode(); // Apply the filter immediately when the setting changes
-    },
-
-    applyBlackAndWhiteMode: function() {
-        if (this.needsFilterUpdate) {
-            if (this.isBlackAndWhite) {
-                document.body.classList.add('grayscale');
-                this.canvas.classList.add('grayscale');
-            } else {
-                document.body.classList.remove('grayscale');
-                this.canvas.classList.remove('grayscale');
-            }
-            this.needsFilterUpdate = false;
-        }
-    },
-
-    createMainSprite: function () {
-        this.mainSprite = sprite.create({
-            x: 300,
-            y: 500,
-            hairstyle: 5,
-            outfit: 3,
-            facialHair: 1,
-            hat: 0,
-            glasses: 0
+            // Add this line to allow triggering reload from the console or UI
+            window.reloadGameData = this.reloadGameData.bind(this);
         });
-        this.sprites['main'] = this.mainSprite;
-    },
-
-    createNPCSprite: function () {
-        const randomOptions = {
-            id: 'npc1',
-            x: 300,
-            y: 400,
-            hairstyle: Math.floor(Math.random() * 6),
-            outfit: Math.floor(Math.random() * 6),
-            facialHair: Math.floor(Math.random() * 3),
-            hat: Math.floor(Math.random() * 3),
-            glasses: Math.floor(Math.random() * 3)
-        };
-        const npcSprite = sprite.createSprite(randomOptions);
-        sprite.npcMovement(npcSprite, npcArea);
     },
 
     resizeCanvas: function() {
@@ -276,7 +229,7 @@ var game = {
             this.targetCameraX = -xOffset;
             this.targetCameraY = -yOffset;
         } else {
-            let mainSprite = game.sprites['main'];
+            let mainSprite = game.sprites[this.playerid];
             if (mainSprite) {
                 this.targetCameraX = mainSprite.x + mainSprite.width / 2 - scaledWindowWidth / 2;
                 this.targetCameraY = mainSprite.y + mainSprite.height / 2 - scaledWindowHeight / 2;
@@ -315,7 +268,15 @@ var game = {
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(this.cameraX), -Math.round(this.cameraY));
     
-        let renderQueue = [];
+        const renderQueue = [];
+    
+        // Calculate the boundaries of the viewport in world coordinates
+        this.viewportXStart = Math.max(0, Math.floor(this.cameraX / 16));
+        this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((this.cameraX + window.innerWidth / this.zoomLevel) / 16));
+        this.viewportYStart = Math.max(0, Math.floor(this.cameraY / 16));
+        this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((this.cameraY + window.innerHeight / this.zoomLevel) / 16));
+    
+        let tileCount = 0;
     
         if (this.roomData && this.roomData.items) {
             this.roomData.items.forEach(roomItem => {
@@ -329,29 +290,34 @@ var game = {
     
                     for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
                         for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
-                            const posX = x * 16;
-                            const posY = y * 16;
+                            // Only add tiles within the viewport to the render queue
+                            if (x >= this.viewportXStart && x < this.viewportXEnd && y >= this.viewportYStart && y < this.viewportYEnd) {
+                                const posX = x * 16;
+                                const posY = y * 16;
     
-                            let tileFrameIndex;
-                            if (tileData.d) {
-                                const currentFrame = tileData.currentFrame || 0;
-                                tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[(currentFrame + index) % tileData.i.length] : tileData.i;
-                            } else {
-                                tileFrameIndex = tileData.i[index];
-                            }
-    
-                            const srcX = (tileFrameIndex % 150) * 16;
-                            const srcY = Math.floor(tileFrameIndex / 150) * 16;
-    
-                            renderQueue.push({
-                                tileIndex: tileFrameIndex,
-                                posX: posX,
-                                posY: posY,
-                                z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
-                                draw: function() {
-                                    game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
+                                let tileFrameIndex;
+                                if (tileData.d) {
+                                    const currentFrame = tileData.currentFrame || 0;
+                                    tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[(currentFrame + index) % tileData.i.length] : tileData.i;
+                                } else {
+                                    tileFrameIndex = tileData.i[index];
                                 }
-                            });
+    
+                                const srcX = (tileFrameIndex % 150) * 16;
+                                const srcY = Math.floor(tileFrameIndex / 150) * 16;
+    
+                                renderQueue.push({
+                                    tileIndex: tileFrameIndex,
+                                    posX: posX,
+                                    posY: posY,
+                                    z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
+                                    draw: function() {
+                                        game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
+                                    }
+                                });
+    
+                                tileCount++;
+                            }
     
                             index++;
                         }
@@ -359,14 +325,23 @@ var game = {
                 }
             });
         }
-    
+        let spriteCount = 0;
         for (let id in this.sprites) {
-            renderQueue.push({
-                z: 1,
-                draw: function() {
-                    game.sprites[id].draw();
-                }
-            });
+            const sprite = this.sprites[id];
+            const spriteRight = sprite.x + sprite.width;
+            const spriteBottom = sprite.y + sprite.height;
+            
+            // Check if sprite is within the viewport
+            if (spriteRight >= this.viewportXStart * 16 && sprite.x < this.viewportXEnd * 16 &&
+                spriteBottom >= this.viewportYStart * 16 && sprite.y < this.viewportYEnd * 16) {
+                renderQueue.push({
+                    z: 1,
+                    draw: function() {
+                        game.sprites[id].draw();
+                    }
+                });
+                spriteCount++;
+            }
         }
     
         renderQueue.sort((a, b) => a.z - b.z);
@@ -382,7 +357,7 @@ var game = {
         this.handleAimAttack();
     
         // Draw target aimer if active
-        const mainSprite = this.sprites['main'];
+        const mainSprite = this.sprites[this.playerid];
         if (mainSprite && mainSprite.targetAim) {
             const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
             const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
@@ -505,16 +480,174 @@ var game = {
                 debug_window.tiles();
             }
         }
-    },    
+    
+        // Draw ID bubbles last to ensure they appear above all other elements
+        for (let id in this.sprites) {
+            this.drawIdBubble(this.sprites[id]);
+            this.drawChatBubble(this.sprites[id]);
+        }
+    },
+
+    randomNpcMessage: function(sprite) {
+        if (sprite.messages && sprite.messages.length > 0) {
+            const randomIndex = Math.floor(Math.random() * sprite.messages.length);
+            const message = sprite.messages[randomIndex];
+            this.updateChatMessages(sprite, message);
+        }
+    },
+    
+    drawIdBubble: function(sprite) {
+        if (!sprite || !sprite.id) return;
+    
+        // Truncate text if it's longer than 16 characters
+        let text = sprite.id;
+        if (text.length > 16) {
+            text = text.slice(0, 13);
+        }
+    
+        const bubbleHeight = 7;
+        const bubblePadding = 2;
+        const fontSize = 3;
+        const characterSpacing = -0.1; // Adjust this value for tighter or looser tracking
+        
+        // Calculate text width
+        this.ctx.font = `${fontSize}px Tahoma`;
+        let textWidth = 0;
+        for (let char of text) {
+            textWidth += this.ctx.measureText(char).width + characterSpacing;
+        }
+        textWidth -= characterSpacing; // Remove the extra spacing added after the last character
+    
+        // Calculate bubble dimensions
+        const bubbleWidth = textWidth + 2 * bubblePadding;
+    
+        // Calculate bubble position
+        const bubbleX = sprite.x + sprite.width / 2 - bubbleWidth / 2;
+        const bubbleY = sprite.y - bubbleHeight - bubblePadding + 5; // Adjust this value to bring the bubble down
+    
+        // Draw rounded rectangle bubble with less pronounced corners
+        const radius = 2; // Adjust the radius for subtler rounded corners
+        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        this.ctx.beginPath();
+        this.ctx.moveTo(bubbleX + radius, bubbleY);
+        this.ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
+        this.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
+        this.ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
+        this.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
+        this.ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
+        this.ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
+        this.ctx.lineTo(bubbleX, bubbleY + radius);
+        this.ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
+        this.ctx.closePath();
+        this.ctx.fill();
+    
+        // Draw each character with fixed spacing
+        this.ctx.fillStyle = 'white';
+        this.ctx.font = `${fontSize}px Tahoma`;
+        let charX = bubbleX + bubblePadding;
+        for (let char of text) {
+            this.ctx.fillText(char, charX, bubbleY + bubbleHeight / 2 + fontSize / 3);
+            charX += this.ctx.measureText(char).width + characterSpacing;
+        }
+    },
+    
+    drawChatBubble: function(sprite) {
+        if (!sprite.chatMessages || sprite.chatMessages.length === 0) return;
+
+        // Iterate through each message
+        for (let i = 0; i < sprite.chatMessages.length; i++) {
+            const messageData = sprite.chatMessages[i];
+            const elapsedTime = Date.now() - messageData.time;
+            
+            if (elapsedTime > 5000) {
+                sprite.chatMessages.splice(i, 1);
+                i--;
+                continue;
+            }
+            
+            const fadeOutTime = 1000; // 1 second fade-out duration
+            const alpha = elapsedTime > 4000 ? (1 - (elapsedTime - 4000) / fadeOutTime) : 1; // Start fading out after 4 seconds
+        
+            const message = messageData.text;
+            const bubbleHeight = 7;
+            const bubblePadding = 2;
+            const fontSize = 3;
+            const characterSpacing = -0.1; // Adjust this value for tighter or looser tracking
+        
+            // Calculate text width
+            game.ctx.font = `${fontSize}px Tahoma`;
+            let textWidth = 0;
+            for (let char of message) {
+                textWidth += game.ctx.measureText(char).width + characterSpacing;
+            }
+            textWidth -= characterSpacing; // Remove the extra spacing added after the last character
+        
+            // Calculate bubble dimensions
+            const bubbleWidth = textWidth + 2 * bubblePadding;
+        
+            // Calculate bubble position
+            const bubbleX = sprite.x + sprite.width / 2 - bubbleWidth / 2;
+            const baseBubbleY = sprite.y - 12; // Move the first bubble up by 2-3 pixels
+            const bubbleY = baseBubbleY - (i * (bubbleHeight + bubblePadding - 1)); // Reduce vertical spacing between bubbles
+    
+            // Draw rounded rectangle bubble with blue color
+            const radius = 2; // Adjust the radius for subtler rounded corners
+            game.ctx.fillStyle = `rgba(0, 0, 255, ${alpha * 0.9})`; // Blue color with fading effect
+            game.ctx.beginPath();
+            game.ctx.moveTo(bubbleX + radius, bubbleY);
+            game.ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
+            game.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
+            game.ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
+            game.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
+            game.ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
+            game.ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
+            game.ctx.lineTo(bubbleX, bubbleY + radius);
+            game.ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
+            game.ctx.closePath();
+            game.ctx.fill();
+        
+            // Draw each character with fixed spacing
+            game.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
+            game.ctx.font = `${fontSize}px Tahoma`;
+            let charX = bubbleX + bubblePadding;
+            for (let char of message) {
+                game.ctx.fillText(char, charX, bubbleY + bubbleHeight / 2 + fontSize / 2);
+                charX += game.ctx.measureText(char).width + characterSpacing;
+            }
+        }
+    },
+
+    updateChatMessages: function(sprite, newMessage) {
+        if (!sprite.chatMessages) {
+            sprite.chatMessages = [];
+        }
+        // Add new message to the queue
+        sprite.chatMessages.push({ text: newMessage, time: Date.now() });
+        
+        // Ensure only the last 3 messages are kept
+        if (sprite.chatMessages.length > 3) {
+            sprite.chatMessages.shift();
+        }
+    },
     
     loop: function(timestamp) {
         if (!this.lastTime) {
             this.lastTime = timestamp;
+            return requestAnimationFrame(this.loop.bind(this));
         }
     
         this.deltaTime = timestamp - this.lastTime;
         this.lastTime = timestamp;
         this.fps = 1000 / this.deltaTime;
+
+        var debugFPS = document.getElementById('gameFps');
+        debugFPS.innerHTML = "FPS: " + game.fps.toFixed(2);
+    
+        // Update game time
+        this.gameTime.update(this.deltaTime);
+    
+        // Update HUD with game time
+        document.getElementById('game_time').innerText = this.gameTime.display();
     
         for (let id in this.sprites) {
             this.sprites[id].update();
@@ -528,6 +661,7 @@ var game = {
         weather.updateLightning();
         this.updateCamera();
         this.render();
+        weather.applyNightColorFilter(); // Apply the night color filter based on time
         requestAnimationFrame(this.loop.bind(this));
     },
     
@@ -650,9 +784,36 @@ var game = {
         }
     
         if (collisionDetected) {
-            input.vibrateController(200, 1.0); // Trigger vibration for 200ms with full strength
+
         }
     
         return collisionDetected;
-    }    
+    },
+
+    resolveCollision: function(sprite1, sprite2) {
+        const overlapX = (sprite1.x + sprite1.width / 2) - (sprite2.x + sprite2.width / 2);
+        const overlapY = (sprite1.y + sprite1.height / 2) - (sprite2.y + sprite2.height / 2);
+    
+        const absOverlapX = Math.abs(overlapX);
+        const absOverlapY = Math.abs(overlapY);
+    
+        if (absOverlapX < absOverlapY) {
+            if (overlapY < 0) {
+                sprite1.y -= absOverlapY / 2;
+                sprite2.y += absOverlapY / 2;
+            } else {
+                sprite1.y += absOverlapY / 2;
+                sprite2.y -= absOverlapY / 2;
+            }
+        } else {
+            if (overlapX < 0) {
+                sprite1.x -= absOverlapX / 2;
+                sprite2.x += absOverlapX / 2;
+            } else {
+                sprite1.x += absOverlapX / 2;
+                sprite2.x -= absOverlapX / 2;
+            }
+        }
+        console.log("sprite colliding");
+    }
 };

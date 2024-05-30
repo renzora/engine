@@ -1,12 +1,13 @@
 var sprite = {
     create: function (options) {
-        return {
+        let newSprite = {
+            id: options.id,
             x: options.x !== undefined ? options.x : 300,
             y: options.y !== undefined ? options.y : 150,
             width: 16,
             height: 26,
             scale: 1,
-            speed: 80,
+            speed: options.speed !== undefined ? options.speed : 90,
             currentFrame: 0,
             direction: 'S',
             animationSpeed: 0.2,
@@ -20,8 +21,6 @@ var sprite = {
             hat: options.hat || 0,
             glasses: options.glasses || 0,
             isEnemy: options.isEnemy || false,
-            health: options.health || 100,
-            maxHealth: options.maxHealth || 100,
             attack: options.attack || 10,
             defense: options.defense || 5,
             intensity: options.intensity || 1,
@@ -35,6 +34,13 @@ var sprite = {
             currentItem: 'axe',
             directions: {},
             joystickDirections: {},
+            isRunning: false,
+            health: options.health !== undefined ? options.health : 100,
+            maxHealth: options.maxHealth !== undefined ? options.maxHealth : 100,
+            energy: options.energy !== undefined ? options.energy : 100,
+            maxEnergy: options.maxEnergy !== undefined ? options.maxEnergy : 100,
+            runningSpeed: 120,
+            messages: options.messages || [],
 
             directionMap: {
                 'S': 0,
@@ -119,59 +125,13 @@ var sprite = {
                 game.ctx.restore();
             },
 
-            setDirections: function (directions) {
-                this.joystickDirections = directions;
-                this.updateDirection();
-                this.moving = true;
-                this.stopping = false;
-            },
-    
-            clearJoystickDirections: function () {
-                this.joystickDirections = {};
-                this.updateDirection();
-                this.moving = Object.keys(this.directions).length > 0;
-                this.stopping = Object.keys(this.directions).length === 0;
-            },
-    
-            // Update direction based on both keyboard and joystick inputs
-            updateDirection: function () {
-                const directions = { ...this.directions, ...this.joystickDirections };
-    
-                if (directions['up'] && directions['right']) {
-                    this.direction = 'N';
-                } else if (directions['down'] && directions['right']) {
-                    this.direction = 'S';
-                } else if (directions['down'] && directions['left']) {
-                    this.direction = 'W';
-                } else if (directions['up'] && directions['left']) {
-                    this.direction = 'N';
-                } else if (directions['up']) {
-                    this.direction = 'N';
-                } else if (directions['down']) {
-                    this.direction = 'S';
-                } else if (directions['left']) {
-                    this.direction = 'W';
-                } else if (directions['right']) {
-                    this.direction = 'E';
-                }
-            },
-    
             addDirection: function (direction) {
                 this.directions[direction] = true;
                 this.updateDirection();
                 this.moving = true;
                 this.stopping = false;
             },
-    
-            addDirections: function (directions) {
-                directions.forEach(direction => {
-                    this.directions[direction] = true;
-                });
-                this.updateDirection();
-                this.moving = true;
-                this.stopping = false;
-            },
-    
+
             removeDirection: function (direction) {
                 delete this.directions[direction];
                 this.updateDirection();
@@ -180,23 +140,55 @@ var sprite = {
                     this.moving = false;
                 }
             },
-    
-            removeDirections: function (directions) {
-                directions.forEach(direction => {
-                    delete this.directions[direction];
-                });
-                this.updateDirection();
-                if (Object.keys(this.directions).length === 0) {
-                    this.stopping = true;
-                    this.moving = false;
+
+            updateDirection: function () {
+                if (this.directions['up']) this.direction = 'N';
+                if (this.directions['down']) this.direction = 'S';
+                if (this.directions['left']) this.direction = 'W';
+                if (this.directions['right']) this.direction = 'E';
+                if (this.directions['up'] && this.directions['right']) this.direction = 'N';
+                if (this.directions['down'] && this.directions['right']) this.direction = 'S';
+                if (this.directions['down'] && this.directions['left']) this.direction = 'W';
+                if (this.directions['up'] && this.directions['left']) this.direction = 'N';
+            },
+
+            startRunning: function () {
+                this.isRunning = true;
+                this.speed = this.runningSpeed;
+            },
+
+            stopRunning: function () {
+                this.isRunning = false;
+                this.speed = 80; // Normal speed when not running
+            },
+
+            updateHealth: function(amount) {
+                if (typeof amount === "string") {
+                    amount = parseInt(amount);
+                }
+                this.health = Math.max(0, Math.min(this.maxHealth, this.health + amount));
+                
+                const healthBar = document.getElementById('health');
+                if (healthBar) {
+                    const healthPercentage = (this.health / this.maxHealth) * 100;
+                    healthBar.style.width = healthPercentage + '%';
+                    healthBar.nextElementSibling.innerText = `Health: ${Math.round(healthPercentage)}%`;
                 }
             },
-    
-            clearDirections: function () {
-                this.directions = {};
-                this.updateDirection();
-                this.moving = false;
-                this.stopping = true;
+
+            updateEnergy: function(amount) {
+                if (typeof amount === "string") {
+                    amount = parseInt(amount);
+                }
+
+                this.energy = Math.max(0, Math.min(this.maxEnergy, this.energy + amount));
+
+                const energyBar = document.getElementById('energy');
+                if (energyBar) {
+                    const energyPercentage = (this.energy / this.maxEnergy) * 100;
+                    energyBar.style.width = energyPercentage + '%';
+                    energyBar.nextElementSibling.innerText = `Energy: ${Math.round(energyPercentage)}%`;
+                }
             },
 
             animate: function () {
@@ -231,61 +223,61 @@ var sprite = {
 
             update: function () {
                 let deltatime = game.deltaTime / 1000;
-            
+
                 let dx = 0;
                 let dy = 0;
-            
+
                 if (this.directions['right']) dx += this.speed * deltatime;
                 if (this.directions['left']) dx -= this.speed * deltatime;
                 if (this.directions['down']) dy += this.speed * deltatime;
                 if (this.directions['up']) dy -= this.speed * deltatime;
-            
+
                 if (dx !== 0 && dy !== 0) {
                     const norm = Math.sqrt(dx * dx + dy * dy);
                     dx = (dx / norm) * this.speed * deltatime;
                     dy = (dy / norm) * this.speed * deltatime;
                 }
-            
+
                 dx = isNaN(dx) ? 0 : dx;
                 dy = isNaN(dy) ? 0 : dy;
-            
+
                 this.vx = dx;
                 this.vy = dy;
-            
+
                 let newX = this.x + this.vx;
                 let newY = this.y + this.vy;
-            
+
                 newX = isNaN(newX) ? this.x : newX;
                 newY = isNaN(newY) ? this.y : newY;
-            
+
                 if (!game.collision(newX, newY, this)) {
                     this.x = newX;
                     this.y = newY;
-            
+
                     // Update target position to follow sprite movement
                     if (this.targetAim) {
                         this.targetX += this.vx;
                         this.targetY += this.vy;
-            
+
                         // Ensure the target stays within the bounds of the game world
                         this.targetX = Math.max(0, Math.min(game.worldWidth, this.targetX));
                         this.targetY = Math.max(0, Math.min(game.worldHeight, this.targetY));
                     }
                 }
-            
+
                 this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
                 this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
-            
+
                 this.animate();
-            
+
                 if (dx === 0 && dy === 0) {
                     this.movementFrameCounter = 0;
                 }
-            
+
                 if (this.isEnemy) {
                     this.chasePlayer();
                 }
-            },            
+            },
 
             takeDamage: function (damage) {
                 let actualDamage = damage - this.defense;
@@ -370,11 +362,60 @@ var sprite = {
                 }
             }
         };
-    },
 
-    createSprite: function (options) {
-        let newSprite = this.create(options);
+        // Automatically handle area movement if area is specified in options
+        if (options.area) {
+            setInterval(() => {
+                const directions = ['up', 'down', 'left', 'right'];
+                const randomDirection = directions[Math.floor(Math.random() * directions.length)];
+                const randomDuration = Math.random() * 2 + 1;
+
+                let newX = newSprite.x;
+                let newY = newSprite.y;
+
+                switch (randomDirection) {
+                    case 'up':
+                        newY -= newSprite.speed * randomDuration;
+                        break;
+                    case 'down':
+                        newY += newSprite.speed * randomDuration;
+                        break;
+                    case 'left':
+                        newX -= newSprite.speed * randomDuration;
+                        break;
+                    case 'right':
+                        newX += newSprite.speed * randomDuration;
+                        break;
+                }
+
+                if (newX >= options.area.x && newX <= options.area.x + options.area.width - newSprite.width &&
+                    newY >= options.area.y && newY <= options.area.y + options.area.height - newSprite.height) {
+                    newSprite.addDirection(randomDirection);
+                    setTimeout(() => {
+                        newSprite.removeDirection(randomDirection);
+                    }, randomDuration * 1000);
+                }
+            }, 500);
+        }
+
+        for (let id in game.sprites) {
+            if (game.sprites[id] !== newSprite && 
+                Math.abs(game.sprites[id].x - newSprite.x) < newSprite.width &&
+                Math.abs(game.sprites[id].y - newSprite.y) < newSprite.height) {
+                game.resolveCollision(newSprite, game.sprites[id]);
+            }
+        }
+
+        // Automatically add the new sprite to the game.sprites object
         game.sprites[options.id] = newSprite;
+
+        // Set interval for NPC to say random messages
+        if(newSprite.messages.length > 0) {
+            setInterval(() => {
+                game.randomNpcMessage(newSprite);
+            }, Math.random() * 20000 + 20000); // Random interval between 5 and 15 seconds
+        }
+
         return newSprite;
     },
 

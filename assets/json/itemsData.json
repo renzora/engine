@@ -1,0 +1,39 @@
+{
+    "items": [
+      {
+        "name": "pistol",
+        "type": "weapon",
+        "radius": 5,
+        "distance": 20
+      },
+      {
+        "name": "axe",
+        "type": "weapon",
+        "radius": 8,
+        "distance": 10
+      },
+      {
+        "name": "machine gun",
+        "type": "weapon",
+        "radius": 7,
+        "distance": 30
+      },
+      {
+        "name": "sniper",
+        "type": "weapon",
+        "radius": 10,
+        "distance": 50
+      },
+      {
+        "name": "fist",
+        "type": "weapon",
+        "radius": 3,
+        "distance": 2
+      },
+      {
+        "name": "bicycle",
+        "type": "vehicle",
+        "speed": 15
+      }
+    ]
+  }  
