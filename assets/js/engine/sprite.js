@@ -58,6 +58,9 @@ var sprite = {
             updateHealth: this.updateHealth,
             updateEnergy: this.updateEnergy,
             animate: this.animate,
+            walkToClickedTile: this.walkToClickedTile,
+            calculatePath: this.calculatePath,
+            moveAlongPath: this.moveAlongPath,
             update: this.update,
             takeDamage: this.takeDamage,
             die: this.die,
@@ -234,6 +237,93 @@ var sprite = {
         game.ctx.restore();
     },
 
+    walkToClickedTile: function(tileX, tileY) {
+        var currentX = Math.floor(this.x / 16);
+        var currentY = Math.floor(this.y / 16);
+        this.path = this.calculatePath(currentX, currentY, tileX, tileY);
+        this.pathIndex = 0;
+        this.isMovingToTarget = true;
+    },    
+
+    calculatePath: function(startX, startY, endX, endY) {
+        const grid = game.createWalkableGrid();
+        const graph = new Graph(grid, { diagonal: true });
+        const start = graph.grid[startX][startY];
+        const end = graph.grid[endX][endY];
+        
+        // Check if start and end points are walkable
+        if (grid[startX][startY] === 0) {
+            console.error(`Start point (${startX}, ${startY}) is not walkable.`);
+            return [];
+        }
+        if (grid[endX][endY] === 0) {
+            console.error(`End point (${endX}, ${endY}) is not walkable.`);
+            return [];
+        }
+    
+        const result = astar.search(graph, start, end);
+    
+        if (result.length === 0) {
+            console.error('No valid path found.');
+            return [];
+        }
+    
+        const path = result.map(function(node) {
+            return { x: node.x, y: node.y };
+        });
+    
+        this.path = path;
+        this.pathIndex = 0; // Reset the path index for following the path
+    
+        console.log('Calculated Path:', path);
+        return path;
+    },    
+
+    moveAlongPath: function() {
+        if (!this.path || this.pathIndex >= this.path.length) {
+            this.isMovingToTarget = false;
+            this.moving = false;
+            this.stopping = true;
+            this.path = []; // Clear the path once the destination is reached
+            return;
+        }
+    
+        const nextStep = this.path[this.pathIndex];
+        const targetX = nextStep.x * 16;
+        const targetY = nextStep.y * 16;
+        const deltaX = targetX - this.x;
+        const deltaY = targetY - this.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+        if (distance < this.speed * (game.deltaTime / 1000)) {
+            this.x = targetX;
+            this.y = targetY;
+            this.pathIndex++;
+        } else {
+            const angle = Math.atan2(deltaY, deltaX);
+            this.x += Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+            this.y += Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+            // Determine direction
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (deltaX > 0) this.direction = 'E';
+                else this.direction = 'W';
+            } else {
+                if (deltaY > 0) this.direction = 'S';
+                else this.direction = 'N';
+            }
+    
+            // Adjust direction for diagonal movement
+            if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
+                if (deltaX > 0) this.direction = 'E';
+                else this.direction = 'W';
+            }
+    
+            this.moving = true; // Ensure moving flag is set when moving along the path
+            this.stopping = false;
+        }
+    },        
+
     addDirection: function(direction) {
         this.directions[direction] = true;
         this.updateDirection();
@@ -255,10 +345,10 @@ var sprite = {
         if (this.directions['down']) this.direction = 'S';
         if (this.directions['left']) this.direction = 'W';
         if (this.directions['right']) this.direction = 'E';
-        if (this.directions['up'] && this.directions['right']) this.direction = 'N';
-        if (this.directions['down'] && this.directions['right']) this.direction = 'S';
+        if (this.directions['up'] && this.directions['right']) this.direction = 'E';
+        if (this.directions['down'] && this.directions['right']) this.direction = 'E';
         if (this.directions['down'] && this.directions['left']) this.direction = 'W';
-        if (this.directions['up'] && this.directions['left']) this.direction = 'N';
+        if (this.directions['up'] && this.directions['left']) this.direction = 'W';
     },
 
     startRunning: function() {
@@ -331,62 +421,85 @@ var sprite = {
     },
 
     update: function(deltaTime) {
-        let deltatime = deltaTime / 1000; // Use the passed deltaTime directly
+        if (this.isMovingToTarget) {
+            this.moveAlongPath();
+        } else {
+            let dx = 0;
+            let dy = 0;
     
-        let dx = 0;
-        let dy = 0;
+            if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
+            if (this.directions['left']) dx -= this.speed * (deltaTime / 1000);
+            if (this.directions['down']) dy += this.speed * (deltaTime / 1000);
+            if (this.directions['up']) dy -= this.speed * (deltaTime / 1000);
     
-        if (this.directions['right']) dx += this.speed * deltatime;
-        if (this.directions['left']) dx -= this.speed * deltatime;
-        if (this.directions['down']) dy += this.speed * deltatime;
-        if (this.directions['up']) dy -= this.speed * deltatime;
+            if (dx !== 0 && dy !== 0) {
+                const norm = Math.sqrt(dx * dx + dy * dy);
+                dx = (dx / norm) * this.speed * (deltaTime / 1000);
+                dy = (dy / norm) * this.speed * (deltaTime / 1000);
+            }
     
-        if (dx !== 0 && dy !== 0) {
-            const norm = Math.sqrt(dx * dx + dy * dy);
-            dx = (dx / norm) * this.speed * deltatime;
-            dy = (dy / norm) * this.speed * deltatime;
-        }
+            dx = isNaN(dx) ? 0 : dx;
+            dy = isNaN(dy) ? 0 : dy;
     
-        dx = isNaN(dx) ? 0 : dx;
-        dy = isNaN(dy) ? 0 : dy;
+            this.vx = dx;
+            this.vy = dy;
     
-        this.vx = dx;
-        this.vy = dy;
+            let newX = this.x + this.vx;
+            let newY = this.y + this.vy;
     
-        let newX = this.x + this.vx;
-        let newY = this.y + this.vy;
+            newX = isNaN(newX) ? this.x : newX;
+            newY = isNaN(newY) ? this.y : newY;
     
-        newX = isNaN(newX) ? this.x : newX;
-        newY = isNaN(newY) ? this.y : newY;
+            let moveX = true;
+            let moveY = true;
     
-        if (!game.collision(newX, newY, this)) {
-            this.x = newX;
-            this.y = newY;
+            if (game.collision(newX, this.y, this)) {
+                moveX = false;
+            }
     
-            // Update target position to follow sprite movement
-            if (this.targetAim) {
-                this.targetX += this.vx;
-                this.targetY += this.vy;
+            if (game.collision(this.x, newY, this)) {
+                moveY = false;
+            }
     
-                // Ensure the target stays within the bounds of the game world
-                this.targetX = Math.max(0, Math.min(game.worldWidth, this.targetX));
-                this.targetY = Math.max(0, Math.min(game.worldHeight, this.targetY));
+            if (dx !== 0 && dy !== 0) {
+                if (moveX && moveY) {
+                    this.x = newX;
+                    this.y = newY;
+                } else if (moveX) {
+                    this.x = newX;
+                    this.direction = (dx > 0) ? 'E' : 'W';
+                } else if (moveY) {
+                    this.y = newY;
+                    this.direction = (dy > 0) ? 'S' : 'N';
+                } else {
+                    if (!game.collision(this.x + dx, this.y, this)) {
+                        this.x += dx;
+                        this.direction = (dx > 0) ? 'E' : 'W';
+                    } else if (!game.collision(this.x, this.y + dy, this)) {
+                        this.y += dy;
+                        this.direction = (dy > 0) ? 'S' : 'N';
+                    }
+                }
+            } else {
+                if (moveX) this.x = newX;
+                if (moveY) this.y = newY;
+            }
+    
+            this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
+            this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
+    
+            // Ensure moving flag is set when directions are present
+            if (dx !== 0 || dy !== 0) {
+                this.moving = true;
+                this.stopping = false;
+            } else {
+                this.moving = false;
+                this.stopping = true;
             }
         }
     
-        this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
-        this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
-    
         this.animate();
-    
-        if (dx === 0 && dy === 0) {
-            this.movementFrameCounter = 0;
-        }
-    
-        if (this.isEnemy) {
-            this.chasePlayer();
-        }
-    },
+    },    
 
     takeDamage: function(damage) {
         let actualDamage = damage - this.defense;

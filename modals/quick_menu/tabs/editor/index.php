@@ -5,7 +5,7 @@ if ($auth) {
 
 <!-- Inventory Search and Grid -->
 <div class="tabs mb-4">
-  <input type="text" class="p-2 w-full mt-2 rounded" style="background: #333;" placeholder="search..." />
+  <input type="text" class="p-2 w-full rounded light_input text-base text-black" placeholder="search..."/>
 </div>
 
 <!-- Inventory Grid -->
@@ -35,7 +35,7 @@ var ui_editor_tab_window = {
         console.log('Items in category:', items);
 
         var itemGroupElement = document.createElement('div');
-        itemGroupElement.classList.add('inventory-item-group', 'bg-[#0c0c25]', 'py-1', 'rounded', 'mb-1');
+        itemGroupElement.classList.add('inventory-item-group', 'bg-[#202b3d]', 'py-1', 'rounded');
 
         // Determine the bounding box of the object
         var allA = items.map(item => item.a).flat();
@@ -147,6 +147,9 @@ var ui_editor_tab_window = {
       activeItemGroup.classList.add('active');
 
       moveSelectedItem(event);
+      game.pathfinding = false; // Disable pathfinding when an item is selected
+      modal.hide('ui_window');
+      modal.hide('quick_menu_window');
     };
 
     const onMouseMove = function(event) {
@@ -194,6 +197,9 @@ var ui_editor_tab_window = {
         if (selectedItem) {
           selectedItem.remove();
           selectedItem = null;
+          game.pathfinding = true; // Enable pathfinding when an item is deselected
+          modal.show('quick_menu_window');
+          modal.show('ui_window');
         }
       }
     };
@@ -270,6 +276,20 @@ var ui_editor_tab_window = {
         game.roomData.items = [];
       }
       game.roomData.items.push(item);
+
+      effects.shakeMap(300, 3);
+
+      effects.createParticles(item.x[0] * 16, item.y[0] * 16, {
+        colors: ['rgba(0, 0, 255, 1)', 'rgba(0, 255, 255, 1)', 'rgba(255, 0, 0, 1)', 'rgba(255, 255, 0, 1)', 'rgba(0, 255, 0, 1)', 'rgba(255, 165, 0, 1)', 'rgba(128, 0, 128, 1)'],
+            count: 32,
+            speed: 1,
+            life: 60,
+            size: 1,
+            spread: Math.PI * 2, // Full circle
+            type: 'default'
+        });
+
+
       console.log('New item added to roomData:', item);
       saveRoomData();
     }
@@ -315,13 +335,17 @@ var ui_editor_tab_window = {
   },
 
   unmount: function() {
-    document.querySelectorAll('.inventory-item').forEach(item => {
-      item.removeEventListener('click', this.clickHandler);
-    });
+        document.querySelectorAll('.inventory-item').forEach(item => {
+            item.removeEventListener('click', this.clickHandler);
+        });
 
-    document.removeEventListener('mousemove', this.mouseMoveHandler);
-    document.removeEventListener('mouseup', this.mouseUpHandler);
-  }
+        document.removeEventListener('mousemove', this.mouseMoveHandler);
+        document.removeEventListener('mouseup', this.mouseUpHandler);
+        game.pathfinding = true;
+        modal.show('ui_window');
+        modal.show('quick_menu_window');
+
+    }
 };
 
 </script>

@@ -18,13 +18,13 @@ var ui_servers_tab_window = {
         document.getElementById('open_create_server_modal').addEventListener('click', this.openCreateServerModal.bind(this));
     },
     openCreateServerModal: function() {
-        modal.load('ui/tabs/servers/createServer.php', 'server_create_window');
+        modal.load('quick_menu/tabs/servers/createServer.php', 'server_create_window');
     },
     loadServers: function() {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/ui/tabs/servers/ajax/getServers.php',
+            url: 'modals/quick_menu/tabs/servers/ajax/getServers.php',
             data: JSON.stringify({}),
             headers: {
                 'Content-Type': 'application/json'
@@ -55,7 +55,7 @@ var ui_servers_tab_window = {
         } else {
             serverListDiv.innerHTML = '<ul>' + servers.map((server, index) => `
                 <li class="flex justify-between items-center p-2 ${index % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800'} ${index === 0 ? 'rounded-t' : ''} ${index === servers.length - 1 ? 'rounded-b' : ''} shadow">
-                    <span class="text-white">${server.name}</span>
+                    <span class="text-white text-lg">${server.name}</span>
                     <div class="flex space-x-2">
                         <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadEditServerModal('${server.id}', '${server.name}')">Edit</button>
                         <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadScenes('${server.id}')">Go</button>
@@ -77,7 +77,7 @@ var ui_servers_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/ui/tabs/servers/ajax/getScenes.php',
+            url: 'modals/quick_menu/tabs/servers/ajax/getScenes.php',
             data: JSON.stringify({ serverId: serverId }),
             headers: {
                 'Content-Type': 'application/json'
@@ -102,8 +102,8 @@ var ui_servers_tab_window = {
 
         let sceneListHTML = `
             <div class="flex justify-between mb-4">
-                <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadServers()">Back</button>
-                <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadCreateSceneModal('${serverId}')">Create Scene</button>
+                <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadServers()">« Back</button>
+                <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadCreateSceneModal('${serverId}')">New Scene</button>
             </div>`;
 
         if (scenes.length === 0) {
@@ -111,7 +111,7 @@ var ui_servers_tab_window = {
         } else {
             sceneListHTML += '<ul>' + scenes.map((scene, index) => `
                 <li class="flex justify-between items-center p-2 ${index % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800'} ${index === 0 ? 'rounded-t' : ''} ${index === scenes.length - 1 ? 'rounded-b' : ''} shadow">
-                    <span class="text-white">${scene.name}</span>
+                    <span class="text-white text-lg">${scene.name}</span>
                     <div class="flex space-x-2">
                         <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_servers_tab_window.loadEditSceneModal('${scene._id}', '${scene.name}', '${serverId}')">Edit</button>
                         <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.loadScene('${scene._id}')">Go</button>
@@ -123,14 +123,14 @@ var ui_servers_tab_window = {
         sceneListDiv.innerHTML = sceneListHTML;
     },
     loadEditServerModal: function(serverId, serverName) {
-        modal.load(`ui/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`, 'server_edit_window');
+        modal.load(`quick_menu/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`, 'server_edit_window');
     },
     loadEditSceneModal: function(sceneId, sceneName, serverId) {
-        modal.load(`ui/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`, 'scene_edit_window');
+        modal.load(`quick_menu/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`, 'scene_edit_window');
     },
     loadCreateSceneModal: function(serverId) {
         console.log('Loading create scene modal for serverId:', serverId);
-        modal.load(`ui/tabs/servers/createScene.php?id=${serverId}`, 'scene_create_window');
+        modal.load(`quick_menu/tabs/servers/createScene.php?id=${serverId}`, 'scene_create_window');
     },
     unmount: function() {
         document.getElementById('open_create_server_modal').removeEventListener('click', this.openCreateServerModal.bind(this));

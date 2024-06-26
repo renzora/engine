@@ -10,7 +10,7 @@ var input = {
         's': "down",
         'd': "right"
     },
-    isShiftPressed: false,
+    isSpacePressed: false,
     isCtrlPressed: false,
     isAltPressed: false,
     isDragging: false,
@@ -40,11 +40,16 @@ var input = {
             if (e.key === 'Tab') {
                 e.preventDefault();
             }
+            if (e.key === ' ') {
+                e.preventDefault(); // Prevent default behavior for Space bar
+            }
             this.handleKeyDown(e);
         }
     },
 
     handleKeyDown: function(e) {
+        const mainSprite = game.sprites[game.playerid];
+
         if (e.altKey && e.key === 'c') {
             if (e.key === 'c') {
                 modal.load('mishell/index.php', 'mishell_window');
@@ -55,48 +60,34 @@ var input = {
         } else {
             const dir = this.keys[e.key];
             if (dir) {
-                const mainSprite = game.sprites[game.playerid];
                 if (mainSprite && game.allowControls) {
                     mainSprite.addDirection(dir); // Control the main sprite
                 } else {
                     console.error('Main sprite not found.');
                 }
+                this.cancelPathfinding(mainSprite);
             }
         }
-    
-        if (e.key === 'Shift') {
-            const mainSprite = game.sprites[game.playerid];
-            if (mainSprite && mainSprite.energy > 0 && game.allowControls) {
-                this.isShiftPressed = true;
-                mainSprite.startRunning();
+
+        if (e.key === ' ') {
+            if (mainSprite && game.allowControls) {
+                this.isSpacePressed = true;
+                mainSprite.targetAim = true;
+                this.cancelPathfinding(mainSprite);
             }
         } else if (e.key === 'Control') {
             this.isCtrlPressed = true;
         } else if (e.key === 'Alt') {
             this.isAltPressed = true;
         }
-    
-        if (e.key === 'F') {
-            const mainSprite = game.sprites[game.playerid];
-            if (mainSprite && game.allowControls) {
-                mainSprite.targetAim = !mainSprite.targetAim; // Toggle target aiming mode
-                if (mainSprite.targetAim) {
-                    console.log('Target aim activated');
-                } else {
-                    console.log('Target aim deactivated');
-                }
-            } else {
-                console.error('Main sprite not found.');
-            }
-        }
     },
-    
+
     handleKeyUp: function(e) {
         if (e.keyCode === 27) { // ESC key
             let maxZIndex = -Infinity;
             let maxZIndexElement = null;
             let attributeName = null;
-    
+
             document.querySelectorAll('[data-window]').forEach(function(element) {
                 let zIndex = parseInt(window.getComputedStyle(element).zIndex, 10);
                 if (zIndex > maxZIndex) {
@@ -105,7 +96,7 @@ var input = {
                     attributeName = element.getAttribute('data-window');
                 }
             });
-    
+
             if (maxZIndexElement) {
                 modal.closeModal(attributeName);
             }
@@ -120,12 +111,12 @@ var input = {
                 }
             }
         }
-    
-        if (e.key === 'Shift') {
-            this.isShiftPressed = false;
+
+        if (e.key === ' ') {
+            this.isSpacePressed = false;
             const mainSprite = game.sprites[game.playerid];
             if (mainSprite && game.allowControls) {
-                mainSprite.stopRunning();
+                mainSprite.targetAim = false;
             }
         } else if (e.key === 'Control') {
             this.isCtrlPressed = false;
@@ -140,6 +131,12 @@ var input = {
             this.startX = e.clientX;
             this.startY = e.clientY;
             document.body.classList.add('move-cursor');
+        }
+
+        // Cancel pathfinding on right-click
+        if (e.button === 2) { // Right mouse button
+            const mainSprite = game.sprites[game.playerid];
+            this.cancelPathfinding(mainSprite);
         }
     },
 
@@ -162,7 +159,7 @@ var input = {
             const newX = (e.clientX - rect.left) / game.zoomLevel + game.cameraX;
             const newY = (e.clientY - rect.top) / game.zoomLevel + game.cameraY;
 
-            if (this.isShiftPressed) {
+            if (this.isSpacePressed) {
                 // Fine-tune the movement by reducing the delta
                 const deltaX = (newX - mainSprite.targetX) * 0.1;
                 const deltaY = (newY - mainSprite.targetY) * 0.1;
@@ -231,7 +228,19 @@ var input = {
     rightClick: function(e) {
         e.preventDefault();
         console.log("right button clicked");
+        const mainSprite = game.sprites[game.playerid];
+        this.cancelPathfinding(mainSprite);
     },
 
-    doubleClick: function(e) {}
+    doubleClick: function(e) {},
+
+    cancelPathfinding: function(sprite) {
+        if (sprite && sprite.isMovingToTarget) {
+            sprite.isMovingToTarget = false;
+            sprite.path = [];
+            sprite.moving = false;
+            sprite.stopping = true;
+            console.log("Pathfinding cancelled");
+        }
+    }
 };

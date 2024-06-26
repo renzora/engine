@@ -9,7 +9,7 @@ var game = {
     deltaTime: 0,
     worldWidth: 640,
     worldHeight: 640,
-    zoomLevel: 4,
+    zoomLevel: 3,
     cameraX: 0,
     cameraY: 0,
     targetCameraX: 0,
@@ -34,6 +34,10 @@ var game = {
     displaySprite: true,
     allowControls: true,
     activeCamera: true,
+    selectedObject: null,
+    selectedCache: null,
+    pathfinding: true,
+    particles: [],
     gameTime: {
         hours: 7,
         minutes: 0,
@@ -96,13 +100,15 @@ var game = {
             { name: '1', path: 'img/tiles/1.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'objectScript', path: 'json/objectScript.json' },
+            { name: 'walkAudio', path: 'audio/sfx/walk.json' },
+
         ], () => {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
             this.ctx = this.canvas.getContext('2d');
             document.body.appendChild(this.canvas);
             this.resizeCanvas();
-            this.roomData = assets.load('roomData');
+            this.objectData = assets.load('objectData');
 
             // Create player sprite
             const playerOptions = {
@@ -128,6 +134,7 @@ var game = {
             this.loadScene('66771b7e6c1c5b2f1708b75a');
             modal.load('ui');
             modal.load('pie_menu');
+            modal.load('quick_menu');
             console.log("Connected to Main renzora server");
 
             this.loop();
@@ -150,10 +157,12 @@ var game = {
 
             // Add this line to allow triggering reload from the console or UI
             window.reloadGameData = this.reloadGameData.bind(this);
+            this.canvas.addEventListener('click', this.handleCanvasClick.bind(this));
         });
     },
 
     loadScene: function(sceneId) {
+        input.cancelPathfinding(game.sprites[game.playerid]);
         ui.ajax({
             outputType: 'json',
             method: 'POST',
@@ -161,10 +170,11 @@ var game = {
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
-
                     game.roomData = data.roomData;
                     game.sceneid = data.sceneid;
-                    ui.notif(data.name, "bottom-center");
+                    effects.transitions.start('fadeOut', 1000);
+                    effects.transitions.start('fadeIn', 1000);
+                    ui.notif("scene_change_notif", data.name, true);
 
                     console.log('Scene loaded. Room data:', game.roomData);
                 } else {
@@ -185,10 +195,6 @@ var game = {
         this.canvas.style.top = '50%';
         this.canvas.style.transform = 'translate(-50%, -50%)';
     },
-    
-    
-    
-    
        
     updateCamera: function() {
         if (this.activeCamera) {
@@ -257,11 +263,263 @@ var game = {
         }
       },
 
-      render: function() {
+
+      handleCanvasClick: function(event) {
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
+        const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+
+        this.selectedObject = this.findObjectAt(mouseX, mouseY);
+        if (this.selectedObject) {
+            console.log('Selected Object:', this.selectedObject);
+            this.selectedCache = this.drawAndOutlineObjectImage(this.selectedObject);
+            console.log('Selected Cache:', this.selectedCache);
+        } else {
+            this.selectedCache = null; // Clear the cache if no object is selected
+        }
+
+        if (!input.isSpacePressed && this.pathfinding) {
+            const gridX = Math.floor(mouseX / 16);
+            const gridY = Math.floor(mouseY / 16);
+
+            this.sprites[this.playerid].walkToClickedTile(gridX, gridY);
+        }
+    },
+
+    createWalkableGrid: function() {
+        const width = this.worldWidth / 16;
+        const height = this.worldHeight / 16;
+        const grid = Array.from({ length: width }, () => Array(height).fill(1)); // Initialize all cells as walkable (1)
+    
+        if (!this.objectData) {
+            console.error('Object Data is not defined.');
+            return grid;
+        }
+    
+        if (this.roomData && this.roomData.items) {
+            this.roomData.items.forEach(item => {
+                const itemData = this.objectData[item.id];
+                if (itemData && itemData.length > 0) {
+                    const tileData = itemData[0];
+                    const xCoordinates = item.x || [];
+                    const yCoordinates = item.y || [];
+    
+                    yCoordinates.forEach((tileY, rowIndex) => {
+                        xCoordinates.forEach((tileX, colIndex) => {
+                            const index = rowIndex * xCoordinates.length + colIndex;
+                            const walkableData = Array.isArray(tileData.w) ? tileData.w[index % tileData.w.length] : tileData.w;
+    
+                            if (tileX >= 0 && tileX < width && tileY >= 0 && tileY < height) {
+                                if (Array.isArray(walkableData) && walkableData.length === 4) {
+                                    // Check if any direction is non-walkable
+                                    const [north, east, south, west] = walkableData;
+                                    if (north < 16 || east < 16 || south < 16 || west < 16) {
+                                        grid[tileX][tileY] = 0;
+                                    }
+                                } else if (walkableData === 0) {
+                                    grid[tileX][tileY] = 0; // Non-walkable if the value is 0
+                                } else if (walkableData === 1 && grid[tileX][tileY] !== 0) {
+                                    grid[tileX][tileY] = 1; // Walkable if the value is 1, but don't override if already non-walkable
+                                }
+                            }
+                        });
+                    });
+                }
+            });
+        }
+    
+        return grid;
+    },       
+
+    findObjectAt: function(x, y) {
+        if (!this.roomData || !this.roomData.items) return null;
+    
+        const renderQueue = [];
+    
+        // Populate renderQueue with room items
+        this.roomData.items.forEach(roomItem => {
+            const itemData = assets.load('objectData')[roomItem.id];
+            if (itemData && itemData.length > 0) {
+                const tileData = itemData[0];
+                const xCoordinates = roomItem.x || [];
+                const yCoordinates = roomItem.y || [];
+    
+                let index = 0;
+    
+                for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
+                    for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                        const posX = x * 16;
+                        const posY = y * 16;
+    
+                        let tileFrameIndex;
+                        if (tileData.d) {
+                            const currentFrame = tileData.currentFrame || 0;
+                            tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[(currentFrame + index) % tileData.i.length] : tileData.i;
+                        } else {
+                            tileFrameIndex = tileData.i[index];
+                        }
+    
+                        renderQueue.push({
+                            tileIndex: tileFrameIndex,
+                            posX: posX,
+                            posY: posY,
+                            z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
+                            id: roomItem.id,
+                            item: roomItem
+                        });
+    
+                        index++;
+                    }
+                }
+            }
+        });
+    
+        // Sort renderQueue by z-index and render order
+        renderQueue.sort((a, b) => a.z - b.z || a.renderOrder - b.renderOrder);
+    
+        // Find the object at the specified coordinates that rendered last
+        let highestZIndexObject = null;
+    
+        for (const item of renderQueue) {
+            const tileRect = {
+                x: item.posX,
+                y: item.posY,
+                width: 16,
+                height: 16
+            };
+    
+            if (
+                x >= tileRect.x &&
+                x <= tileRect.x + tileRect.width &&
+                y >= tileRect.y &&
+                y <= tileRect.y + tileRect.height
+            ) {
+                highestZIndexObject = item.item;
+            }
+        }
+    
+        return highestZIndexObject;
+    },    
+
+    drawAndOutlineObjectImage: function(object) {
+        if (!object) return null;
+        
+        const itemData = assets.load('objectData')[object.id];
+        if (!itemData) return null;
+        
+        const xCoordinates = object.x.map(x => parseInt(x, 10) * 16);
+        const yCoordinates = object.y.map(y => parseInt(y, 10) * 16);
+        
+        const minX = Math.min(...xCoordinates);
+        const maxX = Math.max(...xCoordinates) + 16;
+        const minY = Math.min(...yCoordinates);
+        const maxY = Math.max(...yCoordinates) + 16;
+        
+        // Create an offscreen canvas
+        const offscreenCanvas = document.createElement('canvas');
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+        offscreenCanvas.width = maxX - minX;
+        offscreenCanvas.height = maxY - minY;
+        
+        // Render object tiles onto the offscreen canvas
+        for (let i = 0; i < xCoordinates.length; i++) {
+            for (let j = 0; j < yCoordinates.length; j++) {
+                const itemX = xCoordinates[i] - minX;
+                const itemY = yCoordinates[j] - minY;
+        
+                const tileIndex = j * xCoordinates.length + i; // Calculate tile index based on row-major order
+                const tileData = itemData[tileIndex % itemData.length];
+        
+                let tileFrameIndex;
+                if (tileData.d) {
+                    const currentFrame = tileData.currentFrame || 0;
+                    tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[currentFrame % tileData.i.length] : tileData.i;
+                } else {
+                    tileFrameIndex = tileData.i[tileIndex % tileData.i.length];
+                }
+        
+                const srcX = (tileFrameIndex % 150) * 16;
+                const srcY = Math.floor(tileFrameIndex / 150) * 16;
+        
+                offscreenCtx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, itemX, itemY, 16, 16);
+            }
+        }
+    
+        const width = offscreenCanvas.width;
+        const height = offscreenCanvas.height;
+    
+        // Get the image data from the offscreen canvas
+        const imageData = offscreenCtx.getImageData(0, 0, width, height);
+        const data = imageData.data;
+    
+        // Create a copy of the image data to preserve the original image
+        const outlineData = new Uint8ClampedArray(data);
+    
+        // Function to check and outline a pixel
+        const outlinePixel = (x, y) => {
+            const index = (y * width + x) * 4;
+            outlineData[index] = 255;     // Red
+            outlineData[index + 1] = 255; // Green
+            outlineData[index + 2] = 255; // Blue
+            outlineData[index + 3] = 255; // Alpha
+        };
+    
+        // Outline inner transparent neighbor pixels
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const index = (y * width + x) * 4;
+                if (data[index + 3] === 0) {
+                    const neighbors = [
+                        {x: x - 1, y: y},     // Left
+                        {x: x + 1, y: y},     // Right
+                        {x: x, y: y - 1},     // Top
+                        {x: x, y: y + 1},     // Bottom
+                        {x: x - 1, y: y - 1}, // Top-left
+                        {x: x + 1, y: y - 1}, // Top-right
+                        {x: x - 1, y: y + 1}, // Bottom-left
+                        {x: x + 1, y: y + 1}  // Bottom-right
+                    ];
+    
+                    for (const neighbor of neighbors) {
+                        if (
+                            neighbor.x >= 0 && neighbor.x < width &&
+                            neighbor.y >= 0 && neighbor.y < height
+                        ) {
+                            const neighborIndex = (neighbor.y * width + neighbor.x) * 4;
+                            if (data[neighborIndex + 3] !== 0) {
+                                outlinePixel(x, y);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    
+        // Outline the very edge pixels
+        for (let x = 0; x < width; x++) {
+            if (data[x * 4 + 3] !== 0) outlinePixel(x, 0); // Top edge
+            if (data[((height - 1) * width + x) * 4 + 3] !== 0) outlinePixel(x, height - 1); // Bottom edge
+        }
+        for (let y = 0; y < height; y++) {
+            if (data[(y * width) * 4 + 3] !== 0) outlinePixel(0, y); // Left edge
+            if (data[(y * width + (width - 1)) * 4 + 3] !== 0) outlinePixel(width - 1, y); // Right edge
+        }
+    
+        // Put the modified image data back into the outlined canvas
+        const outlinedImageData = new ImageData(outlineData, width, height);
+        offscreenCtx.putImageData(outlinedImageData, 0, 0);
+    
+        return offscreenCanvas;
+    },    
+
+    render: function() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(this.cameraX), -Math.round(this.cameraY));
+
+        const mainSprite = this.sprites[this.playerid];
     
         const renderQueue = [];
     
@@ -277,7 +535,7 @@ var game = {
     
         if (this.roomData && this.roomData.items) {
             this.roomData.items.forEach(roomItem => {
-                const itemData = assets.load('objectData')[roomItem.id];
+                const itemData = this.objectData[roomItem.id];
                 if (itemData && itemData.length > 0) {
                     const tileData = itemData[0];
                     const xCoordinates = roomItem.x || [];
@@ -308,6 +566,7 @@ var game = {
                                     posX: posX,
                                     posY: posY,
                                     z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
+                                    id: roomItem.id,
                                     draw: function() {
                                         game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
                                     }
@@ -318,6 +577,18 @@ var game = {
     
                             index++;
                         }
+                    }
+    
+                    // Check if this is the selected object and add it to the renderQueue as a single image
+                    if (roomItem === this.selectedObject && this.selectedCache) {
+                        const minX = Math.min(...xCoordinates) * 16;
+                        const minY = Math.min(...yCoordinates) * 16;
+                        renderQueue.push({
+                            z: Array.isArray(tileData.z) ? Math.max(...tileData.z) : tileData.z,
+                            draw: function() {
+                                game.ctx.drawImage(game.selectedCache, minX, minY);
+                            }
+                        });
                     }
                 }
             });
@@ -344,8 +615,36 @@ var game = {
         }
     
         renderQueue.sort((a, b) => a.z - b.z);
-        renderQueue.forEach(item => item.draw());
+        renderQueue.forEach((item, index) => {
+            item.renderOrder = index;
+            item.draw();
+        });
         this.ctx.imageSmoothingEnabled = false;
+
+        if (mainSprite && mainSprite.path && mainSprite.path.length > 0) {
+            this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            this.ctx.lineWidth = 2;
+            this.ctx.beginPath();
+    
+            // Move to the first point
+            this.ctx.moveTo(mainSprite.path[0].x * 16 + 8, mainSprite.path[0].y * 16 + 8);
+    
+            // Draw quadratic curves between points
+            for (let i = 1; i < mainSprite.path.length - 1; i++) {
+                const currentPoint = mainSprite.path[i];
+                const nextPoint = mainSprite.path[i + 1];
+                const midX = (currentPoint.x + nextPoint.x) * 8 + 8;
+                const midY = (currentPoint.y + nextPoint.y) * 8 + 8;
+    
+                this.ctx.quadraticCurveTo(currentPoint.x * 16 + 8, currentPoint.y * 16 + 8, midX, midY);
+            }
+    
+            // Draw the last segment
+            const lastPoint = mainSprite.path[mainSprite.path.length - 1];
+            this.ctx.lineTo(lastPoint.x * 16 + 8, lastPoint.y * 16 + 8);
+    
+            this.ctx.stroke();
+        }
     
         weather.applyNightColorFilter(); // Apply the night color filter
         weather.drawSnow();
@@ -354,9 +653,7 @@ var game = {
         weather.drawStars();
         weather.drawLightning();
         this.handleAimAttack();
-    
-        // Draw target aimer if active
-        const mainSprite = this.sprites[this.playerid];
+
         if (mainSprite && mainSprite.targetAim) {
             const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
             const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
@@ -487,8 +784,11 @@ var game = {
                 if(this.displayChat) { this.drawChatBubble(this.sprites[id]); }
             }
         }
-    },
-    
+
+        effects.renderParticles();
+        effects.transitions.render();
+
+    }, 
 
     randomNpcMessage: function(sprite) {
         if (sprite.messages && sprite.messages.length > 0) {
@@ -688,6 +988,8 @@ var game = {
         weather.updateStars(deltaTime);
         weather.updateLightning(deltaTime);
         this.updateCamera();
+        effects.updateParticles(deltaTime);
+        effects.transitions.update();
     },
     
     updateAnimatedTiles: function(deltaTime) {
@@ -736,19 +1038,18 @@ var game = {
     
         if (this.roomData && this.roomData.items) {
             collisionDetected = this.roomData.items.some(roomItem => {
-                const itemData = assets.load('objectData')[roomItem.id];
+                const itemData = this.objectData[roomItem.id];
                 if (!itemData) return false;
     
                 const xCoordinates = roomItem.x || [];
                 const yCoordinates = roomItem.y || [];
     
-                let index = 0;
-    
-                return yCoordinates.some((yCoord, j) => {
-                    return xCoordinates.some((xCoord, i) => {
+                return yCoordinates.some((tileY, rowIndex) => {
+                    return xCoordinates.some((tileX, colIndex) => {
+                        const index = rowIndex * xCoordinates.length + colIndex;
                         const tileData = itemData[0]; // Assuming we are dealing with the first tile data group
-                        const tilePosX = parseInt(xCoord, 10) * 16 + tileData.a[index % tileData.a.length];
-                        const tilePosY = parseInt(yCoord, 10) * 16 + tileData.b[index % tileData.b.length];
+                        const tilePosX = tileX * 16 + tileData.a[index % tileData.a.length];
+                        const tilePosY = tileY * 16 + tileData.b[index % tileData.b.length];
                         const tileRect = {
                             x: tilePosX,
                             y: tilePosY,
@@ -760,13 +1061,12 @@ var game = {
                         if (Array.isArray(tileData.w) && tileData.w.length > 0) {
                             collisionArray = tileData.w[index % tileData.w.length];
                         } else if (typeof tileData.w === 'number') {
-                            collisionArray = [0, 0, 0, 0]; // Default offsets for non-walkable
                             if (tileData.w === 1) {
                                 collisionArray = [16, 16, 16, 16]; // Fully walkable
+                            } else if (tileData.w === 0) {
+                                collisionArray = [0, 0, 0, 0]; // Fully non-walkable
                             }
                         }
-    
-                        index++;
     
                         if (collisionArray) {
                             const [nOffset, eOffset, sOffset, wOffset] = collisionArray;
@@ -808,12 +1108,8 @@ var game = {
             }
         }
     
-        if (collisionDetected) {
-
-        }
-    
         return collisionDetected;
-    },
+    },    
 
     findFreeLocation: function(width, height) {
         const maxAttempts = 30; // Maximum number of attempts to find a free location

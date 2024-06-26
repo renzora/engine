@@ -43,7 +43,7 @@ var scene_edit_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/ui/tabs/servers/ajax/editScene.php',
+            url: 'modals/quick_menu/tabs/servers/ajax/editScene.php',
             data: JSON.stringify({ id: this.sceneId, name: sceneName }),
             headers: {
                 'Content-Type': 'application/json'
@@ -67,7 +67,7 @@ var scene_edit_window = {
             ui.ajax({
                 outputType: 'json',
                 method: 'POST',
-                url: 'modals/ui/tabs/servers/ajax/deleteScene.php',
+                url: 'modals/quick_menu/tabs/servers/ajax/deleteScene.php',
                 data: JSON.stringify({ id: this.sceneId }),
                 headers: {
                     'Content-Type': 'application/json'

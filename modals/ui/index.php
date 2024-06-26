@@ -7,61 +7,22 @@ if ($auth) {
     <span class="text-white rounded-md">Renzora v0.0.7</span>
     <span class="text-white rounded-md" id="gameFps"></span>
     <span id="game_time" class="text-white rounded-md">00:00</span>
-  </div>
-
-  <!-- Top Left: Chat and Tabs -->
-  <div id="chat_box" class='fixed top-0 left-0 z-10 w-auto h-full'>
-    <div class='chat-container text-sm subpixel-antialiased tracking-tight h-full'>
-      <div id="ui_window_chat" class="w-full h-full bg-[#03031a] bg-opacity-90 border border-black">
-        <div id="tabs" class="flex flex-wrap m-2 mb-0 w-full z-10">
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top active" data-tab="servers" aria-label="Servers">
-            <div class="icon globe"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="friends" aria-label="Friends">
-            <div class="icon friends"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="editor" aria-label="Editor">
-            <div class="icon editor"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="chat" aria-label="Chat">
-            <div class="icon chat"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="gift" aria-label="Gift">
-            <div class="icon gift"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="avatar" aria-label="Avatar">
-            <div class="icon avatar"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="survival" aria-label="Survival">
-            <div class="icon sword"></div>
-          </button>
-          <button class="tab px-2 py-1 text-gray-600 rounded hint--top" data-tab="settings" aria-label="Settings">
-            <div class="icon settings"></div>
-          </button>
-        </div>
-        <div id="chat_messages" class="chat-messages w-full p-2 overflow-x-hidden overflow-y-auto text-ellipsis bg-opacity-95 text-white" style="height: calc(100% - 48px);">
-          <div class="tab-content" data-tab-content="servers"></div>
-          <div class="tab-content hidden" data-tab-content="friends"></div>
-          <div class="tab-content hidden" data-tab-content="editor"></div>
-          <div class="tab-content hidden" data-tab-content="chat"></div>
-          <div class="tab-content hidden" data-tab-content="gift"></div>
-          <div class="tab-content hidden" data-tab-content="avatar"></div>
-          <div class="tab-content hidden" data-tab-content="survival"></div>
-          <div class="tab-content hidden" data-tab-content="settings"></div>
-        </div>
-      </div>
-    </div>
+    <button onclick="ui_window.activateTimeout('quick_item_1', 5000)">Activate Timeout for Item 1</button>
+    <button onclick="ui_window.activateTimeout('quick_item_2', 7000)">Activate Timeout for Item 2</button>
+    <button onclick="ui_window.activateTimeout('item_primary', 8000)">Activate Timeout for Primary Item</button>
   </div>
 
   <!-- Top Center: Health, Energy, Quick Items, Avatar -->
-  <div class='fixed top-0 right-2 mt-2 z-10 flex space-x-2 tracking-tight'>
-    <div id="avatar" class="flex items-center justify-center w-20 h-18 bg-black bg-opacity-80 rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300">
-      <div class="items_icon items_sword scale-[3]"></div>
+  <div class="fixed top-3 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#13181e] rounded-md shadow-inner hover:shadow-lg p-1">
+    <div id="item_primary" class="relative flex items-center justify-center w-20 h-18 bg-[#1e2b3d] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300">
+      <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+      <div class="items_icon items_sword scale-[4] z-10"></div>
     </div>
     <div class="flex flex-col space-y-2 w-98">
       <div class="flex items-center space-x-2 w-full">
         <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
           <div class="mx-1">
+            <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
             <div class="items_icon items_health scale-[1.2]"></div>
           </div>
           <div id="health" class="rounded bg-gradient-to-r from-lime-500 to-green-600 h-full transition-width duration-500 flex-grow"></div>
@@ -76,87 +37,187 @@ if ($auth) {
         </div>
       </div>
       <!-- Quick Items -->
-      <div class="flex space-x-2">
-        <div id="quick_item_1" class="cursor-move w-12 h-12 bg-black bg-opacity-80 rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
-          <div class="items_icon items_potion scale-[1.9]"></div>
+      <div class="flex space-x-2" id="quick_items_container">
+        <div id="quick_item_1" class="quick_item relative cursor-move w-12 h-12 bg-[#1e2b3d] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+          <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+          <div class="items_icon items_potion scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_2" class="cursor-move w-12 h-12 bg-black bg-opacity-80 rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
-          <div class="items_icon items_shield scale-[1.9]"></div>
+        <div id="quick_item_2" class="quick_item relative cursor-move w-12 h-12 bg-[#1e2b3d] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+          <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+          <div class="items_icon items_shield scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_3" class="cursor-move w-12 h-12 bg-black bg-opacity-80 rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
-          <div class="items_icon items_sword scale-[1.9]"></div>
+        <div id="quick_item_3" class="quick_item relative cursor-move w-12 h-12 bg-[#1e2b3d] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+          <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+          <div class="items_icon items_sword scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_4" class="cursor-move w-12 h-12 bg-black bg-opacity-80 rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
-          <div class="items_icon items_skull scale-[1.9]"></div>
+        <div id="quick_item_4" class="quick_item relative cursor-move w-12 h-12 bg-[#1e2b3d] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+          <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+          <div class="items_icon items_skull scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_5" class="cursor-move w-12 h-12 bg-black bg-opacity-80 rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
-          <div class="items_icon items_key scale-[1.9]"></div>
+        <div id="quick_item_5" class="quick_item relative cursor-move w-12 h-12 bg-[#1e2b3d] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+          <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+          <div class="items_icon items_key scale-[2.1] z-10"></div>
         </div>
       </div>
     </div>
   </div>
 
+  <style>
+    .highlight {
+      outline: 2px dashed yellow;
+      outline-offset: -3px;
+    }
+  </style>
+
   <script>
-var ui_window = {
-  start: function() {
-    ui.initTabs('ui_window_chat', 'servers');
-    const chatBox = document.getElementById('chat_box');
-    const chatMessages = document.getElementById('chat_messages');
-    const tabs = document.querySelectorAll('.tab');
-    const tabContents = document.querySelectorAll('.tab-content');
+  var ui_window = {
+    dragSrcEl: null,
 
-    let activeTabContentId = 'servers'; // Track the currently active tab content
+    start: function() {
+      this.initializeDragAndDrop();
+      this.initializeQuickItems();
+      this.initializePrimaryItem();
+    },
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', function() {
-        const target = this.getAttribute('data-tab');
+    initializeDragAndDrop: function() {
+      const draggableItems = document.querySelectorAll('.quick_item, #item_primary');
 
-        tabs.forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-
-        tabContents.forEach(tc => tc.classList.add('hidden'));
-        const contentDiv = document.querySelector(`.tab-content[data-tab-content="${target}"]`);
-
-        if (contentDiv) {
-          // Unmount the previously active tab content
-          ui.unmount('ui_' + activeTabContentId + '_tab_window');
-          
-          // Clear the content of the previously active tab
-          const previousContentDiv = document.querySelector(`.tab-content[data-tab-content="${activeTabContentId}"]`);
-          if (previousContentDiv) {
-            previousContentDiv.innerHTML = '';
-          }
-
-          // Set the new active tab content id
-          activeTabContentId = target;
-
-          contentDiv.classList.remove('hidden');
-          ui.ajax({
-            method: 'POST',
-            url: `modals/ui/tabs/${target}/index.php`,
-            success: function(data) {
-              ui.html(contentDiv, data, 'append');
-              if(target === 'editor') {
-                ui_editor_tab_window.start();
-              }
-            }
-          });
-        }
+      draggableItems.forEach(item => {
+        item.setAttribute('draggable', true);
+        item.style.cursor = 'grab';
+        item.addEventListener('mouseover', this.handleMouseOver.bind(this));
+        item.addEventListener('mouseout', this.handleMouseOut.bind(this));
+        item.addEventListener('dragstart', this.handleDragStart.bind(this));
+        item.addEventListener('dragover', this.handleDragOver.bind(this));
+        item.addEventListener('drop', this.handleDrop.bind(this));
+        item.addEventListener('dragend', this.handleDragEnd.bind(this));
       });
-    });
+    },
 
-    // Trigger click on the servers tab to load its content by default
-    document.querySelector('.tab[data-tab="servers"]').click();
+    initializeQuickItems: function() {
+      const quickItems = document.querySelectorAll('.quick_item');
+      quickItems.forEach(item => {
+        item.addEventListener('click', () => {
+          this.startTimeout(item, 5000); // Example: 5 seconds timeout
+        });
+      });
+    },
 
-    // Other initialization code...
-  },
+    initializePrimaryItem: function() {
+      const primaryItem = document.getElementById('item_primary');
+      primaryItem.addEventListener('click', () => {
+        this.startTimeout(primaryItem, 8000); // Example: 8 seconds timeout for the primary item
+      });
+    },
 
-  unmount: function() {
-    // Cleanup HUD elements if necessary
-  }
-};
+    startTimeout: function(item, duration) {
+      if (!item.classList.contains('pointer-events-none')) {
+        item.classList.add('pointer-events-none', 'opacity-80');
+        const indicator = item.querySelector('.timeout-indicator');
+        indicator.classList.remove('hidden');
+        indicator.style.width = '100%';
+        indicator.style.transitionDuration = `${duration}ms`;
+        requestAnimationFrame(() => {
+          indicator.style.width = '0%';
+        });
+        setTimeout(() => {
+          item.classList.remove('pointer-events-none', 'opacity-80');
+          indicator.style.transitionDuration = '0ms'; // Reset transition duration
+          indicator.style.width = '100%';
+          indicator.classList.add('hidden');
+        }, duration);
+      }
+    },
 
-ui_window.start();
+    activateTimeout: function(itemId, duration) {
+      const item = document.getElementById(itemId);
+      if (item) {
+        this.startTimeout(item, duration);
+      } else {
+        console.error(`Item with id ${itemId} not found`);
+      }
+    },
+
+    handleMouseOver: function(e) {
+      e.target.style.cursor = 'grab';
+    },
+
+    handleMouseOut: function(e) {
+      e.target.style.cursor = 'default';
+    },
+
+    handleDragStart: function(e) {
+      this.dragSrcEl = e.target.closest('.quick_item, #item_primary');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/html', this.dragSrcEl.innerHTML);
+      this.dragSrcEl.classList.add('dragging');
+      this.dragSrcEl.style.cursor = 'move';
+    },
+
+    handleDragOver: function(e) {
+      if (e.preventDefault) {
+        e.preventDefault(); // Necessary. Allows us to drop.
+      }
+      e.dataTransfer.dropEffect = 'move'; // Show move cursor
+      const target = e.target.closest('.quick_item, #item_primary');
+      if (target) {
+        this.clearHighlights();
+        target.classList.add('highlight');
+      }
+      return false;
+    },
+
+    handleDrop: function(e) {
+      if (e.stopPropagation) {
+        e.stopPropagation(); // Stops some browsers from redirecting.
+      }
+      const target = e.target.closest('.quick_item, #item_primary');
+      if (this.dragSrcEl !== target && target) {
+        // Swap the inner HTML of the elements
+        const srcInnerHTML = this.dragSrcEl.innerHTML;
+        const targetInnerHTML = target.innerHTML;
+
+        // Perform the swap
+        this.dragSrcEl.innerHTML = targetInnerHTML;
+        target.innerHTML = srcInnerHTML;
+
+        // Adjust the scale
+        this.updateScale(this.dragSrcEl);
+        this.updateScale(target);
+      }
+      this.clearHighlights();
+      return false;
+    },
+
+    clearHighlights: function() {
+      const draggableItems = document.querySelectorAll('.quick_item, #item_primary');
+      draggableItems.forEach(item => {
+        item.classList.remove('highlight');
+      });
+    },
+
+    updateScale: function(element) {
+      const icon = element.querySelector('.items_icon');
+      if (element.id === 'item_primary') {
+        icon.classList.remove('scale-[2.1]');
+        icon.classList.add('scale-[4]');
+      } else {
+        icon.classList.remove('scale-[4]');
+        icon.classList.add('scale-[2.1]');
+      }
+    },
+
+    handleDragEnd: function(e) {
+      const draggableItems = document.querySelectorAll('.quick_item, #item_primary');
+      draggableItems.forEach(item => {
+        item.classList.remove('dragging');
+        item.style.cursor = 'grab';
+        item.classList.remove('highlight');
+      });
+    }
+  };
+
+  ui_window.start();
   </script>
 </div>
 <?php

@@ -15,7 +15,7 @@ if ($auth) {
       <div class='container text-light window_body p-2'>
         
 
-        <div id="test_tab">
+        <div id="template_window_tabs">
           <div id="tabs" class="flex border-b border-gray-300">
             <button class="tab text-gray-800" data-tab="tab1">Tab 1</button>
             <button class="tab text-gray-800" data-tab="tab2">Tab 2</button>
@@ -41,10 +41,10 @@ if ($auth) {
     <script>
       var template_window = {
         start: function() {
-          ui.initTabs('test_tab', 'tab2');
+          ui.initTabs('template_window_tabs', 'tab2');
         },
         unmount: function() {
-          ui.destroyTabs('test_tab');
+          ui.destroyTabs('template_window_tabs');
         }
       }
       template_window.start();
