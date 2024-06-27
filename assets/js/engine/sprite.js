@@ -169,72 +169,77 @@ var sprite = {
         let facialHairImage = assets.load('facial');
         let hatImage = assets.load('hats');
         let glassesImage = assets.load('glasses');
-
+    
         if (!bodyImage || !hairImage || !outfitImage || !facialHairImage || !hatImage || !glassesImage) return;
-
+    
         let directionOffset = this.directionMap[this.direction] ?? 0;
         let frameColumn = directionOffset + (Math.floor(this.currentFrame) % 6);
         let sx = frameColumn * this.width;
         let sy = 0;
-
+    
         let tempCanvas = document.createElement('canvas');
         let tempCtx = tempCanvas.getContext('2d');
         tempCanvas.width = this.width;
         tempCanvas.height = this.height;
-
+    
         tempCtx.drawImage(bodyImage, sx, sy, this.width, this.height, 0, 0, this.width, this.height);
-
+    
         if (this.hairstyle !== 0) {
             let hairSy = (this.hairstyle - 1) * 17;
             tempCtx.drawImage(hairImage, sx, hairSy, this.width, 17, 0, 0, this.width, 17);
         }
-
+    
         if (this.outfit !== 0) {
             let outfitSy = (this.outfit - 1) * this.height;
             tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, this.height, 0, 0, this.width, this.height);
         }
-
+    
         if (this.facialHair !== 0) {
             let facialHairSy = (this.facialHair - 1) * 8;
             tempCtx.drawImage(facialHairImage, sx, facialHairSy, this.width, 8, 0, 12, this.width, 8);
         }
-
+    
         if (this.glasses !== 0) {
             let glassesSy = (this.glasses - 1) * 16;
             tempCtx.drawImage(glassesImage, sx, glassesSy, this.width, 16, 0, 6, this.width, 16);
         }
-
+    
         if (this.hat !== 0) {
             let hatSy = (this.hat - 1) * 16;
             tempCtx.drawImage(hatImage, sx, hatSy, this.width, 16, 0, 0, this.width, 16);
         }
-
+    
         game.ctx.save();
         game.ctx.translate(this.x, this.y);
-
+    
         if (this.direction === 'W') {
             game.ctx.scale(-this.scale, this.scale);
             game.ctx.translate(-this.width * this.scale, 0);
         } else {
             game.ctx.scale(this.scale, this.scale);
         }
-
-        game.ctx.shadowBlur = 15;
-        game.ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
-        game.ctx.beginPath();
-        game.ctx.ellipse(11, 20, this.width * this.scale * 0.22, this.height * this.scale * 0.15, 0, 0, 2 * Math.PI);
-        game.ctx.fill();
-
-        game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
-
-        if (this.isEnemy) {
-            game.ctx.fillStyle = 'red';
-            game.ctx.fillRect(0, -10, this.width, 5);
-            game.ctx.fillStyle = 'green';
-            game.ctx.fillRect(0, -10, this.width * (this.health / this.maxHealth), 5);
-        }
-
-        game.ctx.restore();
+    
+     // Adjust shadow position and scale
+     game.ctx.shadowBlur = 15;
+     game.ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+     game.ctx.beginPath();
+     const shadowX = (this.width / 2 + 2) * this.scale; // Move shadow to the right
+     const shadowY = (this.height + 5) * this.scale; // Move shadow down further
+     const shadowWidth = this.width * this.scale * 0.6;
+     const shadowHeight = this.height * this.scale * 0.2;
+     game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
+     game.ctx.fill();
+ 
+     game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
+ 
+     if (this.isEnemy) {
+         game.ctx.fillStyle = 'red';
+         game.ctx.fillRect(0, -10, this.width, 5);
+         game.ctx.fillStyle = 'green';
+         game.ctx.fillRect(0, -10, this.width * (this.health / this.maxHealth), 5);
+     }
+ 
+     game.ctx.restore();
     },
 
     walkToClickedTile: function(tileX, tileY) {
@@ -243,7 +248,7 @@ var sprite = {
         this.path = this.calculatePath(currentX, currentY, tileX, tileY);
         this.pathIndex = 0;
         this.isMovingToTarget = true;
-    },    
+    },
 
     calculatePath: function(startX, startY, endX, endY) {
         const grid = game.createWalkableGrid();
@@ -269,7 +274,7 @@ var sprite = {
         }
     
         const path = result.map(function(node) {
-            return { x: node.x, y: node.y };
+            return { x: node.x, y: node.y, alpha: 1 }; // Add alpha property for opacity
         });
     
         this.path = path;
@@ -284,6 +289,7 @@ var sprite = {
             this.isMovingToTarget = false;
             this.moving = false;
             this.stopping = true;
+            this.currentFrame = 0; // Reset to default standing position
             this.path = []; // Clear the path once the destination is reached
             return;
         }
@@ -299,6 +305,12 @@ var sprite = {
             this.x = targetX;
             this.y = targetY;
             this.pathIndex++;
+            
+            // Remove the step behind the sprite
+            if (this.pathIndex > 1) {
+                this.path.shift();
+                this.pathIndex--;
+            }
         } else {
             const angle = Math.atan2(deltaY, deltaX);
             this.x += Math.cos(angle) * this.speed * (game.deltaTime / 1000);
@@ -322,7 +334,7 @@ var sprite = {
             this.moving = true; // Ensure moving flag is set when moving along the path
             this.stopping = false;
         }
-    },        
+    },
 
     addDirection: function(direction) {
         this.directions[direction] = true;
@@ -415,6 +427,7 @@ var sprite = {
                 this.currentFrame++;
             } else {
                 this.stopping = false;
+                this.currentFrame = 0; // Reset to default standing position
             }
             this.frameCounter = 0;
         }
@@ -426,41 +439,41 @@ var sprite = {
         } else {
             let dx = 0;
             let dy = 0;
-    
+
             if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
             if (this.directions['left']) dx -= this.speed * (deltaTime / 1000);
             if (this.directions['down']) dy += this.speed * (deltaTime / 1000);
             if (this.directions['up']) dy -= this.speed * (deltaTime / 1000);
-    
+
             if (dx !== 0 && dy !== 0) {
                 const norm = Math.sqrt(dx * dx + dy * dy);
                 dx = (dx / norm) * this.speed * (deltaTime / 1000);
                 dy = (dy / norm) * this.speed * (deltaTime / 1000);
             }
-    
+
             dx = isNaN(dx) ? 0 : dx;
             dy = isNaN(dy) ? 0 : dy;
-    
+
             this.vx = dx;
             this.vy = dy;
-    
+
             let newX = this.x + this.vx;
             let newY = this.y + this.vy;
-    
+
             newX = isNaN(newX) ? this.x : newX;
             newY = isNaN(newY) ? this.y : newY;
-    
+
             let moveX = true;
             let moveY = true;
-    
+
             if (game.collision(newX, this.y, this)) {
                 moveX = false;
             }
-    
+
             if (game.collision(this.x, newY, this)) {
                 moveY = false;
             }
-    
+
             if (dx !== 0 && dy !== 0) {
                 if (moveX && moveY) {
                     this.x = newX;
@@ -484,10 +497,10 @@ var sprite = {
                 if (moveX) this.x = newX;
                 if (moveY) this.y = newY;
             }
-    
+
             this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
             this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
-    
+
             // Ensure moving flag is set when directions are present
             if (dx !== 0 || dy !== 0) {
                 this.moving = true;
@@ -495,11 +508,12 @@ var sprite = {
             } else {
                 this.moving = false;
                 this.stopping = true;
+                this.currentFrame = 0; // Reset to default standing position
             }
         }
-    
+
         this.animate();
-    },    
+    },  
 
     takeDamage: function(damage) {
         let actualDamage = damage - this.defense;

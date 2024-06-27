@@ -9,7 +9,7 @@ var game = {
     deltaTime: 0,
     worldWidth: 640,
     worldHeight: 640,
-    zoomLevel: 3,
+    zoomLevel: 4,
     cameraX: 0,
     cameraY: 0,
     targetCameraX: 0,
@@ -38,6 +38,15 @@ var game = {
     selectedCache: null,
     pathfinding: true,
     particles: [],
+    objectives: [
+        { name: "Find the hidden sword", status: false },
+        { name: "Plant the apple seeds in renzora Garden", status: false },
+        { name: "Sell gold at oakenbridge Market", status: false },
+        { name: "Find the hidden sword", status: true },
+        { name: "Find the hidden sword", status: true },
+        { name: "Defeat the dragon", status: true },
+        { name: "Collect 100 coins from merchant", status: false }
+    ],
     gameTime: {
         hours: 7,
         minutes: 0,
@@ -98,8 +107,10 @@ var game = {
             { name: 'facial', path: 'img/sprites/facial.png' },
             { name: 'outfit', path: 'img/sprites/outfit.png' },
             { name: '1', path: 'img/tiles/1.png' },
+            { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'objectScript', path: 'json/objectScript.json' },
+            { name: 'itemsData', path: 'json/itemsData.json' },
             { name: 'walkAudio', path: 'audio/sfx/walk.json' },
 
         ], () => {
@@ -108,6 +119,8 @@ var game = {
             this.ctx = this.canvas.getContext('2d');
             document.body.appendChild(this.canvas);
             this.resizeCanvas();
+            this.itemsImg = assets.load('itemsImg');
+            this.itemsData = assets.load('itemsData');
             this.objectData = assets.load('objectData');
 
             // Create player sprite
@@ -518,7 +531,7 @@ var game = {
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(this.cameraX), -Math.round(this.cameraY));
-
+    
         const mainSprite = this.sprites[this.playerid];
     
         const renderQueue = [];
@@ -605,7 +618,7 @@ var game = {
             if (spriteRight >= this.viewportXStart * 16 && sprite.x < this.viewportXEnd * 16 &&
                 spriteBottom >= this.viewportYStart * 16 && sprite.y < this.viewportYEnd * 16) {
                 renderQueue.push({
-                    z: 1,
+                    z: 2, // Ensure sprites are drawn above tiles and pathfinder lines
                     draw: function() {
                         game.sprites[id].draw();
                     }
@@ -614,15 +627,19 @@ var game = {
             }
         }
     
+        // Sort renderQueue by z-index and render order
         renderQueue.sort((a, b) => a.z - b.z);
-        renderQueue.forEach((item, index) => {
-            item.renderOrder = index;
-            item.draw();
+    
+        // Draw the tiles first (z-index <= 1)
+        renderQueue.forEach(item => {
+            if (item.z <= 1) {
+                item.draw();
+            }
         });
-        this.ctx.imageSmoothingEnabled = false;
-
+    
+        // Draw the pathfinder line if available
         if (mainSprite && mainSprite.path && mainSprite.path.length > 0) {
-            this.ctx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+            game.ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
             this.ctx.lineWidth = 2;
             this.ctx.beginPath();
     
@@ -646,6 +663,15 @@ var game = {
             this.ctx.stroke();
         }
     
+        // Draw the remaining sprites (z-index > 1)
+        renderQueue.forEach(item => {
+            if (item.z > 1) {
+                item.draw();
+            }
+        });
+    
+        this.ctx.imageSmoothingEnabled = false;
+    
         weather.applyNightColorFilter(); // Apply the night color filter
         weather.drawSnow();
         weather.drawRain();
@@ -653,7 +679,7 @@ var game = {
         weather.drawStars();
         weather.drawLightning();
         this.handleAimAttack();
-
+    
         if (mainSprite && mainSprite.targetAim) {
             const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
             const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
@@ -784,11 +810,12 @@ var game = {
                 if(this.displayChat) { this.drawChatBubble(this.sprites[id]); }
             }
         }
-
+    
         effects.renderParticles();
         effects.transitions.render();
-
-    }, 
+    },
+    
+    
 
     randomNpcMessage: function(sprite) {
         if (sprite.messages && sprite.messages.length > 0) {
@@ -990,6 +1017,10 @@ var game = {
         this.updateCamera();
         effects.updateParticles(deltaTime);
         effects.transitions.update();
+
+        if(typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
+            ui_window.checkAndUpdateUIPositions();
+        }
     },
     
     updateAnimatedTiles: function(deltaTime) {

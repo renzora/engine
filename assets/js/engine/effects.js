@@ -1,4 +1,25 @@
 var effects = {
+    shakeMap: function(duration, intensity) {
+        const originalCameraX = game.cameraX;
+        const originalCameraY = game.cameraY;
+    
+        let elapsed = 0;
+        const shakeInterval = setInterval(() => {
+            elapsed += 16; // Approximate frame duration
+    
+            if (elapsed < duration) {
+                const offsetX = (Math.random() - 0.5) * intensity;
+                const offsetY = (Math.random() - 0.5) * intensity;
+    
+                game.cameraX = originalCameraX + offsetX;
+                game.cameraY = originalCameraY + offsetY;
+            } else {
+                clearInterval(shakeInterval);
+                game.cameraX = originalCameraX;
+                game.cameraY = originalCameraY;
+            }
+        }, 16);
+    },
     transitions: {
         active: false,
         type: 'fadeIn', // default transition type
@@ -42,6 +63,12 @@ var effects = {
                 case 'square':
                     this.renderSquare();
                     break;
+                case 'pixelate':
+                    this.renderPixelate();
+                    break;
+                case 'de-pixelate':
+                    this.renderDepixelate();
+                    break;
             }
         },
 
@@ -78,6 +105,54 @@ var effects = {
                 size,
                 size
             );
+        },
+
+        renderPixelate: function() {
+            const pixelSize = Math.ceil(this.progress * 20); // Max pixel size of 20
+            for (let y = 0; y < game.canvas.height; y += pixelSize) {
+                for (let x = 0; x < game.canvas.width; x += pixelSize) {
+                    const color = this.getPixelColor(x, y, pixelSize);
+                    if (color) {
+                        game.ctx.fillStyle = color;
+                        game.ctx.fillRect(x, y, pixelSize, pixelSize);
+                    }
+                }
+            }
+        },
+
+        renderDepixelate: function() {
+            const pixelSize = Math.ceil((1 - this.progress) * 20); // Start with max pixel size of 20
+            for (let y = 0; y < game.canvas.height; y += pixelSize) {
+                for (let x = 0; x < game.canvas.width; x += pixelSize) {
+                    const color = this.getPixelColor(x, y, pixelSize);
+                    if (color) {
+                        game.ctx.fillStyle = color;
+                        game.ctx.fillRect(x, y, pixelSize, pixelSize);
+                    }
+                }
+            }
+        },
+
+        getPixelColor: function(x, y, size) {
+            // Ensure valid dimensions
+            const validWidth = Math.min(size, game.canvas.width - x);
+            const validHeight = Math.min(size, game.canvas.height - y);
+            if (validWidth <= 0 || validHeight <= 0) return null;
+
+            const data = game.ctx.getImageData(x, y, validWidth, validHeight).data;
+            let r = 0, g = 0, b = 0, a = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                r += data[i];
+                g += data[i + 1];
+                b += data[i + 2];
+                a += data[i + 3];
+            }
+            const pixelCount = data.length / 4;
+            r = Math.floor(r / pixelCount);
+            g = Math.floor(g / pixelCount);
+            b = Math.floor(b / pixelCount);
+            a = Math.floor(a / pixelCount / 255);
+            return `rgba(${r},${g},${b},${a})`;
         }
     },
 

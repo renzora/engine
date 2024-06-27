@@ -5,7 +5,6 @@
   <meta charset="utf-8">
   <title>Renzora</title>
   <link rel="stylesheet" href="assets/css/output.css">
-  <link rel="stylesheet" href="assets/css/icons.css">
   <script src='assets/js/engine/network.js'></script>
   <script src='assets/js/engine/assets.js'></script>
   <script src='assets/js/engine/game.js'></script>
