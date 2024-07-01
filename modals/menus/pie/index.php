@@ -7,7 +7,7 @@ if ($auth) {
 <div id="pieMenu" class="pie-menu">
     <div class="pie-menu-ring"></div>
     <div class="pie-item" data-action="action1" style="--item-index: 0;">
-        <div class="pie-item-content">Edit Mode</div>
+        <div class="pie-item-content">Console</div>
     </div>
     <div class="pie-item" data-action="action2" style="--item-index: 1;">
         <div class="pie-item-content">Mishell</div>
@@ -189,7 +189,7 @@ var pie_menu_window = {
                     // Execute the action stored in currentHoveredAction
                     console.log(`Executing action: ${this.currentHoveredAction}`);
                     if (this.currentHoveredAction === 'action1') {
-                        modal.load('editMode/index.php', 'edit_mode_window');
+                        modal.load('quick_menu');
                     } else if (this.currentHoveredAction === 'action2') {
                         modal.load('mishell');
                     } else if (this.currentHoveredAction === 'action3') {

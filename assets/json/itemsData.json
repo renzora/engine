@@ -23,7 +23,8 @@
       "x": 32,
       "y": 0,
       "cd": 5,
-      "damage": 30
+      "damage": 30,
+      "aimAssist": true
     },
     {
       "name": "skull",
@@ -107,7 +108,8 @@
       "type": "item",
       "x": 208,
       "y": 0,
-      "cd": 0
+      "cd": 0,
+      "aimAssist": true
     },
     {
       "name": "arrow_green",

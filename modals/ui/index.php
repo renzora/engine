@@ -10,6 +10,10 @@ if ($auth) {
     </div>
 </div>
 
+<div class='fixed bottom-3 left-2 text-sm mb-1 '>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load('quick_menu');">Console</button>
+</div>
+
   <div class='fixed bottom-0 right-2 z-10 text-sm mb-1 flex space-x-4 tracking-tight'>
     <span class="text-white rounded-md">Renzora v0.0.7</span>
     <span class="text-white rounded-md" id="gameFps"></span>

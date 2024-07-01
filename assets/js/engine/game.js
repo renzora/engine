@@ -3,7 +3,13 @@ var game = {
     needsFilterUpdate: true,
     canvas: undefined,
     ctx: undefined,
+    isDragging: false,
+    dragStart: null,
+    dragEnd: null,
+    dragThreshold: 50,
     isEditMode: false,
+    x: null,
+    y: null,
     timestamp: 0,
     lastTime: 0,
     deltaTime: 0,
@@ -34,10 +40,12 @@ var game = {
     displaySprite: true,
     allowControls: true,
     activeCamera: true,
-    selectedObject: null,
+    selectedObjects: [],
     selectedCache: null,
     pathfinding: true,
+    selectedTiles: [],
     particles: [],
+    sceneBg: "grass",
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },
@@ -52,12 +60,12 @@ var game = {
         minutes: 0,
         seconds: 0,
         days: 0,
-        speedMultiplier: 100, // Game time progresses 10 times faster than real time
+        speedMultiplier: 1000, // Game time progresses 10 times faster than real time
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
             this.seconds += gameSeconds;
-
+    
             if (this.seconds >= 60) {
                 this.minutes += Math.floor(this.seconds / 60);
                 this.seconds = this.seconds % 60;
@@ -126,8 +134,8 @@ var game = {
             // Create player sprite
             const playerOptions = {
                 id: this.playerid,
-                x: 300,
-                y: 450,
+                x: 240,
+                y: 250,
                 isPlayer: true,
                 speed: 90
             };
@@ -144,9 +152,12 @@ var game = {
             weather.createRain(0.7);
             weather.createSnow(0.2);
 
-            this.loadScene('66771b7e6c1c5b2f1708b75a');
+            const storedSceneId = localStorage.getItem('sceneid') || '66771b7e6c1c5b2f1708b75a';
+            this.loadScene(storedSceneId);
+
             modal.load('ui');
-            modal.load('pie_menu');
+            modal.load('menus/context/index.php', 'context_menu_window');
+            modal.load('menus/pie/index.php', 'pie_menu_window');
             modal.load('quick_menu');
             console.log("Connected to Main renzora server");
 
@@ -170,7 +181,10 @@ var game = {
 
             // Add this line to allow triggering reload from the console or UI
             window.reloadGameData = this.reloadGameData.bind(this);
-            this.canvas.addEventListener('click', this.handleCanvasClick.bind(this));
+            this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
+            this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+            this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+
         });
     },
 
@@ -179,23 +193,36 @@ var game = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/servers/ajax/getSceneData.php',
+            url: 'modals/quick_menu/tabs/servers/ajax/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
+                    effects.lights = [];
                     game.roomData = data.roomData;
                     game.sceneid = data.sceneid;
+    
+                    // Ensure the camera is positioned correctly
+                    game.updateCamera();
+    
+                    // Store the scene id in local storage
+                    localStorage.setItem('sceneid', game.sceneid);
+    
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
                     ui.notif("scene_change_notif", data.name, true);
-
+    
                     console.log('Scene loaded. Room data:', game.roomData);
+    
                 } else {
                     console.log('Error: ' + data.message);
+                    // If scene is not found, load error modal
+                    modal.load('quick_menu/tabs/servers/ajax/error.php', 'scene_load_error_window');
                 }
             },
             error: function(data) {
                 console.log(data);
+                // If scene is not found, load error modal
+                modal.load('quick_menu/tabs/servers/ajax/error.php', 'scene_load_error_window');
             }
         });
     },
@@ -241,11 +268,6 @@ var game = {
             }
         }
     },
-    
-    
-    
-    
-    
 
     lerp: function(start, end, t) {
         return start * (1 - t) + end * t;
@@ -277,10 +299,88 @@ var game = {
       },
 
 
-      handleCanvasClick: function(event) {
+      handleMouseDown: function(event) {
+        if (event.button === 0) { // Left mouse button
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
+            const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+            this.isDragging = true;
+            this.dragStart = { x: mouseX, y: mouseY };
+            this.selectedTiles = []; // Clear selected tiles on new drag
+            this.selectedObjects = []; // Clear selected objects on new drag
+            
+            // Disable text selection
+            document.body.style.userSelect = 'none';
+            document.body.style.webkitUserSelect = 'none'; /* Safari */
+            document.body.style.msUserSelect = 'none'; /* IE 10 and IE 11 */
+        }
+    },
+
+    handleMouseMove: function(event) {
+        if (this.isDragging) {
+            modal.hideAll();
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
+            const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+            this.dragEnd = { x: mouseX, y: mouseY };
+            this.updateSelectedTiles(); // Update selected tiles during drag
+        }
+    },
+
+    handleMouseUp: function(event) {
+        if (this.isDragging) {
+            const rect = this.canvas.getBoundingClientRect();
+            const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
+            const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+            this.isDragging = false;
+            this.dragEnd = { x: mouseX, y: mouseY };
+
+            if (this.dragStart && this.dragEnd) {
+                const startX = Math.min(this.dragStart.x, this.dragEnd.x);
+                const startY = Math.min(this.dragStart.y, this.dragEnd.y);
+                const endX = Math.max(this.dragStart.x, this.dragEnd.x);
+                const endY = Math.max(this.dragStart.y, this.dragEnd.y);
+
+                const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
+                const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
+
+                if (deltaX > this.dragThreshold || deltaY > this.dragThreshold) {
+                    // This is a drag
+                    this.handleCanvasDrag({ startX, startY, endX, endY });
+                } else {
+                    // This is a click
+                    this.handleCanvasClick(event);
+                }
+
+                // Find and select items within the selected tiles
+                this.selectItemsInSelectedTiles();
+            }
+
+            this.dragStart = null;
+            this.dragEnd = null;
+            
+            // Re-enable text selection
+            document.body.style.userSelect = '';
+            document.body.style.webkitUserSelect = ''; /* Safari */
+            document.body.style.msUserSelect = ''; /* IE 10 and IE 11 */
+
+            modal.showAll();
+        }
+    },
+
+    handleCanvasClick: function(event) {
+        console.log('handleCanvasClick executed');
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+
+        // Calculate the grid position
+        const gridX = Math.floor(mouseX / 16);
+        const gridY = Math.floor(mouseY / 16);
+
+        // Store the grid coordinates in the new variables
+        this.x = gridX;
+        this.y = gridY;
 
         this.selectedObject = this.findObjectAt(mouseX, mouseY);
         if (this.selectedObject) {
@@ -291,12 +391,19 @@ var game = {
             this.selectedCache = null; // Clear the cache if no object is selected
         }
 
-        if (!input.isSpacePressed && this.pathfinding) {
-            const gridX = Math.floor(mouseX / 16);
-            const gridY = Math.floor(mouseY / 16);
-
+        // Check if the click is not a right-click before executing the walk to tile logic
+        if (event.button !== 2 && !input.isSpacePressed && this.pathfinding) {
             this.sprites[this.playerid].walkToClickedTile(gridX, gridY);
+
+            // Update target coordinates for the main sprite
+            this.targetX = mouseX;
+            this.targetY = mouseY;
         }
+    },
+
+    handleCanvasDrag: function(dragArea) {
+        console.log('Drag Selection:', dragArea);
+        // Implement the logic for handling the drag area selection
     },
 
     createWalkableGrid: function() {
@@ -524,7 +631,81 @@ var game = {
         offscreenCtx.putImageData(outlinedImageData, 0, 0);
     
         return offscreenCanvas;
-    },    
+    },
+
+    updateSelectedTiles: function() {
+        if (this.dragStart && this.dragEnd) {
+            const startX = Math.min(this.dragStart.x, this.dragEnd.x);
+            const startY = Math.min(this.dragStart.y, this.dragEnd.y);
+            const endX = Math.max(this.dragStart.x, this.dragEnd.x);
+            const endY = Math.max(this.dragStart.y, this.dragEnd.y);
+
+            const startTileX = Math.floor(startX / 16);
+            const startTileY = Math.floor(startY / 16);
+            const endTileX = Math.floor(endX / 16);
+            const endTileY = Math.floor(endY / 16);
+
+            this.selectedTiles = [];
+
+            for (let x = startTileX; x <= endTileX; x++) {
+                for (let y = startTileY; y <= endTileY; y++) {
+                    this.selectedTiles.push({ x: x * 16, y: y * 16 });
+                }
+            }
+
+            this.selectionBounds = {
+                startX: startTileX * 16,
+                startY: startTileY * 16,
+                endX: (endTileX + 1) * 16,
+                endY: (endTileY + 1) * 16
+            };
+        }
+    },
+
+    selectItemsInSelectedTiles: function() {
+        this.selectedObjects = [];
+        if (this.roomData && this.roomData.items) {
+            this.roomData.items.forEach(roomItem => {
+                const itemData = this.objectData[roomItem.id];
+                if (itemData && itemData.length > 0) {
+                    const tileData = itemData[0];
+                    const xCoordinates = roomItem.x || [];
+                    const yCoordinates = roomItem.y || [];
+
+                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
+                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                            if (this.isTileSelected(x * 16, y * 16)) {
+                                this.selectedObjects.push(roomItem);
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        console.log('Selected Objects:', this.selectedObjects);
+    },
+
+    isTileSelected: function(tileX, tileY) {
+        return this.selectedTiles.some(tile => tile.x === tileX && tile.y === tileY);
+    },
+
+    renderSelectedTiles: function() {
+        this.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Red with opacity
+        this.selectedTiles.forEach(tile => {
+            this.ctx.fillRect(tile.x, tile.y, 16, 16);
+        });
+
+        if (this.selectedTiles.length > 0) {
+            this.ctx.strokeStyle = 'white';
+            this.ctx.lineWidth = 2 / this.zoomLevel; // Adjust line width based on zoom level
+            const { startX, startY, endX, endY } = this.selectionBounds;
+            this.ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+        }
+    },
+
+ 
+    
 
     render: function() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
@@ -541,6 +722,20 @@ var game = {
         this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((this.cameraX + window.innerWidth / this.zoomLevel) / 16));
         this.viewportYStart = Math.max(0, Math.floor(this.cameraY / 16));
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((this.cameraY + window.innerHeight / this.zoomLevel) / 16));
+
+                // Render background tiles
+                const bgTileData = this.objectData[this.sceneBg][0];
+                for (let y = 0; y < this.worldHeight / 16; y++) {
+                    for (let x = 0; x < this.worldWidth / 16; x++) {
+                        const posX = x * 16;
+                        const posY = y * 16;
+                        const tileFrameIndex = bgTileData.i;
+                        const srcX = (tileFrameIndex % 150) * 16;
+                        const srcY = Math.floor(tileFrameIndex / 150) * 16;
+        
+                        this.ctx.drawImage(assets.load(bgTileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
+                    }
+                }
     
         let tileCount = 0;
     
@@ -592,6 +787,36 @@ var game = {
                         }
                     }
     
+                // Render lights directly in the render function
+                if (tileData.l && tileData.l.length > 0) {
+                    tileData.l.forEach(light => {
+                        if (Array.isArray(light) && light.length === 2) {
+                            const lightXIndex = light[0];
+                            const lightYIndex = light[1];
+
+                            if (lightXIndex >= 0 && lightXIndex < roomItem.x.length &&
+                                lightYIndex >= 0 && lightYIndex < roomItem.y.length) {
+
+                                const tileX = roomItem.x[lightXIndex];
+                                const tileY = roomItem.y[lightYIndex];
+
+                                const posX = tileX * 16 + 8;
+                                const posY = tileY * 16 + 8;
+
+                                const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+
+                                // Check if light already exists
+                                const existingLight = effects.lights.find(light => light.id === lightId);
+
+                                if (!existingLight) {
+                                    // id, posX, posY, radius, color, max intensity, type, flicker, flicker speed, flicker amount
+                                    effects.addLight(lightId, posX, posY, 200, { r: 255, g: 255, b: 255 }, 1, 'lamp', true, 0.03, 0.04);
+                                }
+                            }
+                        }
+                    });
+                }
+        
                     // Check if this is the selected object and add it to the renderQueue as a single image
                     if (roomItem === this.selectedObject && this.selectedCache) {
                         const minX = Math.min(...xCoordinates) * 16;
@@ -606,17 +831,27 @@ var game = {
                 }
             });
         }
-    
+        
         let spriteCount = 0;
+        
     
         for (let id in this.sprites) {
             const sprite = this.sprites[id];
             const spriteRight = sprite.x + sprite.width;
             const spriteBottom = sprite.y + sprite.height;
-    
+        
             // Check if sprite is within the viewport
             if (spriteRight >= this.viewportXStart * 16 && sprite.x < this.viewportXEnd * 16 &&
                 spriteBottom >= this.viewportYStart * 16 && sprite.y < this.viewportYEnd * 16) {
+                // Add shadow to render queue with z-index of 0
+                renderQueue.push({
+                    z: 0,
+                    draw: function() {
+                        game.sprites[id].drawShadow();
+                    }
+                });
+                
+                // Add sprite to render queue with z-index of 2
                 renderQueue.push({
                     z: 2, // Ensure sprites are drawn above tiles and pathfinder lines
                     draw: function() {
@@ -627,15 +862,17 @@ var game = {
             }
         }
     
+        
         // Sort renderQueue by z-index and render order
         renderQueue.sort((a, b) => a.z - b.z);
-    
-        // Draw the tiles first (z-index <= 1)
+        
+        // Draw the items in the renderQueue
         renderQueue.forEach(item => {
-            if (item.z <= 1) {
-                item.draw();
-            }
+            item.draw();
         });
+
+
+
     
         // Draw the pathfinder line if available
         if (mainSprite && mainSprite.path && mainSprite.path.length > 0) {
@@ -662,6 +899,8 @@ var game = {
     
             this.ctx.stroke();
         }
+
+        
     
         // Draw the remaining sprites (z-index > 1)
         renderQueue.forEach(item => {
@@ -669,13 +908,28 @@ var game = {
                 item.draw();
             }
         });
+
+        
+    
+        // Draw the selected tiles
+        this.renderSelectedTiles();
+
+    // Add the night filter to the renderQueue with a high z-index
+    game.ctx.save();
+    game.ctx.fillStyle = `rgba(${effects.nightFilter.color.r}, ${effects.nightFilter.color.g}, ${effects.nightFilter.color.b}, ${effects.nightFilter.opacity})`;
+    game.ctx.globalCompositeOperation = effects.nightFilter.compositeOperation;
+    game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+    game.ctx.restore();
+
+    this.ctx.globalCompositeOperation = effects.compositeOperation;
+    this.ctx.drawImage(effects.createLightMask(), 0, 0);
+    this.ctx.globalCompositeOperation = 'source-over';
     
         this.ctx.imageSmoothingEnabled = false;
     
-        weather.applyNightColorFilter(); // Apply the night color filter
         weather.drawSnow();
         weather.drawRain();
-        weather.drawFog();
+        //weather.drawFog();
         weather.drawStars();
         weather.drawLightning();
         this.handleAimAttack();
@@ -781,7 +1035,7 @@ var game = {
     
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.lineWidth = 4 / this.zoomLevel;
-            this.ctx.strokeRect(startX, startY, endX - startX, endY - startY);
+            this.ctx.strokeRect(startX, startY, endX - startX, endY - endY);
         }
     
         if (game.isEditMode) {
@@ -814,8 +1068,6 @@ var game = {
         effects.renderParticles();
         effects.transitions.render();
     },
-    
-    
 
     randomNpcMessage: function(sprite) {
         if (sprite.messages && sprite.messages.length > 0) {
@@ -959,48 +1211,52 @@ var game = {
         }
     },
     
-    loop: function(timestamp) {
-        if (!this.lastTime) {
-            this.lastTime = timestamp;
-            requestAnimationFrame(this.loop.bind(this));
-            return;
-        }
-    
-        // Calculate time elapsed since the last frame was drawn
-        const timeElapsed = timestamp - this.lastTime;
-    
-        // If the tab was inactive and a large time delay occurred, cap the time step
-        if (timeElapsed > 1000) { // 1000 milliseconds threshold, can be adjusted
-            this.accumulatedTime = this.fixedDeltaTime; // Skip the catch-up frames
-        } else {
-            this.accumulatedTime += timeElapsed;
-        }
-    
-        this.deltaTime = this.fixedDeltaTime; // Use fixed delta time for stable updates
+loop: function(timestamp) {
+    if (!this.lastTime) {
         this.lastTime = timestamp;
-    
-        // Process the game logic in fixed steps
-        while (this.accumulatedTime >= this.fixedDeltaTime) {
-            this.updateGameLogic(this.fixedDeltaTime);
-            this.accumulatedTime -= this.fixedDeltaTime;
-        }
-    
-        this.render();
-    
-        // FPS monitoring
-        var debugFPS = document.getElementById('gameFps');
-        var fps = 1000 / timeElapsed; // Calculate FPS using time elapsed since last frame
-        if (debugFPS) {
-            debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
-        }
-    
-        // Continue the loop
         requestAnimationFrame(this.loop.bind(this));
-    },
+        return;
+    }
+
+    // Calculate time elapsed since the last frame was drawn
+    const timeElapsed = timestamp - this.lastTime;
+
+    // If the tab was inactive and a large time delay occurred, cap the time step
+    if (timeElapsed > 1000) { // 1000 milliseconds threshold, can be adjusted
+        this.accumulatedTime = this.fixedDeltaTime; // Skip the catch-up frames
+    } else {
+        this.accumulatedTime += timeElapsed;
+    }
+
+    this.deltaTime = this.fixedDeltaTime; // Use fixed delta time for stable updates
+    this.lastTime = timestamp;
+
+    // Process the game logic in fixed steps
+    while (this.accumulatedTime >= this.fixedDeltaTime) {
+        this.updateGameLogic(this.fixedDeltaTime);
+        this.accumulatedTime -= this.fixedDeltaTime;
+    }
+
+    this.render();
+
+    // FPS monitoring
+    var debugFPS = document.getElementById('gameFps');
+    var fps = 1000 / timeElapsed; // Calculate FPS using time elapsed since last frame
+    if (debugFPS) {
+        debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
+    }
+
+    // Update game time display
+    var gameTimeDisplay = document.getElementById('game_time');
+    if (gameTimeDisplay) {
+        gameTimeDisplay.innerHTML = this.gameTime.display();
+    }
+
+    // Continue the loop
+    requestAnimationFrame(this.loop.bind(this));
+},
 
     updateGameLogic: function(deltaTime) {
-        // Update game time
-        this.gameTime.update(deltaTime);
     
         for (let id in this.sprites) {
             if (this.sprites[id].update) {
@@ -1008,6 +1264,8 @@ var game = {
             }
         }
     
+        this.gameTime.update(deltaTime);
+        effects.updateDayNightCycle();
         this.updateAnimatedTiles(deltaTime);
         weather.updateSnow(deltaTime);
         weather.updateRain(deltaTime);
@@ -1017,6 +1275,7 @@ var game = {
         this.updateCamera();
         effects.updateParticles(deltaTime);
         effects.transitions.update();
+        effects.updateLights(deltaTime);
 
         if(typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
             ui_window.checkAndUpdateUIPositions();
@@ -1141,6 +1400,7 @@ var game = {
     
         return collisionDetected;
     },    
+    
 
     findFreeLocation: function(width, height) {
         const maxAttempts = 30; // Maximum number of attempts to find a free location

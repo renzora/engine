@@ -50,6 +50,7 @@ var sprite = {
             },
 
             draw: this.draw,
+            drawShadow: this.drawShadow,
             addDirection: this.addDirection,
             removeDirection: this.removeDirection,
             updateDirection: this.updateDirection,
@@ -219,27 +220,56 @@ var sprite = {
             game.ctx.scale(this.scale, this.scale);
         }
     
-     // Adjust shadow position and scale
-     game.ctx.shadowBlur = 15;
-     game.ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
-     game.ctx.beginPath();
-     const shadowX = (this.width / 2 + 2) * this.scale; // Move shadow to the right
-     const shadowY = (this.height + 5) * this.scale; // Move shadow down further
-     const shadowWidth = this.width * this.scale * 0.6;
-     const shadowHeight = this.height * this.scale * 0.2;
-     game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
-     game.ctx.fill();
- 
-     game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
- 
-     if (this.isEnemy) {
-         game.ctx.fillStyle = 'red';
-         game.ctx.fillRect(0, -10, this.width, 5);
-         game.ctx.fillStyle = 'green';
-         game.ctx.fillRect(0, -10, this.width * (this.health / this.maxHealth), 5);
-     }
- 
-     game.ctx.restore();
+        game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
+    
+        if (this.isEnemy) {
+            game.ctx.fillStyle = 'red';
+            game.ctx.fillRect(0, -10, this.width, 5);
+            game.ctx.fillStyle = 'green';
+            game.ctx.fillRect(0, -10, this.width * (this.health / this.maxHealth), 5);
+        }
+    
+        game.ctx.restore();
+    },
+
+    drawShadow: function() {
+        game.ctx.save();
+        game.ctx.translate(this.x, this.y);
+    
+        let shadowX, shadowY;
+        const shadowWidth = this.width * this.scale * 0.6;
+        const shadowHeight = this.height * this.scale * 0.2;
+    
+        switch (this.direction) {
+            case 'N':
+                shadowX = (this.width / 2) * this.scale; // Center shadow
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'S':
+                shadowX = (this.width / 2) * this.scale; // Center shadow
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'E':
+                shadowX = (this.width / 2) * this.scale; // Move shadow to the right
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'W':
+                shadowX = (this.width / 2 - 3) * this.scale; // Move shadow to the left
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            default:
+                shadowX = (this.width / 2) * this.scale; // Default to center
+                shadowY = (this.height) * this.scale; // Move shadow down
+                break;
+        }
+    
+        game.ctx.shadowBlur = 15;
+        game.ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        game.ctx.beginPath();
+        game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
+        game.ctx.fill();
+    
+        game.ctx.restore();
     },
 
     walkToClickedTile: function(tileX, tileY) {
