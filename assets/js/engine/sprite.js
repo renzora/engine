@@ -278,6 +278,7 @@ var sprite = {
         this.path = this.calculatePath(currentX, currentY, tileX, tileY);
         this.pathIndex = 0;
         this.isMovingToTarget = true;
+        audio.playAudio("walkAudio", assets.load('walkAudio'), 'sfx', true);
     },
 
     calculatePath: function(startX, startY, endX, endY) {
@@ -321,6 +322,7 @@ var sprite = {
             this.stopping = true;
             this.currentFrame = 0; // Reset to default standing position
             this.path = []; // Clear the path once the destination is reached
+            audio.stopLoopingAudio('walkAudio', 'sfx', 0.5);
             return;
         }
     
@@ -367,10 +369,15 @@ var sprite = {
     },
 
     addDirection: function(direction) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] Adding direction: ${direction}`);
+
         this.directions[direction] = true;
         this.updateDirection();
         this.moving = true;
         this.stopping = false;
+
+        audio.playAudio('walkAudio', assets.load('walkAudio'), 'sfx', true);
     },
 
     removeDirection: function(direction) {

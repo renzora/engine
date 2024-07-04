@@ -59,7 +59,7 @@ var network = {
 
     close: function(e) {
         modal.closeAll();
-        modal.load("servers/errors/mainServer.php", "error_window");
+        modal.load("servers/errors/mainServer.php", "error_window", "Server Error", true);
     },
 
     getToken: function(name) {

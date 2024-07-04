@@ -1,34 +1,7 @@
-<?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
-if ($auth) {
-?>
-<div data-window='ui_window' data-close="false">
-
-<div id="ui_window_objectives" class="w-72 fixed top-1/4 right-2 z-10 flex rounded flex-col tracking-tight bg-[#137966] bg-opacity-70 shadow-md fade-edges">
-    <div id="objectives_container" class="flex flex-col space-y-1 p-2">
-        <!-- Objectives will be dynamically inserted here by the displayObjectives method -->
-    </div>
-</div>
-
-<div class='fixed bottom-3 left-2 text-sm mb-1'>
-  <button id="show_modals_button" class="green_button text-white font-bold py-1 px-2 rounded shadow-md relative" onclick="modal.showModalsList()">
-    Modals
-  </button>
-  <div id="modals_list" class="hidden absolute bottom-10 left-0 bg-gray-800 p-2 rounded shadow-md z-20 w-64"></div>
-</div>
-
-
-  <div class='fixed bottom-0 right-2 z-10 text-sm mb-1 flex space-x-4 tracking-tight'>
-    <span class="text-white rounded-md">Renzora v0.0.7</span>
-    <span class="text-white rounded-md" id="gameFps"></span>
-    <span id="tiles_rendered" class="text-white rounded-md"></span>
-    <span id="game_time" class="text-white rounded-md">00:00</span>
-    <button onclick="modal.load('minimap');">Minimap</button>
-  </div>
-
-  <!-- Top Center: Health, Energy, Quick Items, Avatar -->
-  <div id="ui_window_inventory" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
-    <div id="item_primary" class="relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300">
+<div data-window='ui_inventory_window' data-close="false">
+  <div id="ui_inventory_window" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
+    
+    <div id="ui_item_primary" class="relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300">
       <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
       <div class="items_icon items_sword scale-[4] z-10"></div>
     </div>
@@ -39,44 +12,44 @@ if ($auth) {
             <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
             <div class="items_icon items_health scale-[1.2]"></div>
           </div>
-          <div id="health" class="rounded bg-gradient-to-r from-lime-500 to-green-600 h-full transition-width duration-500 flex-grow"></div>
+          <div id="ui_health" class="rounded bg-gradient-to-r from-lime-500 to-green-600 h-full transition-width duration-500 flex-grow"></div>
           <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
         </div>
         <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
           <div class="mx-1">
             <div class="items_icon items_energy scale-[1.2]"></div>
           </div>
-          <div id="energy" class="rounded bg-gradient-to-r from-cyan-400 to-blue-600 h-full transition-width duration-500 flex-grow"></div>
+          <div id="ui_energy" class="rounded bg-gradient-to-r from-cyan-400 to-blue-600 h-full transition-width duration-500 flex-grow"></div>
           <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
         </div>
       </div>
-      <!-- Quick Items -->
-      <div class="flex space-x-2" id="quick_items_container">
-        <div id="quick_item_1" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+      <div class="flex space-x-2" id="ui_quick_items_container">
+        <!-- Quick Items -->
+        <div id="ui_quick_item_1" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_potion scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_2" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+        <div id="ui_quick_item_2" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_shield scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_3" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+        <div id="ui_quick_item_3" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_banana scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_4" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+        <div id="ui_quick_item_4" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_skull scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_5" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+        <div id="ui_quick_item_5" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_key scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_6" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+        <div id="ui_quick_item_6" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_gold scale-[2.1] z-10"></div>
         </div>
-        <div id="quick_item_7" class="quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
+        <div id="ui_quick_item_7" class="ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center">
           <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
           <div class="items_icon items_apple scale-[2.1] z-10"></div>
         </div>
@@ -84,71 +57,18 @@ if ($auth) {
     </div>
   </div>
 
-
-  <style>
-  .highlight {
-    outline: 2px dashed yellow;
-    outline-offset: -3px;
-  }
-
-  /* Custom styles for the checkbox */
-  .custom-checkbox {
-    position: relative;
-    width: 18px;
-    height: 18px;
-    background-color: white;
-    border-radius: 2px;
-    margin: 3px 0 3px 3px;
-  }
-
-  .custom-checkbox input {
-    opacity: 0;
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    left: 0;
-    top: 0;
-    cursor: pointer;
-  }
-
-  .custom-checkbox input:checked + .checkmark {
-    background-color: #35d357;
-    border: 1px solid black;
-  }
-
-  .custom-checkbox input:checked + .checkmark::after {
-    content: '';
-    position: absolute;
-    left: 6px;
-    top: 3px;
-    width: 4px;
-    height: 9px;
-    border: solid green;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-  }
-
-  .checkmark {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    width: 100%;
-    border-radius: 2px;
-    border: 1px solid black;
-  }
-  </style>
-
-<script>
-var ui_window = {
+  <script>
+var ui_inventory_window = {
   dragSrcEl: null,
   dragClone: null,
+  hasPlayedDragOverSound: false, // Flag to track if the drag over sound has been played
+  lastHoveredSlot: null, // Track the last hovered slot
 
   start: function() {
     this.initializeDragAndDrop();
     this.initializeQuickItems();
     this.initializePrimaryItem();
-    this.displayObjectives();
+    this.displayInventoryItems();
 
     if (game.itemsData && game.itemsImg) {
       this.displayInventoryItems();
@@ -157,10 +77,9 @@ var ui_window = {
     }
 
     this.checkAndUpdateUIPositions();
-    ui_window.checkObjective("Find the hidden sword");
 
-    document.addEventListener('dragover', ui_window.documentDragOverHandler);
-document.addEventListener('drop', ui_window.documentDropHandler);
+    document.addEventListener('dragover', ui_inventory_window.documentDragOverHandler);
+    document.addEventListener('drop', ui_inventory_window.documentDropHandler);
   },
 
   unmount: function() {
@@ -171,19 +90,21 @@ document.addEventListener('drop', ui_window.documentDropHandler);
 
   documentDragOverHandler: function(e) {
     e.preventDefault();
-    if (ui_window.dragClone) {
-      ui_window.dragClone.style.top = `${e.clientY}px`;
-      ui_window.dragClone.style.left = `${e.clientX}px`;
+    if (ui_inventory_window.dragClone) {
+      ui_inventory_window.dragClone.style.top = `${e.clientY}px`;
+      ui_inventory_window.dragClone.style.left = `${e.clientX}px`;
     }
   },
 
   documentDropHandler: function(e) {
+    // Play sound effect for dropping on the scene
+    audio.playAudio("menuDropScene", assets.load('menuDropScene'), 'sfx', false);
     if (e.stopPropagation) {
       e.stopPropagation();
     }
-    if (ui_window.dragClone) {
-      document.body.removeChild(ui_window.dragClone);
-      ui_window.dragClone = null;
+    if (ui_inventory_window.dragClone) {
+      document.body.removeChild(ui_inventory_window.dragClone);
+      ui_inventory_window.dragClone = null;
     }
   },
 
@@ -209,9 +130,9 @@ document.addEventListener('drop', ui_window.documentDropHandler);
       if (itemData) {
         let itemElement;
         if (index === 0) {
-          itemElement = document.getElementById('item_primary'); // Primary item
+          itemElement = document.getElementById('ui_item_primary'); // Primary item
         } else {
-          itemElement = document.getElementById(`quick_item_${index}`); // Quick items
+          itemElement = document.getElementById(`ui_quick_item_${index}`); // Quick items
         }
 
         if (itemElement) {
@@ -255,7 +176,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
     const thresholdY = game.worldHeight - 50; // Adjust this value as needed
     const thresholdX = game.worldWidth - 80;  // Adjust this value as needed
 
-    const inventoryElement = document.getElementById('ui_window_inventory');
+    const inventoryElement = document.getElementById('ui_inventory_window');
     if (sprite.y > thresholdY) {
       inventoryElement.classList.add('top-4');
       inventoryElement.classList.remove('bottom-4');
@@ -264,7 +185,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
       inventoryElement.classList.remove('top-4');
     }
 
-    const objectivesElement = document.getElementById('ui_window_objectives');
+    const objectivesElement = document.getElementById('ui_objectives_window');
     if (sprite.x > thresholdX) {
       objectivesElement.classList.add('left-2');
       objectivesElement.classList.remove('right-2');
@@ -274,50 +195,8 @@ document.addEventListener('drop', ui_window.documentDropHandler);
     }
   },
 
-  checkObjective: function(objectiveName) {
-    const objective = game.objectives.find(obj => obj.name === objectiveName);
-    if (objective) {
-      objective.status = true;
-      this.displayObjectives();
-    }
-  },
-
-  displayObjectives: function() {
-    const objectivesContainer = document.getElementById('objectives_container');
-    if (objectivesContainer) {
-      objectivesContainer.innerHTML = '';
-      game.objectives.forEach(obj => {
-        const objectiveItem = document.createElement('div');
-        objectiveItem.classList.add('flex', 'items-start', 'space-x-2');
-
-        const customCheckbox = document.createElement('div');
-        customCheckbox.classList.add('custom-checkbox', 'relative', 'flex-shrink-0', 'mt-2');
-
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = obj.status;
-        checkbox.disabled = true;
-
-        const checkmark = document.createElement('span');
-        checkmark.classList.add('checkmark');
-
-        customCheckbox.appendChild(checkbox);
-        customCheckbox.appendChild(checkmark);
-
-        const label = document.createElement('label');
-        label.textContent = obj.name;
-        label.classList.add('text-white', 'flex-1', 'break-words');
-
-        objectiveItem.appendChild(customCheckbox);
-        objectiveItem.appendChild(label);
-
-        objectivesContainer.appendChild(objectiveItem);
-      });
-    }
-  },
-
   initializeDragAndDrop: function() {
-    const draggableItems = document.querySelectorAll('.quick_item, #item_primary');
+    const draggableItems = document.querySelectorAll('.ui_quick_item, #ui_item_primary');
 
     draggableItems.forEach(item => {
       item.setAttribute('draggable', true);
@@ -332,7 +211,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
   },
 
   initializeQuickItems: function() {
-    const quickItems = document.querySelectorAll('.quick_item');
+    const quickItems = document.querySelectorAll('.ui_quick_item');
     quickItems.forEach(item => {
       item.addEventListener('click', () => {
         const cooldown = parseInt(item.dataset.cd, 10) * 1000;
@@ -344,7 +223,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
   },
 
   initializePrimaryItem: function() {
-    const primaryItem = document.getElementById('item_primary');
+    const primaryItem = document.getElementById('ui_item_primary');
     primaryItem.addEventListener('click', () => {
       const cooldown = parseInt(primaryItem.dataset.cd, 10) * 1000;
       if (cooldown > 0) {
@@ -392,26 +271,26 @@ document.addEventListener('drop', ui_window.documentDropHandler);
   },
 
   handleDragStart: function(e) {
-    this.dragSrcEl = e.target.closest('.quick_item, #item_primary');
-  e.dataTransfer.effectAllowed = 'move';
+    this.dragSrcEl = e.target.closest('.ui_quick_item, #ui_item_primary');
+    e.dataTransfer.effectAllowed = 'move';
 
-  const iconDiv = this.dragSrcEl.querySelector('.items_icon');
-  if (iconDiv) {
-    const clonedIcon = iconDiv.cloneNode(true);
-    clonedIcon.style.position = 'absolute';
-    clonedIcon.style.top = `${e.clientY}px`;
-    clonedIcon.style.left = `${e.clientX}px`;
-    clonedIcon.style.pointerEvents = 'none';
-    clonedIcon.style.zIndex = '1000';
-    clonedIcon.classList.add('scale-[4]'); // Increase the scale to 4
+    const iconDiv = this.dragSrcEl.querySelector('.items_icon');
+    if (iconDiv) {
+      const clonedIcon = iconDiv.cloneNode(true);
+      clonedIcon.style.position = 'absolute';
+      clonedIcon.style.top = `${e.clientY}px`;
+      clonedIcon.style.left = `${e.clientX}px`;
+      clonedIcon.style.pointerEvents = 'none';
+      clonedIcon.style.zIndex = '1000';
+      clonedIcon.classList.add('scale-[4]'); // Increase the scale to 4
 
-    this.dragClone = clonedIcon;
-    document.body.appendChild(clonedIcon);
-  }
+      this.dragClone = clonedIcon;
+      document.body.appendChild(clonedIcon);
+    }
 
-  var img = new Image();
-  img.src = '';
-  e.dataTransfer.setDragImage(img, 0, 0);
+    var img = new Image();
+    img.src = '';
+    e.dataTransfer.setDragImage(img, 0, 0);
   },
 
   handleDragOver: function(e) {
@@ -425,12 +304,20 @@ document.addEventListener('drop', ui_window.documentDropHandler);
       this.dragClone.style.left = `${e.clientX}px`;
     }
 
-    const target = e.target.closest('.quick_item, #item_primary');
+    const target = e.target.closest('.ui_quick_item, #ui_item_primary');
     if (target) {
       this.clearHighlights();
       target.classList.add('highlight');
+      // Play sound effect for drag over if not already played or if a new slot is hovered
+      if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
+        audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        this.hasPlayedDragOverSound = true; // Set the flag to true
+        this.lastHoveredSlot = target; // Update the last hovered slot
+      }
     } else {
       this.clearHighlights();
+      this.hasPlayedDragOverSound = false; // Reset the flag when dragging out
+      this.lastHoveredSlot = null; // Reset the last hovered slot
     }
     return false;
   },
@@ -439,7 +326,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
     if (e.stopPropagation) {
       e.stopPropagation();
     }
-    const target = e.target.closest('.quick_item, #item_primary');
+    const target = e.target.closest('.ui_quick_item, #ui_item_primary');
     if (this.dragSrcEl !== target && target) {
       const srcInnerHTML = this.dragSrcEl.innerHTML;
       const targetInnerHTML = target.innerHTML;
@@ -449,13 +336,20 @@ document.addEventListener('drop', ui_window.documentDropHandler);
 
       this.updateScale(this.dragSrcEl);
       this.updateScale(target);
+      // Play sound effect for dropping in a slot
+      audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+    } else {
+      // Play sound effect for dropping on the scene if not dropping in a slot
+      audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
     }
     this.clearHighlights();
+    this.hasPlayedDragOverSound = false; // Reset the flag after drop
+    this.lastHoveredSlot = null; // Reset the last hovered slot after drop
     return false;
   },
 
   clearHighlights: function() {
-    const draggableItems = document.querySelectorAll('.quick_item, #item_primary');
+    const draggableItems = document.querySelectorAll('.ui_quick_item, #ui_item_primary');
     draggableItems.forEach(item => {
       item.classList.remove('highlight');
     });
@@ -463,7 +357,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
 
   updateScale: function(element) {
     const icon = element.querySelector('.items_icon');
-    if (element.id === 'item_primary') {
+    if (element.id === 'ui_item_primary') {
       icon.classList.remove('scale-[2.1]');
       icon.classList.add('scale-[4]');
     } else {
@@ -473,7 +367,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
   },
 
   handleDragEnd: function(e) {
-    const draggableItems = document.querySelectorAll('.quick_item, #item_primary');
+    const draggableItems = document.querySelectorAll('.ui_quick_item, #ui_item_primary');
     draggableItems.forEach(item => {
       item.classList.remove('dragging');
       item.style.cursor = 'grab';
@@ -487,10 +381,7 @@ document.addEventListener('drop', ui_window.documentDropHandler);
   }
 };
 
-ui_window.start();
+ui_inventory_window.start();
 </script>
 
 </div>
-<?php
-}
-?>

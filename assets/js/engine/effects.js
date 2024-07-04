@@ -2,10 +2,12 @@ var effects = {
     lights: [],
     compositeOperation: 'soft-light',
     nightFilter: {
-        opacity: 0.81,
+        opacity: 0.75,
         color: { r: 7, g: 0, b: 57 },
         compositeOperation: 'hard-light'
     },
+    timeBasedUpdatesEnabled: true,
+    nightAmbiencePlaying: false,
     LightSource: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
         this.id = id;
         this.x = x;
@@ -20,7 +22,6 @@ var effects = {
         this.flickerAmount = flickerAmount;
         this.flickerOffset = Math.random() * 1000;
     },
-
     createLightMask: function() {
         const lightCanvas = document.createElement('canvas');
         lightCanvas.width = game.canvas.width;
@@ -36,11 +37,16 @@ var effects = {
                 console.warn(`Invalid light parameters: x=${light.x}, y=${light.y}, radius=${light.baseRadius}`);
                 return;
             }
-        
+    
+            // Create a radial gradient with multiple stops for a sharper falloff
             const gradient = lightCtx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.baseRadius);
             gradient.addColorStop(0, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity})`);
+            gradient.addColorStop(0.2, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.8})`);
+            gradient.addColorStop(0.4, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.6})`);
+            gradient.addColorStop(0.6, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.4})`);
+            gradient.addColorStop(0.8, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.2})`);
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        
+    
             lightCtx.fillStyle = gradient;
             lightCtx.beginPath();
             lightCtx.arc(light.x, light.y, light.baseRadius, 0, Math.PI * 2);
@@ -48,8 +54,7 @@ var effects = {
         });
         
         return lightCanvas;
-    },
-
+    },    
     addLight: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
         const existingLight = this.lights.find(light => light.id === id);
         if (!existingLight) {
@@ -71,7 +76,6 @@ var effects = {
             this.lights.push(newLight);
         }
     },
-
     updateLights: function(deltaTime) {
         this.lights.forEach(light => {
             if (light.maxIntensity > 0) {
@@ -87,28 +91,33 @@ var effects = {
             }
         });
     },
-
     updateDayNightCycle: function() {
+        if (!this.timeBasedUpdatesEnabled) return; // Check if time-based updates are enabled
+    
         const hours = game.gameTime.hours;
         const minutes = game.gameTime.minutes;
         const time = hours + minutes / 60;
-
+    
         // Calculate night filter color and opacity
-        if (time >= 22 || time < 7) { // From 10pm to 7am
+        if (time >= 22 || time < 7) { // From 10 PM to 7 AM
+            if (!this.nightAmbiencePlaying) {
+                audio.playAudio("nightAmbience", assets.load('nightAmbience'), 'ambience', true);
+                this.nightAmbiencePlaying = true;
+            }
             if (time >= 22 && time < 24) {
-                effects.nightFilter.opacity = Math.min(0.9, (time - 22) / 2 * 0.9);
+                effects.nightFilter.opacity = Math.min(0.8, (time - 22) / 2 * 0.8);
             } else if (time >= 0 && time < 6) {
-                effects.nightFilter.opacity = 0.9;
+                effects.nightFilter.opacity = 0.8;
             } else if (time >= 6 && time < 7) { // Sunrise effect
                 const progress = (time - 6);
-                effects.nightFilter.opacity = 0.9 - progress * 0.9;
+                effects.nightFilter.opacity = 0.8 - progress * 0.8;
                 effects.nightFilter.color = {
                     r: Math.round(7 + progress * (255 - 7)),
                     g: Math.round(0 + progress * (140 - 0)),
                     b: Math.round(57 + progress * (0 - 57))
                 };
             }
-
+    
             const progress = (time >= 22) ? (time - 22) / 2 : (7 - time) / 7;
             effects.nightFilter.color = {
                 r: Math.round(0 + progress * (7 - 0)),
@@ -116,10 +125,14 @@ var effects = {
                 b: Math.round(0 + progress * (57 - 0))
             };
         } else {
+            if (this.nightAmbiencePlaying) {
+                audio.stopLoopingAudio('nightAmbience', 'ambience', 0.5);
+                this.nightAmbiencePlaying = false;
+            }
             effects.nightFilter.opacity = 0;
             effects.nightFilter.color = { r: 255, g: 255, b: 255 };
         }
-
+    
         // Update light sources intensity
         if (time >= 22 || time < 6) {
             if (time >= 22 && time < 24) {
@@ -136,7 +149,6 @@ var effects = {
             effects.updateLightsIntensity(0);
         }
     },
-
     updateLightsIntensity: function(progress) {
         this.lights.forEach(light => {
             const hours = game.gameTime.hours;
@@ -158,7 +170,6 @@ var effects = {
             light.currentIntensity = light.maxIntensity * progress;
         });
     },
-
     shakeMap: function(duration, intensity) {
         const originalCameraX = game.cameraX;
         const originalCameraY = game.cameraY;

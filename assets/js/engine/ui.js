@@ -4,6 +4,7 @@ var ui = {
 
   notif: function(id, message, replace = false) {
       return new Promise(resolve => {
+        audio.playAudio("notification", assets.load('notification'), 'sfx', false);
           let container = document.getElementById('notification');
           if (!container) {
               container = document.createElement('div');
@@ -187,6 +188,7 @@ var ui = {
         button.addEventListener('click', () => {
           const target = button.getAttribute('data-tab');
           this.showTab(target, tabButtons, tabContents);
+          audio.playAudio("click", assets.load('click'), 'sfx');
         });
       });
   

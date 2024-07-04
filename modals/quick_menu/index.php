@@ -6,6 +6,7 @@ if ($auth) {
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#363657 1px, transparent 0) !important;'>
       <div class='float-right'>
+      <button class="icon minimize_dark hint--left" aria-label="Minimise" data-minimize></button>
         <button class="icon close_dark mr-1 mt-1 hint--left" aria-label="Close (ESC)" data-close></button>
       </div>
       <div data-part='title' class='title_bg window_border' style='background: #3d6a91; color: #ede8d6;'>Console</div>

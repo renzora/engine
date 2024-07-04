@@ -3,6 +3,9 @@ window.modalResolves = window.modalResolves || {};
 var modal = {
     modals: [],
     baseZIndex: null,
+    modalNames: {}, // Stores the display names of the modals
+    showInListFlags: {}, // Stores the flags for showing modals in the list
+
     init: function(selector, options) {
         const element = document.querySelector(selector);
         if (!element) {
@@ -15,6 +18,8 @@ var modal = {
         }
 
         this.initDraggable(element, options);
+        this.initMinimizeAndCloseButtons(element);
+
         const highestZIndex = this.baseZIndex + this.modals.length;
         element.style.zIndex = highestZIndex.toString();
         this.modals.push(element);
@@ -120,7 +125,35 @@ var modal = {
         element.addEventListener('mousedown', onMouseDown);
     },
 
-    load: function(page, window_name) {
+    initMinimizeAndCloseButtons: function(element) {
+        const closeButton = element.querySelector('[data-close]');
+        if (closeButton) {
+            closeButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const modalId = element.getAttribute('data-window');
+                this.close(modalId);
+            });
+        }
+
+        const minimizeButton = element.querySelector('[data-minimize]');
+        if (minimizeButton) {
+            minimizeButton.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const modalId = element.getAttribute('data-window');
+                this.minimize(modalId);
+            });
+        }
+    },
+
+    minimize: function(id) {
+        var modalElement = document.querySelector("[data-window='" + id + "']");
+        if (modalElement) {
+            modalElement.style.display = 'none';
+            // Optionally, you can add logic to show the minimized state or a taskbar icon
+        }
+    },
+
+    load: function(page, window_name, modalName = null, showInList = true) {
         if (!page.includes('/')) {
             page += '/index.php';
         }
@@ -130,11 +163,19 @@ var modal = {
             window_name = `${pageName}_window`;
         }
 
+        if (modalName) {
+            this.modalNames[window_name] = modalName;
+        }
+
+        this.showInListFlags[window_name] = showInList;
+
         return new Promise((resolve, reject) => {
+            console.log('Loading modal:', window_name);
             let existingModal = document.querySelector("[data-window='" + window_name + "']");
             if (existingModal) {
-                //this.show(window_name);
                 this.front(existingModal);
+                console.log('Modal already exists, bringing to front:', window_name);
+                resolve();
             } else {
                 ui.ajax({
                     url: 'modals/' + page,
@@ -152,39 +193,113 @@ var modal = {
                             }
                         });
 
+                        console.log('Modal loaded and initialized:', window_name);
                         window.modalResolves[window_name] = resolve;
+                        resolve();
+                    },
+                    error: (error) => {
+                        console.error('Error loading modal:', window_name, error);
+                        reject(`Failed to load modal from ${page}: ${error}`);
                     }
                 });
             }
         });
     },
 
-    topZIndex: function() {
-        const highestZIndex = Array.from(document.querySelectorAll('*'))
-            .map(el => parseFloat(window.getComputedStyle(el).zIndex))
-            .filter(zIndex => !isNaN(zIndex))
-            .reduce((max, zIndex) => Math.max(max, zIndex), 0);
+    updateModalsButtonVisibility: function() {
+        const modalsButton = document.getElementById('show_modals_button');
+        const modalsList = document.getElementById('modals_list');
 
-        return highestZIndex;
+        const visibleModals = this.modals.filter(modal => {
+            const modalName = modal.getAttribute('data-window');
+            return this.showInListFlags[modalName];
+        });
+
+        if (visibleModals.length > 0) {
+            modalsButton.classList.remove('hidden');
+            if (modalsList) {
+                modalsList.classList.remove('hidden');
+            }
+        } else {
+            modalsButton.classList.add('hidden');
+            if (modalsList) {
+                modalsList.classList.add('hidden');
+            }
+        }
+    },
+
+    showModalsList: function() {
+        const modalsList = document.getElementById('modals_list');
+        modalsList.innerHTML = '';
+
+        const visibleModals = this.modals.filter(modal => {
+            const modalName = modal.getAttribute('data-window');
+            return this.showInListFlags[modalName];
+        });
+
+        if (visibleModals.length > 0) {
+            visibleModals.forEach(modal => {
+                const modalName = modal.getAttribute('data-window');
+                const displayName = this.modalNames[modalName] || modalName;
+                const modalItem = document.createElement('div');
+                modalItem.classList.add('relative', 'flex', 'items-center', 'p-2', 'hover:bg-gray-700', 'rounded-md', 'cursor-pointer', 'text-white', 'overflow-hidden', 'w-full');
+
+                const modalText = document.createElement('div');
+                modalText.textContent = displayName;
+                modalText.classList.add('flex-grow', 'truncate', 'text-white'); // Ensure text stays on one line and is truncated if too long
+
+                const closeButton = document.createElement('button');
+                closeButton.classList.add('icon', 'close_dark', 'absolute', 'right-0', 'hint--left', 'text-white', 'hover:text-red-500', 'hidden');
+                closeButton.setAttribute('aria-label', 'Close');
+                closeButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.close(modalName);
+                    modalsList.removeChild(modalItem);
+                    // Check if there are any items left
+                    if (modalsList.children.length === 0) {
+                        modalsList.classList.add('hidden');
+                        this.updateModalsButtonVisibility();
+                    }
+                });
+
+                modalItem.addEventListener('mouseover', () => {
+                    closeButton.classList.remove('hidden'); // Show on hover
+                });
+
+                modalItem.addEventListener('mouseout', () => {
+                    closeButton.classList.add('hidden'); // Hide when not hovered
+                });
+
+                modalItem.addEventListener('click', () => {
+                    this.front(modal);
+                    this.show(modalName); // Ensure the modal is shown
+                    modalsList.classList.add('hidden');
+                });
+
+                modalItem.appendChild(modalText);
+                modalItem.appendChild(closeButton);
+                modalsList.appendChild(modalItem);
+            });
+            modalsList.classList.remove('hidden');
+        } else {
+            modalsList.classList.add('hidden');
+        }
+        document.addEventListener('click', this.hideModalsList);
+    },
+
+    hideModalsList: function(event) {
+        const modalsList = document.getElementById('modals_list');
+        if (!modalsList.contains(event.target) && event.target.id !== 'show_modals_button') {
+            modalsList.classList.add('hidden');
+            document.removeEventListener('click', modal.hideModalsList);
+        }
     },
 
     show: function(modalId) {
         var modal = document.querySelector("[data-window='" + modalId + "']");
-        if (modal && modal.style.display === 'none') {
+        if (modal) {
             modal.style.display = 'block';
         }
-    },
-
-    hide: function(modalId) {
-        var modal = document.querySelector("[data-window='" + modalId + "']");
-        if (modal) {
-            modal.style.display = 'none';
-        }
-    },
-
-    exists: function(modalId) {
-        var modal = document.querySelector("[data-window='" + modalId + "']");
-        return modal !== null;
     },
 
     close: function(id, fromEscKey = false) {
@@ -194,17 +309,27 @@ var modal = {
                 console.log(`Closing prevented for modal: ${id}`);
                 return;
             }
-    
+
             modalElement.remove();
+            audio.playAudio("closModal", assets.load('closeModal'), 'sfx');
             this.modals = this.modals.filter(modal => modal.getAttribute('data-window') !== id);
             ui.unmount(id);
-    
+
             if (window.modalResolves && window.modalResolves[id]) {
                 console.log("resolving and removing", window.modalResolves[id]);
                 window.modalResolves[id]();
                 delete window.modalResolves[id];
             }
         }
+    },
+
+    topZIndex: function() {
+        const highestZIndex = Array.from(document.querySelectorAll('*'))
+            .map(el => parseFloat(window.getComputedStyle(el).zIndex))
+            .filter(zIndex => !isNaN(zIndex))
+            .reduce((max, zIndex) => Math.max(max, zIndex), 0);
+
+        return highestZIndex;
     },
 
     showAll: function() {

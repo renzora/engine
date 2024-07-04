@@ -30,6 +30,8 @@ var input = {
 
     keyUp: function(e) {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            const timestamp = new Date().toISOString();
+            console.log(`[${timestamp}] Key up: ${e.key}`);
             e.preventDefault(); // Prevent default action for keyUp
             this.handleKeyUp(e);
         }
@@ -37,6 +39,8 @@ var input = {
 
     keyDown: function(e) {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            const timestamp = new Date().toISOString();
+            console.log(`[${timestamp}] Key down: ${e.key}`);
             if (e.key === 'Tab') {
                 e.preventDefault();
             }
@@ -80,42 +84,52 @@ var input = {
         } else if (e.key === 'Alt') {
             this.isAltPressed = true;
         }
+
+        // Check and play walking audio
+        if (mainSprite && mainSprite.isMoving) {
+            audio.playAudio("walkAudio", assets.load('walkAudio'), 'sfx', true);
+        }
     },
 
     handleKeyUp: function(e) {
+        const mainSprite = game.sprites[game.playerid];
         if (e.keyCode === 27) { // ESC key
             let maxZIndex = -Infinity;
             let maxZIndexElement = null;
             let attributeName = null;
 
-            document.querySelectorAll('[data-window]').forEach(function(element) {
-                let zIndex = parseInt(window.getComputedStyle(element).zIndex, 10);
-                if (zIndex > maxZIndex) {
+            document.querySelectorAll("*").forEach(function (element) {
+                const zIndex = parseInt(window.getComputedStyle(element).zIndex);
+                if (!isNaN(zIndex) && zIndex > maxZIndex) {
                     maxZIndex = zIndex;
                     maxZIndexElement = element;
-                    attributeName = element.getAttribute('data-window');
+                    attributeName = element.getAttribute('data-attribute-name');
                 }
             });
 
             if (maxZIndexElement) {
-                modal.closeModal(attributeName);
-            }
-        } else {
-            const dir = this.keys[e.key];
-            if (dir) {
-                const mainSprite = game.sprites[game.playerid];
-                if (mainSprite) {
-                    mainSprite.removeDirection(dir); // Control the main sprite
-                } else {
-                    console.error('Main sprite not found.');
+                maxZIndexElement.dispatchEvent(new Event('click'));
+            } else if (attributeName) {
+                const attributeElement = document.querySelector(`[data-attribute-name="${attributeName}"]`);
+                if (attributeElement) {
+                    attributeElement.dispatchEvent(new Event('click'));
                 }
+            }
+        }
+
+        const dir = this.keys[e.key];
+        if (dir && mainSprite) {
+            mainSprite.removeDirection(dir);
+
+            // Stop walking audio if no directions are pressed
+            if (!mainSprite.isMoving) {
+                audio.stopLoopingAudio('walkAudio', 'sfx', 0.5);
             }
         }
 
         if (e.key === ' ') {
             this.isSpacePressed = false;
-            const mainSprite = game.sprites[game.playerid];
-            if (mainSprite && game.allowControls) {
+            if (mainSprite) {
                 mainSprite.targetAim = false;
             }
         } else if (e.key === 'Control') {

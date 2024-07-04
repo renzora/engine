@@ -4,8 +4,11 @@ var audio = {
     oscillatorTypes: ['sine', 'square', 'sawtooth', 'triangle', 'pulse', 'noise'],
     channels: {},
     sources: {},
-    defaultVolume: 0.5,
+    queues: {},
+    lastPlayedTimes: {},
+    defaultVolume: 1,
     channelTempos: {},
+    isLoopingAudioPlaying: {},
 
     start: function() {
         if (!this.audioContext) {
@@ -19,8 +22,26 @@ var audio = {
 
             this.createChannel('master', this.defaultVolume);
             this.createChannel('music', this.defaultVolume);
+            this.setVolume('music', 0.05);
             this.createChannel('sfx', this.defaultVolume);
+            this.createChannel('ambience', 0.5);
             console.log("Audio context initialized. Master, music, sfx channels created.");
+        }
+    },
+
+    pauseAll: function() {
+        if (this.audioContext && this.audioContext.state === 'running') {
+            this.audioContext.suspend().then(() => {
+                console.log('Audio context suspended.');
+            });
+        }
+    },
+
+    resumeAll: function() {
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume().then(() => {
+                console.log('Audio context resumed.');
+            });
         }
     },
 
@@ -130,27 +151,97 @@ var audio = {
         this.detectPitch(analyser);
     },
 
-    playAudio: function(id, url, channel = 'master') {
-        console.log(`Playing audio from ${url} on channel ${channel}`);
-        this.stopAllSounds(channel);
+    playAudio: function(id, audioBuffer, channel = 'master', loop = false) {
+        const currentTime = this.audioContext.currentTime; // Get the current time in seconds
 
-        fetch(url)
-            .then(response => response.arrayBuffer())
-            .then(arrayBuffer => this.audioContext.decodeAudioData(arrayBuffer))
-            .then(audioBuffer => {
-                const source = this.audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                const gainNode = this.audioContext.createGain();
-                source.connect(gainNode);
-                gainNode.connect(this.channels[channel] || this.masterGain);
-                source.start();
+        // Check if the audio is already playing in loop
+        if (loop && this.isLoopingAudioPlaying[channel] && this.isLoopingAudioPlaying[channel][id]) {
+            return; // If already looping, do not play again
+        }
 
-                if (!this.sources[channel]) {
-                    this.sources[channel] = [];
+        this.logWithTimestamp(`Queueing audio with ID: ${id} on channel ${channel}`);
+        if (!this.queues[channel]) {
+            this.queues[channel] = [];
+        }
+
+        // Push the audio request to the queue
+        this.queues[channel].push({ id, audioBuffer, loop });
+
+        // Process the queue
+        this.processQueue(channel);
+
+        // Mark the audio as playing if it's a loop
+        if (loop) {
+            if (!this.isLoopingAudioPlaying[channel]) {
+                this.isLoopingAudioPlaying[channel] = {};
+            }
+            this.isLoopingAudioPlaying[channel][id] = true;
+        }
+    },
+
+    processQueue: function(channel) {
+        if (!this.queues[channel] || this.queues[channel].length === 0) {
+            return;
+        }
+
+        // Play the next audio in the queue
+        const nextAudio = this.queues[channel].shift();
+        if (nextAudio) {
+            this.logWithTimestamp(`Playing audio with ID: ${nextAudio.id} on channel ${channel}`);
+
+            const source = this.audioContext.createBufferSource();
+            source.buffer = nextAudio.audioBuffer;
+            const gainNode = this.audioContext.createGain();
+            source.connect(gainNode);
+            gainNode.connect(this.channels[channel] || this.masterGain);
+
+            if (nextAudio.loop) {
+                source.loop = true;
+                source.looping = true; // Custom property to identify looping sources
+                source.gainNode = gainNode; // Attach gainNode for fade-out control
+                source.loopId = nextAudio.id; // Assign the loop ID
+            }
+
+            // Add event listener to process the next audio when this one ends
+            source.onended = () => {
+                this.sources[channel] = this.sources[channel].filter(s => s !== source);
+                this.processQueue(channel);
+            };
+
+            source.start();
+
+            if (!this.sources[channel]) {
+                this.sources[channel] = [];
+            }
+            this.sources[channel].push(source);
+        }
+    },
+
+    stopLoopingAudio: function(id, channel, fadeDuration = 0.5) {
+        if (this.sources[channel]) {
+            this.sources[channel].forEach(source => {
+                if (source.looping && source.loopId === id) {
+                    const gainNode = source.gainNode;
+                    const currentTime = this.audioContext.currentTime;
+                    gainNode.gain.setValueAtTime(gainNode.gain.value, currentTime); // Set current gain value
+                    gainNode.gain.linearRampToValueAtTime(0, currentTime + fadeDuration); // Fade out
+                    source.loop = false;
+                    source.stop(currentTime + fadeDuration); // Stop after fade-out
                 }
-                this.sources[channel].push(source);
-            })
-            .catch(error => console.error(`Error playing audio from ${url}:`, error));
+            });
+            // Remove all looping sources from the array that match the loopId
+            this.sources[channel] = this.sources[channel].filter(source => !source.looping || source.loopId !== id);
+        }
+
+        // Mark the audio as not playing
+        if (this.isLoopingAudioPlaying[channel]) {
+            delete this.isLoopingAudioPlaying[channel][id];
+        }
+    },
+
+    logWithTimestamp: function(message) {
+        const timestamp = new Date().toISOString();
+        console.log(`[${timestamp}] ${message}`);
     },
 
     setVolume: function(channel, volume) {

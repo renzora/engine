@@ -1,5 +1,5 @@
 var weather = {
-    stars: [],
+    fireflys: [],
     rainDrops: [],
     snowflakes: [],
     fogs: [],
@@ -11,7 +11,7 @@ var weather = {
     snowActive: false,
     rainActive: false,
     fogActive: false,
-    starsActive: false,
+    fireflysActive: false,
     nightActive: false,
 
     createSnow: function(opacity) {
@@ -70,11 +70,11 @@ var weather = {
         }
     },
 
-    createStars: function() {
-        if (!this.starsActive) return;
-        this.stars = [];
+    createFireflys: function() {
+        if (!this.fireflysActive) return;
+        this.fireflys = [];
         for (let i = 0; i < 300; i++) {
-            this.stars.push({
+            this.fireflys.push({
                 x: Math.random() * game.canvas.width,
                 y: Math.random() * game.canvas.height,
                 radius: Math.random() * 0.3 + 0.1,
@@ -84,9 +84,9 @@ var weather = {
         }
     },
 
-    updateStars: function() {
-        if (!this.starsActive) return;
-        for (let star of this.stars) {
+    updateFireflys: function() {
+        if (!this.fireflysActive) return;
+        for (let star of this.fireflys) {
             star.radius += star.twinkle;
             if (star.radius > 0.2 || star.radius < 0.1) {
                 star.twinkle = -star.twinkle;
@@ -99,10 +99,10 @@ var weather = {
         }
     },
 
-    drawStars: function() {
-        if (!this.starsActive) return;
+    drawFireflys: function() {
+        if (!this.fireflysActive) return;
         game.ctx.fillStyle = 'gold';
-        for (let star of this.stars) {
+        for (let star of this.fireflys) {
             game.ctx.beginPath();
             game.ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
             game.ctx.fill();
