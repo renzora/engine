@@ -11,6 +11,7 @@ var input = {
         'd': "right"
     },
     isSpacePressed: false,
+    isShiftPressed: false,
     isCtrlPressed: false,
     isAltPressed: false,
     isDragging: false,
@@ -47,7 +48,7 @@ var input = {
         }
     },
 
-     handleKeyDown: function(e) {
+    handleKeyDown: function(e) {
         const mainSprite = game.sprites[game.playerid];
 
         if (e.altKey && e.key === 'c') {
@@ -79,6 +80,8 @@ var input = {
             this.isCtrlPressed = true;
         } else if (e.key === 'Alt') {
             this.isAltPressed = true;
+        } else if (e.key === 'Shift') { // Add this block
+            this.isShiftPressed = true;
         }
 
         // Check and play walking audio
@@ -132,6 +135,8 @@ var input = {
             this.isCtrlPressed = false;
         } else if (e.key === 'Alt') {
             this.isAltPressed = false;
+        } else if (e.key === 'Shift') { // Add this block
+            this.isShiftPressed = false;
         }
     },
 

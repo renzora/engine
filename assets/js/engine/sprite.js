@@ -500,6 +500,11 @@ var sprite = {
     },
 
     update: function(deltaTime) {
+        // Check if the shift key is held down
+        if (input.isShiftPressed) {
+            return; // Skip the update logic if the shift key is pressed
+        }
+    
         if (this.isMovingToTarget) {
             this.moveAlongPath();
         } else {
@@ -542,10 +547,8 @@ var sprite = {
     
             if (dx !== 0 && dy !== 0) {
                 if (moveX && moveY) {
-    
                     this.x = newX;
                     this.y = newY;
-    
                 } else if (moveX) {
                     this.x = newX;
                     this.direction = (dx > 0) ? 'E' : 'W';

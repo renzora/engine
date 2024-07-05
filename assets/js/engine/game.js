@@ -515,33 +515,31 @@ var game = {
 
     handleCanvasClick: function(event, isShiftKey) {
         console.log('Game handleCanvasClick triggered');
-        if (isShiftKey) {
-            console.log('Shift + Click detected');
-        }
+    
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
-
+    
         console.log(`Mouse position: (${mouseX}, ${mouseY})`);
-
+    
         // Calculate the grid position
         const gridX = Math.floor(mouseX / 16);
         const gridY = Math.floor(mouseY / 16);
-
+    
         console.log(`Grid position: (${gridX}, ${gridY})`);
-
+    
         // Store the grid coordinates in the new variables
         this.x = gridX;
         this.y = gridY;
-
+    
         const selectedObject = this.findObjectAt(mouseX, mouseY);
-
+    
         if (selectedObject) {
             console.log(`Selected object ID: ${selectedObject.id}`);
         } else {
             console.log('No object selected');
         }
-
+    
         if (event.button === 2) { // Right-click
             if (selectedObject) {
                 this.selectedObjects = [selectedObject];
@@ -552,72 +550,100 @@ var game = {
                 this.selectedObjects = [];
             }
         } else if (event.button === 0) { // Left-click
-            if (this.isTileWalkable(gridX, gridY)) {
-                // Walk to the tile
-                const playerSprite = this.sprites[this.playerid];
-                playerSprite.walkToClickedTile(gridX, gridY);
-
-                // Update target coordinates for the main sprite
-                this.targetX = mouseX;
-                this.targetY = mouseY;
-
-                // Deselect any selected object if clicked on a walkable tile
-                if (!isShiftKey) {
-                    this.selectedObjects = [];
-                }
-
-                // Check tile actions after the sprite moves
-                playerSprite.checkTileActions();
-
-            } else if (selectedObject) {
-                const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
-                if (isShiftKey) {
+            if (isShiftKey) {
+                // Handle shift+click for item selection
+                if (selectedObject) {
+                    const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
                     const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
                     if (index === -1) {
                         this.selectedObjects.push(selectedObject);
                     } else {
                         this.selectedObjects.splice(index, 1);
                     }
-                } else {
-                    this.selectedObjects = [selectedObject];
-                }
-
-                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                }
-
-                // Check if the selected object has a click action
-                const objectId = selectedObject.id;
-                const objectScript = actions.objectScript[objectId];
-
-                if (objectScript && objectScript.click) {
-                    const clickAction = objectScript.click;
-
-                    // Check for required item
-                    if (clickAction.requiredItem) {
-                        const playerSprite = this.sprites[this.playerid];
-                        if (playerSprite.currentItem === clickAction.requiredItem) {
-                            console.log(`Action result: ${clickAction.result}`);
-                            // Handle the result of the action (e.g., add item to inventory)
+    
+                    if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                        this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
+                    }
+    
+                    // Check if the selected object has a click action
+                    const objectId = selectedObject.id;
+                    const objectScript = actions.objectScript[objectId];
+    
+                    if (objectScript && objectScript.click) {
+                        const clickAction = objectScript.click;
+    
+                        // Check for required item
+                        if (clickAction.requiredItem) {
+                            const playerSprite = this.sprites[this.playerid];
+                            if (playerSprite.currentItem === clickAction.requiredItem) {
+                                console.log(`Action result: ${clickAction.result}`);
+                                // Handle the result of the action (e.g., add item to inventory)
+                            } else {
+                                console.log(`You need a ${clickAction.requiredItem} to perform this action.`);
+                            }
                         } else {
-                            console.log(`You need a ${clickAction.requiredItem} to perform this action.`);
+                            // Handle click action without required item
+                            console.log(`Action result: ${clickAction.result}`);
                         }
-                    } else {
-                        // Handle click action without required item
-                        console.log(`Action result: ${clickAction.result}`);
                     }
                 }
             } else {
-                this.selectedObjects = [];
+                // Handle pathfinding if shift is not held down
+                if (this.isTileWalkable(gridX, gridY)) {
+                    // Walk to the tile
+                    const playerSprite = this.sprites[this.playerid];
+                    playerSprite.walkToClickedTile(gridX, gridY);
+    
+                    // Update target coordinates for the main sprite
+                    this.targetX = mouseX;
+                    this.targetY = mouseY;
+    
+                    // Deselect any selected object if clicked on a walkable tile
+                    this.selectedObjects = [];
+    
+                    // Check tile actions after the sprite moves
+                    playerSprite.checkTileActions();
+                } else if (selectedObject) {
+                    // Deselect all other objects before selecting the new one
+                    this.selectedObjects = [selectedObject];
+    
+                    if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                        this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
+                    }
+    
+                    // Check if the selected object has a click action
+                    const objectId = selectedObject.id;
+                    const objectScript = actions.objectScript[objectId];
+    
+                    if (objectScript && objectScript.click) {
+                        const clickAction = objectScript.click;
+    
+                        // Check for required item
+                        if (clickAction.requiredItem) {
+                            const playerSprite = this.sprites[this.playerid];
+                            if (playerSprite.currentItem === clickAction.requiredItem) {
+                                console.log(`Action result: ${clickAction.result}`);
+                                // Handle the result of the action (e.g., add item to inventory)
+                            } else {
+                                console.log(`You need a ${clickAction.requiredItem} to perform this action.`);
+                            }
+                        } else {
+                            // Handle click action without required item
+                            console.log(`Action result: ${clickAction.result}`);
+                        }
+                    }
+                } else {
+                    this.selectedObjects = [];
+                }
             }
         }
-
+    
         console.log('Current selected objects:', this.selectedObjects);
-
+    
         // Update the visual selection state
         this.updateSelectedTiles();
-        this.render();
     },
+
 
     isTileWalkable: function(gridX, gridY) {
         const grid = this.createWalkableGrid(); // Create or fetch the walkable grid
