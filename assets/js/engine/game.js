@@ -113,7 +113,8 @@ var game = {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
 
         assets.preload([
-            { name: 'character', path: 'img/sprites/character.png' },
+            { name: 'head', path: 'img/sprites/head.png' },
+            { name: 'body', path: 'img/sprites/body.png' },
             { name: 'hair', path: 'img/sprites/hair.png' },
             { name: 'hats', path: 'img/sprites/hats.png' },
             { name: 'glasses', path: 'img/sprites/glasses.png' },
@@ -124,7 +125,7 @@ var game = {
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'objectScript', path: 'json/objectScript.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
-            { name: 'walkAudio', path: 'audio/sfx/movement/footstep.wav' },
+            { name: 'walkGrass', path: 'audio/sfx/movement/footstep.wav' },
             { name: 'closeModal', path: 'audio/sfx/ui/closeModal.mp3' },
             { name: 'menuDrop', path: 'audio/sfx/ui/menuDrop.mp3' },
             { name: 'objectDrop', path: 'audio/sfx/ui/dropObject.mp3' },
@@ -147,13 +148,22 @@ var game = {
             this.itemsData = assets.load('itemsData');
             this.objectData = assets.load('objectData');
 
+            actions.loadObjectScript();
+
             // Create player sprite
             const playerOptions = {
                 id: this.playerid,
                 x: 240,
                 y: 250,
                 isPlayer: true,
-                speed: 90
+                speed: 90,
+                head: 1,
+                body: 1,
+                hairStyle: 1,
+                outfit: 3,
+                hat: 1,
+                facial: 1,
+                glasses: 0,
             };
             sprite.create(playerOptions);
 
@@ -176,7 +186,7 @@ var game = {
             modal.load('ui/footer.php', "ui_footer_window", "Footer", false);
             modal.load('menus/click_menu/index.php', 'click_menu_window', "click menu", false);
             modal.load('menus/pie/index.php', 'pie_menu_window', "pie menu", false);
-            modal.load('quick_menu', null, "console", true);
+            modal.load('console', null, "console", true);
             modal.load('ui/inventory.php', "ui_inventory_window", "ui window", false);
             console.log("Connected to Main renzora server");
 
@@ -247,7 +257,7 @@ var game = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/quick_menu/tabs/servers/ajax/getSceneData.php',
+            url: 'modals/console/tabs/servers/ajax/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
@@ -273,13 +283,13 @@ var game = {
                 } else {
                     console.log('Error: ' + data.message);
                     // If scene is not found, load error modal
-                    modal.load('quick_menu/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
+                    modal.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
                 }
             },
             error: function(data) {
                 console.log(data);
                 // If scene is not found, load error modal
-                modal.load('quick_menu/tabs/servers/ajax/error.php', 'scene_load_error_window', "server error", true);
+                modal.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', "server error", true);
             }
         });
     },
@@ -355,8 +365,24 @@ var game = {
         }
       },
 
+      getTileIdAt: function(x, y) {
+        if (!this.roomData || !this.roomData.items) {
+            console.log('No room data available.');
+            return null;
+        }
+    
+        for (const item of this.roomData.items) {
+            const xCoordinates = item.x || [];
+            const yCoordinates = item.y || [];
+    
+            if (xCoordinates.includes(x) && yCoordinates.includes(y)) {
+                return item.id;
+            }
+        }
+        return null;
+    },
 
-      handleMouseDown: function(event) {
+    handleMouseDown: function(event) {
         if (event.button === 0 || event.button === 2) { // Left or right mouse button
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
@@ -379,8 +405,7 @@ var game = {
             // Initialize edge scrolling state
             this.currentMouseX = event.clientX;
             this.currentMouseY = event.clientY;
-            this.isEdgeScrolling = true;
-            this.edgeScroll();
+            this.isEdgeScrolling = false; // Initially set to false
         }
     },
 
@@ -391,19 +416,24 @@ var game = {
             const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
             this.dragEnd = { x: mouseX, y: mouseY };
             
-            this.updateSelectedTiles(); // Ensure selected tiles are updated during drag
-            
-            this.currentMouseX = event.clientX;
-            this.currentMouseY = event.clientY;
+            const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
+            const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
     
-            // Start edge scrolling if not already started
-            if (!this.isEdgeScrolling) {
-                this.isEdgeScrolling = true;
-                this.edgeScroll();
+            if (deltaX >= 8 || deltaY >= 8) {
+                this.updateSelectedTiles(); // Ensure selected tiles are updated during drag
+                
+                this.currentMouseX = event.clientX;
+                this.currentMouseY = event.clientY;
+        
+                // Start edge scrolling if not already started
+                if (!this.isEdgeScrolling && (this.dragStart.x !== this.dragEnd.x || this.dragStart.y !== this.dragEnd.y)) {
+                    this.isEdgeScrolling = true;
+                    this.edgeScroll();
+                }
             }
         }
     },
-
+    
     handleMouseUp: function(event) {
         if (this.isDragging) {
             const rect = this.canvas.getBoundingClientRect();
@@ -418,7 +448,7 @@ var game = {
             if (deltaX < this.dragThreshold && deltaY < this.dragThreshold) {
                 // This is a click
                 this.handleCanvasClick(event);
-            } else {
+            } else if (deltaX >= 8 || deltaY >= 8) {
                 // This is a drag
                 this.handleCanvasDrag({ startX: this.dragStart.x, startY: this.dragStart.y, endX: this.dragEnd.x, endY: this.dragEnd.y });
             }
@@ -442,14 +472,11 @@ var game = {
     
             // Stop edge scrolling
             this.isEdgeScrolling = false;
-
         }
     },
     
-    
-
     edgeScroll: function() {
-        if (!this.isDragging) {
+        if (!this.isDragging || !this.isEdgeScrolling) {
             return;
         }
     
@@ -482,7 +509,7 @@ var game = {
     
         // Continue scrolling if dragging
         requestAnimationFrame(this.edgeScroll.bind(this));
-    },  
+    },
 
     handleCanvasClick: function(event) {
         const rect = this.canvas.getBoundingClientRect();
@@ -498,8 +525,6 @@ var game = {
         this.y = gridY;
     
         const selectedObject = this.findObjectAt(mouseX, mouseY);
-
-        console.log(selectedObject);
     
         if (event.button === 2) { // Right-click
             if (selectedObject) {
@@ -511,14 +536,10 @@ var game = {
                 this.selectedObjects = [];
             }
         } else if (event.button === 0) { // Left-click
-            if (selectedObject) {
-                this.selectedObjects = [selectedObject];
-                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                }
-            } else if (this.isTileWalkable(gridX, gridY)) {
+            if (this.isTileWalkable(gridX, gridY)) {
                 // Walk to the tile
-                this.sprites[this.playerid].walkToClickedTile(gridX, gridY);
+                const playerSprite = this.sprites[this.playerid];
+                playerSprite.walkToClickedTile(gridX, gridY);
     
                 // Update target coordinates for the main sprite
                 this.targetX = mouseX;
@@ -526,11 +547,42 @@ var game = {
     
                 // Deselect any selected object if clicked on a walkable tile
                 this.selectedObjects = [];
+    
+                // Check tile actions after the sprite moves
+                playerSprite.checkTileActions();
+    
+            } else if (selectedObject) {
+                this.selectedObjects = [selectedObject];
+                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
+                }
+    
+                // Check if the selected object has a click action
+                const objectId = selectedObject.id;
+                const objectScript = actions.objectScript[objectId];
+    
+                if (objectScript && objectScript.click) {
+                    const clickAction = objectScript.click;
+    
+                    // Check for required item
+                    if (clickAction.requiredItem) {
+                        const playerSprite = this.sprites[this.playerid];
+                        if (playerSprite.currentItem === clickAction.requiredItem) {
+                            console.log(`Action result: ${clickAction.result}`);
+                            // Handle the result of the action (e.g., add item to inventory)
+                        } else {
+                            console.log(`You need a ${clickAction.requiredItem} to perform this action.`);
+                        }
+                    } else {
+                        // Handle click action without required item
+                        console.log(`Action result: ${clickAction.result}`);
+                    }
+                }
             } else {
                 this.selectedObjects = [];
             }
         }
-    },
+    },    
 
     isTileWalkable: function(gridX, gridY) {
         const grid = this.createWalkableGrid(); // Create or fetch the walkable grid
@@ -787,32 +839,36 @@ var game = {
 
     updateSelectedTiles: function() {
         if (this.dragStart && this.dragEnd) {
-            const startX = Math.min(this.dragStart.x, this.dragEnd.x);
-            const startY = Math.min(this.dragStart.y, this.dragEnd.y);
-            const endX = Math.max(this.dragStart.x, this.dragEnd.x);
-            const endY = Math.max(this.dragStart.y, this.dragEnd.y);
+            const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
+            const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
     
-            const startTileX = Math.floor(startX / 16);
-            const startTileY = Math.floor(startY / 16);
-            const endTileX = Math.floor(endX / 16);
-            const endTileY = Math.floor(endY / 16);
+            if (deltaX >= 8 || deltaY >= 8) {
+                const startX = Math.min(this.dragStart.x, this.dragEnd.x);
+                const startY = Math.min(this.dragStart.y, this.dragEnd.y);
+                const endX = Math.max(this.dragStart.x, this.dragEnd.x);
+                const endY = Math.max(this.dragStart.y, this.dragEnd.y);
     
-            this.selectedTiles = [];
+                const startTileX = Math.floor(startX / 16);
+                const startTileY = Math.floor(startY / 16);
+                const endTileX = Math.floor(endX / 16);
+                const endTileY = Math.floor(endY / 16);
     
-            for (let x = startTileX; x <= endTileX; x++) {
-                for (let y = startTileY; y <= endTileY; y++) {
-                    this.selectedTiles.push({ x: x * 16, y: y * 16 });
+                this.selectedTiles = [];
+    
+                for (let x = startTileX; x <= endTileX; x++) {
+                    for (let y = startTileY; y <= endTileY; y++) {
+                        this.selectedTiles.push({ x: x * 16, y: y * 16 });
+                    }
                 }
+    
+                this.selectionBounds = {
+                    startX: startTileX * 16,
+                    startY: startTileY * 16,
+                    endX: (endTileX + 1) * 16,
+                    endY: (endTileY + 1) * 16
+                };
             }
-    
-            this.selectionBounds = {
-                startX: startTileX * 16,
-                startY: startTileY * 16,
-                endX: (endTileX + 1) * 16,
-                endY: (endTileY + 1) * 16
-            };
         }
-    
     },
 
     selectItemsInSelectedTiles: function() {
@@ -1447,9 +1503,11 @@ loop: function(timestamp) {
 
     updateGameLogic: function(deltaTime) {
     
-        for (let id in this.sprites) {
-            if (this.sprites[id].update) {
-                this.sprites[id].update(deltaTime);
+        for (let id in game.sprites) {
+            const sprite = game.sprites[id];
+            if (sprite.update) {
+                sprite.update(deltaTime);
+                sprite.checkTileActions();
             }
         }
     

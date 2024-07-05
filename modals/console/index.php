@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='quick_menu_window' class='window window_bg fixed bottom-2 left-1' style='width: 383px; height: 540px; background: #3d6a91; overflow: hidden;'>
+  <div data-window='console_window' class='window window_bg fixed bottom-2 left-1' style='width: 383px; height: 540px; background: #3d6a91; overflow: hidden;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#363657 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -64,7 +64,7 @@ if ($auth) {
     </div>
 
     <script>
-      var quick_menu_window = {
+      var console_window = {
         start: function() {
           ui.initTabs('ui_window_chat', 'servers');
           const chatBox = document.getElementById('chat_box');
@@ -99,7 +99,7 @@ if ($auth) {
                 contentDiv.classList.remove('hidden');
                 ui.ajax({
                   method: 'POST',
-                  url: `modals/quick_menu/tabs/${target}/index.php`,
+                  url: `modals/console/tabs/${target}/index.php`,
                   success: function(data) {
                     ui.html(contentDiv, data, 'append');
                     if(target === 'editor') {
@@ -122,7 +122,7 @@ if ($auth) {
         }
       };
 
-      quick_menu_window.start();
+      console_window.start();
     </script>
 
     <div class='resize-handle'></div>

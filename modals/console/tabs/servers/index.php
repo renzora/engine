@@ -18,13 +18,13 @@ var ui_servers_tab_window = {
         document.getElementById('open_create_server_modal').addEventListener('click', this.openCreateServerModal.bind(this));
     },
     openCreateServerModal: function() {
-        modal.load('quick_menu/tabs/servers/createServer.php', 'server_create_window');
+        modal.load('console/tabs/servers/createServer.php', 'server_create_window');
     },
     loadServers: function() {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/quick_menu/tabs/servers/ajax/getServers.php',
+            url: 'modals/console/tabs/servers/ajax/getServers.php',
             data: JSON.stringify({}),
             headers: {
                 'Content-Type': 'application/json'
@@ -77,7 +77,7 @@ var ui_servers_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/quick_menu/tabs/servers/ajax/getScenes.php',
+            url: 'modals/console/tabs/servers/ajax/getScenes.php',
             data: JSON.stringify({ serverId: serverId }),
             headers: {
                 'Content-Type': 'application/json'
@@ -123,14 +123,14 @@ var ui_servers_tab_window = {
         sceneListDiv.innerHTML = sceneListHTML;
     },
     loadEditServerModal: function(serverId, serverName) {
-        modal.load(`quick_menu/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`, 'server_edit_window');
+        modal.load(`console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`, 'server_edit_window');
     },
     loadEditSceneModal: function(sceneId, sceneName, serverId) {
-        modal.load(`quick_menu/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`, 'scene_edit_window');
+        modal.load(`console/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`, 'scene_edit_window');
     },
     loadCreateSceneModal: function(serverId) {
         console.log('Loading create scene modal for serverId:', serverId);
-        modal.load(`quick_menu/tabs/servers/createScene.php?id=${serverId}`, 'scene_create_window');
+        modal.load(`console/tabs/servers/createScene.php?id=${serverId}`, 'scene_create_window');
     },
     unmount: function() {
         document.getElementById('open_create_server_modal').removeEventListener('click', this.openCreateServerModal.bind(this));

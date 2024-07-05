@@ -30,8 +30,6 @@ var input = {
 
     keyUp: function(e) {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-            const timestamp = new Date().toISOString();
-            console.log(`[${timestamp}] Key up: ${e.key}`);
             e.preventDefault(); // Prevent default action for keyUp
             this.handleKeyUp(e);
         }
@@ -39,8 +37,6 @@ var input = {
 
     keyDown: function(e) {
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-            const timestamp = new Date().toISOString();
-            console.log(`[${timestamp}] Key down: ${e.key}`);
             if (e.key === 'Tab') {
                 e.preventDefault();
             }
@@ -51,7 +47,7 @@ var input = {
         }
     },
 
-    handleKeyDown: function(e) {
+     handleKeyDown: function(e) {
         const mainSprite = game.sprites[game.playerid];
 
         if (e.altKey && e.key === 'c') {
@@ -87,7 +83,7 @@ var input = {
 
         // Check and play walking audio
         if (mainSprite && mainSprite.isMoving) {
-            audio.playAudio("walkAudio", assets.load('walkAudio'), 'sfx', true);
+            audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
         }
     },
 
@@ -123,7 +119,7 @@ var input = {
 
             // Stop walking audio if no directions are pressed
             if (!mainSprite.isMoving) {
-                audio.stopLoopingAudio('walkAudio', 'sfx', 0.5);
+                audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
             }
         }
 

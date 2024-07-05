@@ -9,7 +9,7 @@ var ui = {
           if (!container) {
               container = document.createElement('div');
               container.id = 'notification';
-              container.className = 'fixed z-10 bottom-0 left-1/2 transform -translate-x-1/2';
+              container.className = 'fixed z-10 top-0 left-1/2 transform -translate-x-1/2';
               document.body.appendChild(container);
           }
 

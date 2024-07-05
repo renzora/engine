@@ -1,10 +1,32 @@
 {
     "tree": {
-        "actions": {
-            "chop": {
-                "requiredItem": "axe",
-                "result": "log"
-            }
+        "click": {
+            "requiredItem": "axe",
+            "result": "log"
+        }
+    },
+    "water": {
+        "walk": {
+            "swim": true
+        },
+        "exit": {
+            "swim": false
+        }
+    },
+    "sand": {
+        "walk": {
+
+        }
+    },
+    "grass": {
+        "walk": {
+
+        }
+    },
+    "campfire": {
+        "drop": {
+            "requiredItem": "wood",
+            "action": "dropWoodOnCampfire"
         }
     }
 }

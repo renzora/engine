@@ -514,32 +514,34 @@ var renadmin_tileset_manager = {
       console.log("Properties panel updated with selected tile:", tile);
     }
 
-    document.getElementById('addToTilesetBtn').addEventListener('click', async function() {
-      if (renadmin_tileset_manager.selectedTiles.length === 0) {
+    document.getElementById('addToTilesetBtn').addEventListener('click', async function(event) {
+    event.preventDefault(); // Prevent the form from submitting the traditional way
+
+    if (renadmin_tileset_manager.selectedTiles.length === 0) {
         alert('No tiles selected.');
         return;
-      }
+    }
 
-      const tilesetName = document.querySelector('#tilesetSelect').value.replace('.png', '');
-      const objectName = document.getElementById('tileName').value.trim();
-      const isWalkable = document.getElementById('walkable').checked;
-      const nConstraint = document.getElementById('nConstraint').value;
-      const eConstraint = document.getElementById('eConstraint').value;
-      const sConstraint = document.getElementById('sConstraint').value;
-      const wConstraint = document.getElementById('wConstraint').value;
-      const zIndex = document.getElementById('zIndex').value;
+    const tilesetName = document.querySelector('#tilesetSelect').value.replace('.png', '');
+    const objectName = document.getElementById('tileName').value.trim();
+    const isWalkable = document.getElementById('walkable').checked;
+    const nConstraint = document.getElementById('nConstraint').value;
+    const eConstraint = document.getElementById('eConstraint').value;
+    const sConstraint = document.getElementById('sConstraint').value;
+    const wConstraint = document.getElementById('wConstraint').value;
+    const zIndex = document.getElementById('zIndex').value;
 
-      if (!objectName) {
+    if (!objectName) {
         alert('Please enter a name for the tileset.');
         return;
-      }
+    }
 
-      try {
+    try {
         const response = await fetch('assets/json/objectData.json');
         const objectData = await response.json();
 
         renadmin_tileset_manager.highestIValue = Object.values(objectData).flat().reduce((max, obj) => {
-          return Math.max(max, ...obj.i);
+            return Math.max(max, ...obj.i);
         }, 0);
 
         const tilesetImageResponse = await fetch(`/assets/img/tiles/${tilesetName}.png`);
@@ -548,122 +550,128 @@ var renadmin_tileset_manager = {
         const img = new Image();
 
         img.onload = function() {
-          const tileSize = 16;
-          const maxTilesPerRow = 150;
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
+            const tileSize = 16;
+            const maxTilesPerRow = 150;
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
 
-          const currentRows = img.height / tileSize;
-          const currentTilesInRow = Math.floor(img.width / tileSize);
-          const totalTiles = renadmin_tileset_manager.highestIValue + 1 + renadmin_tileset_manager.selectedTiles.length;
-          const newRows = Math.ceil(totalTiles / maxTilesPerRow);
-          const newHeight = newRows * tileSize;
+            const currentRows = img.height / tileSize;
+            const currentTilesInRow = Math.floor(img.width / tileSize);
+            const totalTiles = renadmin_tileset_manager.highestIValue + 1 + renadmin_tileset_manager.selectedTiles.length;
+            const newRows = Math.ceil(totalTiles / maxTilesPerRow);
+            const newHeight = newRows * tileSize;
 
-          canvas.width = maxTilesPerRow * tileSize;
-          canvas.height = newHeight;
+            canvas.width = maxTilesPerRow * tileSize;
+            canvas.height = newHeight;
 
-          ctx.drawImage(img, 0, 0);
+            ctx.drawImage(img, 0, 0);
 
-          const startIndex = renadmin_tileset_manager.highestIValue + 1;
+            const startIndex = renadmin_tileset_manager.highestIValue + 1;
 
-          renadmin_tileset_manager.selectedTiles.sort((tile, tile2) => (tile.y - tile2.y) || (tile.x - tile2.x));
+            renadmin_tileset_manager.selectedTiles.sort((tile, tile2) => (tile.y - tile2.y) || (tile.x - tile2.x));
 
-          const minX = Math.min(...renadmin_tileset_manager.selectedTiles.map(tile => tile.x));
-          const minY = Math.min(...renadmin_tileset_manager.selectedTiles.map(tile => tile.y));
+            const minX = Math.min(...renadmin_tileset_manager.selectedTiles.map(tile => tile.x));
+            const minY = Math.min(...renadmin_tileset_manager.selectedTiles.map(tile => tile.y));
 
-          const newTiles = {
-            t: tilesetName,
-            i: [],
-            a: [],
-            b: [],
-            w: [],
-            s: 1,
-            z: parseInt(zIndex)
-          };
+            const newTiles = {
+                t: tilesetName,
+                i: [],
+                a: [],
+                b: [],
+                w: [],
+                s: 1,
+                z: parseInt(zIndex)
+            };
 
-          renadmin_tileset_manager.selectedTiles.forEach((tile, index) => {
-            const globalIndex = startIndex + index;
-            newTiles.i.push(globalIndex);
-            newTiles.a.push((tile.x - minX) / tileSize);
-            newTiles.b.push((tile.y - minY) / tileSize);
-            if (isWalkable) {
-              newTiles.w.push(1);
-            } else {
-              newTiles.w.push([parseInt(nConstraint), parseInt(eConstraint), parseInt(sConstraint), parseInt(wConstraint)]);
-            }
-          });
-
-          renadmin_tileset_manager.selectedTiles.forEach((tile, index) => {
-            const destX = (startIndex + index) % maxTilesPerRow * tileSize;
-            const destY = Math.floor((startIndex + index) / maxTilesPerRow) * tileSize;
-
-            ctx.drawImage(
-              tilesetCanvas,
-              tile.x, tile.y, tile.width, tile.height,
-              destX, destY, tile.width, tile.height
-            );
-          });
-
-          canvas.toBlob(async function(blob) {
-            const formData = new FormData();
-            formData.append('tilesetName', `${tilesetName}.png`);
-            formData.append('tilesetImage', blob);
-
-            const uploadResponse = await fetch('modals/renadmin/ajax/save_tileset_image.php', {
-              method: 'POST',
-              body: formData
+            renadmin_tileset_manager.selectedTiles.forEach((tile, index) => {
+                const globalIndex = startIndex + index;
+                newTiles.i.push(globalIndex);
+                newTiles.a.push((tile.x - minX) / tileSize);
+                newTiles.b.push((tile.y - minY) / tileSize);
+                if (isWalkable) {
+                    newTiles.w.push(1);
+                } else {
+                    newTiles.w.push([parseInt(nConstraint), parseInt(eConstraint), parseInt(sConstraint), parseInt(wConstraint)]);
+                }
             });
 
-            const uploadResult = await uploadResponse.json();
+            renadmin_tileset_manager.selectedTiles.forEach((tile, index) => {
+                const destX = (startIndex + index) % maxTilesPerRow * tileSize;
+                const destY = Math.floor((startIndex + index) / maxTilesPerRow) * tileSize;
 
-            if (uploadResult.success) {
-              if (!objectData[objectName]) {
-                objectData[objectName] = [];
-              }
-              objectData[objectName].push(newTiles);
+                ctx.drawImage(
+                    tilesetCanvas,
+                    tile.x, tile.y, tile.width, tile.height,
+                    destX, destY, tile.width, tile.height
+                );
+            });
 
-              const result = await fetch('modals/renadmin/ajax/add_objects.php', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(objectData),
-              });
+            canvas.toBlob(async function(blob) {
+                if (!blob) {
+                    alert('Error generating the blob from the canvas.');
+                    return;
+                }
 
-              const resultData = await result.json();
+                const formData = new FormData();
+                formData.append('tilesetName', `${tilesetName}.png`);
+                formData.append('tilesetImage', blob, `${tilesetName}.png`);
 
-              if (resultData.success) {
-                ui.notif("Item added successfully", 'bottom-center');
-              } else {
-                ui.notif('Error: ' + resultData.error, 'bottom-center');
-              }
+                const uploadResponse = await fetch('modals/renadmin/ajax/save_tileset_image.php', {
+                    method: 'POST',
+                    body: formData
+                });
 
-              renadmin_tileset_manager.selectedTiles = [];
-              renadmin_tileset_manager.highestIValue += newTiles.i.length;
+                const uploadResult = await uploadResponse.json();
 
-              const selectionCtx = document.getElementById('selectionCanvas').getContext('2d');
-              selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+                if (uploadResult.success) {
+                    if (!objectData[objectName]) {
+                        objectData[objectName] = [];
+                    }
+                    objectData[objectName].push(newTiles);
 
-              document.getElementById('tileName').value = '';
-              document.getElementById('walkable').checked = false;
-              document.getElementById('nConstraint').value = 0;
-              document.getElementById('eConstraint').value = 0;
-              document.getElementById('sConstraint').value = 0;
-              document.getElementById('wConstraint').value = 0;
-              document.getElementById('zIndex').value = 1;
-              propertiesPanel.style.display = 'none';
+                    const result = await fetch('modals/renadmin/ajax/add_objects.php', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(objectData),
+                    });
 
-            } else {
-              alert('Error: ' + uploadResult.error);
-            }
-          });
+                    const resultData = await result.json();
+
+                    if (resultData.success) {
+                        ui.notif("Item added successfully", 'bottom-center');
+                    } else {
+                        ui.notif('Error: ' + resultData.error, 'bottom-center');
+                    }
+
+                    renadmin_tileset_manager.selectedTiles = [];
+                    renadmin_tileset_manager.highestIValue += newTiles.i.length;
+
+                    const selectionCtx = document.getElementById('selectionCanvas').getContext('2d');
+                    selectionCtx.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+
+                    document.getElementById('tileName').value = '';
+                    document.getElementById('walkable').checked = false;
+                    document.getElementById('nConstraint').value = 0;
+                    document.getElementById('eConstraint').value = 0;
+                    document.getElementById('sConstraint').value = 0;
+                    document.getElementById('wConstraint').value = 0;
+                    document.getElementById('zIndex').value = 1;
+                    propertiesPanel.style.display = 'none';
+
+                } else {
+                    alert('Error: ' + uploadResult.error);
+                }
+            });
         };
 
         img.src = tilesetImageUrl;
-      } catch (error) {
+    } catch (error) {
         ui.notif('Error updating objectData.json:', error, 'bottom-center');
-      }
-    });
+    }
+});
+
 
     document.getElementById('updateTilesetBtn').addEventListener('click', async function() {
   const newObjectName = document.getElementById('editTileName').value.trim();

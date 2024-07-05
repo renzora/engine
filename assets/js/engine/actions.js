@@ -1,128 +1,71 @@
 const actions = {
-    chopTree: function(x, y) {
-        game.utils.addItem('log', { x: x, y: y });
-        game.utils.removeItem('tree', x / 16, y / 16);
-        console.log("Tree chopped down at", x, y);
+    objectScript: {},
+
+    loadObjectScript: function () {
+        this.objectScript = assets.load('objectScript');
     },
 
-    openDoor: function(x, y) {
-        console.log("Door opened at", x, y);
-        // Add logic to open the door
-    },
-
-    pickUp: function(x, y) {
-        console.log("Item picked up at", x, y);
-        // Add logic to pick up the item
-    },
-
-    drop: function(x, y) {
-        console.log("Item dropped at", x, y);
-        // Add logic to drop the item
-    },
-
-    push: function(x, y) {
-        console.log("Item pushed at", x, y);
-        // Add logic to push the item
-    },
-
-    jump: function(x, y) {
-        console.log("Jump at", x, y);
-        // Add logic to jump
-    },
-
-    sit: function(x, y) {
-        console.log("Sit at", x, y);
-        // Add logic to sit
-    },
-
-    cook: function(x, y) {
-        console.log("Cooking at", x, y);
-        // Add logic to cook
-    },
-
-    water: function(x, y) {
-        console.log("Watering at", x, y);
-        // Add logic to water plants
-    },
-
-    dig: function(x, y) {
-        console.log("Digging at", x, y);
-        // Add logic to dig
-    },
-
-    performAction: function(result, x, y) {
-        switch(result) {
-            case "log":
-                this.chopTree(x, y);
-                break;
-            case "door_open":
-                this.openDoor(x, y);
-                break;
-            // Add more case handlers as needed
-            default:
-                console.log("Unknown action result:", result);
-        }
-    },
-
-    handleObjectInteraction: function(x, y) {
-        if (game.roomData && game.roomData.items) {
-            for (const roomItem of game.roomData.items) {
-                const itemScript = assets.load('objectScript')[roomItem.id];
-                if (!itemScript) continue;
-
-                const xCoordinates = roomItem.x || [];
-                const yCoordinates = roomItem.y || [];
-
-                for (let i = 0; i < xCoordinates.length; i++) {
-                    const itemX = parseInt(xCoordinates[i], 10) * 16;
-                    const itemY = parseInt(yCoordinates[i], 10) * 16;
-
-                    if (x >= itemX && x <= itemX + 16 && y >= itemY && y <= itemY + 16) {
-                        if (itemScript.actions) {
-                            for (const action in itemScript.actions) {
-                                // Here you could check for specific conditions, such as required items
-                                if (action === 'chop' && this.isAxeEquipped()) {
-                                    // Perform the action
-                                    const result = itemScript.actions[action].result;
-                                    console.log(`Action performed: ${action}, Result: ${result}`);
-                                    this.performAction(result, itemX, itemY);
-                                }
-                                // Add more action conditions here
-                            }
-                        }
-                    }
-                }
+    handleTileAction: function (tileId) {
+        const tileActions = this.objectScript[tileId];
+        if (tileActions && tileActions.walk) {
+            if (tileActions.walk.swim) {
+                this.swim();
             }
         }
     },
 
-    handleWalkOnTile: function(x, y) {
-        if (game.roomData && game.roomData.items) {
-            for (const roomItem of game.roomData.items) {
-                const itemScript = assets.load('objectScript')[roomItem.id];
-                if (!itemScript) continue;
-
-                const xCoordinates = roomItem.x || [];
-                const yCoordinates = roomItem.y || [];
-
-                for (let i = 0; i < xCoordinates.length; i++) {
-                    const itemX = parseInt(xCoordinates[i], 10) * 16;
-                    const itemY = parseInt(yCoordinates[i], 10) * 16;
-
-                    if (x === itemX && y === itemY) {
-                        if (itemScript.triggers && itemScript.triggers.walk) {
-                            const result = itemScript.triggers.walk.result;
-                            console.log(`Walk trigger activated: Result: ${result}`);
-                            this.performAction(result, itemX, itemY);
-                        }
-                    }
-                }
+    handleExitTileAction: function (tileId) {
+        const tileActions = this.objectScript[tileId];
+        if (tileActions && tileActions.exit) {
+            if (tileActions.exit.swim === false) {
+                this.restoreBody();
             }
         }
     },
 
-    isAxeEquipped: function() {
-        const mainSprite = game.sprites['main'];
-        return mainSprite && mainSprite.currentItem === 'axe';
-    }
-}
+    swim: function () {
+        game.sprites[game.playerid].body = 0;
+        game.sprites[game.playerid].speed = 55;
+    },
+
+    restoreBody: function () {
+        game.sprites[game.playerid].body = 1;
+        game.sprites[game.playerid].speed = 90;
+    },
+
+    chop: function () {
+        console.log("Chopping tree!");
+    },
+    
+    dropItemOnObject: function (item, object) {
+        const objectActions = this.objectScript[object.id];
+        if (objectActions && objectActions.drop) {
+            const dropAction = objectActions.drop;
+            if (dropAction.requiredItem === item) {
+                const actionFunction = dropAction.action;
+                if (typeof this[actionFunction] === 'function') {
+                    this[actionFunction](item, object);
+                } else {
+                    console.error(`Action function ${actionFunction} not found in actions object`);
+                }
+            } else {
+                this.notifyInvalidDrop(item, object.id);
+            }
+        } else {
+            console.log(`No drop action defined for ${object.id}`);
+        }
+    },
+    
+    notifyInvalidDrop: function(item, objectId) {
+        const objectName = this.getObjectNameById(objectId);
+        ui.notif("scene_change_notif", `You cannot drop a ${item} into ${objectName}`, true);
+    },
+
+    getObjectNameById: function(objectId) {
+        return objectId;
+    },
+    
+    dropWoodOnCampfire: function (item, object) {
+        console.log('YAYY WOOD!');
+    },
+};

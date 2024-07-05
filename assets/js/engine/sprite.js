@@ -5,8 +5,8 @@ var sprite = {
             x: options.x !== undefined ? options.x : 300,
             y: options.y !== undefined ? options.y : 150,
             width: 16,
-            height: 26,
-            scale: 0.8,
+            height: 27,
+            scale: 0.95,
             speed: options.speed !== undefined ? options.speed : 90,
             currentFrame: 0,
             direction: 'S',
@@ -15,6 +15,8 @@ var sprite = {
             moving: false,
             stopping: false,
             directions: {},
+            body: options.body !== undefined ? options.body : 1,
+            head: options.head !== undefined ? options.head : 1,
             hairstyle: options.hairstyle || 1,
             outfit: options.outfit || 1,
             facialHair: options.facialHair || 0,
@@ -67,7 +69,8 @@ var sprite = {
             die: this.die,
             attackTarget: this.attackTarget,
             chasePlayer: this.chasePlayer,
-            handleAimAttack: this.handleAimAttack
+            handleAimAttack: this.handleAimAttack,
+            checkTileActions: this.checkTileActions
         };
 
         // Automatically handle area movement if area is specified in options
@@ -120,6 +123,22 @@ var sprite = {
         return newSprite;
     },
 
+    checkTileActions: function() {
+        const currentTileId = game.getTileIdAt(Math.floor(this.x / 16), Math.floor(this.y / 16));
+        const currentTileX = Math.floor(this.x / 16);
+        const currentTileY = Math.floor(this.y / 16);
+    
+        if (currentTileId !== actions.lastTileId || currentTileX !== actions.lastTileX || currentTileY !== actions.lastTileY) {
+            if (actions.lastTileId !== null) {
+                actions.handleExitTileAction(actions.lastTileId);
+            }
+            actions.handleTileAction(currentTileId, currentTileX, currentTileY);
+            actions.lastTileId = currentTileId;
+            actions.lastTileX = currentTileX;
+            actions.lastTileY = currentTileY;
+        }
+    },
+
     moveSprite: function (sprite, direction, duration) {
         if (sprite) {
             sprite.addDirection(direction);
@@ -164,14 +183,15 @@ var sprite = {
     },
 
     draw: function() {
-        let bodyImage = assets.load('character');
+        let bodyImage = assets.load('body');
+        let headImage = assets.load('head');
         let hairImage = assets.load('hair');
         let outfitImage = assets.load('outfit');
         let facialHairImage = assets.load('facial');
         let hatImage = assets.load('hats');
         let glassesImage = assets.load('glasses');
     
-        if (!bodyImage || !hairImage || !outfitImage || !facialHairImage || !hatImage || !glassesImage) return;
+        if (!bodyImage || !headImage || !hairImage || !outfitImage || !facialHairImage || !hatImage || !glassesImage) return;
     
         let directionOffset = this.directionMap[this.direction] ?? 0;
         let frameColumn = directionOffset + (Math.floor(this.currentFrame) % 6);
@@ -183,35 +203,43 @@ var sprite = {
         tempCanvas.width = this.width;
         tempCanvas.height = this.height;
     
-        tempCtx.drawImage(bodyImage, sx, sy, this.width, this.height, 0, 0, this.width, this.height);
+        // Draw body part (16x16) and outfit if body is not 0
+        if (this.body !== 0) {
+            tempCtx.drawImage(bodyImage, sx, sy, this.width, 16, 0, 13, this.width, 16); // Adjusted to 13 to push up by 7 pixels
     
-        if (this.hairstyle !== 0) {
-            let hairSy = (this.hairstyle - 1) * 17;
-            tempCtx.drawImage(hairImage, sx, hairSy, this.width, 17, 0, 0, this.width, 17);
+            if (this.outfit !== 0) {
+                let outfitSy = (this.outfit - 1) * 16;
+                tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, 16, 0, 13, this.width, 16); // Adjusted to 13 to push up by 7 pixels
+            }
         }
     
-        if (this.outfit !== 0) {
-            let outfitSy = (this.outfit - 1) * this.height;
-            tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, this.height, 0, 0, this.width, this.height);
-        }
+        // Draw head part (16x16) and its accessories if head is not 0
+        if (this.head !== 0) {
+            tempCtx.drawImage(headImage, sx, sy, this.width, 16, 0, 3, this.width, 16);
     
-        if (this.facialHair !== 0) {
-            let facialHairSy = (this.facialHair - 1) * 8;
-            tempCtx.drawImage(facialHairImage, sx, facialHairSy, this.width, 8, 0, 12, this.width, 8);
-        }
+            if (this.hairstyle !== 0) {
+                let hairSy = (this.hairstyle - 1) * 16;
+                tempCtx.drawImage(hairImage, sx, hairSy, this.width, 16, 0, 3, this.width, 16);
+            }
     
-        if (this.glasses !== 0) {
-            let glassesSy = (this.glasses - 1) * 16;
-            tempCtx.drawImage(glassesImage, sx, glassesSy, this.width, 16, 0, 6, this.width, 16);
-        }
+            if (this.facialHair !== 0) {
+                let facialHairSy = (this.facialHair - 1) * 16;
+                tempCtx.drawImage(facialHairImage, sx, facialHairSy, this.width, 16, 0, 3, this.width, 16);
+            }
     
-        if (this.hat !== 0) {
-            let hatSy = (this.hat - 1) * 16;
-            tempCtx.drawImage(hatImage, sx, hatSy, this.width, 16, 0, 0, this.width, 16);
+            if (this.glasses !== 0) {
+                let glassesSy = (this.glasses - 1) * 16;
+                tempCtx.drawImage(glassesImage, sx, glassesSy, this.width, 16, 0, 3, this.width, 16);
+            }
+    
+            if (this.hat !== 0) {
+                let hatSy = (this.hat - 1) * 16;
+                tempCtx.drawImage(hatImage, sx, hatSy, this.width, 16, 0, 1, this.width, 16); // Adjusted to 1 to prevent clipping
+            }
         }
     
         game.ctx.save();
-        game.ctx.translate(this.x, this.y);
+        game.ctx.translate(this.x, this.y); // No need to translate down
     
         if (this.direction === 'W') {
             game.ctx.scale(-this.scale, this.scale);
@@ -220,21 +248,21 @@ var sprite = {
             game.ctx.scale(this.scale, this.scale);
         }
     
-        game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width, this.height);
+        game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width * this.scale, this.height * this.scale);
     
         if (this.isEnemy) {
             game.ctx.fillStyle = 'red';
-            game.ctx.fillRect(0, -10, this.width, 5);
+            game.ctx.fillRect(0, -10, this.width * this.scale, 5);
             game.ctx.fillStyle = 'green';
-            game.ctx.fillRect(0, -10, this.width * (this.health / this.maxHealth), 5);
+            game.ctx.fillRect(0, -10, this.width * this.scale * (this.health / this.maxHealth), 5);
         }
     
         game.ctx.restore();
-    },
-
+    },    
+    
     drawShadow: function() {
         game.ctx.save();
-        game.ctx.translate(this.x, this.y);
+        game.ctx.translate(this.x, this.y + (this.height * this.scale / 2) - 14);
     
         let shadowX, shadowY;
         const shadowWidth = this.width * this.scale * 0.6;
@@ -254,7 +282,7 @@ var sprite = {
                 shadowY = (this.height - 1) * this.scale; // Move shadow down
                 break;
             case 'W':
-                shadowX = (this.width / 2 - 3) * this.scale; // Move shadow to the left
+                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
                 shadowY = (this.height - 1) * this.scale; // Move shadow down
                 break;
             default:
@@ -273,12 +301,15 @@ var sprite = {
     },
 
     walkToClickedTile: function(tileX, tileY) {
+        if (editor.isPlacingItem) {
+            return; // Don't move if in item placement mode
+        }
         var currentX = Math.floor(this.x / 16);
         var currentY = Math.floor(this.y / 16);
         this.path = this.calculatePath(currentX, currentY, tileX, tileY);
         this.pathIndex = 0;
         this.isMovingToTarget = true;
-        audio.playAudio("walkAudio", assets.load('walkAudio'), 'sfx', true);
+        audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
     },
 
     calculatePath: function(startX, startY, endX, endY) {
@@ -315,14 +346,14 @@ var sprite = {
         return path;
     },    
 
-    moveAlongPath: function() {
+   moveAlongPath: function() {
         if (!this.path || this.pathIndex >= this.path.length) {
             this.isMovingToTarget = false;
             this.moving = false;
             this.stopping = true;
             this.currentFrame = 0; // Reset to default standing position
             this.path = []; // Clear the path once the destination is reached
-            audio.stopLoopingAudio('walkAudio', 'sfx', 0.5);
+            audio.stopLoopingAudio('walkGrass','sfx', 0.5);
             return;
         }
     
@@ -369,15 +400,13 @@ var sprite = {
     },
 
     addDirection: function(direction) {
-        const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] Adding direction: ${direction}`);
 
         this.directions[direction] = true;
         this.updateDirection();
         this.moving = true;
         this.stopping = false;
 
-        audio.playAudio('walkAudio', assets.load('walkAudio'), 'sfx', true);
+        audio.playAudio('walkGrass', assets.load('walkGrass'), 'sfx', true);
     },
 
     removeDirection: function(direction) {
@@ -476,45 +505,47 @@ var sprite = {
         } else {
             let dx = 0;
             let dy = 0;
-
+    
             if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
             if (this.directions['left']) dx -= this.speed * (deltaTime / 1000);
             if (this.directions['down']) dy += this.speed * (deltaTime / 1000);
             if (this.directions['up']) dy -= this.speed * (deltaTime / 1000);
-
+    
             if (dx !== 0 && dy !== 0) {
                 const norm = Math.sqrt(dx * dx + dy * dy);
                 dx = (dx / norm) * this.speed * (deltaTime / 1000);
                 dy = (dy / norm) * this.speed * (deltaTime / 1000);
             }
-
+    
             dx = isNaN(dx) ? 0 : dx;
             dy = isNaN(dy) ? 0 : dy;
-
+    
             this.vx = dx;
             this.vy = dy;
-
+    
             let newX = this.x + this.vx;
             let newY = this.y + this.vy;
-
+    
             newX = isNaN(newX) ? this.x : newX;
             newY = isNaN(newY) ? this.y : newY;
-
+    
             let moveX = true;
             let moveY = true;
-
+    
             if (game.collision(newX, this.y, this)) {
                 moveX = false;
             }
-
+    
             if (game.collision(this.x, newY, this)) {
                 moveY = false;
             }
-
+    
             if (dx !== 0 && dy !== 0) {
                 if (moveX && moveY) {
+    
                     this.x = newX;
                     this.y = newY;
+    
                 } else if (moveX) {
                     this.x = newX;
                     this.direction = (dx > 0) ? 'E' : 'W';
@@ -534,10 +565,10 @@ var sprite = {
                 if (moveX) this.x = newX;
                 if (moveY) this.y = newY;
             }
-
+    
             this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
             this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
-
+    
             // Ensure moving flag is set when directions are present
             if (dx !== 0 || dy !== 0) {
                 this.moving = true;
@@ -548,9 +579,9 @@ var sprite = {
                 this.currentFrame = 0; // Reset to default standing position
             }
         }
-
+    
         this.animate();
-    },  
+    },
 
     takeDamage: function(damage) {
         let actualDamage = damage - this.defense;

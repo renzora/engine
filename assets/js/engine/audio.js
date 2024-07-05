@@ -159,7 +159,6 @@ var audio = {
             return; // If already looping, do not play again
         }
 
-        this.logWithTimestamp(`Queueing audio with ID: ${id} on channel ${channel}`);
         if (!this.queues[channel]) {
             this.queues[channel] = [];
         }
@@ -187,7 +186,6 @@ var audio = {
         // Play the next audio in the queue
         const nextAudio = this.queues[channel].shift();
         if (nextAudio) {
-            this.logWithTimestamp(`Playing audio with ID: ${nextAudio.id} on channel ${channel}`);
 
             const source = this.audioContext.createBufferSource();
             source.buffer = nextAudio.audioBuffer;
@@ -237,11 +235,6 @@ var audio = {
         if (this.isLoopingAudioPlaying[channel]) {
             delete this.isLoopingAudioPlaying[channel][id];
         }
-    },
-
-    logWithTimestamp: function(message) {
-        const timestamp = new Date().toISOString();
-        console.log(`[${timestamp}] ${message}`);
     },
 
     setVolume: function(channel, volume) {
