@@ -33,7 +33,7 @@ var server_create_window = {
             ui.ajax({
                 outputType: 'json',
                 method: 'POST',
-                url: 'modals/quick_menu/tabs/servers/ajax/createServer.php',
+                url: 'modals/console/tabs/servers/ajax/createServer.php',
                 data: JSON.stringify({ name: serverName }),
                 headers: {
                     'Content-Type': 'application/json'

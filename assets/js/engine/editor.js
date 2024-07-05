@@ -25,6 +25,9 @@ var editor = {
         document.addEventListener('contextmenu', function(event) {
             event.preventDefault();
         });
+
+        game.isEditorActive = true; // Set the flag to indicate the editor is active
+        console.log('Editor setupClickToActivate triggered');
     },
 
     teardownClickToActivate: function() {
@@ -37,9 +40,12 @@ var editor = {
         game.pathfinding = true;
         modal.show('ui_window');
         modal.show('quick_menu_window');
+        game.isEditorActive = false; // Set the flag to indicate the editor is no longer active
+        console.log('Editor teardownClickToActivate triggered');
     },
 
     handleClick: function(event) {
+        console.log('Editor handleClick triggered');
         if (event.target.closest('.tabs')) {
             return;
         }
@@ -84,6 +90,7 @@ var editor = {
     },
 
     handleMouseMove: function(event) {
+        console.log('Editor handleMouseMove triggered');
         if (this.selectedItem) {
             const uiMenu = document.querySelector('[data-window="ui_window"]');
             if (uiMenu && uiMenu.contains(event.target)) {
@@ -115,6 +122,7 @@ var editor = {
     },
 
     handleMouseUp: function(event) {
+        console.log('Editor handleMouseUp triggered');
         const isInWindow = event.target.closest('.window') !== null;
 
         if (this.selectedItem && !isInWindow && event.button === 0) {

@@ -51,6 +51,8 @@ var game = {
     edgeScrollBuffer: 150,
     isPaused: false,
     sceneBg: "grass",
+    isEditorActive: false,
+    selectionBounds: null,
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },
@@ -383,6 +385,8 @@ var game = {
     },
 
     handleMouseDown: function(event) {
+        if (this.isEditorActive) return; // Do nothing if the editor is active
+        console.log('Game handleMouseDown triggered');
         if (event.button === 0 || event.button === 2) { // Left or right mouse button
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
@@ -391,17 +395,16 @@ var game = {
             this.dragStart = { x: mouseX, y: mouseY };
             this.dragEnd = null; // Reset dragEnd
             this.selectedTiles = []; // Clear selected tiles on new drag
-            this.selectedObjects = []; // Clear selected objects on new drag
             this.selectionBounds = null; // Reset selection bounds
-    
+
             // Disable text selection
             document.body.style.userSelect = 'none';
             document.body.style.webkitUserSelect = 'none'; /* Safari */
             document.body.style.msUserSelect = 'none'; /* IE 10 and IE 11 */
-    
+
             // Disable camera centering
             this.activeCamera = false;
-    
+
             // Initialize edge scrolling state
             this.currentMouseX = event.clientX;
             this.currentMouseY = event.clientY;
@@ -410,6 +413,8 @@ var game = {
     },
 
     handleMouseMove: function(event) {
+        if (this.isEditorActive) return; // Do nothing if the editor is active
+        console.log('Game handleMouseMove triggered');
         if (this.isDragging) {
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
@@ -418,7 +423,7 @@ var game = {
             
             const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
             const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-    
+
             if (deltaX >= 8 || deltaY >= 8) {
                 this.updateSelectedTiles(); // Ensure selected tiles are updated during drag
                 
@@ -433,46 +438,43 @@ var game = {
             }
         }
     },
-    
+
     handleMouseUp: function(event) {
-        if (this.isDragging) {
-            const rect = this.canvas.getBoundingClientRect();
-            const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
-            const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
-            this.isDragging = false;
-            this.dragEnd = { x: mouseX, y: mouseY };
-    
-            const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
-            const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-    
-            if (deltaX < this.dragThreshold && deltaY < this.dragThreshold) {
-                // This is a click
-                this.handleCanvasClick(event);
-            } else if (deltaX >= 8 || deltaY >= 8) {
-                // This is a drag
-                this.handleCanvasDrag({ startX: this.dragStart.x, startY: this.dragStart.y, endX: this.dragEnd.x, endY: this.dragEnd.y });
-            }
-    
-            // Find and select items within the selected tiles
-            this.selectItemsInSelectedTiles();
-    
-            this.dragStart = null;
-            this.dragEnd = null;
-            this.selectedTiles = []; // Clear selected tiles after selection
-    
-            // Re-enable text selection
-            document.body.style.userSelect = '';
-            document.body.style.webkitUserSelect = ''; /* Safari */
-            document.body.style.msUserSelect = ''; /* IE 10 and IE 11 */
-    
-            modal.showAll();
-    
-            // Re-enable camera centering
-            this.activeCamera = true;
-    
-            // Stop edge scrolling
-            this.isEdgeScrolling = false;
+        if (this.isEditorActive) return; // Do nothing if the editor is active
+        console.log('Game handleMouseUp triggered');
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
+        const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+        this.isDragging = false;
+        this.dragEnd = { x: mouseX, y: mouseY };
+
+        const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
+        const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
+
+        if (deltaX < this.dragThreshold && deltaY < this.dragThreshold) {
+            // This is a click
+            this.handleCanvasClick(event, event.shiftKey);
+        } else if (deltaX >= 8 || deltaY >= 8) {
+            // This is a drag
+            this.handleCanvasDrag({ startX: this.dragStart.x, startY: this.dragStart.y, endX: this.dragEnd.x, endY: this.dragEnd.y }, event.shiftKey);
         }
+
+        // Re-enable text selection
+        document.body.style.userSelect = '';
+        document.body.style.webkitUserSelect = ''; /* Safari */
+        document.body.style.msUserSelect = ''; /* IE 10 and IE 11 */
+
+        modal.showAll();
+
+        // Re-enable camera centering
+        this.activeCamera = true;
+
+        // Stop edge scrolling
+        this.isEdgeScrolling = false;
+
+        // Clear the selection bounds and selected tiles
+        this.selectedTiles = [];
+        this.selectionBounds = null;
     },
     
     edgeScroll: function() {
@@ -511,21 +513,35 @@ var game = {
         requestAnimationFrame(this.edgeScroll.bind(this));
     },
 
-    handleCanvasClick: function(event) {
+    handleCanvasClick: function(event, isShiftKey) {
+        console.log('Game handleCanvasClick triggered');
+        if (isShiftKey) {
+            console.log('Shift + Click detected');
+        }
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
-    
+
+        console.log(`Mouse position: (${mouseX}, ${mouseY})`);
+
         // Calculate the grid position
         const gridX = Math.floor(mouseX / 16);
         const gridY = Math.floor(mouseY / 16);
-    
+
+        console.log(`Grid position: (${gridX}, ${gridY})`);
+
         // Store the grid coordinates in the new variables
         this.x = gridX;
         this.y = gridY;
-    
+
         const selectedObject = this.findObjectAt(mouseX, mouseY);
-    
+
+        if (selectedObject) {
+            console.log(`Selected object ID: ${selectedObject.id}`);
+        } else {
+            console.log('No object selected');
+        }
+
         if (event.button === 2) { // Right-click
             if (selectedObject) {
                 this.selectedObjects = [selectedObject];
@@ -540,30 +556,43 @@ var game = {
                 // Walk to the tile
                 const playerSprite = this.sprites[this.playerid];
                 playerSprite.walkToClickedTile(gridX, gridY);
-    
+
                 // Update target coordinates for the main sprite
                 this.targetX = mouseX;
                 this.targetY = mouseY;
-    
+
                 // Deselect any selected object if clicked on a walkable tile
-                this.selectedObjects = [];
-    
+                if (!isShiftKey) {
+                    this.selectedObjects = [];
+                }
+
                 // Check tile actions after the sprite moves
                 playerSprite.checkTileActions();
-    
+
             } else if (selectedObject) {
-                this.selectedObjects = [selectedObject];
+                const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
+                if (isShiftKey) {
+                    const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
+                    if (index === -1) {
+                        this.selectedObjects.push(selectedObject);
+                    } else {
+                        this.selectedObjects.splice(index, 1);
+                    }
+                } else {
+                    this.selectedObjects = [selectedObject];
+                }
+
                 if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
                     this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
                 }
-    
+
                 // Check if the selected object has a click action
                 const objectId = selectedObject.id;
                 const objectScript = actions.objectScript[objectId];
-    
+
                 if (objectScript && objectScript.click) {
                     const clickAction = objectScript.click;
-    
+
                     // Check for required item
                     if (clickAction.requiredItem) {
                         const playerSprite = this.sprites[this.playerid];
@@ -582,17 +611,23 @@ var game = {
                 this.selectedObjects = [];
             }
         }
-    },    
+
+        console.log('Current selected objects:', this.selectedObjects);
+
+        // Update the visual selection state
+        this.updateSelectedTiles();
+        this.render();
+    },
 
     isTileWalkable: function(gridX, gridY) {
         const grid = this.createWalkableGrid(); // Create or fetch the walkable grid
         return grid[gridX] && grid[gridX][gridY] === 1; // Check if the tile is walkable
     },
 
-    handleCanvasDrag: function(dragArea) {
-        // Implement the logic for handling the drag area selection
+    handleCanvasDrag: function(dragArea, isShiftKey) {
+        console.log('Game handleCanvasDrag triggered');
         this.updateSelectedTiles();
-        this.selectItemsInSelectedTiles();
+        this.selectItemsInSelectedTiles(isShiftKey);
         this.selectedObjects.forEach(selectedObject => {
             const cachedObject = this.selectedCache.find(cache => cache.id === selectedObject.id);
             if (!cachedObject) {
@@ -648,9 +683,9 @@ var game = {
 
     findObjectAt: function(x, y) {
         if (!this.roomData || !this.roomData.items) return null;
-    
+
         const renderQueue = [];
-    
+
         // Populate renderQueue with room items
         this.roomData.items.forEach(roomItem => {
             const itemData = assets.load('objectData')[roomItem.id];
@@ -658,14 +693,14 @@ var game = {
                 const tileData = itemData[0];
                 const xCoordinates = roomItem.x || [];
                 const yCoordinates = roomItem.y || [];
-    
+
                 let index = 0;
-    
-                for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
-                    for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
-                        const posX = x * 16;
-                        const posY = y * 16;
-    
+
+                for (let tileY = Math.min(...yCoordinates); tileY <= Math.max(...yCoordinates); tileY++) {
+                    for (let tileX = Math.min(...xCoordinates); tileX <= Math.max(...xCoordinates); tileX++) {
+                        const posX = tileX * 16;
+                        const posY = tileY * 16;
+
                         let tileFrameIndex;
                         if (tileData.d) {
                             const currentFrame = tileData.currentFrame || 0;
@@ -673,7 +708,7 @@ var game = {
                         } else {
                             tileFrameIndex = tileData.i[index];
                         }
-    
+
                         renderQueue.push({
                             tileIndex: tileFrameIndex,
                             posX: posX,
@@ -682,19 +717,19 @@ var game = {
                             id: roomItem.id,
                             item: roomItem
                         });
-    
+
                         index++;
                     }
                 }
             }
         });
-    
+
         // Sort renderQueue by z-index and render order
         renderQueue.sort((a, b) => a.z - b.z || a.renderOrder - b.renderOrder);
-    
+
         // Find the object at the specified coordinates that rendered last
         let highestZIndexObject = null;
-    
+
         for (const item of renderQueue) {
             const tileRect = {
                 x: item.posX,
@@ -702,7 +737,7 @@ var game = {
                 width: 16,
                 height: 16
             };
-    
+
             if (
                 x >= tileRect.x &&
                 x <= tileRect.x + tileRect.width &&
@@ -712,7 +747,7 @@ var game = {
                 highestZIndexObject = item.item;
             }
         }
-    
+
         return highestZIndexObject;
     },
 
@@ -841,26 +876,26 @@ var game = {
         if (this.dragStart && this.dragEnd) {
             const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
             const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-    
+
             if (deltaX >= 8 || deltaY >= 8) {
                 const startX = Math.min(this.dragStart.x, this.dragEnd.x);
                 const startY = Math.min(this.dragStart.y, this.dragEnd.y);
                 const endX = Math.max(this.dragStart.x, this.dragEnd.x);
                 const endY = Math.max(this.dragStart.y, this.dragEnd.y);
-    
+
                 const startTileX = Math.floor(startX / 16);
                 const startTileY = Math.floor(startY / 16);
                 const endTileX = Math.floor(endX / 16);
                 const endTileY = Math.floor(endY / 16);
-    
+
                 this.selectedTiles = [];
-    
+
                 for (let x = startTileX; x <= endTileX; x++) {
                     for (let y = startTileY; y <= endTileY; y++) {
                         this.selectedTiles.push({ x: x * 16, y: y * 16 });
                     }
                 }
-    
+
                 this.selectionBounds = {
                     startX: startTileX * 16,
                     startY: startTileY * 16,
@@ -871,10 +906,9 @@ var game = {
         }
     },
 
-    selectItemsInSelectedTiles: function() {
-    
-        let foundItems = [];
-    
+    selectItemsInSelectedTiles: function(isShiftKey) {
+        const foundItems = [];
+
         if (this.roomData && this.roomData.items) {
             this.roomData.items.forEach(roomItem => {
                 const itemData = this.objectData[roomItem.id];
@@ -882,7 +916,7 @@ var game = {
                     const tileData = itemData[0];
                     const xCoordinates = roomItem.x || [];
                     const yCoordinates = roomItem.y || [];
-    
+
                     for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
                         for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
                             if (this.isTileSelected(x * 16, y * 16)) {
@@ -894,15 +928,63 @@ var game = {
                 }
             });
         }
-    
-        if (foundItems.length > 0) {
+
+        if (isShiftKey) {
+            foundItems.forEach(foundItem => {
+                const uniqueId = `${foundItem.id}_${foundItem.x}_${foundItem.y}`;
+                const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
+                if (index === -1) {
+                    this.selectedObjects.push(foundItem);
+                } else {
+                    this.selectedObjects.splice(index, 1);
+                }
+            });
+        } else {
             this.selectedObjects = foundItems;
         }
-    
+
+        console.log('Current selected objects after drag:', this.selectedObjects);
     },
-    
-    
-    
+
+    selectItemsInSelectedTiles: function(isShiftKey) {
+        const foundItems = [];
+
+        if (this.roomData && this.roomData.items) {
+            this.roomData.items.forEach(roomItem => {
+                const itemData = this.objectData[roomItem.id];
+                if (itemData && itemData.length > 0) {
+                    const tileData = itemData[0];
+                    const xCoordinates = roomItem.x || [];
+                    const yCoordinates = roomItem.y || [];
+
+                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
+                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                            if (this.isTileSelected(x * 16, y * 16)) {
+                                foundItems.push(roomItem);
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (isShiftKey) {
+            foundItems.forEach(foundItem => {
+                const uniqueId = `${foundItem.id}_${foundItem.x}_${foundItem.y}`;
+                const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
+                if (index === -1) {
+                    this.selectedObjects.push(foundItem);
+                } else {
+                    this.selectedObjects.splice(index, 1);
+                }
+            });
+        } else {
+            this.selectedObjects = foundItems;
+        }
+
+        console.log('Current selected objects after drag:', this.selectedObjects);
+    },
 
     isTileSelected: function(tileX, tileY) {
         return this.selectedTiles.some(tile => tile.x === tileX && tile.y === tileY);
@@ -932,9 +1014,6 @@ var game = {
             this.ctx.shadowOffsetY = 0;
         }
     },
-    
-    
-
  
     render: function() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
