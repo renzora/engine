@@ -274,6 +274,10 @@ var game = {
                     // Store the scene id in local storage
                     localStorage.setItem('sceneid', game.sceneid);
     
+                    // Deselect all items when entering a new scene
+                    game.selectedObjects = [];
+                    game.selectedCache = [];
+    
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
                     ui.notif("scene_change_notif", data.name, true);
@@ -515,44 +519,76 @@ var game = {
 
     handleCanvasClick: function(event, isShiftKey) {
         console.log('Game handleCanvasClick triggered');
-    
+        
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
-    
+        
         console.log(`Mouse position: (${mouseX}, ${mouseY})`);
-    
+        
         // Calculate the grid position
         const gridX = Math.floor(mouseX / 16);
         const gridY = Math.floor(mouseY / 16);
-    
+        
         console.log(`Grid position: (${gridX}, ${gridY})`);
-    
+        
         // Store the grid coordinates in the new variables
         this.x = gridX;
         this.y = gridY;
-    
+        
         const selectedObject = this.findObjectAt(mouseX, mouseY);
-    
+        
         if (selectedObject) {
             console.log(`Selected object ID: ${selectedObject.id}`);
         } else {
             console.log('No object selected');
         }
     
-        if (event.button === 2) { // Right-click
-            if (selectedObject) {
+        const mainSprite = game.sprites[this.playerid];
+        const spriteGridX = Math.floor(mainSprite.x / 16);
+        const spriteGridY = Math.floor(mainSprite.y / 16);
+    
+        // Calculate the distance to the clicked tile
+        const distanceX = Math.abs(gridX - spriteGridX);
+        const distanceY = Math.abs(gridY - spriteGridY);
+    
+        // Change direction only if the clicked tile is within 2 tiles away
+        if (distanceX <= 2 && distanceY <= 2) {
+            const deltaX = gridX - spriteGridX;
+            const deltaY = gridY - spriteGridY;
+    
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (deltaX > 0) {
+                    mainSprite.direction = 'E';
+                } else {
+                    mainSprite.direction = 'W';
+                }
+            } else {
+                if (deltaY > 0) {
+                    mainSprite.direction = 'S';
+                } else {
+                    mainSprite.direction = 'N';
+                }
+            }
+    
+            // Log the direction for debugging
+            console.log(`Direction: ${mainSprite.direction}`);
+        }
+    
+        // Check if the tile is walkable
+        if (this.isTileWalkable(gridX, gridY)) {
+            // Walk to the tile if it is walkable
+            mainSprite.walkToClickedTile(gridX, gridY);
+        } else if (selectedObject) {
+            // Handle object selection if the tile is not walkable
+            if (event.button === 2) { // Right-click
                 this.selectedObjects = [selectedObject];
                 if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
                     this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
                 }
-            } else {
-                this.selectedObjects = [];
-            }
-        } else if (event.button === 0) { // Left-click
-            if (isShiftKey) {
-                // Handle shift+click for item selection
-                if (selectedObject) {
+            } else if (event.button === 0) { // Left-click
+                if (isShiftKey) {
+                    // Handle shift+click for item selection
                     const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
                     const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
                     if (index === -1) {
@@ -586,27 +622,9 @@ var game = {
                             console.log(`Action result: ${clickAction.result}`);
                         }
                     }
-                }
-            } else {
-                // Handle pathfinding if shift is not held down
-                if (this.isTileWalkable(gridX, gridY)) {
-                    // Walk to the tile
-                    const playerSprite = this.sprites[this.playerid];
-                    playerSprite.walkToClickedTile(gridX, gridY);
-    
-                    // Update target coordinates for the main sprite
-                    this.targetX = mouseX;
-                    this.targetY = mouseY;
-    
-                    // Deselect any selected object if clicked on a walkable tile
-                    this.selectedObjects = [];
-    
-                    // Check tile actions after the sprite moves
-                    playerSprite.checkTileActions();
-                } else if (selectedObject) {
-                    // Deselect all other objects before selecting the new one
+                } else {
+                    // Handle object selection if the tile is not walkable
                     this.selectedObjects = [selectedObject];
-    
                     if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
                         this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
                     }
@@ -632,8 +650,6 @@ var game = {
                             console.log(`Action result: ${clickAction.result}`);
                         }
                     }
-                } else {
-                    this.selectedObjects = [];
                 }
             }
         }
@@ -642,7 +658,7 @@ var game = {
     
         // Update the visual selection state
         this.updateSelectedTiles();
-    },
+    },    
 
 
     isTileWalkable: function(gridX, gridY) {
