@@ -2,12 +2,14 @@ var effects = {
     lights: [],
     compositeOperation: 'soft-light',
     nightFilter: {
-        opacity: 0.75,
-        color: { r: 7, g: 0, b: 57 },
+        opacity: 0.92,
+        color: { r: 14, g: 0, b: 78 },
         compositeOperation: 'hard-light'
     },
     timeBasedUpdatesEnabled: true,
     nightAmbiencePlaying: false,
+    activeEffects: {},
+
     LightSource: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
         this.id = id;
         this.x = x;
@@ -15,6 +17,7 @@ var effects = {
         this.baseRadius = radius;
         this.color = color;
         this.maxIntensity = maxIntensity;
+        this.initialMaxIntensity = maxIntensity; // Store the initial max intensity
         this.type = type;
         this.currentIntensity = maxIntensity;
         this.flicker = flicker;
@@ -27,52 +30,57 @@ var effects = {
         lightCanvas.width = game.canvas.width;
         lightCanvas.height = game.canvas.height;
         const lightCtx = lightCanvas.getContext('2d');
-        
-        // Set blend mode to 'lighter' for additive blending
-        lightCtx.globalCompositeOperation = 'soft-light';
-        
+
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = game.canvas.width;
+        tempCanvas.height = game.canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
+
         this.lights.forEach(light => {
             // Validate light coordinates and radius
             if (!isFinite(light.x) || !isFinite(light.y) || !isFinite(light.baseRadius)) {
                 console.warn(`Invalid light parameters: x=${light.x}, y=${light.y}, radius=${light.baseRadius}`);
                 return;
             }
-    
-            // Create a radial gradient with multiple stops for a sharper falloff
-            const gradient = lightCtx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.baseRadius);
+
+            // Clear the temporary canvas
+            tempCtx.clearRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Create a radial gradient with smoother falloff
+            const gradient = tempCtx.createRadialGradient(light.x, light.y, 0, light.x, light.y, light.baseRadius);
             gradient.addColorStop(0, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity})`);
-            gradient.addColorStop(0.2, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.8})`);
-            gradient.addColorStop(0.4, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.6})`);
-            gradient.addColorStop(0.6, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.4})`);
-            gradient.addColorStop(0.8, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.2})`);
+            gradient.addColorStop(0.4, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.7})`);
+            gradient.addColorStop(0.7, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.4})`);
+            gradient.addColorStop(0.9, `rgba(${light.color.r}, ${light.color.g}, ${light.color.b}, ${light.currentIntensity * 0.1})`);
             gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    
-            lightCtx.fillStyle = gradient;
-            lightCtx.beginPath();
-            lightCtx.arc(light.x, light.y, light.baseRadius, 0, Math.PI * 2);
-            lightCtx.fill();
+
+            tempCtx.fillStyle = gradient;
+            tempCtx.beginPath();
+            tempCtx.arc(light.x, light.y, light.baseRadius, 0, Math.PI * 2);
+            tempCtx.fill();
+
+            // Apply a subtle Gaussian blur to the temporary canvas
+            tempCtx.filter = 'blur(20px)';
+            tempCtx.drawImage(tempCanvas, 0, 0);
+
+            // Draw the blurred light onto the main light canvas with 'lighter' blend mode
+            lightCtx.globalCompositeOperation = 'lighter';
+            lightCtx.drawImage(tempCanvas, 0, 0);
         });
-        
+
+        // Apply an additional blur to the light mask to smooth out transitions
+        lightCtx.filter = 'blur(10px)';
+        lightCtx.drawImage(lightCanvas, 0, 0);
+
         return lightCanvas;
-    },    
+    },
     addLight: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
         const existingLight = this.lights.find(light => light.id === id);
         if (!existingLight) {
-            const hours = game.gameTime.hours;
-            const minutes = game.gameTime.minutes;
-            const time = hours + minutes / 60;
-            let initialIntensity = 0;
+            const clampedMaxIntensity = Math.min(maxIntensity, maxIntensity); // Ensure maxIntensity is within bounds
 
-            if (time >= 22 || time < 7) { // From 10pm to 7am
-                if (time >= 22 && time < 24) {
-                    initialIntensity = Math.min(maxIntensity, (time - 22) / 2 * maxIntensity);
-                } else if (time >= 0 && time < 7) {
-                    initialIntensity = Math.min(maxIntensity, (7 - time) / 7 * maxIntensity);
-                }
-            }
-
-            const newLight = new this.LightSource(id, x, y, radius, color, maxIntensity, type, flicker, flickerSpeed, flickerAmount);
-            newLight.currentIntensity = initialIntensity; // Set the initial intensity based on time
+            const newLight = new this.LightSource(id, x, y, radius, color, clampedMaxIntensity, type, flicker, flickerSpeed, flickerAmount);
+            newLight.currentIntensity = clampedMaxIntensity; // Set initial intensity to maxIntensity
             this.lights.push(newLight);
         }
     },
@@ -85,7 +93,7 @@ var effects = {
                 } else {
                     light.currentIntensity = light.maxIntensity;
                 }
-                light.currentIntensity = Math.max(0, Math.min(light.currentIntensity, 1)); // Clamp the intensity between 0 and 1
+                light.currentIntensity = Math.max(0, Math.min(light.currentIntensity, light.maxIntensity)); // Clamp the intensity between 0 and maxIntensity
             } else {
                 light.currentIntensity = 0; // Ensure light is off when maxIntensity is 0
             }
@@ -93,11 +101,11 @@ var effects = {
     },
     updateDayNightCycle: function() {
         if (!this.timeBasedUpdatesEnabled) return; // Check if time-based updates are enabled
-    
+
         const hours = game.gameTime.hours;
         const minutes = game.gameTime.minutes;
         const time = hours + minutes / 60;
-    
+
         // Calculate night filter color and opacity
         if (time >= 22 || time < 7) { // From 10 PM to 7 AM
             if (!this.nightAmbiencePlaying) {
@@ -105,25 +113,27 @@ var effects = {
                 this.nightAmbiencePlaying = true;
             }
             if (time >= 22 && time < 24) {
-                effects.nightFilter.opacity = Math.min(0.8, (time - 22) / 2 * 0.8);
+                effects.nightFilter.opacity = Math.min(0.92, (time - 22) / 2 * 0.92);
             } else if (time >= 0 && time < 6) {
-                effects.nightFilter.opacity = 0.8;
+                effects.nightFilter.opacity = 0.92;
             } else if (time >= 6 && time < 7) { // Sunrise effect
                 const progress = (time - 6);
-                effects.nightFilter.opacity = 0.8 - progress * 0.8;
+                effects.nightFilter.opacity = 0.92 - progress * 0.92;
                 effects.nightFilter.color = {
-                    r: Math.round(7 + progress * (255 - 7)),
+                    r: Math.round(14 + progress * (255 - 14)),
                     g: Math.round(0 + progress * (140 - 0)),
-                    b: Math.round(57 + progress * (0 - 57))
+                    b: Math.round(78 + progress * (0 - 78))
                 };
             }
-    
-            const progress = (time >= 22) ? (time - 22) / 2 : (7 - time) / 7;
-            effects.nightFilter.color = {
-                r: Math.round(0 + progress * (7 - 0)),
-                g: Math.round(0 + progress * (0 - 0)),
-                b: Math.round(0 + progress * (57 - 0))
-            };
+
+            if (!(time >= 6 && time < 7)) { // Only update night filter color if it's not sunrise
+                const progress = (time >= 22) ? (time - 22) / 2 : (7 - time) / 7;
+                effects.nightFilter.color = {
+                    r: Math.round(14 + progress * (14 - 14)),
+                    g: Math.round(0 + progress * (0 - 0)),
+                    b: Math.round(78 + progress * (78 - 78))
+                };
+            }
         } else {
             if (this.nightAmbiencePlaying) {
                 audio.stopLoopingAudio('nightAmbience', 'ambience', 0.5);
@@ -132,7 +142,7 @@ var effects = {
             effects.nightFilter.opacity = 0;
             effects.nightFilter.color = { r: 255, g: 255, b: 255 };
         }
-    
+
         // Update light sources intensity
         if (time >= 22 || time < 6) {
             if (time >= 22 && time < 24) {
@@ -154,34 +164,38 @@ var effects = {
             const hours = game.gameTime.hours;
             const minutes = game.gameTime.minutes;
             const time = hours + minutes / 60;
+            let targetIntensity = 0;
+
             if (time >= 7 && time < 22) {
                 light.maxIntensity = 0;
                 light.flicker = false; // Turn off flickering when the lights are off
             } else if (time >= 6 && time < 7) { // Sunrise effect
-                light.maxIntensity = 1 - (time - 6);
+                light.maxIntensity = light.initialMaxIntensity * (1 - (time - 6));
                 light.flicker = false; // Turn off flickering during sunrise
             } else if (time >= 22 && time < 24) { // Sunset effect
-                light.maxIntensity = (time - 22) / 2;
+                light.maxIntensity = light.initialMaxIntensity * (time - 22) / 2;
                 light.flicker = true; // Enable flickering during sunset
             } else {
-                light.maxIntensity = 1; // Set to the original max intensity or as needed
+                light.maxIntensity = light.initialMaxIntensity; // Set to the initial max intensity
                 light.flicker = true; // Enable flickering during night
             }
-            light.currentIntensity = light.maxIntensity * progress;
+
+            targetIntensity = Math.min(light.maxIntensity * progress, light.maxIntensity); // Ensure current intensity doesn't exceed maxIntensity
+            light.currentIntensity = targetIntensity;
         });
     },
     shakeMap: function(duration, intensity) {
         const originalCameraX = game.cameraX;
         const originalCameraY = game.cameraY;
-    
+
         let elapsed = 0;
         const shakeInterval = setInterval(() => {
             elapsed += 16; // Approximate frame duration
-    
+
             if (elapsed < duration) {
                 const offsetX = (Math.random() - 0.5) * intensity;
                 const offsetY = (Math.random() - 0.5) * intensity;
-    
+
                 game.cameraX = originalCameraX + offsetX;
                 game.cameraY = originalCameraY + offsetY;
             } else {
@@ -327,34 +341,52 @@ var effects = {
         }
     },
 
-    createParticles: function(x, y, options) {
+    createParticles: function(x, y, options, effectId) {
         const particleCount = options.count || 20;
         const baseSpeed = options.speed || 2;
-        const baseAngle = options.angle || 0;
-        const spread = options.spread || Math.PI * 2; // Default to 360 degrees
-        const colors = options.colors || ['rgba(255, 0, 0, 1)']; // Default color if none provided
-
+        const baseAngleDeg = options.angle || 0; // Angle in degrees
+        const baseAngle = baseAngleDeg * (Math.PI / 180); // Convert degrees to radians
+        const spread = options.spread || 360; // Spread in degrees
+        const spreadRad = spread * (Math.PI / 180); // Convert spread to radians
+        const colors = options.colors || ['rgba(255, 0, 0, 1)'];
+        const repeat = options.repeat || false;
+    
         for (let i = 0; i < particleCount; i++) {
-            const angle = baseAngle + (Math.random() - 0.5) * spread;
-            const speed = baseSpeed * (0.5 + Math.random() * 0.5); // Add some variability to the speed
-            const color = colors[Math.floor(Math.random() * colors.length)]; // Select a random color
-
-            game.particles.push({
+            const randomSpread = (Math.random() - 0.5) * spreadRad;
+            const angle = baseAngle + randomSpread;
+            const speed = baseSpeed * (0.5 + Math.random() * 0.5);
+            const color = colors[Math.floor(Math.random() * colors.length)];
+    
+            const particle = {
                 x: x,
                 y: y,
+                initialX: x,
+                initialY: y,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 life: options.life || 50,
+                maxLife: options.life || 50,
                 color: color,
                 size: options.size || 2,
-                type: options.type || 'default' // Add a type to handle different behaviors
-            });
+                type: options.type || 'default',
+                repeat: repeat,
+                glow: options.glow || 0,
+                initialOpacity: options.opacity || 1,
+                blur: options.blur || 0,
+                shape: options.shape || 'circle'
+            };
+    
+            if (!this.activeEffects[effectId]) {
+                this.activeEffects[effectId] = [];
+            }
+            this.activeEffects[effectId].push(particle);
+            game.particles.push(particle);
         }
     },
-
+    
     updateParticles: function(deltaTime) {
         game.particles = game.particles.filter(particle => particle.life > 0);
-
+    
         game.particles.forEach(particle => {
             if (particle.type === 'ripple') {
                 particle.size += 0.1; // Gradually increase the size for ripples
@@ -364,51 +396,63 @@ var effects = {
                 particle.x += particle.vx * deltaTime / 16;
                 particle.y += particle.vy * deltaTime / 16;
                 particle.life -= deltaTime / 16;
+    
+                // Update opacity based on remaining life
+                const fadeStart = 0.2; // Fraction of life remaining when fade starts
+                const lifeFraction = particle.life / particle.maxLife;
+                if (lifeFraction < fadeStart) {
+                    particle.opacity = particle.initialOpacity * (lifeFraction / fadeStart);
+                } else {
+                    particle.opacity = particle.initialOpacity;
+                }
+            }
+    
+            if (particle.life <= 0 && particle.repeat) {
+                particle.life = particle.maxLife; // Reset life for repeating particles
+                particle.x = particle.initialX; // Reset to initial x position
+                particle.y = particle.initialY; // Reset to initial y position
             }
         });
     },
-
+    
     renderParticles: function() {
-        game.particles.forEach(particle => {
-            game.ctx.fillStyle = particle.color;
-            game.ctx.globalAlpha = particle.life / 50; // Match reduced lifetime
-            game.ctx.beginPath();
-            game.ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
-            game.ctx.fill();
-            game.ctx.globalAlpha = 1; // Reset alpha
-        });
-    },
-
-    createGrassEffect: function(x, y) {
-        this.createParticles(x, y, {
-            colors: ['rgba(34, 139, 34, 0.5)', 'rgba(50, 205, 50, 0.5)'], // Subtle green colors
-            count: 10,
-            speed: 0.5,
-            life: 30,
-            size: 1,
-            spread: Math.PI / 8 // Narrow spread
-        });
-    },
-
-    createSandEffect: function(x, y) {
-        this.createParticles(x, y, {
-            colors: ['rgba(194, 178, 128, 0.5)', 'rgba(210, 180, 140, 0.5)'], // Subtle sand colors
-            count: 10,
-            speed: 1,
-            life: 30,
-            size: 1,
-            spread: Math.PI / 4 // Wider spread
-        });
-    },
-
-    createMudEffect: function(x, y) {
-        this.createParticles(x, y, {
-            colors: ['rgba(139, 69, 19, 0.5)', 'rgba(160, 82, 45, 0.5)'], // Subtle brown colors
-            count: 10,
-            speed: 0.75,
-            life: 30,
-            size: 1,
-            spread: Math.PI / 6 // Medium spread
+        Object.values(this.activeEffects).forEach(effectParticles => {
+            effectParticles.forEach(particle => {
+                const ctx = game.ctx;
+    
+                ctx.save();
+                ctx.globalAlpha = particle.opacity;
+    
+                if (particle.glow > 0) {
+                    ctx.shadowColor = particle.color;
+                    ctx.shadowBlur = particle.glow;
+                }
+    
+                if (particle.blur > 0) {
+                    ctx.filter = `blur(${particle.blur}px)`;
+                }
+    
+                ctx.fillStyle = particle.color;
+                ctx.beginPath();
+    
+                switch (particle.shape) {
+                    case 'square':
+                        ctx.fillRect(particle.x, particle.y, particle.size, particle.size);
+                        break;
+                    case 'triangle':
+                        ctx.moveTo(particle.x, particle.y - particle.size);
+                        ctx.lineTo(particle.x - particle.size, particle.y + particle.size);
+                        ctx.lineTo(particle.x + particle.size, particle.y + particle.size);
+                        ctx.closePath();
+                        break;
+                    default:
+                        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                        break;
+                }
+    
+                ctx.fill();
+                ctx.restore();
+            });
         });
     }
 };

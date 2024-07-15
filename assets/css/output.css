@@ -1601,6 +1601,11 @@ video {
   background-color: rgb(59 130 246 / var(--tw-bg-opacity));
 }
 
+.bg-blue-600 {
+  --tw-bg-opacity: 1;
+  background-color: rgb(37 99 235 / var(--tw-bg-opacity));
+}
+
 .bg-gray-100 {
   --tw-bg-opacity: 1;
   background-color: rgb(243 244 246 / var(--tw-bg-opacity));
@@ -1889,6 +1894,11 @@ video {
 
 .to-transparent {
   --tw-gradient-to: transparent var(--tw-gradient-to-position);
+}
+
+.object-cover {
+  -o-object-fit: cover;
+     object-fit: cover;
 }
 
 .p-1 {
@@ -2749,6 +2759,41 @@ canvas {
 .dark-menu li:hover {
   background-color: #0450ad;
   border-radius: 3px;
+}
+
+#customCursor {
+  position: absolute;
+  width: 20px;
+  /* Width of the cursor */
+  height: 20px;
+  /* Height of the cursor */
+  background-color: white;
+  /* Bright color for visibility */
+  -webkit-clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+          clip-path: polygon(50% 0%, 0% 100%, 100% 100%);
+  /* Triangle shape */
+  transform: translate(-50%, -50%) rotate(-45deg);
+  /* Rotate left */
+  z-index: 10000;
+  pointer-events: none;
+  box-shadow: 0 0 8px 2px rgba(0, 255, 0, 0.6);
+  /* Shadow effect */
+  animation: pulseCursor 1.5s infinite ease-in-out;
+  /* An example animation */
+  transition: transform 0.1s ease-out, box-shadow 0.1s ease-out;
+  /* Smooth transition */
+}
+
+@keyframes pulseCursor {
+  0%, 100% {
+    transform: translate(-50%, -50%) rotate(-45deg) scale(1);
+    box-shadow: 0 0 8px 2px rgba(0, 255, 0, 0.6);
+  }
+
+  50% {
+    transform: translate(-50%, -50%) rotate(-45deg) scale(1.2);
+    box-shadow: 0 0 12px 3px rgba(0, 255, 0, 0.8);
+  }
 }
 
 [class*=hint--]{

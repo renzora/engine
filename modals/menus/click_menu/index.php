@@ -3,32 +3,24 @@
         <ul id="clickMenuItems">
             <li id="walkHereOption" onclick="click_menu_window.hideMenus(); game.sprites[game.playerid].walkToClickedTile(game.x, game.y);">Walk Here</li>
             <li id="moveItemOption" style="display: none;" onclick="click_menu_window.hideMenus(); editor.startMovingItem(game.selectedObjects[0]);">Move Item</li>
-        </ul>
-    </div>
-
-    <div id="itemMenu" class="item-menu dark-menu shadow" style="display: none;">
-        <ul id="itemMenuItems" style="display: flex; flex-direction: row; padding: 0; margin: 0; list-style: none;">
-            <li onclick="click_menu_window.hideMenus(); editor.startMovingItem(game.selectedObjects[0]);" style="margin-right: 10px; cursor: pointer;">Move</li>
-            <li onclick="click_menu_window.hideMenus(); game.pickUpItem(game.selectedObjects[0]);" style="margin-right: 10px; cursor: pointer;">Pick Up</li>
-            <li onclick="click_menu_window.hideMenus(); game.rotateItem(game.selectedObjects[0]);" style="cursor: pointer;">Rotate</li>
+            <li id="pickUpItemOption" style="display: block;" onclick="click_menu_window.hideMenus(); editor.pickUpSelectedItems();">Pick Up</li>
         </ul>
     </div>
 
     <style>
-        .item-menu {
-            position: absolute;
-            z-index: 1000;
-        }
-
         .dark-menu {
             background-color: #333;
             color: #fff;
             border-radius: 5px;
             padding: 5px;
+            position: absolute;
+            z-index: 1000;
+            display: none;
         }
 
         .dark-menu li {
             padding: 5px 10px;
+            cursor: pointer;
         }
 
         .dark-menu li:hover {
@@ -41,16 +33,50 @@
     </style>
 
     <script>
-        var click_menu_window = {
-            start: function() {
+var click_menu_window = {
+    start: function() {
+        document.addEventListener('contextmenu', this.disableDefaultContextMenu.bind(this));
+        document.addEventListener('click', this.hideMenus.bind(this));
+    },
 
-            },
+    disableDefaultContextMenu: function(event) {
+        event.preventDefault();
+    },
 
-            unmount: function() {
+    showContextMenu: function(clientX, clientY, programmatic = false) {
+        const rect = game.canvas.getBoundingClientRect();
+        const mouseX = (clientX - rect.left) / game.zoomLevel + game.cameraX;
+        const mouseY = (clientY - rect.top) / game.zoomLevel + game.cameraY;
+        const selectedObject = game.findObjectAt(mouseX, mouseY);
 
-            },
-        };
+        if (selectedObject && !game.selectedObjects.includes(selectedObject)) {
+            game.selectedObjects.push(selectedObject);
+            if (!game.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                game.selectedCache.push({ id: selectedObject.id, image: game.drawAndOutlineObjectImage(selectedObject) });
+            }
+        }
 
-        click_menu_window.start();
+        const contextMenu = document.getElementById('rightClickMenu');
+        if (game.selectedObjects.length > 1) {
+            document.getElementById('pickUpItemOption').textContent = 'Pick Up Items';
+        } else {
+            document.getElementById('pickUpItemOption').textContent = 'Pick Up Item';
+        }
+        contextMenu.style.display = 'block';
+        contextMenu.style.left = `${clientX}px`;
+        contextMenu.style.top = `${clientY}px`;
+
+        if (programmatic) {
+            console.log("Context menu shown programmatically");
+        }
+    },
+
+    hideMenus: function() {
+        document.getElementById('rightClickMenu').style.display = 'none';
+    }
+};
+
+click_menu_window.start();
+
     </script>
 </div>

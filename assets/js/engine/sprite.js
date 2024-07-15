@@ -17,11 +17,11 @@ var sprite = {
             directions: {},
             body: options.body !== undefined ? options.body : 1,
             head: options.head !== undefined ? options.head : 1,
-            hairstyle: options.hairstyle || 1,
-            outfit: options.outfit || 1,
-            facialHair: options.facialHair || 0,
-            hat: options.hat || 0,
-            glasses: options.glasses || 0,
+            hairstyle: options.hairstyle !== undefined ? options.hairstyle : 0,
+            outfit: options.outfit !== undefined ? options.outfit : 0,
+            facialHair: options.facialHair !== undefined ? options.facialHair : 0,
+            hat: options.hat !== undefined ? options.hat : 0,
+            glasses: options.glasses !== undefined ? options.glasses : 0,
             isEnemy: options.isEnemy || false,
             attack: options.attack || 10,
             defense: options.defense || 5,
@@ -43,14 +43,16 @@ var sprite = {
             maxEnergy: options.maxEnergy !== undefined ? options.maxEnergy : 100,
             runningSpeed: 120,
             messages: options.messages || [],
-
             directionMap: {
                 'S': 0,
                 'E': 6,
                 'N': 12,
-                'W': 6
+                'W': 6,
+                'SE': 18,
+                'SW': 18,
+                'NE': 24,
+                'NW': 24
             },
-
             draw: this.draw,
             drawShadow: this.drawShadow,
             addDirection: this.addDirection,
@@ -72,17 +74,17 @@ var sprite = {
             handleAimAttack: this.handleAimAttack,
             checkTileActions: this.checkTileActions
         };
-
+    
         // Automatically handle area movement if area is specified in options
         if (options.area) {
             setInterval(() => {
                 const directions = ['up', 'down', 'left', 'right'];
                 const randomDirection = directions[Math.floor(Math.random() * directions.length)];
                 const randomDuration = Math.random() * 2 + 1;
-
+    
                 let newX = newSprite.x;
                 let newY = newSprite.y;
-
+    
                 switch (randomDirection) {
                     case 'up':
                         newY -= newSprite.speed * randomDuration;
@@ -97,7 +99,7 @@ var sprite = {
                         newX += newSprite.speed * randomDuration;
                         break;
                 }
-
+    
                 if (newX >= options.area.x && newX <= options.area.x + options.area.width - newSprite.width &&
                     newY >= options.area.y && newY <= options.area.y + options.area.height - newSprite.height) {
                     newSprite.addDirection(randomDirection);
@@ -107,19 +109,17 @@ var sprite = {
                 }
             }, 500);
         }
-
-
-
+    
         // Automatically add the new sprite to the game.sprites object
         game.sprites[options.id] = newSprite;
-
+    
         // Set interval for NPC to say random messages
         if (newSprite.messages.length > 0) {
             setInterval(() => {
                 game.randomNpcMessage(newSprite);
             }, Math.random() * 20000 + 20000); // Random interval between 5 and 15 seconds
         }
-
+    
         return newSprite;
     },
 
@@ -241,7 +241,7 @@ var sprite = {
         game.ctx.save();
         game.ctx.translate(this.x, this.y); // No need to translate down
     
-        if (this.direction === 'W') {
+        if (this.direction === 'W' || this.direction === 'NW' || this.direction === 'SW') {
             game.ctx.scale(-this.scale, this.scale);
             game.ctx.translate(-this.width * this.scale, 0);
         } else {
@@ -258,7 +258,7 @@ var sprite = {
         }
     
         game.ctx.restore();
-    },    
+    },
     
     drawShadow: function() {
         game.ctx.save();
@@ -282,6 +282,22 @@ var sprite = {
                 shadowY = (this.height - 1) * this.scale; // Move shadow down
                 break;
             case 'W':
+                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'NE':
+                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'NW':
+                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'SE':
+                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
+                shadowY = (this.height - 1) * this.scale; // Move shadow down
+                break;
+            case 'SW':
                 shadowX = (this.width / 2) * this.scale; // Move shadow to the left
                 shadowY = (this.height - 1) * this.scale; // Move shadow down
                 break;
@@ -390,8 +406,10 @@ var sprite = {
     
             // Adjust direction for diagonal movement
             if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
-                if (deltaX > 0) this.direction = 'E';
-                else this.direction = 'W';
+                if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
+                else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
+                else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
+                else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
             }
     
             this.moving = true; // Ensure moving flag is set when moving along the path
@@ -419,14 +437,14 @@ var sprite = {
     },
 
     updateDirection: function() {
-        if (this.directions['up']) this.direction = 'N';
-        if (this.directions['down']) this.direction = 'S';
-        if (this.directions['left']) this.direction = 'W';
-        if (this.directions['right']) this.direction = 'E';
-        if (this.directions['up'] && this.directions['right']) this.direction = 'E';
-        if (this.directions['down'] && this.directions['right']) this.direction = 'E';
-        if (this.directions['down'] && this.directions['left']) this.direction = 'W';
-        if (this.directions['up'] && this.directions['left']) this.direction = 'W';
+        if (this.directions['up'] && this.directions['right']) this.direction = 'NE';
+        else if (this.directions['down'] && this.directions['right']) this.direction = 'SE';
+        else if (this.directions['down'] && this.directions['left']) this.direction = 'SW';
+        else if (this.directions['up'] && this.directions['left']) this.direction = 'NW';
+        else if (this.directions['up']) this.direction = 'N';
+        else if (this.directions['down']) this.direction = 'S';
+        else if (this.directions['left']) this.direction = 'W';
+        else if (this.directions['right']) this.direction = 'E';
     },
 
     startRunning: function() {

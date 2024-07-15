@@ -1,5 +1,4 @@
 var input = {
-    pressedDirections: [],
     keys: {
         'ArrowUp': "up",
         'ArrowLeft': "left",
@@ -62,7 +61,7 @@ var input = {
             const dir = this.keys[e.key];
             if (dir) {
                 if (mainSprite && game.allowControls) {
-                    mainSprite.addDirection(dir); // Control the main sprite
+                    mainSprite.addDirection(dir); // Use sprite's method
                 } else {
                     console.error('Main sprite not found.');
                 }
@@ -70,24 +69,7 @@ var input = {
             }
         }
 
-        if (e.key === ' ') {
-            if (mainSprite && game.allowControls) {
-                this.isSpacePressed = true;
-                mainSprite.targetAim = true;
-                this.cancelPathfinding(mainSprite);
-            }
-        } else if (e.key === 'Control') {
-            this.isCtrlPressed = true;
-        } else if (e.key === 'Alt') {
-            this.isAltPressed = true;
-        } else if (e.key === 'Shift') { // Add this block
-            this.isShiftPressed = true;
-        }
-
-        // Check and play walking audio
-        if (mainSprite && mainSprite.isMoving) {
-            audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
-        }
+        this.handleControlStateChange(e, true);
     },
 
     handleKeyUp: function(e) {
@@ -118,7 +100,7 @@ var input = {
 
         const dir = this.keys[e.key];
         if (dir && mainSprite) {
-            mainSprite.removeDirection(dir);
+            mainSprite.removeDirection(dir); // Use sprite's method
 
             // Stop walking audio if no directions are pressed
             if (!mainSprite.isMoving) {
@@ -126,18 +108,7 @@ var input = {
             }
         }
 
-        if (e.key === ' ') {
-            this.isSpacePressed = false;
-            if (mainSprite) {
-                mainSprite.targetAim = false;
-            }
-        } else if (e.key === 'Control') {
-            this.isCtrlPressed = false;
-        } else if (e.key === 'Alt') {
-            this.isAltPressed = false;
-        } else if (e.key === 'Shift') { // Add this block
-            this.isShiftPressed = false;
-        }
+        this.handleControlStateChange(e, false);
     },
 
     mouseDown: function(e) {
@@ -253,9 +224,29 @@ var input = {
         if (sprite && sprite.isMovingToTarget) {
             sprite.isMovingToTarget = false;
             sprite.path = [];
-            sprite.moving = false;
-            sprite.stopping = true;
-            console.log("Pathfinding cancelled");
+            sprite.moving = false; // Reset the moving flag
+            audio.stopLoopingAudio('walkGrass', 'sfx', 0.5); // Stop walking audio
+        }
+    },
+
+    handleControlStateChange: function(e, isPressed) {
+        const mainSprite = game.sprites[game.playerid];
+        switch (e.key) {
+            case 'Shift':
+                this.isShiftPressed = isPressed;
+                if (mainSprite) {
+                    mainSprite.isRunning = isPressed;
+                }
+                break;
+            case 'Control':
+                this.isCtrlPressed = isPressed;
+                break;
+            case 'Alt':
+                this.isAltPressed = isPressed;
+                break;
+            case ' ':
+                this.isSpacePressed = isPressed;
+                break;
         }
     }
 };

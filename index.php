@@ -12,6 +12,7 @@
   <script src='assets/js/engine/sprite.js'></script>
   <script src='assets/js/engine/astar.js'></script>
   <script src='assets/js/engine/input.js'></script>
+  <script src='assets/js/engine/gamepad.js'></script>
   <script src='assets/js/engine/ui.js'></script>
   <script src='assets/js/engine/modal.js'></script>
   <script src='assets/js/engine/weather.js'></script>

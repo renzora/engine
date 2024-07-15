@@ -53,6 +53,7 @@ var game = {
     sceneBg: "grass",
     isEditorActive: false,
     selectionBounds: null,
+    currentInputMethod: 'keyboard',
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },
@@ -63,11 +64,11 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 7,
+        hours: 0,
         minutes: 0,
         seconds: 0,
         days: 0,
-        speedMultiplier: 1000, // Game time progresses 10 times faster than real time
+        speedMultiplier: 100, // Game time progresses 10 times faster than real time
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
@@ -105,6 +106,13 @@ var game = {
         });
     },
 
+    updateInputMethodUI: function() {
+        const inputMethodDisplay = document.getElementById('input_method'); // Assuming you have an element with this ID
+        if (inputMethodDisplay) {
+            inputMethodDisplay.innerText = `Input: ${this.currentInputMethod}`;
+        }
+    },
+
     updateGameElements: function() {
         // Any specific updates to game elements after reloading data can be added here
         console.log("Game elements updated");
@@ -127,6 +135,7 @@ var game = {
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'objectScript', path: 'json/objectScript.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
+            { name: 'fxData', path: 'json/fxData.json' },
             { name: 'walkGrass', path: 'audio/sfx/movement/footstep.wav' },
             { name: 'closeModal', path: 'audio/sfx/ui/closeModal.mp3' },
             { name: 'menuDrop', path: 'audio/sfx/ui/menuDrop.mp3' },
@@ -149,6 +158,7 @@ var game = {
             this.itemsImg = assets.load('itemsImg');
             this.itemsData = assets.load('itemsData');
             this.objectData = assets.load('objectData');
+            this.fxData = assets.load('fxData');
 
             actions.loadObjectScript();
 
@@ -161,10 +171,10 @@ var game = {
                 speed: 90,
                 head: 1,
                 body: 1,
-                hairStyle: 1,
-                outfit: 3,
-                hat: 1,
-                facial: 1,
+                hairStyle: 0,
+                outfit: 0,
+                hat: 0,
+                facial: 0,
                 glasses: 0,
             };
             sprite.create(playerOptions);
@@ -183,7 +193,7 @@ var game = {
             const storedSceneId = localStorage.getItem('sceneid') || '66771b7e6c1c5b2f1708b75a';
             this.loadScene(storedSceneId);
 
-            modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
+            //modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
             modal.load('ui/modals.php', "ui_modals_list_window", "Modals List", false);
             modal.load('ui/footer.php', "ui_footer_window", "Footer", false);
             modal.load('menus/click_menu/index.php', 'click_menu_window', "click menu", false);
@@ -400,15 +410,15 @@ var game = {
             this.dragEnd = null; // Reset dragEnd
             this.selectedTiles = []; // Clear selected tiles on new drag
             this.selectionBounds = null; // Reset selection bounds
-
+    
             // Disable text selection
             document.body.style.userSelect = 'none';
             document.body.style.webkitUserSelect = 'none'; /* Safari */
             document.body.style.msUserSelect = 'none'; /* IE 10 and IE 11 */
-
+    
             // Disable camera centering
             this.activeCamera = false;
-
+    
             // Initialize edge scrolling state
             this.currentMouseX = event.clientX;
             this.currentMouseY = event.clientY;
@@ -451,31 +461,39 @@ var game = {
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
         this.isDragging = false;
         this.dragEnd = { x: mouseX, y: mouseY };
-
+    
         const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
         const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-
+    
         if (deltaX < this.dragThreshold && deltaY < this.dragThreshold) {
             // This is a click
             this.handleCanvasClick(event, event.shiftKey);
         } else if (deltaX >= 8 || deltaY >= 8) {
             // This is a drag
             this.handleCanvasDrag({ startX: this.dragStart.x, startY: this.dragStart.y, endX: this.dragEnd.x, endY: this.dragEnd.y }, event.shiftKey);
+    
+            // Check if there are selected items
+            if (this.selectedObjects.length > 0) {
+                // Show the context menu at the mouse position
+                setTimeout(() => {
+                    click_menu_window.showContextMenu(event.clientX, event.clientY, true);
+                }, 0); // Delay to ensure menu isn't immediately hidden
+            }
         }
-
+    
         // Re-enable text selection
         document.body.style.userSelect = '';
         document.body.style.webkitUserSelect = ''; /* Safari */
         document.body.style.msUserSelect = ''; /* IE 10 and IE 11 */
-
+    
         modal.showAll();
-
+    
         // Re-enable camera centering
         this.activeCamera = true;
-
+    
         // Stop edge scrolling
         this.isEdgeScrolling = false;
-
+    
         // Clear the selection bounds and selected tiles
         this.selectedTiles = [];
         this.selectionBounds = null;
@@ -540,6 +558,25 @@ var game = {
         
         if (selectedObject) {
             console.log(`Selected object ID: ${selectedObject.id}`);
+            if (isShiftKey) {
+                // Handle shift+click for item selection
+                const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
+                const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
+                if (index === -1) {
+                    this.selectedObjects.push(selectedObject);
+                } else {
+                    this.selectedObjects.splice(index, 1); // Remove the item from selectedObjects
+                }
+    
+                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
+                }
+            } else {
+                this.selectedObjects = [selectedObject];
+                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
+                }
+            }
         } else {
             console.log('No object selected');
         }
@@ -577,89 +614,28 @@ var game = {
     
         // Check if the tile is walkable
         if (this.isTileWalkable(gridX, gridY)) {
+            // Deselect all selected objects
+            this.selectedObjects = [];
+            this.selectedCache = [];
+            this.updateSelectedTiles();
+            this.render();
+    
             // Walk to the tile if it is walkable
             mainSprite.walkToClickedTile(gridX, gridY);
-        } else if (selectedObject) {
-            // Handle object selection if the tile is not walkable
-            if (event.button === 2) { // Right-click
-                this.selectedObjects = [selectedObject];
-                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                }
-            } else if (event.button === 0) { // Left-click
-                if (isShiftKey) {
-                    // Handle shift+click for item selection
-                    const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
-                    const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
-                    if (index === -1) {
-                        this.selectedObjects.push(selectedObject);
-                    } else {
-                        this.selectedObjects.splice(index, 1);
-                    }
-    
-                    if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                        this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                    }
-    
-                    // Check if the selected object has a click action
-                    const objectId = selectedObject.id;
-                    const objectScript = actions.objectScript[objectId];
-    
-                    if (objectScript && objectScript.click) {
-                        const clickAction = objectScript.click;
-    
-                        // Check for required item
-                        if (clickAction.requiredItem) {
-                            const playerSprite = this.sprites[this.playerid];
-                            if (playerSprite.currentItem === clickAction.requiredItem) {
-                                console.log(`Action result: ${clickAction.result}`);
-                                // Handle the result of the action (e.g., add item to inventory)
-                            } else {
-                                console.log(`You need a ${clickAction.requiredItem} to perform this action.`);
-                            }
-                        } else {
-                            // Handle click action without required item
-                            console.log(`Action result: ${clickAction.result}`);
-                        }
-                    }
-                } else {
-                    // Handle object selection if the tile is not walkable
-                    this.selectedObjects = [selectedObject];
-                    if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                        this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                    }
-    
-                    // Check if the selected object has a click action
-                    const objectId = selectedObject.id;
-                    const objectScript = actions.objectScript[objectId];
-    
-                    if (objectScript && objectScript.click) {
-                        const clickAction = objectScript.click;
-    
-                        // Check for required item
-                        if (clickAction.requiredItem) {
-                            const playerSprite = this.sprites[this.playerid];
-                            if (playerSprite.currentItem === clickAction.requiredItem) {
-                                console.log(`Action result: ${clickAction.result}`);
-                                // Handle the result of the action (e.g., add item to inventory)
-                            } else {
-                                console.log(`You need a ${clickAction.requiredItem} to perform this action.`);
-                            }
-                        } else {
-                            // Handle click action without required item
-                            console.log(`Action result: ${clickAction.result}`);
-                        }
-                    }
-                }
-            }
+            console.log('Tile is walkable, no context menu should be shown.');
+        } else if (this.selectedObjects.length > 0) {
+            // Show context menu programmatically if any items are selected
+            setTimeout(() => {
+                click_menu_window.showContextMenu(event.clientX, event.clientY, true);
+            }, 0); // Delay to ensure menu isn't immediately hidden
         }
     
         console.log('Current selected objects:', this.selectedObjects);
     
         // Update the visual selection state
         this.updateSelectedTiles();
-    },    
-
+    },
+    
 
     isTileWalkable: function(gridX, gridY) {
         const grid = this.createWalkableGrid(); // Create or fetch the walkable grid
@@ -676,6 +652,13 @@ var game = {
                 this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
             }
         });
+    
+        // Show the context menu if there are selected items
+        if (this.selectedObjects.length > 0) {
+            setTimeout(() => {
+                click_menu_window.showContextMenu(event.clientX, event.clientY, true);
+            }, 0); // Delay to ensure menu isn't immediately hidden
+        }
     },
 
     createWalkableGrid: function() {
@@ -950,7 +933,7 @@ var game = {
 
     selectItemsInSelectedTiles: function(isShiftKey) {
         const foundItems = [];
-
+    
         if (this.roomData && this.roomData.items) {
             this.roomData.items.forEach(roomItem => {
                 const itemData = this.objectData[roomItem.id];
@@ -958,7 +941,7 @@ var game = {
                     const tileData = itemData[0];
                     const xCoordinates = roomItem.x || [];
                     const yCoordinates = roomItem.y || [];
-
+    
                     for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
                         for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
                             if (this.isTileSelected(x * 16, y * 16)) {
@@ -970,7 +953,7 @@ var game = {
                 }
             });
         }
-
+    
         if (isShiftKey) {
             foundItems.forEach(foundItem => {
                 const uniqueId = `${foundItem.id}_${foundItem.x}_${foundItem.y}`;
@@ -978,53 +961,13 @@ var game = {
                 if (index === -1) {
                     this.selectedObjects.push(foundItem);
                 } else {
-                    this.selectedObjects.splice(index, 1);
+                    this.selectedObjects.splice(index, 1); // Remove the item from selectedObjects
                 }
             });
         } else {
             this.selectedObjects = foundItems;
         }
-
-        console.log('Current selected objects after drag:', this.selectedObjects);
-    },
-
-    selectItemsInSelectedTiles: function(isShiftKey) {
-        const foundItems = [];
-
-        if (this.roomData && this.roomData.items) {
-            this.roomData.items.forEach(roomItem => {
-                const itemData = this.objectData[roomItem.id];
-                if (itemData && itemData.length > 0) {
-                    const tileData = itemData[0];
-                    const xCoordinates = roomItem.x || [];
-                    const yCoordinates = roomItem.y || [];
-
-                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
-                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
-                            if (this.isTileSelected(x * 16, y * 16)) {
-                                foundItems.push(roomItem);
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
-        }
-
-        if (isShiftKey) {
-            foundItems.forEach(foundItem => {
-                const uniqueId = `${foundItem.id}_${foundItem.x}_${foundItem.y}`;
-                const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
-                if (index === -1) {
-                    this.selectedObjects.push(foundItem);
-                } else {
-                    this.selectedObjects.splice(index, 1);
-                }
-            });
-        } else {
-            this.selectedObjects = foundItems;
-        }
-
+    
         console.log('Current selected objects after drag:', this.selectedObjects);
     },
 
@@ -1140,41 +1083,93 @@ var game = {
                         }
                     }
     
-                    // Render lights directly in the render function
-                    if (tileData.l && tileData.l.length > 0) {
-                        tileData.l.forEach(light => {
-                            if (Array.isArray(light) && light.length === 2) {
-                                const lightXIndex = light[0];
-                                const lightYIndex = light[1];
-    
-                                if (lightXIndex >= 0 && lightXIndex < roomItem.x.length &&
-                                    lightYIndex >= 0 && lightYIndex < roomItem.y.length) {
-    
-                                    const tileX = roomItem.x[lightXIndex];
-                                    const tileY = roomItem.y[lightYIndex];
-    
-                                    const posX = tileX * 16 + 8;
-                                    const posY = tileY * 16 + 8;
-    
-                                    const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+// Render lights directly in the render function
+if (tileData.l && tileData.l.length > 0) {
+    tileData.l.forEach(light => {
+        if (Array.isArray(light) && light.length === 2) {
+            const lightXIndex = light[0];
+            const lightYIndex = light[1];
 
-                                    // Check if light already exists
-                                    const existingLight = effects.lights.find(light => light.id === lightId);
-    
-                                    if (!existingLight) {
-                                        const radius = tileData.lr || 200;
-                                        const color = tileData.lc || { r: 255, g: 255, b: 255 };
-                                        const intensity = tileData.li || 1;
-                                        const flickerSpeed = tileData.lfs || 0.03;
-                                        const flickerAmount = tileData.lfa || 0.04;
-                                        const lampType = tileData.lt || "lamp";
-    
-                                        effects.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
-                                    }
-                                }
-                            }
-                        });
+            if (lightXIndex >= 0 && lightXIndex < roomItem.x.length &&
+                lightYIndex >= 0 && lightYIndex < roomItem.y.length) {
+
+                const tileX = roomItem.x[lightXIndex];
+                const tileY = roomItem.y[lightYIndex];
+
+                const posX = tileX * 16 + 8;
+                const posY = tileY * 16 + 8;
+
+                // Check if the light is within the viewport
+                if (posX >= this.viewportXStart * 16 && posX < this.viewportXEnd * 16 &&
+                    posY >= this.viewportYStart * 16 && posY < this.viewportYEnd * 16) {
+                    const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+
+                    // Check if light already exists
+                    const existingLight = effects.lights.find(light => light.id === lightId);
+
+                    if (!existingLight) {
+                        const radius = tileData.lr || 200;
+                        const color = tileData.lc || { r: 255, g: 255, b: 255 };
+                        const intensity = tileData.li || 1;
+                        const flickerSpeed = tileData.lfs || 0.03;
+                        const flickerAmount = tileData.lfa || 0.04;
+                        const lampType = tileData.lt || "lamp";
+
+                        effects.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
                     }
+                }
+            }
+        }
+    });
+}
+
+
+if (tileData.fx && this.fxData[tileData.fx]) {
+    const fxData = this.fxData[tileData.fx];
+
+    tileData.fxp.forEach((fxPosition, fxIndex) => {
+        const fxXIndex = fxPosition[0];
+        const fxYIndex = fxPosition[1];
+
+        if (fxXIndex >= 0 && fxXIndex < roomItem.x.length &&
+            fxYIndex >= 0 && fxYIndex < roomItem.y.length) {
+
+            const tileX = roomItem.x[fxXIndex];
+            const tileY = roomItem.y[fxYIndex];
+
+            const posX = tileX * 16 + 8;
+            const posY = tileY * 16 + 8;
+
+            // Check if the effect is within the viewport
+            if (posX >= this.viewportXStart * 16 && posX < this.viewportXEnd * 16 &&
+                posY >= this.viewportYStart * 16 && posY < this.viewportYEnd * 16) {
+                const fxId = `${roomItem.id}_${tileX}_${tileY}`;
+
+                // Check if effect already exists
+                if (!effects.activeEffects[fxId]) {
+                    // Create options for createParticles
+                    const options = {
+                        count: fxData.count,
+                        speed: fxData.speed,
+                        angle: fxData.baseAngle,
+                        spread: fxData.spread,
+                        colors: fxData.color.map(color => `rgba(${color.join(',')}, ${fxData.Opacity})`),
+                        life: fxData.frames,
+                        size: fxData.size,
+                        type: 'default',
+                        repeat: fxData.repeat,
+                        glow: fxData.Glow,
+                        opacity: fxData.Opacity,
+                        blur: fxData.Blur,
+                        shape: fxData.Shape.toLowerCase()
+                    };
+
+                    effects.createParticles(posX, posY, options, fxId);
+                }
+            }
+        }
+    });
+}
 
 }
 });

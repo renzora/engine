@@ -26,7 +26,7 @@ var editor = {
             event.preventDefault();
         });
 
-        game.isEditorActive = true; // Set the flag to indicate the editor is active
+        game.isEditorActive = false; // Set the flag to indicate the editor is active
         console.log('Editor setupClickToActivate triggered');
     },
 
@@ -85,12 +85,11 @@ var editor = {
         this.moveSelectedItem(event);
         game.pathfinding = false;
         this.isPlacingItem = true;
-        modal.hide('ui_window');
-        modal.hide('quick_menu_window');
+        //modal.hide('ui_window');
+        //modal.hide('quick_menu_window');
     },
 
     handleMouseMove: function(event) {
-        console.log('Editor handleMouseMove triggered');
         if (this.selectedItem) {
             const uiMenu = document.querySelector('[data-window="ui_window"]');
             if (uiMenu && uiMenu.contains(event.target)) {
@@ -122,7 +121,6 @@ var editor = {
     },
 
     handleMouseUp: function(event) {
-        console.log('Editor handleMouseUp triggered');
         const isInWindow = event.target.closest('.window') !== null;
 
         if (this.selectedItem && !isInWindow && event.button === 0) {
@@ -135,8 +133,6 @@ var editor = {
 
             const snappedX = Math.round(dropX / this.tileSize);
             const snappedY = Math.round(dropY / this.tileSize);
-
-            console.log(`Dropped position: X=${snappedX}, Y=${snappedY}`);
 
             const newItem = {
                 id: this.selectedItem.dataset.category,
@@ -159,8 +155,8 @@ var editor = {
                 this.selectedItem = null;
                 game.pathfinding = true;
                 this.isPlacingItem = false;
-                modal.show('quick_menu_window');
-                modal.show('ui_window');
+                //modal.show('quick_menu_window');
+                //modal.show('ui_window');
                 game.overlappingTiles = [];
             }
         }
@@ -182,9 +178,6 @@ var editor = {
 
         this.selectedItem.style.transform = `scale(${zoomLevel})`;
         this.selectedItem.style.transformOrigin = 'top left';
-
-        console.log(`Cursor position: X=${event.clientX}, Y=${event.clientY}`);
-        console.log(`Snapped position: X=${snappedX}, Y=${snappedY}`);
     },
 
     calculateTilePositions: function(item, baseX, baseY, tileSize, xArray, yArray) {
@@ -284,19 +277,68 @@ var editor = {
         game.roomData.items.push(newItem);
 
         effects.shakeMap(300, 3);
-        effects.createParticles(newItem.x[0] * 16, newItem.y[0] * 16, {
-            colors: ['rgba(0, 0, 255, 1)', 'rgba(0, 255, 255, 1)', 'rgba(255, 0, 0, 1)', 'rgba(255, 255, 0, 1)', 'rgba(0, 255, 0, 1)', 'rgba(255, 165, 0, 1)', 'rgba(128, 0, 128, 1)'],
-            count: 32,
-            speed: 1,
-            life: 60,
-            size: 1,
-            spread: Math.PI * 2,
-            type: 'default'
-        });
 
         console.log('New item added to roomData:', newItem);
         audio.playAudio("objectDrop", assets.load('objectDrop'), 'sfx');
         this.saveRoomData();
+    },
+
+    pickUpSelectedItems: function() {
+        if (game.selectedObjects.length === 0) return;
+
+        // Remove selected items from roomData
+        game.roomData.items = game.roomData.items.filter(roomItem => !game.selectedObjects.includes(roomItem));
+
+        // Remove associated light sources
+        game.selectedObjects.forEach(item => {
+            const xCoordinates = item.x.map(x => parseInt(x, 10) * 16);
+            const yCoordinates = item.y.map(y => parseInt(y, 10) * 16);
+            xCoordinates.forEach((x, index) => {
+                const itemData = game.objectData[item.id];
+                if (itemData && itemData.length > 0) {
+                    const tileData = itemData[0];
+                    if (tileData.l && tileData.l.length > 0) {
+                        tileData.l.forEach(light => {
+                            if (Array.isArray(light) && light.length === 2) {
+                                const lightXIndex = light[0];
+                                const lightYIndex = light[1];
+
+                                if (lightXIndex >= 0 && lightXIndex < item.x.length &&
+                                    lightYIndex >= 0 && lightYIndex < item.y.length) {
+
+                                    const tileX = item.x[lightXIndex];
+                                    const tileY = item.y[lightYIndex];
+
+                                    const lightId = `${item.id}_${tileX}_${tileY}`;
+                                    effects.lights = effects.lights.filter(light => light.id !== lightId);
+                                }
+                            }
+                        });
+                    }
+                }
+            });
+        });
+
+        // Highlight the removed item tiles
+        game.overlappingTiles = [];
+        game.selectedObjects.forEach(item => {
+            const xCoordinates = item.x.map(x => parseInt(x, 10) * 16);
+            const yCoordinates = item.y.map(y => parseInt(y, 10) * 16);
+            xCoordinates.forEach((x, index) => {
+                game.overlappingTiles.push({ x: x, y: yCoordinates[index] });
+            });
+        });
+
+        // Clear selectedObjects
+        game.selectedObjects = [];
+
+        // Save the updated room data
+        editor.saveRoomData();
+
+        // Re-render the game state to reflect the changes immediately
+        game.render();
+
+        console.log('Selected items picked up and associated light sources removed');
     },
 
     saveRoomData: function() {

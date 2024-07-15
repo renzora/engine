@@ -82,4 +82,5 @@ var network = {
 document.addEventListener('DOMContentLoaded', (e) => {
     network.init();
     input.init(e);
+    gamepad.init(e);
 });
