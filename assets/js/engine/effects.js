@@ -454,5 +454,18 @@ var effects = {
                 ctx.restore();
             });
         });
+    },
+
+    removeItemEffects: function(item) {
+        // Remove any particle effects associated with the item
+        const effectIdPrefix = `${item.id}_`;
+        for (const effectId in this.activeEffects) {
+            if (effectId.startsWith(effectIdPrefix)) {
+                delete this.activeEffects[effectId];
+            }
+        }
+
+        // Remove any light sources associated with the item
+        this.lights = this.lights.filter(light => !light.id.startsWith(effectIdPrefix));
     }
 };

@@ -5,18 +5,16 @@
     <span class="text-white rounded-md" id="gameFps"></span>
     <span id="tiles_rendered" class="text-white rounded-md"></span>
     <span id="game_time" class="text-white rounded-md">00:00</span>
+    <span id="lights_rendered" class="text-white rounded-md"></span>
+    <span id="effects_rendered" class="text-white rounded-md"></span>
     <button onclick="ui_footer_window.load();">Minimap</button>
-</div>
-
-</div>
-
   </div>
+</div>
 
-  <script>
+<script>
   var ui_footer_window = {
     load: function(modalName) {
       audio.playAudio("walkAudio", assets.load('walkAudio'), 'sfx');
     }
   };
-  </script>
-</div>
+</script>

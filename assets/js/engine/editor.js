@@ -289,7 +289,7 @@ var editor = {
         // Remove selected items from roomData
         game.roomData.items = game.roomData.items.filter(roomItem => !game.selectedObjects.includes(roomItem));
 
-        // Remove associated light sources
+        // Remove associated light sources and effects
         game.selectedObjects.forEach(item => {
             const xCoordinates = item.x.map(x => parseInt(x, 10) * 16);
             const yCoordinates = item.y.map(y => parseInt(y, 10) * 16);
@@ -317,6 +317,9 @@ var editor = {
                     }
                 }
             });
+
+            // Call removeItemEffects to remove associated effects
+            effects.removeItemEffects(item);
         });
 
         // Highlight the removed item tiles

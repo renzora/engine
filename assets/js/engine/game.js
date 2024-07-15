@@ -171,11 +171,11 @@ var game = {
                 speed: 90,
                 head: 1,
                 body: 1,
-                hairStyle: 0,
-                outfit: 0,
-                hat: 0,
-                facial: 0,
-                glasses: 0,
+                hairStyle: 1,
+                outfit: 1,
+                hat: 1,
+                facial: 1,
+                glasses: 1,
             };
             sprite.create(playerOptions);
 
@@ -1034,56 +1034,57 @@ var game = {
     
         //game.grid();
     
-        if (this.roomData && this.roomData.items) {
-            this.roomData.items.forEach(roomItem => {
-                const itemData = this.objectData[roomItem.id];
-                if (itemData && itemData.length > 0) {
-                    const tileData = itemData[0];
-                    const xCoordinates = roomItem.x || [];
-                    const yCoordinates = roomItem.y || [];
-    
-                    let index = 0;
-    
-                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
-                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
-                            // Only add tiles within the viewport to the render queue
-                            if (x >= this.viewportXStart && x < this.viewportXEnd && y >= this.viewportYStart && y < this.viewportYEnd) {
-                                const posX = x * 16;
-                                const posY = y * 16;
-    
-                                let tileFrameIndex;
-                                if (Array.isArray(tileData.i[0])) { // Check if there are animation frames
-                                    const animationData = tileData.i;
-                                    const currentFrame = tileData.currentFrame || 0;
-                                    tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
-                                } else {
-                                    tileFrameIndex = tileData.i[index];
+ // Inside your render function where you handle room items
+if (this.roomData && this.roomData.items) {
+    this.roomData.items.forEach(roomItem => {
+        const itemData = this.objectData[roomItem.id];
+        if (itemData && itemData.length > 0) {
+            const tileData = itemData[0];
+            const xCoordinates = roomItem.x || [];
+            const yCoordinates = roomItem.y || [];
+
+            let index = 0;
+
+            for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
+                for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                    // Only add tiles within the viewport to the render queue
+                    if (x >= this.viewportXStart && x < this.viewportXEnd && y >= this.viewportYStart && y < this.viewportYEnd) {
+                        const posX = x * 16;
+                        const posY = y * 16;
+
+                        let tileFrameIndex;
+                        if (Array.isArray(tileData.i[0])) { // Check if there are animation frames
+                            const animationData = tileData.i;
+                            const currentFrame = tileData.currentFrame || 0;
+                            tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
+                        } else {
+                            tileFrameIndex = tileData.i[index];
+                        }
+
+                        if (tileFrameIndex !== undefined) {
+                            const srcX = (tileFrameIndex % 150) * 16;
+                            const srcY = Math.floor(tileFrameIndex / 150) * 16;
+
+                            renderQueue.push({
+                                tileIndex: tileFrameIndex,
+                                posX: posX,
+                                posY: posY,
+                                z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
+                                id: roomItem.id,
+                                draw: function() {
+                                    game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
                                 }
-    
-                                if (tileFrameIndex !== undefined) {
-                                    const srcX = (tileFrameIndex % 150) * 16;
-                                    const srcY = Math.floor(tileFrameIndex / 150) * 16;
-    
-                                    renderQueue.push({
-                                        tileIndex: tileFrameIndex,
-                                        posX: posX,
-                                        posY: posY,
-                                        z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
-                                        id: roomItem.id,
-                                        draw: function() {
-                                            game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
-                                        }
-                                    });
-    
-                                    tileCount++;
-                                }
-                            }
-    
-                            index++;
+                            });
+
+                            tileCount++;
                         }
                     }
-    
-// Render lights directly in the render function
+
+                    index++;
+                }
+            }
+
+// Handle light sources
 if (tileData.l && tileData.l.length > 0) {
     tileData.l.forEach(light => {
         if (Array.isArray(light) && light.length === 2) {
@@ -1098,17 +1099,19 @@ if (tileData.l && tileData.l.length > 0) {
 
                 const posX = tileX * 16 + 8;
                 const posY = tileY * 16 + 8;
+                const radius = tileData.lr || 200;
 
-                // Check if the light is within the viewport
-                if (posX >= this.viewportXStart * 16 && posX < this.viewportXEnd * 16 &&
-                    posY >= this.viewportYStart * 16 && posY < this.viewportYEnd * 16) {
-                    const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+                // Check if the light's radius is within the viewport
+                const isInView = (posX + radius) >= (this.viewportXStart * 16) && (posX - radius) < (this.viewportXEnd * 16) &&
+                                 (posY + radius) >= (this.viewportYStart * 16) && (posY - radius) < (this.viewportYEnd * 16);
 
+                const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+
+                if (isInView) {
                     // Check if light already exists
                     const existingLight = effects.lights.find(light => light.id === lightId);
 
                     if (!existingLight) {
-                        const radius = tileData.lr || 200;
                         const color = tileData.lc || { r: 255, g: 255, b: 255 };
                         const intensity = tileData.li || 1;
                         const flickerSpeed = tileData.lfs || 0.03;
@@ -1117,13 +1120,16 @@ if (tileData.l && tileData.l.length > 0) {
 
                         effects.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
                     }
+                } else {
+                    // Remove the light if it is out of the viewport
+                    effects.lights = effects.lights.filter(light => light.id !== lightId);
                 }
             }
         }
     });
 }
 
-
+// Handle effects
 if (tileData.fx && this.fxData[tileData.fx]) {
     const fxData = this.fxData[tileData.fx];
 
@@ -1141,10 +1147,12 @@ if (tileData.fx && this.fxData[tileData.fx]) {
             const posY = tileY * 16 + 8;
 
             // Check if the effect is within the viewport
-            if (posX >= this.viewportXStart * 16 && posX < this.viewportXEnd * 16 &&
-                posY >= this.viewportYStart * 16 && posY < this.viewportYEnd * 16) {
-                const fxId = `${roomItem.id}_${tileX}_${tileY}`;
+            const isInView = posX >= (this.viewportXStart * 16) && posX < (this.viewportXEnd * 16) &&
+                             posY >= (this.viewportYStart * 16) && posY < (this.viewportYEnd * 16);
 
+            const fxId = `${roomItem.id}_${tileX}_${tileY}`;
+
+            if (isInView) {
                 // Check if effect already exists
                 if (!effects.activeEffects[fxId]) {
                     // Create options for createParticles
@@ -1165,14 +1173,21 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                     };
 
                     effects.createParticles(posX, posY, options, fxId);
+                    console.log(`Effect added: ${fxId}`);
+                }
+            } else {
+                // Remove the effect if it is out of the viewport
+                if (effects.activeEffects[fxId]) {
+                    delete effects.activeEffects[fxId];
+                    console.log(`Effect removed: ${fxId}`);
                 }
             }
         }
     });
 }
 
-}
-});
+        }
+    });
 }
     
         let spriteCount = 0;
@@ -1421,6 +1436,17 @@ if (tileData.fx && this.fxData[tileData.fx]) {
 var tilesRenderedDisplay = document.getElementById('tiles_rendered');
 if (tilesRenderedDisplay) {
     tilesRenderedDisplay.innerHTML = `Tiles: ${tileCount} | Sprites: ${spriteCount}`;
+}
+
+// Update the lights and effects rendered display
+var lightsRenderedDisplay = document.getElementById('lights_rendered');
+if (lightsRenderedDisplay) {
+    lightsRenderedDisplay.innerHTML = `Lights: ${effects.lights.length}`;
+}
+
+var effectsRenderedDisplay = document.getElementById('effects_rendered');
+if (effectsRenderedDisplay) {
+    effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(effects.activeEffects).length}`;
 }
 
     // Highlight overlapping tiles
