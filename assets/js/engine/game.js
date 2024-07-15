@@ -12,8 +12,8 @@ var game = {
     timestamp: 0,
     lastTime: 0,
     deltaTime: 0,
-    worldWidth: 2560,
-    worldHeight: 2560,
+    worldWidth: 1280,
+    worldHeight: 1280,
     zoomLevel: 4,
     targetX: 0,
     targetY: 0,
@@ -58,7 +58,7 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 0,
+        hours: 7,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -173,14 +173,8 @@ var game = {
             };
             sprite.create(playerOptions);
 
-            weather.fireflysActive = true;
-            weather.fogActive = true;
-            weather.rainActive = true;
-            weather.snowActive = false;
-            weather.nightActive = true;
 
             weather.createFireflys();
-            weather.createFog(0.05);
             weather.createRain(0.7);
             weather.createSnow(0.2);
 
@@ -1041,50 +1035,55 @@ if (this.roomData && this.roomData.items) {
                 }
             }
 
-// Handle light sources
-if (tileData.l && tileData.l.length > 0) {
-    tileData.l.forEach(light => {
-        if (Array.isArray(light) && light.length === 2) {
-            const lightXIndex = light[0];
-            const lightYIndex = light[1];
-
-            if (lightXIndex >= 0 && lightXIndex < roomItem.x.length &&
-                lightYIndex >= 0 && lightYIndex < roomItem.y.length) {
-
-                const tileX = roomItem.x[lightXIndex];
-                const tileY = roomItem.y[lightYIndex];
-
-                const posX = tileX * 16 + 8;
-                const posY = tileY * 16 + 8;
-                const radius = tileData.lr || 200;
-
-                // Check if the light's radius is within the viewport
-                const isInView = (posX + radius) >= (this.viewportXStart * 16) && (posX - radius) < (this.viewportXEnd * 16) &&
-                                 (posY + radius) >= (this.viewportYStart * 16) && (posY - radius) < (this.viewportYEnd * 16);
-
-                const lightId = `${roomItem.id}_${tileX}_${tileY}`;
-
-                if (isInView) {
-                    // Check if light already exists
-                    const existingLight = effects.lights.find(light => light.id === lightId);
-
-                    if (!existingLight) {
-                        const color = tileData.lc || { r: 255, g: 255, b: 255 };
-                        const intensity = tileData.li || 1;
-                        const flickerSpeed = tileData.lfs || 0.03;
-                        const flickerAmount = tileData.lfa || 0.04;
-                        const lampType = tileData.lt || "lamp";
-
-                        lighting.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
+            if (tileData.l && tileData.l.length > 0) {
+                tileData.l.forEach(light => {
+                    if (Array.isArray(light) && light.length === 2) {
+                        const lightXIndex = light[0];
+                        const lightYIndex = light[1];
+            
+                        if (lightXIndex >= 0 && lightXIndex < roomItem.x.length &&
+                            lightYIndex >= 0 && lightYIndex < roomItem.y.length) {
+            
+                            const tileX = roomItem.x[lightXIndex];
+                            const tileY = roomItem.y[lightYIndex];
+            
+                            const posX = tileX * 16 + 8;
+                            const posY = tileY * 16 + 8;
+                            const radius = tileData.lr || 200;
+            
+                            // Check if the light's radius is within the viewport
+                            const isInView = (posX + radius) >= (this.viewportXStart * 16) && (posX - radius) < (this.viewportXEnd * 16) &&
+                                             (posY + radius) >= (this.viewportYStart * 16) && (posY - radius) < (this.viewportYEnd * 16);
+            
+                            const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+            
+                            // Check if it is nighttime before adding lights
+                            const hours = game.gameTime.hours;
+                            const minutes = game.gameTime.minutes;
+                            const time = hours + minutes / 60;
+                            const isNightTime = time >= 22 || time < 7;
+            
+                            if (isInView && isNightTime) {
+                                // Check if light already exists
+                                const existingLight = effects.lights.find(light => light.id === lightId);
+            
+                                if (!existingLight) {
+                                    const color = tileData.lc || { r: 255, g: 255, b: 255 };
+                                    const intensity = tileData.li || 1;
+                                    const flickerSpeed = tileData.lfs || 0.03;
+                                    const flickerAmount = tileData.lfa || 0.04;
+                                    const lampType = tileData.lt || "lamp";
+            
+                                    lighting.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
+                                }
+                            } else {
+                                // Remove the light if it is out of the viewport or not nighttime
+                                lighting.lights = lighting.lights.filter(light => light.id !== lightId);
+                            }
+                        }
                     }
-                } else {
-                    // Remove the light if it is out of the viewport
-                    lighting.lights = lighting.lights.filter(light => light.id !== lightId);
-                }
+                });
             }
-        }
-    });
-}
 
 // Handle effects
 if (tileData.fx && this.fxData[tileData.fx]) {
@@ -1186,7 +1185,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
     
         // Draw the pathfinder line if available
         if (mainSprite && mainSprite.path && mainSprite.path.length > 0) {
-            game.ctx.strokeStyle = 'rgba(255, 255, 0, 0.5)';
+            game.ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
             this.ctx.lineWidth = 2;
             this.ctx.beginPath();
     
@@ -1239,7 +1238,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
     game.ctx.save();
     game.ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
     game.ctx.globalCompositeOperation = lighting.nightFilter.compositeOperation;
-    game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+    game.ctx.fillRect(camera.cameraX - 2, camera.cameraY - 2, (window.innerWidth / this.zoomLevel) + 4, (window.innerHeight / this.zoomLevel) + 4);
     game.ctx.restore();
 
     this.ctx.globalCompositeOperation = lighting.compositeOperation;
@@ -1250,10 +1249,9 @@ if (tileData.fx && this.fxData[tileData.fx]) {
     
         weather.drawSnow();
         weather.drawRain();
-        //weather.drawFog();
         weather.drawFireflys();
-        weather.drawLightning();
         this.handleAimAttack();
+        lighting.drawGreyFilter();
     
         if (mainSprite && mainSprite.targetAim) {
             const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;

@@ -6,6 +6,11 @@ const lighting = {
         color: { r: 14, g: 0, b: 78 },
         compositeOperation: 'hard-light'
     },
+    greyFilter: {
+        opacity: 0.5,
+        color: { r: 128, g: 128, b: 128 }, // Grey color
+        compositeOperation: 'source-over'
+    },
     timeBasedUpdatesEnabled: true,
     nightAmbiencePlaying: false,
 
@@ -98,12 +103,18 @@ const lighting = {
 
     updateDayNightCycle: function() {
         if (!this.timeBasedUpdatesEnabled) return;
-
+    
         const hours = game.gameTime.hours;
         const minutes = game.gameTime.minutes;
         const time = hours + minutes / 60;
-
-        if (time >= 22 || time < 7) {
+    
+        // Determine if it's nighttime
+        const isNightTime = time >= 22 || time < 7;
+    
+        // Update fireflies state based on nighttime
+        weather.fireflysActive = isNightTime;
+    
+        if (isNightTime) {
             if (!this.nightAmbiencePlaying) {
                 audio.playAudio("nightAmbience", assets.load('nightAmbience'), 'ambience', true);
                 this.nightAmbiencePlaying = true;
@@ -121,7 +132,7 @@ const lighting = {
                     b: Math.round(78 + progress * (0 - 78))
                 };
             }
-
+    
             if (!(time >= 6 && time < 7)) {
                 const progress = (time >= 22) ? (time - 22) / 2 : (7 - time) / 7;
                 lighting.nightFilter.color = {
@@ -138,7 +149,7 @@ const lighting = {
             lighting.nightFilter.opacity = 0;
             lighting.nightFilter.color = { r: 255, g: 255, b: 255 };
         }
-
+    
         if (time >= 22 || time < 6) {
             if (time >= 22 && time < 24) {
                 const progress = (time - 22) / 2;
@@ -152,6 +163,21 @@ const lighting = {
             lighting.updateLightsIntensity(1 - progress);
         } else if (time >= 7 && time < 22) {
             lighting.updateLightsIntensity(0);
+        }
+    },    
+
+    drawGreyFilter: function() {
+        if (!weather.rainActive) return;
+    
+        const hours = game.gameTime.hours;
+        const minutes = game.gameTime.minutes;
+        const time = hours + minutes / 60;
+    
+        if (time >= 7 && time < 22) { // Daytime check
+            game.ctx.save();
+            game.ctx.fillStyle = `rgba(${this.greyFilter.color.r}, ${this.greyFilter.color.g}, ${this.greyFilter.color.b}, ${this.greyFilter.opacity})`;
+            game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+            game.ctx.restore();
         }
     },
 

@@ -9,15 +9,13 @@ var render = {
             }
         }
     
+        camera.update();
         game.gameTime.update(deltaTime);
         lighting.updateDayNightCycle();
         animate.updateAnimatedTiles(deltaTime);
         weather.updateSnow(deltaTime);
         weather.updateRain(deltaTime);
-        weather.updateFog(deltaTime);
         weather.updateFireflys(deltaTime);
-        weather.updateLightning(deltaTime);
-        camera.update();
         particles.updateParticles(deltaTime);
         effects.transitions.update();
         lighting.updateLights(deltaTime);
