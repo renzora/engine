@@ -555,11 +555,11 @@ var sprite = {
             let moveX = true;
             let moveY = true;
     
-            if (game.collision(newX, this.y, this)) {
+            if (collision.check(newX, this.y, this)) {
                 moveX = false;
             }
     
-            if (game.collision(this.x, newY, this)) {
+            if (collision.check(this.x, newY, this)) {
                 moveY = false;
             }
     
@@ -574,10 +574,10 @@ var sprite = {
                     this.y = newY;
                     this.direction = (dy > 0) ? 'S' : 'N';
                 } else {
-                    if (!game.collision(this.x + dx, this.y, this)) {
+                    if (!collision.check(this.x + dx, this.y, this)) {
                         this.x += dx;
                         this.direction = (dx > 0) ? 'E' : 'W';
-                    } else if (!game.collision(this.x, this.y + dy, this)) {
+                    } else if (!collision.check(this.x, this.y + dy, this)) {
                         this.y += dy;
                         this.direction = (dy > 0) ? 'S' : 'N';
                     }

@@ -99,8 +99,8 @@ var editor = {
                 this.moveSelectedItem(event);
 
                 const zoomLevel = game.zoomLevel;
-                const cameraX = game.cameraX;
-                const cameraY = game.cameraY;
+                const cameraX = camera.cameraX;
+                const cameraY = camera.cameraY;
 
                 const dropX = (event.clientX - this.offsetX + window.scrollX) / zoomLevel + cameraX;
                 const dropY = (event.clientY - this.offsetY + window.scrollY) / zoomLevel + cameraY;
@@ -125,8 +125,8 @@ var editor = {
 
         if (this.selectedItem && !isInWindow && event.button === 0) {
             const zoomLevel = game.zoomLevel;
-            const cameraX = game.cameraX;
-            const cameraY = game.cameraY;
+            const cameraX = camera.cameraX;
+            const cameraY = camera.cameraY;
 
             const dropX = (event.clientX - this.offsetX + window.scrollX) / zoomLevel + cameraX;
             const dropY = (event.clientY - this.offsetY + window.scrollY) / zoomLevel + cameraY;
@@ -164,8 +164,8 @@ var editor = {
 
     moveSelectedItem: function(event) {
         const zoomLevel = game.zoomLevel;
-        const cameraX = game.cameraX;
-        const cameraY = game.cameraY;
+        const cameraX = camera.cameraX;
+        const cameraY = camera.cameraY;
 
         const canvasX = (event.clientX - this.offsetX + window.scrollX) / zoomLevel + cameraX;
         const canvasY = (event.clientY - this.offsetY + window.scrollY) / zoomLevel + cameraY;
@@ -310,7 +310,7 @@ var editor = {
                                     const tileY = item.y[lightYIndex];
 
                                     const lightId = `${item.id}_${tileX}_${tileY}`;
-                                    effects.lights = effects.lights.filter(light => light.id !== lightId);
+                                    lighting.lights = lighting.lights.filter(light => light.id !== lightId);
                                 }
                             }
                         });
@@ -319,7 +319,7 @@ var editor = {
             });
 
             // Call removeItemEffects to remove associated effects
-            effects.removeItemEffects(item);
+            particles.removeItemEffects(item);
         });
 
         // Highlight the removed item tiles

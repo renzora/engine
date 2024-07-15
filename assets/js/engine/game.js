@@ -1,5 +1,4 @@
 var game = {
-    lerpFactor: parseFloat(localStorage.getItem('lerpFactor')) || 0.1,
     needsFilterUpdate: true,
     canvas: undefined,
     ctx: undefined,
@@ -16,10 +15,6 @@ var game = {
     worldWidth: 2560,
     worldHeight: 2560,
     zoomLevel: 4,
-    cameraX: 0,
-    cameraY: 0,
-    targetCameraX: 0,
-    targetCameraY: 0,
     targetX: 0,
     targetY: 0,
     roomData: undefined,
@@ -39,7 +34,6 @@ var game = {
     displayChat: false,
     displaySprite: true,
     allowControls: true,
-    activeCamera: true,
     selectedObjects: [],
     selectedCache: [],
     pathfinding: true,
@@ -193,7 +187,7 @@ var game = {
             const storedSceneId = localStorage.getItem('sceneid') || '66771b7e6c1c5b2f1708b75a';
             this.loadScene(storedSceneId);
 
-            //modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
+            modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
             modal.load('ui/modals.php', "ui_modals_list_window", "Modals List", false);
             modal.load('ui/footer.php', "ui_footer_window", "Footer", false);
             modal.load('menus/click_menu/index.php', 'click_menu_window', "click menu", false);
@@ -279,7 +273,7 @@ var game = {
                     this.overlappingTiles = [];
     
                     // Ensure the camera is positioned correctly
-                    game.updateCamera();
+                    camera.update();
     
                     // Store the scene id in local storage
                     localStorage.setItem('sceneid', game.sceneid);
@@ -317,43 +311,6 @@ var game = {
         this.canvas.style.left = '50%';
         this.canvas.style.top = '50%';
         this.canvas.style.transform = 'translate(-50%, -50%)';
-    },
-       
-    updateCamera: function() {
-        if (this.activeCamera) {
-            let mainSprite = this.sprites[this.playerid];
-            if (mainSprite) {
-                var scaledWindowWidth = window.innerWidth / this.zoomLevel;
-                var scaledWindowHeight = window.innerHeight / this.zoomLevel;
-    
-                this.targetCameraX = mainSprite.x + mainSprite.width / 2 - scaledWindowWidth / 2;
-                this.targetCameraY = mainSprite.y + mainSprite.height / 2 - scaledWindowHeight / 2;
-    
-                this.targetCameraX = Math.max(0, Math.min(this.targetCameraX, this.worldWidth - scaledWindowWidth));
-                this.targetCameraY = Math.max(0, Math.min(this.targetCameraY, this.worldHeight - scaledWindowHeight));
-    
-                this.cameraX = this.lerp(this.cameraX, this.targetCameraX, this.lerpFactor);
-                this.cameraY = this.lerp(this.cameraY, this.targetCameraY, this.lerpFactor);
-    
-                // Center map if smaller than viewport
-                if (this.worldWidth < scaledWindowWidth) {
-                    this.cameraX = -(scaledWindowWidth - this.worldWidth) / 2;
-                }
-                if (this.worldHeight < scaledWindowHeight) {
-                    this.cameraY = -(scaledWindowHeight - this.worldHeight) / 2;
-                }
-    
-                if (typeof debug_window !== 'undefined' && debug_window.camera) {
-                    debug_window.camera();
-                }
-            } else {
-                console.error('Main sprite not found.');
-            }
-        }
-    },    
-
-    lerp: function(start, end, t) {
-        return start * (1 - t) + end * t;
     },
 
     handleAimAttack: function () {
@@ -403,8 +360,8 @@ var game = {
         console.log('Game handleMouseDown triggered');
         if (event.button === 0 || event.button === 2) { // Left or right mouse button
             const rect = this.canvas.getBoundingClientRect();
-            const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
-            const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+            const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
+            const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
             this.isDragging = true;
             this.dragStart = { x: mouseX, y: mouseY };
             this.dragEnd = null; // Reset dragEnd
@@ -417,7 +374,7 @@ var game = {
             document.body.style.msUserSelect = 'none'; /* IE 10 and IE 11 */
     
             // Disable camera centering
-            this.activeCamera = false;
+            camera.activeCamera = false;
     
             // Initialize edge scrolling state
             this.currentMouseX = event.clientX;
@@ -431,8 +388,8 @@ var game = {
         console.log('Game handleMouseMove triggered');
         if (this.isDragging) {
             const rect = this.canvas.getBoundingClientRect();
-            const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
-            const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+            const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
+            const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
             this.dragEnd = { x: mouseX, y: mouseY };
             
             const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
@@ -457,8 +414,8 @@ var game = {
         if (this.isEditorActive) return; // Do nothing if the editor is active
         console.log('Game handleMouseUp triggered');
         const rect = this.canvas.getBoundingClientRect();
-        const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
-        const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+        const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
+        const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
         this.isDragging = false;
         this.dragEnd = { x: mouseX, y: mouseY };
     
@@ -489,7 +446,7 @@ var game = {
         modal.showAll();
     
         // Re-enable camera centering
-        this.activeCamera = true;
+        camera.activeCamera = true;
     
         // Stop edge scrolling
         this.isEdgeScrolling = false;
@@ -528,8 +485,8 @@ var game = {
         }
     
         // Update the camera position
-        this.cameraX = Math.max(0, Math.min(this.cameraX + scrollX, this.worldWidth - window.innerWidth / this.zoomLevel));
-        this.cameraY = Math.max(0, Math.min(this.cameraY + scrollY, this.worldHeight - window.innerHeight / this.zoomLevel));
+        camera.cameraX = Math.max(0, Math.min(camera.cameraX + scrollX, this.worldWidth - window.innerWidth / this.zoomLevel));
+        camera.cameraY = Math.max(0, Math.min(camera.cameraY + scrollY, this.worldHeight - window.innerHeight / this.zoomLevel));
     
         // Continue scrolling if dragging
         requestAnimationFrame(this.edgeScroll.bind(this));
@@ -539,8 +496,8 @@ var game = {
         console.log('Game handleCanvasClick triggered');
         
         const rect = this.canvas.getBoundingClientRect();
-        const mouseX = (event.clientX - rect.left) / this.zoomLevel + this.cameraX;
-        const mouseY = (event.clientY - rect.top) / this.zoomLevel + this.cameraY;
+        const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
+        const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
         
         console.log(`Mouse position: (${mouseX}, ${mouseY})`);
         
@@ -1004,7 +961,7 @@ var game = {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
-        this.ctx.translate(-Math.round(this.cameraX), -Math.round(this.cameraY));
+        this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
     
         const mainSprite = this.sprites[this.playerid];
     
@@ -1012,10 +969,10 @@ var game = {
         let tileCount = 0;
     
         // Calculate the boundaries of the viewport in world coordinates
-        this.viewportXStart = Math.max(0, Math.floor(this.cameraX / 16));
-        this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((this.cameraX + window.innerWidth / this.zoomLevel) / 16));
-        this.viewportYStart = Math.max(0, Math.floor(this.cameraY / 16));
-        this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((this.cameraY + window.innerHeight / this.zoomLevel) / 16));
+        this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
+        this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
+        this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
+        this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
 
     // Render background tiles
     const bgTileData = this.objectData[this.sceneBg][0];
@@ -1118,11 +1075,11 @@ if (tileData.l && tileData.l.length > 0) {
                         const flickerAmount = tileData.lfa || 0.04;
                         const lampType = tileData.lt || "lamp";
 
-                        effects.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
+                        lighting.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
                     }
                 } else {
                     // Remove the light if it is out of the viewport
-                    effects.lights = effects.lights.filter(light => light.id !== lightId);
+                    lighting.lights = lighting.lights.filter(light => light.id !== lightId);
                 }
             }
         }
@@ -1154,7 +1111,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
 
             if (isInView) {
                 // Check if effect already exists
-                if (!effects.activeEffects[fxId]) {
+                if (!particles.activeEffects[fxId]) {
                     // Create options for createParticles
                     const options = {
                         count: fxData.count,
@@ -1172,13 +1129,13 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                         shape: fxData.Shape.toLowerCase()
                     };
 
-                    effects.createParticles(posX, posY, options, fxId);
+                    particles.createParticles(posX, posY, options, fxId);
                     console.log(`Effect added: ${fxId}`);
                 }
             } else {
                 // Remove the effect if it is out of the viewport
-                if (effects.activeEffects[fxId]) {
-                    delete effects.activeEffects[fxId];
+                if (particles.activeEffects[fxId]) {
+                    delete particles.activeEffects[fxId];
                     console.log(`Effect removed: ${fxId}`);
                 }
             }
@@ -1280,13 +1237,13 @@ if (tileData.fx && this.fxData[tileData.fx]) {
 
     // Add the night filter to the renderQueue with a high z-index
     game.ctx.save();
-    game.ctx.fillStyle = `rgba(${effects.nightFilter.color.r}, ${effects.nightFilter.color.g}, ${effects.nightFilter.color.b}, ${effects.nightFilter.opacity})`;
-    game.ctx.globalCompositeOperation = effects.nightFilter.compositeOperation;
+    game.ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
+    game.ctx.globalCompositeOperation = lighting.nightFilter.compositeOperation;
     game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
     game.ctx.restore();
 
-    this.ctx.globalCompositeOperation = effects.compositeOperation;
-    this.ctx.drawImage(effects.createLightMask(), 0, 0);
+    this.ctx.globalCompositeOperation = lighting.compositeOperation;
+    this.ctx.drawImage(lighting.createLightMask(), 0, 0);
     this.ctx.globalCompositeOperation = 'source-over';
     
         this.ctx.imageSmoothingEnabled = false;
@@ -1424,12 +1381,12 @@ if (tileData.fx && this.fxData[tileData.fx]) {
         // Draw ID bubbles last to ensure they appear above all other elements
         if(this.displayUsernames && this.displayChat) {
             for (let id in this.sprites) {
-                if(this.displayUsernames) { this.drawIdBubble(this.sprites[id]); }
-                if(this.displayChat) { this.drawChatBubble(this.sprites[id]); }
+                if(this.displayUsernames) { render.drawIdBubble(this.sprites[id]); }
+                if(this.displayChat) { render.drawChatBubble(this.sprites[id]); }
             }
         }
     
-        effects.renderParticles();
+        particles.renderParticles();
         effects.transitions.render();
 
         // Update the tiles rendered and sprites rendered display
@@ -1441,12 +1398,12 @@ if (tilesRenderedDisplay) {
 // Update the lights and effects rendered display
 var lightsRenderedDisplay = document.getElementById('lights_rendered');
 if (lightsRenderedDisplay) {
-    lightsRenderedDisplay.innerHTML = `Lights: ${effects.lights.length}`;
+    lightsRenderedDisplay.innerHTML = `Lights: ${lighting.lights.length}`;
 }
 
 var effectsRenderedDisplay = document.getElementById('effects_rendered');
 if (effectsRenderedDisplay) {
-    effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(effects.activeEffects).length}`;
+    effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(particles.activeEffects).length}`;
 }
 
     // Highlight overlapping tiles
@@ -1461,127 +1418,6 @@ if (effectsRenderedDisplay) {
             const randomIndex = Math.floor(Math.random() * sprite.messages.length);
             const message = sprite.messages[randomIndex];
             this.updateChatMessages(sprite, message);
-        }
-    },
-    
-    drawIdBubble: function(sprite) {
-        if (!sprite || !sprite.id) return;
-    
-        // Truncate text if it's longer than 16 characters
-        let text = sprite.id;
-        if (text.length > 16) {
-            text = text.slice(0, 13);
-        }
-    
-        const bubbleHeight = 7;
-        const bubblePadding = 2;
-        const fontSize = 3;
-        const characterSpacing = -0.1; // Adjust this value for tighter or looser tracking
-        
-        // Calculate text width
-        this.ctx.font = `${fontSize}px Tahoma`;
-        let textWidth = 0;
-        for (let char of text) {
-            textWidth += this.ctx.measureText(char).width + characterSpacing;
-        }
-        textWidth -= characterSpacing; // Remove the extra spacing added after the last character
-    
-        // Calculate bubble dimensions
-        const bubbleWidth = textWidth + 2 * bubblePadding;
-    
-        // Calculate bubble position
-        const bubbleX = sprite.x + sprite.width / 2 - bubbleWidth / 2;
-        const bubbleY = sprite.y - bubbleHeight - bubblePadding + 5; // Adjust this value to bring the bubble down
-    
-        // Draw rounded rectangle bubble with less pronounced corners
-        const radius = 2; // Adjust the radius for subtler rounded corners
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.beginPath();
-        this.ctx.moveTo(bubbleX + radius, bubbleY);
-        this.ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
-        this.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
-        this.ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
-        this.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
-        this.ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
-        this.ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
-        this.ctx.lineTo(bubbleX, bubbleY + radius);
-        this.ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
-        this.ctx.closePath();
-        this.ctx.fill();
-    
-        // Draw each character with fixed spacing
-        this.ctx.fillStyle = 'white';
-        this.ctx.font = `${fontSize}px Tahoma`;
-        let charX = bubbleX + bubblePadding;
-        for (let char of text) {
-            this.ctx.fillText(char, charX, bubbleY + bubbleHeight / 2 + fontSize / 3);
-            charX += this.ctx.measureText(char).width + characterSpacing;
-        }
-    },
-    
-    drawChatBubble: function(sprite) {
-        if (!sprite.chatMessages || sprite.chatMessages.length === 0) return;
-
-        // Iterate through each message
-        for (let i = 0; i < sprite.chatMessages.length; i++) {
-            const messageData = sprite.chatMessages[i];
-            const elapsedTime = Date.now() - messageData.time;
-            
-            if (elapsedTime > 5000) {
-                sprite.chatMessages.splice(i, 1);
-                i--;
-                continue;
-            }
-            
-            const fadeOutTime = 1000; // 1 second fade-out duration
-            const alpha = elapsedTime > 4000 ? (1 - (elapsedTime - 4000) / fadeOutTime) : 1; // Start fading out after 4 seconds
-        
-            const message = messageData.text;
-            const bubbleHeight = 7;
-            const bubblePadding = 2;
-            const fontSize = 3;
-            const characterSpacing = -0.1; // Adjust this value for tighter or looser tracking
-        
-            // Calculate text width
-            game.ctx.font = `${fontSize}px Tahoma`;
-            let textWidth = 0;
-            for (let char of message) {
-                textWidth += game.ctx.measureText(char).width + characterSpacing;
-            }
-            textWidth -= characterSpacing; // Remove the extra spacing added after the last character
-        
-            // Calculate bubble dimensions
-            const bubbleWidth = textWidth + 2 * bubblePadding;
-        
-            // Calculate bubble position
-            const bubbleX = sprite.x + sprite.width / 2 - bubbleWidth / 2;
-            const baseBubbleY = sprite.y - 12; // Move the first bubble up by 2-3 pixels
-            const bubbleY = baseBubbleY - (i * (bubbleHeight + bubblePadding - 1)); // Reduce vertical spacing between bubbles
-    
-            // Draw rounded rectangle bubble with blue color
-            const radius = 2; // Adjust the radius for subtler rounded corners
-            game.ctx.fillStyle = `rgba(0, 0, 255, ${alpha * 0.9})`; // Blue color with fading effect
-            game.ctx.beginPath();
-            game.ctx.moveTo(bubbleX + radius, bubbleY);
-            game.ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
-            game.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
-            game.ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
-            game.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
-            game.ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
-            game.ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
-            game.ctx.lineTo(bubbleX, bubbleY + radius);
-            game.ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
-            game.ctx.closePath();
-            game.ctx.fill();
-        
-            // Draw each character with fixed spacing
-            game.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-            game.ctx.font = `${fontSize}px Tahoma`;
-            let charX = bubbleX + bubblePadding;
-            for (let char of message) {
-                game.ctx.fillText(char, charX, bubbleY + bubbleHeight / 2 + fontSize / 2);
-                charX += game.ctx.measureText(char).width + characterSpacing;
-            }
         }
     },
 
@@ -1620,7 +1456,7 @@ loop: function(timestamp) {
 
     // Process the game logic in fixed steps
     while (this.accumulatedTime >= this.fixedDeltaTime) {
-        this.updateGameLogic(this.fixedDeltaTime);
+        render.updateGameLogic(this.fixedDeltaTime);
         this.accumulatedTime -= this.fixedDeltaTime;
     }
 
@@ -1642,176 +1478,6 @@ loop: function(timestamp) {
     // Continue the loop
     requestAnimationFrame(this.loop.bind(this));
 },
-
-    updateGameLogic: function(deltaTime) {
-    
-        for (let id in game.sprites) {
-            const sprite = game.sprites[id];
-            if (sprite.update) {
-                sprite.update(deltaTime);
-                sprite.checkTileActions();
-            }
-        }
-    
-        this.gameTime.update(deltaTime);
-        effects.updateDayNightCycle();
-        this.updateAnimatedTiles(deltaTime);
-        weather.updateSnow(deltaTime);
-        weather.updateRain(deltaTime);
-        weather.updateFog(deltaTime);
-        weather.updateFireflys(deltaTime);
-        weather.updateLightning(deltaTime);
-        this.updateCamera();
-        effects.updateParticles(deltaTime);
-        effects.transitions.update();
-        effects.updateLights(deltaTime);
-
-            // Rain sound effect handling
-    if (weather.rainActive) {
-        audio.playAudio("rain", assets.load('rain'), 'ambience', true);
-    } else {
-        audio.stopLoopingAudio('rain', 'ambience', 0.5);
-    }
-
-        if(typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
-            ui_window.checkAndUpdateUIPositions();
-        }
-    },
-    
-    updateAnimatedTiles: function(deltaTime) {
-        if (!this.roomData || !this.roomData.items) return;
-    
-        // Iterate over each item in the room data
-        this.roomData.items.forEach(roomItem => {
-            const itemData = assets.load('objectData')[roomItem.id];
-            if (itemData && itemData.length > 0) {
-                // Initialize roomItem's animation state if not already present
-                if (!roomItem.animationState) {
-                    roomItem.animationState = itemData.map(tileData => ({
-                        currentFrame: 0,
-                        elapsedTime: 0
-                    }));
-                }
-    
-                // Update each tile's animation state
-                itemData.forEach((tileData, index) => {
-                    if (tileData.i && Array.isArray(tileData.i[0])) {
-                        const animationData = tileData.i;
-                        const animationState = roomItem.animationState[index];
-    
-                        animationState.elapsedTime += deltaTime;
-    
-                        // Ensure that the frame only advances once per elapsed time period
-                        if (animationState.elapsedTime >= tileData.d) {
-                            animationState.elapsedTime -= tileData.d;
-                            animationState.currentFrame = (animationState.currentFrame + 1) % animationData.length;
-                        }
-    
-                        // Apply the current frame to the tileData for rendering
-                        tileData.currentFrame = animationState.currentFrame;
-                    }
-                });
-            }
-        });
-    },      
-
-    collision: function(x, y, sprite) {
-        let collisionDetected = false;
-        const extraHeadroom = 2;
-    
-        // Define the collision box for the sprite
-        const spriteCollisionBox = {
-            x: x,
-            y: y + extraHeadroom,
-            width: sprite.width * sprite.scale,
-            height: sprite.height * sprite.scale - 2 * extraHeadroom
-        };
-    
-        const objectCollisionBox = {
-            x: x,
-            y: y + sprite.height * sprite.scale / 2,
-            width: sprite.width * sprite.scale,
-            height: sprite.height * sprite.scale / 2
-        };
-    
-        if (this.roomData && this.roomData.items) {
-            collisionDetected = this.roomData.items.some(roomItem => {
-                
-                const itemData = this.objectData[roomItem.id];
-                if (!itemData) return false;
-    
-                const xCoordinates = roomItem.x || [];
-                const yCoordinates = roomItem.y || [];
-    
-                return yCoordinates.some((tileY, rowIndex) => {
-                    return xCoordinates.some((tileX, colIndex) => {
-                        const index = rowIndex * xCoordinates.length + colIndex;
-                        const tileData = itemData[0]; // Assuming we are dealing with the first tile data group
-                        const tilePosX = tileX * 16 + tileData.a[index % tileData.a.length];
-                        const tilePosY = tileY * 16 + tileData.b[index % tileData.b.length];
-                        const tileRect = {
-                            x: tilePosX,
-                            y: tilePosY,
-                            width: 16,
-                            height: 16
-                        };
-    
-                        let collisionArray;
-                        if (Array.isArray(tileData.w) && tileData.w.length > 0) {
-                            collisionArray = tileData.w[index % tileData.w.length];
-                        } else if (typeof tileData.w === 'number') {
-                            if (tileData.w === 1) {
-                                collisionArray = [16, 16, 16, 16]; // Fully walkable
-                            } else if (tileData.w === 0) {
-                                collisionArray = [0, 0, 0, 0]; // Fully non-walkable
-                            }
-                        }
-    
-                        if (collisionArray) {
-                            const [nOffset, eOffset, sOffset, wOffset] = collisionArray;
-                            return (
-                                objectCollisionBox.x < tileRect.x + tileRect.width - eOffset &&
-                                objectCollisionBox.x + objectCollisionBox.width > tileRect.x + wOffset &&
-                                objectCollisionBox.y < tileRect.y + tileRect.height - sOffset &&
-                                objectCollisionBox.y + objectCollisionBox.height > tileRect.y + nOffset
-                            );
-
-                            audio.playAudio("bump1", assets.load('bump1'), 'sfx');
-                        }
-    
-                        return false;
-                    });
-                });
-
-            });
-        }
-    
-        if (!collisionDetected) {
-            for (let id in this.sprites) {
-                if (this.sprites[id] !== sprite) {
-                    const otherSprite = this.sprites[id];
-                    const otherCollisionBox = {
-                        x: otherSprite.x,
-                        y: otherSprite.y + extraHeadroom,
-                        width: otherSprite.width * otherSprite.scale,
-                        height: otherSprite.height * otherSprite.scale - 2 * extraHeadroom
-                    };
-    
-                    if (
-                        spriteCollisionBox.x < otherCollisionBox.x + otherCollisionBox.width &&
-                        spriteCollisionBox.x + spriteCollisionBox.width > otherCollisionBox.x &&
-                        spriteCollisionBox.y < otherCollisionBox.y + otherCollisionBox.height &&
-                        spriteCollisionBox.y + spriteCollisionBox.height > otherCollisionBox.y
-                    ) {
-                        collisionDetected = true;
-                        break;
-                    }
-                }
-            }
-        }
-    
-        return collisionDetected;
-    },    
     
 
     findFreeLocation: function(width, height) {
@@ -1836,7 +1502,7 @@ loop: function(timestamp) {
             });
     
             // Check for tile collisions
-            let tileCollision = this.collision(x, y, testSprite);
+            let tileCollision = collision.check(x, y, testSprite);
     
             // If no overlapping sprites and no tile collision, return this location
             if (!overlappingSprites && !tileCollision) {

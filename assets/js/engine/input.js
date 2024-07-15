@@ -171,8 +171,8 @@ var input = {
 
             if (e.altKey) {
                 const panSpeed = 10;
-                game.cameraX += e.deltaY > 0 ? panSpeed : -panSpeed;
-                game.cameraX = Math.max(0, Math.min(game.cameraX, game.worldWidth - window.innerWidth / game.zoomLevel));
+                camera.cameraX += e.deltaY > 0 ? panSpeed : -panSpeed;
+                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - window.innerWidth / game.zoomLevel));
             } else if (e.ctrlKey) {
                 const zoomStep = 1;
                 const rect = game.canvas.getBoundingClientRect();
@@ -186,18 +186,18 @@ var input = {
                 const zoomFactor = game.zoomLevel / prevZoomLevel;
 
                 // Adjust camera position to keep the cursor focused
-                game.cameraX = cursorX - (cursorX - game.cameraX) * zoomFactor;
-                game.cameraY = cursorY - (cursorY - game.cameraY) * zoomFactor;
+                camera.cameraX = cursorX - (cursorX - camera.cameraX) * zoomFactor;
+                camera.cameraY = cursorY - (cursorY - camera.cameraY) * zoomFactor;
 
                 // Ensure the camera doesn't go outside the world bounds
                 const scaledWindowWidth = window.innerWidth / game.zoomLevel;
                 const scaledWindowHeight = window.innerHeight / game.zoomLevel;
-                game.cameraX = Math.max(0, Math.min(game.cameraX, game.worldWidth - scaledWindowWidth));
-                game.cameraY = Math.max(0, Math.min(game.cameraY, game.worldHeight - scaledWindowHeight));
+                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - scaledWindowWidth));
+                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - scaledWindowHeight));
             } else {
                 const panSpeed = 10;
-                game.cameraY += e.deltaY > 0 ? panSpeed : -panSpeed;
-                game.cameraY = Math.max(0, Math.min(game.cameraY, game.worldHeight - window.innerHeight / game.zoomLevel));
+                camera.cameraY += e.deltaY > 0 ? panSpeed : -panSpeed;
+                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - window.innerHeight / game.zoomLevel));
             }
         }
     },

@@ -118,7 +118,7 @@ var renadmin_particles_window = {
         const effectSelect = document.getElementById('effectSelect');
         effectSelect.innerHTML = '<option value="">Select Effect</option>';
 
-        Object.keys(effects.activeEffects).forEach(effectId => {
+        Object.keys(particles.activeEffects).forEach(effectId => {
             const option = document.createElement('option');
             option.value = effectId;
             option.text = effectId;
@@ -140,7 +140,7 @@ var renadmin_particles_window = {
     },
     loadEffectData: function(event) {
         const effectId = event.target.value;
-        const effect = effects.activeEffects[effectId];
+        const effect = particles.activeEffects[effectId];
 
         if (effect && effect.length > 0) {
             document.getElementById('effectControls').style.display = 'block';
@@ -179,7 +179,7 @@ var renadmin_particles_window = {
     },
     updateEffectData: function(property, event) {
     const effectId = document.getElementById('effectSelect').value;
-    const effect = effects.activeEffects[effectId];
+    const effect = particles.activeEffects[effectId];
 
     if (effect && effect.length > 0) {
         let value;
@@ -242,7 +242,7 @@ var renadmin_particles_window = {
     }
 },
 restartEffect: function(effectId) {
-    const effect = effects.activeEffects[effectId];
+    const effect = particles.activeEffects[effectId];
     if (effect && effect.length > 0) {
         // Store initial coordinates before clearing the array
         const initialX = effect[0].initialX;
@@ -259,7 +259,7 @@ restartEffect: function(effectId) {
 
         // Reinitialize particles with updated properties
         effect.length = 0; // Clear the current effect array
-        effects.createParticles(
+        particles.createParticles(
             initialX, initialY,
             {
                 count: parseInt(document.getElementById('particleCount').value),

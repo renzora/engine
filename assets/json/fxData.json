@@ -15,5 +15,24 @@
         "Blur": 20,
         "Shape": "circle",
         "repeat": true
+    },
+    
+    "fireball": {
+        "color": [[255, 69, 0], [255, 140, 0], [255, 215, 0], [255, 255, 0]],
+        "count": 8,
+        "speed": 0.8,
+        "baseAngle": 270,
+        "spread": 45,
+        "frames": 400,
+        "size": 3,
+        "rotationSpeed": 0.1,
+        "HorAcc": 0.2,
+        "VerAcc": -0.2,
+        "Glow": 0.8,
+        "Opacity": 0.9,
+        "Blur": 10,
+        "Shape": "circle",
+        "repeat": true
     }
+
 }
