@@ -3,7 +3,6 @@ var gamepad = {
     pressedButtons: [],
     axes: [],
     isConnected: false,
-
     buttonMap: {},
     buttonPressures: {},
     axesPressures: {},
@@ -35,6 +34,7 @@ var gamepad = {
     },
 
     connectGamepad: function(e) {
+        game.updateInputMethod('gamepad');
         this.gamepadIndex = e.gamepad.index;
         this.isConnected = true;
         console.log("Gamepad connected at index " + this.gamepadIndex);
@@ -52,11 +52,23 @@ var gamepad = {
         if (this.isConnected && this.gamepadIndex !== null) {
             const gamepad = navigator.getGamepads()[this.gamepadIndex];
             if (gamepad) {
+                // Only update input method if there is active input from the gamepad
+                if (this.hasActiveInput(gamepad)) {
+                    game.updateInputMethod('gamepad');
+                }
                 this.handleButtons(gamepad.buttons);
                 this.handleAxes(gamepad.axes);
             }
         }
         requestAnimationFrame(() => this.updateGamepadState());
+    },
+
+    hasActiveInput: function(gamepad) {
+        // Check for any button presses or significant axis movements
+        const threshold = 0.2;
+        const buttonsPressed = gamepad.buttons.some(button => button.pressed);
+        const axesMoved = gamepad.axes.some(axis => Math.abs(axis) > threshold);
+        return buttonsPressed || axesMoved;
     },
 
     handleButtons: function(buttons) {

@@ -47,7 +47,7 @@ var game = {
     sceneBg: "grass",
     isEditorActive: false,
     selectionBounds: null,
-    currentInputMethod: 'keyboard',
+    inputMethod: 'keyboard',
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },
@@ -100,10 +100,13 @@ var game = {
         });
     },
 
-    updateInputMethodUI: function() {
-        const inputMethodDisplay = document.getElementById('input_method'); // Assuming you have an element with this ID
-        if (inputMethodDisplay) {
-            inputMethodDisplay.innerText = `Input: ${this.currentInputMethod}`;
+    updateInputMethod: function(method) {
+        if (this.inputMethod !== method) {
+            this.inputMethod = method;
+            const inputMethodDisplay = document.getElementById('input_method');
+            if (inputMethodDisplay) {
+                inputMethodDisplay.innerText = `Input: ${method}`;
+            }
         }
     },
 

@@ -14,7 +14,7 @@ var input = {
     isCtrlPressed: false,
     isAltPressed: false,
     isDragging: false,
-    directions: { up: false, down: false, left: false, right: false }, // Initialize directions
+    directions: { up: false, down: false, left: false, right: false },
 
     init: function() {
         document.addEventListener("keydown", (e) => this.keyDown(e));
@@ -30,6 +30,7 @@ var input = {
     },
 
     keyUp: function(e) {
+        game.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             e.preventDefault(); // Prevent default action for keyUp
             this.handleKeyUp(e);
@@ -37,6 +38,7 @@ var input = {
     },
 
     keyDown: function(e) {
+        game.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             if (e.key === 'Tab') {
                 e.preventDefault();
