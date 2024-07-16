@@ -518,10 +518,6 @@ var sprite = {
     },
 
     update: function(deltaTime) {
-        // Check if the shift key is held down
-        if (input.isShiftPressed) {
-            return; // Skip the update logic if the shift key is pressed
-        }
     
         if (this.isMovingToTarget) {
             this.moveAlongPath();

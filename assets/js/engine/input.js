@@ -14,6 +14,7 @@ var input = {
     isCtrlPressed: false,
     isAltPressed: false,
     isDragging: false,
+    directions: { up: false, down: false, left: false, right: false }, // Initialize directions
 
     init: function() {
         document.addEventListener("keydown", (e) => this.keyDown(e));
@@ -48,13 +49,7 @@ var input = {
     },
 
     handleKeyDown: function(e) {
-        if (e.key === 'Shift') {
-            this.isShiftPressed = true;
-        } else if (e.key === 'Control') {
-            this.isCtrlPressed = true;
-        } else if (e.key === 'Alt') {
-            this.isAltPressed = true;
-        }
+        this.handleControlStateChange(e, true);
 
         if (e.altKey && e.key === 'c') {
             if (e.key === 'c') {
@@ -66,12 +61,8 @@ var input = {
         } else {
             const dir = this.keys[e.key];
             if (dir) {
-                if (game.mainSprite && game.allowControls) {
-                    game.mainSprite.addDirection(dir); // Use sprite's method
-                } else {
-                    console.error('Main sprite not found.');
-                }
-                this.cancelPathfinding(game.mainSprite);
+                this.directions[dir] = true;
+                this.updateSpriteDirections();
             }
         }
 
@@ -90,13 +81,7 @@ var input = {
     },
 
     handleKeyUp: function(e) {
-        if (e.key === 'Shift') {
-            this.isShiftPressed = false;
-        } else if (e.key === 'Control') {
-            this.isCtrlPressed = false;
-        } else if (e.key === 'Alt') {
-            this.isAltPressed = false;
-        }
+        this.handleControlStateChange(e, false);
 
         if (e.keyCode === 27) { // ESC key
             let maxZIndex = -Infinity;
@@ -123,13 +108,9 @@ var input = {
         }
 
         const dir = this.keys[e.key];
-        if (dir && game.mainSprite) {
-            game.mainSprite.removeDirection(dir); // Use sprite's method
-
-            // Stop walking audio if no directions are pressed
-            if (!game.mainSprite.isMoving) {
-                audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
-            }
+        if (dir) {
+            this.directions[dir] = false;
+            this.updateSpriteDirections();
         }
     },
 
@@ -238,6 +219,48 @@ var input = {
             sprite.path = [];
             sprite.moving = false; // Reset the moving flag
             audio.stopLoopingAudio('walkGrass', 'sfx', 0.5); // Stop walking audio
+        }
+    },
+
+    handleControlStateChange: function(e, isPressed) {
+        switch (e.key) {
+            case 'Shift':
+                this.isShiftPressed = isPressed;
+                break;
+            case 'Control':
+                this.isCtrlPressed = isPressed;
+                break;
+            case 'Alt':
+                this.isAltPressed = isPressed;
+                break;
+            case ' ':
+                this.isSpacePressed = isPressed;
+                break;
+        }
+    },
+
+    updateSpriteDirections: function() {
+        const combinedDirections = {
+            up: (gamepad.directions && gamepad.directions.up) || this.directions.up,
+            down: (gamepad.directions && gamepad.directions.down) || this.directions.down,
+            left: (gamepad.directions && gamepad.directions.left) || this.directions.left,
+            right: (gamepad.directions && gamepad.directions.right) || this.directions.right
+        };
+
+        const directions = ['up', 'down', 'left', 'right'];
+        directions.forEach(direction => {
+            if (game.mainSprite) {
+                if (combinedDirections[direction]) {
+                    game.mainSprite.addDirection(direction);
+                } else {
+                    game.mainSprite.removeDirection(direction);
+                }
+            }
+        });
+
+        // Stop walking audio if no directions are pressed
+        if (game.mainSprite && !combinedDirections.up && !combinedDirections.down && !combinedDirections.left && !combinedDirections.right) {
+            audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
         }
     }
 };

@@ -3,14 +3,16 @@ var gamepad = {
     pressedButtons: [],
     axes: [],
     isConnected: false,
-    
+
     buttonMap: {},
-    
+    buttonPressures: {},
+    axesPressures: {},
+
     init: function() {
         window.addEventListener("gamepadconnected", (e) => this.connectGamepad(e));
         window.addEventListener("gamepaddisconnected", (e) => this.disconnectGamepad(e));
         this.updateGamepadState();
-        
+
         // Initialize button map
         this.buttonMap = {
             0: this.handleAButton.bind(this),
@@ -31,13 +33,13 @@ var gamepad = {
             15: this.handleDPadRight.bind(this)
         };
     },
-    
+
     connectGamepad: function(e) {
         this.gamepadIndex = e.gamepad.index;
         this.isConnected = true;
         console.log("Gamepad connected at index " + this.gamepadIndex);
     },
-    
+
     disconnectGamepad: function(e) {
         if (e.gamepad.index === this.gamepadIndex) {
             this.isConnected = false;
@@ -45,7 +47,7 @@ var gamepad = {
             console.log("Gamepad disconnected from index " + this.gamepadIndex);
         }
     },
-    
+
     updateGamepadState: function() {
         if (this.isConnected && this.gamepadIndex !== null) {
             const gamepad = navigator.getGamepads()[this.gamepadIndex];
@@ -56,123 +58,154 @@ var gamepad = {
         }
         requestAnimationFrame(() => this.updateGamepadState());
     },
-    
+
     handleButtons: function(buttons) {
         buttons.forEach((button, index) => {
+            const pressure = button.value; // Pressure value ranges from 0 to 1
+            this.buttonPressures[index] = pressure;
+
             if (button.pressed) {
                 if (!this.pressedButtons.includes(index)) {
                     this.pressedButtons.push(index);
-                    if (this.buttonMap[index]) this.buttonMap[index]("down");
+                    if (this.buttonMap[index]) this.buttonMap[index]("down", pressure);
+                } else {
+                    // Update the pressure continuously while the button is pressed
+                    if (this.buttonMap[index]) this.buttonMap[index]("down", pressure);
                 }
             } else {
                 const buttonIndex = this.pressedButtons.indexOf(index);
                 if (buttonIndex > -1) {
                     this.pressedButtons.splice(buttonIndex, 1);
-                    if (this.buttonMap[index]) this.buttonMap[index]("up");
+                    if (this.buttonMap[index]) this.buttonMap[index]("up", pressure);
                 }
             }
         });
     },
-    
+
     handleAxes: function(axes) {
         const threshold = 0.2; // Dead zone threshold
 
-        const directions = ['left', 'right', 'up', 'down'];
-        directions.forEach(direction => input.removeDirection(direction)); // Reset directions
+        // Calculate axis pressures
+        const leftStickX = Math.abs(axes[0]);
+        const leftStickY = Math.abs(axes[1]);
+        const rightStickX = Math.abs(axes[2]);
+        const rightStickY = Math.abs(axes[3]);
 
-        if (Math.abs(axes[0]) > threshold || Math.abs(axes[1]) > threshold) {
+        // Reset gamepad directions
+        gamepad.directions = { left: false, right: false, up: false, down: false };
+
+        if (leftStickX > threshold || leftStickY > threshold) {
+            this.axesPressures.leftStickX = leftStickX;
+            this.axesPressures.leftStickY = leftStickY;
+
             // Left stick movement (axes[0] = left/right, axes[1] = up/down)
-            const directionX = axes[0] > threshold ? 'right' : (axes[0] < -threshold ? 'left' : null);
-            const directionY = axes[1] > threshold ? 'down' : (axes[1] < -threshold ? 'up' : null);
+            gamepad.directions.right = axes[0] > threshold;
+            gamepad.directions.left = axes[0] < -threshold;
+            gamepad.directions.down = axes[1] > threshold;
+            gamepad.directions.up = axes[1] < -threshold;
 
-            if (directionX) {
-                input.addDirection(directionX);
-            }
-            if (directionY) {
-                input.addDirection(directionY);
-            }
+            // Update the sprite's directions based on combined states
+            input.updateSpriteDirections();
+
+            console.log("Left Stick X Pressure: " + this.axesPressures.leftStickX);
+            console.log("Left Stick Y Pressure: " + this.axesPressures.leftStickY);
+        } else {
+            // Reset the directions for left stick if below threshold
+            this.axesPressures.leftStickX = 0;
+            this.axesPressures.leftStickY = 0;
         }
+
+        if (rightStickX > threshold || rightStickY > threshold) {
+            this.axesPressures.rightStickX = rightStickX;
+            this.axesPressures.rightStickY = rightStickY;
+
+            console.log("Right Stick X Pressure: " + this.axesPressures.rightStickX);
+            console.log("Right Stick Y Pressure: " + this.axesPressures.rightStickY);
+        } else {
+            // Reset the pressures for right stick if below threshold
+            this.axesPressures.rightStickX = 0;
+            this.axesPressures.rightStickY = 0;
+        }
+
+        // Update the sprite's directions based on combined states
+        input.updateSpriteDirections();
     },
 
-    handleAButton: function(state) {
-
+    handleAButton: function(state, pressure) {
+        console.log("A Button " + state + " with pressure " + pressure);
     },
 
-    handleBButton: function(state) {
+    handleBButton: function(state, pressure) {
         if (state === "down") {
             input.rightClick({ preventDefault: () => {}, button: 2 });
         }
+        console.log("B Button " + state + " with pressure " + pressure);
     },
 
-    handleXButton: function(state) {
-        // Handle X button press/release
+    handleXButton: function(state, pressure) {
+        console.log("X Button " + state + " with pressure " + pressure);
     },
 
-    handleYButton: function(state) {
-        // Handle Y button press/release
+    handleYButton: function(state, pressure) {
+        console.log("Y Button " + state + " with pressure " + pressure);
     },
 
-    handleLeftBumper: function(state) {
+    handleLeftBumper: function(state, pressure) {
         input.handleControlStateChange({ key: 'Shift' }, state === "down");
+        console.log("Left Bumper " + state + " with pressure " + pressure);
     },
 
-    handleRightBumper: function(state) {
-        // Handle right bumper press/release
+    handleRightBumper: function(state, pressure) {
+        console.log("Right Bumper " + state + " with pressure " + pressure);
     },
 
-    handleLeftTrigger: function(state) {
+    handleLeftTrigger: function(state, pressure) {
         input.handleControlStateChange({ key: 'Control' }, state === "down");
+        console.log("Left Trigger " + state + " with pressure " + pressure);
     },
 
-    handleRightTrigger: function(state) {
+    handleRightTrigger: function(state, pressure) {
         input.handleControlStateChange({ key: 'Alt' }, state === "down");
+        console.log("Right Trigger " + state + " with pressure " + pressure);
     },
 
-    handleSelectButton: function(state) {
-        // Handle select button press/release
+    handleSelectButton: function(state, pressure) {
+        console.log("Select Button " + state + " with pressure " + pressure);
     },
 
-    handleStartButton: function(state) {
-        // Handle start button press/release
+    handleStartButton: function(state, pressure) {
+        console.log("Start Button " + state + " with pressure " + pressure);
     },
 
-    handleLeftStickButton: function(state) {
-        // Handle left stick button press/release
+    handleLeftStickButton: function(state, pressure) {
+        console.log("Left Stick Button " + state + " with pressure " + pressure);
     },
 
-    handleRightStickButton: function(state) {
-        // Handle right stick button press/release
+    handleRightStickButton: function(state, pressure) {
+        console.log("Right Stick Button " + state + " with pressure " + pressure);
     },
 
-    handleDPadUp: function(state) {
-        if (state === "down") {
-            input.addDirection('up');
-        } else {
-            input.removeDirection('up');
-        }
+    handleDPadUp: function(state, pressure) {
+        gamepad.directions.up = (state === "down");
+        input.updateSpriteDirections();
+        console.log("D-Pad Up " + state + " with pressure " + pressure);
     },
 
-    handleDPadDown: function(state) {
-        if (state === "down") {
-            input.addDirection('down');
-        } else {
-            input.removeDirection('down');
-        }
+    handleDPadDown: function(state, pressure) {
+        gamepad.directions.down = (state === "down");
+        input.updateSpriteDirections();
+        console.log("D-Pad Down " + state + " with pressure " + pressure);
     },
 
-    handleDPadLeft: function(state) {
-        if (state === "down") {
-            input.addDirection('left');
-        } else {
-            input.removeDirection('left');
-        }
+    handleDPadLeft: function(state, pressure) {
+        gamepad.directions.left = (state === "down");
+        input.updateSpriteDirections();
+        console.log("D-Pad Left " + state + " with pressure " + pressure);
     },
 
-    handleDPadRight: function(state) {
-        if (state === "down") {
-            input.addDirection('right');
-        } else {
-            input.removeDirection('right');
-        }
+    handleDPadRight: function(state, pressure) {
+        gamepad.directions.right = (state === "down");
+        input.updateSpriteDirections();
+        console.log("D-Pad Right " + state + " with pressure " + pressure);
     }
 };
