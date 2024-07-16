@@ -3,6 +3,7 @@ var gamepad = {
     pressedButtons: [],
     axes: [],
     isConnected: false,
+    name: '',
     buttonMap: {},
     buttonPressures: {},
     axesPressures: {},
@@ -34,9 +35,10 @@ var gamepad = {
     },
 
     connectGamepad: function(e) {
-        game.updateInputMethod('gamepad');
         this.gamepadIndex = e.gamepad.index;
         this.isConnected = true;
+        this.name = this.getGamepadName(e.gamepad); // Store the gamepad name
+        game.updateInputMethod('gamepad', this.name);
         console.log("Gamepad connected at index " + this.gamepadIndex);
     },
 
@@ -44,6 +46,7 @@ var gamepad = {
         if (e.gamepad.index === this.gamepadIndex) {
             this.isConnected = false;
             this.gamepadIndex = null;
+            game.updateInputMethod('keyboard'); // Revert to keyboard input method when gamepad is disconnected
             console.log("Gamepad disconnected from index " + this.gamepadIndex);
         }
     },
@@ -54,7 +57,7 @@ var gamepad = {
             if (gamepad) {
                 // Only update input method if there is active input from the gamepad
                 if (this.hasActiveInput(gamepad)) {
-                    game.updateInputMethod('gamepad');
+                    game.updateInputMethod('gamepad', this.name);
                 }
                 this.handleButtons(gamepad.buttons);
                 this.handleAxes(gamepad.axes);
@@ -69,6 +72,24 @@ var gamepad = {
         const buttonsPressed = gamepad.buttons.some(button => button.pressed);
         const axesMoved = gamepad.axes.some(axis => Math.abs(axis) > threshold);
         return buttonsPressed || axesMoved;
+    },
+
+    getGamepadName: function(gamepad) {
+        console.log(gamepad);
+        const { id } = gamepad;
+        if (id.includes('054c') && id.includes('0ce6')) {
+            return 'PS5';
+        } else if (id.toLowerCase().includes('xbox')) {
+            return 'Xbox';
+        } else if (id.toLowerCase().includes('nintendo') || id.toLowerCase().includes('switch')) {
+            return 'Switch';
+        } else if (id.toLowerCase().includes('logitech')) {
+            return 'Logitech';
+        } else if (id.toLowerCase().includes('steelseries')) {
+            return 'SteelSeries';
+        } else {
+            return 'Generic';
+        }
     },
 
     handleButtons: function(buttons) {

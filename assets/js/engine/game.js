@@ -100,13 +100,10 @@ var game = {
         });
     },
 
-    updateInputMethod: function(method) {
-        if (this.inputMethod !== method) {
-            this.inputMethod = method;
-            const inputMethodDisplay = document.getElementById('input_method');
-            if (inputMethodDisplay) {
-                inputMethodDisplay.innerText = `Input: ${method}`;
-            }
+    updateInputMethod: function(method, name = '') {
+        const inputMethodDisplay = document.getElementById('input_method');
+        if (inputMethodDisplay) {
+            inputMethodDisplay.innerText = `Input: ${method}${name ? ' (' + name + ')' : ''}`;
         }
     },
 
