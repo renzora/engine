@@ -1,35 +1,5 @@
 <div data-window='ui_inventory_window' data-close="false">
 
-<div class="fixed top-4 left-1/2 transform -translate-x-1/2 z-10 bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
-
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom active" data-tab="servers" aria-label="Servers">
-                  <div class="icon globe"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="friends" aria-label="Friends">
-                  <div class="icon friends"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="editor" aria-label="Editor">
-                  <div class="icon editor"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="chat" aria-label="Chat">
-                  <div class="icon chat"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="gift" aria-label="Gift">
-                  <div class="icon gift"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="avatar" aria-label="Avatar">
-                  <div class="icon avatar"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="survival" aria-label="Survival">
-                  <div class="icon sword"></div>
-                </button>
-                <button class="tab px-2 py-1 text-gray-600 rounded hint--bottom" data-tab="settings" aria-label="Settings">
-                  <div class="icon settings"></div>
-                </button>
-
-</div>
-
-
 <div id="ui_inventory_window" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
     <div class="ui_item_primary relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300"></div>
     <div class="flex flex-col space-y-2 w-98">
@@ -40,19 +10,26 @@
                     <div class="items_icon items_health scale-[1.2]"></div>
                 </div>
                 <div id="ui_health" class="rounded bg-gradient-to-r from-lime-500 to-green-600 h-full transition-width duration-500 flex-grow"></div>
-                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
+                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm"></div>
             </div>
             <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
                 <div class="mx-1">
                     <div class="items_icon items_energy scale-[1.2]"></div>
                 </div>
                 <div id="ui_energy" class="rounded bg-gradient-to-r from-cyan-400 to-blue-600 h-full transition-width duration-500 flex-grow"></div>
-                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
+                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm"></div>
             </div>
         </div>
         <div class="flex space-x-2" id="ui_quick_items_container"></div>
     </div>
 </div>
+
+<style>
+  .highlight {
+    outline: 2px dashed yellow;
+    outline-offset: -3px;
+  }
+</style>
 
 <script>
 var ui_inventory_window = {

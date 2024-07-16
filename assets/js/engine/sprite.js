@@ -7,7 +7,7 @@ var sprite = {
             width: 16,
             height: 27,
             scale: 0.95,
-            speed: options.speed !== undefined ? options.speed : 90,
+            speed: options.speed !== undefined ? options.speed : 50,
             currentFrame: 0,
             direction: 'S',
             animationSpeed: 0.2,
@@ -418,13 +418,14 @@ var sprite = {
     },
 
     addDirection: function(direction) {
-
         this.directions[direction] = true;
         this.updateDirection();
         this.moving = true;
         this.stopping = false;
-
-        audio.playAudio('walkGrass', assets.load('walkGrass'), 'sfx', true);
+    
+        if (this.id === game.playerid) {
+            audio.playAudio('walkGrass', assets.load('walkGrass'), 'sfx', true);
+        }
     },
 
     removeDirection: function(direction) {
@@ -462,8 +463,8 @@ var sprite = {
             amount = parseInt(amount);
         }
         this.health = Math.max(0, Math.min(this.maxHealth, this.health + amount));
-
-        const healthBar = document.getElementById('health');
+    
+        const healthBar = document.getElementById('ui_health');
         if (healthBar) {
             const healthPercentage = (this.health / this.maxHealth) * 100;
             healthBar.style.width = healthPercentage + '%';
@@ -475,16 +476,15 @@ var sprite = {
         if (typeof amount === "string") {
             amount = parseInt(amount);
         }
-
         this.energy = Math.max(0, Math.min(this.maxEnergy, this.energy + amount));
-
-        const energyBar = document.getElementById('energy');
+    
+        const energyBar = document.getElementById('ui_energy');
         if (energyBar) {
             const energyPercentage = (this.energy / this.maxEnergy) * 100;
             energyBar.style.width = energyPercentage + '%';
             energyBar.nextElementSibling.innerText = `${Math.round(energyPercentage)}%`;
         }
-    },
+    },    
 
     animate: function() {
         if (this.moving) {
@@ -659,28 +659,27 @@ var sprite = {
     },
 
     handleAimAttack: function() {
-        const mainSprite = game.sprites[id];
-        if (!mainSprite || !mainSprite.targetAim) return;
-
-        const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
-        const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
-        const deltaX = mainSprite.targetX - handX;
-        const deltaY = mainSprite.targetY - handY;
+        if (!game.mainSprite || !game.mainSprite.targetAim) return;
+    
+        const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;
+        const handY = game.mainSprite.y + game.mainSprite.height / 2 + game.mainSprite.handOffsetY;
+        const deltaX = game.mainSprite.targetX - handX;
+        const deltaY = game.mainSprite.targetY - handY;
         const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-        if (distance <= mainSprite.maxRange) {
-            const targetRadius = mainSprite.targetRadius;
+    
+        if (distance <= game.mainSprite.maxRange) {
+            const targetRadius = game.mainSprite.targetRadius;
             const aimDistance = Math.sqrt(
-                (this.x + this.width / 2 - mainSprite.targetX) ** 2 +
-                (this.y + this.height / 2 - mainSprite.targetY) ** 2
+                (this.x + this.width / 2 - game.mainSprite.targetX) ** 2 +
+                (this.y + this.height / 2 - game.mainSprite.targetY) ** 2
             );
-
+    
             if (aimDistance <= targetRadius) {
                 const headDistance = Math.sqrt(
-                    (this.x + this.width / 2 - mainSprite.targetX) ** 2 +
-                    (this.y - mainSprite.targetY) ** 2
+                    (this.x + this.width / 2 - game.mainSprite.targetX) ** 2 +
+                    (this.y - game.mainSprite.targetY) ** 2
                 );
-                let damage = mainSprite.attack * (1 - (headDistance / targetRadius));
+                let damage = game.mainSprite.attack * (1 - (headDistance / targetRadius));
                 damage = Math.max(0, damage);
                 this.takeDamage(damage);
             }

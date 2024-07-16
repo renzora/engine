@@ -276,7 +276,7 @@ var editor = {
 
         game.roomData.items.push(newItem);
 
-        effects.shakeMap(300, 3);
+        effects.shakeMap(300, 2);
 
         console.log('New item added to roomData:', newItem);
         audio.playAudio("objectDrop", assets.load('objectDrop'), 'sfx');

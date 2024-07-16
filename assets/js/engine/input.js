@@ -48,7 +48,13 @@ var input = {
     },
 
     handleKeyDown: function(e) {
-        const mainSprite = game.sprites[game.playerid];
+        if (e.key === 'Shift') {
+            this.isShiftPressed = true;
+        } else if (e.key === 'Control') {
+            this.isCtrlPressed = true;
+        } else if (e.key === 'Alt') {
+            this.isAltPressed = true;
+        }
 
         if (e.altKey && e.key === 'c') {
             if (e.key === 'c') {
@@ -60,20 +66,38 @@ var input = {
         } else {
             const dir = this.keys[e.key];
             if (dir) {
-                if (mainSprite && game.allowControls) {
-                    mainSprite.addDirection(dir); // Use sprite's method
+                if (game.mainSprite && game.allowControls) {
+                    game.mainSprite.addDirection(dir); // Use sprite's method
                 } else {
                     console.error('Main sprite not found.');
                 }
-                this.cancelPathfinding(mainSprite);
+                this.cancelPathfinding(game.mainSprite);
             }
         }
 
-        this.handleControlStateChange(e, true);
+        if (e.key === 'f') {
+            if (game.mainSprite) {
+                game.mainSprite.targetAim = !game.mainSprite.targetAim; // Toggle target aiming mode
+                if (game.mainSprite.targetAim) {
+                    console.log('Target aim activated');
+                } else {
+                    console.log('Target aim deactivated');
+                }
+            } else {
+                console.error('Main sprite not found.');
+            }
+        }
     },
 
     handleKeyUp: function(e) {
-        const mainSprite = game.sprites[game.playerid];
+        if (e.key === 'Shift') {
+            this.isShiftPressed = false;
+        } else if (e.key === 'Control') {
+            this.isCtrlPressed = false;
+        } else if (e.key === 'Alt') {
+            this.isAltPressed = false;
+        }
+
         if (e.keyCode === 27) { // ESC key
             let maxZIndex = -Infinity;
             let maxZIndexElement = null;
@@ -99,16 +123,14 @@ var input = {
         }
 
         const dir = this.keys[e.key];
-        if (dir && mainSprite) {
-            mainSprite.removeDirection(dir); // Use sprite's method
+        if (dir && game.mainSprite) {
+            game.mainSprite.removeDirection(dir); // Use sprite's method
 
             // Stop walking audio if no directions are pressed
-            if (!mainSprite.isMoving) {
+            if (!game.mainSprite.isMoving) {
                 audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
             }
         }
-
-        this.handleControlStateChange(e, false);
     },
 
     mouseDown: function(e) {
@@ -121,8 +143,7 @@ var input = {
 
         // Cancel pathfinding on right-click
         if (e.button === 2) { // Right mouse button
-            const mainSprite = game.sprites[game.playerid];
-            this.cancelPathfinding(mainSprite);
+            this.cancelPathfinding(game.mainSprite);
         }
     },
 
@@ -130,33 +151,25 @@ var input = {
         if (this.isDragging) {
             const dx = (this.startX - e.clientX) / game.zoomLevel;
             const dy = (this.startY - e.clientY) / game.zoomLevel;
-
-            game.cameraX = Math.max(0, Math.min(game.worldWidth - window.innerWidth / game.zoomLevel, game.cameraX + dx));
-            game.cameraY = Math.max(0, Math.min(game.worldHeight - window.innerHeight / game.zoomLevel, game.cameraY + dy));
-
+    
+            camera.cameraX = Math.max(0, Math.min(game.worldWidth - window.innerWidth / game.zoomLevel, camera.cameraX + dx));
+            camera.cameraY = Math.max(0, Math.min(game.worldHeight - window.innerHeight / game.zoomLevel, camera.cameraY + dy));
+    
             this.startX = e.clientX;
             this.startY = e.clientY;
         }
-
+    
         // Update mouse coordinates for target aiming
-        const mainSprite = game.sprites[game.playerid];
-        if (mainSprite && mainSprite.targetAim) {
+        if (game.mainSprite && game.mainSprite.targetAim) {
             const rect = game.canvas.getBoundingClientRect();
-            const newX = (e.clientX - rect.left) / game.zoomLevel + game.cameraX;
-            const newY = (e.clientY - rect.top) / game.zoomLevel + game.cameraY;
-
-            if (this.isSpacePressed) {
-                // Fine-tune the movement by reducing the delta
-                const deltaX = (newX - mainSprite.targetX) * 0.1;
-                const deltaY = (newY - mainSprite.targetY) * 0.1;
-                mainSprite.targetX += deltaX;
-                mainSprite.targetY += deltaY;
-            } else {
-                mainSprite.targetX = newX;
-                mainSprite.targetY = newY;
-            }
+            const newX = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+            const newY = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+    
+            game.mainSprite.targetX = newX;
+            game.mainSprite.targetY = newY;
         }
     },
+    
 
     mouseUp: function(e) {
         this.isDragging = false;
@@ -214,8 +227,7 @@ var input = {
     rightClick: function(e) {
         e.preventDefault();
         console.log("right button clicked");
-        const mainSprite = game.sprites[game.playerid];
-        this.cancelPathfinding(mainSprite);
+        this.cancelPathfinding(game.mainSprite);
     },
 
     doubleClick: function(e) {},
@@ -226,27 +238,6 @@ var input = {
             sprite.path = [];
             sprite.moving = false; // Reset the moving flag
             audio.stopLoopingAudio('walkGrass', 'sfx', 0.5); // Stop walking audio
-        }
-    },
-
-    handleControlStateChange: function(e, isPressed) {
-        const mainSprite = game.sprites[game.playerid];
-        switch (e.key) {
-            case 'Shift':
-                this.isShiftPressed = isPressed;
-                if (mainSprite) {
-                    mainSprite.isRunning = isPressed;
-                }
-                break;
-            case 'Control':
-                this.isCtrlPressed = isPressed;
-                break;
-            case 'Alt':
-                this.isAltPressed = isPressed;
-                break;
-            case ' ':
-                this.isSpacePressed = isPressed;
-                break;
         }
     }
 };

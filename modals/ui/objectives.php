@@ -46,10 +46,6 @@
   </script>
 
   <style>
-  .highlight {
-    outline: 2px dashed yellow;
-    outline-offset: -3px;
-  }
 
   .custom-checkbox {
     position: relative;

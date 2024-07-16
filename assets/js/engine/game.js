@@ -170,8 +170,33 @@ var game = {
                 hat: 1,
                 facial: 1,
                 glasses: 1,
+                targetAim: true,
             };
             sprite.create(playerOptions);
+
+            this.mainSprite = game.sprites[this.playerid];
+
+
+            for (let i = 0; i < 5; i++) {
+                const npc = {
+                    id: `npc${i}`,
+                    x: Math.floor(Math.random() * 500), // Random x coordinate
+                    y: Math.floor(Math.random() * 400), // Random y coordinate
+                    isPlayer: false,
+                    hairstyle: 1, // Assuming there are 5 different hairstyles
+                    outfit: 1, // Assuming there are 5 different outfits
+                    facialHair: Math.floor(Math.random() * 1), // Assuming there are 3 different facial hair options
+                    hat: 1, // Assuming there are 2 different hat options
+                    glasses: 1, // Assuming there are 2 different glasses options
+                    area: {
+                        x: Math.floor(Math.random() * 400), // Random x coordinate for area
+                        y: Math.floor(Math.random() * 400), // Random y coordinate for area
+                        width: 500,
+                        height: 500
+                    }
+                };
+                sprite.create(npc);
+            }
 
 
             weather.createFireflys();
@@ -192,11 +217,10 @@ var game = {
 
             this.loop();
 
-            const mainSprite = game.sprites[this.playerid];
-            if (mainSprite) {
-                mainSprite.updateHealth(0);
-                mainSprite.updateHealth(mainSprite.health);  
-                mainSprite.updateEnergy(mainSprite.energy);  
+            if (this.mainSprite) {
+                this.mainSprite.updateHealth(0);
+                this.mainSprite.updateHealth(this.mainSprite.health);  
+                this.mainSprite.updateEnergy(this.mainSprite.energy);  
             }
 
             // Send initial player state to the server
@@ -350,7 +374,7 @@ var game = {
     },
 
     handleMouseDown: function(event) {
-        if (this.isEditorActive) return; // Do nothing if the editor is active
+        if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return; // Do nothing if the editor or aim tool is active
         console.log('Game handleMouseDown triggered');
         if (event.button === 0 || event.button === 2) { // Left or right mouse button
             const rect = this.canvas.getBoundingClientRect();
@@ -378,8 +402,7 @@ var game = {
     },
 
     handleMouseMove: function(event) {
-        if (this.isEditorActive) return; // Do nothing if the editor is active
-        console.log('Game handleMouseMove triggered');
+        if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return; // Do nothing if the editor or aim tool is active
         if (this.isDragging) {
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
@@ -388,7 +411,7 @@ var game = {
             
             const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
             const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-
+    
             if (deltaX >= 8 || deltaY >= 8) {
                 this.updateSelectedTiles(); // Ensure selected tiles are updated during drag
                 
@@ -403,9 +426,9 @@ var game = {
             }
         }
     },
-
+    
     handleMouseUp: function(event) {
-        if (this.isEditorActive) return; // Do nothing if the editor is active
+        if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return; // Do nothing if the editor or aim tool is active
         console.log('Game handleMouseUp triggered');
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
@@ -532,9 +555,8 @@ var game = {
             console.log('No object selected');
         }
     
-        const mainSprite = game.sprites[this.playerid];
-        const spriteGridX = Math.floor(mainSprite.x / 16);
-        const spriteGridY = Math.floor(mainSprite.y / 16);
+        const spriteGridX = Math.floor(this.mainSprite.x / 16);
+        const spriteGridY = Math.floor(this.mainSprite.y / 16);
     
         // Calculate the distance to the clicked tile
         const distanceX = Math.abs(gridX - spriteGridX);
@@ -547,20 +569,20 @@ var game = {
     
             if (Math.abs(deltaX) > Math.abs(deltaY)) {
                 if (deltaX > 0) {
-                    mainSprite.direction = 'E';
+                    this.mainSprite.direction = 'E';
                 } else {
-                    mainSprite.direction = 'W';
+                    this.mainSprite.direction = 'W';
                 }
             } else {
                 if (deltaY > 0) {
-                    mainSprite.direction = 'S';
+                    this.mainSprite.direction = 'S';
                 } else {
-                    mainSprite.direction = 'N';
+                    this.mainSprite.direction = 'N';
                 }
             }
     
             // Log the direction for debugging
-            console.log(`Direction: ${mainSprite.direction}`);
+            console.log(`Direction: ${this.mainSprite.direction}`);
         }
     
         // Check if the tile is walkable
@@ -572,7 +594,7 @@ var game = {
             this.render();
     
             // Walk to the tile if it is walkable
-            mainSprite.walkToClickedTile(gridX, gridY);
+            this.mainSprite.walkToClickedTile(gridX, gridY);
             console.log('Tile is walkable, no context menu should be shown.');
         } else if (this.selectedObjects.length > 0) {
             // Show context menu programmatically if any items are selected
@@ -957,8 +979,6 @@ var game = {
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
     
-        const mainSprite = this.sprites[this.playerid];
-    
         const renderQueue = [];
         let tileCount = 0;
     
@@ -1184,18 +1204,18 @@ if (tileData.fx && this.fxData[tileData.fx]) {
         });
     
         // Draw the pathfinder line if available
-        if (mainSprite && mainSprite.path && mainSprite.path.length > 0) {
+        if (this.mainSprite && this.mainSprite.path && this.mainSprite.path.length > 0) {
             game.ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
             this.ctx.lineWidth = 2;
             this.ctx.beginPath();
     
             // Move to the first point
-            this.ctx.moveTo(mainSprite.path[0].x * 16 + 8, mainSprite.path[0].y * 16 + 8);
+            this.ctx.moveTo(this.mainSprite.path[0].x * 16 + 8, this.mainSprite.path[0].y * 16 + 8);
     
             // Draw quadratic curves between points
-            for (let i = 1; i < mainSprite.path.length - 1; i++) {
-                const currentPoint = mainSprite.path[i];
-                const nextPoint = mainSprite.path[i + 1];
+            for (let i = 1; i < this.mainSprite.path.length - 1; i++) {
+                const currentPoint = this.mainSprite.path[i];
+                const nextPoint = this.mainSprite.path[i + 1];
                 const midX = (currentPoint.x + nextPoint.x) * 8 + 8;
                 const midY = (currentPoint.y + nextPoint.y) * 8 + 8;
     
@@ -1203,7 +1223,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
             }
     
             // Draw the last segment
-            const lastPoint = mainSprite.path[mainSprite.path.length - 1];
+            const lastPoint = this.mainSprite.path[this.mainSprite.path.length - 1];
             this.ctx.lineTo(lastPoint.x * 16 + 8, lastPoint.y * 16 + 8);
     
             this.ctx.stroke();
@@ -1253,19 +1273,19 @@ if (tileData.fx && this.fxData[tileData.fx]) {
         this.handleAimAttack();
         lighting.drawGreyFilter();
     
-        if (mainSprite && mainSprite.targetAim) {
-            const handX = mainSprite.x + mainSprite.width / 2 + mainSprite.handOffsetX;
-            const handY = mainSprite.y + mainSprite.height / 2 + mainSprite.handOffsetY;
+        if (this.mainSprite && this.mainSprite.targetAim) {
+            const handX = this.mainSprite.x + this.mainSprite.width / 2 + this.mainSprite.handOffsetX;
+            const handY = this.mainSprite.y + this.mainSprite.height / 2 + this.mainSprite.handOffsetY;
     
-            const deltaX = mainSprite.targetX - handX;
-            const deltaY = mainSprite.targetY - handY;
+            const deltaX = this.mainSprite.targetX - handX;
+            const deltaY = this.mainSprite.targetY - handY;
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
     
             // Calculate the adjusted target position
-            let adjustedTargetX = mainSprite.targetX;
-            let adjustedTargetY = mainSprite.targetY;
-            if (distance > mainSprite.maxRange) {
-                const ratio = mainSprite.maxRange / distance;
+            let adjustedTargetX = this.mainSprite.targetX;
+            let adjustedTargetY = this.mainSprite.targetY;
+            if (distance > this.mainSprite.maxRange) {
+                const ratio = this.mainSprite.maxRange / distance;
                 adjustedTargetX = handX + deltaX * ratio;
                 adjustedTargetY = handY + deltaY * ratio;
             }
@@ -1332,7 +1352,12 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                 return;
             }
     
+            // Save the current context state
+            this.ctx.save();
+    
+            // Draw the aim tool
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.lineWidth = 1; // Set the line width to 1 for a thinner line
             this.ctx.setLineDash([5, 5]); // Dotted line
             this.ctx.beginPath();
             this.ctx.moveTo(handX, handY);
@@ -1342,8 +1367,11 @@ if (tileData.fx && this.fxData[tileData.fx]) {
     
             // Draw target radius at the final target position
             this.ctx.beginPath();
-            this.ctx.arc(finalTargetX, finalTargetY, mainSprite.targetRadius, 0, 2 * Math.PI);
+            this.ctx.arc(finalTargetX, finalTargetY, this.mainSprite.targetRadius, 0, 2 * Math.PI);
             this.ctx.stroke();
+    
+            // Restore the previous context state
+            this.ctx.restore();
         }
     
         if (game.isEditMode && edit_mode_window.isSelecting && edit_mode_window.selectionStart && edit_mode_window.selectionEnd) {
