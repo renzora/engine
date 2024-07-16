@@ -177,7 +177,7 @@ var game = {
             this.mainSprite = game.sprites[this.playerid];
 
 
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 50; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: Math.floor(Math.random() * 500), // Random x coordinate

@@ -78,36 +78,13 @@ var sprite = {
         // Automatically handle area movement if area is specified in options
         if (options.area) {
             setInterval(() => {
-                const directions = ['up', 'down', 'left', 'right'];
-                const randomDirection = directions[Math.floor(Math.random() * directions.length)];
-                const randomDuration = Math.random() * 2 + 1;
-    
-                let newX = newSprite.x;
-                let newY = newSprite.y;
-    
-                switch (randomDirection) {
-                    case 'up':
-                        newY -= newSprite.speed * randomDuration;
-                        break;
-                    case 'down':
-                        newY += newSprite.speed * randomDuration;
-                        break;
-                    case 'left':
-                        newX -= newSprite.speed * randomDuration;
-                        break;
-                    case 'right':
-                        newX += newSprite.speed * randomDuration;
-                        break;
-                }
-    
-                if (newX >= options.area.x && newX <= options.area.x + options.area.width - newSprite.width &&
-                    newY >= options.area.y && newY <= options.area.y + options.area.height - newSprite.height) {
-                    newSprite.addDirection(randomDirection);
-                    setTimeout(() => {
-                        newSprite.removeDirection(randomDirection);
-                    }, randomDuration * 1000);
-                }
-            }, 500);
+                const targetX = Math.floor(Math.random() * (options.area.width - newSprite.width)) + options.area.x;
+                const targetY = Math.floor(Math.random() * (options.area.height - newSprite.height)) + options.area.y;
+                const tileX = Math.floor(targetX / 16);
+                const tileY = Math.floor(targetY / 16);
+                
+                newSprite.walkToClickedTile(tileX, tileY);
+            }, 5000); // Update position every 5 seconds
         }
     
         // Automatically add the new sprite to the game.sprites object
@@ -150,36 +127,13 @@ var sprite = {
 
     npcMovement: function (sprite, area) {
         setInterval(() => {
-            const directions = ['up', 'down', 'left', 'right'];
-            const randomDirection = directions[Math.floor(Math.random() * directions.length)];
-            const randomDuration = Math.random() * 2 + 1;
-
-            let newX = sprite.x;
-            let newY = sprite.y;
-
-            switch (randomDirection) {
-                case 'up':
-                    newY -= sprite.speed * randomDuration;
-                    break;
-                case 'down':
-                    newY += sprite.speed * randomDuration;
-                    break;
-                case 'left':
-                    newX -= sprite.speed * randomDuration;
-                    break;
-                case 'right':
-                    newX += sprite.speed * randomDuration;
-                    break;
-            }
-
-            if (newX >= area.x && newX <= area.x + area.width - sprite.width &&
-                newY >= area.y && newY <= area.y + area.height - sprite.height) {
-                sprite.addDirection(randomDirection);
-                setTimeout(() => {
-                    sprite.removeDirection(randomDirection);
-                }, randomDuration * 1000);
-            }
-        }, 500);
+            const targetX = Math.floor(Math.random() * (area.width - sprite.width)) + area.x;
+            const targetY = Math.floor(Math.random() * (area.height - sprite.height)) + area.y;
+            const tileX = Math.floor(targetX / 16);
+            const tileY = Math.floor(targetY / 16);
+            
+            sprite.walkToClickedTile(tileX, tileY);
+        }, 5000); // Update position every 5 seconds
     },
 
     draw: function() {
