@@ -2,8 +2,6 @@ var sprite = {
     create: function (options) {
         let newSprite = {
             id: options.id,
-            x: options.x !== undefined ? options.x : 300,
-            y: options.y !== undefined ? options.y : 150,
             width: 16,
             height: 27,
             scale: 0.95,
@@ -75,15 +73,22 @@ var sprite = {
             checkTileActions: this.checkTileActions
         };
     
-        // Automatically handle area movement if area is specified in options
-        if (options.area) {
+        // Convert tile coordinates to pixel coordinates
+        newSprite.x = options.x * 16;
+        newSprite.y = options.y * 16;
+    
+        // Set the boundary for movement if provided (for NPCs)
+        if (options.boundaryX !== undefined && options.boundaryY !== undefined) {
+            newSprite.boundary = {
+                x: options.boundaryX,
+                y: options.boundaryY
+            };
+    
+            // Automatically handle area movement within the boundary
             setInterval(() => {
-                const targetX = Math.floor(Math.random() * (options.area.width - newSprite.width)) + options.area.x;
-                const targetY = Math.floor(Math.random() * (options.area.height - newSprite.height)) + options.area.y;
-                const tileX = Math.floor(targetX / 16);
-                const tileY = Math.floor(targetY / 16);
-                
-                newSprite.walkToClickedTile(tileX, tileY);
+                const targetTileX = options.x + Math.floor(Math.random() * (newSprite.boundary.x - options.x + 1));
+                const targetTileY = options.y + Math.floor(Math.random() * (newSprite.boundary.y - options.y + 1));
+                newSprite.walkToClickedTile(targetTileX, targetTileY);
             }, 5000); // Update position every 5 seconds
         }
     
@@ -94,7 +99,7 @@ var sprite = {
         if (newSprite.messages.length > 0) {
             setInterval(() => {
                 game.randomNpcMessage(newSprite);
-            }, Math.random() * 20000 + 20000); // Random interval between 5 and 15 seconds
+            }, Math.random() * 20000 + 20000); // Random interval between 20 and 40 seconds
         }
     
         return newSprite;
@@ -274,6 +279,13 @@ var sprite = {
         if (editor.isPlacingItem) {
             return; // Don't move if in item placement mode
         }
+    
+        // Ensure the target tile is within the boundary if boundary is set
+        const boundary = this.boundary;
+        if (boundary && (tileX > boundary.x || tileY > boundary.y)) {
+            return;
+        }
+    
         var currentX = Math.floor(this.x / 16);
         var currentY = Math.floor(this.y / 16);
         this.path = this.calculatePath(currentX, currentY, tileX, tileY);

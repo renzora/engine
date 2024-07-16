@@ -159,8 +159,8 @@ var game = {
             // Create player sprite
             const playerOptions = {
                 id: this.playerid,
-                x: 240,
-                y: 250,
+                x: 10,
+                y: 15,
                 isPlayer: true,
                 speed: 90,
                 head: 1,
@@ -180,20 +180,16 @@ var game = {
             for (let i = 0; i < 50; i++) {
                 const npc = {
                     id: `npc${i}`,
-                    x: Math.floor(Math.random() * 500), // Random x coordinate
-                    y: Math.floor(Math.random() * 400), // Random y coordinate
+                    x: 0 + Math.floor(Math.random() * 5), // Starting x coordinate
+                    y: 0 + Math.floor(Math.random() * 5), // Starting y coordinate
+                    boundaryX: 15, // Boundary x coordinate
+                    boundaryY: 15, // Boundary y coordinate
                     isPlayer: false,
                     hairstyle: 1, // Assuming there are 5 different hairstyles
                     outfit: 1, // Assuming there are 5 different outfits
-                    facialHair: Math.floor(Math.random() * 1), // Assuming there are 3 different facial hair options
+                    facialHair: Math.floor(Math.random() * 3), // Assuming there are 3 different facial hair options
                     hat: 1, // Assuming there are 2 different hat options
                     glasses: 1, // Assuming there are 2 different glasses options
-                    area: {
-                        x: Math.floor(Math.random() * 400), // Random x coordinate for area
-                        y: Math.floor(Math.random() * 400), // Random y coordinate for area
-                        width: 500,
-                        height: 500
-                    }
                 };
                 sprite.create(npc);
             }
@@ -1506,35 +1502,42 @@ loop: function(timestamp) {
 },
     
 
-    findFreeLocation: function(width, height) {
-        const maxAttempts = 30; // Maximum number of attempts to find a free location
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-            let x = Math.floor(Math.random() * (this.worldWidth - width));
-            let y = Math.floor(Math.random() * (this.worldHeight - height));
-    
-            // Create a dummy sprite for collision testing
-            let testSprite = {
-                x: x,
-                y: y,
-                width: width,
-                height: height,
-                scale: 1 // Assuming scale is 1 for simplicity
-            };
-    
-            // Check for overlaps with other sprites
-            let overlappingSprites = Object.values(this.sprites).some(sprite => {
-                return x < sprite.x + sprite.width && x + width > sprite.x &&
-                       y < sprite.y + sprite.height && y + height > sprite.y;
-            });
-    
-            // Check for tile collisions
-            let tileCollision = collision.check(x, y, testSprite);
-    
-            // If no overlapping sprites and no tile collision, return this location
-            if (!overlappingSprites && !tileCollision) {
-                return { x, y }; // Returns a free location as an object with x and y properties
+findFreeLocation: function(startX, startY, boundaryX, boundaryY, spriteWidth, spriteHeight) {
+    const directions = [
+        { dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
+        { dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 1 },
+        { dx: 1, dy: -1 }, { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
+    ];
+
+    const queue = [{ x: startX, y: startY }];
+    const visited = new Set([`${startX},${startY}`]);
+
+    while (queue.length > 0) {
+        const { x, y } = queue.shift();
+
+        // Check if the current position is free
+        const overlappingSprites = Object.values(this.sprites).some(sprite => {
+            return x < sprite.x + sprite.width && x + spriteWidth > sprite.x &&
+                   y < sprite.y + sprite.height && y + spriteHeight > sprite.y;
+        });
+
+        // Check if within boundary
+        if (x <= boundaryX && y <= boundaryY && !overlappingSprites) {
+            return { x, y };
+        }
+
+        // Add neighboring positions to the queue
+        for (const { dx, dy } of directions) {
+            const newX = x + dx;
+            const newY = y + dy;
+            const key = `${newX},${newY}`;
+            if (!visited.has(key) && newX >= 0 && newX <= boundaryX && newY >= 0 && newY <= boundaryY) {
+                queue.push({ x: newX, y: newY });
+                visited.add(key);
             }
         }
-        return null; // Return null if no free location is found
     }
+
+    return null; // If no free space is found
+}
 };
