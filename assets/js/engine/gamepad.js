@@ -60,7 +60,8 @@ var gamepad = {
                     game.updateInputMethod('gamepad', this.name);
                 }
                 this.handleButtons(gamepad.buttons);
-                this.handleAxes(gamepad.axes);
+                this.handleLeftAxes(gamepad.axes);
+                this.handleRightAxes(gamepad.axes);
             }
         }
         requestAnimationFrame(() => this.updateGamepadState());
@@ -115,130 +116,169 @@ var gamepad = {
         });
     },
 
-    handleAxes: function(axes) {
+    handleLeftAxes: function(axes) {
         const threshold = 0.2; // Dead zone threshold
-
+    
         // Calculate axis pressures
         const leftStickX = Math.abs(axes[0]);
         const leftStickY = Math.abs(axes[1]);
-        const rightStickX = Math.abs(axes[2]);
-        const rightStickY = Math.abs(axes[3]);
-
+    
         // Reset gamepad directions
         gamepad.directions = { left: false, right: false, up: false, down: false };
-
+    
         if (leftStickX > threshold || leftStickY > threshold) {
             this.axesPressures.leftStickX = leftStickX;
             this.axesPressures.leftStickY = leftStickY;
-
+    
             // Left stick movement (axes[0] = left/right, axes[1] = up/down)
             gamepad.directions.right = axes[0] > threshold;
             gamepad.directions.left = axes[0] < -threshold;
             gamepad.directions.down = axes[1] > threshold;
             gamepad.directions.up = axes[1] < -threshold;
-
+    
             // Update the sprite's directions based on combined states
             input.updateSpriteDirections();
-
-            console.log("Left Stick X Pressure: " + this.axesPressures.leftStickX);
-            console.log("Left Stick Y Pressure: " + this.axesPressures.leftStickY);
         } else {
             // Reset the directions for left stick if below threshold
             this.axesPressures.leftStickX = 0;
             this.axesPressures.leftStickY = 0;
         }
+    
+        // Update the sprite's directions based on combined states
+        input.updateSpriteDirections();
+    },
 
+    handleRightAxes: function(axes) {
+        const threshold = 0.2; // Dead zone threshold
+    
+        // Calculate axis pressures
+        const rightStickX = Math.abs(axes[2]);
+        const rightStickY = Math.abs(axes[3]);
+    
         if (rightStickX > threshold || rightStickY > threshold) {
             this.axesPressures.rightStickX = rightStickX;
             this.axesPressures.rightStickY = rightStickY;
-
-            console.log("Right Stick X Pressure: " + this.axesPressures.rightStickX);
-            console.log("Right Stick Y Pressure: " + this.axesPressures.rightStickY);
+    
+            // If the aim tool is active, update its position
+            if (game.mainSprite && game.mainSprite.targetAim) {
+                const aimSpeed = 10; // Adjust aim speed as necessary
+                const newTargetX = game.mainSprite.targetX + axes[2] * aimSpeed;
+                const newTargetY = game.mainSprite.targetY + axes[3] * aimSpeed;
+    
+                // Calculate distance from the main sprite
+                const deltaX = newTargetX - (game.mainSprite.x + game.mainSprite.width / 2);
+                const deltaY = newTargetY - (game.mainSprite.y + game.mainSprite.height / 2);
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+                // If within maxRange, update targetX and targetY
+                if (distance <= game.mainSprite.maxRange) {
+                    game.mainSprite.targetX = newTargetX;
+                    game.mainSprite.targetY = newTargetY;
+                } else {
+                    // Otherwise, set target to maxRange in the same direction
+                    const angle = Math.atan2(deltaY, deltaX);
+                    game.mainSprite.targetX = game.mainSprite.x + game.mainSprite.width / 2 + Math.cos(angle) * game.mainSprite.maxRange;
+                    game.mainSprite.targetY = game.mainSprite.y + game.mainSprite.height / 2 + Math.sin(angle) * game.mainSprite.maxRange;
+                }
+    
+                // Clamp the target position within the canvas bounds
+                game.mainSprite.targetX = Math.max(0, Math.min(game.mainSprite.targetX, game.worldWidth));
+                game.mainSprite.targetY = Math.max(0, Math.min(game.mainSprite.targetY, game.worldHeight));
+            }
         } else {
             // Reset the pressures for right stick if below threshold
             this.axesPressures.rightStickX = 0;
             this.axesPressures.rightStickY = 0;
         }
-
-        // Update the sprite's directions based on combined states
-        input.updateSpriteDirections();
-    },
+    },    
 
     handleAButton: function(state, pressure) {
-        console.log("A Button " + state + " with pressure " + pressure);
+
     },
 
     handleBButton: function(state, pressure) {
         if (state === "down") {
             input.rightClick({ preventDefault: () => {}, button: 2 });
         }
-        console.log("B Button " + state + " with pressure " + pressure);
+
     },
 
     handleXButton: function(state, pressure) {
-        console.log("X Button " + state + " with pressure " + pressure);
+
     },
 
     handleYButton: function(state, pressure) {
-        console.log("Y Button " + state + " with pressure " + pressure);
+
     },
 
     handleLeftBumper: function(state, pressure) {
         input.handleControlStateChange({ key: 'Shift' }, state === "down");
-        console.log("Left Bumper " + state + " with pressure " + pressure);
+
     },
 
     handleRightBumper: function(state, pressure) {
-        console.log("Right Bumper " + state + " with pressure " + pressure);
+ 
     },
 
     handleLeftTrigger: function(state, pressure) {
-        input.handleControlStateChange({ key: 'Control' }, state === "down");
-        console.log("Left Trigger " + state + " with pressure " + pressure);
+        // Check the pressure value
+        if (pressure >= 0.5) {
+            // If the pressure is halfway down or more, activate the aim tool
+            if (!game.mainSprite.targetAim) {
+                game.mainSprite.targetAim = true;
+                game.mainSprite.targetX = game.mainSprite.x + game.mainSprite.width / 2;
+                game.mainSprite.targetY = game.mainSprite.y + game.mainSprite.height / 2;
+            }
+        } else {
+            // If the pressure is below halfway, deactivate the aim tool
+            if (game.mainSprite.targetAim) {
+                game.mainSprite.targetAim = false;
+            }
+        }
     },
 
     handleRightTrigger: function(state, pressure) {
         input.handleControlStateChange({ key: 'Alt' }, state === "down");
-        console.log("Right Trigger " + state + " with pressure " + pressure);
+
     },
 
     handleSelectButton: function(state, pressure) {
-        console.log("Select Button " + state + " with pressure " + pressure);
+
     },
 
     handleStartButton: function(state, pressure) {
-        console.log("Start Button " + state + " with pressure " + pressure);
+
     },
 
     handleLeftStickButton: function(state, pressure) {
-        console.log("Left Stick Button " + state + " with pressure " + pressure);
+
     },
 
     handleRightStickButton: function(state, pressure) {
-        console.log("Right Stick Button " + state + " with pressure " + pressure);
+
     },
 
     handleDPadUp: function(state, pressure) {
         gamepad.directions.up = (state === "down");
         input.updateSpriteDirections();
-        console.log("D-Pad Up " + state + " with pressure " + pressure);
+
     },
 
     handleDPadDown: function(state, pressure) {
         gamepad.directions.down = (state === "down");
         input.updateSpriteDirections();
-        console.log("D-Pad Down " + state + " with pressure " + pressure);
+
     },
 
     handleDPadLeft: function(state, pressure) {
         gamepad.directions.left = (state === "down");
         input.updateSpriteDirections();
-        console.log("D-Pad Left " + state + " with pressure " + pressure);
+
     },
 
     handleDPadRight: function(state, pressure) {
         gamepad.directions.right = (state === "down");
         input.updateSpriteDirections();
-        console.log("D-Pad Right " + state + " with pressure " + pressure);
+
     }
 };

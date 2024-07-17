@@ -87,8 +87,12 @@ var collision = {
                         spriteCollisionBox.y < otherCollisionBox.y + otherCollisionBox.height &&
                         spriteCollisionBox.y + spriteCollisionBox.height > otherCollisionBox.y
                     ) {
+                        otherSprite.overlapping = true;
+                        sprite.overlapping = true;
                         collisionDetected = true;
-                        break;
+                    } else {
+                        otherSprite.overlapping = false;
+                        sprite.overlapping = false;
                     }
                 }
             }
@@ -96,4 +100,4 @@ var collision = {
     
         return collisionDetected;
     }
-}
+};

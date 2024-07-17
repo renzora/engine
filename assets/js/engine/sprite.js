@@ -28,7 +28,7 @@ var sprite = {
             targetX: 0,
             targetY: 0,
             targetRadius: 10,
-            maxRange: 400,
+            maxRange: 120,
             handOffsetX: -5,
             handOffsetY: 5,
             currentItem: 'axe',
@@ -207,7 +207,15 @@ var sprite = {
             game.ctx.scale(this.scale, this.scale);
         }
     
+        if (this.overlapping) {
+            game.ctx.globalAlpha = 0.5; // Change opacity to 50% if overlapping
+        } else {
+            game.ctx.globalAlpha = 1; // Reset opacity to 100% if not overlapping
+        }
+    
         game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width * this.scale, this.height * this.scale);
+    
+        game.ctx.globalAlpha = 1; // Reset global alpha to default
     
         if (this.isEnemy) {
             game.ctx.fillStyle = 'red';
@@ -275,24 +283,24 @@ var sprite = {
         game.ctx.restore();
     },
 
-    walkToClickedTile: function(tileX, tileY) {
-        if (editor.isPlacingItem) {
-            return; // Don't move if in item placement mode
-        }
-    
-        // Ensure the target tile is within the boundary if boundary is set
-        const boundary = this.boundary;
-        if (boundary && (tileX > boundary.x || tileY > boundary.y)) {
-            return;
-        }
-    
-        var currentX = Math.floor(this.x / 16);
-        var currentY = Math.floor(this.y / 16);
-        this.path = this.calculatePath(currentX, currentY, tileX, tileY);
-        this.pathIndex = 0;
-        this.isMovingToTarget = true;
-        audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
-    },
+ walkToClickedTile: function(tileX, tileY) {
+    if (editor.isPlacingItem) {
+        return; // Don't move if in item placement mode
+    }
+
+    // Ensure the target tile is within the boundary if boundary is set
+    const boundary = this.boundary;
+    if (boundary && (tileX > boundary.x || tileY > boundary.y)) {
+        return;
+    }
+
+    var currentX = Math.floor(this.x / 16);
+    var currentY = Math.floor(this.y / 16);
+    this.path = this.calculatePath(currentX, currentY, tileX, tileY);
+    this.pathIndex = 0;
+    this.isMovingToTarget = true;
+    audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
+},
 
     calculatePath: function(startX, startY, endX, endY) {
         const grid = game.createWalkableGrid();
@@ -302,18 +310,15 @@ var sprite = {
         
         // Check if start and end points are walkable
         if (grid[startX][startY] === 0) {
-            console.error(`Start point (${startX}, ${startY}) is not walkable.`);
             return [];
         }
         if (grid[endX][endY] === 0) {
-            console.error(`End point (${endX}, ${endY}) is not walkable.`);
             return [];
         }
     
         const result = astar.search(graph, start, end);
     
         if (result.length === 0) {
-            console.error('No valid path found.');
             return [];
         }
     
@@ -323,8 +328,6 @@ var sprite = {
     
         this.path = path;
         this.pathIndex = 0; // Reset the path index for following the path
-    
-        console.log('Calculated Path:', path);
         return path;
     },    
 

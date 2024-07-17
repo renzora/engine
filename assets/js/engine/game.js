@@ -177,13 +177,13 @@ var game = {
             this.mainSprite = game.sprites[this.playerid];
 
 
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 10; i++) {
                 const npc = {
                     id: `npc${i}`,
-                    x: 0 + Math.floor(Math.random() * 5), // Starting x coordinate
-                    y: 0 + Math.floor(Math.random() * 5), // Starting y coordinate
-                    boundaryX: 15, // Boundary x coordinate
-                    boundaryY: 15, // Boundary y coordinate
+                    x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
+                    y: 0 + Math.floor(Math.random() * 30), // Starting y coordinate
+                    boundaryX: 60, // Boundary x coordinate
+                    boundaryY: 30, // Boundary y coordinate
                     isPlayer: false,
                     hairstyle: 1, // Assuming there are 5 different hairstyles
                     outfit: 1, // Assuming there are 5 different outfits
@@ -673,7 +673,7 @@ var game = {
         }
     
         return grid;
-    },       
+    },
 
     findObjectAt: function(x, y) {
         if (!this.roomData || !this.roomData.items) return null;
@@ -1499,45 +1499,5 @@ loop: function(timestamp) {
 
     // Continue the loop
     requestAnimationFrame(this.loop.bind(this));
-},
-    
-
-findFreeLocation: function(startX, startY, boundaryX, boundaryY, spriteWidth, spriteHeight) {
-    const directions = [
-        { dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 },
-        { dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 1 },
-        { dx: 1, dy: -1 }, { dx: -1, dy: 1 }, { dx: -1, dy: -1 }
-    ];
-
-    const queue = [{ x: startX, y: startY }];
-    const visited = new Set([`${startX},${startY}`]);
-
-    while (queue.length > 0) {
-        const { x, y } = queue.shift();
-
-        // Check if the current position is free
-        const overlappingSprites = Object.values(this.sprites).some(sprite => {
-            return x < sprite.x + sprite.width && x + spriteWidth > sprite.x &&
-                   y < sprite.y + sprite.height && y + spriteHeight > sprite.y;
-        });
-
-        // Check if within boundary
-        if (x <= boundaryX && y <= boundaryY && !overlappingSprites) {
-            return { x, y };
-        }
-
-        // Add neighboring positions to the queue
-        for (const { dx, dy } of directions) {
-            const newX = x + dx;
-            const newY = y + dy;
-            const key = `${newX},${newY}`;
-            if (!visited.has(key) && newX >= 0 && newX <= boundaryX && newY >= 0 && newY <= boundaryY) {
-                queue.push({ x: newX, y: newY });
-                visited.add(key);
-            }
-        }
-    }
-
-    return null; // If no free space is found
 }
 };

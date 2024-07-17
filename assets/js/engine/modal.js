@@ -170,11 +170,9 @@ var modal = {
         this.showInListFlags[window_name] = showInList;
 
         return new Promise((resolve, reject) => {
-            console.log('Loading modal:', window_name);
             let existingModal = document.querySelector("[data-window='" + window_name + "']");
             if (existingModal) {
                 this.front(existingModal);
-                console.log('Modal already exists, bringing to front:', window_name);
                 resolve();
             } else {
                 ui.ajax({
@@ -193,7 +191,6 @@ var modal = {
                             }
                         });
 
-                        console.log('Modal loaded and initialized:', window_name);
                         window.modalResolves[window_name] = resolve;
                         resolve();
                     },
