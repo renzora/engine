@@ -1517,6 +1517,10 @@ video {
   border-top-width: 1px;
 }
 
+.border-dashed {
+  border-style: dashed;
+}
+
 .border-black {
   --tw-border-opacity: 1;
   border-color: rgb(0 0 0 / var(--tw-border-opacity));
@@ -1565,6 +1569,11 @@ video {
 .border-white {
   --tw-border-opacity: 1;
   border-color: rgb(255 255 255 / var(--tw-border-opacity));
+}
+
+.border-yellow-500 {
+  --tw-border-opacity: 1;
+  border-color: rgb(234 179 8 / var(--tw-border-opacity));
 }
 
 .bg-\[\#0a0d14\] {
@@ -2196,8 +2205,20 @@ video {
   outline-style: solid;
 }
 
+.outline-dashed {
+  outline-style: dashed;
+}
+
 .outline-0 {
   outline-width: 0px;
+}
+
+.outline-2 {
+  outline-width: 2px;
+}
+
+.outline-yellow-400 {
+  outline-color: #facc15;
 }
 
 .ring {

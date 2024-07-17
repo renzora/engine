@@ -165,19 +165,19 @@ var game = {
                 speed: 90,
                 head: 1,
                 body: 1,
-                hairStyle: 1,
-                outfit: 1,
-                hat: 1,
-                facial: 1,
-                glasses: 1,
-                targetAim: true,
+                hairStyle: 0,
+                outfit: 0,
+                hat: 0,
+                facial: 0,
+                glasses: 0,
+                targetAim: false,
             };
             sprite.create(playerOptions);
 
             this.mainSprite = game.sprites[this.playerid];
 
 
-            for (let i = 0; i < 10; i++) {
+            for (let i = 0; i < 1; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
@@ -191,7 +191,7 @@ var game = {
                     hat: 1, // Assuming there are 2 different hat options
                     glasses: 1, // Assuming there are 2 different glasses options
                 };
-                sprite.create(npc);
+                
             }
 
 

@@ -28,7 +28,7 @@ var sprite = {
             targetX: 0,
             targetY: 0,
             targetRadius: 10,
-            maxRange: 120,
+            maxRange: 80,
             handOffsetX: -5,
             handOffsetY: 5,
             currentItem: 'axe',

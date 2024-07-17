@@ -10,26 +10,19 @@
                     <div class="items_icon items_health scale-[1.2]"></div>
                 </div>
                 <div id="ui_health" class="rounded bg-gradient-to-r from-lime-500 to-green-600 h-full transition-width duration-500 flex-grow"></div>
-                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm"></div>
+                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
             </div>
             <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
                 <div class="mx-1">
                     <div class="items_icon items_energy scale-[1.2]"></div>
                 </div>
                 <div id="ui_energy" class="rounded bg-gradient-to-r from-cyan-400 to-blue-600 h-full transition-width duration-500 flex-grow"></div>
-                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm"></div>
+                <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
             </div>
         </div>
         <div class="flex space-x-2" id="ui_quick_items_container"></div>
     </div>
 </div>
-
-<style>
-  .highlight {
-    outline: 2px dashed yellow;
-    outline-offset: -3px;
-  }
-</style>
 
 <script>
 var ui_inventory_window = {
@@ -43,6 +36,10 @@ var ui_inventory_window = {
         "black_emerald",
         "apple"
     ],
+    currentItemIndex: 0,
+    lastButtonPress: 0,
+    throttleDuration: 100, // in milliseconds
+    isItemSelected: false,
 
     start: function() {
         this.renderInventoryItems();
@@ -50,6 +47,7 @@ var ui_inventory_window = {
         this.initializeQuickItems();
         this.initializePrimaryItem();
         this.displayInventoryItems();
+        this.setupGamepadEvents();
 
         if (game.itemsData && game.itemsImg) {
             this.displayInventoryItems();
@@ -61,6 +59,106 @@ var ui_inventory_window = {
 
         document.addEventListener('dragover', ui_inventory_window.documentDragOverHandler);
         document.addEventListener('drop', ui_inventory_window.documentDropHandler);
+    },
+
+    setupGamepadEvents: function() {
+    window.addEventListener('gamepadConnected', () => {
+        this.switchToGamepadMode();
+    });
+    window.addEventListener('gamepadDisconnected', () => {
+        this.switchToKeyboardMode();
+    });
+    window.addEventListener('gamepadLeftBumperPressed', (e) => {
+        this.handleGamepadInput(e, 'left');
+    });
+    window.addEventListener('gamepadRightBumperPressed', (e) => {
+        this.handleGamepadInput(e, 'right');
+    });
+    window.addEventListener('gamepadAPressed', (e) => {
+        this.handleAButtonPress(e);
+    });
+
+    console.log("set up game events");
+},
+
+    switchToGamepadMode: function() {
+        this.selectItem(0); // Select the primary item initially
+    },
+
+    switchToKeyboardMode: function() {
+        this.clearHighlights();
+    },
+
+    handleAButtonPress: function() {
+    if (this.isItemSelected) {
+        return; // Do nothing if an item is already selected
+    }
+    this.selectItem(this.currentItemIndex);
+    this.highlightSelectedItem();
+    this.isItemSelected = true; // Set the flag to true after selecting an item
+},
+
+    handleGamepadInput: function(event, direction) {
+        const currentTime = Date.now();
+        if (currentTime - this.lastButtonPress < this.throttleDuration) {
+            return; // Ignore if throttling
+        }
+        this.lastButtonPress = currentTime;
+
+        if (direction === 'left') {
+            this.currentItemIndex = (this.currentItemIndex - 1 + (this.inventoryItems.length + 1)) % (this.inventoryItems.length + 1);
+        } else if (direction === 'right') {
+            this.currentItemIndex = (this.currentItemIndex + 1) % (this.inventoryItems.length + 1);
+        }
+
+        console.log(`Current item index: ${this.currentItemIndex}`);
+        audio.playAudio("menuSelect", assets.load('menuSelect'), 'sfx', false);
+        this.selectItem(this.currentItemIndex);
+    },
+
+    highlightSelectedItem: function() {
+    this.clearHighlights();
+    let selectedItem;
+    if (this.currentItemIndex === 0) {
+        selectedItem = document.querySelector('.ui_item_primary');
+    } else {
+        selectedItem = document.querySelector(`.ui_quick_item[data-item="${this.inventoryItems[this.currentItemIndex - 1]}"]`);
+    }
+
+    if (selectedItem) {
+        selectedItem.style.backgroundColor = 'blue'; // Highlight selected item with blue color
+    }
+    audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+},
+
+    selectItem: function(index) {
+        this.clearHighlights();
+
+        if (index === 0) {
+            // Highlight the primary item
+            const primaryItemElement = document.querySelector('.ui_item_primary');
+            if (primaryItemElement) {
+                primaryItemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+            }
+            this.primaryItem = "sword";
+        } else {
+            const itemElement = document.querySelector(`.ui_quick_item[data-item="${this.inventoryItems[index - 1]}"]`);
+            if (itemElement) {
+                itemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+                this.primaryItem = this.inventoryItems[index - 1];
+            }
+        }
+
+        // Update scale for all items after selection
+        document.querySelectorAll('.ui_quick_item, .ui_item_primary').forEach(item => {
+            this.updateScale(item);
+        });
+
+        audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+    },
+
+    getCurrentPrimaryItemIndex: function() {
+        return this.inventoryItems.indexOf(this.primaryItem) + 1;
     },
 
     renderInventoryItems: function() {
@@ -92,49 +190,49 @@ var ui_inventory_window = {
     },
 
     documentDragOverHandler: function(e) {
-    e.preventDefault();
-    if (ui_inventory_window.dragClone) {
-        ui_inventory_window.dragClone.style.top = `${e.clientY}px`;
-        ui_inventory_window.dragClone.style.left = `${e.clientX}px`;
-    }
-},
+        e.preventDefault();
+        if (ui_inventory_window.dragClone) {
+            ui_inventory_window.dragClone.style.top = `${e.clientY}px`;
+            ui_inventory_window.dragClone.style.left = `${e.clientX}px`;
+        }
+    },
 
-documentDropHandler: function(e) {
-    e.preventDefault();
-    e.stopPropagation();
+    documentDropHandler: function(e) {
+        e.preventDefault();
+        e.stopPropagation();
 
-    if (ui_inventory_window.dragClone) {
-        const rect = game.canvas.getBoundingClientRect();
-        const mouseX = (e.clientX - rect.left) / game.zoomLevel + game.cameraX;
-        const mouseY = (e.clientY - rect.top) / game.zoomLevel + game.cameraY;
+        if (ui_inventory_window.dragClone) {
+            const rect = game.canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+            const mouseY = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
 
-        if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY <= rect.bottom) {
-            const targetObject = game.findObjectAt(mouseX, mouseY);
+            if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY <= rect.bottom) {
+                const targetObject = game.findObjectAt(mouseX, mouseY);
 
-            if (targetObject) {
-                const draggedItemIcon = ui_inventory_window.dragClone.querySelector('.items_icon');
+                if (targetObject) {
+                    const draggedItemIcon = ui_inventory_window.dragClone.querySelector('.items_icon');
 
-                if (draggedItemIcon) {
-                    const itemClass = Array.from(draggedItemIcon.classList).find(cls => cls.startsWith('items_') && cls !== 'items_icon');
+                    if (draggedItemIcon) {
+                        const itemClass = Array.from(draggedItemIcon.classList).find(cls => cls.startsWith('items_') && cls !== 'items_icon');
 
-                    if (itemClass) {
-                        const itemName = itemClass.replace('items_', '');
-                        actions.dropItemOnObject(itemName, targetObject);
+                        if (itemClass) {
+                            const itemName = itemClass.replace('items_', '');
+                            actions.dropItemOnObject(itemName, targetObject);
+                        } else {
+                            console.error('No specific item class found on dragged item icon');
+                        }
                     } else {
-                        console.error('No specific item class found on dragged item icon');
+                        console.error('Dragged item icon not found');
                     }
-                } else {
-                    console.error('Dragged item icon not found');
                 }
             }
+
+            document.body.removeChild(ui_inventory_window.dragClone);
+            ui_inventory_window.dragClone = null;
         }
 
-        document.body.removeChild(ui_inventory_window.dragClone);
-        ui_inventory_window.dragClone = null;
-    }
-
-    return false;
-},
+        return false;
+    },
 
     displayInventoryItems: function() {
         if (!game.itemsData || !game.itemsData.items) {
@@ -216,19 +314,19 @@ documentDropHandler: function(e) {
     },
 
     initializeDragAndDrop: function() {
-    const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
+        const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
 
-    draggableItems.forEach(item => {
-        item.setAttribute('draggable', true);
-        item.style.cursor = 'grab';
-        item.addEventListener('mouseover', this.handleMouseOver.bind(this));
-        item.addEventListener('mouseout', this.handleMouseOut.bind(this));
-        item.addEventListener('dragstart', this.handleDragStart.bind(this));
-        item.addEventListener('dragover', this.handleDragOver.bind(this));
-        item.addEventListener('drop', this.handleDrop.bind(this));
-        item.addEventListener('dragend', this.handleDragEnd.bind(this));
-    });
-},
+        draggableItems.forEach(item => {
+            item.setAttribute('draggable', true);
+            item.style.cursor = 'grab';
+            item.addEventListener('mouseover', this.handleMouseOver.bind(this));
+            item.addEventListener('mouseout', this.handleMouseOut.bind(this));
+            item.addEventListener('dragstart', this.handleDragStart.bind(this));
+            item.addEventListener('dragover', this.handleDragOver.bind(this));
+            item.addEventListener('drop', this.handleDrop.bind(this));
+            item.addEventListener('dragend', this.handleDragEnd.bind(this));
+        });
+    },
 
     initializeQuickItems: function() {
         const quickItems = document.querySelectorAll('.ui_quick_item');
@@ -283,141 +381,143 @@ documentDropHandler: function(e) {
     },
 
     handleMouseOver: function(e) {
-    e.target.style.cursor = 'grab';
-},
+        e.target.style.cursor = 'grab';
+    },
 
-handleMouseOut: function(e) {
-    e.target.style.cursor = 'default';
-},
+    handleMouseOut: function(e) {
+        e.target.style.cursor = 'default';
+    },
 
-handleDragStart: function(e) {
-    this.dragSrcEl = e.target.closest('.ui_quick_item, .ui_item_primary');
-    e.dataTransfer.effectAllowed = 'move';
+    handleDragStart: function(e) {
+        this.dragSrcEl = e.target.closest('.ui_quick_item, .ui_item_primary');
+        e.dataTransfer.effectAllowed = 'move';
 
-    const iconDiv = this.dragSrcEl.querySelector('.items_icon');
-    if (iconDiv) {
-        const clonedIcon = iconDiv.cloneNode(true);
-        const dragWrapper = document.createElement('div');
-        dragWrapper.style.position = 'absolute';
-        dragWrapper.style.top = `${e.clientY}px`;
-        dragWrapper.style.left = `${e.clientX}px`;
-        dragWrapper.style.pointerEvents = 'none';
-        dragWrapper.style.zIndex = '1000';
+        const iconDiv = this.dragSrcEl.querySelector('.items_icon');
+        if (iconDiv) {
+            const clonedIcon = iconDiv.cloneNode(true);
+            const dragWrapper = document.createElement('div');
+            dragWrapper.style.position = 'absolute';
+            dragWrapper.style.top = `${e.clientY}px`;
+            dragWrapper.style.left = `${e.clientX}px`;
+            dragWrapper.style.pointerEvents = 'none';
+            dragWrapper.style.zIndex = '1000';
             clonedIcon.style.transform = 'scale(4)';
 
-        dragWrapper.appendChild(clonedIcon);
-        this.dragClone = dragWrapper;
-        document.body.appendChild(dragWrapper);
-    }
-
-    // Show grabbing cursor
-    e.target.style.cursor = 'grabbing';
-
-    var img = new Image();
-    img.src = '';
-    e.dataTransfer.setDragImage(img, 0, 0);
-},
-
-
-handleDragOver: function(e) {
-    if (e.preventDefault) {
-        e.preventDefault();
-    }
-    e.dataTransfer.dropEffect = 'move';
-
-    if (this.dragClone) {
-        this.dragClone.style.top = `${e.clientY}px`;
-        this.dragClone.style.left = `${e.clientX}px`;
-    }
-
-    const target = e.target.closest('.ui_quick_item, .ui_item_primary');
-    if (target) {
-        this.clearHighlights();
-        target.classList.add('highlight');
-        if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-            this.hasPlayedDragOverSound = true;
-            this.lastHoveredSlot = target;
+            dragWrapper.appendChild(clonedIcon);
+            this.dragClone = dragWrapper;
+            document.body.appendChild(dragWrapper);
         }
-    } else {
+
+        // Show grabbing cursor
+        e.target.style.cursor = 'grabbing';
+
+        var img = new Image();
+        img.src = '';
+        e.dataTransfer.setDragImage(img, 0, 0);
+    },
+
+    handleDragOver: function(e) {
+        if (e.preventDefault) {
+            e.preventDefault();
+        }
+        e.dataTransfer.dropEffect = 'move';
+
+        if (this.dragClone) {
+            this.dragClone.style.top = `${e.clientY}px`;
+            this.dragClone.style.left = `${e.clientX}px`;
+        }
+
+        const target = e.target.closest('.ui_quick_item, .ui_item_primary');
+        if (target) {
+            this.clearHighlights();
+            target.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+            if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
+                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+                this.hasPlayedDragOverSound = true;
+                this.lastHoveredSlot = target;
+            }
+        } else {
+            this.clearHighlights();
+            this.hasPlayedDragOverSound = false;
+            this.lastHoveredSlot = null;
+        }
+        return false;
+    },
+
+    handleDrop: function(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+        }
+        const target = e.target.closest('.ui_quick_item, .ui_item_primary');
+        if (this.dragSrcEl !== target && target) {
+            // Swap innerHTML to visually switch the items
+            const tempInnerHTML = this.dragSrcEl.innerHTML;
+            this.dragSrcEl.innerHTML = target.innerHTML;
+            target.innerHTML = tempInnerHTML;
+
+            // Swap dataset item to reflect the changes
+            const tempDataItem = this.dragSrcEl.dataset.item;
+            this.dragSrcEl.dataset.item = target.dataset.item;
+            target.dataset.item = tempDataItem;
+
+            // Update the inventoryItems array
+            const srcIndex = this.inventoryItems.indexOf(tempDataItem);
+            const targetIndex = this.inventoryItems.indexOf(this.dragSrcEl.dataset.item);
+            this.inventoryItems[srcIndex] = this.dragSrcEl.dataset.item;
+            this.inventoryItems[targetIndex] = tempDataItem;
+
+            // Update currentItemIndex
+            this.currentItemIndex = this.getCurrentPrimaryItemIndex();
+
+            // Update the scale of the icons
+            this.updateScale(this.dragSrcEl);
+            this.updateScale(target);
+
+            audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+        } else {
+            audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
+        }
         this.clearHighlights();
-        this.hasPlayedDragOverSound = false;
-        this.lastHoveredSlot = null;
-    }
-    return false;
-},
+        return false;
+    },
 
-handleDrop: function(e) {
-    if (e.stopPropagation) {
-        e.stopPropagation();
-    }
-    const target = e.target.closest('.ui_quick_item, .ui_item_primary');
-    if (this.dragSrcEl !== target && target) {
-        const srcInnerHTML = this.dragSrcEl.innerHTML;
-        const targetInnerHTML = target.innerHTML;
-
-        // Swap the inner HTML of the elements
-        this.dragSrcEl.innerHTML = targetInnerHTML;
-        target.innerHTML = srcInnerHTML;
-
-        // Update the data-item attributes
-        const tempDataItem = this.dragSrcEl.dataset.item;
-        this.dragSrcEl.dataset.item = target.dataset.item;
-        target.dataset.item = tempDataItem;
-
-        // Update the data-cd attributes
-        const tempDataCd = this.dragSrcEl.dataset.cd;
-        this.dragSrcEl.dataset.cd = target.dataset.cd;
-        target.dataset.cd = tempDataCd;
-
-        // Update the scale of the icons
-        this.updateScale(this.dragSrcEl);
-        this.updateScale(target);
-
-        audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
-    } else {
-        audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
-    }
-    this.clearHighlights();
-    this.hasPlayedDragOverSound = false;
-    this.lastHoveredSlot = null;
-    return false;
-},
-
-clearHighlights: function() {
+    clearHighlights: function() {
     const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
     draggableItems.forEach(item => {
-        item.classList.remove('highlight');
+        item.classList.remove('border-2', 'border-dashed', 'border-yellow-500');
+        item.style.backgroundColor = ''; // Clear background color
     });
+    this.isItemSelected = false; // Reset the flag when items are deselected
 },
 
-updateScale: function(element) {
-    const icon = element.querySelector('.items_icon');
-    if (element.classList.contains('ui_item_primary')) {
-        icon.classList.remove('scale-[2.1]');
-        icon.classList.add('scale-[4]');
-    } else {
-        icon.classList.remove('scale-[4]');
-        icon.classList.add('scale-[2.1]');
-    }
-},
+    updateScale: function(element) {
+        const icon = element.querySelector('.items_icon');
+        if (element.classList.contains('ui_item_primary')) {
+            icon.classList.remove('scale-[2.1]');
+            icon.classList.add('scale-[4]');
+        } else {
+            icon.classList.remove('scale-[4]');
+            icon.classList.add('scale-[2.1]');
+        }
+    },
 
-handleDragEnd: function(e) {
-    const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
-    draggableItems.forEach(item => {
-        item.classList.remove('dragging');
-        item.style.cursor = 'grab'; // Reset the cursor to grab
-        item.classList.remove('highlight');
-    });
+    handleDragEnd: function(e) {
+        const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
+        draggableItems.forEach(item => {
+            item.classList.remove('dragging');
+            item.style.cursor = 'grab'; // Reset the cursor to grab
+            item.classList.remove('highlight');
+        });
 
-    if (this.dragClone) {
-        document.body.removeChild(this.dragClone);
-        this.dragClone = null;
-    }
-},
+        if (this.dragClone) {
+            document.body.removeChild(this.dragClone);
+            this.dragClone = null;
+        }
+    },
 };
 
 ui_inventory_window.start();
+
 </script>
 
 </div>

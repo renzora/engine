@@ -3,6 +3,7 @@ const actions = {
 
     loadObjectScript: function () {
         this.objectScript = assets.load('objectScript');
+        console.log('Object script loaded:', this.objectScript);
     },
 
     handleTileAction: function (tileId) {
@@ -38,11 +39,14 @@ const actions = {
     },
     
     dropItemOnObject: function (item, object) {
+        console.log('dropItemOnObject called with:', item, object);
         const objectActions = this.objectScript[object.id];
+        console.log('Object actions:', objectActions);
         if (objectActions && objectActions.drop) {
             const dropAction = objectActions.drop;
             if (dropAction.requiredItem === item) {
                 const actionFunction = dropAction.action;
+                console.log('Executing action function:', actionFunction);
                 if (typeof this[actionFunction] === 'function') {
                     this[actionFunction](item, object);
                 } else {

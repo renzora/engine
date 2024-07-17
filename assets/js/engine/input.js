@@ -160,6 +160,7 @@ var input = {
     },
 
     mouseWheelScroll: function(e) {
+        game.updateInputMethod('keyboard');
         const isEventOnCanvas = e.target === game.canvas || game.canvas.contains(e.target);
 
         if (isEventOnCanvas) {
@@ -199,6 +200,7 @@ var input = {
     },
 
     leftClick: function(e) {
+        game.updateInputMethod('keyboard');
         console.log("left button clicked");
         if (e.target.matches('[data-close], [data-esc]')) {
             console.log("data close clicked");
@@ -209,6 +211,7 @@ var input = {
 
     rightClick: function(e) {
         e.preventDefault();
+        game.updateInputMethod('keyboard');
         console.log("right button clicked");
         this.cancelPathfinding(game.mainSprite);
     },
