@@ -59,7 +59,7 @@ var network = {
 
     close: function(e) {
         modal.closeAll();
-        modal.load("servers/errors/mainServer.php", "error_window", "Server Error", true);
+        modal.load("errors/blank.php", "error_window", "Server Error", true);
     },
 
     getToken: function(name) {
@@ -83,4 +83,5 @@ document.addEventListener('DOMContentLoaded', (e) => {
     network.init();
     input.init(e);
     gamepad.init(e);
+    editor.init(e);
 });

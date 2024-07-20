@@ -45,6 +45,24 @@ if ($auth) {
         },
         unmount: function() {
           ui.destroyTabs('template_window_tabs');
+        },
+        buttonA: function(e) {
+
+        },
+        buttonB: function(e) {
+
+        },
+        buttonStart: function(e) {
+
+        },
+        leftAxis: function(e) {
+
+        },
+        leftTrigger: function(e) {
+
+        },
+        leftBumper: function(e) {
+
         }
       }
       template_window.start();

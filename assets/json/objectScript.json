@@ -1,5 +1,5 @@
 {
-    "tree": {
+    "tree_green_sm": {
         "click": {
             "requiredItem": "axe",
             "result": "log"
@@ -7,20 +7,22 @@
     },
     "water": {
         "walk": {
-            "swim": true
+            "swim": true,
+            "tooltip": "You are swimming!"
         },
         "exit": {
-            "swim": false
+            "swim": false,
+            "tooltip": "You are back on land!"
         }
     },
     "sand": {
         "walk": {
-
+            "tooltip": "You are walking on sand."
         }
     },
     "grass": {
         "walk": {
-
+            "tooltip": "You are walking on grass."
         }
     },
     "campfire": {

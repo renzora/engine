@@ -5,6 +5,7 @@ var modal = {
     baseZIndex: null,
     modalNames: {}, // Stores the display names of the modals
     showInListFlags: {}, // Stores the flags for showing modals in the list
+    activeModal: null,
 
     init: function(selector, options) {
         const element = document.querySelector(selector);
@@ -37,10 +38,10 @@ var modal = {
         } else {
             element = elementOrId;
         }
-
+    
         this.modals = this.modals.filter(modal => modal !== element);
         this.modals.push(element);
-
+    
         this.modals.forEach((modal, index) => {
             if (modal) {
                 try {
@@ -52,6 +53,10 @@ var modal = {
                 console.error('Undefined modal in modal list at index:', index);
             }
         });
+    
+        // Update the active modal
+        this.activeModal = element.getAttribute('data-window');
+        console.log('Active Modal Set:', this.activeModal); // Debugging statement
     },
 
     initDraggable: function(element, options) {
@@ -149,7 +154,13 @@ var modal = {
         var modalElement = document.querySelector("[data-window='" + id + "']");
         if (modalElement) {
             modalElement.style.display = 'none';
-            // Optionally, you can add logic to show the minimized state or a taskbar icon
+
+            if (this.modals.length > 0) {
+                const nextActiveModal = this.modals[this.modals.length - 1];
+                this.front(nextActiveModal.getAttribute('data-window'));
+            } else {
+                this.activeModal = null;
+            }
         }
     },
 
@@ -192,6 +203,7 @@ var modal = {
                         });
 
                         window.modalResolves[window_name] = resolve;
+                        this.front(window_name); // Ensure the new modal is set to the front
                         resolve();
                     },
                     error: (error) => {
@@ -296,6 +308,7 @@ var modal = {
         var modal = document.querySelector("[data-window='" + modalId + "']");
         if (modal) {
             modal.style.display = 'block';
+            this.front(modalId); // Bring the modal to the front
         }
     },
 
@@ -317,6 +330,14 @@ var modal = {
                 window.modalResolves[id]();
                 delete window.modalResolves[id];
             }
+
+            // Set the next highest modal as the active modal
+            if (this.modals.length > 0) {
+                const nextActiveModal = this.modals[this.modals.length - 1];
+                this.front(nextActiveModal.getAttribute('data-window'));
+            } else {
+                this.activeModal = null;
+            }
         }
     },
 
@@ -329,11 +350,22 @@ var modal = {
         return highestZIndex;
     },
 
+    // New method to get the active modal
+    getActiveModal: function() {
+        return this.activeModal;
+    },
+
     showAll: function() {
         var modals = document.querySelectorAll("[data-window]");
         modals.forEach(function(modal) {
             modal.style.display = 'block';
         });
+    
+        // Set the highest modal as the active modal
+        if (this.modals.length > 0) {
+            const highestModal = this.modals[this.modals.length - 1];
+            this.front(highestModal.getAttribute('data-window'));
+        }
     },
 
     hideAll: function() {
@@ -341,6 +373,9 @@ var modal = {
         modals.forEach(function(modal) {
             modal.style.display = 'none';
         });
+    
+        // Update the active modal to null
+        this.activeModal = null;
     },
 
     closeAll: function() {
@@ -357,5 +392,14 @@ var modal = {
             element = element.parentElement;
         }
         return element ? element.dataset.window : null;
+    },
+
+    isVisible: function(id) {
+        var modalElement = document.querySelector("[data-window='" + id + "']");
+        return modalElement && modalElement.style.display !== 'none';
+    },
+
+    exists: function(id) {
+        return document.querySelector("[data-window='" + id + "']") !== null;
     }
 };

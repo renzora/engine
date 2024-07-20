@@ -117,6 +117,14 @@ if ($auth) {
           // Other initialization code...
         },
 
+        LeftTrigger: function() {
+          console.log("left trigger called from console_window");
+        },
+
+        B: function() {
+          modal.close('console_window');
+        },
+
         unmount: function() {
           // Cleanup HUD elements if necessary
         }

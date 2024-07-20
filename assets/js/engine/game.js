@@ -14,7 +14,7 @@ var game = {
     deltaTime: 0,
     worldWidth: 1280,
     worldHeight: 1280,
-    zoomLevel: 4,
+    zoomLevel: 6,
     targetX: 0,
     targetY: 0,
     roomData: undefined,
@@ -47,6 +47,7 @@ var game = {
     sceneBg: "grass",
     isEditorActive: false,
     selectionBounds: null,
+    tooltips: [],
     inputMethod: 'keyboard',
     objectives: [
         { name: "Find the hidden sword", status: false },
@@ -62,7 +63,7 @@ var game = {
         minutes: 0,
         seconds: 0,
         days: 0,
-        speedMultiplier: 100, // Game time progresses 10 times faster than real time
+        speedMultiplier: 300, // Game time progresses 10 times faster than real time
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
@@ -118,6 +119,7 @@ var game = {
 
         assets.preload([
             { name: 'head', path: 'img/sprites/head.png' },
+            { name: 'eyes', path: 'img/sprites/eyes.png' },
             { name: 'body', path: 'img/sprites/body.png' },
             { name: 'hair', path: 'img/sprites/hair.png' },
             { name: 'hats', path: 'img/sprites/hats.png' },
@@ -162,22 +164,22 @@ var game = {
                 x: 10,
                 y: 15,
                 isPlayer: true,
-                speed: 90,
+                speed: 70,
                 head: 1,
+                eyes: 1,
                 body: 1,
-                hairStyle: 0,
-                outfit: 0,
-                hat: 0,
+                hair: 0,
+                outfit: 2,
+                hat: 4,
                 facial: 0,
                 glasses: 0,
-                targetAim: false,
+                targetAim: false
             };
             sprite.create(playerOptions);
 
             this.mainSprite = game.sprites[this.playerid];
 
-
-            for (let i = 0; i < 1; i++) {
+            for (let i = 0; i < 50; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
@@ -185,13 +187,14 @@ var game = {
                     boundaryX: 60, // Boundary x coordinate
                     boundaryY: 30, // Boundary y coordinate
                     isPlayer: false,
-                    hairstyle: 1, // Assuming there are 5 different hairstyles
-                    outfit: 1, // Assuming there are 5 different outfits
-                    facialHair: Math.floor(Math.random() * 3), // Assuming there are 3 different facial hair options
-                    hat: 1, // Assuming there are 2 different hat options
-                    glasses: 1, // Assuming there are 2 different glasses options
+                    eyes: 1,
+                    hair: Math.floor(Math.random() * 29), // Assuming there are 5 different hairstyles
+                    outfit: Math.floor(Math.random() * 3), // Assuming there are 5 different outfits
+                    facial: Math.floor(Math.random() * 3), // Assuming there are 3 different facial hair options
+                    hat: Math.floor(Math.random() * 6), // Assuming there are 2 different hat options
+                    glasses: 0, // Assuming there are 2 different glasses options
                 };
-                
+                sprite.create(npc);
             }
 
 
@@ -202,13 +205,13 @@ var game = {
             const storedSceneId = localStorage.getItem('sceneid') || '66771b7e6c1c5b2f1708b75a';
             this.loadScene(storedSceneId);
 
-            modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
             modal.load('ui/modals.php', "ui_modals_list_window", "Modals List", false);
             modal.load('ui/footer.php', "ui_footer_window", "Footer", false);
             modal.load('menus/click_menu/index.php', 'click_menu_window', "click menu", false);
             modal.load('menus/pie/index.php', 'pie_menu_window', "pie menu", false);
             modal.load('console', null, "console", true);
             modal.load('ui/inventory.php', "ui_inventory_window", "ui window", false);
+            //modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
             console.log("Connected to Main renzora server");
 
             this.loop();
@@ -354,7 +357,6 @@ var game = {
 
       getTileIdAt: function(x, y) {
         if (!this.roomData || !this.roomData.items) {
-            console.log('No room data available.');
             return null;
         }
     
@@ -456,7 +458,7 @@ var game = {
         document.body.style.webkitUserSelect = ''; /* Safari */
         document.body.style.msUserSelect = ''; /* IE 10 and IE 11 */
     
-        modal.showAll();
+        //modal.showAll();
     
         // Re-enable camera centering
         camera.activeCamera = true;
@@ -968,13 +970,66 @@ var game = {
             this.ctx.shadowOffsetY = 0;
         }
     },
+
+    drawCarriedObject: function(ctx, carriedItemId, baseX, baseY) {
+        const itemData = game.objectData[carriedItemId];
+        if (!itemData || itemData.length === 0) {
+            console.error("Invalid item data for carried item ID:", carriedItemId);
+            return;
+        }
+    
+        const tileData = itemData[0];
+    
+        const tileIndices = tileData.i;
+        const xCoordinates = tileData.a || [];
+        const yCoordinates = tileData.b || [];
+        const tileWidth = 16; // Fixed tile size
+        const tileHeight = 16; // Fixed tile size
+        const imageSource = assets.load(tileData.t);
+    
+        const tilesPerRow = 150; // Hardcoded value
+    
+        if (xCoordinates.length === 0 || yCoordinates.length === 0) {
+            console.error("Invalid coordinates for carried item ID:", carriedItemId);
+            return;
+        }
+    
+        let index = 0;
+    
+        for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
+            for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                const itemX = x * tileWidth + baseX;
+                const itemY = y * tileHeight + baseY;
+    
+                let tileFrameIndex;
+                if (Array.isArray(tileIndices[0])) { // Check if there are animation frames
+                    const animationData = tileIndices;
+                    const currentFrame = Math.floor(Date.now() / 100) % animationData.length; // Update frame every 100ms
+                    tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
+                } else {
+                    tileFrameIndex = tileIndices[index];
+                }
+    
+                if (tileFrameIndex !== undefined) {
+                    const srcX = (tileFrameIndex % tilesPerRow) * tileWidth;
+                    const srcY = Math.floor(tileFrameIndex / tilesPerRow) * tileHeight;
+    
+                    ctx.drawImage(imageSource, srcX, srcY, tileWidth, tileHeight, itemX, itemY, tileWidth, tileHeight);
+                }
+    
+                index++;
+            }
+        }
+    },    
+    
  
     render: function() {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
-    
+
+        this.tooltips = [];
         const renderQueue = [];
         let tileCount = 0;
     
@@ -1161,6 +1216,16 @@ if (tileData.fx && this.fxData[tileData.fx]) {
         }
     });
 }
+
+    // Add rendering for collision boundaries
+    if (typeof debug_utils_window !== 'undefined' && debug_utils_window.showCollisionBoundaries) {
+        debug_utils_window.renderCollisionBoundaries();
+    }
+
+    // Add rendering for nearest walkable tiles
+    if (typeof debug_utils_window !== 'undefined' && debug_utils_window.showWalkableTiles) {
+        debug_utils_window.renderNearestWalkableTile();
+    }
     
         let spriteCount = 0;
     
@@ -1231,6 +1296,14 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                 item.draw();
             }
         });
+
+        if (this.mainSprite.isCarrying) {
+            const carriedItemId = this.mainSprite.carriedItem;
+    
+            const itemX = this.mainSprite.x - 8;
+            const itemY = this.mainSprite.y - 32 -  (this.objectData[carriedItemId][0].b.length);
+            this.drawCarriedObject(this.ctx, carriedItemId, itemX, itemY);
+        }
     
         this.renderSelectedTiles();
 
@@ -1268,6 +1341,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
         weather.drawFireflys();
         this.handleAimAttack();
         lighting.drawGreyFilter();
+        actions.checkForNearbyItems();
     
         if (this.mainSprite && this.mainSprite.targetAim) {
             const handX = this.mainSprite.x + this.mainSprite.width / 2 + this.mainSprite.handOffsetX;
@@ -1410,6 +1484,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
     
         particles.renderParticles();
         effects.transitions.render();
+        render.tooltips();
 
         // Update the tiles rendered and sprites rendered display
 var tilesRenderedDisplay = document.getElementById('tiles_rendered');
@@ -1433,6 +1508,7 @@ if (effectsRenderedDisplay) {
         game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
         game.ctx.fillRect(tile.x * 16, tile.y * 16, 16, 16);
     });
+
     },
 
     randomNpcMessage: function(sprite) {
@@ -1456,48 +1532,54 @@ if (effectsRenderedDisplay) {
         }
     },
     
-loop: function(timestamp) {
-    if (!this.lastTime) {
+    loop: function(timestamp) {
+        if (!this.lastTime) {
+            this.lastTime = timestamp;
+            this.lastFpsUpdateTime = timestamp; // Initialize the last FPS update time
+            requestAnimationFrame(this.loop.bind(this));
+            return;
+        }
+    
+        // Calculate time elapsed since the last frame was drawn
+        const timeElapsed = timestamp - this.lastTime;
+    
+        // If the tab was inactive and a large time delay occurred, cap the time step
+        if (timeElapsed > 1000) { // 1000 milliseconds threshold, can be adjusted
+            this.accumulatedTime = this.fixedDeltaTime; // Skip the catch-up frames
+        } else {
+            this.accumulatedTime += timeElapsed;
+        }
+    
+        this.deltaTime = this.fixedDeltaTime; // Use fixed delta time for stable updates
         this.lastTime = timestamp;
+    
+        // Process the game logic in fixed steps
+        while (this.accumulatedTime >= this.fixedDeltaTime) {
+            render.updateGameLogic(this.fixedDeltaTime);
+            this.accumulatedTime -= this.fixedDeltaTime;
+        }
+    
+        this.render();
+    
+        // FPS monitoring - update twice a second
+        const fpsUpdateInterval = 100; // 500 milliseconds = twice a second
+        if (timestamp - this.lastFpsUpdateTime >= fpsUpdateInterval) {
+            var debugFPS = document.getElementById('gameFps');
+            var fps = 1000 / timeElapsed; // Calculate FPS using time elapsed since last frame
+            if (debugFPS) {
+                debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
+            }
+            this.lastFpsUpdateTime = timestamp;
+        }
+    
+        // Update game time display
+        var gameTimeDisplay = document.getElementById('game_time');
+        if (gameTimeDisplay) {
+            gameTimeDisplay.innerHTML = this.gameTime.display();
+        }
+    
+        // Continue the loop
         requestAnimationFrame(this.loop.bind(this));
-        return;
     }
-
-    // Calculate time elapsed since the last frame was drawn
-    const timeElapsed = timestamp - this.lastTime;
-
-    // If the tab was inactive and a large time delay occurred, cap the time step
-    if (timeElapsed > 1000) { // 1000 milliseconds threshold, can be adjusted
-        this.accumulatedTime = this.fixedDeltaTime; // Skip the catch-up frames
-    } else {
-        this.accumulatedTime += timeElapsed;
-    }
-
-    this.deltaTime = this.fixedDeltaTime; // Use fixed delta time for stable updates
-    this.lastTime = timestamp;
-
-    // Process the game logic in fixed steps
-    while (this.accumulatedTime >= this.fixedDeltaTime) {
-        render.updateGameLogic(this.fixedDeltaTime);
-        this.accumulatedTime -= this.fixedDeltaTime;
-    }
-
-    this.render();
-
-    // FPS monitoring
-    var debugFPS = document.getElementById('gameFps');
-    var fps = 1000 / timeElapsed; // Calculate FPS using time elapsed since last frame
-    if (debugFPS) {
-        debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
-    }
-
-    // Update game time display
-    var gameTimeDisplay = document.getElementById('game_time');
-    if (gameTimeDisplay) {
-        gameTimeDisplay.innerHTML = this.gameTime.display();
-    }
-
-    // Continue the loop
-    requestAnimationFrame(this.loop.bind(this));
-}
+    
 };

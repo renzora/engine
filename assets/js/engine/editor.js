@@ -11,6 +11,11 @@ var editor = {
     mouseUpHandler: null,
     isPlacingItem: false,
 
+    init: function() {
+        this.setupClickToActivate();
+        this.setupGamepadEventListeners();
+    },
+
     setupClickToActivate: function() {
         this.clickHandler = this.handleClick.bind(this);
         this.mouseMoveHandler = this.handleMouseMove.bind(this);
@@ -38,11 +43,160 @@ var editor = {
         document.removeEventListener('mousemove', this.mouseMoveHandler);
         document.removeEventListener('mouseup', this.mouseUpHandler);
         game.pathfinding = true;
-        modal.show('ui_window');
-        modal.show('quick_menu_window');
+        modal.showAll();
         game.isEditorActive = false; // Set the flag to indicate the editor is no longer active
         console.log('Editor teardownClickToActivate triggered');
     },
+
+    setupGamepadEventListeners: function() {
+        window.addEventListener('gamepadXPressed', gamepad.throttle((event) => {
+            if (game.mainSprite.isCarrying) {
+                this.dropItem(game.mainSprite);
+                console.log("Dropped item");
+            } else {
+                const gridX = Math.floor(game.mainSprite.x / 16);
+                const gridY = Math.floor(game.mainSprite.y / 16);
+    
+                const item = game.findObjectAt(gridX * 16, gridY * 16);
+    
+                if (item) {
+                    this.pickUpItem(game.mainSprite, item.id); // Pass the item ID
+                    console.log("Picked up", item.id);
+                } else {
+                    console.log("No item found at", gridX, gridY);
+                }
+            }
+        }, 200));
+    },
+
+    pickUpItem: function(sprite) {
+        const headroom = 16; // Extra margin around the item's boundary
+
+        // Round sprite position to nearest integer
+        const spriteX = Math.round(sprite.x);
+        const spriteY = Math.round(sprite.y);
+    
+        console.log(`Sprite Position: (x: ${spriteX}, y: ${spriteY})`);
+    
+        // Function to check if the sprite is within the item's boundary with headroom
+        function isSpriteInItemBoundary(spriteX, spriteY, item) {
+            const itemData = game.objectData[item.id];
+            if (!itemData || itemData.length === 0) return false;
+    
+            const xCoordinates = item.x.map(x => x * 16); // Convert to pixel coordinates
+            const yCoordinates = item.y.map(y => y * 16); // Convert to pixel coordinates
+    
+            // Calculate the bounding box of the item with headroom
+            const minX = Math.min(...xCoordinates) - headroom;
+            const maxX = Math.max(...xCoordinates) + headroom;
+            const minY = Math.min(...yCoordinates) - headroom;
+            const maxY = Math.max(...yCoordinates) + headroom;
+    
+            // Special case for single-tile items
+            if (xCoordinates.length === 1 && yCoordinates.length === 1) {
+                const singleTileX = xCoordinates[0];
+                const singleTileY = yCoordinates[0];
+                const singleTileMinX = singleTileX - headroom;
+                const singleTileMaxX = singleTileX + 16 + headroom;
+                const singleTileMinY = singleTileY - headroom;
+                const singleTileMaxY = singleTileY + 16 + headroom;
+                return (spriteX >= singleTileMinX && spriteX <= singleTileMaxX && spriteY >= singleTileMinY && spriteY <= singleTileMaxY);
+            }
+    
+            return (spriteX >= minX && spriteX <= maxX && spriteY >= minY && spriteY <= maxY);
+        }
+    
+        let closestItem = null;
+    
+        // Find the nearest item within the boundary with headroom
+        game.roomData.items.forEach(item => {
+            if (isSpriteInItemBoundary(spriteX, spriteY, item)) {
+                closestItem = item;
+            }
+        });
+    
+        // If a closest item is found, pick it up
+        if (closestItem) {
+            sprite.isCarrying = true;
+            sprite.carriedItem = closestItem.id; // Store only the item ID
+    
+            // Store the exact position of the item
+            sprite.carriedItemExactX = closestItem.x[0] * 16; // Assuming single tile item, adjust if needed
+            sprite.carriedItemExactY = closestItem.y[0] * 16; // Assuming single tile item, adjust if needed
+    
+            // Remove the item from the room data by matching both ID and position
+            game.roomData.items = game.roomData.items.filter(roomItem => !(roomItem.id === closestItem.id && roomItem.x[0] === closestItem.x[0] && roomItem.y[0] === closestItem.y[0]));
+    
+            // Update the game state and re-render
+            game.render();
+        } else {
+            console.error("No item found within the pickup radius.");
+        }
+    },  
+
+    dropItem: function(sprite) {
+        sprite.isCarrying = false;
+    
+        const itemId = sprite.carriedItem;
+        const exactX = sprite.x;
+        const exactY = sprite.y - 16;
+    
+        const item = { id: itemId, x: [], y: [] };
+    
+        const itemData = game.objectData[item.id];
+        if (!itemData || itemData.length === 0) {
+            console.error('Invalid item data for item ID:', item.id);
+            return;
+        }
+    
+        const tileData = itemData[0];
+        const xCoordinates = tileData.a || [];
+        const yCoordinates = tileData.b || [];
+        
+        // Calculate the base grid coordinates one tile away in the direction the sprite is facing
+        let baseGridX = Math.floor(exactX / 16);
+        let baseGridY = Math.floor(exactY / 16);
+    
+        switch (sprite.direction) {
+            case 'N':
+                baseGridY -= 2;
+                break;
+            case 'S':
+                baseGridY -= 2; // Drop to the top if facing South
+                break;
+            case 'E':
+                baseGridX += 2;
+                break;
+            case 'W':
+                baseGridX -= 2;
+                break;
+            default:
+                break;
+        }
+    
+        const calculatedXSet = new Set();
+        const calculatedYSet = new Set();
+    
+        for (let i = 0; i < xCoordinates.length; i++) {
+            const calculatedX = baseGridX + xCoordinates[i];
+            calculatedXSet.add(calculatedX);
+        }
+    
+        for (let j = 0; j < yCoordinates.length; j++) {
+            const calculatedY = baseGridY + yCoordinates[j];
+            calculatedYSet.add(calculatedY);
+        }
+    
+        item.x = Array.from(calculatedXSet);
+        item.y = Array.from(calculatedYSet);
+    
+        game.roomData.items.push(item);
+        sprite.carriedItem = null;
+    
+        // Update the game state and re-render
+        game.render();
+    },    
+    
 
     handleClick: function(event) {
         console.log('Editor handleClick triggered');
@@ -85,8 +239,7 @@ var editor = {
         this.moveSelectedItem(event);
         game.pathfinding = false;
         this.isPlacingItem = true;
-        //modal.hide('ui_window');
-        //modal.hide('quick_menu_window');
+        modal.hideAll(); // Hide all modals when an item is selected
     },
 
     handleMouseMove: function(event) {
@@ -122,45 +275,55 @@ var editor = {
 
     handleMouseUp: function(event) {
         const isInWindow = event.target.closest('.window') !== null;
-
+        console.log('Mouse up event:', event);
+        console.log('Is in window:', isInWindow);
+    
         if (this.selectedItem && !isInWindow && event.button === 0) {
+            console.log('Placing item:', this.selectedItem);
+    
             const zoomLevel = game.zoomLevel;
             const cameraX = camera.cameraX;
             const cameraY = camera.cameraY;
-
+    
             const dropX = (event.clientX - this.offsetX + window.scrollX) / zoomLevel + cameraX;
             const dropY = (event.clientY - this.offsetY + window.scrollY) / zoomLevel + cameraY;
-
+    
             const snappedX = Math.round(dropX / this.tileSize);
             const snappedY = Math.round(dropY / this.tileSize);
-
+    
             const newItem = {
                 id: this.selectedItem.dataset.category,
                 x: [],
                 y: []
             };
-
+    
             if (event.shiftKey) {
+                console.log('Adding items in line');
                 this.addItemsInLine(newItem, snappedX, snappedY, this.tileSize);
             } else {
+                console.log('Calculating tile positions');
                 this.calculateTilePositions(this.selectedItem, snappedX, snappedY, this.tileSize, newItem.x, newItem.y);
                 this.addNewItemToRoomData(newItem);
             }
         } else if (event.button === 2) {
+            console.log('Deselecting item');
+    
             if (this.activeItemGroup) {
+                console.log('Removing active class from item group');
                 this.activeItemGroup.classList.remove('active');
             }
             if (this.selectedItem) {
+                console.log('Removing selected item');
                 this.selectedItem.remove();
                 this.selectedItem = null;
                 game.pathfinding = true;
                 this.isPlacingItem = false;
-                //modal.show('quick_menu_window');
-                //modal.show('ui_window');
                 game.overlappingTiles = [];
             }
+            console.log('Showing all modals');
+            modal.showAll(); // Show all modals only when the item is deselected
         }
-    },
+    },        
 
     moveSelectedItem: function(event) {
         const zoomLevel = game.zoomLevel;

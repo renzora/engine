@@ -5,6 +5,7 @@ var camera = {
     targetCameraY: 0,
     activeCamera: true,
     lerpFactor: parseFloat(localStorage.getItem('lerpFactor')) || 0.1,
+    lerpEnabled: true,
 
     update: function() {
         if (this.activeCamera) {
@@ -19,8 +20,13 @@ var camera = {
                 this.targetCameraX = Math.max(0, Math.min(this.targetCameraX, game.worldWidth - scaledWindowWidth));
                 this.targetCameraY = Math.max(0, Math.min(this.targetCameraY, game.worldHeight - scaledWindowHeight));
     
-                this.cameraX = this.lerp(this.cameraX, this.targetCameraX, this.lerpFactor);
-                this.cameraY = this.lerp(this.cameraY, this.targetCameraY, this.lerpFactor);
+                if (this.lerpEnabled) {
+                    this.cameraX = this.lerp(this.cameraX, this.targetCameraX, this.lerpFactor);
+                    this.cameraY = this.lerp(this.cameraY, this.targetCameraY, this.lerpFactor);
+                } else {
+                    this.cameraX = this.targetCameraX;
+                    this.cameraY = this.targetCameraY;
+                }
     
                 // Center map if smaller than viewport
                 if (game.worldWidth < scaledWindowWidth) {

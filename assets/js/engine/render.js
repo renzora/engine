@@ -150,5 +150,58 @@ var render = {
                 charX += game.ctx.measureText(char).width + characterSpacing;
             }
         }
+    },
+
+    tooltips: function() {
+        if (!game.tooltips.length) return; // Skip rendering if no tooltips
+
+        game.ctx.save(); // Save the current context state
+        game.ctx.font = '3px Tahoma';
+        game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'; // Set stroke color with opacity
+        game.ctx.lineWidth = 1; // Ensure the line width is appropriate
+    
+        game.tooltips.forEach(tooltip => {
+            const textWidth = game.ctx.measureText(tooltip.message).width;
+            const x = tooltip.x;
+            const y = tooltip.y;
+    
+            // Measure the text height
+            const textHeight = parseInt(game.ctx.font, 10);
+            const padding = 2; // Padding around the text
+            const rectHeight = textHeight + padding * 2;
+            
+            // Draw rounded tooltip background
+            game.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'; // Set background fill color with opacity
+            const rectX = x;
+            const rectY = y - rectHeight - padding;
+            const rectWidth = textWidth + padding * 2;
+            const borderRadius = 1; // Set the border radius for rounded corners
+    
+            game.ctx.beginPath();
+            game.ctx.moveTo(rectX + borderRadius, rectY);
+            game.ctx.lineTo(rectX + rectWidth - borderRadius, rectY);
+            game.ctx.quadraticCurveTo(rectX + rectWidth, rectY, rectX + rectWidth, rectY + borderRadius);
+            game.ctx.lineTo(rectX + rectWidth, rectY + rectHeight - borderRadius);
+            game.ctx.quadraticCurveTo(rectX + rectWidth, rectY + rectHeight, rectX + rectWidth - borderRadius, rectY + rectHeight);
+            game.ctx.lineTo(rectX + borderRadius, rectY + rectHeight);
+            game.ctx.quadraticCurveTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - borderRadius);
+            game.ctx.lineTo(rectX, rectY + borderRadius);
+            game.ctx.quadraticCurveTo(rectX, rectY, rectX + borderRadius, rectY);
+            game.ctx.closePath();
+            game.ctx.fill();
+            game.ctx.stroke();
+    
+            // Draw tooltip text
+            game.ctx.fillStyle = 'white'; // Set text color
+            game.ctx.fillText(tooltip.message, x + padding, y - padding - 1);
+        });
+    
+        game.ctx.restore(); // Restore the previous context state
     }
+    
+    
+    
+    
+    
+    
 }

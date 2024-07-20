@@ -8,6 +8,8 @@
     <span id="lights_rendered" class="text-white rounded-md"></span>
     <span id="effects_rendered" class="text-white rounded-md"></span>
     <button onclick="ui_footer_window.load();">Minimap</button>
+    <button onclick="modal.load('debug', null, 'Debugger', true);">debug</button>
+    <button onclick="modal.load('debug/utils.php', 'debug_utils_window', 'Debugger', true);">utils</button>
   </div>
 </div>
 

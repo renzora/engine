@@ -1,11 +1,12 @@
 var sprite = {
+    margin: 0,
     create: function (options) {
         let newSprite = {
             id: options.id,
             width: 16,
             height: 27,
             scale: 0.95,
-            speed: options.speed !== undefined ? options.speed : 50,
+            speed: options.speed !== undefined ? options.speed : 70,
             currentFrame: 0,
             direction: 'S',
             animationSpeed: 0.2,
@@ -15,9 +16,10 @@ var sprite = {
             directions: {},
             body: options.body !== undefined ? options.body : 1,
             head: options.head !== undefined ? options.head : 1,
-            hairstyle: options.hairstyle !== undefined ? options.hairstyle : 0,
+            eyes: options.eyes !== undefined ? options.eyes : 1,
+            hair: options.hair !== undefined ? options.hair : 0,
             outfit: options.outfit !== undefined ? options.outfit : 0,
-            facialHair: options.facialHair !== undefined ? options.facialHair : 0,
+            facial: options.facial !== undefined ? options.facial : 0,
             hat: options.hat !== undefined ? options.hat : 0,
             glasses: options.glasses !== undefined ? options.glasses : 0,
             isEnemy: options.isEnemy || false,
@@ -39,7 +41,9 @@ var sprite = {
             maxHealth: options.maxHealth !== undefined ? options.maxHealth : 100,
             energy: options.energy !== undefined ? options.energy : 100,
             maxEnergy: options.maxEnergy !== undefined ? options.maxEnergy : 100,
-            runningSpeed: 120,
+            runningSpeed: 100,
+            isCarrying: options.isCarrying !== undefined ? options.isCarrying : false,
+            carriedItem: options.carriedItem !== undefined ? options.carriedItem : false,
             messages: options.messages || [],
             directionMap: {
                 'S': 0,
@@ -51,6 +55,9 @@ var sprite = {
                 'NE': 24,
                 'NW': 24
             },
+            eyeFrame: 0,
+            eyeFrameCounter: 0,
+            eyeBlinkInterval: Math.random() * 3000 + 2000, // Random interval between 2 and 5 seconds
             draw: this.draw,
             drawShadow: this.drawShadow,
             addDirection: this.addDirection,
@@ -61,6 +68,7 @@ var sprite = {
             updateHealth: this.updateHealth,
             updateEnergy: this.updateEnergy,
             animate: this.animate,
+            animateEyes: this.animateEyes,
             walkToClickedTile: this.walkToClickedTile,
             calculatePath: this.calculatePath,
             moveAlongPath: this.moveAlongPath,
@@ -89,7 +97,7 @@ var sprite = {
                 const targetTileX = options.x + Math.floor(Math.random() * (newSprite.boundary.x - options.x + 1));
                 const targetTileY = options.y + Math.floor(Math.random() * (newSprite.boundary.y - options.y + 1));
                 newSprite.walkToClickedTile(targetTileX, targetTileY);
-            }, 5000); // Update position every 5 seconds
+            }, 30000); // Update position every 5 seconds
         }
     
         // Automatically add the new sprite to the game.sprites object
@@ -138,62 +146,138 @@ var sprite = {
             const tileY = Math.floor(targetY / 16);
             
             sprite.walkToClickedTile(tileX, tileY);
-        }, 5000); // Update position every 5 seconds
+        }, 15000); // Update position every 5 seconds
     },
 
     draw: function() {
         let bodyImage = assets.load('body');
-        let headImage = assets.load('head');
-        let hairImage = assets.load('hair');
+        let headImage = assets.load('head'); // Load the original head image
+        let hairImage = assets.load('hair'); // Load the hair image (16x20)
         let outfitImage = assets.load('outfit');
-        let facialHairImage = assets.load('facial');
-        let hatImage = assets.load('hats');
+        let facialImage = assets.load('facial'); // Load the facial hair image
+        let hatImage = assets.load('hats'); // Load the new hat image
         let glassesImage = assets.load('glasses');
+        let eyesImage = assets.load('eyes'); // Load the eyes image
     
-        if (!bodyImage || !headImage || !hairImage || !outfitImage || !facialHairImage || !hatImage || !glassesImage) return;
+        if (!bodyImage || !headImage || !hairImage || !outfitImage || !facialImage || !hatImage || !glassesImage || !eyesImage) return;
     
         let directionOffset = this.directionMap[this.direction] ?? 0;
         let frameColumn = directionOffset + (Math.floor(this.currentFrame) % 6);
         let sx = frameColumn * this.width;
         let sy = 0;
     
+        let headDirectionMap = {
+            'S': 0,
+            'E': 1,
+            'N': 2,
+            'SE': 3,
+            'NE': 4,
+            'W': 1,
+            'SW': 3,
+            'NW': 4
+        };
+    
+        let hairDirectionMap = {
+            'S': 0,
+            'E': 1,
+            'N': 2,
+            'SE': 3,
+            'NE': 4,
+            'W': 1,  // Use the same as 'E'
+            'SW': 3, // Use the same as 'SE'
+            'NW': 4  // Use the same as 'NE'
+        };
+    
+        let glassesDirectionMap = {
+            'S': 0,
+            'E': 1,
+            'SE': 2,
+            'SW': 2, // Use SE but flipped horizontally
+            'W': 1   // Use E but flipped horizontally
+        };
+    
+        let eyesDirectionMap = {
+            'S': 0,
+            'E': 3,
+            'SE': 6,
+            'SW': 6, // Use SE but without flipping
+            'W': 3   // Use E but without flipping
+        };
+    
         let tempCanvas = document.createElement('canvas');
         let tempCtx = tempCanvas.getContext('2d');
         tempCanvas.width = this.width;
-        tempCanvas.height = this.height;
+        tempCanvas.height = this.height + 4; // Increase height by 4 pixels for the gap
     
         // Draw body part (16x16) and outfit if body is not 0
         if (this.body !== 0) {
-            tempCtx.drawImage(bodyImage, sx, sy, this.width, 16, 0, 13, this.width, 16); // Adjusted to 13 to push up by 7 pixels
+            tempCtx.drawImage(bodyImage, sx, sy, this.width, 16, 0, 13 + 4, this.width, 16); // Adjusted to 13 + 4 to push up by 7 pixels and leave a gap
     
             if (this.outfit !== 0) {
                 let outfitSy = (this.outfit - 1) * 16;
-                tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, 16, 0, 13, this.width, 16); // Adjusted to 13 to push up by 7 pixels
+                tempCtx.drawImage(outfitImage, sx, outfitSy, this.width, 16, 0, 13 + 4, this.width, 16); // Adjusted to 13 + 4 to push up by 7 pixels and leave a gap
             }
         }
     
-        // Draw head part (16x16) and its accessories if head is not 0
+        // Draw head part (16x16) if head is not 0
         if (this.head !== 0) {
-            tempCtx.drawImage(headImage, sx, sy, this.width, 16, 0, 3, this.width, 16);
+            let headDirection = headDirectionMap[this.direction];
+            let headSx = headDirection * 16;
+            let headY = 3 + 4; // Default head y-position with a 4-pixel gap
     
-            if (this.hairstyle !== 0) {
-                let hairSy = (this.hairstyle - 1) * 16;
-                tempCtx.drawImage(hairImage, sx, hairSy, this.width, 16, 0, 3, this.width, 16);
+            // Adjust head position based on the frame
+            if (this.currentFrame % 6 === 1 || this.currentFrame % 6 === 2 || this.currentFrame % 6 === 5) {
+                headY += 1; // Adjust by 1 pixel down
             }
     
-            if (this.facialHair !== 0) {
-                let facialHairSy = (this.facialHair - 1) * 16;
-                tempCtx.drawImage(facialHairImage, sx, facialHairSy, this.width, 16, 0, 3, this.width, 16);
+            // Draw the head
+            tempCtx.drawImage(headImage, headSx, 0, 16, 16, 0, headY, 16, 16);
+    
+            // Draw eyes if present
+            let eyesDirection = eyesDirectionMap[this.direction];
+            let eyesSx = eyesDirection * 16 + this.eyeFrame * 16;
+            let eyesSy = (this.eyes - 1) * 16; // Adjust for the row based on the eyes index
+            tempCtx.drawImage(eyesImage, eyesSx, eyesSy, 16, 16, 0, headY, 16, 16);
+    
+            // Draw hair if present
+            if (this.hair !== 0) {
+                let hairDirection = hairDirectionMap[this.direction];
+                let hairSx = hairDirection * 16;
+                let hairSy = (this.hair - 1) * 20; // Adjust for the new height of 20
+                tempCtx.drawImage(hairImage, hairSx, hairSy, 16, 20, 0, headY - 5, 16, 20); // Align hair with the head and account for the extra height
             }
     
-            if (this.glasses !== 0) {
-                let glassesSy = (this.glasses - 1) * 16;
-                tempCtx.drawImage(glassesImage, sx, glassesSy, this.width, 16, 0, 3, this.width, 16);
+            // Draw facial hair if present
+            if (this.facial !== 0) {
+                let facialSy = (this.facial - 1) * 16;
+                tempCtx.drawImage(facialImage, headSx, facialSy, 16, 16, 0, headY, 16, 16); // Ensure facial hair is drawn correctly
             }
     
+            // Draw glasses if present
+            if (this.glasses !== 0 && glassesDirectionMap[this.direction] !== undefined) {
+                let glassesDirection = glassesDirectionMap[this.direction];
+                let glassesSx = glassesDirection * 16; // Use the same 16px width
+                let glassesSy = (this.glasses - 1) * 8; // Adjust for the glasses height
+    
+                // Handle flipping for the SW and W directions
+                if (this.direction === 'SW' || this.direction === 'W') {
+                    tempCtx.save(); // Save the current context state
+                    tempCtx.scale(-1, 1); // Flip horizontally
+                    tempCtx.drawImage(glassesImage, glassesSx, glassesSy, 16, 8, -16, headY + 7, 16, 8); // Move glasses down by 7 pixels and flip
+                    tempCtx.restore(); // Restore the context state
+                } else {
+                    tempCtx.drawImage(glassesImage, glassesSx, glassesSy, 16, 8, 0, headY + 7, 16, 8); // Move glasses down by 7 pixels
+                }
+            }
+    
+            // Draw hat if present
             if (this.hat !== 0) {
-                let hatSy = (this.hat - 1) * 16;
-                tempCtx.drawImage(hatImage, sx, hatSy, this.width, 16, 0, 1, this.width, 16); // Adjusted to 1 to prevent clipping
+                let hatDirection = headDirectionMap[this.direction];
+                let hatSx = hatDirection * 16;
+                let hatSy = (this.hat - 1) * 16; // Adjust for the row based on the hat index
+                let hatY = headY - 4; // Adjusted to go up by 2 pixels
+    
+                tempCtx.drawImage(hatImage, hatSx, hatSy, 16, 16, 0, hatY, 16, 16); // Align hat with the head
             }
         }
     
@@ -213,7 +297,7 @@ var sprite = {
             game.ctx.globalAlpha = 1; // Reset opacity to 100% if not overlapping
         }
     
-        game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height, 0, 0, this.width * this.scale, this.height * this.scale);
+        game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height + 4, 0, 0, this.width * this.scale, (this.height + 4) * this.scale);
     
         game.ctx.globalAlpha = 1; // Reset global alpha to default
     
@@ -486,7 +570,34 @@ var sprite = {
         }
     },
 
+    animateEyes: function() {
+        if (!this.lastBlinkTime) {
+            this.lastBlinkTime = Date.now();
+        }
+
+        const currentTime = Date.now();
+        const timeSinceLastBlink = currentTime - this.lastBlinkTime;
+
+        if (timeSinceLastBlink >= this.eyeBlinkInterval && !this.eyeBlinking) {
+            this.eyeBlinking = true;
+            this.lastBlinkTime = currentTime;
+
+            // Blink sequence
+            setTimeout(() => {
+                this.eyeFrame = 1;
+                setTimeout(() => {
+                    this.eyeFrame = 2;
+                    setTimeout(() => {
+                        this.eyeFrame = 0;
+                        this.eyeBlinking = false;
+                    }, 80); // Time between the second and third frame of the blink
+                }, 80); // Time between the first and second frame of the blink
+            }, 0); // Start blink immediately
+        }
+    },     
+
     update: function(deltaTime) {
+        const margin = 2; // Define a margin to keep the sprite away from the edges
     
         if (this.isMovingToTarget) {
             this.moveAlongPath();
@@ -552,8 +663,9 @@ var sprite = {
                 if (moveY) this.y = newY;
             }
     
-            this.x = Math.max(0, Math.min(this.x, game.worldWidth - this.width * this.scale));
-            this.y = Math.max(0, Math.min(this.y, game.worldHeight - this.height * this.scale));
+            // Prevent the sprite from moving too close to the canvas edges
+            this.x = Math.max(margin, Math.min(this.x, game.worldWidth - this.width * this.scale - margin));
+            this.y = Math.max(margin, Math.min(this.y, game.worldHeight - this.height * this.scale - margin));
     
             // Ensure moving flag is set when directions are present
             if (dx !== 0 || dy !== 0) {
@@ -567,6 +679,7 @@ var sprite = {
         }
     
         this.animate();
+        this.animateEyes();
     },
 
     takeDamage: function(damage) {

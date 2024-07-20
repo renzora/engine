@@ -62,24 +62,34 @@ var ui_inventory_window = {
     },
 
     setupGamepadEvents: function() {
-    window.addEventListener('gamepadConnected', () => {
-        this.switchToGamepadMode();
-    });
-    window.addEventListener('gamepadDisconnected', () => {
-        this.switchToKeyboardMode();
-    });
-    window.addEventListener('gamepadLeftBumperPressed', (e) => {
-        this.handleGamepadInput(e, 'left');
-    });
-    window.addEventListener('gamepadRightBumperPressed', (e) => {
-        this.handleGamepadInput(e, 'right');
-    });
-    window.addEventListener('gamepadAPressed', (e) => {
-        this.handleAButtonPress(e);
-    });
+        window.addEventListener('gamepadConnected', () => {
+            this.switchToGamepadMode();
+        });
+        window.addEventListener('gamepadDisconnected', () => {
+            this.switchToKeyboardMode();
+        });
+    },
 
-    console.log("set up game events");
-},
+    LeftBumper: function(e) {
+        this.handleGamepadInput(e, 'left');
+    },
+
+    LeftTrigger: function(e) {
+        console.log("Left trigger called fron ui_inventory_window");
+    },
+
+    RightBumper: function(e) {
+        this.handleGamepadInput(e, 'right');
+    },
+
+    A: function(e) {
+        if (this.isItemSelected) {
+            return; // Do nothing if an item is already selected
+        }
+        this.selectItem(this.currentItemIndex);
+        this.highlightSelectedItem();
+        this.isItemSelected = true; // Set the flag to true after selecting an item
+    },
 
     switchToGamepadMode: function() {
         this.selectItem(0); // Select the primary item initially
@@ -88,15 +98,6 @@ var ui_inventory_window = {
     switchToKeyboardMode: function() {
         this.clearHighlights();
     },
-
-    handleAButtonPress: function() {
-    if (this.isItemSelected) {
-        return; // Do nothing if an item is already selected
-    }
-    this.selectItem(this.currentItemIndex);
-    this.highlightSelectedItem();
-    this.isItemSelected = true; // Set the flag to true after selecting an item
-},
 
     handleGamepadInput: function(event, direction) {
         const currentTime = Date.now();
@@ -117,19 +118,19 @@ var ui_inventory_window = {
     },
 
     highlightSelectedItem: function() {
-    this.clearHighlights();
-    let selectedItem;
-    if (this.currentItemIndex === 0) {
-        selectedItem = document.querySelector('.ui_item_primary');
-    } else {
-        selectedItem = document.querySelector(`.ui_quick_item[data-item="${this.inventoryItems[this.currentItemIndex - 1]}"]`);
-    }
+        this.clearHighlights();
+        let selectedItem;
+        if (this.currentItemIndex === 0) {
+            selectedItem = document.querySelector('.ui_item_primary');
+        } else {
+            selectedItem = document.querySelector(`.ui_quick_item[data-item="${this.inventoryItems[this.currentItemIndex - 1]}"]`);
+        }
 
-    if (selectedItem) {
-        selectedItem.style.backgroundColor = 'blue'; // Highlight selected item with blue color
-    }
-    audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
-},
+        if (selectedItem) {
+            selectedItem.style.backgroundColor = 'blue'; // Highlight selected item with blue color
+        }
+        audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+    },
 
     selectItem: function(index) {
         this.clearHighlights();
@@ -288,13 +289,14 @@ var ui_inventory_window = {
     },
 
     checkAndUpdateUIPositions: function() {
-        const sprite = game.sprites[game.playerid];
-        if (!sprite) return;
+    const sprite = game.sprites[game.playerid];
+    if (!sprite) return;
 
-        const thresholdY = game.worldHeight - 50;
-        const thresholdX = game.worldWidth - 80;
+    const thresholdY = game.worldHeight - 50;
+    const thresholdX = game.worldWidth - 80;
 
-        const inventoryElement = document.getElementById('ui_inventory_window');
+    const inventoryElement = document.getElementById('ui_inventory_window');
+    if (inventoryElement) {
         if (sprite.y > thresholdY) {
             inventoryElement.classList.add('top-4');
             inventoryElement.classList.remove('bottom-4');
@@ -302,8 +304,12 @@ var ui_inventory_window = {
             inventoryElement.classList.add('bottom-4');
             inventoryElement.classList.remove('top-4');
         }
+    } else {
+        console.error('Inventory element not found.');
+    }
 
-        const objectivesElement = document.getElementById('ui_objectives_window');
+    const objectivesElement = document.getElementById('ui_objectives_window');
+    if (objectivesElement) {
         if (sprite.x > thresholdX) {
             objectivesElement.classList.add('left-2');
             objectivesElement.classList.remove('right-2');
@@ -311,7 +317,10 @@ var ui_inventory_window = {
             objectivesElement.classList.add('right-2');
             objectivesElement.classList.remove('left-2');
         }
-    },
+    } else {
+        console.error('Objectives element not found.');
+    }
+},
 
     initializeDragAndDrop: function() {
         const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');

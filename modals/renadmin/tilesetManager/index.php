@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
     ?>
-    <div data-window='tileset_manager_window' class='window window_bg' style='width: 800px; height: 540px; background: #bba229;'>
+    <div data-window='tileset_manager_window' class='window window_bg h-full' style='width: 100%;background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
