@@ -1,6 +1,5 @@
 var render = {
     updateGameLogic: function(deltaTime) {
-    
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
             if (sprite.update) {
@@ -8,7 +7,7 @@ var render = {
                 sprite.checkTileActions();
             }
         }
-    
+
         camera.update();
         game.gameTime.update(deltaTime);
         lighting.updateDayNightCycle();
@@ -20,14 +19,14 @@ var render = {
         effects.transitions.update();
         lighting.updateLights(deltaTime);
 
-            // Rain sound effect handling
-    if (weather.rainActive) {
-        audio.playAudio("rain", assets.load('rain'), 'ambience', true);
-    } else {
-        audio.stopLoopingAudio('rain', 'ambience', 0.5);
-    }
+        // Rain sound effect handling
+        if (weather.rainActive) {
+            audio.playAudio("rain", assets.load('rain'), 'ambience', true);
+        } else {
+            audio.stopLoopingAudio('rain', 'ambience', 0.5);
+        }
 
-        if(typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
+        if (typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
             ui_window.checkAndUpdateUIPositions();
         }
     },

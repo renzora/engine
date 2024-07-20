@@ -28,12 +28,12 @@ var input = {
         document.addEventListener('dblclick', (e) => this.doubleClick(e));
         document.addEventListener('contextmenu', (e) => this.rightClick(e));
         window.addEventListener('resize', (e) => game.resizeCanvas(e));
-
         window.addEventListener('gamepadA', (e) => this.gamepadAButton(e));
         window.addEventListener('gamepadB', (e) => this.gamepadBButton(e));
+        window.addEventListener('gamepadX', (e) => this.gamepadXButton(e));
+        window.addEventListener('gamepadY', (e) => this.gamepadXButton(e));
         window.addEventListener('gamepadStartPressed', gamepad.throttle((e) => this.gamepadStart(e), 1000));
         window.addEventListener('gamepadAxes', (e) => this.handleAxes(e.detail));
-
         window.addEventListener('gamepadLeftTriggerPressed', (e) => this.gamepadLeftTrigger(true));
         window.addEventListener('gamepadLeftTriggerReleased', (e) => this.gamepadLeftTrigger(false));
     },

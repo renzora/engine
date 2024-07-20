@@ -2,9 +2,9 @@ const lighting = {
     lights: [],
     compositeOperation: 'soft-light',
     nightFilter: {
-        opacity: 0.92,
-        color: { r: 14, g: 0, b: 78 },
-        compositeOperation: 'hard-light'
+        opacity: 1,
+        color: { r: 102, g: 39, b: 255 },
+        compositeOperation: 'multiply'
     },
     greyFilter: {
         opacity: 0.5,
@@ -120,25 +120,25 @@ const lighting = {
                 this.nightAmbiencePlaying = true;
             }
             if (time >= 22 && time < 24) {
-                lighting.nightFilter.opacity = Math.min(0.92, (time - 22) / 2 * 0.92);
+                lighting.nightFilter.opacity = Math.min(1, (time - 22) / 2);
             } else if (time >= 0 && time < 6) {
-                lighting.nightFilter.opacity = 0.92;
+                lighting.nightFilter.opacity = 1;
             } else if (time >= 6 && time < 7) {
                 const progress = (time - 6);
-                lighting.nightFilter.opacity = 0.92 - progress * 0.92;
+                lighting.nightFilter.opacity = 1 - progress;
                 lighting.nightFilter.color = {
-                    r: Math.round(14 + progress * (255 - 14)),
-                    g: Math.round(0 + progress * (140 - 0)),
-                    b: Math.round(78 + progress * (0 - 78))
+                    r: Math.round(102 + progress * (255 - 102)),
+                    g: Math.round(39 + progress * (140 - 39)),
+                    b: Math.round(255 + progress * (0 - 255))
                 };
             }
     
             if (!(time >= 6 && time < 7)) {
                 const progress = (time >= 22) ? (time - 22) / 2 : (7 - time) / 7;
                 lighting.nightFilter.color = {
-                    r: Math.round(14 + progress * (14 - 14)),
-                    g: Math.round(0 + progress * (0 - 0)),
-                    b: Math.round(78 + progress * (78 - 78))
+                    r: Math.round(102 + progress * (102 - 102)),
+                    g: Math.round(39 + progress * (39 - 39)),
+                    b: Math.round(255 + progress * (255 - 255))
                 };
             }
         } else {
@@ -164,7 +164,7 @@ const lighting = {
         } else if (time >= 7 && time < 22) {
             lighting.updateLightsIntensity(0);
         }
-    },    
+    },
 
     drawGreyFilter: function() {
         if (!weather.rainActive) return;

@@ -235,83 +235,83 @@ if ($auth) {
     </div>
 
     <script>
-      var renadmin_world_editor_window = {
-        start: function() {
-          ui.initTabs('world_editor_tabs', 'tab1');
-          this.initSliders();
-          this.bindEvents();
-          this.initLightTypes();
-          this.initNightFilter();
-          this.initTimeBasedUpdates();
-          this.populateEffectList();
-          this.initParticleEventListeners();
-        },
-        unmount: function() {
-          ui.destroyTabs('world_editor_tabs');
-          this.unbindEvents();
-        },
-        initSliders: function() {
-          this.updateSliderValue('hours', 'hours_value');
-          this.updateSliderValue('minutes', 'minutes_value');
-          this.updateSliderValue('seconds', 'seconds_value');
-          this.updateSliderValue('days', 'days_value');
-          this.updateSliderValue('speed_multiplier', 'speed_multiplier_value');
-        },
-        updateSliderValue: function(sliderId, valueId) {
-          var slider = document.getElementById(sliderId);
-          var valueSpan = document.getElementById(valueId);
-          var self = this;
-          slider.addEventListener('input', function() {
+ var renadmin_world_editor_window = {
+    start: function() {
+        ui.initTabs('world_editor_tabs', 'tab1');
+        this.initSliders();
+        this.bindEvents();
+        this.initLightTypes();
+        this.initNightFilter();
+        this.initTimeBasedUpdates();
+        this.populateEffectList();
+        this.initParticleEventListeners();
+    },
+    unmount: function() {
+        ui.destroyTabs('world_editor_tabs');
+        this.unbindEvents();
+    },
+    initSliders: function() {
+        this.updateSliderValue('hours', 'hours_value');
+        this.updateSliderValue('minutes', 'minutes_value');
+        this.updateSliderValue('seconds', 'seconds_value');
+        this.updateSliderValue('days', 'days_value');
+        this.updateSliderValue('speed_multiplier', 'speed_multiplier_value');
+    },
+    updateSliderValue: function(sliderId, valueId) {
+        var slider = document.getElementById(sliderId);
+        var valueSpan = document.getElementById(valueId);
+        var self = this;
+        slider.addEventListener('input', function() {
             valueSpan.textContent = slider.value;
             self.updateGameTime();
-          });
-        },
-        bindEvents: function() {
-          document.getElementById('set_weather_button').addEventListener('click', this.setWeather.bind(this));
-        },
-        unbindEvents: function() {
-          document.getElementById('set_weather_button').removeEventListener('click', this.setWeather.bind(this));
-        },
-        updateGameTime: function() {
-          var hours = document.getElementById('hours').value;
-          var minutes = document.getElementById('minutes').value;
-          var seconds = document.getElementById('seconds').value;
-          var days = document.getElementById('days').value;
-          var speedMultiplier = document.getElementById('speed_multiplier').value;
+        });
+    },
+    bindEvents: function() {
+        document.getElementById('set_weather_button').addEventListener('click', this.setWeather.bind(this));
+    },
+    unbindEvents: function() {
+        document.getElementById('set_weather_button').removeEventListener('click', this.setWeather.bind(this));
+    },
+    updateGameTime: function() {
+        var hours = document.getElementById('hours').value;
+        var minutes = document.getElementById('minutes').value;
+        var seconds = document.getElementById('seconds').value;
+        var days = document.getElementById('days').value;
+        var speedMultiplier = document.getElementById('speed_multiplier').value;
 
-          game.gameTime.hours = parseInt(hours);
-          game.gameTime.minutes = parseInt(minutes);
-          game.gameTime.seconds = parseInt(seconds);
-          game.gameTime.days = parseInt(days);
-          game.gameTime.speedMultiplier = parseInt(speedMultiplier);
+        game.gameTime.hours = parseInt(hours);
+        game.gameTime.minutes = parseInt(minutes);
+        game.gameTime.seconds = parseInt(seconds);
+        game.gameTime.days = parseInt(days);
+        game.gameTime.speedMultiplier = parseInt(speedMultiplier);
 
-          console.log('Game time set to: ', game.gameTime.display());
-        },
-        setWeather: function() {
-          var snow = document.getElementById('toggle_snow').checked;
-          var rain = document.getElementById('toggle_rain').checked;
-          var fog = document.getElementById('toggle_fog').checked;
-          var fireflys = document.getElementById('toggle_fireflys').checked;
+        console.log('Game time set to: ', game.gameTime.display());
+    },
+    setWeather: function() {
+        var snow = document.getElementById('toggle_snow').checked;
+        var rain = document.getElementById('toggle_rain').checked;
+        var fog = document.getElementById('toggle_fog').checked;
+        var fireflys = document.getElementById('toggle_fireflys').checked;
 
-          weather.snowActive = snow;
-          weather.rainActive = rain;
-          weather.fogActive = fog;
-          weather.fireflysActive = fireflys;
+        weather.snowActive = snow;
+        weather.rainActive = rain;
+        weather.fogActive = fog;
+        weather.fireflysActive = fireflys;
 
-          if (snow) weather.createSnow(0.5); else weather.stopSnow();
-          if (rain) weather.createRain(0.7);
-          if (fog) weather.createFog(0.1);
-          if (fireflys) weather.createFireflys();
+        if (snow) weather.createSnow(0.5); else weather.stopSnow();
+        if (rain) weather.createRain(0.7);
+        if (fog) weather.createFog(0.1);
+        if (fireflys) weather.createFireflys();
 
-          console.log('Weather updated: FireFlys -', fireflys, ', Rain -', rain, ', Fog -', fog, ', FireFlys -', fireflys);
-        },
-        initLightTypes: function() {
-          const lightTypeContainer = document.getElementById('lightTypeContainer');
-          lightTypeContainer.innerHTML = '';
+        console.log('Weather updated: FireFlys -', fireflys, ', Rain -', rain, ', Fog -', fog, ', FireFlys -', fireflys);
+    },
+    initLightTypes: function() {
+        const lightTypeContainer = document.getElementById('lightTypeContainer');
+        lightTypeContainer.innerHTML = '';
 
-          const lightTypes = [...new Set(lighting.lights.map(light => light.type))];
+        const lightTypes = [...new Set(lighting.lights.map(light => light.type))];
 
-          lightTypes.forEach((type, index) => {
+        lightTypes.forEach((type, index) => {
             const lightControls = `
               <div class="light-item" style="background: #f0f0f0; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
                 <div class="form-group">
@@ -357,118 +357,118 @@ if ($auth) {
               </div>
             `;
             lightTypeContainer.insertAdjacentHTML('beforeend', lightControls);
-          });
-        },
-        initNightFilter: function() {
-          const opacity = parseFloat(document.getElementById('nightFilterOpacity').value);
-          const colorR = parseInt(document.getElementById('nightFilterColorR').value);
-          const colorG = parseInt(document.getElementById('nightFilterColorG').value);
-          const colorB = parseInt(document.getElementById('nightFilterColorB').value);
-          const compositeOperation = document.getElementById('nightFilterCompositeOperation').value;
+        });
+    },
+    initNightFilter: function() {
+        const opacity = parseFloat(document.getElementById('nightFilterOpacity').value);
+        const colorR = parseInt(document.getElementById('nightFilterColorR').value);
+        const colorG = parseInt(document.getElementById('nightFilterColorG').value);
+        const colorB = parseInt(document.getElementById('nightFilterColorB').value);
+        const compositeOperation = document.getElementById('nightFilterCompositeOperation').value;
 
-          if (lighting) {
+        if (lighting) {
             lighting.nightFilter = {
-              opacity: opacity,
-              color: { r: colorR, g: colorG, b: colorB },
-              compositeOperation: compositeOperation
+                opacity: opacity,
+                color: { r: colorR, g: colorG, b: colorB },
+                compositeOperation: compositeOperation
             };
-          } else {
+        } else {
             console.error('Effects object not found');
-          }
-        },
-        updateLightTypeAndLabel: function(type, labelId, value, property) {
-          if (labelId.includes('lightFlickerLabel')) {
+        }
+    },
+    updateLightTypeAndLabel: function(type, labelId, value, property) {
+        if (labelId.includes('lightFlickerLabel')) {
             document.getElementById(labelId).textContent = value ? 'true' : 'false';
-          } else {
+        } else {
             document.getElementById(labelId).textContent = value;
-          }
-          this.updateLightType(type, value, property);
-        },
-        updateLightType: function(type, value, property) {
-          const lightsOfType = lighting.lights.filter(light => light.type === type);
-          lightsOfType.forEach(light => {
+        }
+        this.updateLightType(type, value, property);
+    },
+    updateLightType: function(type, value, property) {
+        const lightsOfType = lighting.lights.filter(light => light.type === type);
+        lightsOfType.forEach(light => {
             switch (property) {
-              case 'radius':
-                light.baseRadius = parseInt(value);
-                break;
-              case 'colorR':
-                light.color.r = parseInt(value);
-                break;
-              case 'colorG':
-                light.color.g = parseInt(value);
-                break;
-              case 'colorB':
-                light.color.b = parseInt(value);
-                break;
-              case 'intensity':
-                light.maxIntensity = parseFloat(value);
-                break;
-              case 'flicker':
-                light.flicker = value;
-                break;
-              case 'flickerSpeed':
-                light.flickerSpeed = parseFloat(value);
-                break;
-              case 'flickerAmount':
-                light.flickerAmount = parseFloat(value);
-                break;
-              default:
-                break;
+                case 'radius':
+                    light.baseRadius = parseInt(value);
+                    break;
+                case 'colorR':
+                    light.color.r = parseInt(value);
+                    break;
+                case 'colorG':
+                    light.color.g = parseInt(value);
+                    break;
+                case 'colorB':
+                    light.color.b = parseInt(value);
+                    break;
+                case 'intensity':
+                    light.maxIntensity = parseFloat(value);
+                    break;
+                case 'flicker':
+                    light.flicker = value;
+                    break;
+                case 'flickerSpeed':
+                    light.flickerSpeed = parseFloat(value);
+                    break;
+                case 'flickerAmount':
+                    light.flickerAmount = parseFloat(value);
+                    break;
+                default:
+                    break;
             }
-          });
-          
-          const event = new CustomEvent('lightTypeUpdated', { detail: { type, property, value } });
-          window.dispatchEvent(event);
-        },
-        updateNightFilterAndLabel: function(labelId, value) {
-          document.getElementById(labelId).textContent = value;
-          this.initNightFilter();
-        },
-        updateCompositeOperation: function() {
-          const compositeOperation = document.getElementById('compositeOperation').value;
-          if (lighting) {
-            lighting.compositeOperation = compositeOperation;
-          } else {
-            console.error('Effects object not found');
-          }
-        },
-        updateNightFilterCompositeOperation: function() {
-          const compositeOperation = document.getElementById('nightFilterCompositeOperation').value;
-          if (lighting) {
-            lighting.nightFilter.compositeOperation = compositeOperation;
-          } else {
-            console.error('Effects object not found');
-          }
-        },
-        populateEffectList: function() {
-          const effectSelect = document.getElementById('effectSelect');
-          effectSelect.innerHTML = '<option value="">Select Effect</option>';
+        });
 
-          Object.keys(particles.activeEffects).forEach(effectId => {
+        const event = new CustomEvent('lightTypeUpdated', { detail: { type, property, value } });
+        window.dispatchEvent(event);
+    },
+    updateNightFilterAndLabel: function(labelId, value) {
+        document.getElementById(labelId).textContent = value;
+        this.initNightFilter();
+    },
+    updateCompositeOperation: function() {
+        const compositeOperation = document.getElementById('compositeOperation').value;
+        if (lighting) {
+            lighting.compositeOperation = compositeOperation;
+        } else {
+            console.error('Effects object not found');
+        }
+    },
+    updateNightFilterCompositeOperation: function() {
+        const compositeOperation = document.getElementById('nightFilterCompositeOperation').value;
+        if (lighting) {
+            lighting.nightFilter.compositeOperation = compositeOperation;
+        } else {
+            console.error('Effects object not found');
+        }
+    },
+    populateEffectList: function() {
+        const effectSelect = document.getElementById('effectSelect');
+        effectSelect.innerHTML = '<option value="">Select Effect</option>';
+
+        Object.keys(particles.activeEffects).forEach(effectId => {
             const option = document.createElement('option');
             option.value = effectId;
             option.text = effectId;
             effectSelect.appendChild(option);
-          });
-        },
-        initParticleEventListeners: function() {
-          document.getElementById('effectSelect').addEventListener('change', this.loadEffectData.bind(this));
-          document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
+        });
+    },
+    initParticleEventListeners: function() {
+        document.getElementById('effectSelect').addEventListener('change', this.loadEffectData.bind(this));
+        document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
             slider.addEventListener('input', this.updateEffectData.bind(this, slider.id));
-          });
-          document.querySelectorAll('.slider-group select').forEach(select => {
+        });
+        document.querySelectorAll('.slider-group select').forEach(select => {
             select.addEventListener('change', this.updateEffectData.bind(this, select.id));
-          });
-          document.querySelectorAll('.slider-group input[type="color"]').forEach(colorPicker => {
+        });
+        document.querySelectorAll('.slider-group input[type="color"]').forEach(colorPicker => {
             colorPicker.addEventListener('input', this.updateEffectData.bind(this, colorPicker.id));
-          });
-          document.getElementById('particleRepeat').addEventListener('change', this.updateEffectData.bind(this, 'particleRepeat'));
-        },
-        loadEffectData: function(event) {
-          const effectId = event.target.value;
-          const effect = particles.activeEffects[effectId];
+        });
+        document.getElementById('particleRepeat').addEventListener('change', this.updateEffectData.bind(this, 'particleRepeat'));
+    },
+    loadEffectData: function(event) {
+        const effectId = event.target.value;
+        const effect = particles.activeEffects[effectId];
 
-          if (effect && effect.length > 0) {
+        if (effect && effect.length > 0) {
             document.getElementById('effectControls').style.display = 'block';
 
             this.setInputValue('particleCount', effect.length);
@@ -485,138 +485,152 @@ if ($auth) {
 
             this.setInputValue('particleColor2', effect[1]?.color || 'rgba(255, 0, 0, 1)');
             this.setInputValue('particleColor3', effect[2]?.color || 'rgba(255, 0, 0, 1)');
-          } else {
+        } else {
             document.getElementById('effectControls').style.display = 'none';
-          }
-        },
-        setInputValue: function(inputId, value) {
-          const inputElement = document.getElementById(inputId);
-          const valueElement = document.getElementById(inputId + 'Value');
-          
-          if (inputElement && valueElement) {
-            if (inputElement.type === 'color') {
-              inputElement.value = this.rgbToHex(value);
-            } else {
-              inputElement.value = value;
-              valueElement.textContent = value;
-            }
-          }
-        },
-        updateEffectData: function(property, event) {
-          const effectId = document.getElementById('effectSelect').value;
-          const effect = particles.activeEffects[effectId];
+        }
+    },
+    setInputValue: function(inputId, value) {
+        const inputElement = document.getElementById(inputId);
+        const valueElement = document.getElementById(inputId + 'Value');
 
-          if (effect && effect.length > 0) {
+        if (inputElement && valueElement) {
+            if (inputElement.type === 'color') {
+                inputElement.value = this.rgbToHex(value);
+            } else {
+                inputElement.value = value;
+                valueElement.textContent = value;
+            }
+        }
+    },
+    initTimeBasedUpdates: function() {
+    const toggleElement = document.getElementById('toggleTimeBasedUpdates');
+    if (toggleElement) {
+        toggleElement.checked = lighting.timeBasedUpdatesEnabled;
+        toggleElement.addEventListener('change', (event) => {
+            this.toggleTimeBasedUpdates(event.target.checked);
+        });
+    }
+},
+    toggleTimeBasedUpdates: function(enabled) {
+    lighting.timeBasedUpdatesEnabled = enabled;
+    console.log('Time-based updates enabled:', enabled);
+},
+    updateEffectData: function(property, event) {
+        const effectId = document.getElementById('effectSelect').value;
+        const effect = particles.activeEffects[effectId];
+
+        if (effect && effect.length > 0) {
             let value;
             if (property === 'particleRepeat') {
-              value = event.target.checked;
+                value = event.target.checked;
             } else {
-              value = event.target.value;
+                value = event.target.value;
             }
 
             if (property === 'particleCount') {
-              const newCount = parseInt(value);
-              const currentCount = effect.length;
+                const newCount = parseInt(value);
+                const currentCount = effect.length;
 
-              if (newCount > currentCount) {
-                for (let i = currentCount; i < newCount; i++) {
-                  const baseParticle = effect[0];
-                  if (baseParticle) {
-                    const newParticle = { ...baseParticle, life: baseParticle.maxLife, x: baseParticle.initialX, y: baseParticle.initialY };
-                    effect.push(newParticle);
-                    game.particles.push(newParticle);
-                  }
+                if (newCount > currentCount) {
+                    for (let i = currentCount; i < newCount; i++) {
+                        const baseParticle = effect[0];
+                        if (baseParticle) {
+                            const newParticle = { ...baseParticle, life: baseParticle.maxLife, x: baseParticle.initialX, y: baseParticle.initialY };
+                            effect.push(newParticle);
+                            game.particles.push(newParticle);
+                        }
+                    }
+                } else if (newCount < currentCount) {
+                    const particlesToRemove = currentCount - newCount;
+                    for (let i = 0; i < particlesToRemove; i++) {
+                        const particle = effect.pop();
+                        const index = game.particles.indexOf(particle);
+                        if (index > -1) {
+                            game.particles.splice(index, 1);
+                        }
+                    }
                 }
-              } else if (newCount < currentCount) {
-                const particlesToRemove = currentCount - newCount;
-                for (let i = 0; i < particlesToRemove; i++) {
-                  const particle = effect.pop();
-                  const index = game.particles.indexOf(particle);
-                  if (index > -1) {
-                    game.particles.splice(index, 1);
-                  }
-                }
-              }
             } else if (property.startsWith('particleColor')) {
-              effect.forEach(particle => {
-                if (particle) {
-                  particle.color = this.hexToRgb(value);
-                }
-              });
+                effect.forEach(particle => {
+                    if (particle) {
+                        particle.color = this.hexToRgb(value);
+                    }
+                });
             } else {
-              effect.forEach(particle => {
-                if (particle) {
-                  particle[property.replace('particle', '').toLowerCase()] = isNaN(value) ? value : parseFloat(value);
-                }
-              });
+                effect.forEach(particle => {
+                    if (particle) {
+                        particle[property.replace('particle', '').toLowerCase()] = isNaN(value) ? value : parseFloat(value);
+                    }
+                });
             }
 
             const valueElement = document.getElementById(`${property}Value`);
             if (valueElement) {
-              valueElement.textContent = value;
+                valueElement.textContent = value;
             }
 
             this.restartEffect(effectId);
             game.render();
-          } else {
+        } else {
             console.warn(`Effect ${effectId} is not defined or has no particles.`);
-          }
-        },
-        restartEffect: function(effectId) {
-          const effect = particles.activeEffects[effectId];
-          if (effect && effect.length > 0) {
+        }
+    },
+    restartEffect: function(effectId) {
+        const effect = particles.activeEffects[effectId];
+        if (effect && effect.length > 0) {
             const initialX = effect[0].initialX;
             const initialY = effect[0].initialY;
             const repeat = effect[0].repeat;
 
             effect.forEach(particle => {
-              const index = game.particles.indexOf(particle);
-              if (index > -1) {
-                game.particles.splice(index, 1);
-              }
+                const index = game.particles.indexOf(particle);
+                if (index > -1) {
+                    game.particles.splice(index, 1);
+                }
             });
 
             effect.length = 0;
             particles.createParticles(
-              initialX, initialY,
-              {
-                count: parseInt(document.getElementById('particleCount').value),
-                speed: parseFloat(document.getElementById('particleSpeed').value),
-                life: parseInt(document.getElementById('particleLife').value),
-                size: parseInt(document.getElementById('particleSize').value),
-                glow: parseInt(document.getElementById('particleGlow').value),
-                opacity: parseFloat(document.getElementById('particleOpacity').value),
-                blur: parseInt(document.getElementById('particleBlur').value),
-                shape: document.getElementById('particleShape').value,
-                colors: [
-                  document.getElementById('particleColor1').value,
-                  document.getElementById('particleColor2').value,
-                  document.getElementById('particleColor3').value
-                ],
-                angle: parseFloat(document.getElementById('particleAngle').value),
-                spread: parseFloat(document.getElementById('particleSpread').value),
-                repeat: document.getElementById('particleRepeat').checked
-              },
-              effectId
+                initialX, initialY,
+                {
+                    count: parseInt(document.getElementById('particleCount').value),
+                    speed: parseFloat(document.getElementById('particleSpeed').value),
+                    life: parseInt(document.getElementById('particleLife').value),
+                    size: parseInt(document.getElementById('particleSize').value),
+                    glow: parseInt(document.getElementById('particleGlow').value),
+                    opacity: parseFloat(document.getElementById('particleOpacity').value),
+                    blur: parseInt(document.getElementById('particleBlur').value),
+                    shape: document.getElementById('particleShape').value,
+                    colors: [
+                        document.getElementById('particleColor1').value,
+                        document.getElementById('particleColor2').value,
+                        document.getElementById('particleColor3').value
+                    ],
+                    angle: parseFloat(document.getElementById('particleAngle').value),
+                    spread: parseFloat(document.getElementById('particleSpread').value),
+                    repeat: document.getElementById('particleRepeat').checked
+                },
+                effectId
             );
-          } else {
+        } else {
             console.warn(`Effect ${effectId} is not defined or has no particles.`);
-          }
-        },
-        hexToRgb: function(hex) {
-          const bigint = parseInt(hex.slice(1), 16);
-          const r = (bigint >> 16) & 255;
-          const g = (bigint >> 8) & 255;
-          const b = (bigint & 255);
-          return `rgba(${r}, ${g}, ${b}, 1)`;
-        },
-        rgbToHex: function(rgb) {
-          const [r, g, b] = rgb.match(/\d+/g).map(Number);
-          return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
         }
-      };
+    },
+    hexToRgb: function(hex) {
+        const bigint = parseInt(hex.slice(1), 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = (bigint & 255);
+        return `rgba(${r}, ${g}, ${b}, 1)`;
+    },
+    rgbToHex: function(rgb) {
+        const [r, g, b] = rgb.match(/\d+/g).map(Number);
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+    }
+};
 
-      renadmin_world_editor_window.start();
+renadmin_world_editor_window.start();
+
     </script>
 
     <div class='resize-handle'></div>

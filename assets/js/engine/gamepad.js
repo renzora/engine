@@ -8,7 +8,6 @@ var gamepad = {
     buttonPressures: {},
     axesPressures: {},
     throttledEvents: {},
-    leftStickMoved: false, // Track if the left stick moved
 
     init: function() {
         window.addEventListener("gamepadconnected", (e) => this.connectGamepad(e));
@@ -32,11 +31,8 @@ var gamepad = {
         this.isConnected = true;
         this.name = this.getGamepadName(e.gamepad); // Store the gamepad name
         game.updateInputMethod('gamepad', this.name);
-        console.log("Gamepad connected at index " + this.gamepadIndex);
         modal.minimize('console_window');
         modal.front('ui_inventory_window');
-
-        // Emit custom event for gamepad connection
         const event = new CustomEvent('gamepadConnected');
         window.dispatchEvent(event);
     },

@@ -59,11 +59,11 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 7,
+        hours: 0,
         minutes: 0,
         seconds: 0,
         days: 0,
-        speedMultiplier: 300, // Game time progresses 10 times faster than real time
+        speedMultiplier: 1000, // Game time progresses 10 times faster than real time
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
