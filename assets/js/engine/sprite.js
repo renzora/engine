@@ -429,51 +429,57 @@ var sprite = {
             // Calculate dynamic stop radius based on defense and attack
             const dynamicStopRadius = Math.max(30, 100 - this.defense + this.attack);
     
-            if (distance <= dynamicStopRadius) {
+            if (distance <= this.maxRange) {
+                // Enemy is within range, start following the main sprite
+                this.isMovingToTarget = true;
+    
+                // Determine the direction based on the angle
+                const angle = Math.atan2(deltaY, deltaX);
+                if (angle >= -Math.PI / 8 && angle < Math.PI / 8) this.direction = 'E';
+                else if (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8) this.direction = 'SE';
+                else if (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8) this.direction = 'S';
+                else if (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8) this.direction = 'SW';
+                else if (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8) this.direction = 'W';
+                else if (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8) this.direction = 'NW';
+                else if (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8) this.direction = 'N';
+                else if (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8) this.direction = 'NE';
+    
+                if (distance <= dynamicStopRadius) {
+                    this.isMovingToTarget = false;
+                    this.moving = false;
+                    this.stopping = true;
+                    this.currentFrame = 0; // Reset to default standing position
+                } else {
+                    const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+                    const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+                    // Perform collision checks
+                    const moveX = !collision.check(newX, this.y, this);
+                    const moveY = !collision.check(this.x, newY, this);
+    
+                    if (moveX) this.x = newX;
+                    if (moveY) this.y = newY;
+    
+                    this.moving = true; // Ensure moving flag is set when moving along the path
+                    this.stopping = false;
+                }
+            } else {
                 this.isMovingToTarget = false;
                 this.moving = false;
                 this.stopping = true;
                 this.currentFrame = 0; // Reset to default standing position
-            } else {
-                const angle = Math.atan2(deltaY, deltaX);
-                const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
-                const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
-    
-                // Perform collision checks
-                const moveX = !collision.check(newX, this.y, this);
-                const moveY = !collision.check(this.x, newY, this);
-    
-                if (moveX) this.x = newX;
-                if (moveY) this.y = newY;
-    
-                // Determine direction
-                if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                    if (deltaX > 0) this.direction = 'E';
-                    else this.direction = 'W';
-                } else {
-                    if (deltaY > 0) this.direction = 'S';
-                    else this.direction = 'N';
-                }
-    
-                // Adjust direction for diagonal movement
-                if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
-                    if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
-                    else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
-                    else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
-                    else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
-                }
-    
-                this.moving = true; // Ensure moving flag is set when moving along the path
-                this.stopping = false;
+                this.path = []; // Clear the path once the destination is reached
+                audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
             }
         } else {
+            // Pathfinding logic for moving to a clicked tile
             if (!this.path || this.pathIndex >= this.path.length) {
                 this.isMovingToTarget = false;
                 this.moving = false;
                 this.stopping = true;
                 this.currentFrame = 0; // Reset to default standing position
                 this.path = []; // Clear the path once the destination is reached
-                audio.stopLoopingAudio('walkGrass','sfx', 0.5);
+                audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
                 return;
             }
     
@@ -527,7 +533,7 @@ var sprite = {
                 this.stopping = false;
             }
         }
-    },
+    },    
 
     drawEnemyAttackAimTool: function() {
         const player = game.sprites[game.playerid];

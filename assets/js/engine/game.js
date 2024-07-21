@@ -185,15 +185,15 @@ var game = {
 
             this.mainSprite = game.sprites[this.playerid];
 
-            for (let i = 0; i < 5; i++) {
+            for (let i = 0; i < 1; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
-                    y: 0 + Math.floor(Math.random() * 60), // Starting y coordinate
+                    y: 0 + Math.floor(Math.random() * 30), // Starting y coordinate
                     boundaryX: 60, // Boundary x coordinate
-                    boundaryY: 60, // Boundary y coordinate
+                    boundaryY: 30, // Boundary y coordinate
                     isPlayer: false,
-                    isEnemy: Math.floor(Math.random() * 2),
+                    isEnemy: 1,
                     eyes: 1,
                     hair: Math.floor(Math.random() * 29), // Assuming there are 5 different hairstyles
                     outfit: Math.floor(Math.random() * 3), // Assuming there are 5 different outfits
