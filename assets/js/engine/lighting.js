@@ -166,6 +166,12 @@ const lighting = {
         }
     },
 
+    drawNightFilter: function() {
+        game.ctx.fillStyle = `rgba(${this.nightFilter.color.r}, ${this.nightFilter.color.g}, ${this.nightFilter.color.b}, ${this.nightFilter.opacity})`;
+        game.ctx.globalCompositeOperation = this.nightFilter.compositeOperation;
+        game.ctx.fillRect(camera.cameraX - 2, camera.cameraY - 2, (window.innerWidth / game.zoomLevel) + 4, (window.innerHeight / game.zoomLevel) + 4);
+    },
+    
     drawGreyFilter: function() {
         if (!weather.rainActive) return;
     

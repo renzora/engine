@@ -9,13 +9,13 @@ var camera = {
 
     update: function() {
         if (this.activeCamera) {
-            let mainSprite = game.sprites[game.playerid];
-            if (mainSprite) {
+            let activeSprite = game.sprites[game.activeSpriteId];
+            if (activeSprite) {
                 var scaledWindowWidth = window.innerWidth / game.zoomLevel;
                 var scaledWindowHeight = window.innerHeight / game.zoomLevel;
     
-                this.targetCameraX = mainSprite.x + mainSprite.width / 2 - scaledWindowWidth / 2;
-                this.targetCameraY = mainSprite.y + mainSprite.height / 2 - scaledWindowHeight / 2;
+                this.targetCameraX = activeSprite.x + activeSprite.width / 2 - scaledWindowWidth / 2;
+                this.targetCameraY = activeSprite.y + activeSprite.height / 2 - scaledWindowHeight / 2;
     
                 this.targetCameraX = Math.max(0, Math.min(this.targetCameraX, game.worldWidth - scaledWindowWidth));
                 this.targetCameraY = Math.max(0, Math.min(this.targetCameraY, game.worldHeight - scaledWindowHeight));
@@ -40,7 +40,7 @@ var camera = {
                     debug_window.camera();
                 }
             } else {
-                console.error('Main sprite not found.');
+                console.error('Active sprite not found.');
             }
         }
     },

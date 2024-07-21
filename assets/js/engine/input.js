@@ -35,7 +35,7 @@ var input = {
         window.addEventListener('gamepadstartPressed', gamepad.throttle((e) => this.gamepadStart(e), 1000));
         window.addEventListener('gamepadAxes', (e) => this.handleAxes(e.detail));
         window.addEventListener('gamepadl2Pressed', (e) => this.gamepadLeftTrigger());
-        window.addEventListener('gamepadr2Pressed', (e) => this.gamepadRightTrigger());
+        window.addEventListener('gamepadr2Pressed', gamepad.throttle((e) => this.gamepadRightTrigger(e), 50));
         window.addEventListener('gamepadr2Released', (e) => this.changeSpeed());
         window.addEventListener('gamepadl2Released', (e) => this.gamepadLeftTrigger());
     },
@@ -54,9 +54,15 @@ var input = {
     },
 
     gamepadRightTrigger: function() {
+        console.log("r2 pressed from input.js");
         gamepad.vibrate(500, 1.0, 1.0);
         game.mainSprite.speed = 120;
+    
+        if (game.mainSprite.targetAim) {
+            game.mainSprite.dealDamage();
+        }
     },
+    
     changeSpeed: function() {
         game.mainSprite.speed = 70;
     },
@@ -64,7 +70,6 @@ var input = {
     gamepadLeftBumper: function(e) {
         
         if (gamepad.buttons.includes('l1')) {
-            console.log("l1 pressed from input.js");
             const player = game.mainSprite;
             const nearestTarget = this.findNearestTarget(player.targetX, player.targetY, player.maxRange);
     

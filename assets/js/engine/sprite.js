@@ -74,13 +74,9 @@ var sprite = {
             calculatePath: this.calculatePath,
             moveAlongPath: this.moveAlongPath,
             update: this.update,
-            takeDamage: this.takeDamage,
-            die: this.die,
-            attackTarget: this.attackTarget,
-            chasePlayer: this.chasePlayer,
-            handleAimAttack: this.handleAimAttack,
             checkTileActions: this.checkTileActions,
-            drawEnemyAttackAimTool: this.drawEnemyAttackAimTool
+            drawEnemyAttackAimTool: this.drawEnemyAttackAimTool,
+            dealDamage: this.dealDamage
         };
     
         // Convert tile coordinates to pixel coordinates
@@ -429,57 +425,51 @@ var sprite = {
             // Calculate dynamic stop radius based on defense and attack
             const dynamicStopRadius = Math.max(30, 100 - this.defense + this.attack);
     
-            if (distance <= this.maxRange) {
-                // Enemy is within range, start following the main sprite
-                this.isMovingToTarget = true;
-    
-                // Determine the direction based on the angle
-                const angle = Math.atan2(deltaY, deltaX);
-                if (angle >= -Math.PI / 8 && angle < Math.PI / 8) this.direction = 'E';
-                else if (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8) this.direction = 'SE';
-                else if (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8) this.direction = 'S';
-                else if (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8) this.direction = 'SW';
-                else if (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8) this.direction = 'W';
-                else if (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8) this.direction = 'NW';
-                else if (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8) this.direction = 'N';
-                else if (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8) this.direction = 'NE';
-    
-                if (distance <= dynamicStopRadius) {
-                    this.isMovingToTarget = false;
-                    this.moving = false;
-                    this.stopping = true;
-                    this.currentFrame = 0; // Reset to default standing position
-                } else {
-                    const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
-                    const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
-    
-                    // Perform collision checks
-                    const moveX = !collision.check(newX, this.y, this);
-                    const moveY = !collision.check(this.x, newY, this);
-    
-                    if (moveX) this.x = newX;
-                    if (moveY) this.y = newY;
-    
-                    this.moving = true; // Ensure moving flag is set when moving along the path
-                    this.stopping = false;
-                }
-            } else {
+            if (distance <= dynamicStopRadius) {
                 this.isMovingToTarget = false;
                 this.moving = false;
                 this.stopping = true;
                 this.currentFrame = 0; // Reset to default standing position
-                this.path = []; // Clear the path once the destination is reached
-                audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+            } else {
+                const angle = Math.atan2(deltaY, deltaX);
+                const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+                const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+                // Perform collision checks
+                const moveX = !collision.check(newX, this.y, this);
+                const moveY = !collision.check(this.x, newY, this);
+    
+                if (moveX) this.x = newX;
+                if (moveY) this.y = newY;
+    
+                // Determine direction
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    if (deltaX > 0) this.direction = 'E';
+                    else this.direction = 'W';
+                } else {
+                    if (deltaY > 0) this.direction = 'S';
+                    else this.direction = 'N';
+                }
+    
+                // Adjust direction for diagonal movement
+                if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
+                    if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
+                    else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
+                    else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
+                    else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
+                }
+    
+                this.moving = true; // Ensure moving flag is set when moving along the path
+                this.stopping = false;
             }
         } else {
-            // Pathfinding logic for moving to a clicked tile
             if (!this.path || this.pathIndex >= this.path.length) {
                 this.isMovingToTarget = false;
                 this.moving = false;
                 this.stopping = true;
                 this.currentFrame = 0; // Reset to default standing position
                 this.path = []; // Clear the path once the destination is reached
-                audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+                audio.stopLoopingAudio('walkGrass','sfx', 0.5);
                 return;
             }
     
@@ -533,7 +523,7 @@ var sprite = {
                 this.stopping = false;
             }
         }
-    },    
+    },
 
     drawEnemyAttackAimTool: function() {
         const player = game.sprites[game.playerid];
@@ -690,13 +680,19 @@ var sprite = {
         }
         this.health = Math.max(0, Math.min(this.maxHealth, this.health + amount));
     
+        if (this.health <= 0) {
+            // Handle sprite death
+            console.log(`${this.id} has died.`);
+            delete game.sprites[this.id]; // Remove the sprite from the game
+        }
+    
         const healthBar = document.getElementById('ui_health');
-        if (healthBar) {
+        if (healthBar && this.id === game.playerid) {
             const healthPercentage = (this.health / this.maxHealth) * 100;
             healthBar.style.width = healthPercentage + '%';
             healthBar.nextElementSibling.innerText = `${Math.round(healthPercentage)}%`;
         }
-    },
+    },    
 
     updateEnergy: function(amount) {
         if (typeof amount === "string") {
@@ -855,85 +851,29 @@ var sprite = {
         this.animateEyes();
     },
 
-    takeDamage: function(damage) {
-        let actualDamage = damage - this.defense;
-        actualDamage = Math.max(0, actualDamage);
-        this.health -= actualDamage;
-        if (this.health <= 0) {
-            this.health = 0;
-            this.die();
-        }
-    },
-
-    die: function() {
-        // Implement the enemy's death logic here
-        // For example, remove the sprite from the game
-        delete game.sprites[this.id];
-    },
-
-    attackTarget: function(target) {
-        if (this.isEnemy && target) {
-            target.takeDamage(this.attack);
-        }
-    },
-
-    chasePlayer: function() {
-        const player = game.sprites[id];
-        if (!player) return;
-
-        const deltaX = player.x - this.x;
-        const deltaY = player.y - this.y;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-        this.removeDirection('up');
-        this.removeDirection('down');
-        this.removeDirection('left');
-        this.removeDirection('right');
-
-        if (distance < 200) { // Chase if within 200 pixels
-            if (deltaX > 0) {
-                this.addDirection('right');
-            } else {
-                this.addDirection('left');
-            }
-            if (deltaY > 0) {
-                this.addDirection('down');
-            } else {
-                this.addDirection('up');
-            }
-
-            // Attack if within a certain range
-            if (distance < 30) {
-                this.attackTarget(player);
-            }
-        }
-    },
-
-    handleAimAttack: function() {
-        if (!game.mainSprite || !game.mainSprite.targetAim) return;
+    dealDamage: function() {
+        const aimX = this.targetX;
+        const aimY = this.targetY;
+        const maxRadius = this.targetRadius;
     
-        const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;
-        const handY = game.mainSprite.y + game.mainSprite.height / 2 + game.mainSprite.handOffsetY;
-        const deltaX = game.mainSprite.targetX - handX;
-        const deltaY = game.mainSprite.targetY - handY;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        for (let id in game.sprites) {
+            const sprite = game.sprites[id];
     
-        if (distance <= game.mainSprite.maxRange) {
-            const targetRadius = game.mainSprite.targetRadius;
-            const aimDistance = Math.sqrt(
-                (this.x + this.width / 2 - game.mainSprite.targetX) ** 2 +
-                (this.y + this.height / 2 - game.mainSprite.targetY) ** 2
-            );
+            if (sprite.isEnemy) {
+                const spriteCenterX = sprite.x + sprite.width / 2;
+                const spriteCenterY = sprite.y + sprite.height / 2;
+                const distance = Math.sqrt((aimX - spriteCenterX) ** 2 + (aimY - spriteCenterY) ** 2);
     
-            if (aimDistance <= targetRadius) {
-                const headDistance = Math.sqrt(
-                    (this.x + this.width / 2 - game.mainSprite.targetX) ** 2 +
-                    (this.y - game.mainSprite.targetY) ** 2
-                );
-                let damage = game.mainSprite.attack * (1 - (headDistance / targetRadius));
-                damage = Math.max(0, damage);
-                this.takeDamage(damage);
+                if (distance <= maxRadius) {
+                    // Calculate damage based on distance, with maximum damage reduced to 50
+                    const damage = Math.max(0, 10 - (distance / maxRadius) * 10);
+                    sprite.updateHealth(-damage);
+    
+                    // Optionally, add some visual or audio feedback for the damage
+                    console.log(`Enemy ${id} took ${damage.toFixed(2)} damage`);
+                    effects.shakeMap(300, 2);
+                }
             }
         }
-    }
+    },    
 };

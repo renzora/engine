@@ -48,6 +48,7 @@ var game = {
     isEditorActive: false,
     selectionBounds: null,
     tooltips: [],
+    activeSpriteId: null,
     inputMethod: 'keyboard',
     objectives: [
         { name: "Find the hidden sword", status: false },
@@ -59,7 +60,7 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 7,
+        hours: 0,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -184,8 +185,9 @@ var game = {
             sprite.create(playerOptions);
 
             this.mainSprite = game.sprites[this.playerid];
+            this.setActiveSprite(this.playerid);
 
-            for (let i = 0; i < 1; i++) {
+            for (let i = 0; i < 20; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
@@ -193,7 +195,7 @@ var game = {
                     boundaryX: 60, // Boundary x coordinate
                     boundaryY: 30, // Boundary y coordinate
                     isPlayer: false,
-                    isEnemy: 1,
+                    isEnemy: 0,
                     eyes: 1,
                     hair: Math.floor(Math.random() * 29), // Assuming there are 5 different hairstyles
                     outfit: Math.floor(Math.random() * 3), // Assuming there are 5 different outfits
@@ -287,6 +289,14 @@ var game = {
         console.log("Game resumed and requesting the latest state from the server");
     },
 
+    setActiveSprite: function(spriteId) {
+        if (this.sprites[spriteId]) {
+            this.activeSpriteId = spriteId;
+        } else {
+            console.error(`Sprite with ID ${spriteId} does not exist.`);
+        }
+    },
+
     loadScene: function(sceneId) {
         input.cancelPathfinding(game.sprites[game.playerid]);
         ui.ajax({
@@ -340,14 +350,6 @@ var game = {
         this.canvas.style.left = '50%';
         this.canvas.style.top = '50%';
         this.canvas.style.transform = 'translate(-50%, -50%)';
-    },
-
-    handleAimAttack: function () {
-        for (let id in this.sprites) {
-            if (this.sprites[id].isEnemy) {
-                this.sprites[id].handleAimAttack();
-            }
-        }
     },
 
     grid: function() {
@@ -1343,34 +1345,27 @@ if (tileData.fx && this.fxData[tileData.fx]) {
             });
         }
 
-    // Add the night filter to the renderQueue with a high z-index
-    game.ctx.save();
-    game.ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
-    game.ctx.globalCompositeOperation = lighting.nightFilter.compositeOperation;
-    game.ctx.fillRect(camera.cameraX - 2, camera.cameraY - 2, (window.innerWidth / this.zoomLevel) + 4, (window.innerHeight / this.zoomLevel) + 4);
-    game.ctx.restore();
 
+    lighting.drawNightFilter();
     this.ctx.globalCompositeOperation = lighting.compositeOperation;
     this.ctx.drawImage(lighting.createLightMask(), 0, 0);
     this.ctx.globalCompositeOperation = 'source-over';
-    
-        this.ctx.imageSmoothingEnabled = false;
+    this.ctx.imageSmoothingEnabled = false;
     
         weather.drawSnow();
         weather.drawRain();
         weather.drawFireflys();
-        this.handleAimAttack();
         lighting.drawGreyFilter();
         actions.checkForNearbyItems();
     
         if (this.mainSprite && this.mainSprite.targetAim) {
             const handX = this.mainSprite.x + this.mainSprite.width / 2 + this.mainSprite.handOffsetX;
             const handY = this.mainSprite.y + this.mainSprite.height / 2 + this.mainSprite.handOffsetY;
-    
+        
             const deltaX = this.mainSprite.targetX - handX;
             const deltaY = this.mainSprite.targetY - handY;
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-    
+        
             // Calculate the adjusted target position
             let adjustedTargetX = this.mainSprite.targetX;
             let adjustedTargetY = this.mainSprite.targetY;
@@ -1379,17 +1374,17 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                 adjustedTargetX = handX + deltaX * ratio;
                 adjustedTargetY = handY + deltaY * ratio;
             }
-    
+        
             // Function to check for collision with non-walkable map objects
             const isObstructed = (x, y) => {
                 if (this.roomData && this.roomData.items) {
                     for (const roomItem of this.roomData.items) {
                         const itemData = assets.load('objectData')[roomItem.id];
                         if (!itemData) continue;
-    
+        
                         const xCoordinates = roomItem.x || [];
                         const yCoordinates = roomItem.y || [];
-    
+        
                         for (let i = 0; i < xCoordinates.length; i++) {
                             const itemX = parseInt(xCoordinates[i], 10) * 16;
                             const itemY = parseInt(yCoordinates[i], 10) * 16;
@@ -1399,7 +1394,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                                 width: 16,
                                 height: 16
                             };
-    
+        
                             // Check if the point is within the tile's bounds
                             if (
                                 x >= tileRect.x &&
@@ -1418,13 +1413,13 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                 }
                 return { obstructed: false };
             };
-    
+        
             // Check for obstruction along the line of sight
             let finalTargetX = adjustedTargetX;
             let finalTargetY = adjustedTargetY;
             const steps = Math.ceil(distance);
             let obstructionDetected = false;
-    
+        
             for (let i = 1; i <= steps; i++) {
                 const stepX = handX + (deltaX * i) / steps;
                 const stepY = handY + (deltaY * i) / steps;
@@ -1436,15 +1431,15 @@ if (tileData.fx && this.fxData[tileData.fx]) {
                     break;
                 }
             }
-    
+        
             // Do not show the aim if the obstruction is very close
             if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
                 return;
             }
-    
+        
             // Save the current context state
             this.ctx.save();
-    
+        
             // Draw the aim tool
             this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
             this.ctx.lineWidth = 1; // Set the line width to 1 for a thinner line
@@ -1454,15 +1449,38 @@ if (tileData.fx && this.fxData[tileData.fx]) {
             this.ctx.lineTo(finalTargetX, finalTargetY);
             this.ctx.stroke();
             this.ctx.setLineDash([]); // Reset line dash
-    
+        
             // Draw target radius at the final target position
             this.ctx.beginPath();
             this.ctx.arc(finalTargetX, finalTargetY, this.mainSprite.targetRadius, 0, 2 * Math.PI);
             this.ctx.stroke();
-    
+        
+            // Draw the crosshair
+            this.ctx.beginPath();
+            const crosshairSize = 10; // Size of the crosshair lines
+            this.ctx.moveTo(finalTargetX - crosshairSize, finalTargetY); // Horizontal line left side
+            this.ctx.lineTo(finalTargetX + crosshairSize, finalTargetY); // Horizontal line right side
+            this.ctx.moveTo(finalTargetX, finalTargetY - crosshairSize); // Vertical line top side
+            this.ctx.lineTo(finalTargetX, finalTargetY + crosshairSize); // Vertical line bottom side
+            this.ctx.stroke();
+        
+            // Draw sniper lines
+            const sniperLineLength = 15; // Length of the sniper lines extending from the crosshair
+            this.ctx.beginPath();
+            this.ctx.moveTo(finalTargetX - sniperLineLength, finalTargetY); // Left line
+            this.ctx.lineTo(finalTargetX - crosshairSize, finalTargetY);
+            this.ctx.moveTo(finalTargetX + crosshairSize, finalTargetY); // Right line
+            this.ctx.lineTo(finalTargetX + sniperLineLength, finalTargetY);
+            this.ctx.moveTo(finalTargetX, finalTargetY - sniperLineLength); // Top line
+            this.ctx.lineTo(finalTargetX, finalTargetY - crosshairSize);
+            this.ctx.moveTo(finalTargetX, finalTargetY + crosshairSize); // Bottom line
+            this.ctx.lineTo(finalTargetX, finalTargetY + sniperLineLength);
+            this.ctx.stroke();
+        
             // Restore the previous context state
             this.ctx.restore();
         }
+        
     
         if (game.isEditMode && edit_mode_window.isSelecting && edit_mode_window.selectionStart && edit_mode_window.selectionEnd) {
             const startX = Math.min(edit_mode_window.selectionStart.x, edit_mode_window.selectionEnd.x);

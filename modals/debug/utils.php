@@ -50,10 +50,18 @@
                     </div>
                 </div>
                 <div class="tab-content p-4 hidden text-white" data-tab-content="enemy-tab">
-                    <p>Select Enemy:</p>
+                    <p>Select Sprite:</p>
                     <select id="enemy_select" class="mb-3" style="color: black;" onchange="debug_utils_window.updateSelectedEnemy(this.value)">
-                        <option value="">Select an enemy</option>
+                        <option value="">Select a sprite</option>
                     </select>
+
+                    <div class="mt-1 mb-3">
+                        <button class="green_button text-white font-bold py-3 px-4 rounded w-full shadow-md" onclick="debug_utils_window.changeCameraToSelectedSprite()">Change Camera</button>
+                    </div>
+
+                    <div>
+                        <input type="checkbox" id="is_enemy" onchange="debug_utils_window.updateEnemyAttribute('isEnemy', this.checked)"> Is Enemy
+                    </div>
 
                     <div>
                         <input type="checkbox" id="show_attack_radius" onchange="debug_utils_window.toggleAttackRadius()"> Show Attack Radius
@@ -86,16 +94,16 @@
                     </div>
 
                     <div>
-        <label for="enemy_speed_slider">Speed:</label>
-        <input type="range" id="enemy_speed_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateEnemyAttribute('speed', this.value)">
-        <span id="enemy_Speed_value">100</span>
-    </div>
+                        <label for="enemy_speed_slider">Speed:</label>
+                        <input type="range" id="enemy_speed_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateEnemyAttribute('speed', this.value)">
+                        <span id="enemy_Speed_value">100</span>
+                    </div>
+
                     <div class="mt-2">
-        <button class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="debug_utils_window.applyToAllEnemies()">Apply to All</button>
-    </div>
+                        <button class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="debug_utils_window.applyToAllEnemies()">Apply to All</button>
+                    </div>
 
-    <div class="mt-4">Appearance</div>
-
+                    <div class="mt-4">Appearance</div>
 
                     <div>
                         <label for="enemy_body_slider">Body:</label>
@@ -137,6 +145,28 @@
                         <input type="range" id="enemy_glasses_slider" min="0" max="2" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('glasses', this.value)">
                         <span id="enemy_glasses_value">0</span>
                     </div>
+                    
+                    <div class="mt-4">Position</div>
+                    <div>
+                        <label for="enemy_x_slider">X:</label>
+                        <input type="range" id="enemy_x_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('x', this.value)">
+                        <span id="enemy_x_value">0</span>
+                    </div>
+                    <div>
+                        <label for="enemy_y_slider">Y:</label>
+                        <input type="range" id="enemy_y_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('y', this.value)">
+                        <span id="enemy_y_value">0</span>
+                    </div>
+                    <div>
+                        <label for="enemy_top_slider">Top:</label>
+                        <input type="range" id="enemy_top_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('top', this.value)">
+                        <span id="enemy_top_value">0</span>
+                    </div>
+                    <div>
+                        <label for="enemy_left_slider">Left:</label>
+                        <input type="range" id="enemy_left_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('left', this.value)">
+                        <span id="enemy_left_value">0</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -167,6 +197,9 @@
         this.showAttackRadius = !this.showAttackRadius;
         this.renderAttackRadius();
     },
+    truncate: function(str, maxLength) {
+        return str.length > maxLength ? str.substring(0, maxLength - 3) + '...' : str;
+    },
     updateAttribute: function(attribute, value) {
         const sprite = game.mainSprite;
         if (sprite) {
@@ -176,13 +209,18 @@
     },
     updateEnemyAttribute: function(attribute, value) {
         if (this.selectedEnemy) {
-            this.selectedEnemy[attribute] = parseInt(value);
-            document.getElementById('enemy_' + attribute + '_value').innerText = value;
+            if (attribute === 'isEnemy') {
+                this.selectedEnemy[attribute] = value;
+            } else {
+                this.selectedEnemy[attribute] = parseInt(value);
+                document.getElementById('enemy_' + attribute + '_value').innerText = value;
+            }
         }
     },
     updateSelectedEnemy: function(enemyId) {
         this.selectedEnemy = game.sprites[enemyId];
         if (this.selectedEnemy) {
+            document.getElementById('is_enemy').checked = this.selectedEnemy.isEnemy;
             document.getElementById('enemy_attack_slider').value = this.selectedEnemy.attack;
             document.getElementById('enemy_attack_value').innerText = this.selectedEnemy.attack;
             document.getElementById('enemy_maxRadius_slider').value = this.selectedEnemy.maxRange;
@@ -193,22 +231,28 @@
             document.getElementById('enemy_intensity_value').innerText = this.selectedEnemy.intensity;
             document.getElementById('enemy_health_slider').value = this.selectedEnemy.health;
             document.getElementById('enemy_health_value').innerText = this.selectedEnemy.health;
-            document.getElementById('enemy_Speed_slider').value = this.selectedEnemy.Speed;
+            document.getElementById('enemy_speed_slider').value = this.selectedEnemy.speed;
             document.getElementById('enemy_Speed_value').innerText = this.selectedEnemy.speed;
+            document.getElementById('enemy_x_slider').value = this.selectedEnemy.x;
+            document.getElementById('enemy_x_value').innerText = this.selectedEnemy.x;
+            document.getElementById('enemy_y_slider').value = this.selectedEnemy.y;
+            document.getElementById('enemy_y_value').innerText = this.selectedEnemy.y;
+            document.getElementById('enemy_top_slider').value = this.selectedEnemy.top;
+            document.getElementById('enemy_top_value').innerText = this.selectedEnemy.top;
+            document.getElementById('enemy_left_slider').value = this.selectedEnemy.left;
+            document.getElementById('enemy_left_value').innerText = this.selectedEnemy.left;
         }
     },
     populateEnemySelect: function() {
         const enemySelect = document.getElementById('enemy_select');
         const selectedEnemyId = enemySelect.value; // Store the currently selected enemy ID
-        enemySelect.innerHTML = '<option value="">Select an enemy</option>';
+        enemySelect.innerHTML = '<option value="">Select a sprite</option>';
         for (const id in game.sprites) {
             const sprite = game.sprites[id];
-            if (sprite.isEnemy) {
-                const option = document.createElement('option');
-                option.value = id;
-                option.innerText = id;
-                enemySelect.appendChild(option);
-            }
+            const option = document.createElement('option');
+            option.value = id;
+            option.innerText = this.truncate(id, 30); // Truncate the text to 20 characters
+            enemySelect.appendChild(option);
         }
         enemySelect.value = selectedEnemyId; // Set the selected value again
     },
@@ -394,6 +438,11 @@
 
                 game.ctx.restore();
             }
+        }
+    },
+    changeCameraToSelectedSprite: function() {
+        if (this.selectedEnemy) {
+            game.setActiveSprite(this.selectedEnemy.id);
         }
     }
 };
