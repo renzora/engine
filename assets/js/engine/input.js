@@ -15,7 +15,6 @@ var input = {
     isAltPressed: false,
     isDragging: false,
     directions: { up: false, down: false, left: false, right: false },
-    l2Pressed: false, // Track L2 button state
 
     init: function() {
         document.addEventListener("keydown", (e) => this.keyDown(e));
@@ -28,19 +27,22 @@ var input = {
         document.addEventListener('dblclick', (e) => this.doubleClick(e));
         document.addEventListener('contextmenu', (e) => this.rightClick(e));
         window.addEventListener('resize', (e) => game.resizeCanvas(e));
-        window.addEventListener('gamepadA', (e) => this.gamepadAButton(e));
-        window.addEventListener('gamepadB', (e) => this.gamepadBButton(e));
-        window.addEventListener('gamepadX', (e) => this.gamepadXButton(e));
-        window.addEventListener('gamepadY', (e) => this.gamepadXButton(e));
-        window.addEventListener('gamepadStartPressed', gamepad.throttle((e) => this.gamepadStart(e), 1000));
+        window.addEventListener('gamepada', (e) => this.gamepadAButton(e));
+        window.addEventListener('gamepadb', (e) => this.gamepadBButton(e));
+        window.addEventListener('gamepadx', (e) => this.gamepadXButton(e));
+        window.addEventListener('gamepady', (e) => this.gamepadXButton(e));
+        window.addEventListener('gamepadl1Pressed', (e) => this.gamepadLeftBumper(e.detail));
+        window.addEventListener('gamepadstartPressed', gamepad.throttle((e) => this.gamepadStart(e), 1000));
         window.addEventListener('gamepadAxes', (e) => this.handleAxes(e.detail));
-        window.addEventListener('gamepadLeftTriggerPressed', (e) => this.gamepadLeftTrigger(true));
-        window.addEventListener('gamepadLeftTriggerReleased', (e) => this.gamepadLeftTrigger(false));
+        window.addEventListener('gamepadl2Pressed', (e) => this.gamepadLeftTrigger());
+        window.addEventListener('gamepadr2Pressed', (e) => this.gamepadRightTrigger());
+        window.addEventListener('gamepadr2Released', (e) => this.changeSpeed());
+        window.addEventListener('gamepadl2Released', (e) => this.gamepadLeftTrigger());
     },
 
-    gamepadLeftTrigger: function(isPressed) {
-        this.l2Pressed = isPressed;
-        if (isPressed) {
+    gamepadLeftTrigger: function() {
+
+        if (gamepad.buttons.includes('l2')) {
             if (game.mainSprite) {
                 game.mainSprite.targetAim = true;
             }
@@ -50,6 +52,47 @@ var input = {
             }
         }
     },
+
+    gamepadRightTrigger: function() {
+        gamepad.vibrate(500, 1.0, 1.0);
+        game.mainSprite.speed = 120;
+    },
+    changeSpeed: function() {
+        game.mainSprite.speed = 70;
+    },
+
+    gamepadLeftBumper: function(e) {
+        
+        if (gamepad.buttons.includes('l1')) {
+            console.log("l1 pressed from input.js");
+            const player = game.mainSprite;
+            const nearestTarget = this.findNearestTarget(player.targetX, player.targetY, player.maxRange);
+    
+            if (nearestTarget) {
+                const targetCenterX = nearestTarget.x + (nearestTarget.width ? nearestTarget.width / 2 : 0);
+                const targetCenterY = nearestTarget.y + (nearestTarget.height ? nearestTarget.height / 2 : 0);
+                if (this.isWithinMaxRange(nearestTarget, player)) {
+                    player.targetX = targetCenterX;
+                    player.targetY = targetCenterY;
+                    player.targetAim = true;
+                } else {
+                    // If the nearest target is not within max range, set the aim tool position in the same direction
+                    const playerCenterX = player.x + player.width / 2;
+                    const playerCenterY = player.y + player.height / 2;
+                    const deltaX = targetCenterX - playerCenterX;
+                    const deltaY = targetCenterY - playerCenterY;
+                    const angle = Math.atan2(deltaY, deltaX);
+                    player.targetX = playerCenterX + Math.cos(angle) * player.maxRange;
+                    player.targetY = playerCenterY + Math.sin(angle) * player.maxRange;
+                    player.targetAim = true;
+                }
+            } else {
+                player.targetAim = false;
+            }
+        } else {
+            game.mainSprite.targetAim = false;
+        }
+    },       
 
     handleAxes: function(axes) {
         this.handleLeftAxes(axes);
@@ -144,17 +187,16 @@ var input = {
                 }
             }
 
-            // Adjust zoom level based on right stick Y-axis movement with high threshold and increased throttling
-            if (!this.l2Pressed) {
+            if (!gamepad.buttons.includes('l2')) {
                 const now = Date.now();
                 if (axes[3] > threshold && (!gamepad.throttledEvents['zoomIn'] || now - gamepad.throttledEvents['zoomIn'] >= 200)) {
                     camera.lerpEnabled = false; // Disable lerp
-                    game.zoomLevel = Math.max(2, game.zoomLevel - 1);
+                    game.setZoomLevel(Math.max(2, game.zoomLevel - 1)); // Update zoom level and store in local storage
                     gamepad.throttledEvents['zoomIn'] = now;
                     setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
                 } else if (axes[3] < -threshold && (!gamepad.throttledEvents['zoomOut'] || now - gamepad.throttledEvents['zoomOut'] >= 200)) {
                     camera.lerpEnabled = false; // Disable lerp
-                    game.zoomLevel = Math.min(10, game.zoomLevel + 1);
+                    game.setZoomLevel(Math.min(10, game.zoomLevel + 1)); // Update zoom level and store in local storage
                     gamepad.throttledEvents['zoomOut'] = now;
                     setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
                 }
@@ -165,8 +207,84 @@ var input = {
             gamepad.axesPressures.rightStickX = 0;
             gamepad.axesPressures.rightStickY = 0;
         }
+    },
 
-        gamepad.emitButtonEvent('RightStickMoved', { deltaX: rightStickX, deltaY: rightStickY });
+    isWithinMaxRange: function(target, player) {
+        const targetCenterX = target.x + (target.width ? target.width / 2 : 0);
+        const targetCenterY = target.y + (target.height ? target.height / 2 : 0);
+        const playerCenterX = player.x + player.width / 2;
+        const playerCenterY = player.y + player.height / 2;
+        const deltaX = targetCenterX - playerCenterX;
+        const deltaY = targetCenterY - playerCenterY;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        return distance <= player.maxRange;
+    },
+
+    updateAimToolPosition: function() {
+        const sprite = game.mainSprite;
+        const aheadDistance = 30; // Distance ahead of the sprite to set the aim tool
+        const directionOffsets = {
+            'N': { x: 0, y: -aheadDistance },
+            'S': { x: 0, y: aheadDistance },
+            'E': { x: aheadDistance, y: 0 },
+            'W': { x: -aheadDistance, y: 0 },
+            'NE': { x: aheadDistance / Math.sqrt(2), y: -aheadDistance / Math.sqrt(2) },
+            'NW': { x: -aheadDistance / Math.sqrt(2), y: -aheadDistance / Math.sqrt(2) },
+            'SE': { x: aheadDistance / Math.sqrt(2), y: aheadDistance / Math.sqrt(2) },
+            'SW': { x: -aheadDistance / Math.sqrt(2), y: aheadDistance / Math.sqrt(2) }
+        };
+
+        const offset = directionOffsets[sprite.direction] || { x: 0, y: 0 };
+
+        sprite.targetX = sprite.x + sprite.width / 2 + offset.x;
+        sprite.targetY = sprite.y + sprite.height / 2 + offset.y;
+
+        // Clamp the target position within the canvas bounds
+        sprite.targetX = Math.max(0, Math.min(sprite.targetX, game.worldWidth));
+        sprite.targetY = Math.max(0, Math.min(sprite.targetY, game.worldHeight));
+    },
+
+    findNearestTarget: function(centerX, centerY, maxRadius) {
+        let nearestTarget = null;
+        let nearestDistance = Infinity;
+
+        // Check sprites (enemies)
+        for (let id in game.sprites) {
+            const sprite = game.sprites[id];
+            if (sprite.isEnemy) {
+                const spriteCenterX = sprite.x + sprite.width / 2;
+                const spriteCenterY = sprite.y + sprite.height / 2;
+                const distance = Math.sqrt(
+                    (centerX - spriteCenterX) ** 2 +
+                    (centerY - spriteCenterY) ** 2
+                );
+                if (distance < nearestDistance && distance <= maxRadius) {
+                    nearestDistance = distance;
+                    nearestTarget = sprite;
+                }
+            }
+        }
+
+        // Check objects
+        if (game.roomData && game.roomData.items) {
+            game.roomData.items.forEach(item => {
+                const itemData = assets.load('objectData')[item.id];
+                if (itemData) {
+                    const itemCenterX = item.x[0] * 16 + 8; // Center X coordinate
+                    const itemCenterY = item.y[0] * 16 + 8; // Center Y coordinate
+                    const distance = Math.sqrt(
+                        (centerX - itemCenterX) ** 2 +
+                        (centerY - itemCenterY) ** 2
+                    );
+                    if (distance < nearestDistance && distance <= maxRadius) {
+                        nearestDistance = distance;
+                        nearestTarget = { ...item, x: itemCenterX, y: itemCenterY }; // Include center coordinates
+                    }
+                }
+            });
+        }
+
+        return nearestTarget;
     },
 
     keyUp: function(e) {
@@ -316,8 +434,8 @@ var input = {
                 const cursorY = (e.clientY - rect.top) / game.zoomLevel;
 
                 const prevZoomLevel = game.zoomLevel;
-                game.zoomLevel += (e.deltaY > 0) ? -zoomStep : zoomStep;
-                game.zoomLevel = Math.max(3, Math.min(10, game.zoomLevel));
+                const newZoomLevel = game.zoomLevel + (e.deltaY > 0 ? -zoomStep : zoomStep);
+                game.setZoomLevel(Math.max(3, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
 
                 const zoomFactor = game.zoomLevel / prevZoomLevel;
 

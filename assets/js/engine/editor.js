@@ -49,7 +49,7 @@ var editor = {
     },
 
     setupGamepadEventListeners: function() {
-        window.addEventListener('gamepadXPressed', gamepad.throttle((event) => {
+        window.addEventListener('gamepadxPressed', gamepad.throttle((event) => {
             if (game.mainSprite.isCarrying) {
                 this.dropItem(game.mainSprite);
                 console.log("Dropped item");

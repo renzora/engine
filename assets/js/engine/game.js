@@ -14,7 +14,7 @@ var game = {
     deltaTime: 0,
     worldWidth: 1280,
     worldHeight: 1280,
-    zoomLevel: 6,
+    zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 6,
     targetX: 0,
     targetY: 0,
     roomData: undefined,
@@ -59,11 +59,11 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 0,
+        hours: 7,
         minutes: 0,
         seconds: 0,
         days: 0,
-        speedMultiplier: 1000, // Game time progresses 10 times faster than real time
+        speedMultiplier: 100, // Game time progresses 10 times faster than real time
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
@@ -112,6 +112,11 @@ var game = {
         // Any specific updates to game elements after reloading data can be added here
         console.log("Game elements updated");
         // Example: this.refreshSprites(); if you need to update sprites specifically
+    },
+
+    setZoomLevel: function(newZoomLevel) {
+        this.zoomLevel = newZoomLevel;
+        localStorage.setItem('zoomLevel', newZoomLevel); // Store zoom level in local storage
     },
 
     init: function() {
@@ -173,26 +178,33 @@ var game = {
                 hat: 4,
                 facial: 0,
                 glasses: 0,
-                targetAim: false
+                targetAim: false,
+                maxRange: 200
             };
             sprite.create(playerOptions);
 
             this.mainSprite = game.sprites[this.playerid];
 
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 5; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
-                    y: 0 + Math.floor(Math.random() * 30), // Starting y coordinate
+                    y: 0 + Math.floor(Math.random() * 60), // Starting y coordinate
                     boundaryX: 60, // Boundary x coordinate
-                    boundaryY: 30, // Boundary y coordinate
+                    boundaryY: 60, // Boundary y coordinate
                     isPlayer: false,
+                    isEnemy: Math.floor(Math.random() * 2),
                     eyes: 1,
                     hair: Math.floor(Math.random() * 29), // Assuming there are 5 different hairstyles
                     outfit: Math.floor(Math.random() * 3), // Assuming there are 5 different outfits
                     facial: Math.floor(Math.random() * 3), // Assuming there are 3 different facial hair options
                     hat: Math.floor(Math.random() * 6), // Assuming there are 2 different hat options
                     glasses: 0, // Assuming there are 2 different glasses options
+                    stopRadius: 1,
+                    attack: 100,
+                    defence: 0,
+                    intensity: 100,
+                    speed: 120
                 };
                 sprite.create(npc);
             }
@@ -1226,11 +1238,19 @@ if (tileData.fx && this.fxData[tileData.fx]) {
     if (typeof debug_utils_window !== 'undefined' && debug_utils_window.showWalkableTiles) {
         debug_utils_window.renderNearestWalkableTile();
     }
+
+    if (typeof debug_utils_window !== 'undefined') {
+        debug_utils_window.renderAttackRadius();
+    }
     
         let spriteCount = 0;
     
         for (let id in this.sprites) {
             const sprite = this.sprites[id];
+
+        if (sprite.isEnemy) {
+            sprite.drawEnemyAttackAimTool();
+        }
             const spriteRight = sprite.x + sprite.width;
             const spriteBottom = sprite.y + sprite.height;
     

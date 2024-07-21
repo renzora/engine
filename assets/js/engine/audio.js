@@ -16,15 +16,15 @@ var audio = {
             this.masterGain = this.audioContext.createGain();
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 1;
-
+    
             this.channels = {};
             this.sources = {};
-
-            this.createChannel('master', this.defaultVolume);
-            this.createChannel('music', this.defaultVolume);
-            this.setVolume('music', 0.05);
-            this.createChannel('sfx', this.defaultVolume);
-            this.createChannel('ambience', 0.5);
+    
+            this.createChannel('master', localStorage.getItem('master-volume') || this.defaultVolume);
+            this.createChannel('music', localStorage.getItem('music-volume') || this.defaultVolume);
+            this.setVolume('music', localStorage.getItem('music-volume') || 0.05);
+            this.createChannel('sfx', localStorage.getItem('sfx-volume') || this.defaultVolume);
+            this.createChannel('ambience', localStorage.getItem('ambience-volume') || 0.5);
             console.log("Audio context initialized. Master, music, sfx channels created.");
         }
     },

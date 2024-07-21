@@ -38,7 +38,7 @@ var ui_inventory_window = {
     ],
     currentItemIndex: 0,
     lastButtonPress: 0,
-    throttleDuration: 100, // in milliseconds
+    throttleDuration: 150, // in milliseconds
     isItemSelected: false,
 
     start: function() {
@@ -70,19 +70,23 @@ var ui_inventory_window = {
         });
     },
 
-    LeftBumper: function(e) {
-        this.handleGamepadInput(e, 'left');
+    l1Button: function(e) {
+        if(!gamepad.buttons.includes('l2')) {
+            this.handleGamepadInput(e, 'left');
+        }
     },
 
-    LeftTrigger: function(e) {
+    l2Button: function(e) {
         console.log("Left trigger called fron ui_inventory_window");
     },
 
-    RightBumper: function(e) {
-        this.handleGamepadInput(e, 'right');
+    r1Button: function(e) {
+        if(!gamepad.buttons.includes('l2')) {
+            this.handleGamepadInput(e, 'right');
+        }
     },
 
-    A: function(e) {
+    aButton: function(e) {
         if (this.isItemSelected) {
             return; // Do nothing if an item is already selected
         }

@@ -1,5 +1,6 @@
 var render = {
     updateGameLogic: function(deltaTime) {
+        gamepad.updateGamepadState();
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
             if (sprite.update) {

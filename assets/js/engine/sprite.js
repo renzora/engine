@@ -30,7 +30,7 @@ var sprite = {
             targetX: 0,
             targetY: 0,
             targetRadius: 10,
-            maxRange: 80,
+            maxRange: options.maxRange !== undefined ? options.maxRange : 30,
             handOffsetX: -5,
             handOffsetY: 5,
             currentItem: 'axe',
@@ -45,6 +45,7 @@ var sprite = {
             isCarrying: options.isCarrying !== undefined ? options.isCarrying : false,
             carriedItem: options.carriedItem !== undefined ? options.carriedItem : false,
             messages: options.messages || [],
+            stopRadius: options.stopRadius !== undefined ? options.stopRadius : 30,
             directionMap: {
                 'S': 0,
                 'E': 6,
@@ -78,7 +79,8 @@ var sprite = {
             attackTarget: this.attackTarget,
             chasePlayer: this.chasePlayer,
             handleAimAttack: this.handleAimAttack,
-            checkTileActions: this.checkTileActions
+            checkTileActions: this.checkTileActions,
+            drawEnemyAttackAimTool: this.drawEnemyAttackAimTool
         };
     
         // Convert tile coordinates to pixel coordinates
@@ -97,7 +99,7 @@ var sprite = {
                 const targetTileX = options.x + Math.floor(Math.random() * (newSprite.boundary.x - options.x + 1));
                 const targetTileY = options.y + Math.floor(Math.random() * (newSprite.boundary.y - options.y + 1));
                 newSprite.walkToClickedTile(targetTileX, targetTileY);
-            }, 30000); // Update position every 5 seconds
+            }, 5000); // Update position every 5 seconds
         }
     
         // Automatically add the new sprite to the game.sprites object
@@ -146,7 +148,7 @@ var sprite = {
             const tileY = Math.floor(targetY / 16);
             
             sprite.walkToClickedTile(tileX, tileY);
-        }, 15000); // Update position every 5 seconds
+        }, 5000); // Update position every 5 seconds
     },
 
     draw: function() {
@@ -415,59 +417,224 @@ var sprite = {
         return path;
     },    
 
-   moveAlongPath: function() {
-        if (!this.path || this.pathIndex >= this.path.length) {
-            this.isMovingToTarget = false;
-            this.moving = false;
-            this.stopping = true;
-            this.currentFrame = 0; // Reset to default standing position
-            this.path = []; // Clear the path once the destination is reached
-            audio.stopLoopingAudio('walkGrass','sfx', 0.5);
+    moveAlongPath: function() {
+        if (this.isEnemy) {
+            const player = game.sprites[game.playerid];
+            if (!player) return;
+    
+            const deltaX = player.x - this.x;
+            const deltaY = player.y - this.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+            // Calculate dynamic stop radius based on defense and attack
+            const dynamicStopRadius = Math.max(30, 100 - this.defense + this.attack);
+    
+            if (distance <= dynamicStopRadius) {
+                this.isMovingToTarget = false;
+                this.moving = false;
+                this.stopping = true;
+                this.currentFrame = 0; // Reset to default standing position
+            } else {
+                const angle = Math.atan2(deltaY, deltaX);
+                const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+                const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+                // Perform collision checks
+                const moveX = !collision.check(newX, this.y, this);
+                const moveY = !collision.check(this.x, newY, this);
+    
+                if (moveX) this.x = newX;
+                if (moveY) this.y = newY;
+    
+                // Determine direction
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    if (deltaX > 0) this.direction = 'E';
+                    else this.direction = 'W';
+                } else {
+                    if (deltaY > 0) this.direction = 'S';
+                    else this.direction = 'N';
+                }
+    
+                // Adjust direction for diagonal movement
+                if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
+                    if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
+                    else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
+                    else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
+                    else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
+                }
+    
+                this.moving = true; // Ensure moving flag is set when moving along the path
+                this.stopping = false;
+            }
+        } else {
+            if (!this.path || this.pathIndex >= this.path.length) {
+                this.isMovingToTarget = false;
+                this.moving = false;
+                this.stopping = true;
+                this.currentFrame = 0; // Reset to default standing position
+                this.path = []; // Clear the path once the destination is reached
+                audio.stopLoopingAudio('walkGrass','sfx', 0.5);
+                return;
+            }
+    
+            const nextStep = this.path[this.pathIndex];
+            const targetX = nextStep.x * 16;
+            const targetY = nextStep.y * 16;
+            const deltaX = targetX - this.x;
+            const deltaY = targetY - this.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+            if (distance < this.speed * (game.deltaTime / 1000)) {
+                this.x = targetX;
+                this.y = targetY;
+                this.pathIndex++;
+    
+                // Remove the step behind the sprite
+                if (this.pathIndex > 1) {
+                    this.path.shift();
+                    this.pathIndex--;
+                }
+            } else {
+                const angle = Math.atan2(deltaY, deltaX);
+                const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+                const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+                // Perform collision checks
+                const moveX = !collision.check(newX, this.y, this);
+                const moveY = !collision.check(this.x, newY, this);
+    
+                if (moveX) this.x = newX;
+                if (moveY) this.y = newY;
+    
+                // Determine direction
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    if (deltaX > 0) this.direction = 'E';
+                    else this.direction = 'W';
+                } else {
+                    if (deltaY > 0) this.direction = 'S';
+                    else this.direction = 'N';
+                }
+    
+                // Adjust direction for diagonal movement
+                if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
+                    if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
+                    else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
+                    else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
+                    else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
+                }
+    
+                this.moving = true; // Ensure moving flag is set when moving along the path
+                this.stopping = false;
+            }
+        }
+    },
+
+    drawEnemyAttackAimTool: function() {
+        const player = game.sprites[game.playerid];
+        if (!player) return;
+    
+        const deltaX = player.x - this.x;
+        const deltaY = player.y - this.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+        // Only show the aim tool if within attack range
+        if (distance > this.maxRange) return;
+    
+        // Calculate the adjusted target position
+        let adjustedTargetX = player.x;
+        let adjustedTargetY = player.y;
+    
+        // Check if within the enemy's max range
+        if (distance <= this.maxRange) {
+            adjustedTargetX = player.x;
+            adjustedTargetY = player.y;
+        } else {
+            const ratio = this.maxRange / distance;
+            adjustedTargetX = this.x + deltaX * ratio;
+            adjustedTargetY = this.y + deltaY * ratio;
+        }
+    
+        // Function to check for collision with non-walkable map objects
+        const isObstructed = (x, y) => {
+            if (game.roomData && game.roomData.items) {
+                for (const roomItem of game.roomData.items) {
+                    const itemData = assets.load('objectData')[roomItem.id];
+                    if (!itemData) continue;
+    
+                    const xCoordinates = roomItem.x || [];
+                    const yCoordinates = roomItem.y || [];
+    
+                    for (let i = 0; i < xCoordinates.length; i++) {
+                        const itemX = parseInt(xCoordinates[i], 10) * 16;
+                        const itemY = parseInt(yCoordinates[i], 10) * 16;
+                        const tileRect = {
+                            x: itemX,
+                            y: itemY,
+                            width: 16,
+                            height: 16
+                        };
+    
+                        // Check if the point is within the tile's bounds
+                        if (
+                            x >= tileRect.x &&
+                            x <= tileRect.x + tileRect.width &&
+                            y >= tileRect.y &&
+                            y <= tileRect.y + tileRect.height
+                        ) {
+                            const tileData = itemData[0]; // Assuming single tile data for simplicity
+                            // Check if the tile is walkable
+                            if (tileData.w !== 1) { // Assuming w=1 means walkable, otherwise it's not
+                                return { obstructed: true, collisionX: x, collisionY: y };
+                            }
+                        }
+                    }
+                }
+            }
+            return { obstructed: false };
+        };
+    
+        // Check for obstruction along the line of sight
+        let finalTargetX = adjustedTargetX;
+        let finalTargetY = adjustedTargetY;
+        const steps = Math.ceil(distance);
+        let obstructionDetected = false;
+    
+        for (let i = 1; i <= steps; i++) {
+            const stepX = this.x + (deltaX * i) / steps;
+            const stepY = this.y + (deltaY * i) / steps;
+            const result = isObstructed(stepX, stepY);
+            if (result.obstructed) {
+                finalTargetX = result.collisionX;
+                finalTargetY = result.collisionY;
+                obstructionDetected = true;
+                break;
+            }
+        }
+    
+        // Do not show the aim if the obstruction is very close
+        if (obstructionDetected && Math.sqrt((finalTargetX - this.x) ** 2 + (finalTargetY - this.y) ** 2) < 10) {
             return;
         }
     
-        const nextStep = this.path[this.pathIndex];
-        const targetX = nextStep.x * 16;
-        const targetY = nextStep.y * 16;
-        const deltaX = targetX - this.x;
-        const deltaY = targetY - this.y;
-        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        // Draw the aim tool
+        game.ctx.save();
     
-        if (distance < this.speed * (game.deltaTime / 1000)) {
-            this.x = targetX;
-            this.y = targetY;
-            this.pathIndex++;
-            
-            // Remove the step behind the sprite
-            if (this.pathIndex > 1) {
-                this.path.shift();
-                this.pathIndex--;
-            }
-        } else {
-            const angle = Math.atan2(deltaY, deltaX);
-            this.x += Math.cos(angle) * this.speed * (game.deltaTime / 1000);
-            this.y += Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+        // Draw the line to the target
+        game.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+        game.ctx.lineWidth = 1;
+        game.ctx.setLineDash([5, 5]); // Dotted line
+        game.ctx.beginPath();
+        game.ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
+        game.ctx.lineTo(finalTargetX + player.width / 2, finalTargetY + player.height / 2);
+        game.ctx.stroke();
+        game.ctx.setLineDash([]); // Reset line dash
     
-            // Determine direction
-            if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                if (deltaX > 0) this.direction = 'E';
-                else this.direction = 'W';
-            } else {
-                if (deltaY > 0) this.direction = 'S';
-                else this.direction = 'N';
-            }
+        // Draw target radius at the adjusted target position
+        game.ctx.beginPath();
+        game.ctx.arc(finalTargetX + player.width / 2, finalTargetY + player.height / 2, this.targetRadius, 0, 2 * Math.PI);
+        game.ctx.stroke();
     
-            // Adjust direction for diagonal movement
-            if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
-                if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
-                else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
-                else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
-                else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
-            }
-    
-            this.moving = true; // Ensure moving flag is set when moving along the path
-            this.stopping = false;
-        }
+        game.ctx.restore();
     },
 
     addDirection: function(direction) {

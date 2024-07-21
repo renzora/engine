@@ -1,10 +1,9 @@
 var gamepad = {
     gamepadIndex: null,
-    pressedButtons: [],
+    buttons: [],
     axes: [],
     isConnected: false,
     name: '',
-    buttonMap: {},
     buttonPressures: {},
     axesPressures: {},
     throttledEvents: {},
@@ -66,7 +65,6 @@ var gamepad = {
                 window.dispatchEvent(axesEvent);
             }
         }
-        requestAnimationFrame(() => this.updateGamepadState());
     },
 
     hasActiveInput: function(gamepad) {
@@ -96,22 +94,26 @@ var gamepad = {
     },
 
     handleButtons: function(buttons) {
+        const buttonNames = this.getButtonNames();
+
         buttons.forEach((button, index) => {
             const pressure = button.value; // Pressure value ranges from 0 to 1
             this.buttonPressures[index] = pressure;
 
+            const buttonName = buttonNames[index];
+
             if (button.pressed) {
-                if (!this.pressedButtons.includes(index)) {
-                    this.pressedButtons.push(index);
+                if (!this.buttons.includes(buttonName)) {
+                    this.buttons.push(buttonName);
                     this.emitButtonEvent(index, "down", pressure);
                 } else {
                     // Update the pressure continuously while the button is pressed
                     this.emitButtonEvent(index, "down", pressure);
                 }
             } else {
-                const buttonIndex = this.pressedButtons.indexOf(index);
+                const buttonIndex = this.buttons.indexOf(buttonName);
                 if (buttonIndex > -1) {
-                    this.pressedButtons.splice(buttonIndex, 1);
+                    this.buttons.splice(buttonIndex, 1);
                     this.emitButtonEvent(index, "up", pressure);
                 }
             }
@@ -119,30 +121,48 @@ var gamepad = {
     },
 
     emitButtonEvent: function(buttonIndex, state, pressure) {
-        const buttonNames = [
-            'A', 'B', 'X', 'Y',
-            'LeftBumper', 'RightBumper',
-            'LeftTrigger', 'RightTrigger',
-            'Select', 'Start',
-            'LeftStick', 'RightStick',
-            'DPadUp', 'DPadDown', 'DPadLeft', 'DPadRight'
-        ];
-
+        const buttonNames = this.getButtonNames();
+    
         if (typeof buttonIndex === 'number' && buttonNames[buttonIndex] !== undefined) {
             const buttonName = buttonNames[buttonIndex];
             const globalEventName = `gamepad${buttonName}${state === 'down' ? 'Pressed' : 'Released'}`;
-
-            const eventDetail = { state, pressure };
-
+    
+            const eventDetail = { state, pressure, buttonName }; // Add buttonName to event detail
+    
             // Emit global event
             const globalEvent = new CustomEvent(globalEventName, { detail: eventDetail });
             window.dispatchEvent(globalEvent);
-
+    
             // Dynamically call the function on the active modal
             const activeModalId = modal.getActiveModal();
-            if (activeModalId && window[activeModalId] && typeof window[activeModalId][buttonName] === 'function') {
-                window[activeModalId][buttonName](pressure, state);
+            const dynamicButtonName = buttonName + 'Button';
+            if (activeModalId && window[activeModalId] && typeof window[activeModalId][dynamicButtonName] === 'function') {
+                window[activeModalId][dynamicButtonName](pressure, state);
             }
+        }
+    },
+
+    getButtonNames: function() {
+        return [
+            'a', 'b', 'x', 'y',
+            'l1', 'r1',
+            'l2', 'r2',
+            'select', 'start',
+            'leftStick', 'rightStick',
+            'up', 'down', 'left', 'right'
+        ];
+    },
+
+    vibrate: function(duration, strongMagnitude = 1.0, weakMagnitude = 1.0) {
+        if (this.isConnected && this.gamepad && this.gamepad.vibrationActuator) {
+            this.gamepad.vibrationActuator.playEffect("dual-rumble", {
+                duration: duration,
+                startDelay: 0,
+                strongMagnitude: strongMagnitude,
+                weakMagnitude: weakMagnitude
+            }).catch(err => console.log('Vibration error: ', err));
+        } else {
+            console.log("Vibration not supported on this gamepad.");
         }
     }
 };
