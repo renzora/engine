@@ -124,15 +124,15 @@ var game = {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
 
         assets.preload([
-            { name: 'head', path: 'img/sprites/head.png' },
-            { name: 'eyes', path: 'img/sprites/eyes.png' },
-            { name: 'body', path: 'img/sprites/body.png' },
-            { name: 'hair', path: 'img/sprites/hair.png' },
-            { name: 'hats', path: 'img/sprites/hats.png' },
-            { name: 'glasses', path: 'img/sprites/glasses.png' },
-            { name: 'facial', path: 'img/sprites/facial.png' },
-            { name: 'outfit', path: 'img/sprites/outfit.png' },
-            { name: '1', path: 'img/tiles/1.png' },
+            { name: 'head', path: 'img/sprites/character/head.png' },
+            { name: 'eyes', path: 'img/sprites/character/eyes.png' },
+            { name: 'body', path: 'img/sprites/character/body.png' },
+            { name: 'hair', path: 'img/sprites/character/hair.png' },
+            { name: 'hats', path: 'img/sprites/character/hats.png' },
+            { name: 'glasses', path: 'img/sprites/character/glasses.png' },
+            { name: 'facial', path: 'img/sprites/character/facial.png' },
+            { name: 'outfit', path: 'img/sprites/character/outfit.png' },
+            { name: 'gen1', path: 'img/tiles/gen1.png' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'objectScript', path: 'json/objectScript.json' },
@@ -170,7 +170,7 @@ var game = {
                 x: 10,
                 y: 15,
                 isPlayer: true,
-                speed: 70,
+                speed: 50,
                 head: 1,
                 eyes: 1,
                 body: 1,
@@ -187,7 +187,7 @@ var game = {
             this.mainSprite = game.sprites[this.playerid];
             this.setActiveSprite(this.playerid);
 
-            for (let i = 0; i < 20; i++) {
+            for (let i = 0; i < 25; i++) {
                 const npc = {
                     id: `npc${i}`,
                     x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
@@ -206,7 +206,7 @@ var game = {
                     attack: 100,
                     defence: 0,
                     intensity: 100,
-                    speed: 120
+                    speed: 40
                 };
                 sprite.create(npc);
             }

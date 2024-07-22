@@ -106,34 +106,34 @@ var input = {
 
     handleLeftAxes: function(axes) {
         const threshold = 0.2; // Dead zone threshold
-
+    
         // Calculate axis pressures
         const leftStickX = Math.abs(axes[0]);
         const leftStickY = Math.abs(axes[1]);
-
+    
         // Reset gamepad directions
         gamepad.directions = { left: false, right: false, up: false, down: false };
-
+    
         if (leftStickX > threshold || leftStickY > threshold) {
             gamepad.axesPressures.leftStickX = leftStickX;
             gamepad.axesPressures.leftStickY = leftStickY;
-
+    
             // Left stick movement (axes[0] = left/right, axes[1] = up/down)
             gamepad.directions.right = axes[0] > threshold;
             gamepad.directions.left = axes[0] < -threshold;
             gamepad.directions.down = axes[1] > threshold;
             gamepad.directions.up = axes[1] < -threshold;
-
+    
             // Update the sprite's directions based on combined states
-            this.updateSpriteDirections();
+            this.updateSpriteDirections(axes);
         } else {
             // Reset the directions for left stick if below threshold
             gamepad.axesPressures.leftStickX = 0;
             gamepad.axesPressures.leftStickY = 0;
         }
-
+    
         // Update the sprite's directions based on combined states
-        this.updateSpriteDirections();
+        this.updateSpriteDirections(axes);
     },
 
     handleRightAxes: function(axes) {

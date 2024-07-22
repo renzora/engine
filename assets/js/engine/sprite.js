@@ -97,6 +97,13 @@ var sprite = {
                 newSprite.walkToClickedTile(targetTileX, targetTileY);
             }, 5000); // Update position every 5 seconds
         }
+
+        if (options.isPlayer) {
+            const lightColor = { r: 255, g: 255, b: 255 }; // White light
+            const lightRadius = 65; // Adjust the radius as needed
+            const lightIntensity = 0.15; // Adjust the intensity as needed
+            lighting.addLight(newSprite.id + '_light', newSprite.x + 8, newSprite.y + 8, lightRadius, lightColor, lightIntensity, 'playerLight', true, 0, 0);
+        }
     
         // Automatically add the new sprite to the game.sprites object
         game.sprites[options.id] = newSprite;
@@ -313,57 +320,30 @@ var sprite = {
         game.ctx.save();
         game.ctx.translate(this.x, this.y + (this.height * this.scale / 2) - 14);
     
-        let shadowX, shadowY;
-        const shadowWidth = this.width * this.scale * 0.6;
-        const shadowHeight = this.height * this.scale * 0.2;
+        // Calculate shadow size and opacity based on the current frame
+        const shadowBaseWidth = this.width * this.scale * 0.55; // Reduced from 0.6
+        const shadowBaseHeight = this.height * this.scale * 0.18; // Reduced from 0.2
+        const shadowScaleFactor = 0.1; // Adjust this factor to control the shadow scaling intensity
+        const shadowOpacityFactor = 0.03; // Adjust this factor to control the shadow opacity intensity
     
-        switch (this.direction) {
-            case 'N':
-                shadowX = (this.width / 2) * this.scale; // Center shadow
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'S':
-                shadowX = (this.width / 2) * this.scale; // Center shadow
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'E':
-                shadowX = (this.width / 2) * this.scale; // Move shadow to the right
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'W':
-                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'NE':
-                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'NW':
-                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'SE':
-                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            case 'SW':
-                shadowX = (this.width / 2) * this.scale; // Move shadow to the left
-                shadowY = (this.height - 1) * this.scale; // Move shadow down
-                break;
-            default:
-                shadowX = (this.width / 2) * this.scale; // Default to center
-                shadowY = (this.height) * this.scale; // Move shadow down
-                break;
-        }
+        // Calculate the scaling and opacity based on the current frame (simplified walking animation cycle)
+        const frameFactor = Math.sin((this.currentFrame % 6) * (Math.PI / 3)); // Sine wave for smooth transition
+        const shadowWidth = shadowBaseWidth + (shadowScaleFactor * frameFactor * shadowBaseWidth);
+        const shadowHeight = shadowBaseHeight + (shadowScaleFactor * frameFactor * shadowBaseHeight);
+        const shadowOpacity = 0.05 + (shadowOpacityFactor * frameFactor); // Base opacity plus dynamic component
+    
+        let shadowX = (this.width / 2) * this.scale; // Default center
+        let shadowY = (this.height - 1) * this.scale + 2; // Default bottom
     
         game.ctx.shadowBlur = 15;
-        game.ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+        game.ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`; // Dynamic shadow opacity
         game.ctx.beginPath();
         game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
         game.ctx.fill();
     
         game.ctx.restore();
-    },
+    },    
+    
 
  walkToClickedTile: function(tileX, tileY) {
     if (editor.isPlacingItem) {
@@ -849,7 +829,16 @@ var sprite = {
     
         this.animate();
         this.animateEyes();
-    },
+    
+        // Update light source position
+        if (this.id === game.playerid) {
+            const playerLight = lighting.lights.find(light => light.id === this.id + '_light');
+            if (playerLight) {
+                playerLight.x = this.x + 8; // Center light on sprite
+                playerLight.y = this.y + 8; // Center light on sprite
+            }
+        }
+    },    
 
     dealDamage: function() {
         const aimX = this.targetX;
