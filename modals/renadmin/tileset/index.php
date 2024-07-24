@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='tileset_window' class='window window_bg' style='width: 900px; height: 500px; background: #bba229;'>
+  <div data-window='tileset_window' class='window window_bg' style='width: 1200px;height: 700px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -12,7 +12,7 @@ if ($auth) {
     </div>
     <div class='clearfix'></div>
     <div class='relative'>
-      <div class='container text-light window_body p-2' style='height: 460px; overflow-y: hidden;'>
+      <div class='container text-light window_body p-2' style='height: 660px; overflow-y: hidden;'>
 
         <div id="tileset_window_tabs" style="height: 100%;">
           <div id="tabs" class="flex border-b border-gray-300">
@@ -80,56 +80,183 @@ if ($auth) {
       }
     </style>
 
-    <script>
-      var tileset_window = {
-        start: function() {
-          ui.initTabs('tileset_window_tabs', 'tab1');
+<script>
+  var tileset_window = {
+    start: function() {
+      ui.initTabs('tileset_window_tabs', 'tab1');
 
-          // Drag and drop functionality
-          var dropZone = document.getElementById('drop_zone');
-          var dropPrompt = document.getElementById('drop_prompt');
-          var uploadCanvas = document.getElementById('uploaded_canvas');
-          var ctx = uploadCanvas.getContext('2d');
+      // Drag and drop functionality
+      var dropZone = document.getElementById('drop_zone');
+      var dropPrompt = document.getElementById('drop_prompt');
+      var uploadCanvas = document.getElementById('uploaded_canvas');
+      var ctx = uploadCanvas.getContext('2d');
 
-          dropZone.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            dropZone.style.borderColor = '#000';
-          });
+      var shiftPressed = false;
+      var isDragging = false;
+      var startX, startY, scrollLeft, scrollTop;
 
-          dropZone.addEventListener('dragleave', function(e) {
-            e.preventDefault();
-            dropZone.style.borderColor = '#ccc';
-          });
+      var ctrlPressed = false;
+      var middleMousePressed = false;
+      var scale = 1;
 
-          dropZone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            dropZone.style.borderColor = '#ccc';
-            var files = e.dataTransfer.files;
-            if (files.length > 0) {
-              var reader = new FileReader();
-              reader.onload = function(event) {
-                var img = new Image();
-                img.onload = function() {
-                  // Set canvas size to image size
-                  uploadCanvas.width = img.width;
-                  uploadCanvas.height = img.height;
-                  ctx.drawImage(img, 0, 0, img.width, img.height);
-                  uploadCanvas.style.display = 'block';
-                  dropPrompt.style.display = 'none';
-                  dropZone.classList.add('dropped');
-                }
-                img.src = event.target.result;
-              };
-              reader.readAsDataURL(files[0]);
-            }
-          });
-        },
-        unmount: function() {
-          ui.destroyTabs('tileset_window_tabs');
+      document.addEventListener('keydown', function(e) {
+        if (e.key === 'Shift') {
+          shiftPressed = true;
         }
+        if (e.key === 'Control') {
+          ctrlPressed = true;
+        }
+      });
+
+      document.addEventListener('keyup', function(e) {
+        if (e.key === 'Shift') {
+          shiftPressed = false;
+        }
+        if (e.key === 'Control') {
+          ctrlPressed = false;
+        }
+      });
+
+      dropZone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#000';
+      });
+
+      dropZone.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ccc';
+      });
+
+      dropZone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropZone.style.borderColor = '#ccc';
+        var files = e.dataTransfer.files;
+        if (files.length > 0) {
+          var reader = new FileReader();
+          reader.onload = function(event) {
+            var img = new Image();
+            img.onload = function() {
+              // Set canvas size to image size
+              uploadCanvas.width = img.width;
+              uploadCanvas.height = img.height;
+              ctx.drawImage(img, 0, 0, img.width, img.height);
+              uploadCanvas.style.display = 'block';
+              dropPrompt.style.display = 'none';
+              dropZone.classList.add('dropped');
+              
+              // Draw the 16x16 grid
+              drawGrid(ctx, img.width, img.height);
+            }
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(files[0]);
+        }
+      });
+
+      function drawGrid(ctx, width, height) {
+        ctx.strokeStyle = '#000000'; // Grid line color
+        ctx.lineWidth = 0.5; // Grid line width
+
+        for (var x = 0; x <= width; x += 16) {
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, height);
+        }
+
+        for (var y = 0; y <= height; y += 16) {
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+        }
+
+        ctx.stroke();
       }
-      tileset_window.start();
-    </script>
+
+      uploadCanvas.addEventListener('mousedown', function(e) {
+        if (e.button === 1) { // middle mouse button
+          middleMousePressed = true;
+          startX = e.pageX - uploadCanvas.offsetLeft;
+          startY = e.pageY - uploadCanvas.offsetTop;
+          scrollLeft = dropZone.scrollLeft;
+          scrollTop = dropZone.scrollTop;
+          e.preventDefault(); // prevent default middle mouse scroll
+        } else if (e.button === 0 && shiftPressed) { // left mouse button with shift
+          isDragging = true;
+          startX = e.pageX - uploadCanvas.offsetLeft;
+          startY = e.pageY - uploadCanvas.offsetTop;
+          scrollLeft = dropZone.scrollLeft;
+          scrollTop = dropZone.scrollTop;
+        }
+      });
+
+      uploadCanvas.addEventListener('mouseleave', function() {
+        isDragging = false;
+        middleMousePressed = false;
+      });
+
+      uploadCanvas.addEventListener('mouseup', function(e) {
+        if (e.button === 1) {
+          middleMousePressed = false;
+        } else if (e.button === 0 && shiftPressed) {
+          isDragging = false;
+        }
+      });
+
+      uploadCanvas.addEventListener('mousemove', function(e) {
+        if (middleMousePressed) {
+          e.preventDefault();
+          var x = e.pageX - uploadCanvas.offsetLeft;
+          var y = e.pageY - uploadCanvas.offsetTop;
+          var walkX = (x - startX);
+          var walkY = (y - startY);
+          dropZone.scrollLeft = scrollLeft - walkX;
+          dropZone.scrollTop = scrollTop - walkY;
+        } else if (isDragging) {
+          e.preventDefault();
+          var x = e.pageX - uploadCanvas.offsetLeft;
+          var y = e.pageY - uploadCanvas.offsetTop;
+          var walkX = (x - startX);
+          var walkY = (y - startY);
+          dropZone.scrollLeft = scrollLeft - walkX;
+          dropZone.scrollTop = scrollTop - walkY;
+        }
+      });
+
+      dropZone.addEventListener('wheel', function(e) {
+        if (ctrlPressed) {
+          e.preventDefault();
+          var rect = uploadCanvas.getBoundingClientRect();
+          var offsetX = e.clientX - rect.left; // cursor X position on canvas
+          var offsetY = e.clientY - rect.top; // cursor Y position on canvas
+
+          var delta = e.deltaY > 0 ? -0.2 : 0.2; // Increased zoom rate
+          var previousScale = scale;
+          scale += delta;
+          if (scale < 0.5) scale = 0.5; // minimum scale set to 0.5
+          if (scale > 2) scale = 2; // maximum scale set to 2
+          uploadCanvas.style.transform = `scale(${scale})`;
+          uploadCanvas.style.transformOrigin = 'top left';
+
+          // Calculate the new scroll positions
+          var newScrollLeft = (offsetX * scale / previousScale) - offsetX;
+          var newScrollTop = (offsetY * scale / previousScale) - offsetY;
+
+          dropZone.scrollLeft += newScrollLeft;
+          dropZone.scrollTop += newScrollTop;
+
+          updateScrollbarHeight();
+        }
+      });
+
+      function updateScrollbarHeight() {
+        dropZone.style.height = `${uploadCanvas.height * scale}px`;
+      }
+    },
+    unmount: function() {
+      ui.destroyTabs('tileset_window_tabs');
+    }
+  }
+  tileset_window.start();
+</script>
+
 
     <div class='resize-handle'></div>
   </div>
