@@ -16,12 +16,6 @@ html, body {
   image-rendering: pixelated;
 }
 
-canvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
 .window {
   width: 400px;
   border-radius: 10px;
@@ -119,6 +113,54 @@ canvas {
   height: 32px;
   background: url('../img/icons/icons.png');
   image-rendering: pixelated;
+}
+
+.ui_icon {
+  width: 32px;
+  height: 32px;
+  background: url('../img/icons/ui_icons.png') no-repeat;
+  display: inline-block;
+}
+
+/* Specific icons */
+.ui_pencil {
+  background-position: 0 0;
+}
+
+.ui_scissors {
+  background-position: -32px 0;
+}
+
+.ui_magnify {
+  background-position: -64px 0;
+}
+
+.ui_brush {
+  background-position: -96px 0;
+}
+
+.ui_save {
+  background-position: -128px 0;
+}
+
+.ui_delete {
+  background-position: -160px 0;
+}
+
+.ui_undo {
+  background-position: -192px 0;
+}
+
+.ui_redo {
+  background-position: -224px 0;
+}
+
+.ui_select {
+  background-position: -256px 0;
+}
+
+.ui_eye {
+  background-position: -288px 0;
 }
 
 .globe {

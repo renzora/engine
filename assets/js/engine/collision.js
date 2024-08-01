@@ -1,8 +1,9 @@
 var collision = {
     check: function(x, y, sprite) {
         let collisionDetected = false;
+        let boundary = null;
         const extraHeadroom = 2;
-    
+
         // Define the collision box for the sprite
         const spriteCollisionBox = {
             x: x,
@@ -10,23 +11,23 @@ var collision = {
             width: sprite.width * sprite.scale,
             height: sprite.height * sprite.scale - 2 * extraHeadroom
         };
-    
+
         const objectCollisionBox = {
             x: x,
             y: y + sprite.height * sprite.scale / 2,
             width: sprite.width * sprite.scale,
             height: sprite.height * sprite.scale / 2
         };
-    
+
         if (game.roomData && game.roomData.items) {
             collisionDetected = game.roomData.items.some(roomItem => {
                 
                 const itemData = game.objectData[roomItem.id];
                 if (!itemData) return false;
-    
+
                 const xCoordinates = roomItem.x || [];
                 const yCoordinates = roomItem.y || [];
-    
+
                 return yCoordinates.some((tileY, rowIndex) => {
                     return xCoordinates.some((tileX, colIndex) => {
                         const index = rowIndex * xCoordinates.length + colIndex;
@@ -39,7 +40,7 @@ var collision = {
                             width: 16,
                             height: 16
                         };
-    
+
                         let collisionArray;
                         if (Array.isArray(tileData.w) && tileData.w.length > 0) {
                             collisionArray = tileData.w[index % tileData.w.length];
@@ -50,26 +51,29 @@ var collision = {
                                 collisionArray = [0, 0, 0, 0]; // Fully non-walkable
                             }
                         }
-    
+
                         if (collisionArray) {
                             const [nOffset, eOffset, sOffset, wOffset] = collisionArray;
-                            return (
+                            const collision = (
                                 objectCollisionBox.x < tileRect.x + tileRect.width - eOffset &&
                                 objectCollisionBox.x + objectCollisionBox.width > tileRect.x + wOffset &&
                                 objectCollisionBox.y < tileRect.y + tileRect.height - sOffset &&
                                 objectCollisionBox.y + objectCollisionBox.height > tileRect.y + nOffset
                             );
 
-                            audio.playAudio("bump1", assets.load('bump1'), 'sfx');
+                            if (collision) {
+                                boundary = tileRect;
+                                return true;
+                            }
                         }
-    
+
                         return false;
                     });
                 });
 
             });
         }
-    
+
         if (!collisionDetected) {
             for (let id in game.sprites) {
                 if (game.sprites[id] !== sprite) {
@@ -80,16 +84,19 @@ var collision = {
                         width: otherSprite.width * otherSprite.scale,
                         height: otherSprite.height * otherSprite.scale - 2 * extraHeadroom
                     };
-    
-                    if (
+
+                    const collision = (
                         spriteCollisionBox.x < otherCollisionBox.x + otherCollisionBox.width &&
                         spriteCollisionBox.x + spriteCollisionBox.width > otherCollisionBox.x &&
                         spriteCollisionBox.y < otherCollisionBox.y + otherCollisionBox.height &&
                         spriteCollisionBox.y + spriteCollisionBox.height > otherCollisionBox.y
-                    ) {
+                    );
+
+                    if (collision) {
                         otherSprite.overlapping = true;
                         sprite.overlapping = true;
-                        collisionDetected = true;
+                        boundary = otherCollisionBox;
+                        return true;
                     } else {
                         otherSprite.overlapping = false;
                         sprite.overlapping = false;
@@ -97,7 +104,7 @@ var collision = {
                 }
             }
         }
-    
-        return collisionDetected;
+
+        return { collisionDetected, boundary };
     }
 };

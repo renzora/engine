@@ -10,10 +10,17 @@ var editor = {
     mouseMoveHandler: null,
     mouseUpHandler: null,
     isPlacingItem: false,
+    brushRadius: 10,
+    maxBrushRadius: 100,
+    currentMode: null,
+    mouseX: 0, // Property to store current mouse X position
+    mouseY: 0, // Property to store current mouse Y position
 
     init: function() {
         this.setupClickToActivate();
         this.setupGamepadEventListeners();
+        this.setupBrushMode();
+        this.changeMode('select');
     },
 
     setupClickToActivate: function() {
@@ -33,6 +40,10 @@ var editor = {
 
         game.isEditorActive = false; // Set the flag to indicate the editor is active
         console.log('Editor setupClickToActivate triggered');
+    },
+
+    setupBrushMode: function() {
+        window.addEventListener('wheel', this.handleMouseWheel.bind(this));
     },
 
     teardownClickToActivate: function() {
@@ -242,35 +253,46 @@ var editor = {
         modal.hideAll(); // Hide all modals when an item is selected
     },
 
+    handleMouseWheel: function(event) {
+        if (this.currentMode === 'brush') {
+            const delta = Math.sign(event.deltaY);
+            // Increase the radius by 5 units instead of 2, with a max limit
+            this.brushRadius = Math.max(5, Math.min(this.maxBrushRadius, this.brushRadius - delta * 5));
+            console.log(`Brush radius changed to: ${this.brushRadius}`);
+        }
+    },
+
     handleMouseMove: function(event) {
-        if (this.selectedItem) {
+        if (this.currentMode === 'brush') {
+            // Store the current mouse position
+            this.mouseX = event.clientX;
+            this.mouseY = event.clientY;
+            game.render(); // Re-render to update brush position
+        } else if (this.selectedItem) {
             const uiMenu = document.querySelector('[data-window="ui_window"]');
             if (uiMenu && uiMenu.contains(event.target)) {
                 this.selectedItem.style.display = 'none';
             } else {
                 this.selectedItem.style.display = 'block';
                 this.moveSelectedItem(event);
-
                 const zoomLevel = game.zoomLevel;
                 const cameraX = camera.cameraX;
                 const cameraY = camera.cameraY;
-
                 const dropX = (event.clientX - this.offsetX + window.scrollX) / zoomLevel + cameraX;
                 const dropY = (event.clientY - this.offsetY + window.scrollY) / zoomLevel + cameraY;
-
                 const snappedX = Math.round(dropX / this.tileSize);
                 const snappedY = Math.round(dropY / this.tileSize);
-
-                const newItem = {
-                    id: this.selectedItem.dataset.category,
-                    x: [],
-                    y: []
-                };
-
+                const newItem = { id: this.selectedItem.dataset.category, x: [], y: [] };
                 this.calculateTilePositions(this.selectedItem, snappedX, snappedY, this.tileSize, newItem.x, newItem.y);
                 this.highlightOverlappingTiles(newItem);
             }
         }
+    },
+
+    changeMode: function(newMode) {
+        this.currentMode = newMode;
+        console.log(`Editor mode changed to: ${newMode}`);
+        // Update UI or perform other actions based on the mode change
     },
 
     handleMouseUp: function(event) {

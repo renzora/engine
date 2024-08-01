@@ -422,8 +422,44 @@ var input = {
     },
 
     mouseWheelScroll: function(e) {
-
-    },
+        game.updateInputMethod('keyboard');
+        const isEventOnCanvas = e.target === game.canvas || game.canvas.contains(e.target);
+    
+        if (isEventOnCanvas) {
+            e.preventDefault(); // Prevent default scroll behavior for all cases
+    
+            if (e.altKey) {
+                const panSpeed = 10;
+                camera.cameraX += e.deltaY > 0 ? panSpeed : -panSpeed;
+                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - window.innerWidth / game.zoomLevel));
+            } else if (e.ctrlKey) {
+                const zoomStep = 1;
+                const rect = game.canvas.getBoundingClientRect();
+                const cursorX = (e.clientX - rect.left) / game.zoomLevel;
+                const cursorY = (e.clientY - rect.top) / game.zoomLevel;
+    
+                const prevZoomLevel = game.zoomLevel;
+                const newZoomLevel = game.zoomLevel + (e.deltaY > 0 ? -zoomStep : zoomStep);
+                game.setZoomLevel(Math.max(3, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
+    
+                const zoomFactor = game.zoomLevel / prevZoomLevel;
+    
+                // Adjust camera position to keep the cursor focused
+                camera.cameraX = cursorX - (cursorX - camera.cameraX) * zoomFactor;
+                camera.cameraY = cursorY - (cursorY - camera.cameraY) * zoomFactor;
+    
+                // Ensure the camera doesn't go outside the world bounds
+                const scaledWindowWidth = window.innerWidth / game.zoomLevel;
+                const scaledWindowHeight = window.innerHeight / game.zoomLevel;
+                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - scaledWindowWidth));
+                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - scaledWindowHeight));
+            } else if (e.shiftKey) { // Only pan vertically if shiftKey is pressed
+                const panSpeed = 10;
+                camera.cameraY += e.deltaY > 0 ? panSpeed : -panSpeed;
+                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - window.innerHeight / game.zoomLevel));
+            }
+        }
+    },    
 
     leftClick: function(e) {
         game.updateInputMethod('keyboard');

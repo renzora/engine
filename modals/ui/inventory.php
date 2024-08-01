@@ -1,5 +1,6 @@
 <div data-window='ui_inventory_window' data-close="false">
   <div id="ui_inventory_window" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
+    
     <div class="ui_item_primary relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300"></div>
     <div class="flex flex-col space-y-2 w-98">
       <div class="flex items-center space-x-2 w-full">

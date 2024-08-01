@@ -96,6 +96,8 @@ if ($auth) {
                 // Set the new active tab content id
                 activeTabContentId = target;
 
+                console.log(`modals/console/tabs/${target}/index.php`);
+
                 contentDiv.classList.remove('hidden');
                 ui.ajax({
                   method: 'POST',

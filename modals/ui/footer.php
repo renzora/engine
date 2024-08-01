@@ -15,8 +15,6 @@
 
 <script>
   var ui_footer_window = {
-    load: function(modalName) {
-      audio.playAudio("walkAudio", assets.load('walkAudio'), 'sfx');
-    }
+
   };
 </script>

@@ -178,60 +178,72 @@ var ui = {
     tabs: {},
 
     initTabs: function(containerId, defaultTab) {
-      const container = document.getElementById(containerId);
-      if (!container) return;
-  
-      const tabButtons = container.querySelectorAll('[data-tab]');
-      const tabContents = container.querySelectorAll('[data-tab-content]');
-  
-      tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-          const target = button.getAttribute('data-tab');
-          this.showTab(target, tabButtons, tabContents);
-          audio.playAudio("click", assets.load('click'), 'sfx');
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const tabButtons = container.querySelectorAll('[data-tab]');
+        const tabContents = container.querySelectorAll('[data-tab-content]');
+
+        tabButtons.forEach(button => {
+            button.setAttribute('data-container', containerId);
+            button.addEventListener('click', () => {
+                const target = button.getAttribute('data-tab');
+                const containerId = button.getAttribute('data-container');
+                this.showTab(target, containerId);
+                audio.playAudio("click", assets.load('click'), 'sfx');
+            });
         });
-      });
-  
-      // Store the initialized tabs and contents
-      this.tabs[containerId] = { tabButtons, tabContents };
-  
-      // Set the default active tab
-      const initialTab = defaultTab || tabButtons[0].getAttribute('data-tab');
-      this.showTab(initialTab, tabButtons, tabContents);
+
+        tabContents.forEach(content => {
+            content.setAttribute('data-container', containerId);
+        });
+
+        // Store the initialized tabs and contents
+        this.tabs[containerId] = { tabButtons, tabContents };
+
+        // Set the default active tab
+        const initialTab = defaultTab || tabButtons[0].getAttribute('data-tab');
+        this.showTab(initialTab, containerId);
     },
-  
-    showTab: function(target, tabButtons, tabContents) {
-      tabButtons.forEach(button => {
-        button.classList.remove('active');
-        if (button.getAttribute('data-tab') === target) {
-          button.classList.add('active');
-        }
-      });
-  
-      tabContents.forEach(content => {
-        content.classList.remove('active');
-        if (content.getAttribute('data-tab-content') === target) {
-          content.classList.add('active');
-        }
-      });
+
+    showTab: function(target, containerId) {
+        const { tabButtons, tabContents } = this.tabs[containerId];
+
+        tabButtons.forEach(button => {
+            if (button.getAttribute('data-container') === containerId) {
+                button.classList.remove('active');
+                if (button.getAttribute('data-tab') === target) {
+                    button.classList.add('active');
+                }
+            }
+        });
+
+        tabContents.forEach(content => {
+            if (content.getAttribute('data-container') === containerId) {
+                content.classList.remove('active');
+                if (content.getAttribute('data-tab-content') === target) {
+                    content.classList.add('active');
+                }
+            }
+        });
     },
-  
+
     destroyTabs: function(containerId) {
-      const container = document.getElementById(containerId);
-      if (!container || !this.tabs[containerId]) return;
-  
-      const { tabButtons, tabContents } = this.tabs[containerId];
-  
-      // Remove event listeners
-      tabButtons.forEach(button => {
-        button.replaceWith(button.cloneNode(true));
-      });
-  
-      // Clear the tabButtons and tabContents
-      tabButtons.forEach(button => button.remove());
-      tabContents.forEach(content => content.remove());
-  
-      // Remove the stored reference
-      delete this.tabs[containerId];
+        const container = document.getElementById(containerId);
+        if (!container || !this.tabs[containerId]) return;
+
+        const { tabButtons, tabContents } = this.tabs[containerId];
+
+        // Remove event listeners
+        tabButtons.forEach(button => {
+            button.replaceWith(button.cloneNode(true));
+        });
+
+        // Clear the tabButtons and tabContents
+        tabButtons.forEach(button => button.remove());
+        tabContents.forEach(content => content.remove());
+
+        // Remove the stored reference
+        delete this.tabs[containerId];
     }
 };

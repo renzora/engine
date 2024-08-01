@@ -12,8 +12,8 @@ var game = {
     timestamp: 0,
     lastTime: 0,
     deltaTime: 0,
-    worldWidth: 1280,
-    worldHeight: 1280,
+    worldWidth: 960,
+    worldHeight: 640,
     zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 6,
     targetX: 0,
     targetY: 0,
@@ -60,7 +60,7 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 0,
+        hours: 7,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -124,14 +124,14 @@ var game = {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
 
         assets.preload([
-            { name: 'head', path: 'img/sprites/character/head.png' },
-            { name: 'eyes', path: 'img/sprites/character/eyes.png' },
-            { name: 'body', path: 'img/sprites/character/body.png' },
-            { name: 'hair', path: 'img/sprites/character/hair.png' },
-            { name: 'hats', path: 'img/sprites/character/hats.png' },
-            { name: 'glasses', path: 'img/sprites/character/glasses.png' },
-            { name: 'facial', path: 'img/sprites/character/facial.png' },
-            { name: 'outfit', path: 'img/sprites/character/outfit.png' },
+            { name: 'head', path: 'img/sprites/character/test/head.png' },
+            { name: 'eyes', path: 'img/sprites/character/test/eyes.png' },
+            { name: 'hair', path: 'img/sprites/character/test/hair.png' },
+            { name: 'hands', path: 'img/sprites/character/test/hands.png' },
+            { name: 'hats', path: 'img/sprites/character/test/hats.png' },
+            { name: 'glasses', path: 'img/sprites/character/test/glasses.png' },
+            { name: 'facial', path: 'img/sprites/character/test/facial.png' },
+            { name: 'outfit', path: 'img/sprites/character/test/outfit.png' },
             { name: 'gen1', path: 'img/tiles/gen1.png' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
@@ -151,6 +151,7 @@ var game = {
             { name: 'itemEquip', path: 'audio/sfx/ui/itemEquip.mp3' },
             { name: 'nightAmbience', path: 'audio/sfx/weather/nightAmbience.mp3' },
             { name: 'rain', path: 'audio/sfx/weather/rain.mp3' },
+            { name: 'meta', path: 'json/meta.json' },
         ], () => {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
@@ -170,13 +171,14 @@ var game = {
                 x: 10,
                 y: 15,
                 isPlayer: true,
-                speed: 50,
+                speed: 70,
                 head: 1,
                 eyes: 1,
                 body: 1,
-                hair: 0,
-                outfit: 2,
-                hat: 4,
+                hair: 1,
+                outfit: 1,
+                hands: 1,
+                hat: 0,
                 facial: 0,
                 glasses: 0,
                 targetAim: false,
@@ -186,30 +188,6 @@ var game = {
 
             this.mainSprite = game.sprites[this.playerid];
             this.setActiveSprite(this.playerid);
-
-            for (let i = 0; i < 25; i++) {
-                const npc = {
-                    id: `npc${i}`,
-                    x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
-                    y: 0 + Math.floor(Math.random() * 30), // Starting y coordinate
-                    boundaryX: 60, // Boundary x coordinate
-                    boundaryY: 30, // Boundary y coordinate
-                    isPlayer: false,
-                    isEnemy: 0,
-                    eyes: 1,
-                    hair: Math.floor(Math.random() * 29), // Assuming there are 5 different hairstyles
-                    outfit: Math.floor(Math.random() * 3), // Assuming there are 5 different outfits
-                    facial: Math.floor(Math.random() * 3), // Assuming there are 3 different facial hair options
-                    hat: Math.floor(Math.random() * 6), // Assuming there are 2 different hat options
-                    glasses: 0, // Assuming there are 2 different glasses options
-                    stopRadius: 1,
-                    attack: 100,
-                    defence: 0,
-                    intensity: 100,
-                    speed: 40
-                };
-                sprite.create(npc);
-            }
 
 
             weather.createFireflys();
@@ -1482,23 +1460,7 @@ if (tileData.fx && this.fxData[tileData.fx]) {
         }
         
     
-        if (game.isEditMode && edit_mode_window.isSelecting && edit_mode_window.selectionStart && edit_mode_window.selectionEnd) {
-            const startX = Math.min(edit_mode_window.selectionStart.x, edit_mode_window.selectionEnd.x);
-            const startY = Math.min(edit_mode_window.selectionStart.y, edit_mode_window.selectionEnd.y);
-            const endX = Math.max(edit_mode_window.selectionStart.x, edit_mode_window.selectionEnd.x) + 16;
-            const endY = Math.max(edit_mode_window.selectionStart.y, edit_mode_window.selectionEnd.y) + 16;
-    
-            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            this.ctx.lineWidth = 4 / this.zoomLevel;
-            this.ctx.strokeRect(startX, startY, endX - startX, endY - endY);
-        }
-    
-        if (game.isEditMode) {
-            edit_mode_window.selectedTiles.forEach(tile => {
-                this.ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-                this.ctx.fillRect(tile.x, tile.y, 16, 16);
-            });
-        }
+
     
         if (typeof debug_window !== 'undefined') {
             if (game.showGrid && debug_window.grid) {
@@ -1541,12 +1503,31 @@ if (effectsRenderedDisplay) {
     effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(particles.activeEffects).length}`;
 }
 
+if (editor.currentMode === 'brush') {
+    this.drawBrushCircle();
+}
+
     // Highlight overlapping tiles
     this.overlappingTiles.forEach(tile => {
         game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
         game.ctx.fillRect(tile.x * 16, tile.y * 16, 16, 16);
     });
 
+    },
+
+    drawBrushCircle: function() {
+        const rect = this.canvas.getBoundingClientRect();
+        const mouseX = (editor.mouseX - rect.left) / this.zoomLevel + camera.cameraX;
+        const mouseY = (editor.mouseY - rect.top) / this.zoomLevel + camera.cameraY;
+        const brushRadius = editor.brushRadius;
+    
+        this.ctx.save();
+        this.ctx.globalAlpha = 0.5; // Set opacity
+        this.ctx.beginPath();
+        this.ctx.arc(mouseX, mouseY, brushRadius, 0, 2 * Math.PI);
+        this.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Fill color
+        this.ctx.fill();
+        this.ctx.restore();
     },
 
     randomNpcMessage: function(sprite) {

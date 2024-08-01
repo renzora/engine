@@ -13,3 +13,5 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.setActiveSprite('npc1');">change camera</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load('auth/signout.php', 'signout_window', 'Sign Out', true);">Signout</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load('template/index.php', 'template_window', 'Template', true);">Template</button>
