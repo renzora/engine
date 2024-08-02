@@ -18,7 +18,6 @@ var ui_editor_tab_window = {
   start: function() {
     this.displayItems();
     editor.setupClickToActivate();
-    modal.load('editor/index.php', "edit_mode_window", "Editor", false);
   },
 
   displayItems: function() {

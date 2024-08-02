@@ -373,24 +373,21 @@ var sprite = {
     },     
     
 
- walkToClickedTile: function(tileX, tileY) {
-    if (editor.isPlacingItem) {
-        return; // Don't move if in item placement mode
-    }
-
-    // Ensure the target tile is within the boundary if boundary is set
-    const boundary = this.boundary;
-    if (boundary && (tileX > boundary.x || tileY > boundary.y)) {
-        return;
-    }
-
-    var currentX = Math.floor(this.x / 16);
-    var currentY = Math.floor(this.y / 16);
-    this.path = this.calculatePath(currentX, currentY, tileX, tileY);
-    this.pathIndex = 0;
-    this.isMovingToTarget = true;
-    audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
-},
+    walkToClickedTile: function(tileX, tileY) {
+        console.log('Attempting to walk to:', tileX, tileY);
+    
+        const boundary = this.boundary;
+        if (boundary && (tileX > boundary.x || tileY > boundary.y)) {
+            return;
+        }
+    
+        var currentX = Math.floor(this.x / 16);
+        var currentY = Math.floor(this.y / 16);
+        this.path = this.calculatePath(currentX, currentY, tileX, tileY);
+        this.pathIndex = 0;
+        this.isMovingToTarget = true;
+        audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
+    },
 
 calculatePath: function(startX, startY, endX, endY) {
     const grid = game.createWalkableGrid();
@@ -438,16 +435,16 @@ moveAlongPath: function() {
     const deltaY = targetY - this.y;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    console.log(`Current Position: (${this.x}, ${this.y}), Target Position: (${targetX}, ${targetY})`);
-    console.log(`Path:`, this.path);
-    console.log(`Path Index: ${this.pathIndex}`);
+    // Determine direction and ensure sprite is moving
+    this.moving = true;
+    this.stopping = false;
 
     if (distance < this.speed * (game.deltaTime / 1000)) {
         this.x = targetX;
         this.y = targetY;
         this.pathIndex++;
 
-        // Remove the step behind the sprite
+        // Remove the step behind the sprite    
         if (this.pathIndex > 1) {
             this.path.shift();
             this.pathIndex--;
@@ -456,8 +453,6 @@ moveAlongPath: function() {
         const angle = Math.atan2(deltaY, deltaX);
         const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
         const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
-
-        console.log(`New Position: (${newX}, ${newY})`);
 
         // Update position directly without collision checks
         this.x = newX;
@@ -479,9 +474,6 @@ moveAlongPath: function() {
             else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
             else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
         }
-
-        console.log(`Direction: ${this.direction}`);
-        console.log(`Moving: ${this.moving}, Stopping: ${this.stopping}`);
     }
 },
 
@@ -697,8 +689,7 @@ moveAlongPath: function() {
             }
             this.frameCounter = 0;
         }
-    },    
-
+    },
     animateEyes: function() {
         if (!this.lastBlinkTime) {
             this.lastBlinkTime = Date.now();
@@ -727,7 +718,7 @@ moveAlongPath: function() {
 
     update: function(deltaTime) {
         const margin = 4; // Define a margin to keep the sprite away from the edges
-
+    
         if (this.isMovingToTarget) {
             this.moveAlongPath();
         } else {
@@ -802,7 +793,7 @@ moveAlongPath: function() {
             }
         }
     
-        this.animate();
+        this.animate();  // Make sure to animate the sprite in each update cycle
         this.animateEyes();
     
         // Update light source position

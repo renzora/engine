@@ -24,7 +24,6 @@
   <script src='assets/js/engine/weather.js'></script>
   <script src='assets/js/engine/audio.js'></script>
   <script src='assets/js/engine/actions.js'></script>
-  <script src='assets/js/engine/editor.js'></script>
   <meta meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 
 </head>

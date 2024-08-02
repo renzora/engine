@@ -1,6 +1,9 @@
 var render = {
+    overlappingTiles: [],
     updateGameLogic: function(deltaTime) {
         gamepad.updateGamepadState();
+        
+        // Update all sprites
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
             if (sprite.update) {
@@ -9,13 +12,20 @@ var render = {
             }
         }
 
+        // Update camera
         camera.update();
+
+        // Update game time
         game.gameTime.update(deltaTime);
+
+        // Update lighting and animations
         lighting.updateDayNightCycle();
         animate.updateAnimatedTiles(deltaTime);
         weather.updateSnow(deltaTime);
         weather.updateRain(deltaTime);
         weather.updateFireflys(deltaTime);
+
+        // Update particles
         particles.updateParticles(deltaTime);
         effects.transitions.update();
         lighting.updateLights(deltaTime);
@@ -27,181 +37,461 @@ var render = {
             audio.stopLoopingAudio('rain', 'ambience', 0.5);
         }
 
+        // Check and update UI positions
         if (typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
             ui_window.checkAndUpdateUIPositions();
         }
     },
-    drawIdBubble: function(sprite) {
-        if (!sprite || !sprite.id) return;
-    
-        // Truncate text if it's longer than 16 characters
-        let text = sprite.id;
-        if (text.length > 16) {
-            text = text.slice(0, 13);
-        }
-    
-        const bubbleHeight = 7;
-        const bubblePadding = 2;
-        const fontSize = 3;
-        const characterSpacing = -0.1; // Adjust this value for tighter or looser tracking
-        
-        // Calculate text width
-        this.ctx.font = `${fontSize}px Tahoma`;
-        let textWidth = 0;
-        for (let char of text) {
-            textWidth += this.ctx.measureText(char).width + characterSpacing;
-        }
-        textWidth -= characterSpacing; // Remove the extra spacing added after the last character
-    
-        // Calculate bubble dimensions
-        const bubbleWidth = textWidth + 2 * bubblePadding;
-    
-        // Calculate bubble position
-        const bubbleX = sprite.x + sprite.width / 2 - bubbleWidth / 2;
-        const bubbleY = sprite.y - bubbleHeight - bubblePadding + 5; // Adjust this value to bring the bubble down
-    
-        // Draw rounded rectangle bubble with less pronounced corners
-        const radius = 2; // Adjust the radius for subtler rounded corners
-        this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        this.ctx.beginPath();
-        this.ctx.moveTo(bubbleX + radius, bubbleY);
-        this.ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
-        this.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
-        this.ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
-        this.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
-        this.ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
-        this.ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
-        this.ctx.lineTo(bubbleX, bubbleY + radius);
-        this.ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
-        this.ctx.closePath();
-        this.ctx.fill();
-    
-        // Draw each character with fixed spacing
-        this.ctx.fillStyle = 'white';
-        this.ctx.font = `${fontSize}px Tahoma`;
-        let charX = bubbleX + bubblePadding;
-        for (let char of text) {
-            this.ctx.fillText(char, charX, bubbleY + bubbleHeight / 2 + fontSize / 3);
-            charX += this.ctx.measureText(char).width + characterSpacing;
-        }
-    },
-    
-    drawChatBubble: function(sprite) {
-        if (!sprite.chatMessages || sprite.chatMessages.length === 0) return;
+    renderBackground: function (viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+        let tileCount = 0;
+        const bgTileData = game.objectData[game.sceneBg][0];
+        for (let y = viewportYStart; y < viewportYEnd; y++) {
+            for (let x = viewportXStart; x < viewportXEnd; x++) {
+                const posX = x * 16;
+                const posY = y * 16;
+                const tileFrameIndex = bgTileData.i;
+                const srcX = (tileFrameIndex % 150) * 16;
+                const srcY = Math.floor(tileFrameIndex / 150) * 16;
 
-        // Iterate through each message
-        for (let i = 0; i < sprite.chatMessages.length; i++) {
-            const messageData = sprite.chatMessages[i];
-            const elapsedTime = Date.now() - messageData.time;
-            
-            if (elapsedTime > 5000) {
-                sprite.chatMessages.splice(i, 1);
-                i--;
-                continue;
-            }
-            
-            const fadeOutTime = 1000; // 1 second fade-out duration
-            const alpha = elapsedTime > 4000 ? (1 - (elapsedTime - 4000) / fadeOutTime) : 1; // Start fading out after 4 seconds
-        
-            const message = messageData.text;
-            const bubbleHeight = 7;
-            const bubblePadding = 2;
-            const fontSize = 3;
-            const characterSpacing = -0.1; // Adjust this value for tighter or looser tracking
-        
-            // Calculate text width
-            game.ctx.font = `${fontSize}px Tahoma`;
-            let textWidth = 0;
-            for (let char of message) {
-                textWidth += game.ctx.measureText(char).width + characterSpacing;
-            }
-            textWidth -= characterSpacing; // Remove the extra spacing added after the last character
-        
-            // Calculate bubble dimensions
-            const bubbleWidth = textWidth + 2 * bubblePadding;
-        
-            // Calculate bubble position
-            const bubbleX = sprite.x + sprite.width / 2 - bubbleWidth / 2;
-            const baseBubbleY = sprite.y - 12; // Move the first bubble up by 2-3 pixels
-            const bubbleY = baseBubbleY - (i * (bubbleHeight + bubblePadding - 1)); // Reduce vertical spacing between bubbles
-    
-            // Draw rounded rectangle bubble with blue color
-            const radius = 2; // Adjust the radius for subtler rounded corners
-            game.ctx.fillStyle = `rgba(0, 0, 255, ${alpha * 0.9})`; // Blue color with fading effect
-            game.ctx.beginPath();
-            game.ctx.moveTo(bubbleX + radius, bubbleY);
-            game.ctx.lineTo(bubbleX + bubbleWidth - radius, bubbleY);
-            game.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY, bubbleX + bubbleWidth, bubbleY + radius);
-            game.ctx.lineTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight - radius);
-            game.ctx.quadraticCurveTo(bubbleX + bubbleWidth, bubbleY + bubbleHeight, bubbleX + bubbleWidth - radius, bubbleY + bubbleHeight);
-            game.ctx.lineTo(bubbleX + radius, bubbleY + bubbleHeight);
-            game.ctx.quadraticCurveTo(bubbleX, bubbleY + bubbleHeight, bubbleX, bubbleY + bubbleHeight - radius);
-            game.ctx.lineTo(bubbleX, bubbleY + radius);
-            game.ctx.quadraticCurveTo(bubbleX, bubbleY, bubbleX + radius, bubbleY);
-            game.ctx.closePath();
-            game.ctx.fill();
-        
-            // Draw each character with fixed spacing
-            game.ctx.fillStyle = `rgba(255, 255, 255, ${alpha})`;
-            game.ctx.font = `${fontSize}px Tahoma`;
-            let charX = bubbleX + bubblePadding;
-            for (let char of message) {
-                game.ctx.fillText(char, charX, bubbleY + bubbleHeight / 2 + fontSize / 2);
-                charX += game.ctx.measureText(char).width + characterSpacing;
+                game.ctx.drawImage(assets.load(bgTileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
+                tileCount++;
             }
         }
+        return tileCount;
     },
 
-    tooltips: function() {
-        if (!game.tooltips.length) return; // Skip rendering if no tooltips
+    renderRoomItems: function (viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+        const renderQueue = [];
+        let tileCount = 0;
 
-        game.ctx.save(); // Save the current context state
-        game.ctx.font = '3px Tahoma';
-        game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.8)'; // Set stroke color with opacity
-        game.ctx.lineWidth = 1; // Ensure the line width is appropriate
-    
-        game.tooltips.forEach(tooltip => {
-            const textWidth = game.ctx.measureText(tooltip.message).width;
-            const x = tooltip.x;
-            const y = tooltip.y;
-    
-            // Measure the text height
-            const textHeight = parseInt(game.ctx.font, 10);
-            const padding = 2; // Padding around the text
-            const rectHeight = textHeight + padding * 2;
-            
-            // Draw rounded tooltip background
-            game.ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'; // Set background fill color with opacity
-            const rectX = x;
-            const rectY = y - rectHeight - padding;
-            const rectWidth = textWidth + padding * 2;
-            const borderRadius = 1; // Set the border radius for rounded corners
-    
-            game.ctx.beginPath();
-            game.ctx.moveTo(rectX + borderRadius, rectY);
-            game.ctx.lineTo(rectX + rectWidth - borderRadius, rectY);
-            game.ctx.quadraticCurveTo(rectX + rectWidth, rectY, rectX + rectWidth, rectY + borderRadius);
-            game.ctx.lineTo(rectX + rectWidth, rectY + rectHeight - borderRadius);
-            game.ctx.quadraticCurveTo(rectX + rectWidth, rectY + rectHeight, rectX + rectWidth - borderRadius, rectY + rectHeight);
-            game.ctx.lineTo(rectX + borderRadius, rectY + rectHeight);
-            game.ctx.quadraticCurveTo(rectX, rectY + rectHeight, rectX, rectY + rectHeight - borderRadius);
-            game.ctx.lineTo(rectX, rectY + borderRadius);
-            game.ctx.quadraticCurveTo(rectX, rectY, rectX + borderRadius, rectY);
-            game.ctx.closePath();
-            game.ctx.fill();
-            game.ctx.stroke();
-    
-            // Draw tooltip text
-            game.ctx.fillStyle = 'white'; // Set text color
-            game.ctx.fillText(tooltip.message, x + padding, y - padding - 1);
+        if (game.roomData && game.roomData.items) {
+            game.roomData.items.forEach(roomItem => {
+                const itemData = game.objectData[roomItem.id];
+                if (itemData && itemData.length > 0) {
+                    const tileData = itemData[0];
+                    const xCoordinates = roomItem.x || [];
+                    const yCoordinates = roomItem.y || [];
+
+                    let index = 0;
+                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
+                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                            if (x >= viewportXStart && x < viewportXEnd && y >= viewportYStart && y < viewportYEnd) {
+                                const posX = x * 16;
+                                const posY = y * 16;
+
+                                let tileFrameIndex;
+                                if (Array.isArray(tileData.i[0])) {
+                                    const animationData = tileData.i;
+                                    const currentFrame = tileData.currentFrame || 0;
+                                    tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
+                                } else {
+                                    tileFrameIndex = tileData.i[index];
+                                }
+
+                                if (tileFrameIndex !== undefined) {
+                                    const srcX = (tileFrameIndex % 150) * 16;
+                                    const srcY = Math.floor(tileFrameIndex / 150) * 16;
+
+                                    renderQueue.push({
+                                        tileIndex: tileFrameIndex,
+                                        posX: posX,
+                                        posY: posY,
+                                        z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
+                                        id: roomItem.id,
+                                        draw: function () {
+                                            game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
+                                        }
+                                    });
+
+                                    tileCount++;
+                                }
+                            }
+
+                            index++;
+                        }
+                    }
+
+                    render.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+                    render.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+                }
+            });
+        }
+
+        // Sort renderQueue by z-index and render order
+        renderQueue.sort((a, b) => a.z - b.z);
+
+        // Draw the items in the renderQueue
+        renderQueue.forEach(item => {
+            item.draw();
         });
-    
-        game.ctx.restore(); // Restore the previous context state
+
+        return { renderQueue, itemTileCount: tileCount };
+    },
+
+    renderSprites: function (viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+        let spriteCount = 0;
+        const renderQueue = [];
+
+        for (let id in game.sprites) {
+            const sprite = game.sprites[id];
+
+            if (sprite.isEnemy) {
+                sprite.drawEnemyAttackAimTool();
+            }
+            const spriteRight = sprite.x + sprite.width;
+            const spriteBottom = sprite.y + sprite.height;
+
+            if (spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
+                spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16) {
+                renderQueue.push({
+                    z: 0,
+                    draw: function () {
+                        game.sprites[id].drawShadow();
+                    }
+                });
+
+                renderQueue.push({
+                    z: 2,
+                    draw: function () {
+                        game.sprites[id].draw();
+                    }
+                });
+                spriteCount++;
+            }
+        }
+
+        // Sort renderQueue by z-index and render order
+        renderQueue.sort((a, b) => a.z - b.z);
+
+        // Draw the remaining sprites (z-index > 1)
+        renderQueue.forEach(item => {
+            if (item.z > 1) {
+                item.draw();
+            }
+        });
+
+        return spriteCount;
+    },
+
+    renderPathfinderLine: function () {
+        if (game.mainSprite && game.mainSprite.path && game.mainSprite.path.length > 0) {
+            game.ctx.strokeStyle = 'rgba(255, 255, 0, 0.8)';
+            game.ctx.lineWidth = 2;
+            game.ctx.beginPath();
+
+            game.ctx.moveTo(game.mainSprite.path[0].x * 16 + 8, game.mainSprite.path[0].y * 16 + 8);
+
+            for (let i = 1; i < game.mainSprite.path.length - 1; i++) {
+                const currentPoint = game.mainSprite.path[i];
+                const nextPoint = game.mainSprite.path[i + 1];
+                const midX = (currentPoint.x + nextPoint.x) * 8 + 8;
+                const midY = (currentPoint.y + nextPoint.y) * 8 + 8;
+
+                game.ctx.quadraticCurveTo(currentPoint.x * 16 + 8, currentPoint.y * 16 + 8, midX, midY);
+            }
+
+            const lastPoint = game.mainSprite.path[game.mainSprite.path.length - 1];
+            game.ctx.lineTo(lastPoint.x * 16 + 8, lastPoint.y * 16 + 8);
+
+            game.ctx.stroke();
+        }
+    },
+
+    renderCarriedObjects: function () {
+        if (game.mainSprite.isCarrying) {
+            const carriedItemId = game.mainSprite.carriedItem;
+            const itemX = game.mainSprite.x - 8;
+            const itemY = game.mainSprite.y - 32 - (game.objectData[carriedItemId][0].b.length);
+
+            game.drawCarriedObject(game.ctx, carriedItemId, itemX, itemY);
+        }
+    },
+
+    renderSelectedTiles: function () {
+        game.renderSelectedTiles();
+
+        if (game.selectedObjects && game.selectedObjects.length > 0) {
+            game.selectedObjects.forEach(selectedObject => {
+                if (selectedObject) {
+                    const cachedObject = game.selectedCache.find(cache => cache.id === selectedObject.id);
+                    if (cachedObject) {
+                        const xCoordinates = selectedObject.x.map(x => parseInt(x, 10) * 16);
+                        const yCoordinates = selectedObject.y.map(y => parseInt(y, 10) * 16);
+                        const minX = Math.min(...xCoordinates);
+                        const minY = Math.min(...yCoordinates);
+                        game.ctx.drawImage(cachedObject.image, minX, minY);
+                    }
+                }
+            });
+        }
+    },
+
+    renderLightingEffects: function () {
+        lighting.drawNightFilter();
+        game.ctx.globalCompositeOperation = lighting.compositeOperation;
+        game.ctx.drawImage(lighting.createLightMask(), 0, 0);
+        game.ctx.globalCompositeOperation = 'source-over';
+        game.ctx.imageSmoothingEnabled = false;
+    },
+
+    renderWeatherEffects: function () {
+        weather.drawSnow();
+        weather.drawRain();
+        weather.drawFireflys();
+        lighting.drawGreyFilter();
+        actions.checkForNearbyItems();
+        render.aimTool();
+    },
+
+    handleDebugUtilities: function () {
+        if (typeof debug_window !== 'undefined') {
+            if (game.showGrid && debug_window.grid) {
+                debug_window.grid();
+            }
+            if (game.showCollision && debug_window.tiles) {
+                debug_window.tiles();
+            }
+            if (game.showTiles && debug_window.tiles) {
+                debug_window.tiles();
+            }
+        }
+    },
+
+    updateUI: function (tileCount, spriteCount) {
+        var tilesRenderedDisplay = document.getElementById('tiles_rendered');
+        if (tilesRenderedDisplay) {
+            tilesRenderedDisplay.innerHTML = `Tiles: ${tileCount} | Sprites: ${spriteCount}`;
+        }
+
+        var lightsRenderedDisplay = document.getElementById('lights_rendered');
+        if (lightsRenderedDisplay) {
+            lightsRenderedDisplay.innerHTML = `Lights: ${lighting.lights.length}`;
+        }
+
+        var effectsRenderedDisplay = document.getElementById('effects_rendered');
+        if (effectsRenderedDisplay) {
+            effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(particles.activeEffects).length}`;
+        }
+
+        if (game.isEditorActive && game.editorMode === 'brush') {
+            edit_mode_window.drawBrushCircle();
+        }
+    },
+
+    highlightOverlappingTiles: function () {
+        this.overlappingTiles.forEach(tile => {
+            game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            game.ctx.fillRect(tile.x * 16, tile.y * 16, 16, 16);
+        });
+    },
+
+    handleLights: function (tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+        if (tileData.l && tileData.l.length > 0) {
+            tileData.l.forEach(light => {
+                if (Array.isArray(light) && light.length === 2) {
+                    const lightXIndex = light[0];
+                    const lightYIndex = light[1];
+
+                    if (lightXIndex >= 0 && lightXIndex < roomItem.x.length &&
+                        lightYIndex >= 0 && lightYIndex < roomItem.y.length) {
+
+                        const tileX = roomItem.x[lightXIndex];
+                        const tileY = roomItem.y[lightYIndex];
+
+                        const posX = tileX * 16 + 8;
+                        const posY = tileY * 16 + 8;
+                        const radius = tileData.lr || 200;
+
+                        const isInView = (posX + radius) >= (viewportXStart * 16) && (posX - radius) < (viewportXEnd * 16) &&
+                            (posY + radius) >= (viewportYStart * 16) && (posY - radius) < (viewportYEnd * 16);
+
+                        const lightId = `${roomItem.id}_${tileX}_${tileY}`;
+
+                        const hours = game.gameTime.hours;
+                        const minutes = game.gameTime.minutes;
+                        const time = hours + minutes / 60;
+                        const isNightTime = time >= 22 || time < 7;
+
+                        if (isInView && isNightTime) {
+                            const existingLight = effects.lights.find(light => light.id === lightId);
+
+                            if (!existingLight) {
+                                const color = tileData.lc || { r: 255, g: 255, b: 255 };
+                                const intensity = tileData.li || 1;
+                                const flickerSpeed = tileData.lfs || 0.03;
+                                const flickerAmount = tileData.lfa || 0.04;
+                                const lampType = tileData.lt || "lamp";
+
+                                lighting.addLight(lightId, posX, posY, radius, color, intensity, lampType, true, flickerSpeed, flickerAmount);
+                            }
+                        } else {
+                            lighting.lights = lighting.lights.filter(light => light.id !== lightId);
+                        }
+                    }
+                }
+            });
+        }
+    },
+
+    handleEffects: function (tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+        if (tileData.fx && game.fxData[tileData.fx]) {
+            const fxData = game.fxData[tileData.fx];
+
+            tileData.fxp.forEach((fxPosition, fxIndex) => {
+                const fxXIndex = fxPosition[0];
+                const fxYIndex = fxPosition[1];
+
+                if (fxXIndex >= 0 && fxXIndex < roomItem.x.length &&
+                    fxYIndex >= 0 && fxYIndex < roomItem.y.length) {
+
+                    const tileX = roomItem.x[fxXIndex];
+                    const tileY = roomItem.y[fxYIndex];
+
+                    const posX = tileX * 16 + 8;
+                    const posY = tileY * 16 + 8;
+
+                    const isInView = posX >= (viewportXStart * 16) && posX < (viewportXEnd * 16) &&
+                        posY >= (viewportYStart * 16) && posY < (viewportYEnd * 16);
+
+                    const fxId = `${roomItem.id}_${tileX}_${tileY}`;
+
+                    if (isInView) {
+                        if (!particles.activeEffects[fxId]) {
+                            const options = {
+                                count: fxData.count,
+                                speed: fxData.speed,
+                                angle: fxData.baseAngle,
+                                spread: fxData.spread,
+                                colors: fxData.color.map(color => `rgba(${color.join(',')}, ${fxData.Opacity})`),
+                                life: fxData.frames,
+                                size: fxData.size,
+                                type: 'default',
+                                repeat: fxData.repeat,
+                                glow: fxData.Glow,
+                                opacity: fxData.Opacity,
+                                blur: fxData.Blur,
+                                shape: fxData.Shape.toLowerCase()
+                            };
+
+                            particles.createParticles(posX, posY, options, fxId);
+                            console.log(`Effect added: ${fxId}`);
+                        }
+                    } else {
+                        if (particles.activeEffects[fxId]) {
+                            delete particles.activeEffects[fxId];
+                            console.log(`Effect removed: ${fxId}`);
+                        }
+                    }
+                }
+            });
+        }
+    },
+
+    aimTool: function() {
+        if (game.mainSprite && game.mainSprite.targetAim) {
+            const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;
+            const handY = game.mainSprite.y + game.mainSprite.height / 2 + game.mainSprite.handOffsetY;
+        
+            const deltaX = game.mainSprite.targetX - handX;
+            const deltaY = game.mainSprite.targetY - handY;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        
+            let adjustedTargetX = game.mainSprite.targetX;
+            let adjustedTargetY = game.mainSprite.targetY;
+            if (distance > game.mainSprite.maxRange) {
+                const ratio = game.mainSprite.maxRange / distance;
+                adjustedTargetX = handX + deltaX * ratio;
+                adjustedTargetY = handY + deltaY * ratio;
+            }
+        
+            const isObstructed = (x, y) => {
+                if (game.roomData && game.roomData.items) {
+                    for (const roomItem of game.roomData.items) {
+                        const itemData = assets.load('objectData')[roomItem.id];
+                        if (!itemData) continue;
+        
+                        const xCoordinates = roomItem.x || [];
+                        const yCoordinates = roomItem.y || [];
+        
+                        for (let i = 0; i < xCoordinates.length; i++) {
+                            const itemX = parseInt(xCoordinates[i], 10) * 16;
+                            const itemY = parseInt(yCoordinates[i], 10) * 16;
+                            const tileRect = {
+                                x: itemX,
+                                y: itemY,
+                                width: 16,
+                                height: 16
+                            };
+        
+                            if (
+                                x >= tileRect.x &&
+                                x <= tileRect.x + tileRect.width &&
+                                y >= tileRect.y &&
+                                y <= tileRect.y + tileRect.height
+                            ) {
+                                const tileData = itemData[0]; 
+                                if (tileData.w !== 1) {
+                                    return { obstructed: true, collisionX: x, collisionY: y };
+                                }
+                            }
+                        }
+                    }
+                }
+                return { obstructed: false };
+            };
+        
+            let finalTargetX = adjustedTargetX;
+            let finalTargetY = adjustedTargetY;
+            const steps = Math.ceil(distance);
+            let obstructionDetected = false;
+        
+            for (let i = 1; i <= steps; i++) {
+                const stepX = handX + (deltaX * i) / steps;
+                const stepY = handY + (deltaY * i) / steps;
+                const result = isObstructed(stepX, stepY);
+                if (result.obstructed) {
+                    finalTargetX = result.collisionX;
+                    finalTargetY = result.collisionY;
+                    obstructionDetected = true;
+                    break;
+                }
+            }
+        
+            if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
+                return;
+            }
+
+            const crosshairSize = 10;
+            const sniperLineLength = 15;
+        
+            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            game.ctx.lineWidth = 1;
+            game.ctx.setLineDash([5, 5]);
+            game.ctx.beginPath();
+            game.ctx.moveTo(handX, handY);
+            game.ctx.lineTo(finalTargetX, finalTargetY);
+            game.ctx.stroke();
+            game.ctx.setLineDash([]);
+            game.ctx.beginPath();
+            game.ctx.arc(finalTargetX, finalTargetY, game.mainSprite.targetRadius, 0, 2 * Math.PI);
+            game.ctx.stroke();
+            game.ctx.beginPath();
+            game.ctx.moveTo(finalTargetX - crosshairSize, finalTargetY);
+            game.ctx.lineTo(finalTargetX + crosshairSize, finalTargetY);
+            game.ctx.moveTo(finalTargetX, finalTargetY - crosshairSize);
+            game.ctx.lineTo(finalTargetX, finalTargetY + crosshairSize);
+            game.ctx.stroke();
+            game.ctx.beginPath();
+            game.ctx.moveTo(finalTargetX - sniperLineLength, finalTargetY);
+            game.ctx.lineTo(finalTargetX - crosshairSize, finalTargetY);
+            game.ctx.moveTo(finalTargetX + crosshairSize, finalTargetY);
+            game.ctx.lineTo(finalTargetX + sniperLineLength, finalTargetY);
+            game.ctx.moveTo(finalTargetX, finalTargetY - sniperLineLength);
+            game.ctx.lineTo(finalTargetX, finalTargetY - crosshairSize);
+            game.ctx.moveTo(finalTargetX, finalTargetY + crosshairSize);
+            game.ctx.lineTo(finalTargetX, finalTargetY + sniperLineLength);
+            game.ctx.stroke();
+            game.ctx.restore();
+        }
     }
-    
-    
-    
-    
-    
-    
 }

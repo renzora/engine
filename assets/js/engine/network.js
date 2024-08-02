@@ -83,5 +83,4 @@ document.addEventListener('DOMContentLoaded', (e) => {
     network.init();
     input.init(e);
     gamepad.init(e);
-    editor.init(e);
 });

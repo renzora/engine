@@ -315,14 +315,15 @@ var input = {
 
     handleKeyDown: function(e) {
         this.handleControlStateChange(e, true);
-
+    
         if (e.altKey && e.key === 'c') {
             if (e.key === 'c') {
                 modal.load('mishell/index.php', 'mishell_window');
             }
         } else if (e.key === 'Tab') {
             e.preventDefault();
-            modal.load('editMode', 'edit_mode_window');
+            // Load the editor when Tab is pressed
+            modal.load('editor/index.php', 'edit_mode_window', 'Editor', false);
         } else {
             const dir = this.keys[e.key];
             if (dir) {
@@ -330,7 +331,7 @@ var input = {
                 this.updateSpriteDirections();
             }
         }
-
+    
         if (e.key === 'f') {
             if (game.mainSprite) {
                 game.mainSprite.targetAim = !game.mainSprite.targetAim; // Toggle target aiming mode
@@ -440,7 +441,7 @@ var input = {
     
                 const prevZoomLevel = game.zoomLevel;
                 const newZoomLevel = game.zoomLevel + (e.deltaY > 0 ? -zoomStep : zoomStep);
-                game.setZoomLevel(Math.max(3, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
+                game.setZoomLevel(Math.max(4, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
     
                 const zoomFactor = game.zoomLevel / prevZoomLevel;
     

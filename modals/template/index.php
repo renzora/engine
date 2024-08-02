@@ -15,35 +15,6 @@
                     <button class="tab text-gray-800" data-tab="tab3">Tab 3</button>
                 </div>
 
-                <div class="tab-content p-4 hidden" data-tab-content="tab1">
-                    <div id="template_window_tabs2">
-                        <div id="tabs" class="flex border-b border-gray-300">
-                            <button class="tab text-gray-800" data-tab="tab1">Tab 1</button>
-                            <button class="tab text-gray-800" data-tab="tab2">Tab 2</button>
-                            <button class="tab text-gray-800" data-tab="tab3">Tab 3</button>
-                        </div>
-
-                        <div class="tab-content p-4 hidden" data-tab-content="tab1">
-                            <p>Content for Tab 1</p>
-                        </div>
-
-                        <div class="tab-content p-4 hidden" data-tab-content="tab2">
-                            <p>Content for Tab 2</p>
-                        </div>
-
-                        <div class="tab-content p-4 hidden" data-tab-content="tab3">
-                            <p>Content for Tab 3</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="tab-content p-4 hidden" data-tab-content="tab2">
-                    <p>Content for Tab 2</p>
-                </div>
-
-                <div class="tab-content p-4 hidden" data-tab-content="tab3">
-                    <p>Content for Tab 3</p>
-                </div>
             </div>
         </div>
     </div>
@@ -51,30 +22,10 @@
     <script>
         var template_window = {
             start: function() {
-                ui.initTabs('template_window_tabs', 'tab2');
-                ui.initTabs('template_window_tabs2', 'tab2');
+                ui.initTabs('template_window_tabs', 'tab1');
             },
             unmount: function() {
                 ui.destroyTabs('template_window_tabs');
-                ui.destroyTabs('template_window_tabs2');
-            },
-            buttonA: function(e) {
-
-            },
-            buttonB: function(e) {
-
-            },
-            buttonStart: function(e) {
-
-            },
-            leftAxis: function(e) {
-
-            },
-            leftTrigger: function(e) {
-
-            },
-            leftBumper: function(e) {
-
             }
         }
         template_window.start();
