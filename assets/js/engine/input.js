@@ -441,7 +441,7 @@ var input = {
     
                 const prevZoomLevel = game.zoomLevel;
                 const newZoomLevel = game.zoomLevel + (e.deltaY > 0 ? -zoomStep : zoomStep);
-                game.setZoomLevel(Math.max(4, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
+                game.setZoomLevel(Math.max(2, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
     
                 const zoomFactor = game.zoomLevel / prevZoomLevel;
     

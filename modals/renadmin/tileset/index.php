@@ -15,9 +15,10 @@ if ($auth) {
       <div class='container text-light window_body p-2' style='height: 660px; overflow-y: hidden;'>
 
         <div id="tileset_window_tabs" style="height: 100%;">
-          <div id="tabs" class="flex border-b border-gray-300">
-            <button class="tab text-gray-800 p-2" data-tab="tab1">Upload</button>
-          </div>
+        <div id="tabs" class="flex border-b border-gray-300">
+    <button class="tab text-gray-800 p-2" data-tab="tab1">Upload</button>
+    <button class="tab text-gray-800 p-2" data-tab="items">Items</button> <!-- New tab -->
+</div>
 
           <div class="tab-content mt-2 hidden" data-tab-content="tab1" style="height: calc(100% - 35px);">
             <div class="flex h-full">
@@ -63,6 +64,10 @@ if ($auth) {
             </div>
           </div>
         </div>
+        <div class="tab-content mt-2 hidden" data-tab-content="items" style="height: calc(100% - 35px);">
+    <!-- Added 'h-full' to ensure the container takes up available space -->
+    <div class="grid grid-cols-12 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
+  </div>
       </div>
 
     <style>
@@ -108,6 +113,7 @@ var tileset_window = {
     start: function() {
         ui.initTabs('tileset_window_tabs', 'tab1');
         ui.initTabs('right_tabs', 'info');
+        document.querySelector('button[data-tab="items"]').addEventListener('click', this.displayTilesetItems);
 
         var dropZone = document.getElementById('drop_zone');
         var dropPrompt = document.getElementById('drop_prompt');
@@ -457,6 +463,90 @@ var tileset_window = {
 
         // Initialize the preview canvas
         updatePreviewCanvas();
+    },
+    displayTilesetItems: function () {
+        // Get the itemsGrid element
+        const itemsGrid = document.getElementById('itemsGrid');
+
+        // Clear any existing content
+        itemsGrid.innerHTML = '';
+
+        // Iterate over each item in game.objectData
+        for (const itemId in game.objectData) {
+            if (game.objectData.hasOwnProperty(itemId)) {
+                const itemArray = game.objectData[itemId];
+
+                // Iterate over each entry within the array (could be multiple variations of the same item)
+                itemArray.forEach((item) => {
+                    // Create a container div for each item
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'item-preview bg-[#333] rounded shadow-md hover:bg-[#222] cursor-pointer transition duration-200 p-4 flex flex-col items-center justify-center';
+
+                    // Create a title for the item
+                    const itemTitle = document.createElement('h3');
+                    itemTitle.className = 'text-center font-bold text-white mb-2';
+                    itemTitle.innerText = item.n;
+
+                    // Create a preview canvas for the item
+                    const itemCanvasContainer = tileset_window.drawItemOnCanvas(item);
+
+                    // Append the title and canvas to the item div
+                    itemDiv.appendChild(itemTitle);
+                    itemDiv.appendChild(itemCanvasContainer);
+
+                    // Append the item div to the items grid
+                    itemsGrid.appendChild(itemDiv);
+                });
+            }
+        }
+    },
+
+    drawItemOnCanvas: function (item) {
+        // Assuming assets.load(item.t) returns a tileset image
+        const tilesetImage = assets.load(item.t);
+
+        // Determine the number of tiles and the canvas size
+        const tileSize = 16; // Size of each tile (e.g., 16x16)
+        const maxCol = Math.max(...item.a) + 1; // Calculate number of columns
+        const maxRow = Math.max(...item.b) + 1; // Calculate number of rows
+
+        // Create a temporary canvas to draw the item
+        const itemCanvas = document.createElement('canvas');
+        const ctx = itemCanvas.getContext('2d');
+
+        // Set canvas size
+        itemCanvas.width = maxCol * tileSize;
+        itemCanvas.height = maxRow * tileSize;
+
+        // Draw each tile
+        item.i.forEach((tileIndex, index) => {
+            const srcX = (tileIndex % 150) * tileSize;
+            const srcY = Math.floor(tileIndex / 150) * tileSize;
+            const destX = item.a[index] * tileSize;
+            const destY = item.b[index] * tileSize;
+
+            // Draw the tile from the tileset image onto the item canvas
+            ctx.drawImage(
+                tilesetImage,  // Assuming this is the tileset image loaded earlier
+                srcX, srcY, tileSize, tileSize, // Source dimensions
+                destX, destY, tileSize, tileSize // Destination dimensions
+            );
+        });
+
+        // Adjust canvas style for responsiveness and grid fitting
+        itemCanvas.className = 'mx-auto block';
+
+        // Wrap the canvas in a responsive container if needed
+        const canvasContainer = document.createElement('div');
+        canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden'; // Adjust the size to fit your grid
+
+        // Add a class to make the canvas fill the container
+        itemCanvas.className += ' w-full h-full object-contain';
+
+        // Append canvas to container
+        canvasContainer.appendChild(itemCanvas);
+
+        return canvasContainer; // Return the container element with the item drawn
     },
     unmount: function() {
         ui.destroyTabs('tileset_window_tabs');

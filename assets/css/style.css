@@ -259,6 +259,14 @@ html, body {
   background-position: -416px -32px;
 }
 
+.plus {
+  width: 32px;
+  background-position: -448px 0;
+}
+.plus:hover {
+  background-position: -448px -32px;
+}
+
 .close_dark {
   width: 22px;
   height: 22px;
@@ -454,7 +462,7 @@ html, body {
 }
 
 .tab.active {
-  background-color: #4e7097;
+  background-color: #152032;
   color: #fff;
 }
 

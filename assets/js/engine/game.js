@@ -26,10 +26,10 @@ var game = {
     viewportYStart: null,
     viewportYEnd: null,
     desiredFPS: 60,
-    fixedDeltaTime: 1000 / 60, // Fixed time step for 60 FPS
+    fixedDeltaTime: 1000 / 60,
     accumulatedTime: 0,
     lastTime: null,
-    maxAccumulatedTime: 1000, // To avoid spiral of death
+    maxAccumulatedTime: 1000,
     displayUsernames: false,
     displayChat: false,
     displaySprite: true,
@@ -40,11 +40,11 @@ var game = {
     selectedTiles: [],
     particles: [],
     overlappingTiles: [],
-    edgeScrollSpeed: 30, // Increased speed for more noticeable movement
-    edgeScrollEasing: 0.2, // Slightly larger easing factor for smoother control
+    edgeScrollSpeed: 30,
+    edgeScrollEasing: 0.2,
     edgeScrollBuffer: 150,
     isPaused: false,
-    sceneBg: "66aafe363182c",
+    sceneBg: "66ae0ee7bbf2d",
     isEditorActive: false,
     editorMode: null,
     selectionBounds: null,
@@ -61,11 +61,11 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 0,
+        hours: 10,
         minutes: 0,
         seconds: 0,
         days: 0,
-        speedMultiplier: 100, // Game time progresses 10 times faster than real time
+        speedMultiplier: 100,
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
@@ -92,13 +92,11 @@ var game = {
     },
 
     reloadGameData: function() {
-        // Specify the assets you want to reload
-        const assetsToReload = ['objectData', 'roomData']; // Add other assets as needed
+        const assetsToReload = ['objectData', 'roomData'];
 
         assets.reloadAssets(assetsToReload, () => {
             console.log("Game data reloaded");
             this.roomData = assets.load('roomData');
-            // Perform any additional updates necessary for your game
             this.updateGameElements();
         });
     },
@@ -111,14 +109,12 @@ var game = {
     },
 
     updateGameElements: function() {
-        // Any specific updates to game elements after reloading data can be added here
         console.log("Game elements updated");
-        // Example: this.refreshSprites(); if you need to update sprites specifically
     },
 
     setZoomLevel: function(newZoomLevel) {
         this.zoomLevel = newZoomLevel;
-        localStorage.setItem('zoomLevel', newZoomLevel); // Store zoom level in local storage
+        localStorage.setItem('zoomLevel', newZoomLevel);
     },
 
     init: function() {
@@ -166,11 +162,10 @@ var game = {
 
             actions.loadObjectScript();
 
-            // Create player sprite
             const playerOptions = {
                 id: this.playerid,
-                x: 10,
-                y: 15,
+                x: 29,
+                y: 23,
                 isPlayer: true,
                 speed: 70,
                 head: 1,
@@ -224,7 +219,6 @@ var game = {
                 }
             });
 
-        // Add this line to allow triggering reload from the console or UI
         window.reloadGameData = this.reloadGameData.bind(this);
         this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
         this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
@@ -249,15 +243,11 @@ var game = {
     },
     
     resume: function() {
-
         network.send({
             command: 'requestGameState',
             playerId: this.playerid
         });
-    
         audio.resumeAll();
-    
-        console.log("Game resumed and requesting the latest state from the server");
     },
 
     setActiveSprite: function(spriteId) {
@@ -456,6 +446,8 @@ var game = {
 
     handleCanvasClick: function(event, isShiftKey) {
         console.log('Game handleCanvasClick triggered');
+
+        console_window.toggleConsoleWindow();
         
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
@@ -930,9 +922,12 @@ var game = {
         this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
         this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
+
         tileCount = render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
-        const { renderQueue, itemTileCount } = render.renderRoomItems(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+
+        const { itemTileCount } = render.renderRoomItems(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
         tileCount += itemTileCount;
+
         spriteCount = render.renderSprites(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
         render.renderPathfinderLine();
@@ -990,5 +985,4 @@ var game = {
     
         requestAnimationFrame(this.loop.bind(this));
     }
-    
 };

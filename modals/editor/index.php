@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='edit_mode_window' class='window window_bg position-fixed top-2 left-2 rounded-sm' style='width: 57px;background: #3a445b;'>
+  <div data-window='edit_mode_window' class='window window_bg position-fixed top-2 right-2 rounded-sm' style='width: 57px;background: #3a445b;'>
 
 <!-- Handle that spans the whole left side -->
 <div data-part='handle' class='window_title rounded-none w-full mb-1' style='height: 15px; background-image: radial-gradient(#e5e5e58a 1px, transparent 0) !important; border-radius: 0;'>
@@ -91,8 +91,6 @@ var edit_mode_window = {
             this.modeButtons[mode].addEventListener('click', handler.bind(this));
         });
 
-        modal.hideAll();
-        modal.show('edit_mode_window');
         game.isEditorActive = true;
         game.displaySprite = false;
         this.init(); // Initialize editor functions
@@ -290,7 +288,7 @@ var edit_mode_window = {
         game.render();
     },
 
-    handleClick: function (event) {
+    handleClick: function (event) { 
         console.log('Editor handleClick triggered');
         if (event.target.closest('.tabs')) {
             return;

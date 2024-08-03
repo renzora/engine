@@ -17,7 +17,8 @@ if ($auth) {
 var ui_editor_tab_window = {
   start: function() {
     this.displayItems();
-    editor.setupClickToActivate();
+    modal.hideAll();
+    modal.load('editor');
   },
 
   displayItems: function() {
