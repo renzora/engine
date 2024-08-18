@@ -1,5 +1,45 @@
 var render = {
     overlappingTiles: [],
+    parseRange: function(rangeString) {
+        const [start, end] = rangeString.split('-').map(Number);
+        const rangeArray = [];
+
+        if (start > end) {
+            for (let i = start; i >= end; i--) {
+                rangeArray.push(i);
+            }
+        } else {
+            for (let i = start; i <= end; i++) {
+                rangeArray.push(i);
+            }
+        }
+
+        return rangeArray;
+    },
+
+    expandTileData: function(tileData) {
+        const expandedTileData = { ...tileData };
+
+        if (Array.isArray(tileData.i)) {
+            expandedTileData.i = tileData.i.map(frame => {
+                if (Array.isArray(frame)) {
+                    // Handle case where each frame is an array (animation frames)
+                    return frame.map(value => {
+                        if (typeof value === 'string' && value.includes('-')) {
+                            return this.parseRange(value);
+                        }
+                        return value;
+                    }).flat();  // Flatten after expanding ranges
+                } else if (typeof frame === 'string' && frame.includes('-')) {
+                    // Handle single range
+                    return this.parseRange(frame);
+                }
+                return frame;
+            });
+        }
+
+        return expandedTileData;
+    },
     updateGameLogic: function(deltaTime) {
         gamepad.updateGamepadState();
         
@@ -60,25 +100,37 @@ var render = {
         return tileCount;
     },
 
-    renderRoomItems: function (viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+    renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
         const renderQueue = [];
+        let backgroundTileCount = 0;
         let tileCount = 0;
-
+        let spriteCount = 0;
+    
+        // Apply expandTileData to objectData
+        const expandedObjectData = Object.keys(game.objectData).reduce((acc, key) => {
+            acc[key] = game.objectData[key].map(this.expandTileData.bind(this));
+            return acc;
+        }, {});
+    
+        // Render background tiles
+        backgroundTileCount = this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+    
+        // Collect room items (foreground tiles) for rendering
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(roomItem => {
-                const itemData = game.objectData[roomItem.id];
+                const itemData = expandedObjectData[roomItem.id];
                 if (itemData && itemData.length > 0) {
                     const tileData = itemData[0];
                     const xCoordinates = roomItem.x || [];
                     const yCoordinates = roomItem.y || [];
-
+    
                     let index = 0;
                     for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
                         for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
                             if (x >= viewportXStart && x < viewportXEnd && y >= viewportYStart && y < viewportYEnd) {
                                 const posX = x * 16;
                                 const posY = y * 16;
-
+    
                                 let tileFrameIndex;
                                 if (Array.isArray(tileData.i[0])) {
                                     const animationData = tileData.i;
@@ -87,90 +139,61 @@ var render = {
                                 } else {
                                     tileFrameIndex = tileData.i[index];
                                 }
-
+    
                                 if (tileFrameIndex !== undefined) {
                                     const srcX = (tileFrameIndex % 150) * 16;
                                     const srcY = Math.floor(tileFrameIndex / 150) * 16;
-
+    
                                     renderQueue.push({
-                                        tileIndex: tileFrameIndex,
-                                        posX: posX,
-                                        posY: posY,
-                                        z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
-                                        id: roomItem.id,
+                                        zIndex: Array.isArray(tileData.zIndex) ? tileData.zIndex[index % tileData.zIndex.length] : tileData.zIndex,
                                         draw: function () {
-                                            game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, this.posX, this.posY, 16, 16);
+                                            game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
                                         }
                                     });
-
-                                    tileCount++;
+    
+                                    tileCount++; // Increment foreground tile count
                                 }
                             }
-
                             index++;
                         }
                     }
 
-                    render.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
-                    render.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+                    this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+                    this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
                 }
             });
         }
-
-        // Sort renderQueue by z-index and render order
-        renderQueue.sort((a, b) => a.z - b.z);
-
-        // Draw the items in the renderQueue
-        renderQueue.forEach(item => {
-            item.draw();
-        });
-
-        return { renderQueue, itemTileCount: tileCount };
-    },
-
-    renderSprites: function (viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        let spriteCount = 0;
-        const renderQueue = [];
-
+    
+        // Collect sprites for rendering
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
-
-            if (sprite.isEnemy) {
-                sprite.drawEnemyAttackAimTool();
-            }
             const spriteRight = sprite.x + sprite.width;
             const spriteBottom = sprite.y + sprite.height;
-
+    
             if (spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
                 spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16) {
+    
                 renderQueue.push({
-                    z: 0,
-                    draw: function () {
-                        game.sprites[id].drawShadow();
-                    }
-                });
-
-                renderQueue.push({
-                    z: 2,
+                    zIndex: 2,  // All sprites should have a zIndex of 2
                     draw: function () {
                         game.sprites[id].draw();
                     }
                 });
-                spriteCount++;
+    
+                spriteCount++; // Increment sprite count
             }
         }
-
-        // Sort renderQueue by z-index and render order
-        renderQueue.sort((a, b) => a.z - b.z);
-
-        // Draw the remaining sprites (z-index > 1)
+    
+        // Sort the combined renderQueue by zIndex before rendering
+        renderQueue.sort((a, b) => a.zIndex - b.zIndex);
+    
+        // Draw the items in the renderQueue
         renderQueue.forEach(item => {
-            if (item.z > 1) {
-                item.draw();
-            }
+            item.draw();
         });
-
-        return spriteCount;
+    
+        // Return counts, including background tiles
+        return { backgroundTileCount, tileCount, spriteCount };
     },
 
     renderPathfinderLine: function () {

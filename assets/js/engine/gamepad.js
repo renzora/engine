@@ -30,7 +30,6 @@ var gamepad = {
         this.isConnected = true;
         this.name = this.getGamepadName(e.gamepad); // Store the gamepad name
         game.updateInputMethod('gamepad', this.name);
-        modal.minimize('console_window');
         modal.front('ui_inventory_window');
         const event = new CustomEvent('gamepadConnected');
         window.dispatchEvent(event);
@@ -42,7 +41,6 @@ var gamepad = {
             this.gamepadIndex = null;
             game.updateInputMethod('keyboard'); // Revert to keyboard input method when gamepad is disconnected
             console.log("Gamepad disconnected from index " + this.gamepadIndex);
-            modal.show('console_window');
 
             // Emit custom event for gamepad disconnection
             const event = new CustomEvent('gamepadDisconnected');

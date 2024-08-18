@@ -1,34 +1,55 @@
 const actions = {
-    objectScript: {},
+    handleTileAction: function(tileId) {
+        const tileData = game.objectData[tileId];
+        if (!tileData || !tileData[0] || !tileData[0].script) return;
 
-    loadObjectScript: function () {
-        this.objectScript = assets.load('objectScript');
-        console.log('Object script loaded:', this.objectScript);
-    },
+        const tileScript = tileData[0].script;
+        const sprite = game.mainSprite;
+        const spriteX = Math.round(sprite.x);
+        const spriteY = Math.round(sprite.y);
 
-    handleTileAction: function (tileId) {
-        const tileActions = this.objectScript[tileId];
-        if (tileActions && tileActions.walk) {
-            if (tileActions.walk.swim) {
+        if (tileScript.walk) {
+            // Check if a required button needs to be pressed
+            if (tileScript.walk.requiredButton && !this.isButtonPressed(tileScript.walk.requiredButton)) {
+                return; // Exit if the required button is not pressed
+            }
+
+            if (tileScript.walk.swim) {
                 this.swim();
             }
-            if (tileActions.walk.tooltip) {
-                console.log("tooltip executed");
-                this.addTooltip(tileActions.walk.tooltip, game.mainSprite.x, game.mainSprite.y);
+            if (tileScript.walk.tooltip) {
+                this.addTooltip(tileScript.walk.tooltip, spriteX, spriteY);
+            }
+            if (tileScript.walk.tile) {
+                tileScript.walk.tile.forEach(tileAction => {
+                    if (tileAction.x === spriteX && tileAction.y === spriteY) {
+                        this[tileAction.action]();
+                    }
+                });
+            }
+        }
+    },    
+
+    handleExitTileAction: function(tileId) {
+        const tileData = game.objectData[tileId];
+        if (!tileData || !tileData[0] || !tileData[0].script) return;
+
+        const tileScript = tileData[0].script;
+
+        if (tileScript.exit) {
+            if (tileScript.exit.swim === false) {
+                this.restoreBody();
+            }
+
+            if (tileScript.exit.tooltip) {
+                this.addTooltip(tileScript.exit.tooltip, game.mainSprite.x, game.mainSprite.y);
             }
         }
     },
 
-    handleExitTileAction: function (tileId) {
-        const tileActions = this.objectScript[tileId];
-        if (tileActions && tileActions.exit) {
-            if (tileActions.exit.swim === false) {
-                this.restoreBody();
-            }
-            if (tileActions.exit.tooltip) {
-                this.addTooltip(tileActions.exit.tooltip, game.mainSprite.x, game.mainSprite.y);
-            }
-        }
+    changeScene: function() {
+        console.log("Special event triggered at specific tile!");
+        // Add additional logic for the special event here
     },
 
     swim: function () {
@@ -46,14 +67,24 @@ const actions = {
     },
     
     dropItemOnObject: function (item, object) {
-        console.log('dropItemOnObject called with:', item, object);
-        const objectActions = this.objectScript[object.id];
-        console.log('Object actions:', objectActions);
+        const objectData = game.objectData[object.id];
+        if (!objectData || !objectData[0]) {
+            console.log(`No data found for object ${object.id}`);
+            return;
+        }
+
+        const objectActions = objectData[0].script;
         if (objectActions && objectActions.drop) {
             const dropAction = objectActions.drop;
+
+            // Check if the required button is pressed for the drop action
+            if (dropAction.requiredButton && !this.isButtonPressed(dropAction.requiredButton)) {
+                console.log(`Action requires button ${dropAction.requiredButton} to be pressed.`);
+                return; // Exit if the required button is not pressed
+            }
+
             if (dropAction.requiredItem === item) {
                 const actionFunction = dropAction.action;
-                console.log('Executing action function:', actionFunction);
                 if (typeof this[actionFunction] === 'function') {
                     this[actionFunction](item, object);
                 } else {
@@ -65,8 +96,8 @@ const actions = {
         } else {
             console.log(`No drop action defined for ${object.id}`);
         }
-    },
-    
+    },    
+
     notifyInvalidDrop: function(item, objectId) {
         const objectName = this.getObjectNameById(objectId);
         ui.notif("scene_change_notif", `You cannot drop a ${item} into ${objectName}`, true);
@@ -128,4 +159,9 @@ const actions = {
     addTooltip: function(message, x, y) {
         game.tooltips.push({ message, x, y });
     },
+
+    // Utility to check if a required button is pressed
+    isButtonPressed: function(button) {
+        return this.buttons.includes(button);
+    }
 };

@@ -506,61 +506,104 @@ var edit_mode_window = {
     },
 
     addNewItemToRoomData: function (newItem) {
-        if (!game.roomData.items) {
-            game.roomData.items = [];
+    if (!game.roomData.items) {
+        game.roomData.items = [];
+    }
+
+    function isOverlapping(existingItem, newItem) {
+        const existingItemData = game.objectData[existingItem.id];
+        const newItemData = game.objectData[newItem.id];
+
+        if (!existingItemData || !newItemData) {
+            return false;
         }
 
-        function isOverlapping(existingItem, newItem) {
-            const existingItemData = game.objectData[existingItem.id];
-            const newItemData = game.objectData[newItem.id];
-
-            if (!existingItemData || !newItemData) {
-                return false;
+        const existingTiles = new Set();
+        for (let i = 0; i < existingItem.x.length; i++) {
+            for (let j = 0; j < existingItem.y.length; j++) {
+                existingTiles.add(`${existingItem.x[i]}_${existingItem.y[j]}`);
             }
+        }
 
-            const existingTiles = new Set();
-            for (let i = 0; i < existingItem.x.length; i++) {
-                for (let j = 0; j < existingItem.y.length; j++) {
-                    existingTiles.add(`${existingItem.x[i]}_${existingItem.y[j]}`);
-                }
-            }
-
-            for (let i = 0; i < newItem.x.length; i++) {
-                for (let j = 0; j < newItem.y.length; j++) {
-                    const tileKey = `${newItem.x[i]}_${newItem.y[j]}`;
-                    if (existingTiles.has(tileKey)) {
-                        if (game.objectData[existingItem.id][0].z >= game.objectData[newItem.id][0].z) {
-                            game.overlappingTiles.push({ x: newItem.x[i], y: newItem.y[j] });
-                        }
+        for (let i = 0; i < newItem.x.length; i++) {
+            for (let j = 0; j < newItem.y.length; j++) {
+                const tileKey = `${newItem.x[i]}_${newItem.y[j]}`;
+                if (existingTiles.has(tileKey)) {
+                    if (game.objectData[existingItem.id][0].z >= game.objectData[newItem.id][0].z) {
+                        game.overlappingTiles.push({ x: newItem.x[i], y: newItem.y[j] });
                     }
                 }
             }
-
-            return game.overlappingTiles.length > 0;
         }
 
-        let overlapDetected = false;
-        for (let i = 0; i < game.roomData.items.length; i++) {
-            const existingItem = game.roomData.items[i];
-            if (isOverlapping(existingItem, newItem)) {
-                overlapDetected = true;
-                break;
+        return game.overlappingTiles.length > 0;
+    }
+
+    let overlapDetected = false;
+    for (let i = 0; i < game.roomData.items.length; i++) {
+        const existingItem = game.roomData.items[i];
+        if (isOverlapping(existingItem, newItem)) {
+            overlapDetected = true;
+            break;
+        }
+    }
+
+    if (overlapDetected && newItem.s !== 1) {
+        console.log('Overlap detected, item not added.');
+        return;
+    }
+
+    game.roomData.items.push(newItem);
+
+    // Check if the new item has the createScene property set to true
+    const itemData = game.objectData[newItem.id][0];
+    if (itemData.createScene) {
+        this.createSceneForItem(newItem, itemData);
+    }
+
+    effects.shakeMap(300, 2);
+
+    console.log('New item added to roomData:', newItem);
+    audio.playAudio("objectDrop", assets.load('objectDrop'), 'sfx');
+    this.saveRoomData();
+},
+
+createSceneForItem: function (item, itemData) {
+    const sceneName = `${itemData.n} ${itemData.sceneType === 'int' ? 'Interior' : 'Exterior'}`;
+
+    if (!game.serverid) {
+        console.error('Server ID is not defined');
+        return;
+    }
+
+    const requestData = {
+        server_id: game.serverid,
+        name: sceneName,
+        type: itemData.sceneType
+    };
+
+    ui.ajax({
+        outputType: 'json',
+        method: 'POST',
+        url: '/modals/menus/console/tabs/servers/ajax/createScene.php',
+        data: JSON.stringify(requestData),
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        success: function (data) {
+            if (!data.error) {
+                console.log('Scene created successfully:', data.scene);
+                // Optionally, store the scene ID in the item data or link it to the item
+                // Example: itemData.sceneId = data.scene.id;
+            } else {
+                console.error('Error creating scene:', data.message);
             }
+        },
+        error: function (xhr, status, error) {
+            console.error('Error creating scene:', error || xhr.statusText);
         }
-
-        if (overlapDetected && newItem.s !== 1) {
-            console.log('Overlap detected, item not added.');
-            return;
-        }
-
-        game.roomData.items.push(newItem);
-
-        effects.shakeMap(300, 2);
-
-        console.log('New item added to roomData:', newItem);
-        audio.playAudio("objectDrop", assets.load('objectDrop'), 'sfx');
-        this.saveRoomData();
-    },
+    });
+},
 
     pickUpSelectedItems: function () {
         if (game.selectedObjects.length === 0) return;

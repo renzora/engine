@@ -203,6 +203,18 @@
       "type": "item",
       "x": 432,
       "y": 0
+    },
+    {
+      "name": "fireball",
+      "type": "trait",
+      "x": 448,
+      "y": 0
+    },
+    {
+      "name": "psychic",
+      "type": "trait",
+      "x": 464,
+      "y": 0
     }
   ]
 }

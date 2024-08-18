@@ -28,11 +28,14 @@
                 <div class="tab-content p-4 hidden text-white" data-tab-content="debug-tools-tab">
                     <p>Camera Position: <span id="camera_position"></span></p>
                     <div>
-                        <input type="checkbox" id="show_collision_boundaries" onchange="debug_utils_window.toggleCollisionBoundaries()" checked> Show Collision Boundaries
-                    </div>
-                    <div>
-                        <input type="checkbox" id="show_walkable_tiles" onchange="debug_utils_window.toggleWalkableTiles()" checked> Show Nearest Walkable Tile
-                    </div>
+        <input type="checkbox" id="show_collision_boundaries" onchange="debug_utils_window.toggleCollisionBoundaries()" checked> Show Collision Boundaries
+    </div>
+    <div>
+        <input type="checkbox" id="show_walkable_tiles" onchange="debug_utils_window.toggleWalkableTiles()" checked> Show Nearest Walkable Tile
+    </div>
+    <div>
+        <input type="checkbox" id="show_object_collision" onchange="debug_utils_window.toggleObjectCollision()"> Show Object Collision
+    </div>
                     <div>
                         <label for="attack_slider">Attack:</label>
                         <input type="range" id="attack_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateAttribute('attack', this.value)">
@@ -178,6 +181,7 @@
     showWalkableTiles: true,
     showAttackRadius: false,
     selectedEnemy: null,
+    showObjectCollision: false,
     start: function() {
         ui.initTabs('debug_utils_window_tabs', 'sprite-tab'); // Initialize the first tab as active
         this.updateDebugInfo();
@@ -189,9 +193,15 @@
     },
     toggleCollisionBoundaries: function() {
         this.showCollisionBoundaries = !this.showCollisionBoundaries;
+        this.updateDebugInfo(); // Refresh debug info to reflect the change
+    },
+    toggleObjectCollision: function() {
+        this.showObjectCollision = !this.showObjectCollision;
+        this.updateDebugInfo(); // Refresh debug info to reflect the change
     },
     toggleWalkableTiles: function() {
         this.showWalkableTiles = !this.showWalkableTiles;
+        this.updateDebugInfo(); // Refresh debug info to reflect the change
     },
     toggleAttackRadius: function() {
         this.showAttackRadius = !this.showAttackRadius;
@@ -277,37 +287,95 @@
         }
     },
     updateDebugInfo: function() {
-        const nearestTiles = this.getNearestWalkableTiles();
-        const spritePosition = this.getCurrentSpritePosition();
-        const cameraPosition = this.getCameraPosition();
-        const collisions = this.getCollisions();
-        const collisionBoundaries = this.getCollisionBoundaries();
-        const sprite = game.mainSprite;
+    const nearestTiles = this.getNearestWalkableTiles();
+    const spritePosition = this.getCurrentSpritePosition();
+    const cameraPosition = this.getCameraPosition();
+    const collisions = this.getCollisions();
+    const collisionBoundaries = this.getCollisionBoundaries();
+    const sprite = game.mainSprite;
 
-        document.getElementById('nearest_tile').innerText = nearestTiles.join(', ');
-        document.getElementById('sprite_position').innerText = spritePosition;
-        if (sprite) {
-            const tileX = Math.round(sprite.x / 16);
-            const tileY = Math.round(sprite.y / 16);
-            document.getElementById('sprite_tile_x').innerText = tileX;
-            document.getElementById('sprite_tile_y').innerText = tileY;
-            document.getElementById('attack_slider').value = sprite.attack;
-            document.getElementById('defense_slider').value = sprite.defense;
-            document.getElementById('intensity_slider').value = sprite.intensity;
-            document.getElementById('attack_value').innerText = sprite.attack;
-            document.getElementById('defense_value').innerText = sprite.defense;
-            document.getElementById('intensity_value').innerText = sprite.intensity;
-        } else {
-            document.getElementById('sprite_tile_x').innerText = "No sprite found";
-            document.getElementById('sprite_tile_y').innerText = "No sprite found";
+    document.getElementById('nearest_tile').innerText = nearestTiles.join(', ');
+    document.getElementById('sprite_position').innerText = spritePosition;
+    if (sprite) {
+        const tileX = Math.round(sprite.x / 16);
+        const tileY = Math.round(sprite.y / 16);
+        document.getElementById('sprite_tile_x').innerText = tileX;
+        document.getElementById('sprite_tile_y').innerText = tileY;
+        document.getElementById('attack_slider').value = sprite.attack;
+        document.getElementById('defense_slider').value = sprite.defense;
+        document.getElementById('intensity_slider').value = sprite.intensity;
+        document.getElementById('attack_value').innerText = sprite.attack;
+        document.getElementById('defense_value').innerText = sprite.defense;
+        document.getElementById('intensity_value').innerText = sprite.intensity;
+    } else {
+        document.getElementById('sprite_tile_x').innerText = "No sprite found";
+        document.getElementById('sprite_tile_y').innerText = "No sprite found";
+    }
+
+    document.getElementById('camera_position').innerText = cameraPosition;
+    document.getElementById('collisions_info').innerText = collisions;
+    document.getElementById('collision_boundaries').innerText = collisionBoundaries;
+
+    // Update enemy select box
+    this.populateEnemySelect();
+},
+renderObjectCollision: function() {
+    console.log("Rendering object collision...");
+
+    if (!game.roomData || !game.roomData.items) return;
+
+    game.roomData.items.forEach(item => {
+        const itemData = game.objectData[item.id];
+        if (!itemData) return;
+
+        const tileData = itemData[0]; // Assuming the first tile data group
+        const xCoordinates = item.x || [];
+        const yCoordinates = item.y || [];
+
+        // Assuming the 'w' field in tileData contains an array of collision points for polygons
+        if (tileData.w && Array.isArray(tileData.w)) {
+            const polygonPoints = tileData.w.map(point => ({
+                x: point.x,
+                y: point.y
+            }));
+
+            // Offset polygon points based on item coordinates
+            const offsetX = xCoordinates[0] * 16;
+            const offsetY = yCoordinates[0] * 16;
+            this.drawPolygon(polygonPoints, offsetX, offsetY);
         }
-        document.getElementById('camera_position').innerText = cameraPosition;
-        document.getElementById('collisions_info').innerText = collisions;
-        document.getElementById('collision_boundaries').innerText = collisionBoundaries;
+    });
+},
 
-        // Update enemy select box
-        this.populateEnemySelect();
-    },
+drawPolygon: function(points, offsetX, offsetY, fillColor = 'rgba(255, 0, 0, 0.5)', borderColor = 'rgba(255, 0, 0, 1)') {
+    if (!points || points.length < 3) return; // A valid polygon needs at least 3 points
+
+    if (game.ctx) {
+        game.ctx.beginPath();
+        game.ctx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
+
+        // Draw lines to each subsequent point
+        for (let i = 1; i < points.length; i++) {
+            game.ctx.lineTo(points[i].x + offsetX, points[i].y + offsetY);
+        }
+
+        // Close the polygon
+        game.ctx.closePath();
+
+        // Fill the polygon
+        game.ctx.fillStyle = fillColor;
+        game.ctx.fill();
+
+        // Draw the border
+        game.ctx.strokeStyle = borderColor;
+        game.ctx.lineWidth = 1;
+        game.ctx.stroke();
+    } else {
+        console.error("Canvas context is not defined.");
+    }
+},
+
+
     getNearestWalkableTiles: function() {
         const sprite = game.mainSprite;
         if (!sprite) return ["No sprite found"];
@@ -323,7 +391,7 @@
         for (const direction of directions) {
             const newX = gridX + direction.x;
             const newY = gridY + direction.y;
-            if (game.isTileWalkable(newX, newY) && !collision.check(newX * 16, newY * 16, sprite)) {
+            if (collision.isTileWalkable(newX, newY) && !collision.check(newX * 16, newY * 16, sprite)) {
                 walkableTiles.push(`(${newX}, ${newY})`);
             }
         }
@@ -362,59 +430,82 @@
         return boundaries.join("; ");
     },
     renderCollisionBoundaries: function() {
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            game.ctx.strokeStyle = 'red';
+    for (const id in game.sprites) {
+        const sprite = game.sprites[id];
+        const centerX = sprite.x + sprite.width / 2;
+        const centerY = sprite.y + sprite.height * 0.75; // Adjusted to half the sprite height
+        const radiusX = sprite.width / 2; // Semi-major axis (horizontal radius)
+        const radiusY = sprite.height / 4; // Semi-minor axis (vertical radius, half the bottom half)
+
+        game.ctx.save();
+        game.ctx.strokeStyle = 'red';
+        game.ctx.lineWidth = 1;
+
+        // Draw an oval (ellipse) for the collision boundary
+        game.ctx.beginPath();
+        game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+        game.ctx.stroke();
+
+        game.ctx.restore();
+    }
+},
+renderNearestWalkableTile: function() {
+    for (const id in game.sprites) {
+        const sprite = game.sprites[id];
+        const gridX = Math.round(sprite.x / 16);
+        const gridY = Math.round(sprite.y / 16);
+
+        const directions = [
+            { x: 0, y: -1 }, // N
+            { x: 1, y: 0 },  // E
+            { x: 0, y: 1 },  // S
+            { x: -1, y: 0 }  // W
+        ];
+
+        directions.forEach(direction => {
+            const newX = gridX + direction.x;
+            const newY = gridY + direction.y;
+
+            const posX = newX * 16;
+            const posY = newY * 16;
+
+            const collisionDetected = collision.check(newX * 16, newY * 16, sprite);
+            const isWalkable = collision.isTileWalkable(newX, newY);
+
+            if (collisionDetected || !isWalkable) {
+                game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            } else {
+                game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+            }
+
+            // Render the square tile
+            game.ctx.fillRect(posX, posY, 16, 16);
+
+            // Render oval collision boundaries starting halfway down the sprite
+            const centerX = sprite.x + sprite.width / 2;
+            const centerY = sprite.y + sprite.height * 0.75; // Adjusted center
+            const radiusX = sprite.width / 2;
+            const radiusY = sprite.height / 4; // Adjusted radius
+
+            game.ctx.save();
+            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
             game.ctx.lineWidth = 1;
-            game.ctx.strokeRect(sprite.x, sprite.y, sprite.width, sprite.height);
-        }
-    },
-    renderNearestWalkableTile: function() {
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            const gridX = Math.round(sprite.x / 16);
-            const gridY = Math.round(sprite.y / 16);
+            game.ctx.beginPath();
+            game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+            game.ctx.stroke();
+            game.ctx.restore();
 
-            // Check each tile around the sprite for collisions
-            const directions = [
-                { x: 0, y: -1 }, // N
-                { x: 1, y: 0 },  // E
-                { x: 0, y: 1 },  // S
-                { x: -1, y: 0 }  // W
-            ];
-
-            directions.forEach(direction => {
-                const newX = gridX + direction.x;
-                const newY = gridY + direction.y;
-
-                // Check if there's a collision at this tile
-                const collisionDetected = collision.check(newX * 16, newY * 16, sprite);
-                const isWalkable = game.isTileWalkable(newX, newY);
-
-                const posX = newX * 16;
-                const posY = newY * 16;
-
-                if (collisionDetected || !isWalkable) {
-                    // Draw the non-walkable tile in red
-                    game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-                } else {
-                    // Draw the walkable tile in green
-                    game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
-                }
-
-                game.ctx.fillRect(posX, posY, 16, 16);
-
-                // Draw the tile data (x, y, and top-left position) in very small text
-                game.ctx.fillStyle = 'white';
-                game.ctx.font = '2px Tahoma'; // Very small font size
-                game.ctx.textAlign = 'left';
-                game.ctx.textBaseline = 'top';
-                game.ctx.fillText(`x:${newX}`, posX + 1, posY + 1);
-                game.ctx.fillText(`y:${newY}`, posX + 1, posY + 3);
-                game.ctx.fillText(`${posX},${posY}`, posX + 1, posY + 6);
-            });
-        }
-    },
+            // Display grid information
+            game.ctx.fillStyle = 'white';
+            game.ctx.font = '2px Tahoma';
+            game.ctx.textAlign = 'left';
+            game.ctx.textBaseline = 'top';
+            game.ctx.fillText(`x:${newX}`, posX + 1, posY + 1);
+            game.ctx.fillText(`y:${newY}`, posX + 1, posY + 3);
+            game.ctx.fillText(`${posX},${posY}`, posX + 1, posY + 6);
+        });
+    }
+},
     renderAttackRadius: function() {
         if (!this.showAttackRadius) return; // Check if the showAttackRadius is enabled
         for (const id in game.sprites) {

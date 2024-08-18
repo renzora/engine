@@ -112,7 +112,6 @@ html, body {
   width: 448px;
   height: 32px;
   background: url('../img/icons/icons.png');
-  image-rendering: pixelated;
 }
 
 .ui_icon {
@@ -265,6 +264,22 @@ html, body {
 }
 .plus:hover {
   background-position: -448px -32px;
+}
+
+.objectives {
+  width: 32px;
+  background-position: -480px 0;
+}
+.objectives:hover {
+  background-position: -480px -32px;
+}
+
+.arena {
+  width: 32px;
+  background-position: -512px 0;
+}
+.arena:hover {
+  background-position: -512px -32px;
 }
 
 .close_dark {
@@ -462,7 +477,7 @@ html, body {
 }
 
 .tab.active {
-  background-color: #152032;
+  background-color: #2d4c7d;
   color: #fff;
 }
 

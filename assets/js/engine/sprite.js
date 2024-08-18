@@ -374,8 +374,6 @@ var sprite = {
     
 
     walkToClickedTile: function(tileX, tileY) {
-        console.log('Attempting to walk to:', tileX, tileY);
-    
         const boundary = this.boundary;
         if (boundary && (tileX > boundary.x || tileY > boundary.y)) {
             return;
@@ -389,93 +387,93 @@ var sprite = {
         audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
     },
 
-calculatePath: function(startX, startY, endX, endY) {
-    const grid = game.createWalkableGrid();
-    const graph = new Graph(grid, { diagonal: true });
-    const start = graph.grid[startX][startY];
-    const end = graph.grid[endX][endY];
+    calculatePath: function(startX, startY, endX, endY) {
+        const grid = collision.createWalkableGrid(); // Use the cached walkable grid
+        const graph = new Graph(grid, { diagonal: true });
+        const start = graph.grid[startX][startY];
+        const end = graph.grid[endX][endY];
+        
+        // Check if start and end points are walkable
+        if (grid[startX][startY] === 0 || grid[endX][endY] === 0) {
+            console.log("Pathfinding: Start or end point is not walkable");
+            return [];
+        }
     
-    // Check if start and end points are walkable
-    if (grid[startX][startY] === 0 || grid[endX][endY] === 0) {
-        console.log("Pathfinding: Start or end point is not walkable");
-        return [];
-    }
-
-    const result = astar.search(graph, start, end);
-
-    if (result.length === 0) {
-        console.log("Pathfinding: No path found");
-        return [];
-    }
-
-    const path = result.map(function(node) {
-        return { x: node.x, y: node.y, alpha: 1 }; // Add alpha property for opacity
-    });
-
-    this.path = path;
-    this.pathIndex = 0; // Reset the path index for following the path
-    return path;
-}, 
-
-moveAlongPath: function() {
-    if (!this.path || this.pathIndex >= this.path.length) {
-        this.isMovingToTarget = false;
-        this.moving = false;
-        this.stopping = true;
-        this.currentFrame = 0; // Reset to default standing position
-        this.path = []; // Clear the path once the destination is reached
-        audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
-        return;
-    }
-
-    const nextStep = this.path[this.pathIndex];
-    const targetX = nextStep.x * 16;
-    const targetY = nextStep.y * 16;
-    const deltaX = targetX - this.x;
-    const deltaY = targetY - this.y;
-    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-    // Determine direction and ensure sprite is moving
-    this.moving = true;
-    this.stopping = false;
-
-    if (distance < this.speed * (game.deltaTime / 1000)) {
-        this.x = targetX;
-        this.y = targetY;
-        this.pathIndex++;
-
-        // Remove the step behind the sprite    
-        if (this.pathIndex > 1) {
-            this.path.shift();
-            this.pathIndex--;
+        const result = astar.search(graph, start, end);
+    
+        if (result.length === 0) {
+            console.log("Pathfinding: No path found");
+            return [];
         }
-    } else {
-        const angle = Math.atan2(deltaY, deltaX);
-        const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
-        const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+        const path = result.map(function(node) {
+            return { x: node.x, y: node.y, alpha: 1 }; // Add alpha property for opacity
+        });
+    
+        this.path = path;
+        this.pathIndex = 0; // Reset the path index for following the path
+        return path;
+    },
 
-        // Update position directly without collision checks
-        this.x = newX;
-        this.y = newY;
-
-        // Determine direction
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-            if (deltaX > 0) this.direction = 'E';
-            else this.direction = 'W';
+    moveAlongPath: function() {
+        if (!this.path || this.pathIndex >= this.path.length) {
+            this.isMovingToTarget = false;
+            this.moving = false;
+            this.stopping = true;
+            this.currentFrame = 0; // Reset to default standing position
+            this.path = []; // Clear the path once the destination is reached
+            audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+            return;
+        }
+    
+        const nextStep = this.path[this.pathIndex];
+        const targetX = nextStep.x * 16;
+        const targetY = nextStep.y * 16;
+        const deltaX = targetX - this.x;
+        const deltaY = targetY - this.y;
+        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+        // Determine direction and ensure sprite is moving
+        this.moving = true;
+        this.stopping = false;
+    
+        if (distance < this.speed * (game.deltaTime / 1000)) {
+            this.x = targetX;
+            this.y = targetY;
+            this.pathIndex++;
+    
+            // Remove the step behind the sprite    
+            if (this.pathIndex > 1) {
+                this.path.shift();
+                this.pathIndex--;
+            }
         } else {
-            if (deltaY > 0) this.direction = 'S';
-            else this.direction = 'N';
+            const angle = Math.atan2(deltaY, deltaX);
+            const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+            const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+    
+            // Update position directly without collision checks
+            this.x = newX;
+            this.y = newY;
+    
+            // Determine direction
+            if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                if (deltaX > 0) this.direction = 'E';
+                else this.direction = 'W';
+            } else {
+                if (deltaY > 0) this.direction = 'S';
+                else this.direction = 'N';
+            }
+    
+            // Adjust direction for diagonal movement
+            if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
+                if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
+                else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
+                else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
+                else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
+            }
         }
-
-        // Adjust direction for diagonal movement
-        if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
-            if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
-            else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
-            else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
-            else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
-        }
-    }
-},
+    },
 
     drawEnemyAttackAimTool: function() {
         const player = game.sprites[game.playerid];
@@ -761,21 +759,8 @@ moveAlongPath: function() {
                 this.y = newY;
             } else if (moveX) {
                 this.x = newX;
-                if (!collisionResultY.collisionDetected) {
-                    this.y = newY;
-                }
             } else if (moveY) {
                 this.y = newY;
-                if (!collisionResultX.collisionDetected) {
-                    this.x = newX;
-                }
-            } else {
-                if (collisionResultX.collisionDetected) {
-                    this.x = collisionResultX.boundary.x + collisionResultX.boundary.width;
-                }
-                if (collisionResultY.collisionDetected) {
-                    this.y = collisionResultY.boundary.y + collisionResultY.boundary.height;
-                }
             }
     
             // Prevent the sprite from moving too close to the canvas edges

@@ -54,7 +54,6 @@ var input = {
     },
 
     gamepadRightTrigger: function() {
-        console.log("r2 pressed from input.js");
         gamepad.vibrate(500, 1.0, 1.0);
         game.mainSprite.speed = 120;
     
@@ -136,83 +135,83 @@ var input = {
         this.updateSpriteDirections(axes);
     },
 
-    handleRightAxes: function(axes) {
-        const threshold = 0.9; // High threshold for zooming
-        const deadZone = 0.2; // Dead zone threshold for minimal stick movement
+ handleRightAxes: function(axes) {
+    const threshold = 0.2; // Adjust threshold for zooming
+    const deadZone = 0.1; // Dead zone threshold for minimal stick movement
 
-        // Calculate axis pressures
-        const rightStickX = Math.abs(axes[2]);
-        const rightStickY = Math.abs(axes[3]);
+    // Calculate axis pressures
+    const rightStickX = axes[2];
+    const rightStickY = axes[3];
 
-        if (rightStickX > deadZone || rightStickY > deadZone) {
-            gamepad.axesPressures.rightStickX = rightStickX;
-            gamepad.axesPressures.rightStickY = rightStickY;
+    if (Math.abs(rightStickX) > deadZone || Math.abs(rightStickY) > deadZone) {
+        gamepad.axesPressures.rightStickX = Math.abs(rightStickX);
+        gamepad.axesPressures.rightStickY = Math.abs(rightStickY);
 
-            // If the aim tool is active, update its position
-            if (game.mainSprite && game.mainSprite.targetAim) {
-                const aimSpeed = 10; // Adjust aim speed as necessary
-                const newTargetX = game.mainSprite.targetX + axes[2] * aimSpeed;
-                const newTargetY = game.mainSprite.targetY + axes[3] * aimSpeed;
+        // If the aim tool is active, update its position
+        if (game.mainSprite && game.mainSprite.targetAim) {
+            const aimSpeed = 10; // Adjust aim speed as necessary
+            const newTargetX = game.mainSprite.targetX + rightStickX * aimSpeed;
+            const newTargetY = game.mainSprite.targetY + rightStickY * aimSpeed;
 
-                // Calculate distance from the main sprite
-                const deltaX = newTargetX - (game.mainSprite.x + game.mainSprite.width / 2);
-                const deltaY = newTargetY - (game.mainSprite.y + game.mainSprite.height / 2);
-                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            // Calculate distance from the main sprite
+            const deltaX = newTargetX - (game.mainSprite.x + game.mainSprite.width / 2);
+            const deltaY = newTargetY - (game.mainSprite.y + game.mainSprite.height / 2);
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-                // Update sprite direction based on aim tool position
-                const angle = Math.atan2(deltaY, deltaX);
-                if (angle >= -Math.PI / 8 && angle < Math.PI / 8) {
-                    game.mainSprite.direction = 'E';
-                } else if (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8) {
-                    game.mainSprite.direction = 'SE';
-                } else if (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8) {
-                    game.mainSprite.direction = 'S';
-                } else if (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8) {
-                    game.mainSprite.direction = 'SW';
-                } else if (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8) {
-                    game.mainSprite.direction = 'W';
-                } else if (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8) {
-                    game.mainSprite.direction = 'NW';
-                } else if (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8) {
-                    game.mainSprite.direction = 'N';
-                } else if (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8) {
-                    game.mainSprite.direction = 'NE';
-                }
-
-                // If within maxRange, update targetX and targetY
-                if (distance <= game.mainSprite.maxRange) {
-                    game.mainSprite.targetX = newTargetX;
-                    game.mainSprite.targetY = newTargetY;
-                } else {
-                    // Otherwise, set target to maxRange in the same direction
-                    const maxRangeX = game.mainSprite.x + game.mainSprite.width / 2 + Math.cos(angle) * game.mainSprite.maxRange;
-                    const maxRangeY = game.mainSprite.y + game.mainSprite.height / 2 + Math.sin(angle) * game.mainSprite.maxRange;
-                    game.mainSprite.targetX = Math.max(0, Math.min(maxRangeX, game.worldWidth));
-                    game.mainSprite.targetY = Math.max(0, Math.min(maxRangeY, game.worldHeight));
-                }
+            // Update sprite direction based on aim tool position
+            const angle = Math.atan2(deltaY, deltaX);
+            if (angle >= -Math.PI / 8 && angle < Math.PI / 8) {
+                game.mainSprite.direction = 'E';
+            } else if (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8) {
+                game.mainSprite.direction = 'SE';
+            } else if (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8) {
+                game.mainSprite.direction = 'S';
+            } else if (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8) {
+                game.mainSprite.direction = 'SW';
+            } else if (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8) {
+                game.mainSprite.direction = 'W';
+            } else if (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8) {
+                game.mainSprite.direction = 'NW';
+            } else if (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8) {
+                game.mainSprite.direction = 'N';
+            } else if (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8) {
+                game.mainSprite.direction = 'NE';
             }
 
-            if (!gamepad.buttons.includes('l2')) {
-                const now = Date.now();
-                if (axes[3] > threshold && (!gamepad.throttledEvents['zoomIn'] || now - gamepad.throttledEvents['zoomIn'] >= 200)) {
-                    camera.lerpEnabled = false; // Disable lerp
-                    game.setZoomLevel(Math.max(2, game.zoomLevel - 1)); // Update zoom level and store in local storage
-                    gamepad.throttledEvents['zoomIn'] = now;
-                    setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
-                } else if (axes[3] < -threshold && (!gamepad.throttledEvents['zoomOut'] || now - gamepad.throttledEvents['zoomOut'] >= 200)) {
-                    camera.lerpEnabled = false; // Disable lerp
-                    game.setZoomLevel(Math.min(10, game.zoomLevel + 1)); // Update zoom level and store in local storage
-                    gamepad.throttledEvents['zoomOut'] = now;
-                    setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
-                }
+            // If within maxRange, update targetX and targetY
+            if (distance <= game.mainSprite.maxRange) {
+                game.mainSprite.targetX = newTargetX;
+                game.mainSprite.targetY = newTargetY;
+            } else {
+                // Otherwise, set target to maxRange in the same direction
+                const maxRangeX = game.mainSprite.x + game.mainSprite.width / 2 + Math.cos(angle) * game.mainSprite.maxRange;
+                const maxRangeY = game.mainSprite.y + game.mainSprite.height / 2 + Math.sin(angle) * game.mainSprite.maxRange;
+                game.mainSprite.targetX = Math.max(0, Math.min(maxRangeX, game.worldWidth));
+                game.mainSprite.targetY = Math.max(0, Math.min(maxRangeY, game.worldHeight));
             }
-
-        } else {
-            // Reset the pressures for right stick if below dead zone threshold
-            gamepad.axesPressures.rightStickX = 0;
-            gamepad.axesPressures.rightStickY = 0;
         }
-    },
+
+        // Handle zooming logic if aim tool isn't active
+        if (!gamepad.buttons.includes('l2')) {
+            const now = Date.now();
+            if (rightStickY > threshold && (!gamepad.throttledEvents['zoomIn'] || now - gamepad.throttledEvents['zoomIn'] >= 200)) {
+                camera.lerpEnabled = false; // Disable lerp
+                game.setZoomLevel(Math.max(2, game.zoomLevel - 1)); // Update zoom level and store in local storage
+                gamepad.throttledEvents['zoomIn'] = now;
+                setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
+            } else if (rightStickY < -threshold && (!gamepad.throttledEvents['zoomOut'] || now - gamepad.throttledEvents['zoomOut'] >= 200)) {
+                camera.lerpEnabled = false; // Disable lerp
+                game.setZoomLevel(Math.min(10, game.zoomLevel + 1)); // Update zoom level and store in local storage
+                gamepad.throttledEvents['zoomOut'] = now;
+                setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
+            }
+        }
+    } else {
+        // Reset the pressures for right stick if below dead zone threshold
+        gamepad.axesPressures.rightStickX = 0;
+        gamepad.axesPressures.rightStickY = 0;
+    }
+},
 
     isWithinMaxRange: function(target, player) {
         const targetCenterX = target.x + (target.width ? target.width / 2 : 0);
@@ -318,12 +317,12 @@ var input = {
     
         if (e.altKey && e.key === 'c') {
             if (e.key === 'c') {
-                modal.load('mishell/index.php', 'mishell_window');
+                modal.load({ id: 'mishell_window', url: 'mishell/index.php', name: 'Mishell', drag: true, reload: true });
             }
         } else if (e.key === 'Tab') {
             e.preventDefault();
             // Load the editor when Tab is pressed
-            modal.load('editor/index.php', 'edit_mode_window', 'Editor', false);
+            modal.load({ id: 'edit_mode_window', url: 'editor/index.php', name: 'Editor', drag: true, reload: true });
         } else {
             const dir = this.keys[e.key];
             if (dir) {
@@ -423,44 +422,16 @@ var input = {
     },
 
     mouseWheelScroll: function(e) {
+        console.log('mouse scrolling');
         game.updateInputMethod('keyboard');
         const isEventOnCanvas = e.target === game.canvas || game.canvas.contains(e.target);
     
         if (isEventOnCanvas) {
             e.preventDefault(); // Prevent default scroll behavior for all cases
     
-            if (e.altKey) {
-                const panSpeed = 10;
-                camera.cameraX += e.deltaY > 0 ? panSpeed : -panSpeed;
-                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - window.innerWidth / game.zoomLevel));
-            } else if (e.ctrlKey) {
-                const zoomStep = 1;
-                const rect = game.canvas.getBoundingClientRect();
-                const cursorX = (e.clientX - rect.left) / game.zoomLevel;
-                const cursorY = (e.clientY - rect.top) / game.zoomLevel;
-    
-                const prevZoomLevel = game.zoomLevel;
-                const newZoomLevel = game.zoomLevel + (e.deltaY > 0 ? -zoomStep : zoomStep);
-                game.setZoomLevel(Math.max(2, Math.min(newZoomLevel, 10))); // Update zoom level and store in local storage
-    
-                const zoomFactor = game.zoomLevel / prevZoomLevel;
-    
-                // Adjust camera position to keep the cursor focused
-                camera.cameraX = cursorX - (cursorX - camera.cameraX) * zoomFactor;
-                camera.cameraY = cursorY - (cursorY - camera.cameraY) * zoomFactor;
-    
-                // Ensure the camera doesn't go outside the world bounds
-                const scaledWindowWidth = window.innerWidth / game.zoomLevel;
-                const scaledWindowHeight = window.innerHeight / game.zoomLevel;
-                camera.cameraX = Math.max(0, Math.min(camera.cameraX, game.worldWidth - scaledWindowWidth));
-                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - scaledWindowHeight));
-            } else if (e.shiftKey) { // Only pan vertically if shiftKey is pressed
-                const panSpeed = 10;
-                camera.cameraY += e.deltaY > 0 ? panSpeed : -panSpeed;
-                camera.cameraY = Math.max(0, Math.min(camera.cameraY, game.worldHeight - window.innerHeight / game.zoomLevel));
-            }
         }
     },    
+    
 
     leftClick: function(e) {
         game.updateInputMethod('keyboard');
@@ -533,8 +504,6 @@ var input = {
     },
 
     gamepadStart: function() {
-        console.log("start button pressed in input.js");
-        modal.load('console', null, "console", true);
-        modal.front('console_window');
+        console_window.toggleConsoleWindow(true, 'servers');
     }
 };

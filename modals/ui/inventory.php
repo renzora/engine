@@ -1,7 +1,15 @@
+<?php
+include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+if ($auth) {
+?>
+
 <div data-window='ui_inventory_window' data-close="false">
-  <div id="ui_inventory_window" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
+  <div id="ui_inventory_window" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
     
-    <div class="ui_item_primary relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300"></div>
+    <div class="ui_item_primary relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300">
+      <!-- Badge for item amount -->
+      <div class="item-badge absolute top-0 right-0 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">1</div>
+    </div>
     <div class="flex flex-col space-y-2 w-98">
       <div class="flex items-center space-x-2 w-full">
         <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
@@ -33,9 +41,29 @@
         "banana",
         "skull",
         "wood",
-        "black_emerald",
-        "apple"
+        "psychic",
+        "fireball",
+        "apple",
+        "gift",
+        "fish",
+        "gold"
       ],
+      
+      // Item amounts
+      itemAmounts: {
+        sword: 1,
+        potion: 5,
+        shield: 2,
+        banana: 99,
+        skull: 3,
+        wood: 99,
+        psychic: 4,
+        fireball: 7,
+        apple: 99,
+        gift: 7,
+        fish: 13,
+        gold: 28
+      },
       currentItemIndex: 0,
       lastButtonPress: 0,
       throttleDuration: 150, // in milliseconds
@@ -173,26 +201,38 @@
       },
 
       renderInventoryItems: function() {
-        const primaryItemElement = document.querySelector('.ui_item_primary');
-        primaryItemElement.dataset.item = this.primaryItem;
-        primaryItemElement.innerHTML = `
-          <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
-          <div class="items_icon items_${this.primaryItem} scale-[4] z-10"></div>
-        `;
+    const primaryItemElement = document.querySelector('.ui_item_primary');
+    primaryItemElement.dataset.item = this.primaryItem;
+    primaryItemElement.innerHTML = `
+        <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+        <div class="items_icon items_${this.primaryItem} scale-[4] z-10"></div>
+        ${this.itemAmounts[this.primaryItem] > 1 ? `
+        <!-- Badge for item amount -->
+        <div class="item-badge absolute top-0 left-0 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center z-20">
+            ${this.itemAmounts[this.primaryItem]}
+        </div>
+        ` : ''}
+    `;
 
-        const quickItemsContainer = document.getElementById('ui_quick_items_container');
+    const quickItemsContainer = document.getElementById('ui_quick_items_container');
 
-        this.inventoryItems.forEach(itemName => {
-          const itemElement = document.createElement('div');
-          itemElement.className = 'ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
-          itemElement.dataset.item = itemName;
-          itemElement.innerHTML = `
+    this.inventoryItems.forEach(itemName => {
+        const itemElement = document.createElement('div');
+        itemElement.className = 'ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
+        itemElement.dataset.item = itemName;
+        itemElement.innerHTML = `
             <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
             <div class="items_icon items_${itemName} scale-[2.1] z-10"></div>
-          `;
-          quickItemsContainer.appendChild(itemElement);
-        });
-      },
+            ${this.itemAmounts[itemName] > 1 ? `
+            <!-- Badge for item amount -->
+            <div class="item-badge absolute top-0 left-0 z-20 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
+                ${this.itemAmounts[itemName]}
+            </div>
+            ` : ''}
+        `;
+        quickItemsContainer.appendChild(itemElement);
+    });
+},
 
       unmount: function() {
         document.removeEventListener('dragover', this.documentDragOverHandler);
@@ -273,30 +313,34 @@
       },
 
       setItemIcon: function(element, itemData) {
-        const iconDiv = element.querySelector('.items_icon');
-        if (iconDiv) {
-          const iconSize = 16;
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
+    const iconDiv = element.querySelector('.items_icon');
+    if (iconDiv) {
+        const iconSize = 16;
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
 
-          canvas.width = iconSize;
-          canvas.height = iconSize;
+        canvas.width = iconSize;
+        canvas.height = iconSize;
 
-          ctx.drawImage(
-            game.itemsImg, 
-            itemData.x, itemData.y, 
-            iconSize, iconSize, 
-            0, 0, 
-            iconSize, iconSize
-          );
+        if (game.itemsImg && game.itemsImg instanceof HTMLImageElement) {
+            ctx.drawImage(
+                game.itemsImg, 
+                itemData.x, itemData.y, 
+                iconSize, iconSize, 
+                0, 0, 
+                iconSize, iconSize
+            );
 
-          const dataURL = canvas.toDataURL();
-          iconDiv.style.backgroundImage = `url(${dataURL})`;
-          iconDiv.style.width = `${iconSize}px`;
-          iconDiv.style.height = `${iconSize}px`;
-          iconDiv.style.backgroundSize = 'cover';
+            const dataURL = canvas.toDataURL();
+            iconDiv.style.backgroundImage = `url(${dataURL})`;
+            iconDiv.style.width = `${iconSize}px`;
+            iconDiv.style.height = `${iconSize}px`;
+            iconDiv.style.backgroundSize = 'cover';
+        } else {
+            console.error("Invalid or unloaded image source.");
         }
-      },
+    }
+},
 
       checkAndUpdateUIPositions: function() {
         const sprite = game.sprites[game.playerid];
@@ -492,6 +536,9 @@
           this.updateScale(this.dragSrcEl);
           this.updateScale(target);
 
+          // Update the badges after swapping
+          this.updateItemBadges();
+
           audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
         } else {
           audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
@@ -499,6 +546,22 @@
         this.clearHighlights();
         return false;
       },
+
+      updateItemBadges: function() {
+    document.querySelectorAll('.ui_quick_item, .ui_item_primary').forEach(item => {
+        const itemName = item.dataset.item;
+        const badge = item.querySelector('.item-badge');
+        if (badge) {
+            if (this.itemAmounts[itemName] > 1) {
+                badge.textContent = this.itemAmounts[itemName];
+                badge.style.display = 'flex'; // Ensure it's visible if amount > 1
+            } else {
+                badge.style.display = 'none'; // Hide badge if amount <= 1
+            }
+        }
+    });
+},
+
 
       clearHighlights: function() {
         const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
@@ -538,3 +601,6 @@
     ui_inventory_window.start();
   </script>
 </div>
+<?php 
+}
+?>

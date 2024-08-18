@@ -3,8 +3,8 @@ window.modalResolves = window.modalResolves || {};
 var modal = {
     modals: [],
     baseZIndex: null,
-    modalNames: {}, // Stores the display names of the modals
-    showInListFlags: {}, // Stores the flags for showing modals in the list
+    modalNames: {},
+    showInListFlags: {},
     activeModal: null,
 
     init: function(selector, options) {
@@ -54,79 +54,82 @@ var modal = {
             }
         });
     
-        // Update the active modal
         this.activeModal = element.getAttribute('data-window');
-        console.log('Active Modal Set:', this.activeModal); // Debugging statement
+        console.log('Active Modal Set:', this.activeModal);
     },
 
     initDraggable: function(element, options) {
+        if (element.getAttribute('data-drag') === 'false' || (options && options.drag === false)) {
+            return;
+        }
+    
         let isDragging = false;
         let originalX, originalY, mouseX, mouseY;
-
+    
         const onMouseDown = (e) => {
             if (e.target.closest('.window_body') || e.target.closest('.resize-handle')) {
                 return;
             }
-
+    
             isDragging = true;
             originalX = element.offsetLeft;
             originalY = element.offsetTop;
-
+    
             mouseX = e.clientX;
             mouseY = e.clientY;
-
+    
             if (options && typeof options.start === 'function') {
                 options.start.call(element, e);
             }
-
+    
             document.onselectstart = () => false;
             document.body.style.userSelect = 'none';
             this.front(element);
             document.addEventListener('mousemove', onMouseMove);
             document.addEventListener('mouseup', onMouseUp);
         };
-
+    
         const onMouseMove = (e) => {
             if (!isDragging) return;
-
+    
             const dx = e.clientX - mouseX;
             const dy = e.clientY - mouseY;
-
+    
             let newLeft = originalX + dx;
             let newTop = originalY + dy;
-
+    
             const windowWidth = window.innerWidth;
             const windowHeight = window.innerHeight;
             const modalRect = element.getBoundingClientRect();
-
+    
             if (newLeft < 0) newLeft = 0;
             if (newTop < 0) newTop = 0;
             if (newLeft + modalRect.width > windowWidth) newLeft = windowWidth - modalRect.width;
             if (newTop + modalRect.height > windowHeight) newTop = windowHeight - modalRect.height;
-
+    
             element.style.left = `${newLeft}px`;
             element.style.top = `${newTop}px`;
-
+    
             if (options && typeof options.drag === 'function') {
                 options.drag.call(element, e);
             }
         };
-
+    
         const onMouseUp = (e) => {
             if (!isDragging) return;
             isDragging = false;
-
+    
             document.onselectstart = null;
             document.body.style.userSelect = '';
-
+    
             if (options && typeof options.stop === 'function') {
                 options.stop.call(element, e);
             }
-
+    
             document.removeEventListener('mousemove', onMouseMove);
             document.removeEventListener('mouseup', onMouseUp);
         };
-
+    
         element.addEventListener('mousedown', onMouseDown);
     },
 
@@ -164,54 +167,57 @@ var modal = {
         }
     },
 
-    load: function(page, window_name, modalName = null, showInList = true) {
-        if (!page.includes('/')) {
-            page += '/index.php';
+    load: function(options) {
+        const { id, url, name = null, showInList = true, drag = true, reload = false } = options;
+
+        if (!url.includes('/')) {
+            options.url += '/index.php';
         }
 
-        if (!window_name) {
-            const pageName = page.split('/')[0];
-            window_name = `${pageName}_window`;
+        if (name) {
+            this.modalNames[id] = name;
         }
 
-        if (modalName) {
-            this.modalNames[window_name] = modalName;
-        }
-
-        this.showInListFlags[window_name] = showInList;
+        this.showInListFlags[id] = showInList;
 
         return new Promise((resolve, reject) => {
-            let existingModal = document.querySelector("[data-window='" + window_name + "']");
+            let existingModal = document.querySelector("[data-window='" + id + "']");
             if (existingModal) {
-                this.front(existingModal);
-                resolve();
-            } else {
-                ui.ajax({
-                    url: 'modals/' + page,
-                    method: 'GET',
-                    success: (data) => {
-                        ui.html(document.body, data, 'append');
-
-                        this.init("[data-window='" + window_name + "']", {
-                            start: function() {
-                                this.classList.add('dragging');
-                            },
-                            drag: function() {},
-                            stop: function() {
-                                this.classList.remove('dragging');
-                            }
-                        });
-
-                        window.modalResolves[window_name] = resolve;
-                        this.front(window_name); // Ensure the new modal is set to the front
-                        resolve();
-                    },
-                    error: (error) => {
-                        console.error('Error loading modal:', window_name, error);
-                        reject(`Failed to load modal from ${page}: ${error}`);
-                    }
-                });
+                if (reload) {
+                    this.close(id);
+                } else {
+                    this.front(existingModal);
+                    resolve();
+                    return;
+                }
             }
+
+            ui.ajax({
+                url: 'modals/' + url,
+                method: 'GET',
+                success: (data) => {
+                    ui.html(document.body, data, 'append');
+
+                    this.init(`[data-window='${id}']`, {
+                        start: function() {
+                            this.classList.add('dragging');
+                        },
+                        drag: function() {},
+                        stop: function() {
+                            this.classList.remove('dragging');
+                        },
+                        drag
+                    });
+
+                    window.modalResolves[id] = resolve;
+                    this.front(id);
+                    resolve();
+                },
+                error: (error) => {
+                    console.error('Error loading modal:', id, error);
+                    reject(`Failed to load modal from ${url}: ${error}`);
+                }
+            });
         });
     },
 
@@ -255,7 +261,7 @@ var modal = {
 
                 const modalText = document.createElement('div');
                 modalText.textContent = displayName;
-                modalText.classList.add('flex-grow', 'truncate', 'text-white'); // Ensure text stays on one line and is truncated if too long
+                modalText.classList.add('flex-grow', 'truncate', 'text-white');
 
                 const closeButton = document.createElement('button');
                 closeButton.classList.add('icon', 'close_dark', 'absolute', 'right-0', 'hint--left', 'text-white', 'hover:text-red-500', 'hidden');
@@ -264,7 +270,6 @@ var modal = {
                     e.stopPropagation();
                     this.close(modalName);
                     modalsList.removeChild(modalItem);
-                    // Check if there are any items left
                     if (modalsList.children.length === 0) {
                         modalsList.classList.add('hidden');
                         this.updateModalsButtonVisibility();
@@ -272,16 +277,16 @@ var modal = {
                 });
 
                 modalItem.addEventListener('mouseover', () => {
-                    closeButton.classList.remove('hidden'); // Show on hover
+                    closeButton.classList.remove('hidden');
                 });
 
                 modalItem.addEventListener('mouseout', () => {
-                    closeButton.classList.add('hidden'); // Hide when not hovered
+                    closeButton.classList.add('hidden');
                 });
 
                 modalItem.addEventListener('click', () => {
                     this.front(modal);
-                    this.show(modalName); // Ensure the modal is shown
+                    this.show(modalName);
                     modalsList.classList.add('hidden');
                 });
 
@@ -308,7 +313,7 @@ var modal = {
         var modal = document.querySelector("[data-window='" + modalId + "']");
         if (modal) {
             modal.style.display = 'block';
-            this.front(modalId); // Bring the modal to the front
+            this.front(modalId);
         }
     },
 
@@ -331,7 +336,6 @@ var modal = {
                 delete window.modalResolves[id];
             }
 
-            // Set the next highest modal as the active modal
             if (this.modals.length > 0) {
                 const nextActiveModal = this.modals[this.modals.length - 1];
                 this.front(nextActiveModal.getAttribute('data-window'));
@@ -350,7 +354,6 @@ var modal = {
         return highestZIndex;
     },
 
-    // New method to get the active modal
     getActiveModal: function() {
         return this.activeModal;
     },
@@ -361,7 +364,6 @@ var modal = {
             modal.style.display = 'block';
         });
     
-        // Set the highest modal as the active modal
         if (this.modals.length > 0) {
             const highestModal = this.modals[this.modals.length - 1];
             this.front(highestModal.getAttribute('data-window'));
@@ -374,7 +376,6 @@ var modal = {
             modal.style.display = 'none';
         });
     
-        // Update the active modal to null
         this.activeModal = null;
     },
 

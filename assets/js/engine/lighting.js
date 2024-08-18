@@ -30,6 +30,12 @@ const lighting = {
         this.flickerOffset = Math.random() * 1000;
     },
 
+    clearLightsAndEffects: function() {
+        this.lights = [];
+        particles.activeEffects = {};
+        game.particles = [];
+    },
+
     createLightMask: function() {
         const lightCanvas = document.createElement('canvas');
         lightCanvas.width = game.canvas.width;

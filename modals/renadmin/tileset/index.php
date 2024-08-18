@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='tileset_window' class='window window_bg' style='width: 1200px;height: 700px; background: #323e69;'>
+  <div data-window='tileset_window' class='window window_bg' style='width: 800px;height: 700px; background: #323e69;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#192037 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -66,7 +66,7 @@ if ($auth) {
         </div>
         <div class="tab-content mt-2 hidden" data-tab-content="items" style="height: calc(100% - 35px);">
     <!-- Added 'h-full' to ensure the container takes up available space -->
-    <div class="grid grid-cols-12 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
+    <div class="grid grid-cols-10 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
   </div>
       </div>
 
@@ -465,89 +465,107 @@ var tileset_window = {
         updatePreviewCanvas();
     },
     displayTilesetItems: function () {
-        // Get the itemsGrid element
-        const itemsGrid = document.getElementById('itemsGrid');
+    const itemsGrid = document.getElementById('itemsGrid');
+    itemsGrid.innerHTML = '';
 
-        // Clear any existing content
-        itemsGrid.innerHTML = '';
+    for (const itemId in game.objectData) {
+        if (game.objectData.hasOwnProperty(itemId)) {
+            const itemArray = game.objectData[itemId];
 
-        // Iterate over each item in game.objectData
-        for (const itemId in game.objectData) {
-            if (game.objectData.hasOwnProperty(itemId)) {
-                const itemArray = game.objectData[itemId];
+            itemArray.forEach((item) => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'item-preview bg-[#333] rounded shadow-md hover:bg-[#222] cursor-pointer transition duration-200 p-4 flex flex-col items-center justify-center';
 
-                // Iterate over each entry within the array (could be multiple variations of the same item)
-                itemArray.forEach((item) => {
-                    // Create a container div for each item
-                    const itemDiv = document.createElement('div');
-                    itemDiv.className = 'item-preview bg-[#333] rounded shadow-md hover:bg-[#222] cursor-pointer transition duration-200 p-4 flex flex-col items-center justify-center';
+                const itemTitle = document.createElement('h3');
+                itemTitle.className = 'text-center font-bold text-white mb-2';
+                itemTitle.innerText = item.n;
 
-                    // Create a title for the item
-                    const itemTitle = document.createElement('h3');
-                    itemTitle.className = 'text-center font-bold text-white mb-2';
-                    itemTitle.innerText = item.n;
+                const itemCanvasContainer = tileset_window.drawItemOnCanvas(item);
+                itemDiv.appendChild(itemTitle);
+                itemDiv.appendChild(itemCanvasContainer);
 
-                    // Create a preview canvas for the item
-                    const itemCanvasContainer = tileset_window.drawItemOnCanvas(item);
+                // Assuming each item has a unique identifier property, e.g., item.id or item.identifier
+                const uniqueId = item.id || itemId; // Fallback to itemId if item.id is not defined
+                const modalId = `tileset_item_editor_window_${uniqueId}`; // Create a unique modal ID
 
-                    // Append the title and canvas to the item div
-                    itemDiv.appendChild(itemTitle);
-                    itemDiv.appendChild(itemCanvasContainer);
-
-                    // Append the item div to the items grid
-                    itemsGrid.appendChild(itemDiv);
+                // Attach a click event to open the item in the modal using modal.load
+                itemDiv.addEventListener('click', function() {
+                    modal.load({ id: 'tileset_item_editor_window', url: `renadmin/tileset/items.php?id=${uniqueId}`, name: 'Item Editor', drag: true, reload: true });
+                    console.log(uniqueId); // Log the ID to ensure it's correct
                 });
-            }
+
+                itemsGrid.appendChild(itemDiv);
+            });
         }
-    },
+    }
+},
 
-    drawItemOnCanvas: function (item) {
-        // Assuming assets.load(item.t) returns a tileset image
-        const tilesetImage = assets.load(item.t);
+drawItemOnCanvas: function (item) {
+    // Assuming assets.load(item.t) returns a tileset image
+    const tilesetImage = assets.load(item.t);
 
-        // Determine the number of tiles and the canvas size
-        const tileSize = 16; // Size of each tile (e.g., 16x16)
-        const maxCol = Math.max(...item.a) + 1; // Calculate number of columns
-        const maxRow = Math.max(...item.b) + 1; // Calculate number of rows
+    // Determine the number of tiles and the canvas size
+    const tileSize = 16; // Size of each tile (e.g., 16x16)
+    const maxCol = Math.max(...item.a) + 1; // Calculate number of columns
+    const maxRow = Math.max(...item.b) + 1; // Calculate number of rows
 
-        // Create a temporary canvas to draw the item
-        const itemCanvas = document.createElement('canvas');
-        const ctx = itemCanvas.getContext('2d');
+    // Create a temporary canvas to draw the item
+    const itemCanvas = document.createElement('canvas');
+    const ctx = itemCanvas.getContext('2d');
 
-        // Set canvas size
-        itemCanvas.width = maxCol * tileSize;
-        itemCanvas.height = maxRow * tileSize;
+    // Set canvas size
+    itemCanvas.width = maxCol * tileSize;
+    itemCanvas.height = maxRow * tileSize;
 
-        // Draw each tile
-        item.i.forEach((tileIndex, index) => {
-            const srcX = (tileIndex % 150) * tileSize;
-            const srcY = Math.floor(tileIndex / 150) * tileSize;
-            const destX = item.a[index] * tileSize;
-            const destY = item.b[index] * tileSize;
+    // Determine which frames to render
+    let framesToRender = [];
 
-            // Draw the tile from the tileset image onto the item canvas
-            ctx.drawImage(
-                tilesetImage,  // Assuming this is the tileset image loaded earlier
-                srcX, srcY, tileSize, tileSize, // Source dimensions
-                destX, destY, tileSize, tileSize // Destination dimensions
-            );
-        });
+    if (item.d && Array.isArray(item.i[0])) {
+        // Animated item with duration, only render the first sub-array
+        framesToRender = item.i[0];  // Use only the first set [8, 9] in this case
+    } else if (Array.isArray(item.i[0])) {
+        // Animated item without duration, render all frames
+        framesToRender = item.i.flat(); // Flatten to render all frames
+    } else {
+        // Non-animated item, parse ranges and render all
+        framesToRender = item.i.map(frame => {
+            if (typeof frame === 'string' && frame.includes('-')) {
+                return render.parseRange(frame);
+            }
+            return [frame];
+        }).flat();
+    }
 
-        // Adjust canvas style for responsiveness and grid fitting
-        itemCanvas.className = 'mx-auto block';
+    // Draw each tile
+    framesToRender.forEach((frame, index) => {
+        const srcX = (frame % 150) * tileSize;
+        const srcY = Math.floor(frame / 150) * tileSize;
+        const destX = item.a[index] * tileSize;
+        const destY = item.b[index] * tileSize;
 
-        // Wrap the canvas in a responsive container if needed
-        const canvasContainer = document.createElement('div');
-        canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden'; // Adjust the size to fit your grid
+        // Draw the tile from the tileset image onto the item canvas
+        ctx.drawImage(
+            tilesetImage,  // Assuming this is the tileset image loaded earlier
+            srcX, srcY, tileSize, tileSize, // Source dimensions
+            destX, destY, tileSize, tileSize // Destination dimensions
+        );
+    });
 
-        // Add a class to make the canvas fill the container
-        itemCanvas.className += ' w-full h-full object-contain';
+    // Adjust canvas style for responsiveness and grid fitting
+    itemCanvas.className = 'mx-auto block';
 
-        // Append canvas to container
-        canvasContainer.appendChild(itemCanvas);
+    // Wrap the canvas in a responsive container if needed
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden'; // Adjust the size to fit your grid
 
-        return canvasContainer; // Return the container element with the item drawn
-    },
+    // Add a class to make the canvas fill the container
+    itemCanvas.className += ' w-full h-full object-contain';
+
+    // Append canvas to container
+    canvasContainer.appendChild(itemCanvas);
+
+    return canvasContainer; // Return the container element with the item drawn
+},
     unmount: function() {
         ui.destroyTabs('tileset_window_tabs');
         ui.destroyTabs('right_tabs');

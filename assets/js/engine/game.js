@@ -3,9 +3,6 @@ var game = {
     canvas: undefined,
     ctx: undefined,
     isDragging: false,
-    dragStart: null,
-    dragEnd: null,
-    dragThreshold: 50,
     isEditMode: false,
     x: null,
     y: null,
@@ -14,7 +11,7 @@ var game = {
     deltaTime: 0,
     worldWidth: 1280,
     worldHeight: 1280,
-    zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 6,
+    zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 4,
     targetX: 0,
     targetY: 0,
     roomData: undefined,
@@ -40,11 +37,8 @@ var game = {
     selectedTiles: [],
     particles: [],
     overlappingTiles: [],
-    edgeScrollSpeed: 30,
-    edgeScrollEasing: 0.2,
-    edgeScrollBuffer: 150,
     isPaused: false,
-    sceneBg: "66ae0ee7bbf2d",
+    sceneBg: "grass",
     isEditorActive: false,
     editorMode: null,
     selectionBounds: null,
@@ -61,7 +55,7 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 10,
+        hours: 21,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -113,8 +107,9 @@ var game = {
     },
 
     setZoomLevel: function(newZoomLevel) {
-        this.zoomLevel = newZoomLevel;
-        localStorage.setItem('zoomLevel', newZoomLevel);
+        this.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10)); 
+        localStorage.setItem('zoomLevel', game.zoomLevel);
+        console.log('setting zoom level');
     },
 
     init: function() {
@@ -132,7 +127,6 @@ var game = {
             { name: 'gen1', path: 'img/tiles/gen1.png' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
-            { name: 'objectScript', path: 'json/objectScript.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
             { name: 'fxData', path: 'json/fxData.json' },
             { name: 'walkGrass', path: 'audio/sfx/movement/footstep.wav' },
@@ -159,15 +153,13 @@ var game = {
             this.itemsData = assets.load('itemsData');
             this.objectData = assets.load('objectData');
             this.fxData = assets.load('fxData');
-
-            actions.loadObjectScript();
-
+            
             const playerOptions = {
                 id: this.playerid,
                 x: 29,
                 y: 23,
                 isPlayer: true,
-                speed: 70,
+                speed: 85,
                 head: 1,
                 eyes: 1,
                 body: 1,
@@ -185,20 +177,21 @@ var game = {
             this.mainSprite = game.sprites[this.playerid];
             this.setActiveSprite(this.playerid);
 
-
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.2);
 
-            const storedSceneId = localStorage.getItem('sceneid') || '66771b7e6c1c5b2f1708b75a';
+            const storedSceneId = localStorage.getItem('sceneid') || '66afd5880a19134bf10959d3';
             this.loadScene(storedSceneId);
 
-            modal.load('ui/footer.php', "ui_footer_window", "Footer", false);
-            modal.load('menus/click_menu/index.php', 'click_menu_window', "click menu", false);
-            modal.load('menus/pie/index.php', 'pie_menu_window', "pie menu", false);
-            modal.load('console', null, "console", true);
-            modal.load('ui/inventory.php', "ui_inventory_window", "ui window", false);
-            //modal.load('ui/objectives.php', "ui_objectives_window", "Objectives", false);
+            modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
+            modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
+            modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu', drag: false, reload: false });
+            modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: false });
+            modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window', drag: false, reload: false });
+            modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
+            modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
+
             console.log("Connected to Main renzora server");
             //modal.load('inventory_items', "inventory_items_window", "Inventory Items", true);
 
@@ -259,17 +252,20 @@ var game = {
     },
 
     loadScene: function(sceneId) {
+        lighting.clearLightsAndEffects();
         input.cancelPathfinding(game.sprites[game.playerid]);
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/console/tabs/servers/ajax/getSceneData.php',
+            url: 'modals/menus/console/tabs/servers/ajax/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
                     effects.lights = [];
                     game.roomData = data.roomData;
                     game.sceneid = data.sceneid;
+                    game.serverid = data.server_id; // Store the server_id for later use
+
                     this.overlappingTiles = [];
                     camera.update();
                     localStorage.setItem('sceneid', game.sceneid);
@@ -279,18 +275,21 @@ var game = {
                     effects.transitions.start('fadeIn', 1000);
                     ui.notif("scene_change_notif", data.name, true);
                     audio.stopLoopingAudio('music', 0.5);
-                    //audio.playAudio("music1", assets.load('music1'), 'music', true);
+    
+                    // Recalculate the walkable grid for the new scene
+                    collision.createWalkableGrid();
+    
                 } else {
                     console.log('Error: ' + data.message);
-                    modal.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
+                    modal.load('menus/console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
                 }
             },
             error: function(data) {
                 console.log(data);
-                modal.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', "server error", true);
+                modal.load('menus/console/tabs/servers/ajax/error.php', 'scene_load_error_window', "server error", true);
             }
         });
-    },
+    },         
 
     resizeCanvas: function() {
         this.canvas.width = window.innerWidth;
@@ -318,7 +317,7 @@ var game = {
         }
       },
 
-      getTileIdAt: function(x, y) {
+    getTileIdAt: function(x, y) {
         if (!this.roomData || !this.roomData.items) {
             return null;
         }
@@ -341,176 +340,47 @@ var game = {
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
             const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
-            this.isDragging = true;
-            this.dragStart = { x: mouseX, y: mouseY };
-            this.dragEnd = null;
-            this.selectedTiles = [];
-            this.selectionBounds = null;
-    
-            document.body.style.userSelect = 'none';
-            document.body.style.webkitUserSelect = 'none'; /* Safari */
-            document.body.style.msUserSelect = 'none'; /* IE 10 and IE 11 */
-            camera.activeCamera = false;
-            this.currentMouseX = event.clientX;
-            this.currentMouseY = event.clientY;
-            this.isEdgeScrolling = false;
+            this.x = Math.floor(mouseX / 16);
+            this.y = Math.floor(mouseY / 16);
         }
     },
 
     handleMouseMove: function(event) {
         if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return;
-        if (this.isDragging) {
-            const rect = this.canvas.getBoundingClientRect();
-            const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
-            const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
-            this.dragEnd = { x: mouseX, y: mouseY };
-            
-            const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
-            const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-    
-            if(deltaX >= 8 || deltaY >= 8) {
-                this.updateSelectedTiles();
-                this.currentMouseX = event.clientX;
-                this.currentMouseY = event.clientY;
-        
-                if(!this.isEdgeScrolling && (this.dragStart.x !== this.dragEnd.x || this.dragStart.y !== this.dragEnd.y)) {
-                    this.isEdgeScrolling = true;
-                    this.edgeScroll();
-                }
-            }
-        }
     },
     
     handleMouseUp: function(event) {
         if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return;
         console.log('Game handleMouseUp triggered');
-        const rect = this.canvas.getBoundingClientRect();
-        const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
-        const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
-        this.isDragging = false;
-        this.dragEnd = { x: mouseX, y: mouseY };
     
-        const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
-        const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-    
-        if (deltaX < this.dragThreshold && deltaY < this.dragThreshold) {
-            this.handleCanvasClick(event, event.shiftKey);
-        } else if (deltaX >= 8 || deltaY >= 8) {
-            this.handleCanvasDrag({ startX: this.dragStart.x, startY: this.dragStart.y, endX: this.dragEnd.x, endY: this.dragEnd.y }, event.shiftKey);
-            if(this.selectedObjects.length > 0) {
-                setTimeout(() => {
-                    click_menu_window.showContextMenu(event.clientX, event.clientY, true);
-                }, 0);
-            }
-        }
-    
-        document.body.style.userSelect = '';
-        document.body.style.webkitUserSelect = ''; /* Safari */
-        document.body.style.msUserSelect = ''; /* IE 10 and IE 11 */
-        camera.activeCamera = true;
-        this.isEdgeScrolling = false;
-        this.selectedTiles = [];
-        this.selectionBounds = null;
-    },
-    
-    edgeScroll: function() {
-        if (!this.isDragging || !this.isEdgeScrolling) {
+        // Check if the console window or another menu is active
+        if (console_window.isMenuActive()) {
+            console.log('Menu is active, preventing canvas click actions.');
+            console_window.toggleConsoleWindow();
             return;
         }
     
-        const edgeThreshold = this.edgeScrollBuffer;
-        const easing = this.edgeScrollEasing;
-        const maxSpeed = this.edgeScrollSpeed;
-        let mouseX = this.currentMouseX;
-        let mouseY = this.currentMouseY;
-        let scrollX = 0;
-        let scrollY = 0;
-    
-        if (mouseX < edgeThreshold) {
-            scrollX = -maxSpeed * (1 - (mouseX / edgeThreshold)) * easing;
-        } else if (mouseX > window.innerWidth - edgeThreshold) {
-            scrollX = maxSpeed * (1 - ((window.innerWidth - mouseX) / edgeThreshold)) * easing;
-        }
-    
-        if (mouseY < edgeThreshold) {
-            scrollY = -maxSpeed * (1 - (mouseY / edgeThreshold)) * easing;
-        } else if (mouseY > window.innerHeight - edgeThreshold) {
-            scrollY = maxSpeed * (1 - ((window.innerHeight - mouseY) / edgeThreshold)) * easing;
-        }
-
-        camera.cameraX = Math.max(0, Math.min(camera.cameraX + scrollX, this.worldWidth - window.innerWidth / this.zoomLevel));
-        camera.cameraY = Math.max(0, Math.min(camera.cameraY + scrollY, this.worldHeight - window.innerHeight / this.zoomLevel));
-
-        requestAnimationFrame(this.edgeScroll.bind(this));
-    },
-
-    handleCanvasClick: function(event, isShiftKey) {
-        console.log('Game handleCanvasClick triggered');
-
-        console_window.toggleConsoleWindow();
-        
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
-        const gridX = Math.floor(mouseX / 16);
-        const gridY = Math.floor(mouseY / 16);
-        this.x = gridX;
-        this.y = gridY;
+        this.x = Math.floor(mouseX / 16);
+        this.y = Math.floor(mouseY / 16);
         
         const selectedObject = this.findObjectAt(mouseX, mouseY);
         
         if (selectedObject) {
             console.log(`Selected object ID: ${selectedObject.id}`);
-            if (isShiftKey) {
-                const uniqueId = `${selectedObject.id}_${selectedObject.x}_${selectedObject.y}`;
-                const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
-                if (index === -1) {
-                    this.selectedObjects.push(selectedObject);
-                } else {
-                    this.selectedObjects.splice(index, 1);
-                }
-    
-                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                }
-            } else {
-                this.selectedObjects = [selectedObject];
-                if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                    this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-                }
+            this.selectedObjects = [selectedObject];
+            if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
+                this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
             }
         }
     
-        const spriteGridX = Math.floor(this.mainSprite.x / 16);
-        const spriteGridY = Math.floor(this.mainSprite.y / 16);
-        const distanceX = Math.abs(gridX - spriteGridX);
-        const distanceY = Math.abs(gridY - spriteGridY);
-
-        if (distanceX <= 2 && distanceY <= 2) {
-            const deltaX = gridX - spriteGridX;
-            const deltaY = gridY - spriteGridY;
-    
-            if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                if (deltaX > 0) {
-                    this.mainSprite.direction = 'E';
-                } else {
-                    this.mainSprite.direction = 'W';
-                }
-            } else {
-                if (deltaY > 0) {
-                    this.mainSprite.direction = 'S';
-                } else {
-                    this.mainSprite.direction = 'N';
-                }
-            }
-        }
-    
-        if(this.isTileWalkable(gridX, gridY)) {
+        if(collision.isTileWalkable(this.x, this.y)) {
             this.selectedObjects = [];
             this.selectedCache = [];
-            this.updateSelectedTiles();
             this.render();
-            this.mainSprite.walkToClickedTile(gridX, gridY);
+            this.mainSprite.walkToClickedTile(this.x, this.y);
             console.log('Tile is walkable, no context menu should be shown.');
         } else if (this.selectedObjects.length > 0) {
             setTimeout(() => {
@@ -519,76 +389,7 @@ var game = {
         }
     
         console.log('Current selected objects:', this.selectedObjects);
-        this.updateSelectedTiles();
-    },
-    
-
-    isTileWalkable: function(gridX, gridY) {
-        const grid = this.createWalkableGrid();
-        return grid[gridX] && grid[gridX][gridY] === 1;
-    },
-
-    handleCanvasDrag: function(dragArea, isShiftKey) {
-        console.log('Game handleCanvasDrag triggered');
-        this.updateSelectedTiles();
-        this.selectItemsInSelectedTiles(isShiftKey);
-        this.selectedObjects.forEach(selectedObject => {
-            const cachedObject = this.selectedCache.find(cache => cache.id === selectedObject.id);
-            if (!cachedObject) {
-                this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-            }
-        });
-    
-        if (this.selectedObjects.length > 0) {
-            setTimeout(() => {
-                click_menu_window.showContextMenu(event.clientX, event.clientY, true);
-            }, 0);
-        }
-    },
-
-    createWalkableGrid: function() {
-        const width = this.worldWidth / 16;
-        const height = this.worldHeight / 16;
-        const grid = Array.from({ length: width }, () => Array(height).fill(1));
-    
-        if (!this.objectData) {
-            console.error('Object Data is not defined.');
-            return grid;
-        }
-    
-        if (this.roomData && this.roomData.items) {
-            this.roomData.items.forEach(item => {
-                const itemData = this.objectData[item.id];
-                if (itemData && itemData.length > 0) {
-                    const tileData = itemData[0];
-                    const xCoordinates = item.x || [];
-                    const yCoordinates = item.y || [];
-    
-                    yCoordinates.forEach((tileY, rowIndex) => {
-                        xCoordinates.forEach((tileX, colIndex) => {
-                            const index = rowIndex * xCoordinates.length + colIndex;
-                            const walkableData = Array.isArray(tileData.w) ? tileData.w[index % tileData.w.length] : tileData.w;
-    
-                            if (tileX >= 0 && tileX < width && tileY >= 0 && tileY < height) {
-                                if (Array.isArray(walkableData) && walkableData.length === 4) {
-                                    const [north, east, south, west] = walkableData;
-                                    if (north < 16 || east < 16 || south < 16 || west < 16) {
-                                        grid[tileX][tileY] = 0;
-                                    }
-                                } else if (walkableData === 0) {
-                                    grid[tileX][tileY] = 0;
-                                } else if (walkableData === 1 && grid[tileX][tileY] !== 0) {
-                                    grid[tileX][tileY] = 1;
-                                }
-                            }
-                        });
-                    });
-                }
-            });
-        }
-    
-        return grid;
-    },
+    },  
 
     findObjectAt: function(x, y) {
         if (!this.roomData || !this.roomData.items) return null;
@@ -764,183 +565,42 @@ var game = {
         return offscreenCanvas;
     },
 
-    updateSelectedTiles: function() {
-        if (this.dragStart && this.dragEnd) {
-            const deltaX = Math.abs(this.dragEnd.x - this.dragStart.x);
-            const deltaY = Math.abs(this.dragEnd.y - this.dragStart.y);
-
-            if (deltaX >= 8 || deltaY >= 8) {
-                const startX = Math.min(this.dragStart.x, this.dragEnd.x);
-                const startY = Math.min(this.dragStart.y, this.dragEnd.y);
-                const endX = Math.max(this.dragStart.x, this.dragEnd.x);
-                const endY = Math.max(this.dragStart.y, this.dragEnd.y);
-
-                const startTileX = Math.floor(startX / 16);
-                const startTileY = Math.floor(startY / 16);
-                const endTileX = Math.floor(endX / 16);
-                const endTileY = Math.floor(endY / 16);
-
-                this.selectedTiles = [];
-
-                for (let x = startTileX; x <= endTileX; x++) {
-                    for (let y = startTileY; y <= endTileY; y++) {
-                        this.selectedTiles.push({ x: x * 16, y: y * 16 });
-                    }
-                }
-
-                this.selectionBounds = {
-                    startX: startTileX * 16,
-                    startY: startTileY * 16,
-                    endX: (endTileX + 1) * 16,
-                    endY: (endTileY + 1) * 16
-                };
-            }
-        }
-    },
-
-    selectItemsInSelectedTiles: function(isShiftKey) {
-        const foundItems = [];
-    
-        if (this.roomData && this.roomData.items) {
-            this.roomData.items.forEach(roomItem => {
-                const itemData = this.objectData[roomItem.id];
-                if (itemData && itemData.length > 0) {
-                    const tileData = itemData[0];
-                    const xCoordinates = roomItem.x || [];
-                    const yCoordinates = roomItem.y || [];
-    
-                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
-                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
-                            if (this.isTileSelected(x * 16, y * 16)) {
-                                foundItems.push(roomItem);
-                                break;
-                            }
-                        }
-                    }
-                }
-            });
-        }
-    
-        if (isShiftKey) {
-            foundItems.forEach(foundItem => {
-                const uniqueId = `${foundItem.id}_${foundItem.x}_${foundItem.y}`;
-                const index = this.selectedObjects.findIndex(obj => `${obj.id}_${obj.x}_${obj.y}` === uniqueId);
-                if (index === -1) {
-                    this.selectedObjects.push(foundItem);
-                } else {
-                    this.selectedObjects.splice(index, 1);
-                }
-            });
-        } else {
-            this.selectedObjects = foundItems;
-        }
-    },
-
-    isTileSelected: function(tileX, tileY) {
-        return this.selectedTiles.some(tile => tile.x === tileX && tile.y === tileY);
-    },
-
-    renderSelectedTiles: function() {
-        if (this.selectedTiles.length > 0) {
-            const { startX, startY, endX, endY } = this.selectionBounds;
-            this.ctx.strokeStyle = 'white';
-            this.ctx.lineWidth = 8 / this.zoomLevel;
-            this.ctx.setLineDash([10, 10]);
-            this.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-            this.ctx.shadowBlur = 10;
-            this.ctx.shadowOffsetX = 4;
-            this.ctx.shadowOffsetY = 4;
-            this.ctx.lineDashOffset -= 0.5;
-            this.ctx.strokeRect(startX, startY, endX - startX, endY - startY);
-            this.ctx.setLineDash([]);
-            this.ctx.shadowColor = 'transparent';
-            this.ctx.shadowBlur = 0;
-            this.ctx.shadowOffsetX = 0;
-            this.ctx.shadowOffsetY = 0;
-        }
-    },
-
-    drawCarriedObject: function(ctx, carriedItemId, baseX, baseY) {
-        const itemData = game.objectData[carriedItemId];
-        if (!itemData || itemData.length === 0) {
-            console.error("Invalid item data for carried item ID:", carriedItemId);
-            return;
-        }
-    
-        const tileData = itemData[0];
-    
-        const tileIndices = tileData.i;
-        const xCoordinates = tileData.a || [];
-        const yCoordinates = tileData.b || [];
-        const tileWidth = 16;
-        const tileHeight = 16;
-        const imageSource = assets.load(tileData.t);
-        const tilesPerRow = 150;
-    
-        if (xCoordinates.length === 0 || yCoordinates.length === 0) {
-            console.error("Invalid coordinates for carried item ID:", carriedItemId);
-            return;
-        }
-    
-        let index = 0;
-    
-        for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
-            for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
-                const itemX = x * tileWidth + baseX;
-                const itemY = y * tileHeight + baseY;
-    
-                let tileFrameIndex;
-                if (Array.isArray(tileIndices[0])) {
-                    const animationData = tileIndices;
-                    const currentFrame = Math.floor(Date.now() / 100) % animationData.length;
-                    tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
-                } else {
-                    tileFrameIndex = tileIndices[index];
-                }
-    
-                if (tileFrameIndex !== undefined) {
-                    const srcX = (tileFrameIndex % tilesPerRow) * tileWidth;
-                    const srcY = Math.floor(tileFrameIndex / tilesPerRow) * tileHeight;
-    
-                    ctx.drawImage(imageSource, srcX, srcY, tileWidth, tileHeight, itemX, itemY, tileWidth, tileHeight);
-                }
-    
-                index++;
-            }
-        }
-    },    
-    
- 
     render: function () {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
-        let tileCount = 0;
-        let spriteCount = 0;
+        
         this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
         this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
         this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
-
-        tileCount = render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
-
-        const { itemTileCount } = render.renderRoomItems(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
-        tileCount += itemTileCount;
-
-        spriteCount = render.renderSprites(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+    
+        const { backgroundTileCount, tileCount, spriteCount } = render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
         render.renderPathfinderLine();
         render.renderCarriedObjects();
-        render.renderSelectedTiles();
         render.renderLightingEffects();
         render.renderWeatherEffects();
         render.handleDebugUtilities();
         particles.renderParticles();
         effects.transitions.render();
-        render.updateUI(tileCount, spriteCount);
+    
+        render.updateUI(backgroundTileCount + tileCount, spriteCount);
         render.highlightOverlappingTiles();
-    },
+    
+        if (typeof debug_utils_window !== 'undefined') {
+            if (debug_utils_window.showCollisionBoundaries && typeof debug_utils_window.renderCollisionBoundaries === 'function') {
+                debug_utils_window.renderCollisionBoundaries();
+            }
+            if (debug_utils_window.showWalkableTiles && typeof debug_utils_window.renderNearestWalkableTile === 'function') {
+                debug_utils_window.renderNearestWalkableTile();
+            }
+            if (debug_utils_window.showObjectCollision && typeof debug_utils_window.renderObjectCollision === 'function') {
+                debug_utils_window.renderObjectCollision();
+            }
+        }
+    },    
     
     loop: function(timestamp) {
         if (!this.lastTime) {

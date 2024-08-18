@@ -130,50 +130,73 @@ var ui = {
     }
 },
 
-  ajax: async function({ url, method = 'GET', data = null, outputType = 'text', success, error }) {
-      try {
-    
-        const queryParams = new URLSearchParams(data).toString();
-        const fetchUrl = method === 'GET' && data ? `${url}?${queryParams}` : url;
-    
-        const init = {
-          method: method,
-          headers: {}
-        };
-    
-        if (data && method !== 'GET') {
-          init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-          init.body = data;
+ajax: async function({ url, method = 'GET', data = null, outputType = 'text', success, error }) {
+    try {
+      let fetchUrl = url;
+      const init = {
+        method: method,
+        headers: {}
+      };
+  
+      if (data) {
+        if (method === 'GET') {
+          const queryParams = new URLSearchParams(data).toString();
+          fetchUrl = `${url}?${queryParams}`;
+        } else {
+          if (typeof data === 'object') {
+            // Assuming data is an object, stringify it for JSON
+            init.headers['Content-Type'] = 'application/json';
+            init.body = JSON.stringify(data);
+          } else {
+            // If data is already a string, assume it's URL-encoded
+            init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+            init.body = data;
+          }
         }
-    
-        const response = await fetch(fetchUrl, init);
-    
-        if (!response.ok) { throw new Error('Network response was not ok: ' + response.statusText); }
-    
-        let responseData;
-        switch (outputType) {
-          case 'json':
-            responseData = await response.json();
-            break;
-          case 'blob':
-            responseData = await response.blob();
-            break;
-          case 'formData':
-            responseData = await response.formData();
-            break;
-          case 'arrayBuffer':
-            responseData = await response.arrayBuffer();
-            break;
-          default:
-            responseData = await response.text();
-        }
-    
-        if (success) success(responseData);
-    
-      } catch (err) {
-        if (error) error(err);
       }
-    },
+  
+      const response = await fetch(fetchUrl, init);
+  
+      if (!response.ok) {
+        // Handle response errors
+        const errorText = await response.text(); // Get the response text for debugging
+        throw new Error(errorText);
+      }
+  
+      let responseData;
+      switch (outputType) {
+        case 'json':
+          responseData = await response.json();
+          break;
+        case 'blob':
+          responseData = await response.blob();
+          break;
+        case 'formData':
+          responseData = await response.formData();
+          break;
+        case 'arrayBuffer':
+          responseData = await response.arrayBuffer();
+          break;
+        default:
+          responseData = await response.text();
+      }
+  
+      if (success) success(responseData);
+  
+    } catch (err) {
+      console.error('Failed to save data:', err);
+      if (error) {
+        // Check if the error is a string (from the fetch error handling) or a standard Error object
+        if (err instanceof Error) {
+          error(err.message); // Pass the error message to the callback
+        } else {
+          error(err); // Pass the generic error object
+        }
+      }
+    }
+  },
+  
+  
 
     tabs: {},
 
