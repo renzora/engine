@@ -17,3 +17,5 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'template_window', url: 'template/index.php', name: 'Template', drag: true, reload: false });">Template</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'debug_utils_window', url: 'debug/utils.php', name: 'Utils', drag: true, reload: false });">Utils</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'synth_window', url: 'synth/index.php', name: 'Synth', drag: true, reload: false });">Synth</button>

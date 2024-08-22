@@ -81,13 +81,22 @@ if ($auth) {
             $initialTileIndex = $metaData['tile_count'];
             file_put_contents($logFile, "[{$timestamp}] - Initial tile count: {$initialTileIndex}\n", FILE_APPEND);
 
-            // Populate the 'i' array with the correct indices
-            $newObject['i'] = [];
-            foreach ($aCoords as $index => $a) {
-                $newObject['i'][] = $initialTileIndex + $index;
-            }
+            // Populate the 'i' field with the correct index range as a string
+            $startIndex = $initialTileIndex;
+            $endIndex = $initialTileIndex + count($aCoords) - 1;
+            $newObject['i'] = ["{$startIndex}-{$endIndex}"];
 
-            // Log the updated newObject with populated indices
+            // Calculate the row (`b`) and column (`a`) counts based on the provided coordinates
+            $uniqueXValues = array_unique($aCoords);
+            $uniqueYValues = array_unique($bCoords);
+
+            $columnCount = count($uniqueXValues);  // This becomes the value for `a`
+            $rowCount = count($uniqueYValues);     // This becomes the value for `b`
+
+            $newObject['a'] = $columnCount;
+            $newObject['b'] = $rowCount;
+
+            // Log the updated newObject with populated indices and dimensions
             file_put_contents($logFile, "[{$timestamp}] - Updated newObject: " . json_encode($newObject) . "\n", FILE_APPEND);
 
             // Add the new object to the items array with the unique ID as the key

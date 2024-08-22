@@ -109,32 +109,36 @@ if ($auth) {
     currentlyResizingPoint: null,
 
     start: function(itemId) {
-        console.log("Item Editor Modal Opened for item ID:", itemId);
-        if (!game.objectData.hasOwnProperty(itemId)) {
-            console.error("Item ID not found in game.objectData:", itemId);
-            return;
-        }
-        var item = game.objectData[itemId][0];
-        console.log("Loaded item data:", item);
-        if (!item) {
-            console.error("Item not found or is invalid!");
-            return;
-        }
-        this.initializeOtherData(itemId, item);
-        this.setupLineDrawingHandlers('item_grid_canvas_walkable');
-        this.renderPolygonOnLoad(item);
-        if (item && Array.isArray(item.a) && Array.isArray(item.b)) {
-            this.drawGrid('item_grid_background_canvas_walkable', item);
-        } else {
-            console.warn("Skipping background grid drawing due to invalid item data");
-        }
-        if (item.script) {
-            document.getElementById('item_scripts').value = JSON.stringify(item.script, null, 2);
-        } else {
-            document.getElementById('item_scripts').value = '';
-        }
-        this.setupScriptInputHandlers();
-    },
+    console.log("Item Editor Modal Opened for item ID:", itemId);
+    if (!game.objectData.hasOwnProperty(itemId)) {
+        console.error("Item ID not found in game.objectData:", itemId);
+        return;
+    }
+    var item = game.objectData[itemId][0];
+    console.log("Loaded item data:", item);
+    if (!item) {
+        console.error("Item not found or is invalid!");
+        return;
+    }
+
+    // Log the current collision data (w) before any modifications
+    console.log("Current 'w' (collision) data:", item.w || "No collision data available");
+
+    this.initializeOtherData(itemId, item);
+    this.setupLineDrawingHandlers('item_grid_canvas_walkable');
+    this.renderPolygonOnLoad(item);
+    if (item && Array.isArray(item.a) && Array.isArray(item.b)) {
+        this.drawGrid('item_grid_background_canvas_walkable', item);
+    } else {
+        console.warn("Skipping background grid drawing due to invalid item data");
+    }
+    if (item.script) {
+        document.getElementById('item_scripts').value = JSON.stringify(item.script, null, 2);
+    } else {
+        document.getElementById('item_scripts').value = '';
+    }
+    this.setupScriptInputHandlers();
+},
 
     setupScriptInputHandlers: function() {
     const textarea = document.getElementById('item_scripts');

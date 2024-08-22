@@ -506,16 +506,18 @@ drawItemOnCanvas: function (item) {
 
     // Determine the number of tiles and the canvas size
     const tileSize = 16; // Size of each tile (e.g., 16x16)
-    const maxCol = Math.max(...item.a) + 1; // Calculate number of columns
-    const maxRow = Math.max(...item.b) + 1; // Calculate number of rows
+
+    // Calculate the number of columns and rows based on the provided data
+    const maxCol = item.a; // Single integer for column
+    const maxRow = item.b; // Single integer for row
 
     // Create a temporary canvas to draw the item
     const itemCanvas = document.createElement('canvas');
     const ctx = itemCanvas.getContext('2d');
 
-    // Set canvas size
-    itemCanvas.width = maxCol * tileSize;
-    itemCanvas.height = maxRow * tileSize;
+    // Set canvas size based on the number of tiles and the tile size
+    itemCanvas.width = (maxCol + 1) * tileSize;
+    itemCanvas.height = (maxRow + 1) * tileSize;
 
     // Determine which frames to render
     let framesToRender = [];
@@ -540,8 +542,9 @@ drawItemOnCanvas: function (item) {
     framesToRender.forEach((frame, index) => {
         const srcX = (frame % 150) * tileSize;
         const srcY = Math.floor(frame / 150) * tileSize;
-        const destX = item.a[index] * tileSize;
-        const destY = item.b[index] * tileSize;
+
+        const destX = (index % (maxCol + 1)) * tileSize;  // Calculate the x position
+        const destY = Math.floor(index / (maxCol + 1)) * tileSize;  // Calculate the y position
 
         // Draw the tile from the tileset image onto the item canvas
         ctx.drawImage(
@@ -566,6 +569,7 @@ drawItemOnCanvas: function (item) {
 
     return canvasContainer; // Return the container element with the item drawn
 },
+
     unmount: function() {
         ui.destroyTabs('tileset_window_tabs');
         ui.destroyTabs('right_tabs');

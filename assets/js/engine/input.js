@@ -29,19 +29,39 @@ var input = {
         window.addEventListener('resize', (e) => game.resizeCanvas(e));
         window.addEventListener('gamepada', (e) => this.gamepadAButton(e));
         window.addEventListener('gamepadb', (e) => this.gamepadBButton(e));
-        window.addEventListener('gamepadx', (e) => this.gamepadXButton(e));
-        window.addEventListener('gamepady', (e) => this.gamepadXButton(e));
+        window.addEventListener('gamepadxPressed', (e) => input.gamepadXButton(e));
+        window.addEventListener('gamepadxReleased', (e) => input.gamepadXButtonReleased(e));
+        window.addEventListener('gamepady', (e) => this.gamepadYButton(e));
         window.addEventListener('gamepadl1Pressed', (e) => this.gamepadLeftBumper(e.detail));
         window.addEventListener('gamepadstartPressed', gamepad.throttle((e) => this.gamepadStart(e), 1000));
         window.addEventListener('gamepadAxes', (e) => this.handleAxes(e.detail));
         window.addEventListener('gamepadl2Pressed', (e) => this.gamepadLeftTrigger());
         window.addEventListener('gamepadr2Pressed', gamepad.throttle((e) => this.gamepadRightTrigger(e), 50));
-        window.addEventListener('gamepadr2Released', (e) => this.changeSpeed());
+        window.addEventListener('gamepadr2Released', gamepad.throttle((e) => this.gamepadRightTriggerReleased(),50));
+
         window.addEventListener('gamepadl2Released', (e) => this.gamepadLeftTrigger());
     },
 
-    gamepadLeftTrigger: function() {
+    gamepadXButton: function(e) {
+        console.log("X button held down");
+        if (ui_overlay_window.remainingBullets < ui_overlay_window.bulletsPerRound && ui_overlay_window.remainingRounds > 0 && !ui_overlay_window.isReloading) {
+            console.log("Starting manual reload");
+            ui_overlay_window.startReloading(); // Start the reloading process
+        } else if (ui_overlay_window.remainingRounds <= 0) {
+            console.log("X button held - No rounds left");
+            audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+        }
+    },
+    
+    gamepadXButtonReleased: function(e) {
+        if (ui_overlay_window.isReloading) {
+            console.log("X button released - Stopping reload");
+            ui_overlay_window.stopReloading(); // Stop the reloading process if the button is released
+        }
+        ui_overlay_window.justReloaded = false; // Allow reloading to start again on next press
+    },
 
+    gamepadLeftTrigger: function() {
         if (gamepad.buttons.includes('l2')) {
             if (game.mainSprite) {
                 game.mainSprite.targetAim = true;
@@ -54,12 +74,37 @@ var input = {
     },
 
     gamepadRightTrigger: function() {
-        gamepad.vibrate(500, 1.0, 1.0);
-        game.mainSprite.speed = 120;
+        if (ui_overlay_window.remainingBullets > 0) {  // Check if bullets are available
+            if (gamepad.buttons.includes('r2')) {
+                game.mainSprite.speed = 120; // Fire rate speed
+                gamepad.vibrate(500, 1.0, 1.0); // Trigger vibration
     
-        if (game.mainSprite.targetAim) {
-            game.mainSprite.dealDamage();
+                if (game.mainSprite.targetAim) {
+                    game.mainSprite.dealDamage();
+                    ui_overlay_window.updateBullets(ui_overlay_window.remainingBullets - 1);
+                    audio.playAudio("machinegun1", assets.load('machinegun1'), 'sfx', true);
+                    effects.shakeMap(200, 4);
+                }
+            }
+        } else {
+            // Stop the machine gun sound immediately if out of bullets
+            audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
+    
+            if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds > 0) {
+                console.log("Out of bullets! Press and hold 'X' on the gamepad to reload.");
+                audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                ui.notif("no_bullets_notif", `Out of bullets! Press and hold 'X' on the gamepad to reload.`, true);
+            } else if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds <= 0) {
+                console.log("No bullets and no rounds left");
+                audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                ui_overlay_window.noBulletsLeft();
+            }
         }
+    },
+    
+    gamepadRightTriggerReleased: function() {
+        this.changeSpeed();
+        audio.stopLoopingAudio('machinegun1', 'sfx', 1.0); // Stop the machine gun sound
     },
     
     changeSpeed: function() {
@@ -135,83 +180,68 @@ var input = {
         this.updateSpriteDirections(axes);
     },
 
- handleRightAxes: function(axes) {
-    const threshold = 0.2; // Adjust threshold for zooming
-    const deadZone = 0.1; // Dead zone threshold for minimal stick movement
-
-    // Calculate axis pressures
-    const rightStickX = axes[2];
-    const rightStickY = axes[3];
-
-    if (Math.abs(rightStickX) > deadZone || Math.abs(rightStickY) > deadZone) {
-        gamepad.axesPressures.rightStickX = Math.abs(rightStickX);
-        gamepad.axesPressures.rightStickY = Math.abs(rightStickY);
-
-        // If the aim tool is active, update its position
-        if (game.mainSprite && game.mainSprite.targetAim) {
-            const aimSpeed = 10; // Adjust aim speed as necessary
-            const newTargetX = game.mainSprite.targetX + rightStickX * aimSpeed;
-            const newTargetY = game.mainSprite.targetY + rightStickY * aimSpeed;
-
-            // Calculate distance from the main sprite
-            const deltaX = newTargetX - (game.mainSprite.x + game.mainSprite.width / 2);
-            const deltaY = newTargetY - (game.mainSprite.y + game.mainSprite.height / 2);
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-            // Update sprite direction based on aim tool position
-            const angle = Math.atan2(deltaY, deltaX);
-            if (angle >= -Math.PI / 8 && angle < Math.PI / 8) {
-                game.mainSprite.direction = 'E';
-            } else if (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8) {
-                game.mainSprite.direction = 'SE';
-            } else if (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8) {
-                game.mainSprite.direction = 'S';
-            } else if (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8) {
-                game.mainSprite.direction = 'SW';
-            } else if (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8) {
-                game.mainSprite.direction = 'W';
-            } else if (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8) {
-                game.mainSprite.direction = 'NW';
-            } else if (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8) {
-                game.mainSprite.direction = 'N';
-            } else if (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8) {
-                game.mainSprite.direction = 'NE';
+    handleRightAxes: function(axes) {
+        const deadZone = 0.1; // Dead zone threshold for minimal stick movement
+    
+        // Calculate axis pressures
+        const rightStickX = axes[2];
+        const rightStickY = axes[3];
+    
+        if (Math.abs(rightStickX) > deadZone || Math.abs(rightStickY) > deadZone) {
+            gamepad.axesPressures.rightStickX = Math.abs(rightStickX);
+            gamepad.axesPressures.rightStickY = Math.abs(rightStickY);
+    
+            // If the aim tool is active, update its position
+            if (game.mainSprite && game.mainSprite.targetAim) {
+                const aimSpeed = 10; // Adjust aim speed as necessary
+                const newTargetX = game.mainSprite.targetX + rightStickX * aimSpeed;
+                const newTargetY = game.mainSprite.targetY + rightStickY * aimSpeed;
+    
+                // Calculate distance from the main sprite
+                const deltaX = newTargetX - (game.mainSprite.x + game.mainSprite.width / 2);
+                const deltaY = newTargetY - (game.mainSprite.y + game.mainSprite.height / 2);
+                const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+    
+                // Update sprite direction based on aim tool position
+                const angle = Math.atan2(deltaY, deltaX);
+                if (angle >= -Math.PI / 8 && angle < Math.PI / 8) {
+                    game.mainSprite.direction = 'E';
+                } else if (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8) {
+                    game.mainSprite.direction = 'SE';
+                } else if (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8) {
+                    game.mainSprite.direction = 'S';
+                } else if (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8) {
+                    game.mainSprite.direction = 'SW';
+                } else if (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8) {
+                    game.mainSprite.direction = 'W';
+                } else if (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8) {
+                    game.mainSprite.direction = 'NW';
+                } else if (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8) {
+                    game.mainSprite.direction = 'N';
+                } else if (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8) {
+                    game.mainSprite.direction = 'NE';
+                }
+    
+                // If within maxRange, update targetX and targetY
+                if (distance <= game.mainSprite.maxRange) {
+                    game.mainSprite.targetX = newTargetX;
+                    game.mainSprite.targetY = newTargetY;
+                } else {
+                    // Otherwise, set target to maxRange in the same direction
+                    const maxRangeX = game.mainSprite.x + game.mainSprite.width / 2 + Math.cos(angle) * game.mainSprite.maxRange;
+                    const maxRangeY = game.mainSprite.y + game.mainSprite.height / 2 + Math.sin(angle) * game.mainSprite.maxRange;
+                    game.mainSprite.targetX = Math.max(0, Math.min(maxRangeX, game.worldWidth));
+                    game.mainSprite.targetY = Math.max(0, Math.min(maxRangeY, game.worldHeight));
+                }
             }
-
-            // If within maxRange, update targetX and targetY
-            if (distance <= game.mainSprite.maxRange) {
-                game.mainSprite.targetX = newTargetX;
-                game.mainSprite.targetY = newTargetY;
-            } else {
-                // Otherwise, set target to maxRange in the same direction
-                const maxRangeX = game.mainSprite.x + game.mainSprite.width / 2 + Math.cos(angle) * game.mainSprite.maxRange;
-                const maxRangeY = game.mainSprite.y + game.mainSprite.height / 2 + Math.sin(angle) * game.mainSprite.maxRange;
-                game.mainSprite.targetX = Math.max(0, Math.min(maxRangeX, game.worldWidth));
-                game.mainSprite.targetY = Math.max(0, Math.min(maxRangeY, game.worldHeight));
-            }
+    
+            // Zooming logic removed from here
+        } else {
+            // Reset the pressures for right stick if below dead zone threshold
+            gamepad.axesPressures.rightStickX = 0;
+            gamepad.axesPressures.rightStickY = 0;
         }
-
-        // Handle zooming logic if aim tool isn't active
-        if (!gamepad.buttons.includes('l2')) {
-            const now = Date.now();
-            if (rightStickY > threshold && (!gamepad.throttledEvents['zoomIn'] || now - gamepad.throttledEvents['zoomIn'] >= 200)) {
-                camera.lerpEnabled = false; // Disable lerp
-                game.setZoomLevel(Math.max(2, game.zoomLevel - 1)); // Update zoom level and store in local storage
-                gamepad.throttledEvents['zoomIn'] = now;
-                setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
-            } else if (rightStickY < -threshold && (!gamepad.throttledEvents['zoomOut'] || now - gamepad.throttledEvents['zoomOut'] >= 200)) {
-                camera.lerpEnabled = false; // Disable lerp
-                game.setZoomLevel(Math.min(10, game.zoomLevel + 1)); // Update zoom level and store in local storage
-                gamepad.throttledEvents['zoomOut'] = now;
-                setTimeout(() => { camera.lerpEnabled = true; }, 300); // Re-enable lerp after 300ms
-            }
-        }
-    } else {
-        // Reset the pressures for right stick if below dead zone threshold
-        gamepad.axesPressures.rightStickX = 0;
-        gamepad.axesPressures.rightStickY = 0;
-    }
-},
+    },    
 
     isWithinMaxRange: function(target, player) {
         const targetCenterX = target.x + (target.width ? target.width / 2 : 0);
@@ -291,14 +321,6 @@ var input = {
         return nearestTarget;
     },
 
-    keyUp: function(e) {
-        game.updateInputMethod('keyboard');
-        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
-            e.preventDefault(); // Prevent default action for keyUp
-            this.handleKeyUp(e);
-        }
-    },
-
     keyDown: function(e) {
         game.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
@@ -308,9 +330,34 @@ var input = {
             if (e.key === ' ') {
                 e.preventDefault(); // Prevent default behavior for Space bar
             }
+    
+            // Check if 'X' is pressed for reloading
+            if (e.key.toLowerCase() === 'x') {
+                if (ui_overlay_window.remainingRounds > 0 && !ui_overlay_window.reloadInterval) {
+                    ui_overlay_window.startReloading(); // Start the reloading process
+                } else if (ui_overlay_window.remainingBullets === 0 && ui_overlay_window.remainingRounds > 0) {
+                    ui_overlay_window.handleReload(); // Handle reload if bullets are at zero
+                } else {
+                    console.log("No rounds left to reload");
+                    audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                }
+            }
+    
             this.handleKeyDown(e);
         }
     },
+
+    keyUp: function(e) {
+        game.updateInputMethod('keyboard');
+        if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
+            e.preventDefault(); // Prevent default action for keyUp
+            this.handleKeyUp(e);
+        }
+
+        if (e.key.toLowerCase() === 'x') {
+            ui_overlay_window.stopReloading(); // Stop the reloading process if 'X' is released
+        }
+    },    
 
     handleKeyDown: function(e) {
         this.handleControlStateChange(e, true);

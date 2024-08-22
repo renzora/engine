@@ -1,6 +1,11 @@
 var ui = {
   notificationCount: 0,
   activeNotifications: new Map(),
+  tabs: {},
+  menus: {},
+  activeMenuId: null,
+  activeSubItemIndex: 0,
+  toggleSwitches: {},
 
   notif: function(id, message, replace = false) {
       return new Promise(resolve => {
@@ -195,10 +200,6 @@ ajax: async function({ url, method = 'GET', data = null, outputType = 'text', su
       }
     }
   },
-  
-  
-
-    tabs: {},
 
     initTabs: function(containerId, defaultTab) {
         const container = document.getElementById(containerId);
@@ -230,26 +231,46 @@ ajax: async function({ url, method = 'GET', data = null, outputType = 'text', su
     },
 
     showTab: function(target, containerId) {
-        const { tabButtons, tabContents } = this.tabs[containerId];
+      const { tabButtons, tabContents } = this.tabs[containerId];
+  
+      tabButtons.forEach(button => {
+          if (button.getAttribute('data-container') === containerId) {
+              button.classList.remove('active');
+              if (button.getAttribute('data-tab') === target) {
+                  button.classList.add('active');
+              }
+          }
+      });
+  
+      tabContents.forEach(content => {
+          if (content.getAttribute('data-container') === containerId) {
+              content.classList.remove('active');
+              if (content.getAttribute('data-tab-content') === target) {
+                  content.classList.add('active');
+  
+                  // Check for data-menu attribute
+                  const tabButton = content.previousElementSibling.querySelector(`[data-tab="${target}"]`);
+                  const menuId = tabButton && tabButton.getAttribute('data-menu');
+                  if (menuId && this.menus[menuId]) {
+                      this.setActiveMenu(menuId);
+                  }
+              }
+          }
+      });
+  },
+  
 
-        tabButtons.forEach(button => {
-            if (button.getAttribute('data-container') === containerId) {
-                button.classList.remove('active');
-                if (button.getAttribute('data-tab') === target) {
-                    button.classList.add('active');
-                }
-            }
-        });
+    switchTab: function(containerId, direction) {
+      const { tabButtons } = this.tabs[containerId];
+      if (!tabButtons) return;
 
-        tabContents.forEach(content => {
-            if (content.getAttribute('data-container') === containerId) {
-                content.classList.remove('active');
-                if (content.getAttribute('data-tab-content') === target) {
-                    content.classList.add('active');
-                }
-            }
-        });
-    },
+      let activeIndex = Array.from(tabButtons).findIndex(tab => tab.classList.contains('active'));
+      if (activeIndex === -1) return;
+
+      const newIndex = (activeIndex + direction + tabButtons.length) % tabButtons.length;
+      const targetTab = tabButtons[newIndex].getAttribute('data-tab');
+      this.showTab(targetTab, containerId);
+  },
 
     destroyTabs: function(containerId) {
         const container = document.getElementById(containerId);
@@ -268,5 +289,384 @@ ajax: async function({ url, method = 'GET', data = null, outputType = 'text', su
 
         // Remove the stored reference
         delete this.tabs[containerId];
+    },
+
+    initMenu: function(containerId, defaultMenuItem) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+  
+      const menuItems = Array.from(container.querySelectorAll('[data-menu-item]'));
+  
+      menuItems.forEach(item => {
+          item.setAttribute('data-container', containerId);
+      });
+  
+      // Store the initialized menu items
+      this.menus[containerId] = { menuItems };
+  
+      // Set the default active menu item
+      const initialMenuItem = defaultMenuItem || menuItems[0]?.getAttribute('data-menu-item');
+      if (initialMenuItem) {
+          this.showMenuItem(initialMenuItem, containerId);
+      }
+  
+      // Set the active menu ID
+      this.activeMenuId = containerId;
+  },
+
+    showMenuItem: function(target, containerId) {
+      const { menuItems } = this.menus[containerId];
+    
+      menuItems.forEach(item => {
+        if (item.getAttribute('data-container') === containerId) {
+          if (item.getAttribute('data-menu-item') === target) {
+            item.classList.add('bg-blue-600', 'text-white', 'active');  // Add active state
+            item.classList.remove('text-gray-300');
+          } else {
+            item.classList.remove('bg-blue-600', 'text-white', 'active');  // Remove active state
+            item.classList.add('text-gray-300');
+          }
+        }
+      });
+    },
+
+    setActiveMenu: function(containerId) {
+      // Deactivate all menus
+      for (const id in this.menus) {
+        const { menuItems } = this.menus[id];
+        menuItems.forEach(item => {
+          item.classList.add('text-gray-300');
+          item.classList.remove('bg-blue-600', 'text-white', 'active');
+        });
+      }
+    
+      // Activate the specified menu
+      const { menuItems } = this.menus[containerId];
+      menuItems.forEach((item, index) => {
+        if (index === 0) {
+          item.classList.add('bg-blue-600', 'text-white', 'active');  // Set first item active
+          item.classList.remove('text-gray-300');
+        } else {
+          item.classList.add('text-gray-300');
+          item.classList.remove('bg-blue-600', 'text-white', 'active');
+        }
+      });
+    
+      // Set the activeMenuId to the new active menu
+      this.activeMenuId = containerId;
+    },
+
+    highlightMenuItem: function(containerId, direction) {
+      const { menuItems } = this.menus[containerId];
+      const activeIndex = Array.from(menuItems).findIndex(item => item.classList.contains('active'));
+
+      let newIndex = (activeIndex + direction + menuItems.length) % menuItems.length;
+
+      // Remove active classes from current item
+      if (activeIndex !== -1) {
+          menuItems[activeIndex].classList.remove('active', 'bg-blue-600', 'text-white');
+          menuItems[activeIndex].classList.add('text-gray-300');
+      }
+
+      // Add active classes to the new item
+      const newItem = menuItems[newIndex];
+      newItem.classList.add('active', 'bg-blue-600', 'text-white');
+      newItem.classList.remove('text-gray-300');
+
+      this.activeSubItemIndex = 0; // Reset sub-item index when switching menu items
+  },
+  focusSubItem: function(containerId, direction) {
+    const menuItems = this.menus[containerId].menuItems;
+    const activeItem = menuItems.find(item => item.classList.contains('active'));
+    if (!activeItem) return;
+
+    const controls = activeItem.querySelectorAll('[data-control]');
+    if (controls.length === 0) return;
+
+    this.activeSubItemIndex = (this.activeSubItemIndex + direction + controls.length) % controls.length;
+    controls.forEach((control, index) => {
+        control.classList.toggle('focused', index === this.activeSubItemIndex);
+    });
+
+    controls[this.activeSubItemIndex].focus();
+},
+
+interactWithHighlightedItem: function(containerId) {
+  const { menuItems } = this.menus[containerId];
+  const activeItem = menuItems.find(item => item.classList.contains('active'));
+
+  if (!activeItem) {
+      console.warn(`No active item found in container '${containerId}'.`);
+      return;
+  }
+
+  console.log(`Active item found:`, activeItem);
+
+  // Attempt to find the control by its data-control attribute
+  let control = activeItem.querySelector('[data-control]');
+  if (!control) {
+      console.warn(`No control found within the active item.`);
+      return;
+  }
+
+  console.log(`Control found within active item:`, control);
+
+  if (control.classList.contains('custom-dropdown-trigger')) {
+      // If the control is the custom dropdown trigger, toggle the dropdown
+      this.toggleCustomDropdown(control, control.nextElementSibling); // The dropdown menu is the next sibling
+
+      // Prevent further navigation if the dropdown is open
+      if (!control.nextElementSibling.classList.contains('hidden')) {
+          this.dropdownOpen = true;
+      } else {
+          this.dropdownOpen = false;
+      }
+  } else if (control.tagName === 'INPUT') {
+      if (control.type === 'checkbox') {
+          // Toggle checkbox
+          control.checked = !control.checked;
+          console.log(`Checkbox toggled. New state: ${control.checked}`);
+      } else if (control.type === 'range') {
+          // Handle range input (if needed)
+          console.log(`Range control found. Current value: ${control.value}`);
+      }
+  } else if (control.classList.contains('toggle')) {
+      // Handle custom toggle switch
+      const toggleSwitch = this.toggleSwitches[control.id];
+      if (toggleSwitch) {
+          toggleSwitch.toggle();
+          console.log(`Toggled switch '${control.id}'. New state: ${toggleSwitch.state()}`);
+      } else {
+          console.error(`No toggle switch found with id '${control.id}' in ui.toggleSwitches.`);
+      }
+  } else {
+      console.warn(`Control type not recognized or unsupported.`);
+  }
+},
+
+
+adjustSlider: function(containerId, direction) {
+  const menuData = this.menus[containerId];
+  if (!menuData || !Array.isArray(menuData.menuItems)) {
+      console.error('No valid menu items found for containerId:', containerId);
+      return;
+  }
+
+  const menuItems = menuData.menuItems;
+  if (menuItems.length === 0) return;
+
+  const activeItem = menuItems.find(item => item.classList.contains('active'));
+  if (!activeItem) {
+      console.error('No active menu item found.');
+      return;
+  }
+
+  const control = activeItem.querySelector('[data-control]');
+
+  if (control && control.tagName === 'INPUT' && control.type === 'range') {
+      const stepMultiplier = 5;  // Increase this value to make the slider move faster
+      const step = direction * ((parseInt(control.step) || 1) * stepMultiplier);
+      const newValue = parseInt(control.value) + step;
+
+      if (newValue >= control.min && newValue <= control.max) {
+          control.value = newValue;
+      } else if (newValue < control.min) {
+          control.value = control.min;
+      } else if (newValue > control.max) {
+          control.value = control.max;
+      }
+  } else {
+      console.error('No valid range control found in active item.');
+  }
+},
+
+  destroyMenu: function(containerId) {
+      const container = document.getElementById(containerId);
+      if (!container || !this.menus[containerId]) return;
+
+      const { menuItems } = this.menus[containerId];
+
+      // Clear the menuItems
+      menuItems.forEach(item => item.remove());
+
+      // Remove the stored reference
+      delete this.menus[containerId];
+  },
+
+  createToggleSwitch: function(containerId, switchId, initialState = false) {
+    console.log(`Attempting to create toggle switch in container: ${containerId} with id: ${switchId}`);
+    
+    const container = document.getElementById(containerId);
+    if (!container) {
+        console.error(`Container with id '${containerId}' not found.`);
+        return;
     }
+
+    console.log(`Container found. Creating toggle switch.`);
+
+    const switchButton = document.createElement('button');
+    switchButton.id = switchId;
+    switchButton.setAttribute('data-control', switchId); // Adding data-control attribute here
+    switchButton.className = `toggle relative w-12 h-6 rounded-full focus:outline-none transition-colors ${
+        initialState ? 'bg-green-500' : 'bg-gray-400'
+    }`;
+
+    const switchCircle = document.createElement('span');
+    switchCircle.className = `toggle-circle absolute top-0 left-0 w-6 h-6 rounded-full shadow transition transform ${
+        initialState ? 'translate-x-full bg-white' : 'translate-x-0 bg-white'
+    }`;
+
+    switchButton.appendChild(switchCircle);
+    container.appendChild(switchButton);
+
+    console.log(`Toggle switch with id '${switchId}' created and added to container '${containerId}'. Initial state: ${initialState}`);
+
+    function toggleSwitch() {
+        const isOn = switchButton.classList.toggle('bg-green-500');
+        switchButton.classList.toggle('bg-gray-400', !isOn);
+        switchCircle.classList.toggle('translate-x-full', isOn);
+        switchCircle.classList.toggle('translate-x-0', !isOn);
+        console.log(`Toggle switch '${switchId}' state changed to: ${isOn}`);
+    }
+
+    switchButton.addEventListener('click', toggleSwitch);
+
+    ui.toggleSwitches[switchId] = {
+        element: switchButton,
+        toggle: toggleSwitch,
+        state: () => switchButton.classList.contains('bg-green-500'),
+    };
+
+    console.log(`Toggle switch '${switchId}' is now stored in ui.toggleSwitches.`);
+
+    return ui.toggleSwitches[switchId];
+},
+
+createCustomDropdown: function(containerId, dropdownId, options = []) {
+  console.log(`Attempting to create custom dropdown in container: ${containerId} with id: ${dropdownId}`);
+  
+  const container = document.getElementById(containerId);
+  if (!container) {
+      console.error(`Container with id '${containerId}' not found.`);
+      return;
+  }
+
+  // Find the menu item element by its data-menu-item attribute
+  const menuItem = container.querySelector('[data-menu-item="item3"]');
+  if (!menuItem) {
+      console.error(`Menu item with data-menu-item="item3" not found.`);
+      return;
+  }
+
+  console.log(`Container and menu item found. Creating custom dropdown.`);
+
+  // Create the dropdown trigger element
+  const dropdownTrigger = document.createElement('div');
+  dropdownTrigger.id = dropdownId;
+  dropdownTrigger.className = 'custom-dropdown-trigger cursor-pointer bg-gray-800 text-white rounded-md p-2 mt-2';
+  dropdownTrigger.innerText = 'Select Option';
+  dropdownTrigger.setAttribute('data-control', dropdownId);
+
+  // Create the dropdown menu container
+  const dropdownMenu = document.createElement('div');
+  dropdownMenu.className = 'custom-dropdown-menu hidden bg-gray-700 rounded-md mt-2 shadow-lg';
+
+  // Populate the dropdown menu with options
+  options.forEach((optionText, index) => {
+      const option = document.createElement('div');
+      option.className = 'dropdown-option p-2 text-gray-300 cursor-pointer hover:bg-gray-600';
+      option.innerText = optionText;
+      option.setAttribute('data-value', optionText);
+      option.dataset.index = index;
+      dropdownMenu.appendChild(option);
+  });
+
+  // Append the trigger and menu to the menu item
+  const dropdownContainer = document.createElement('div');
+  dropdownContainer.className = 'custom-dropdown mt-2';
+  dropdownContainer.appendChild(dropdownTrigger);
+  dropdownContainer.appendChild(dropdownMenu);
+
+  menuItem.appendChild(dropdownContainer);
+
+  console.log(`Custom dropdown with id '${dropdownId}' created and added to menu item '${menuItem.getAttribute('data-menu-item')}'.`);
+
+  // Store the dropdown reference in the UI object for later use
+  ui.toggleSwitches[dropdownId] = {
+      element: dropdownTrigger,
+      options: dropdownMenu,
+      toggle: () => this.toggleCustomDropdown(dropdownTrigger, dropdownMenu),
+      state: () => dropdownMenu.classList.contains('hidden') ? null : dropdownTrigger.innerText,
+      select: (option) => {
+          dropdownTrigger.innerText = option.innerText;
+          console.log(`Selected value: ${option.innerText}`);
+          this.toggleCustomDropdown(dropdownTrigger, dropdownMenu); // Close the dropdown
+      }
+  };
+
+  // Add event listener to toggle the dropdown
+  dropdownTrigger.addEventListener('click', () => ui.toggleSwitches[dropdownId].toggle());
+
+  console.log(`Custom dropdown '${dropdownId}' is now stored in ui.toggleSwitches.`);
+},
+
+toggleCustomDropdown: function(dropdownTrigger, dropdownMenu) {
+    const isVisible = !dropdownMenu.classList.toggle('hidden'); // Toggle visibility
+    this.dropdownOpen = isVisible; // Set dropdownOpen based on visibility
+
+    if (isVisible) {
+        dropdownTrigger.classList.add('dropdown-active');
+        this.activeDropdown = dropdownMenu;
+
+        // Check if there's a previously selected option
+        const selectedValue = dropdownTrigger.innerText;
+        const options = dropdownMenu.querySelectorAll('.dropdown-option');
+
+        this.activeDropdownIndex = Array.from(options).findIndex(option => option.innerText === selectedValue);
+
+        // If no match is found, default to the first option
+        if (this.activeDropdownIndex === -1) {
+            this.activeDropdownIndex = 0;
+        }
+
+        // Highlight the current option
+        options.forEach((option, index) => {
+            option.classList.toggle('bg-gray-600', index === this.activeDropdownIndex);
+            option.classList.toggle('text-white', index === this.activeDropdownIndex);
+        });
+    } else {
+        dropdownTrigger.classList.remove('dropdown-active');
+        this.activeDropdown = null;
+    }
+},
+
+highlightDropdownOption: function(direction) {
+  if (this.activeDropdown) {
+      const options = Array.from(this.activeDropdown.querySelectorAll('.dropdown-option'));
+      this.activeDropdownIndex = (this.activeDropdownIndex + direction + options.length) % options.length;
+
+      options.forEach((option, index) => {
+          option.classList.toggle('bg-gray-600', index === this.activeDropdownIndex);
+          option.classList.toggle('text-white', index === this.activeDropdownIndex);
+      });
+  }
+},
+
+confirmDropdownSelection: function() {
+  if (this.activeDropdown) {
+      const selectedOption = this.activeDropdown.querySelector('.dropdown-option.bg-gray-600');
+      if (selectedOption) {
+          console.log(`Selected option: ${selectedOption.innerText}`);
+          const dropdownTrigger = this.activeDropdown.previousElementSibling;
+          ui.toggleSwitches[dropdownTrigger.id].select(selectedOption); // Confirm the selection
+      }
+  }
+},
+
+cancelDropdownSelection: function() {
+  if (this.activeDropdown) {
+      this.toggleCustomDropdown(this.activeDropdown.previousElementSibling, this.activeDropdown); // Close the dropdown
+  }
+}
+
 };

@@ -143,6 +143,9 @@ var game = {
             { name: 'nightAmbience', path: 'audio/sfx/weather/nightAmbience.mp3' },
             { name: 'rain', path: 'audio/sfx/weather/rain.mp3' },
             { name: 'meta', path: 'json/meta.json' },
+            { name: 'machinegun1', path: 'audio/sfx/fx/machineGun.mp3' },
+            { name: 'reload_gun', path: 'audio/sfx/fx/reload_gun.mp3' },
+            { name: 'empty_gun', path: 'audio/sfx/fx/empty_gun.mp3' },
         ], () => {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
@@ -177,6 +180,8 @@ var game = {
             this.mainSprite = game.sprites[this.playerid];
             this.setActiveSprite(this.playerid);
 
+
+
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.2);
@@ -187,10 +192,10 @@ var game = {
             modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
             modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
             modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu', drag: false, reload: false });
-            modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: false });
+            modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: true });
             modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window', drag: false, reload: false });
             modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
-            modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
+            //modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
 
             console.log("Connected to Main renzora server");
             //modal.load('inventory_items', "inventory_items_window", "Inventory Items", true);

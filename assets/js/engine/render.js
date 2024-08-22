@@ -295,10 +295,6 @@ var render = {
         if (effectsRenderedDisplay) {
             effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(particles.activeEffects).length}`;
         }
-
-        if (game.isEditorActive && game.editorMode === 'brush') {
-            edit_mode_window.drawBrushCircle();
-        }
     },
 
     highlightOverlappingTiles: function () {
@@ -483,10 +479,11 @@ var render = {
             if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
                 return;
             }
-
+    
             const crosshairSize = 10;
             const sniperLineLength = 15;
-        
+    
+            // Draw the line in white
             game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
             game.ctx.lineWidth = 1;
             game.ctx.setLineDash([5, 5]);
@@ -495,15 +492,25 @@ var render = {
             game.ctx.lineTo(finalTargetX, finalTargetY);
             game.ctx.stroke();
             game.ctx.setLineDash([]);
+    
+            // Determine the color for the aim circle and crosshairs based on R2
+            const aimCrosshairColor = gamepad.buttons.includes('r2') ? 'rgba(255, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)';
+    
+            // Draw the aim circle
+            game.ctx.strokeStyle = aimCrosshairColor;
             game.ctx.beginPath();
             game.ctx.arc(finalTargetX, finalTargetY, game.mainSprite.targetRadius, 0, 2 * Math.PI);
             game.ctx.stroke();
+    
+            // Draw the crosshairs
             game.ctx.beginPath();
             game.ctx.moveTo(finalTargetX - crosshairSize, finalTargetY);
             game.ctx.lineTo(finalTargetX + crosshairSize, finalTargetY);
             game.ctx.moveTo(finalTargetX, finalTargetY - crosshairSize);
             game.ctx.lineTo(finalTargetX, finalTargetY + crosshairSize);
             game.ctx.stroke();
+    
+            // Draw the sniper lines in the same color as the crosshairs
             game.ctx.beginPath();
             game.ctx.moveTo(finalTargetX - sniperLineLength, finalTargetY);
             game.ctx.lineTo(finalTargetX - crosshairSize, finalTargetY);
@@ -514,7 +521,8 @@ var render = {
             game.ctx.moveTo(finalTargetX, finalTargetY + crosshairSize);
             game.ctx.lineTo(finalTargetX, finalTargetY + sniperLineLength);
             game.ctx.stroke();
-            game.ctx.restore();
         }
     }
+      
+    
 }

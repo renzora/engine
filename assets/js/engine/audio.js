@@ -16,7 +16,7 @@ var audio = {
             this.masterGain = this.audioContext.createGain();
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 1;
-    
+            
             this.channels = {};
             this.sources = {};
     
@@ -25,9 +25,13 @@ var audio = {
             this.setVolume('music', localStorage.getItem('music-volume') || 0.05);
             this.createChannel('sfx', localStorage.getItem('sfx-volume') || this.defaultVolume);
             this.createChannel('ambience', localStorage.getItem('ambience-volume') || 0.5);
+            
             console.log("Audio context initialized. Master, music, sfx channels created.");
+        } else {
+            console.log("Audio context already started.");
         }
     },
+    
 
     pauseAll: function() {
         if (this.audioContext && this.audioContext.state === 'running') {
@@ -151,32 +155,49 @@ var audio = {
         this.detectPitch(analyser);
     },
 
-    playAudio: function(id, audioBuffer, channel = 'master', loop = false) {
-        const currentTime = this.audioContext.currentTime; // Get the current time in seconds
-
-        // Check if the audio is already playing in loop
-        if (loop && this.isLoopingAudioPlaying[channel] && this.isLoopingAudioPlaying[channel][id]) {
-            return; // If already looping, do not play again
+    playAudio: function(id, audioBuffer, channel = 'sfx', loop = false) {
+        // Ensure the audio context is running before playing sound
+        if (this.audioContext.state !== 'running') {
+            console.log('Audio context not running, attempting to resume.');
+            this.audioContext.resume().then(() => {
+                console.log('Audio context resumed.');
+                this.playAudio(id, audioBuffer, channel, loop); // Retry after resuming
+            });
+            return;
         }
-
-        if (!this.queues[channel]) {
-            this.queues[channel] = [];
+    
+        // Check if a sound is already playing on this channel
+        if (this.sources[channel] && this.sources[channel].length > 0) {
+            console.log(`Sound is already playing on channel: ${channel}. Rejecting request.`);
+            return; // Reject the request if a sound is already playing
         }
-
-        // Push the audio request to the queue
-        this.queues[channel].push({ id, audioBuffer, loop });
-
-        // Process the queue
-        this.processQueue(channel);
-
-        // Mark the audio as playing if it's a loop
+    
+        // Proceed with playing the sound if no sound is currently playing
+        const source = this.audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        const gainNode = this.audioContext.createGain();
+        source.connect(gainNode);
+        gainNode.connect(this.channels[channel] || this.masterGain);
+    
         if (loop) {
-            if (!this.isLoopingAudioPlaying[channel]) {
-                this.isLoopingAudioPlaying[channel] = {};
-            }
-            this.isLoopingAudioPlaying[channel][id] = true;
+            source.loop = true;
+            source.looping = true;
+            source.gainNode = gainNode;
+            source.loopId = id;
         }
-    },
+    
+        source.onended = () => {
+            this.sources[channel] = this.sources[channel].filter(s => s !== source);
+            console.log(`Sound ended on channel: ${channel}`);
+        };
+    
+        source.start();
+    
+        if (!this.sources[channel]) {
+            this.sources[channel] = [];
+        }
+        this.sources[channel].push(source);
+    },    
 
     processQueue: function(channel) {
         if (!this.queues[channel] || this.queues[channel].length === 0) {

@@ -14,26 +14,22 @@ if ($auth) {
 </div>
 
 <script>
-var ui_editor_tab_window = {
+var ui_console_tab_window = {
   start: function() {
     this.displayItems();
-    modal.load({ id: 'editor_window', url: 'editor', name: 'Editor', drag: true, reload: false });
   },
 
   displayItems: function() {
     var itemData = assets.load('objectData');
     console.log('Loaded itemData:', itemData);
 
-    var tilesetImage = assets.load('gen1'); // Directly get the image element
-
     var gridContainer = document.querySelector('.inventory-grid');
     var tileSize = 16;
     var tilesPerRow = 150;
-    var fixedHeight = 32; // Height for single-tile items in the inventory
 
     for (var category in itemData) {
         if (itemData.hasOwnProperty(category)) {
-            var items = itemData[category]; // Access the array of items in the category
+            var items = itemData[category];
             if (items.length === 0) continue;
 
             console.log('Processing category:', category);
@@ -42,62 +38,52 @@ var ui_editor_tab_window = {
             var itemGroupElement = document.createElement('div');
             itemGroupElement.classList.add('inventory-item-group', 'bg-[#202b3d]', 'py-1', 'rounded');
 
-            var allA = items.map(item => item.a).flat();
-            var allB = items.map(item => item.b).flat();
+            items.forEach(function(item) {
+                const tilesetImage = assets.load(item.t); // Load the tileset image
+                const itemCanvas = document.createElement('canvas');
+                const ctx = itemCanvas.getContext('2d');
 
-            var minX = Math.min(...allA);
-            var minY = Math.min(...allB);
-            var maxX = Math.max(...allA);
-            var maxY = Math.max(...allB);
+                const maxCol = item.a;
+                const maxRow = item.b;
+                itemCanvas.width = (maxCol + 1) * tileSize;
+                itemCanvas.height = (maxRow + 1) * tileSize;
 
-            console.log('Bounding box for category:', category, { minX, minY, maxX, maxY });
+                let framesToRender = [];
 
-            var itemWidth = (maxX - minX + 1) * tileSize;
-            var itemHeight = (maxY - minY + 1) * tileSize;
+                if (item.d && Array.isArray(item.i[0])) {
+                    framesToRender = item.i[0];
+                } else if (Array.isArray(item.i[0])) {
+                    framesToRender = item.i.flat();
+                } else {
+                    framesToRender = item.i.map(frame => {
+                        if (typeof frame === 'string' && frame.includes('-')) {
+                            return render.parseRange(frame);
+                        }
+                        return [frame];
+                    }).flat();
+                }
 
-            var itemCanvas = document.createElement('canvas');
-            var context = itemCanvas.getContext('2d');
-            itemCanvas.width = itemWidth;
-            itemCanvas.height = itemHeight;
+                framesToRender.forEach((frame, index) => {
+                    const srcX = (frame % tilesPerRow) * tileSize;
+                    const srcY = Math.floor(frame / tilesPerRow) * tileSize;
 
-            items.forEach(function(item, index) {
-                // Expand ranges in the 'i' array
-                let tileIndexesArray = item.i.flatMap(i => {
-                    if (typeof i === 'string' && i.includes('-')) {
-                        const [start, end] = i.split('-').map(Number);
-                        return start <= end ? Array.from({ length: end - start + 1 }, (_, k) => start + k) : [];
-                    }
-                    return i;
+                    const destX = (index % (maxCol + 1)) * tileSize;
+                    const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+
+                    ctx.drawImage(
+                        tilesetImage, 
+                        srcX, srcY, tileSize, tileSize, 
+                        destX, destY, tileSize, tileSize 
+                    );
                 });
 
-                tileIndexesArray.forEach((tileIndex, i) => {
-                    var tileX = (tileIndex % tilesPerRow) * tileSize;
-                    var tileY = Math.floor(tileIndex / tilesPerRow) * tileSize;
+                const canvasContainer = document.createElement('div');
+                canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden';
+                itemCanvas.className += ' w-full h-full object-contain';
 
-                    var canvasX = (item.a[i] - minX) * tileSize;
-                    var canvasY = (item.b[i] - minY) * tileSize;
-
-                    console.log(`Drawing tile ${tileIndex} at (${canvasX}, ${canvasY})`);
-
-                    context.drawImage(tilesetImage, tileX, tileY, tileSize, tileSize, canvasX, canvasY, tileSize, tileSize);
-                });
+                canvasContainer.appendChild(itemCanvas);
+                itemGroupElement.appendChild(canvasContainer);
             });
-
-            var itemElement = document.createElement('div');
-            itemElement.classList.add('inventory-item', 'm-1');
-            itemElement.style.position = 'relative';
-            itemElement.dataset.category = category;
-
-            if (itemWidth === tileSize && itemHeight === tileSize) {
-                itemElement.style.width = `${fixedHeight}px`;
-                itemElement.style.height = `${fixedHeight}px`;
-            } else {
-                itemElement.style.width = `${itemWidth}px`;
-                itemElement.style.height = `${itemHeight}px`;
-            }
-
-            itemElement.appendChild(itemCanvas);
-            itemGroupElement.appendChild(itemElement);
 
             itemGroupElement.style.display = 'flex';
             itemGroupElement.style.justifyContent = 'center';
@@ -106,21 +92,20 @@ var ui_editor_tab_window = {
             gridContainer.appendChild(itemGroupElement);
         }
     }
-},
-
+  },
 
   unmount: function() {
-    modal.close('edit_mode_window');
+    modal.close('edit_window');
   }
 };
 
-ui_editor_tab_window.start();
+ui_console_tab_window.start();
 </script>
 
 <style>
   .inventory-item canvas {
-    width: 100%; /* Ensure the canvas takes the full width of the container */
-    height: auto; /* Maintain the aspect ratio */
+    width: 100%;
+    height: auto;
     display: block;
   }
   .inventory-item-group {
@@ -133,7 +118,7 @@ ui_editor_tab_window.start();
     height: auto;
   }
   .inventory-item-group.active {
-    background-color: #4CAF50; /* Green background for active item */
+    background-color: #4CAF50; 
   }
 </style>
 

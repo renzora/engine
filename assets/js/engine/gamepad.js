@@ -30,7 +30,6 @@ var gamepad = {
         this.isConnected = true;
         this.name = this.getGamepadName(e.gamepad); // Store the gamepad name
         game.updateInputMethod('gamepad', this.name);
-        modal.front('ui_inventory_window');
         const event = new CustomEvent('gamepadConnected');
         window.dispatchEvent(event);
     },
