@@ -476,6 +476,11 @@ html, body {
   height: 10px; /* Make the strip taller for better visibility */
 }
 
+.console_tab.active {
+  background-color: #2d4c7d;
+  color: #fff;
+}
+
 .tab.active {
   background-color: #2d4c7d;
   color: #fff;

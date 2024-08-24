@@ -189,10 +189,10 @@ var game = {
             const storedSceneId = localStorage.getItem('sceneid') || '66afd5880a19134bf10959d3';
             this.loadScene(storedSceneId);
 
-            modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
+            //modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
+            modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: true });
             modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
             modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu', drag: false, reload: false });
-            modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: true });
             modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window', drag: false, reload: false });
             modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
             //modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });

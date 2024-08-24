@@ -16,22 +16,18 @@ var collision = {
         return isInside;
     },
 
-    // Check if the sprite's position collides with any non-walkable objects
     check: function(x, y, sprite) {
-        // Return early if roomData or items are not defined
         if (!game.roomData?.items) {
-            //console.error("roomData or items is not defined.");
             return { collisionDetected: false };
         }
 
-        // Define the points to check around the sprite (points along the oval's perimeter)
         const pointsToCheck = [];
-        const a = sprite.width / 2; // Semi-major axis (horizontal radius)
-        const b = sprite.height / 4; // Semi-minor axis (vertical radius, half of the bottom half of the sprite)
+        const a = sprite.width / 2;
+        const b = sprite.height / 4;
         const centerX = x + a;
-        const centerY = y + sprite.height * 0.75; // Start halfway down the sprite
+        const centerY = y + sprite.height * 0.75;
 
-        const numPoints = 8; // Reduced number of points to check around the oval for optimization
+        const numPoints = 8;
 
         for (let i = 0; i < numPoints; i++) {
             const angle = (i / numPoints) * 2 * Math.PI;
@@ -40,18 +36,15 @@ var collision = {
             pointsToCheck.push({ px, py });
         }
 
-        // Iterate through all the items in the room
         for (const item of game.roomData.items) {
             const itemData = assets.load('objectData')[item.id]?.[0];
             if (!itemData?.w) continue;
 
-            // Get the absolute positions of the polygon points
             const polygon = itemData.w.map(point => ({
                 x: point.x + item.x[0] * 16,
                 y: point.y + item.y[0] * 16
             }));
 
-            // Check each point around the oval
             for (const point of pointsToCheck) {
                 if (this.pointInPolygon(point.px, point.py, polygon)) {
                     return { collisionDetected: true };

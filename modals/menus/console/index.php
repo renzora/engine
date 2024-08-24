@@ -98,20 +98,21 @@ if ($auth) {
     },
 
     activateCurrentTab: function() {
-        const tabs = document.querySelectorAll('.tab');
-        tabs.forEach(t => t.classList.remove('bg-[#2b3b55]', 'text-white'));
-        tabs[this.currentTabIndex].classList.add('bg-[#2b3b55]', 'text-white');
-        this.loadTabContent(tabs[this.currentTabIndex].getAttribute('data-tab'));
-    },
+    const tabs = document.querySelectorAll('#console_window .console_tab');
+    tabs.forEach(t => t.classList.remove('bg-[#2b3b55]', 'text-white'));
+    tabs[this.currentTabIndex].classList.add('bg-[#2b3b55]', 'text-white');
+    this.loadTabContent(tabs[this.currentTabIndex].getAttribute('data-tab'));
+},
 
     setupTabListeners: function() {
-        const tabs = document.querySelectorAll('.tab');
-        tabs.forEach((tab, index) => {
-            const listener = () => this.handleTabClick(tab, index);
-            tab.addEventListener('click', listener);
-            this.eventListeners.push({ element: tab, event: 'click', handler: listener });
-        });
-    },
+    // Select tabs using a more specific selector unique to the console window
+    const tabs = document.querySelectorAll('#console_window .console_tab');
+    tabs.forEach((tab, index) => {
+        const listener = () => this.handleTabClick(tab, index);
+        tab.addEventListener('click', listener);
+        this.eventListeners.push({ element: tab, event: 'click', handler: listener });
+    });
+},
 
     handleTabClick: function(tab, index) {
         console.log(`Tab clicked: ${tab.getAttribute('data-tab')}`);
@@ -157,28 +158,28 @@ if ($auth) {
     },
 
     clearActiveTabs: function() {
-        const tabs = document.querySelectorAll('.tab');
-        tabs.forEach(t => t.classList.remove('bg-[#2b3b55]', 'text-white'));
-    },
+    const tabs = document.querySelectorAll('#console_window .console_tab');
+    tabs.forEach(t => t.classList.remove('bg-[#2b3b55]', 'text-white'));
+},
 
     navigateTabs: function(direction) {
-        const tabs = document.querySelectorAll('.tab');
-        let newIndex = this.currentTabIndex;
+    const tabs = document.querySelectorAll('#console_window .console_tab');
+    let newIndex = this.currentTabIndex;
 
-        if (direction === 'up') {
-            newIndex = (this.currentTabIndex - 1 + tabs.length) % tabs.length;
-        } else if (direction === 'down') {
-            newIndex = (this.currentTabIndex + 1) % tabs.length;
-        }
+    if (direction === 'up') {
+        newIndex = (this.currentTabIndex - 1 + tabs.length) % tabs.length;
+    } else if (direction === 'down') {
+        newIndex = (this.currentTabIndex + 1) % tabs.length;
+    }
 
-        if (this.isOpen) {
-            this.clearActiveTabs();
-            tabs[newIndex].classList.add('bg-[#2b3b55]', 'text-white');
-            this.unmountCurrentTab();
-            this.loadTabContent(tabs[newIndex].getAttribute('data-tab'));
-            this.currentTabIndex = newIndex;
-        }
-    },
+    if (this.isOpen) {
+        this.clearActiveTabs();
+        tabs[newIndex].classList.add('bg-[#2b3b55]', 'text-white');
+        this.unmountCurrentTab();
+        this.loadTabContent(tabs[newIndex].getAttribute('data-tab'));
+        this.currentTabIndex = newIndex;
+    }
+},
 
     isMenuActive: function() {
         return this.isOpen;

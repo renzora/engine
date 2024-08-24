@@ -112,10 +112,8 @@ var render = {
             return acc;
         }, {});
     
-        // Render background tiles
         backgroundTileCount = this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
     
-        // Collect room items (foreground tiles) for rendering
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(roomItem => {
                 const itemData = expandedObjectData[roomItem.id];
@@ -151,7 +149,7 @@ var render = {
                                         }
                                     });
     
-                                    tileCount++; // Increment foreground tile count
+                                    tileCount++;
                                 }
                             }
                             index++;

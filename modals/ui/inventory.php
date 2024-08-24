@@ -3,346 +3,519 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 
-<div data-window='ui_inventory_window' data-close="false">
-  <div id="ui_inventory_window" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-10 flex space-x-2 tracking-tight bg-[#0a0d14] rounded-md shadow-inner hover:shadow-lg p-1 border border-black">
-    
-    <div class="ui_item_primary relative flex items-center justify-center w-20 h-18 bg-[#18202f] rounded-md shadow-2xl hover:shadow-2xl transition-shadow duration-300">
-      <!-- Badge for item amount -->
-      <div class="item-badge absolute top-0 right-0 bg-red-500 text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">1</div>
-    </div>
-    <div class="flex flex-col space-y-2 w-98">
-      <div class="flex items-center space-x-2 w-full">
-        <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
-          <div class="mx-1">
-            <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
-            <div class="items_icon items_health scale-[1.2]"></div>
-          </div>
-          <div id="ui_health" class="rounded bg-gradient-to-r from-lime-500 to-green-600 h-full transition-width duration-500 flex-grow"></div>
-          <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
-        </div>
-        <div class="relative w-1/2 bg-gray-900 rounded-md h-6 overflow-hidden shadow-inner bg-opacity-80 shadow-sm p-[1px] flex items-center">
-          <div class="mx-1">
-            <div class="items_icon items_energy scale-[1.2]"></div>
-          </div>
-          <div id="ui_energy" class="rounded bg-gradient-to-r from-cyan-400 to-blue-600 h-full transition-width duration-500 flex-grow"></div>
-          <div class="absolute inset-0 flex items-center pl-8 text-white text-sm">0%</div>
-        </div>
-      </div>
-      <div class="flex space-x-2" id="ui_quick_items_container"></div>
-    </div>
+<div data-window='ui_inventory_window' data-close="false" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
+  
+  <!-- Tab Buttons -->
+  <div id="ui_inventory_tabs" class="flex bg-[#0a0d14] border border-black border-b-0 rounded-tl-lg rounded-tr-lg">
+    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black rounded-tl-lg" data-tab="pewpew">
+        Pew Pew
+    </button>
+    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black" data-tab="armour">
+        Armour
+    </button>
+    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black" data-tab="defence">
+        Defence
+    </button>
+    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black" data-tab="meals">
+        Nutritious Meals
+    </button>
+    <button class="tab-button text-white py-1 px-2 text-xs flex items-center rounded-tr-lg" data-tab="random">
+        Random shit lol
+    </button>
+</div>
+
+  <!-- Inventory Slots -->
+  <div id="ui_inventory_window" class="flex space-x-2 bg-[#0a0d14] p-2 shadow-inner hover:shadow-lg border border-black rounded-lg rounded-tl-none">
+    <div class="flex space-x-2" id="ui_quick_items_container"></div>
   </div>
 
   <script>
-    var ui_inventory_window = {
-      primaryItem: "sword",
-      inventoryItems: [
-        "potion",
-        "shield",
-        "banana",
-        "skull",
-        "wood",
-        "psychic",
-        "fireball",
-        "apple",
-        "gift",
-        "fish",
-        "gold"
-      ],
-      
-      // Item amounts
-      itemAmounts: {
-        sword: 1,
-        potion: 5,
-        shield: 2,
-        banana: 99,
-        skull: 3,
-        wood: 99,
-        psychic: 4,
-        fireball: 7,
-        apple: 99,
-        gift: 7,
-        fish: 13,
-        gold: 28
-      },
-      currentItemIndex: 0,
-      lastButtonPress: 0,
-      throttleDuration: 150, // in milliseconds
-      isItemSelected: false,
+var ui_inventory_window = {
+    inventories: {
+        pewpew: [
+            { name: "sword", amount: 3 },
+            { name: "fireball", amount: 7 },
+            { name: "shield", amount: 2 },
+            { name: "arrow_green", amount: 5 },
+            { name: "bow_green", amount: 1 },
+            { name: "psychic", amount: 4 },
+            { name: "key", amount: 1 },
+            { name: "skull", amount: 2 },
+            { name: "sweet", amount: 6 },
+            { name: "banana", amount: 8 },
+            { name: "apple", amount: 9 },
+            { name: "energy", amount: 10 },
+            { name: "health", amount: 7 },
+            { name: "fire", amount: 4 },
+            { name: "wood", amount: 12 }
+        ],
+        armour: [
+            { name: "shield", amount: 5 },
+            { name: "helmet", amount: 1 },
+            { name: "chestplate", amount: 1 },
+            { name: "leggings", amount: 1 },
+            { name: "boots", amount: 1 },
+            { name: "green_emerald", amount: 2 },
+            { name: "yellow_emerald", amount: 2 },
+            { name: "blue_emerald", amount: 2 },
+            { name: "red_emerald", amount: 2 },
+            { name: "silver_emerald", amount: 2 },
+            { name: "pink_emerald", amount: 1 },
+            { name: "orange_emerald", amount: 3 },
+            { name: "brown_emerald", amount: 1 },
+            { name: "purple_emerald", amount: 2 },
+            { name: "black_emerald", amount: 1 }
+        ],
+        defence: [
+            { name: "shield", amount: 2 },
+            { name: "trap", amount: 10 },
+            { name: "wall", amount: 5 },
+            { name: "skull", amount: 3 },
+            { name: "wood", amount: 12 },
+            { name: "potion", amount: 1 },
+            { name: "fire", amount: 3 },
+            { name: "wine", amount: 2 },
+            { name: "banana", amount: 10 },
+            { name: "fish", amount: 8 },
+            { name: "gift", amount: 1 },
+            { name: "health", amount: 5 },
+            { name: "energy", amount: 6 },
+            { name: "sweet", amount: 7 },
+            { name: "key", amount: 2 }
+        ],
+        meals: [
+            { name: "banana", amount: 99 },
+            { name: "apple", amount: 99 },
+            { name: "fish", amount: 13 },
+            { name: "sweet", amount: 4 },
+            { name: "potion", amount: 1 },
+            { name: "wine", amount: 5 },
+            { name: "gift", amount: 2 },
+            { name: "wood", amount: 7 },
+            { name: "skull", amount: 3 },
+            { name: "energy", amount: 6 },
+            { name: "health", amount: 8 },
+            { name: "fire", amount: 2 },
+            { name: "fireball", amount: 4 },
+            { name: "sword", amount: 2 },
+            { name: "shield", amount: 3 }
+        ],
+        random: [
+            { name: "skull", amount: 3 },
+            { name: "wood", amount: 99 },
+            { name: "gift", amount: 7 },
+            { name: "gold", amount: 28 },
+            { name: "banana", amount: 11 },
+            { name: "apple", amount: 13 },
+            { name: "fish", amount: 9 },
+            { name: "sweet", amount: 5 },
+            { name: "potion", amount: 3 },
+            { name: "wine", amount: 2 },
+            { name: "green_emerald", amount: 6 },
+            { name: "red_emerald", amount: 7 },
+            { name: "yellow_emerald", amount: 8 },
+            { name: "pink_emerald", amount: 1 },
+            { name: "brown_emerald", amount: 1 }
+        ]
+    },
 
-      start: function() {
-        this.renderInventoryItems();
-        this.initializeDragAndDrop();
-        this.initializeQuickItems();
-        this.initializePrimaryItem();
+    currentTab: 'pewpew',
+    currentItemIndex: 0,
+    lastButtonPress: 0,
+    throttleDuration: 150,
+    isItemSelected: false,
+    targetItemIndex: null,
+    dragClone: null,
+    inTabSwitchingMode: false,
+    currentTabButtonIndex: 0,
+
+    start: function() {
+    this.renderInventoryItems();
+    this.initializeDragAndDrop();
+    this.initializeQuickItems();
+    this.displayInventoryItems();
+    this.setupGamepadEvents();
+
+    if (game.itemsData && game.itemsImg) {
         this.displayInventoryItems();
-        this.setupGamepadEvents();
+    } else {
+        console.error("itemsData or itemsImg is not loaded.");
+    }
 
-        if (game.itemsData && game.itemsImg) {
-          this.displayInventoryItems();
-        } else {
-          console.error("itemsData or itemsImg is not loaded.");
-        }
+    this.checkAndUpdateUIPositions();
+    this.selectItem(0);
 
-        this.checkAndUpdateUIPositions();
+    document.addEventListener('dragover', this.documentDragOverHandler.bind(this));
+    document.addEventListener('drop', this.documentDropHandler.bind(this));
 
-        document.addEventListener('dragover', ui_inventory_window.documentDragOverHandler);
-        document.addEventListener('drop', ui_inventory_window.documentDropHandler);
-      },
-
-      setupGamepadEvents: function() {
-        window.addEventListener('gamepadConnected', () => {
-          this.switchToGamepadMode();
+    const tabButtons = document.querySelectorAll('.tab-button');
+    tabButtons.forEach(button => {
+        button.addEventListener('click', (e) => {
+            this.switchTab(e.target.getAttribute('data-tab'));
         });
-        window.addEventListener('gamepadDisconnected', () => {
-          this.switchToKeyboardMode();
-        });
+    });
 
-        // Throttling gamepad button handlers
-        gamepad.throttle('gamepadl1Pressed', (e) => this.l1Button(e), this.throttleDuration);
-        gamepad.throttle('gamepadl2Pressed', (e) => this.l2Button(e), this.throttleDuration);
-        gamepad.throttle('gamepadr1Pressed', (e) => this.r1Button(e), this.throttleDuration);
-        gamepad.throttle('gamepadaPressed', (e) => this.aButton(e), this.throttleDuration);
-      },
+    if (tabButtons.length > 0) {
+        // Apply rounded corners to the first and last tab buttons
+        tabButtons[0].classList.add('rounded-tl-lg'); // First tab button
+        tabButtons[tabButtons.length - 1].classList.add('rounded-tr-lg'); // Last tab button
+    }
 
-      l1Button: function(e) {
-        if(!gamepad.buttons.includes('l2')) {
-          this.handleGamepadInput(e, 'left');
-        }
-      },
+    this.clearTabHighlights();
+    this.highlightSelectedTab();  // Ensure the active tab is highlighted on load
+},
 
-      l2Button: function(e) {
-
-      },
-
-      r1Button: function(e) {
-        if(!gamepad.buttons.includes('l2')) {
-          this.handleGamepadInput(e, 'right');
-        }
-      },
-
-      aButton: function(e) {
-        if (this.isItemSelected) {
-          return; // Do nothing if an item is already selected
-        }
-        this.selectItem(this.currentItemIndex);
-        this.highlightSelectedItem();
-        this.isItemSelected = true; // Set the flag to true after selecting an item
-      },
-
-      switchToGamepadMode: function() {
-        this.selectItem(0); // Select the primary item initially
-      },
-
-      switchToKeyboardMode: function() {
-        this.clearHighlights();
-      },
-
-      handleGamepadInput: function(event, direction) {
-        const currentTime = Date.now();
-        if (currentTime - this.lastButtonPress < this.throttleDuration) {
-          return; // Ignore if throttling
-        }
-        this.lastButtonPress = currentTime;
-
-        if (direction === 'left') {
-          this.currentItemIndex = (this.currentItemIndex - 1 + (this.inventoryItems.length + 1)) % (this.inventoryItems.length + 1);
-        } else if (direction === 'right') {
-          this.currentItemIndex = (this.currentItemIndex + 1) % (this.inventoryItems.length + 1);
-        }
-
-        console.log(`Current item index: ${this.currentItemIndex}`);
-        audio.playAudio("menuSelect", assets.load('menuSelect'), 'sfx', false);
-        this.selectItem(this.currentItemIndex);
-      },
-
-      highlightSelectedItem: function() {
-        this.clearHighlights();
-        let selectedItem;
-        if (this.currentItemIndex === 0) {
-          selectedItem = document.querySelector('.ui_item_primary');
-        } else {
-          selectedItem = document.querySelector(`.ui_quick_item[data-item="${this.inventoryItems[this.currentItemIndex - 1]}"]`);
-        }
-
-        if (selectedItem) {
-          selectedItem.style.backgroundColor = 'blue'; // Highlight selected item with blue color
-        }
-        audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
-      },
-
-      selectItem: function(index) {
-        this.clearHighlights();
-
-        if (index === 0) {
-          // Highlight the primary item
-          const primaryItemElement = document.querySelector('.ui_item_primary');
-          if (primaryItemElement) {
-            primaryItemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
-          }
-          this.primaryItem = "sword";
-        } else {
-          const itemElement = document.querySelector(`.ui_quick_item[data-item="${this.inventoryItems[index - 1]}"]`);
-          if (itemElement) {
-            itemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
-            this.primaryItem = this.inventoryItems[index - 1];
-          }
-        }
-
-        // Update scale for all items after selection
-        document.querySelectorAll('.ui_quick_item, .ui_item_primary').forEach(item => {
-          this.updateScale(item);
-        });
-
-        audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-      },
-
-      getCurrentPrimaryItemIndex: function() {
-        return this.inventoryItems.indexOf(this.primaryItem) + 1;
-      },
-
-      renderInventoryItems: function() {
-    const primaryItemElement = document.querySelector('.ui_item_primary');
-    primaryItemElement.dataset.item = this.primaryItem;
-    primaryItemElement.innerHTML = `
-        <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
-        <div class="items_icon items_${this.primaryItem} scale-[4] z-10"></div>
-        ${this.itemAmounts[this.primaryItem] > 1 ? `
-        <!-- Badge for item amount -->
-        <div class="item-badge absolute top-0 left-0 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center z-20">
-            ${this.itemAmounts[this.primaryItem]}
-        </div>
-        ` : ''}
-    `;
-
-    const quickItemsContainer = document.getElementById('ui_quick_items_container');
-
-    this.inventoryItems.forEach(itemName => {
-        const itemElement = document.createElement('div');
-        itemElement.className = 'ui_quick_item relative cursor-move w-12 h-12 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
-        itemElement.dataset.item = itemName;
-        itemElement.innerHTML = `
-            <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
-            <div class="items_icon items_${itemName} scale-[2.1] z-10"></div>
-            ${this.itemAmounts[itemName] > 1 ? `
-            <!-- Badge for item amount -->
-            <div class="item-badge absolute top-0 left-0 z-20 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
-                ${this.itemAmounts[itemName]}
-            </div>
-            ` : ''}
-        `;
-        quickItemsContainer.appendChild(itemElement);
+    clearTabHighlights: function() {
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('bg-[#3c4e6f]', 'bg-yellow-500');
+        button.classList.add('bg-[#0a0d14]');
     });
 },
 
-      unmount: function() {
-        document.removeEventListener('dragover', this.documentDragOverHandler);
-        document.removeEventListener('drop', this.documentDropHandler);
-        this.dragClone = null;
-      },
-
-      documentDragOverHandler: function(e) {
-        e.preventDefault();
-        if (ui_inventory_window.dragClone) {
-          ui_inventory_window.dragClone.style.top = `${e.clientY}px`;
-          ui_inventory_window.dragClone.style.left = `${e.clientX}px`;
-        }
-      },
-
-      documentDropHandler: function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-
-        if (ui_inventory_window.dragClone) {
-          const rect = game.canvas.getBoundingClientRect();
-          const mouseX = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-          const mouseY = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-
-          if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY <= rect.bottom) {
-            const targetObject = game.findObjectAt(mouseX, mouseY);
-
-            if (targetObject) {
-              const draggedItemIcon = ui_inventory_window.dragClone.querySelector('.items_icon');
-
-              if (draggedItemIcon) {
-                const itemClass = Array.from(draggedItemIcon.classList).find(cls => cls.startsWith('items_') && cls !== 'items_icon');
-
-                if (itemClass) {
-                  const itemName = itemClass.replace('items_', '');
-                  actions.dropItemOnObject(itemName, targetObject);
-                } else {
-                  console.error('No specific item class found on dragged item icon');
-                }
-              } else {
-                console.error('Dragged item icon not found');
-              }
-            }
-          }
-
-          document.body.removeChild(ui_inventory_window.dragClone);
-          ui_inventory_window.dragClone = null;
-        }
-
-        return false;
-      },
-
-      displayInventoryItems: function() {
-        if (!game.itemsData || !game.itemsData.items) {
-          console.error("itemsData or items array is not defined.");
-          return;
-        }
-
-        const inventoryItems = [this.primaryItem, ...this.inventoryItems];
-
-        inventoryItems.forEach((itemName, index) => {
-          const itemData = game.itemsData.items.find(item => item.name === itemName);
-          if (itemData) {
-            let itemElement;
-            if (index === 0) {
-              itemElement = document.querySelector('.ui_item_primary');
-            } else {
-              itemElement = document.querySelector(`.ui_quick_item[data-item="${itemName}"]`);
-            }
-
-            if (itemElement) {
-              this.setItemIcon(itemElement, itemData);
-              itemElement.dataset.cd = itemData.cd;
-              itemElement.querySelector('.items_icon').classList.add(`items_${itemName}`);
-            }
-          }
-        });
-      },
-
-      setItemIcon: function(element, itemData) {
-    const iconDiv = element.querySelector('.items_icon');
-    if (iconDiv) {
-        const iconSize = 16;
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-
-        canvas.width = iconSize;
-        canvas.height = iconSize;
-
-        if (game.itemsImg && game.itemsImg instanceof HTMLImageElement) {
-            ctx.drawImage(
-                game.itemsImg, 
-                itemData.x, itemData.y, 
-                iconSize, iconSize, 
-                0, 0, 
-                iconSize, iconSize
-            );
-
-            const dataURL = canvas.toDataURL();
-            iconDiv.style.backgroundImage = `url(${dataURL})`;
-            iconDiv.style.width = `${iconSize}px`;
-            iconDiv.style.height = `${iconSize}px`;
-            iconDiv.style.backgroundSize = 'cover';
-        } else {
-            console.error("Invalid or unloaded image source.");
-        }
+highlightSelectedTab: function() {
+    // Ensure the currently active tab remains highlighted in grey
+    const activeButton = document.querySelector(`.tab-button[data-tab="${this.currentTab}"]`);
+    if (activeButton) {
+        activeButton.classList.add('bg-[#3c4e6f]');
     }
 },
 
-      checkAndUpdateUIPositions: function() {
+switchTab: function(tabName) {
+    this.currentTab = tabName;
+    this.currentItemIndex = 0;
+    this.renderInventoryItems();
+    this.displayInventoryItems();
+    this.selectItem(0);
+
+    // Ensure all buttons are reset to their default color
+    this.clearTabHighlights();
+
+    // Highlight the selected tab with the grey color
+    this.highlightSelectedTab();
+
+    this.initializeDragAndDrop();
+    this.initializeQuickItems();
+},
+
+    setupGamepadEvents: function() {
+    window.addEventListener('gamepadConnected', () => {
+        this.switchToGamepadMode();
+    });
+    window.addEventListener('gamepadDisconnected', () => {
+        this.switchToKeyboardMode();
+    });
+
+    gamepad.throttle((e) => this.leftButton(e), this.throttleDuration);
+    gamepad.throttle((e) => this.rightButton(e), this.throttleDuration);
+    gamepad.throttle((e) => this.aButton(e), this.throttleDuration);  // Mapping A button
+    gamepad.throttle(() => this.bButton(), this.throttleDuration);
+
+    gamepad.throttle((e) => this.upButton(e), this.throttleDuration);
+    gamepad.throttle((e) => this.downButton(e), this.throttleDuration);
+    gamepad.throttle((e) => this.enterTabButton(e), this.throttleDuration);
+},
+
+    switchToGamepadMode: function() {
+        console.log("Switched to gamepad mode.");
+        this.selectItem(0);
+    },
+
+    leftButton: function(e) {
+    this.throttle(() => {
+        if (this.inTabSwitchingMode) {
+            // Navigate left through tabs
+            this.currentTabButtonIndex = (this.currentTabButtonIndex - 1 + this.getTabButtons().length) % this.getTabButtons().length;
+            this.clearTabHighlights();  // Clear all highlights
+            this.highlightSelectedTab();  // Keep the active tab grey
+            this.highlightTabButton(this.currentTabButtonIndex);  // Highlight the new tab with yellow
+        } else {
+            // Navigate left through items
+            this.currentItemIndex = (this.currentItemIndex - 1 + this.inventories[this.currentTab].length) % this.inventories[this.currentTab].length;
+            console.log(`Current item index: ${this.currentItemIndex}`);
+            audio.playAudio("menuSelect", assets.load('menuSelect'), 'sfx', false);
+            this.selectItem(this.currentItemIndex);
+        }
+    });
+},
+
+rightButton: function(e) {
+    this.throttle(() => {
+        if (this.inTabSwitchingMode) {
+            // Navigate right through tabs
+            this.currentTabButtonIndex = (this.currentTabButtonIndex + 1) % this.getTabButtons().length;
+            this.clearTabHighlights();  // Clear all highlights
+            this.highlightSelectedTab();  // Keep the active tab grey
+            this.highlightTabButton(this.currentTabButtonIndex);  // Highlight the new tab with yellow
+        } else {
+            // Navigate right through items
+            this.currentItemIndex = (this.currentItemIndex + 1) % this.inventories[this.currentTab].length;
+            console.log(`Current item index: ${this.currentItemIndex}`);
+            audio.playAudio("menuSelect", assets.load('menuSelect'), 'sfx', false);
+            this.selectItem(this.currentItemIndex);
+        }
+    });
+},
+
+    throttle: function(callback) {
+        const currentTime = Date.now();
+        if (currentTime - this.lastButtonPress < this.throttleDuration) {
+            return false;
+        }
+        this.lastButtonPress = currentTime;
+        callback();
+        return true;
+    },
+
+    upButton: function(e) {
+    if (!this.inTabSwitchingMode) {
+        this.inTabSwitchingMode = true;
+        this.highlightTabButton(this.currentTabButtonIndex);
+    }
+},
+
+downButton: function(e) {
+    if (this.inTabSwitchingMode) {
+        this.inTabSwitchingMode = false;
+        this.clearTabHighlights();
+        this.highlightSelectedTab();  // Ensure the active tab remains grey
+    }
+},
+
+    aButton: function(e) {
+    if (this.inTabSwitchingMode) {
+        this.enterTabButton(e);  // Simulates the "Enter" button behavior
+    }
+},
+
+enterTabButton: function(e) {
+    if (this.inTabSwitchingMode) {
+        const selectedTab = this.getTabButtons()[this.currentTabButtonIndex].getAttribute('data-tab');
+        this.switchTab(selectedTab);
+        this.inTabSwitchingMode = false;
+        this.highlightSelectedTab();  // Ensure the new active tab is highlighted in grey
+    }
+},
+
+highlightTabButton: function(index) {
+    const tabButtons = this.getTabButtons();
+
+    // Clear previous yellow highlights
+    tabButtons.forEach((button, i) => {
+        if (!button.classList.contains('bg-[#3c4e6f]')) {
+            button.classList.remove('bg-yellow-500');
+            button.classList.add('bg-[#0a0d14]');
+        }
+    });
+
+    // Highlight the currently selecting tab with yellow
+    tabButtons[index].classList.add('bg-yellow-500');
+},
+
+getTabButtons: function() {
+    return Array.from(document.querySelectorAll('.tab-button'));
+},
+
+    swapItems: function() {
+        const selectedItemIndex = this.currentItemIndex;
+        const targetIndex = this.targetItemIndex;
+
+        const temp = this.inventories[this.currentTab][selectedItemIndex];
+        this.inventories[this.currentTab][selectedItemIndex] = this.inventories[this.currentTab][targetIndex];
+        this.inventories[this.currentTab][targetIndex] = temp;
+
+        const selectedElement = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][targetIndex].name}"]`);
+        const targetElement = document.querySelector(`.ui_quick_item[data-item="${temp.name}"]`);
+
+        if (selectedElement && targetElement) {
+            const tempInnerHTML = selectedElement.innerHTML;
+            selectedElement.innerHTML = targetElement.innerHTML;
+            targetElement.innerHTML = tempInnerHTML;
+
+            selectedElement.dataset.item = this.inventories[this.currentTab][targetIndex].name;
+            targetElement.dataset.item = temp.name;
+
+            this.currentItemIndex = targetIndex;
+        }
+
+        this.clearHighlights();
+        this.isItemSelected = false;
+        this.targetItemIndex = null;
+    },
+
+    highlightTargetItem: function(direction) {
+        this.clearHighlights(false);
+
+        let newIndex;
+
+        if (direction === 'left') {
+            newIndex = (this.currentItemIndex - 1 + this.inventories[this.currentTab].length) % this.inventories[this.currentTab].length;
+        } else if (direction === 'right') {
+            newIndex = (this.currentItemIndex + 1) % this.inventories[this.currentTab].length;
+        }
+
+        this.targetItemIndex = newIndex;
+
+        let targetItem = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][this.targetItemIndex].name}"]`);
+        if (targetItem) {
+            targetItem.classList.add('border-2', 'border-green-500');
+        }
+    },
+
+    highlightSelectedItem: function() {
+        this.clearHighlights();
+        let selectedItem = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][this.currentItemIndex].name}"]`);
+
+        if (selectedItem) {
+            selectedItem.style.backgroundColor = 'blue';
+        }
+    },
+
+    selectItem: function(index) {
+        this.clearHighlights();
+
+        const itemElement = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][index].name}"]`);
+        if (itemElement) {
+            itemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+        }
+
+        document.querySelectorAll('.ui_quick_item').forEach(item => {
+            this.updateScale(item);
+        });
+    },
+
+    clearHighlights: function(clearBlueBackground = true) {
+        const draggableItems = document.querySelectorAll('.ui_quick_item');
+        draggableItems.forEach(item => {
+            item.classList.remove('border-2', 'border-dashed', 'border-yellow-500', 'border-green-500');
+            if (clearBlueBackground) {
+                item.style.backgroundColor = '';
+            }
+        });
+    },
+
+    renderInventoryItems: function() {
+        const quickItemsContainer = document.getElementById('ui_quick_items_container');
+        quickItemsContainer.innerHTML = '';
+
+        this.inventories[this.currentTab].forEach(item => {
+            const itemElement = document.createElement('div');
+            itemElement.className = 'ui_quick_item relative cursor-move w-14 h-14 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
+            itemElement.dataset.item = item.name;
+            itemElement.innerHTML = `
+                <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+                <div class="items_icon items_${item.name} scale-[2.1] z-10"></div>
+                ${item.amount > 1 ? `
+                <div class="item-badge absolute top-0 left-0 z-20 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
+                    ${item.amount}
+                </div>
+                ` : ''}
+            `;
+            quickItemsContainer.appendChild(itemElement);
+        });
+    },
+
+    unmount: function() {
+        document.removeEventListener('dragover', this.documentDragOverHandler);
+        document.removeEventListener('drop', this.documentDropHandler);
+        this.dragClone = null;
+    },
+
+    documentDragOverHandler: function(e) {
+        e.preventDefault();
+        if (this.dragClone) {
+            this.dragClone.style.top = `${e.clientY}px`;
+            this.dragClone.style.left = `${e.clientX}px`;
+        }
+    },
+
+    documentDropHandler: function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (this.dragClone) {
+            const rect = game.canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+            const mouseY = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+            if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY <= rect.bottom) {
+                const targetObject = game.findObjectAt(mouseX, mouseY);
+
+                if (targetObject) {
+                    const draggedItemIcon = this.dragClone.querySelector('.items_icon');
+
+                    if (draggedItemIcon) {
+                        const itemClass = Array.from(draggedItemIcon.classList).find(cls => cls.startsWith('items_') && cls !== 'items_icon');
+
+                        if (itemClass) {
+                            const itemName = itemClass.replace('items_', '');
+                            actions.dropItemOnObject(itemName, targetObject);
+                        } else {
+                            console.error('No specific item class found on dragged item icon');
+                        }
+                    } else {
+                        console.error('Dragged item icon not found');
+                    }
+                }
+            }
+
+            document.body.removeChild(this.dragClone);
+            this.dragClone = null;
+        }
+
+        return false;
+    },
+
+    displayInventoryItems: function() {
+        if (!game.itemsData || !game.itemsData.items) {
+            console.error("itemsData or items array is not defined.");
+            return;
+        }
+
+        this.inventories[this.currentTab].forEach((item) => {
+            const itemData = game.itemsData.items.find(data => data.name === item.name);
+            if (itemData) {
+                let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.name}"]`);
+
+                if (itemElement) {
+                    this.setItemIcon(itemElement, itemData);
+                    itemElement.dataset.cd = itemData.cd;
+                    itemElement.querySelector('.items_icon').classList.add(`items_${item.name}`);
+                }
+            }
+        });
+    },
+
+    setItemIcon: function(element, itemData) {
+        const iconDiv = element.querySelector('.items_icon');
+        if (iconDiv) {
+            const iconSize = 16;
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = iconSize;
+            canvas.height = iconSize;
+
+            if (game.itemsImg && game.itemsImg instanceof HTMLImageElement) {
+                ctx.drawImage(
+                    game.itemsImg, 
+                    itemData.x, itemData.y, 
+                    iconSize, iconSize, 
+                    0, 0, 
+                    iconSize, iconSize
+                );
+
+                const dataURL = canvas.toDataURL();
+                iconDiv.style.backgroundImage = `url(${dataURL})`;
+                iconDiv.style.width = `${iconSize}px`;
+                iconDiv.style.height = `${iconSize}px`;
+                iconDiv.style.backgroundSize = 'cover';
+            } else {
+                console.error("Invalid or unloaded image source.");
+            }
+        }
+    },
+
+    checkAndUpdateUIPositions: function() {
         const sprite = game.sprites[game.playerid];
         if (!sprite) return;
 
@@ -351,254 +524,225 @@ if ($auth) {
 
         const inventoryElement = document.getElementById('ui_inventory_window');
         if (inventoryElement) {
-          if (sprite.y > thresholdY) {
-            inventoryElement.classList.add('top-4');
-            inventoryElement.classList.remove('bottom-4');
-          } else {
-            inventoryElement.classList.add('bottom-4');
-            inventoryElement.classList.remove('top-4');
-          }
+            if (sprite.y > thresholdY) {
+                inventoryElement.classList.add('top-4');
+                inventoryElement.classList.remove('bottom-4');
+            } else {
+                inventoryElement.classList.add('bottom-4');
+                inventoryElement.classList.remove('top-4');
+            }
         } else {
-          console.error('Inventory element not found.');
+            console.error('Inventory element not found.');
         }
 
         const objectivesElement = document.getElementById('ui_objectives_window');
         if (objectivesElement) {
-          if (sprite.x > thresholdX) {
-            objectivesElement.classList.add('left-2');
-            objectivesElement.classList.remove('right-2');
-          } else {
-            objectivesElement.classList.add('right-2');
-            objectivesElement.classList.remove('left-2');
-          }
+            if (sprite.x > thresholdX) {
+                objectivesElement.classList.add('left-2');
+                objectivesElement.classList.remove('right-2');
+            } else {
+                objectivesElement.classList.add('right-2');
+                objectivesElement.classList.remove('left-2');
+            }
         } else {
-          console.error('Objectives element not found.');
+            console.error('Objectives element not found.');
         }
-      },
+    },
 
-      initializeDragAndDrop: function() {
-        const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
+    initializeDragAndDrop: function() {
+        const draggableItems = document.querySelectorAll('.ui_quick_item');
 
         draggableItems.forEach(item => {
-          item.setAttribute('draggable', true);
-          item.style.cursor = 'grab';
-          item.addEventListener('mouseover', this.handleMouseOver.bind(this));
-          item.addEventListener('mouseout', this.handleMouseOut.bind(this));
-          item.addEventListener('dragstart', this.handleDragStart.bind(this));
-          item.addEventListener('dragover', this.handleDragOver.bind(this));
-          item.addEventListener('drop', this.handleDrop.bind(this));
-          item.addEventListener('dragend', this.handleDragEnd.bind(this));
+            item.setAttribute('draggable', true);
+            item.style.cursor = 'grab';
+            item.addEventListener('mouseover', this.handleMouseOver.bind(this));
+            item.addEventListener('mouseout', this.handleMouseOut.bind(this));
+            item.addEventListener('dragstart', this.handleDragStart.bind(this));
+            item.addEventListener('dragover', this.handleDragOver.bind(this));
+            item.addEventListener('drop', this.handleDrop.bind(this));
+            item.addEventListener('dragend', this.handleDragEnd.bind(this));
         });
-      },
+    },
 
-      initializeQuickItems: function() {
+    initializeQuickItems: function() {
         const quickItems = document.querySelectorAll('.ui_quick_item');
         quickItems.forEach(item => {
-          item.addEventListener('click', () => {
-            const cooldown = parseInt(item.dataset.cd, 10) * 1000;
-            if (cooldown > 0) {
-              this.startTimeout(item, cooldown);
-            }
-          });
+            item.addEventListener('click', () => {
+                const cooldown = parseInt(item.dataset.cd, 10) * 1000;
+                if (cooldown > 0) {
+                    this.startTimeout(item, cooldown);
+                }
+            });
         });
-      },
+    },
 
-      initializePrimaryItem: function() {
-        const primaryItem = document.querySelector('.ui_item_primary');
-        primaryItem.addEventListener('click', () => {
-          const cooldown = parseInt(primaryItem.dataset.cd, 10) * 1000;
-          if (cooldown > 0) {
-            this.startTimeout(primaryItem, cooldown);
-          }
-        });
-      },
-
-      startTimeout: function(item, duration) {
+    startTimeout: function(item, duration) {
         if (!item.classList.contains('pointer-events-none')) {
-          item.classList.add('pointer-events-none', 'opacity-80');
-          const indicator = item.querySelector('.timeout-indicator');
-          indicator.classList.remove('hidden');
-          indicator.style.width = '100%';
-          indicator.style.transitionDuration = `${duration}ms`;
-
-          setTimeout(() => {
-            indicator.style.width = '0%';
-          }, 10);
-
-          setTimeout(() => {
-            item.classList.remove('pointer-events-none', 'opacity-80');
-            indicator.style.transitionDuration = '0ms';
+            item.classList.add('pointer-events-none', 'opacity-80');
+            const indicator = item.querySelector('.timeout-indicator');
+            indicator.classList.remove('hidden');
             indicator.style.width = '100%';
-            indicator.classList.add('hidden');
-          }, duration);
-        }
-      },
+            indicator.style.transitionDuration = `${duration}ms`;
 
-      activateTimeout: function(itemName, duration) {
+            setTimeout(() => {
+                indicator.style.width = '0%';
+            }, 10);
+
+            setTimeout(() => {
+                item.classList.remove('pointer-events-none', 'opacity-80');
+                indicator.style.transitionDuration = '0ms';
+                indicator.style.width = '100%';
+                indicator.classList.add('hidden');
+            }, duration);
+        }
+    },
+
+    activateTimeout: function(itemName, duration) {
         const item = document.querySelector(`[data-item="${itemName}"]`);
         if (item) {
-          this.startTimeout(item, duration);
+            this.startTimeout(item, duration);
         } else {
-          console.error(`Item with data-item "${itemName}" not found`);
+            console.error(`Item with data-item "${itemName}" not found`);
         }
-      },
+    },
 
-      handleMouseOver: function(e) {
+    handleMouseOver: function(e) {
         e.target.style.cursor = 'grab';
-      },
+    },
 
-      handleMouseOut: function(e) {
+    handleMouseOut: function(e) {
         e.target.style.cursor = 'default';
-      },
+    },
 
-      handleDragStart: function(e) {
-        this.dragSrcEl = e.target.closest('.ui_quick_item, .ui_item_primary');
+    handleDragStart: function(e) {
+        this.dragSrcEl = e.target.closest('.ui_quick_item');
         e.dataTransfer.effectAllowed = 'move';
 
         const iconDiv = this.dragSrcEl.querySelector('.items_icon');
         if (iconDiv) {
-          const clonedIcon = iconDiv.cloneNode(true);
-          const dragWrapper = document.createElement('div');
-          dragWrapper.style.position = 'absolute';
-          dragWrapper.style.top = `${e.clientY}px`;
-          dragWrapper.style.left = `${e.clientX}px`;
-          dragWrapper.style.pointerEvents = 'none';
-          dragWrapper.style.zIndex = '1000';
-          clonedIcon.style.transform = 'scale(4)';
-
-          dragWrapper.appendChild(clonedIcon);
-          this.dragClone = dragWrapper;
-          document.body.appendChild(dragWrapper);
+            const clonedIcon = iconDiv.cloneNode(true);
+            const dragWrapper = document.createElement('div');
+            dragWrapper.style.position = 'absolute';
+            dragWrapper.style.top = `${e.clientY}px`;
+            dragWrapper.style.left = `${e.clientX}px`;
+            dragWrapper.style.pointerEvents = 'none';
+            dragWrapper.style.zIndex = '1000';
+            clonedIcon.style.transform = 'scale(4)';
+            dragWrapper.appendChild(clonedIcon);
+            this.dragClone = dragWrapper;
+            document.body.appendChild(dragWrapper);
         }
 
-        // Show grabbing cursor
         e.target.style.cursor = 'grabbing';
 
         var img = new Image();
         img.src = '';
         e.dataTransfer.setDragImage(img, 0, 0);
-      },
+    },
 
-      handleDragOver: function(e) {
+    handleDragOver: function(e) {
         if (e.preventDefault) {
-          e.preventDefault();
+            e.preventDefault();
         }
         e.dataTransfer.dropEffect = 'move';
 
         if (this.dragClone) {
-          this.dragClone.style.top = `${e.clientY}px`;
-          this.dragClone.style.left = `${e.clientX}px`;
+            this.dragClone.style.top = `${e.clientY}px`;
+            this.dragClone.style.left = `${e.clientX}px`;
         }
 
-        const target = e.target.closest('.ui_quick_item, .ui_item_primary');
+        const target = e.target.closest('.ui_quick_item');
         if (target) {
-          this.clearHighlights();
-          target.classList.add('border-2', 'border-dashed', 'border-yellow-500');
-          if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-            this.hasPlayedDragOverSound = true;
-            this.lastHoveredSlot = target;
-          }
-        } else {
-          this.clearHighlights();
-          this.hasPlayedDragOverSound = false;
-          this.lastHoveredSlot = null;
-        }
-        return false;
-      },
-
-      handleDrop: function(e) {
-        if (e.stopPropagation) {
-          e.stopPropagation();
-        }
-        const target = e.target.closest('.ui_quick_item, .ui_item_primary');
-        if (this.dragSrcEl !== target && target) {
-          // Swap innerHTML to visually switch the items
-          const tempInnerHTML = this.dragSrcEl.innerHTML;
-          this.dragSrcEl.innerHTML = target.innerHTML;
-          target.innerHTML = tempInnerHTML;
-
-          // Swap dataset item to reflect the changes
-          const tempDataItem = this.dragSrcEl.dataset.item;
-          this.dragSrcEl.dataset.item = target.dataset.item;
-          target.dataset.item = tempDataItem;
-
-          // Update the inventoryItems array
-          const srcIndex = this.inventoryItems.indexOf(tempDataItem);
-          const targetIndex = this.inventoryItems.indexOf(this.dragSrcEl.dataset.item);
-          this.inventoryItems[srcIndex] = this.dragSrcEl.dataset.item;
-          this.inventoryItems[targetIndex] = tempDataItem;
-
-          // Update currentItemIndex
-          this.currentItemIndex = this.getCurrentPrimaryItemIndex();
-
-          // Update the scale of the icons
-          this.updateScale(this.dragSrcEl);
-          this.updateScale(target);
-
-          // Update the badges after swapping
-          this.updateItemBadges();
-
-          audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
-        } else {
-          audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
-        }
-        this.clearHighlights();
-        return false;
-      },
-
-      updateItemBadges: function() {
-    document.querySelectorAll('.ui_quick_item, .ui_item_primary').forEach(item => {
-        const itemName = item.dataset.item;
-        const badge = item.querySelector('.item-badge');
-        if (badge) {
-            if (this.itemAmounts[itemName] > 1) {
-                badge.textContent = this.itemAmounts[itemName];
-                badge.style.display = 'flex'; // Ensure it's visible if amount > 1
-            } else {
-                badge.style.display = 'none'; // Hide badge if amount <= 1
+            this.clearHighlights();
+            target.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+            if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
+                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+                this.hasPlayedDragOverSound = true;
+                this.lastHoveredSlot = target;
             }
-        }
-    });
-},
-
-
-      clearHighlights: function() {
-        const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
-        draggableItems.forEach(item => {
-          item.classList.remove('border-2', 'border-dashed', 'border-yellow-500');
-          item.style.backgroundColor = ''; // Clear background color
-        });
-        this.isItemSelected = false; // Reset the flag when items are deselected
-      },
-
-      updateScale: function(element) {
-        const icon = element.querySelector('.items_icon');
-        if (element.classList.contains('ui_item_primary')) {
-          icon.classList.remove('scale-[2.1]');
-          icon.classList.add('scale-[4]');
         } else {
-          icon.classList.remove('scale-[4]');
-          icon.classList.add('scale-[2.1]');
+            this.clearHighlights();
+            this.hasPlayedDragOverSound = false;
+            this.lastHoveredSlot = null;
         }
-      },
+        return false;
+    },
 
-      handleDragEnd: function(e) {
-        const draggableItems = document.querySelectorAll('.ui_quick_item, .ui_item_primary');
+    handleDrop: function(e) {
+        if (e.stopPropagation) {
+            e.stopPropagation();
+        }
+        const target = e.target.closest('.ui_quick_item');
+        if (this.dragSrcEl !== target && target) {
+            const tempInnerHTML = this.dragSrcEl.innerHTML;
+            this.dragSrcEl.innerHTML = target.innerHTML;
+            target.innerHTML = tempInnerHTML;
+
+            const tempDataItem = this.dragSrcEl.dataset.item;
+            this.dragSrcEl.dataset.item = target.dataset.item;
+            target.dataset.item = tempDataItem;
+
+            const srcIndex = this.inventories[this.currentTab].findIndex(item => item.name === tempDataItem);
+            const targetIndex = this.inventories[this.currentTab].findIndex(item => item.name === this.dragSrcEl.dataset.item);
+            [this.inventories[this.currentTab][srcIndex], this.inventories[this.currentTab][targetIndex]] = [this.inventories[this.currentTab][targetIndex], this.inventories[this.currentTab][srcIndex]];
+
+            if (this.currentItemIndex === srcIndex) {
+                this.currentItemIndex = targetIndex;
+            }
+
+            this.updateScale(this.dragSrcEl);
+            this.updateScale(target);
+
+            this.updateItemBadges();
+
+            this.clearHighlights();
+            this.selectItem(this.currentItemIndex);
+
+            audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+        } else {
+            audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
+        }
+        return false;
+    },
+
+    updateItemBadges: function() {
+        document.querySelectorAll('.ui_quick_item').forEach(item => {
+            const itemName = item.dataset.item;
+            const badge = item.querySelector('.item-badge');
+            if (badge) {
+                if (this.inventories[this.currentTab].find(i => i.name === itemName).amount > 1) {
+                    badge.textContent = this.inventories[this.currentTab].find(i => i.name === itemName).amount;
+                    badge.style.display = 'flex';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        });
+    },
+
+    updateScale: function(element) {
+        const icon = element.querySelector('.items_icon');
+        icon.classList.remove('scale-[4]');
+        icon.classList.add('scale-[2.1]');
+    },
+
+    handleDragEnd: function(e) {
+        const draggableItems = document.querySelectorAll('.ui_quick_item');
         draggableItems.forEach(item => {
-          item.classList.remove('dragging');
-          item.style.cursor = 'grab'; // Reset the cursor to grab
-          item.classList.remove('highlight');
+            item.classList.remove('dragging');
+            item.style.cursor = 'grab';
+            item.classList.remove('highlight');
         });
 
         if (this.dragClone) {
-          document.body.removeChild(this.dragClone);
-          this.dragClone = null;
+            document.body.removeChild(this.dragClone);
+            this.dragClone = null;
         }
-      },
-    };
+    },
+};
 
-    ui_inventory_window.start();
+ui_inventory_window.start();
+
   </script>
 </div>
 <?php 

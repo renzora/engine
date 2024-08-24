@@ -17,10 +17,10 @@ if ($auth) {
       <div class='container text-light window_body p-2'>
         
         <div id="template_window_tabs">
-          <div id="tabs" class="flex border-b border-gray-300">
-            <button class="tab text-gray-800" data-tab="tab1" data-menu="template_window_menu">Tab 1</button>
-            <button class="tab text-gray-800" data-tab="tab2" data-menu="template_window_menu2">Tab 2</button>
-            <button class="tab text-gray-800" data-tab="tab3" data-menu="template_window_menu3">Tab 3</button>
+          <div class="flex border-b border-gray-300">
+            <button class="tab text-gray-800 p-2" data-tab="tab1" data-menu="template_window_menu">Tab 1</button>
+            <button class="tab text-gray-800 p-2" data-tab="tab2" data-menu="template_window_menu2">Tab 2</button>
+            <button class="tab text-gray-800 p-2" data-tab="tab3" data-menu="template_window_menu3">Tab 3</button>
           </div>
 
           <div class="tab-content p-2 hidden" data-tab-content="tab1">
