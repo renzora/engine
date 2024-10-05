@@ -9,6 +9,9 @@ const particles = {
         const spreadRad = spread * (Math.PI / 180);
         const colors = options.colors || ['rgba(255, 0, 0, 1)'];
         const repeat = options.repeat || false;
+        const gravity = options.gravity || 0; // New: Gravity effect
+        const sway = options.sway || 0; // New: Sway effect
+        const twinkleSpeed = options.twinkle || 0; // New: Twinkle effect
 
         for (let i = 0; i < particleCount; i++) {
             const randomSpread = (Math.random() - 0.5) * spreadRad;
@@ -32,7 +35,12 @@ const particles = {
                 glow: options.glow || 0,
                 initialOpacity: options.opacity || 1,
                 blur: options.blur || 0,
-                shape: options.shape || 'circle'
+                shape: options.shape || 'circle',
+                gravity: gravity, // Apply gravity
+                sway: sway, // Apply sway
+                twinkleSpeed: twinkleSpeed, // Apply twinkle
+                initialSize: options.size || 2, // Keep initial size for twinkle
+                opacity: options.opacity || 1 // Keep initial opacity for fade
             };
 
             if (!this.activeEffects[effectId]) {
@@ -53,7 +61,8 @@ const particles = {
                 particle.color = `rgba(0, 0, 255, ${particle.life / 50})`;
             } else {
                 particle.x += particle.vx * deltaTime / 16;
-                particle.y += particle.vy * deltaTime / 16;
+                particle.y += particle.vy * deltaTime / 16 + particle.gravity; // Apply gravity
+                particle.vx += Math.sin(particle.y * 0.01) * particle.sway; // Apply sway
                 particle.life -= deltaTime / 16;
 
                 const fadeStart = 0.2;
@@ -62,6 +71,13 @@ const particles = {
                     particle.opacity = particle.initialOpacity * (lifeFraction / fadeStart);
                 } else {
                     particle.opacity = particle.initialOpacity;
+                }
+
+                if (particle.twinkleSpeed > 0) { // Apply twinkle effect
+                    particle.size += particle.twinkleSpeed;
+                    if (particle.size > particle.initialSize * 1.5 || particle.size < particle.initialSize * 0.5) {
+                        particle.twinkleSpeed = -particle.twinkleSpeed;
+                    }
                 }
             }
 

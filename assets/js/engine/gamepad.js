@@ -8,6 +8,13 @@ var gamepad = {
     axesPressures: {},
     throttledEvents: {},
 
+    buttonOverwrite: {
+        leftButton: null,
+        rightButton: null,
+        aButton: null,
+        bButton: null
+    },
+
     init: function() {
         window.addEventListener("gamepadconnected", (e) => this.connectGamepad(e));
         window.addEventListener("gamepaddisconnected", (e) => this.disconnectGamepad(e));

@@ -2,7 +2,7 @@
   <div class='fixed bottom-0 right-2 z-10 text-sm mb-1 flex space-x-4 tracking-tight'>
     <span class="text-white rounded-md">Renzora v0.0.7</span>
     <span class="text-white" id="input_method">Input: keyboard</span>
-    <span class="text-white rounded-md" id="gameFps"></span>
+    <span class="text-white rounded-md cursor-pointer" id="gameFps" onclick="modal.load({ id: 'fps_monitor_window', url: 'debug/fps.php', name: 'FPS monitor', drag: true, reload: true });"></span>
     <span id="tiles_rendered" class="text-white rounded-md"></span>
     <span id="lights_rendered" class="text-white rounded-md"></span>
     <span id="effects_rendered" class="text-white rounded-md"></span>

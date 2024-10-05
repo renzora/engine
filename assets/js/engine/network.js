@@ -24,7 +24,7 @@ var network = {
 
     open: function(e) {
         if (!this.getToken('renaccount')) {
-            modal.load('auth');
+            
         }
         audio.start();
         game.init();

@@ -1,21 +1,30 @@
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'renadmin_lighting_window', url: 'renadmin/lighting.php', name: 'Lighting', drag: true, reload: true });">Lighting</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="console_window.loadTabContent('debug/world.php');">World Editor</button>
+<br />
 
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'renadmin_world_editor_window', url: 'renadmin/world.php', name: 'World Editor', drag: true, reload: false });">World Editor</button>
-
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'audio_window', url: 'audio', name: 'Audio Channels', drag: true, reload: false });">audio</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="console_window.loadTabContent('audio');">Audio Manager</button>
+<br />
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'tileset_window', url: 'renadmin/tileset/index.php', name: 'Tileset Manager', drag: true, reload: false });">Tileset</button>
+<br />
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'renadmin_particles_window', url: 'renadmin/particles.php', name: 'Particles Manager', drag: true, reload: false });">Particles</button>
+<br />
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'debug_gamepad_window', url: 'debug/gamepad.php', name: 'Gamepads', drag: true, reload: false });">Gamepads</button>
-
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.setActiveSprite('npc1');">change camera</button>
+<br />
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'signout_window', url: 'auth/signout.php', name: 'Sign Out', drag: true, reload: false });">Signout</button>
+<br />
 
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'template_window', url: 'template/index.php', name: 'Template', drag: true, reload: false });">Template</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'template_window', url: 'template/index.php', name: 'Template', drag: true, reload: false });">Default Modal Template</button>
+<br />
 
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'debug_utils_window', url: 'debug/utils.php', name: 'Utils', drag: true, reload: false });">Utils</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="console_window.loadTabContent('debug');">Debugging Utilities</button>
+<br />
 
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'synth_window', url: 'synth/index.php', name: 'Synth', drag: true, reload: false });">Synth</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'synth_window', url: 'synth/index.php', name: 'Synth', drag: true, reload: false });">Music Synth</button>
+<br />
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.spawnRandomItems(1000);">Item Spawn</button><br />
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'fps_monitor_window', url: 'debug/fps.php', name: 'FPS monitor', drag: true, reload: true });">FPS Monitor</button>

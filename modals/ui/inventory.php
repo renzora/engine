@@ -31,93 +31,9 @@ if ($auth) {
 
   <script>
 var ui_inventory_window = {
-    inventories: {
-        pewpew: [
-            { name: "sword", amount: 3 },
-            { name: "fireball", amount: 7 },
-            { name: "shield", amount: 2 },
-            { name: "arrow_green", amount: 5 },
-            { name: "bow_green", amount: 1 },
-            { name: "psychic", amount: 4 },
-            { name: "key", amount: 1 },
-            { name: "skull", amount: 2 },
-            { name: "sweet", amount: 6 },
-            { name: "banana", amount: 8 },
-            { name: "apple", amount: 9 },
-            { name: "energy", amount: 10 },
-            { name: "health", amount: 7 },
-            { name: "fire", amount: 4 },
-            { name: "wood", amount: 12 }
-        ],
-        armour: [
-            { name: "shield", amount: 5 },
-            { name: "helmet", amount: 1 },
-            { name: "chestplate", amount: 1 },
-            { name: "leggings", amount: 1 },
-            { name: "boots", amount: 1 },
-            { name: "green_emerald", amount: 2 },
-            { name: "yellow_emerald", amount: 2 },
-            { name: "blue_emerald", amount: 2 },
-            { name: "red_emerald", amount: 2 },
-            { name: "silver_emerald", amount: 2 },
-            { name: "pink_emerald", amount: 1 },
-            { name: "orange_emerald", amount: 3 },
-            { name: "brown_emerald", amount: 1 },
-            { name: "purple_emerald", amount: 2 },
-            { name: "black_emerald", amount: 1 }
-        ],
-        defence: [
-            { name: "shield", amount: 2 },
-            { name: "trap", amount: 10 },
-            { name: "wall", amount: 5 },
-            { name: "skull", amount: 3 },
-            { name: "wood", amount: 12 },
-            { name: "potion", amount: 1 },
-            { name: "fire", amount: 3 },
-            { name: "wine", amount: 2 },
-            { name: "banana", amount: 10 },
-            { name: "fish", amount: 8 },
-            { name: "gift", amount: 1 },
-            { name: "health", amount: 5 },
-            { name: "energy", amount: 6 },
-            { name: "sweet", amount: 7 },
-            { name: "key", amount: 2 }
-        ],
-        meals: [
-            { name: "banana", amount: 99 },
-            { name: "apple", amount: 99 },
-            { name: "fish", amount: 13 },
-            { name: "sweet", amount: 4 },
-            { name: "potion", amount: 1 },
-            { name: "wine", amount: 5 },
-            { name: "gift", amount: 2 },
-            { name: "wood", amount: 7 },
-            { name: "skull", amount: 3 },
-            { name: "energy", amount: 6 },
-            { name: "health", amount: 8 },
-            { name: "fire", amount: 2 },
-            { name: "fireball", amount: 4 },
-            { name: "sword", amount: 2 },
-            { name: "shield", amount: 3 }
-        ],
-        random: [
-            { name: "skull", amount: 3 },
-            { name: "wood", amount: 99 },
-            { name: "gift", amount: 7 },
-            { name: "gold", amount: 28 },
-            { name: "banana", amount: 11 },
-            { name: "apple", amount: 13 },
-            { name: "fish", amount: 9 },
-            { name: "sweet", amount: 5 },
-            { name: "potion", amount: 3 },
-            { name: "wine", amount: 2 },
-            { name: "green_emerald", amount: 6 },
-            { name: "red_emerald", amount: 7 },
-            { name: "yellow_emerald", amount: 8 },
-            { name: "pink_emerald", amount: 1 },
-            { name: "brown_emerald", amount: 1 }
-        ]
-    },
+    inventory: [
+        { name: "sword", amount: 0, category: "pewpew", damage: 60 },
+    ],
 
     currentTab: 'pewpew',
     currentItemIndex: 0,
@@ -128,64 +44,68 @@ var ui_inventory_window = {
     dragClone: null,
     inTabSwitchingMode: false,
     currentTabButtonIndex: 0,
+    isAButtonHeld: false,
 
     start: function() {
-    this.renderInventoryItems();
-    this.initializeDragAndDrop();
-    this.initializeQuickItems();
-    this.displayInventoryItems();
-    this.setupGamepadEvents();
-
-    if (game.itemsData && game.itemsImg) {
+        this.renderInventoryItems();
+        this.initializeDragAndDrop();
+        this.initializeQuickItems();
         this.displayInventoryItems();
-    } else {
-        console.error("itemsData or itemsImg is not loaded.");
-    }
+        this.setupGamepadEvents();
 
-    this.checkAndUpdateUIPositions();
-    this.selectItem(0);
+        if (game.itemsData && game.itemsImg) {
+            this.displayInventoryItems();
+        } else {
+            console.error("itemsData or itemsImg is not loaded.");
+        }
 
-    document.addEventListener('dragover', this.documentDragOverHandler.bind(this));
-    document.addEventListener('drop', this.documentDropHandler.bind(this));
+        this.checkAndUpdateUIPositions();
+        this.selectItem(0);
 
-    const tabButtons = document.querySelectorAll('.tab-button');
-    tabButtons.forEach(button => {
-        button.addEventListener('click', (e) => {
-            this.switchTab(e.target.getAttribute('data-tab'));
+        document.addEventListener('dragover', this.documentDragOverHandler.bind(this));
+        document.addEventListener('drop', this.documentDropHandler.bind(this));
+
+        const tabButtons = document.querySelectorAll('.tab-button');
+        tabButtons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                this.switchTab(e.target.getAttribute('data-tab'));
+            });
         });
-    });
 
-    if (tabButtons.length > 0) {
-        // Apply rounded corners to the first and last tab buttons
-        tabButtons[0].classList.add('rounded-tl-lg'); // First tab button
-        tabButtons[tabButtons.length - 1].classList.add('rounded-tr-lg'); // Last tab button
-    }
+        if (tabButtons.length > 0) {
+            // Apply rounded corners to the first and last tab buttons
+            tabButtons[0].classList.add('rounded-tl-lg'); // First tab button
+            tabButtons[tabButtons.length - 1].classList.add('rounded-tr-lg'); // Last tab button
+        }
 
-    this.clearTabHighlights();
-    this.highlightSelectedTab();  // Ensure the active tab is highlighted on load
-},
+        this.clearTabHighlights();
+        this.highlightSelectedTab();  // Ensure the active tab is highlighted on load
+    },
 
     clearTabHighlights: function() {
-    document.querySelectorAll('.tab-button').forEach(button => {
-        button.classList.remove('bg-[#3c4e6f]', 'bg-yellow-500');
-        button.classList.add('bg-[#0a0d14]');
-    });
-},
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.classList.remove('bg-[#3c4e6f]', 'bg-yellow-500');
+            button.classList.add('bg-[#0a0d14]');
+        });
+    },
 
-highlightSelectedTab: function() {
-    // Ensure the currently active tab remains highlighted in grey
-    const activeButton = document.querySelector(`.tab-button[data-tab="${this.currentTab}"]`);
-    if (activeButton) {
-        activeButton.classList.add('bg-[#3c4e6f]');
-    }
-},
+    highlightSelectedTab: function() {
+        // Ensure the currently active tab remains highlighted in grey
+        const activeButton = document.querySelector(`.tab-button[data-tab="${this.currentTab}"]`);
+        if (activeButton) {
+            activeButton.classList.add('bg-[#3c4e6f]');
+        }
+    },
 
-switchTab: function(tabName) {
+    switchTab: function(tabName) {
     this.currentTab = tabName;
-    this.currentItemIndex = 0;
+    this.currentItemIndex = 0; // Reset to the first item
     this.renderInventoryItems();
     this.displayInventoryItems();
-    this.selectItem(0);
+
+    // Safely select the first item or empty slot
+    const firstItemIndex = this.getFilteredInventory().findIndex(item => item !== null);
+    this.selectItem(firstItemIndex !== -1 ? firstItemIndex : 0);
 
     // Ensure all buttons are reset to their default color
     this.clearTabHighlights();
@@ -198,65 +118,29 @@ switchTab: function(tabName) {
 },
 
     setupGamepadEvents: function() {
-    window.addEventListener('gamepadConnected', () => {
-        this.switchToGamepadMode();
-    });
-    window.addEventListener('gamepadDisconnected', () => {
-        this.switchToKeyboardMode();
-    });
+        window.addEventListener('gamepadConnected', () => {
+            this.switchToGamepadMode();
+        });
+        window.addEventListener('gamepadDisconnected', () => {
+            this.switchToKeyboardMode();
+        });
 
-    gamepad.throttle((e) => this.leftButton(e), this.throttleDuration);
-    gamepad.throttle((e) => this.rightButton(e), this.throttleDuration);
-    gamepad.throttle((e) => this.aButton(e), this.throttleDuration);  // Mapping A button
-    gamepad.throttle(() => this.bButton(), this.throttleDuration);
+        gamepad.throttle((e) => this.leftButton(e), this.throttleDuration);
+        gamepad.throttle((e) => this.rightButton(e), this.throttleDuration);
+        gamepad.throttle((e) => this.aButton(e), this.throttleDuration);  // Mapping A button
+        gamepad.throttle(() => this.bButton(), this.throttleDuration);
 
-    gamepad.throttle((e) => this.upButton(e), this.throttleDuration);
-    gamepad.throttle((e) => this.downButton(e), this.throttleDuration);
-    gamepad.throttle((e) => this.enterTabButton(e), this.throttleDuration);
-},
+        gamepad.throttle((e) => this.upButton(e), this.throttleDuration);
+        gamepad.throttle((e) => this.downButton(e), this.throttleDuration);
+        gamepad.throttle((e) => this.enterTabButton(e), this.throttleDuration);
+    },
 
     switchToGamepadMode: function() {
         console.log("Switched to gamepad mode.");
         this.selectItem(0);
     },
 
-    leftButton: function(e) {
-    this.throttle(() => {
-        if (this.inTabSwitchingMode) {
-            // Navigate left through tabs
-            this.currentTabButtonIndex = (this.currentTabButtonIndex - 1 + this.getTabButtons().length) % this.getTabButtons().length;
-            this.clearTabHighlights();  // Clear all highlights
-            this.highlightSelectedTab();  // Keep the active tab grey
-            this.highlightTabButton(this.currentTabButtonIndex);  // Highlight the new tab with yellow
-        } else {
-            // Navigate left through items
-            this.currentItemIndex = (this.currentItemIndex - 1 + this.inventories[this.currentTab].length) % this.inventories[this.currentTab].length;
-            console.log(`Current item index: ${this.currentItemIndex}`);
-            audio.playAudio("menuSelect", assets.load('menuSelect'), 'sfx', false);
-            this.selectItem(this.currentItemIndex);
-        }
-    });
-},
-
-rightButton: function(e) {
-    this.throttle(() => {
-        if (this.inTabSwitchingMode) {
-            // Navigate right through tabs
-            this.currentTabButtonIndex = (this.currentTabButtonIndex + 1) % this.getTabButtons().length;
-            this.clearTabHighlights();  // Clear all highlights
-            this.highlightSelectedTab();  // Keep the active tab grey
-            this.highlightTabButton(this.currentTabButtonIndex);  // Highlight the new tab with yellow
-        } else {
-            // Navigate right through items
-            this.currentItemIndex = (this.currentItemIndex + 1) % this.inventories[this.currentTab].length;
-            console.log(`Current item index: ${this.currentItemIndex}`);
-            audio.playAudio("menuSelect", assets.load('menuSelect'), 'sfx', false);
-            this.selectItem(this.currentItemIndex);
-        }
-    });
-},
-
-    throttle: function(callback) {
+        throttle: function(callback) {
         const currentTime = Date.now();
         if (currentTime - this.lastButtonPress < this.throttleDuration) {
             return false;
@@ -266,81 +150,162 @@ rightButton: function(e) {
         return true;
     },
 
-    upButton: function(e) {
-    if (!this.inTabSwitchingMode) {
-        this.inTabSwitchingMode = true;
-        this.highlightTabButton(this.currentTabButtonIndex);
-    }
-},
-
-downButton: function(e) {
-    if (this.inTabSwitchingMode) {
-        this.inTabSwitchingMode = false;
-        this.clearTabHighlights();
-        this.highlightSelectedTab();  // Ensure the active tab remains grey
-    }
-},
-
-    aButton: function(e) {
-    if (this.inTabSwitchingMode) {
-        this.enterTabButton(e);  // Simulates the "Enter" button behavior
-    }
-},
-
-enterTabButton: function(e) {
-    if (this.inTabSwitchingMode) {
-        const selectedTab = this.getTabButtons()[this.currentTabButtonIndex].getAttribute('data-tab');
-        this.switchTab(selectedTab);
-        this.inTabSwitchingMode = false;
-        this.highlightSelectedTab();  // Ensure the new active tab is highlighted in grey
-    }
-},
-
-highlightTabButton: function(index) {
-    const tabButtons = this.getTabButtons();
-
-    // Clear previous yellow highlights
-    tabButtons.forEach((button, i) => {
-        if (!button.classList.contains('bg-[#3c4e6f]')) {
-            button.classList.remove('bg-yellow-500');
-            button.classList.add('bg-[#0a0d14]');
+    leftButton: function(e) {
+    this.throttle(() => {
+        if (this.inTabSwitchingMode) {
+            this.currentTabButtonIndex = (this.currentTabButtonIndex - 1 + this.getTabButtons().length) % this.getTabButtons().length;
+            this.clearTabHighlights();
+            this.highlightSelectedTab();
+            this.highlightTabButton(this.currentTabButtonIndex);
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        } else {
+            this.currentItemIndex = (this.currentItemIndex - 1 + 15) % 15;  // Move left through the slots, including empty ones
+            this.selectItem(this.currentItemIndex);
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
         }
     });
-
-    // Highlight the currently selecting tab with yellow
-    tabButtons[index].classList.add('bg-yellow-500');
 },
 
-getTabButtons: function() {
-    return Array.from(document.querySelectorAll('.tab-button'));
+rightButton: function(e) {
+    this.throttle(() => {
+        if (this.inTabSwitchingMode) {
+            this.currentTabButtonIndex = (this.currentTabButtonIndex + 1) % this.getTabButtons().length;
+            this.clearTabHighlights();
+            this.highlightSelectedTab();
+            this.highlightTabButton(this.currentTabButtonIndex);
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        } else {
+            this.currentItemIndex = (this.currentItemIndex + 1) % 15;  // Move right through the slots, including empty ones
+            this.selectItem(this.currentItemIndex);
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        }
+    });
 },
+
+    upButton: function(e) {
+        if (!this.inTabSwitchingMode) {
+            this.inTabSwitchingMode = true;
+            this.highlightTabButton(this.currentTabButtonIndex);
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        }
+    },
+
+    downButton: function(e) {
+        if (this.inTabSwitchingMode) {
+            this.inTabSwitchingMode = false;
+            this.clearTabHighlights();
+            this.highlightSelectedTab();  // Ensure the active tab remains grey
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        }
+    },
+
+    aButton: function(e) {
+    this.throttle(() => {
+        if (this.inTabSwitchingMode) {
+            this.enterTabButton(e);  // Simulates the "Enter" button behavior
+            audio.playAudio("switchInventoryTab", assets.load('click'), 'sfx', false);
+        } else if (!this.isItemSelected) {
+            // Enter swap mode and highlight the selected item with green, or keep the yellow border on an empty slot
+            this.isItemSelected = true;
+            this.highlightSelectedItem();  // Highlights the item or empty slot
+            this.targetItemIndex = this.currentItemIndex;  // Set the target index for swapping
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        } else {
+            // Attempt to swap the items, but still allow highlighting of an empty slot
+            this.swapItems();
+            this.isItemSelected = false;
+            this.clearHighlights();
+            this.selectItem(this.currentItemIndex); // Re-select the current item to maintain the yellow border
+            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+        }
+    });
+},
+
+    bButton: function(e) {
+        this.throttle(() => {
+            if (this.isItemSelected) {
+                // Exit swap mode if B is pressed
+                this.isItemSelected = false;
+                this.clearHighlights();  // Clear the green and yellow highlights
+            } else {
+                // Implement any other behavior for B button when not in swap mode
+                console.log('B button pressed, no swap mode active.');
+                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            }
+        });
+    },
+
+    enterTabButton: function(e) {
+        if (this.inTabSwitchingMode) {
+            const selectedTab = this.getTabButtons()[this.currentTabButtonIndex].getAttribute('data-tab');
+            this.switchTab(selectedTab);
+            this.inTabSwitchingMode = false;
+            this.highlightSelectedTab();  // Ensure the new active tab is highlighted in grey
+        }
+    },
+
+    highlightTabButton: function(index) {
+        const tabButtons = this.getTabButtons();
+
+        // Clear previous yellow highlights
+        tabButtons.forEach((button, i) => {
+            if (!button.classList.contains('bg-[#3c4e6f]')) {
+                button.classList.remove('bg-yellow-500');
+                button.classList.add('bg-[#0a0d14]');
+            }
+        });
+
+        // Highlight the currently selecting tab with yellow
+        tabButtons[index].classList.add('bg-yellow-500');
+    },
+
+    getTabButtons: function() {
+        return Array.from(document.querySelectorAll('.tab-button'));
+    },
 
     swapItems: function() {
-        const selectedItemIndex = this.currentItemIndex;
-        const targetIndex = this.targetItemIndex;
+    const selectedItemIndex = this.currentItemIndex;
+    const targetIndex = this.targetItemIndex;
 
-        const temp = this.inventories[this.currentTab][selectedItemIndex];
-        this.inventories[this.currentTab][selectedItemIndex] = this.inventories[this.currentTab][targetIndex];
-        this.inventories[this.currentTab][targetIndex] = temp;
+    console.log(`Before Swap:`);
+    console.log(`Selected Item Index: ${selectedItemIndex}`);
+    console.log(`Target Item Index: ${targetIndex}`);
+    console.log('Filtered Inventory:', this.getFilteredInventory().map(item => item ? item.name : 'empty slot'));
 
-        const selectedElement = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][targetIndex].name}"]`);
-        const targetElement = document.querySelector(`.ui_quick_item[data-item="${temp.name}"]`);
+    const selectedItem = this.getFilteredInventory()[selectedItemIndex];
+    const targetItem = this.getFilteredInventory()[targetIndex];
 
-        if (selectedElement && targetElement) {
-            const tempInnerHTML = selectedElement.innerHTML;
-            selectedElement.innerHTML = targetElement.innerHTML;
-            targetElement.innerHTML = tempInnerHTML;
+    // Only proceed with the swap if both slots have items
+    if (selectedItem && targetItem) {
+        const selectedInventoryIndex = this.inventory.findIndex(item => item.name === selectedItem.name && item.category === this.currentTab);
+        const targetInventoryIndex = this.inventory.findIndex(item => item.name === targetItem.name && item.category === this.currentTab);
 
-            selectedElement.dataset.item = this.inventories[this.currentTab][targetIndex].name;
-            targetElement.dataset.item = temp.name;
+        if (selectedInventoryIndex !== -1 && targetInventoryIndex !== -1) {
+            // Swap items directly in the inventory array based on visual slot index
+            [this.inventory[selectedInventoryIndex], this.inventory[targetInventoryIndex]] = 
+            [this.inventory[targetInventoryIndex], this.inventory[selectedInventoryIndex]];
 
+            // Maintain the currentItemIndex based on the visual slot
             this.currentItemIndex = targetIndex;
         }
+
+        console.log(`After Swap:`);
+        console.log(`Current Item Index: ${this.currentItemIndex}`);
+        console.log('Filtered Inventory:', this.getFilteredInventory().map(item => item ? item.name : 'empty slot'));
 
         this.clearHighlights();
         this.isItemSelected = false;
         this.targetItemIndex = null;
-    },
+    } else {
+        console.error('Cannot swap items: one or both slots are empty.');
+        // Clear highlights and exit swap mode without swapping
+        this.clearHighlights();
+        this.isItemSelected = false;
+        this.targetItemIndex = null;
+        // Ensure the current slot remains highlighted
+        this.selectItem(this.currentItemIndex);
+    }
+},
 
     highlightTargetItem: function(direction) {
         this.clearHighlights(false);
@@ -348,40 +313,62 @@ getTabButtons: function() {
         let newIndex;
 
         if (direction === 'left') {
-            newIndex = (this.currentItemIndex - 1 + this.inventories[this.currentTab].length) % this.inventories[this.currentTab].length;
+            newIndex = (this.currentItemIndex - 1 + this.getFilteredInventory().length) % this.getFilteredInventory().length;
         } else if (direction === 'right') {
-            newIndex = (this.currentItemIndex + 1) % this.inventories[this.currentTab].length;
+            newIndex = (this.currentItemIndex + 1) % this.getFilteredInventory().length;
         }
 
         this.targetItemIndex = newIndex;
 
-        let targetItem = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][this.targetItemIndex].name}"]`);
+        let targetItem = document.querySelector(`.ui_quick_item[data-item="${this.getFilteredInventory()[this.targetItemIndex].name}"]`);
         if (targetItem) {
             targetItem.classList.add('border-2', 'border-green-500');
         }
     },
 
     highlightSelectedItem: function() {
-        this.clearHighlights();
-        let selectedItem = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][this.currentItemIndex].name}"]`);
+    this.clearHighlights();
 
-        if (selectedItem) {
-            selectedItem.style.backgroundColor = 'blue';
+    const selectedItem = this.getFilteredInventory()[this.currentItemIndex];
+
+    if (selectedItem) {
+        // Highlight the item if it exists
+        const selectedItemElement = document.querySelector(`.ui_quick_item[data-item="${selectedItem.name}"]`);
+        if (selectedItemElement) {
+            selectedItemElement.classList.add('border-2', 'border-green-500');
         }
-    },
-
-    selectItem: function(index) {
-        this.clearHighlights();
-
-        const itemElement = document.querySelector(`.ui_quick_item[data-item="${this.inventories[this.currentTab][index].name}"]`);
+    } else {
+        // Highlight the empty slot with a yellow border
+        const itemElements = document.querySelectorAll('.ui_quick_item');
+        const itemElement = itemElements[this.currentItemIndex];
         if (itemElement) {
             itemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
         }
+    }
+},
+selectItem: function(index) {
+    this.clearHighlights();
 
-        document.querySelectorAll('.ui_quick_item').forEach(item => {
-            this.updateScale(item);
-        });
-    },
+    const filteredInventory = this.getFilteredInventory();
+    const itemElements = document.querySelectorAll('.ui_quick_item');
+    const itemElement = itemElements[index];
+
+    if (itemElement) {
+        itemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+    } else {
+        console.error('Item element not found for index:', index);
+    }
+
+    const selectedItem = filteredInventory[index];
+    const sprite = game.sprites[game.playerid];
+    if (selectedItem && sprite) {
+        console.log('Selected Item:', selectedItem);
+        sprite.currentItem = selectedItem.name;
+    } else if (sprite) {
+        console.log('Selected empty slot');
+        sprite.currentItem = null;  // Set the currentItem to null for an empty slot
+    }
+},
 
     clearHighlights: function(clearBlueBackground = true) {
         const draggableItems = document.querySelectorAll('.ui_quick_item');
@@ -394,13 +381,31 @@ getTabButtons: function() {
     },
 
     renderInventoryItems: function() {
-        const quickItemsContainer = document.getElementById('ui_quick_items_container');
-        quickItemsContainer.innerHTML = '';
+    const quickItemsContainer = document.getElementById('ui_quick_items_container');
+    quickItemsContainer.innerHTML = '';
 
-        this.inventories[this.currentTab].forEach(item => {
-            const itemElement = document.createElement('div');
-            itemElement.className = 'ui_quick_item relative cursor-move w-14 h-14 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
-            itemElement.dataset.item = item.name;
+    // Get the items for the current tab
+    const filteredItems = this.getFilteredInventory();
+
+    // Ensure that there are 15 slots, even if there are fewer items
+    for (let i = 0; i < 15; i++) {
+        const item = filteredItems[i]; // May be undefined if the index is out of bounds
+        const itemElement = document.createElement('div');
+        itemElement.className = 'ui_quick_item relative cursor-move w-14 h-14 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
+        itemElement.dataset.item = item ? item.name : '';
+
+        if (item) {
+            // Calculate remaining condition based on damage
+            const condition = 100 - (item.damage || 0); // Default to 100% condition if no damage is present
+
+            // Determine the damage bar color based on the condition
+            let barColor = 'bg-green-500';
+            if (condition <= 15) {
+                barColor = 'bg-red-500';
+            } else if (condition <= 50) {
+                barColor = 'bg-orange-500';
+            }
+
             itemElement.innerHTML = `
                 <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
                 <div class="items_icon items_${item.name} scale-[2.1] z-10"></div>
@@ -409,10 +414,25 @@ getTabButtons: function() {
                     ${item.amount}
                 </div>
                 ` : ''}
+                <div class="damage-bar absolute bottom-0 left-0 right-0 h-1 ${barColor} rounded-full" style="width: ${condition}%;"></div>
             `;
-            quickItemsContainer.appendChild(itemElement);
-        });
-    },
+        } else {
+            // Empty slot - no damage bar or item-specific content
+            itemElement.innerHTML = `
+                <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+            `;
+        }
+
+        quickItemsContainer.appendChild(itemElement);
+    }
+},
+
+getFilteredInventory: function() {
+    // This ensures that if the inventory is empty, we still return an array with 15 empty slots
+    const filtered = this.inventory.filter(item => item.category === this.currentTab);
+    const emptySlots = Array(15 - filtered.length).fill(null);  // Fill with `null` for empty slots
+    return [...filtered, ...emptySlots];  // Merge filled items and empty slots
+},
 
     unmount: function() {
         document.removeEventListener('dragover', this.documentDragOverHandler);
@@ -466,24 +486,30 @@ getTabButtons: function() {
     },
 
     displayInventoryItems: function() {
-        if (!game.itemsData || !game.itemsData.items) {
-            console.error("itemsData or items array is not defined.");
-            return;
+    if (!game.itemsData || !game.itemsData.items) {
+        console.error("itemsData or items array is not defined.");
+        return;
+    }
+
+    this.getFilteredInventory().forEach((item, index) => {
+        if (!item) {
+            return; // Skip null or empty slots
         }
 
-        this.inventories[this.currentTab].forEach((item) => {
-            const itemData = game.itemsData.items.find(data => data.name === item.name);
-            if (itemData) {
-                let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.name}"]`);
+        const itemData = game.itemsData.items.find(data => data.name === item.name);
+        if (itemData) {
+            let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.name}"]`);
 
-                if (itemElement) {
-                    this.setItemIcon(itemElement, itemData);
-                    itemElement.dataset.cd = itemData.cd;
-                    itemElement.querySelector('.items_icon').classList.add(`items_${item.name}`);
-                }
+            if (itemElement) {
+                this.setItemIcon(itemElement, itemData);
+                itemElement.dataset.cd = itemData.cd;
+                itemElement.querySelector('.items_icon').classList.add(`items_${item.name}`);
             }
-        });
-    },
+        } else {
+            console.error('Item data not found for item:', item);
+        }
+    });
+},
 
     setItemIcon: function(element, itemData) {
         const iconDiv = element.querySelector('.items_icon');
@@ -615,30 +641,37 @@ getTabButtons: function() {
     },
 
     handleDragStart: function(e) {
-        this.dragSrcEl = e.target.closest('.ui_quick_item');
-        e.dataTransfer.effectAllowed = 'move';
+    this.dragSrcEl = e.target.closest('.ui_quick_item');
 
-        const iconDiv = this.dragSrcEl.querySelector('.items_icon');
-        if (iconDiv) {
-            const clonedIcon = iconDiv.cloneNode(true);
-            const dragWrapper = document.createElement('div');
-            dragWrapper.style.position = 'absolute';
-            dragWrapper.style.top = `${e.clientY}px`;
-            dragWrapper.style.left = `${e.clientX}px`;
-            dragWrapper.style.pointerEvents = 'none';
-            dragWrapper.style.zIndex = '1000';
-            clonedIcon.style.transform = 'scale(4)';
-            dragWrapper.appendChild(clonedIcon);
-            this.dragClone = dragWrapper;
-            document.body.appendChild(dragWrapper);
-        }
+    // Prevent dragging if the slot is empty
+    if (!this.dragSrcEl || !this.dragSrcEl.dataset.item) {
+        e.preventDefault();
+        return;
+    }
 
-        e.target.style.cursor = 'grabbing';
+    e.dataTransfer.effectAllowed = 'move';
 
-        var img = new Image();
-        img.src = '';
-        e.dataTransfer.setDragImage(img, 0, 0);
-    },
+    const iconDiv = this.dragSrcEl.querySelector('.items_icon');
+    if (iconDiv) {
+        const clonedIcon = iconDiv.cloneNode(true);
+        const dragWrapper = document.createElement('div');
+        dragWrapper.style.position = 'absolute';
+        dragWrapper.style.top = `${e.clientY}px`;
+        dragWrapper.style.left = `${e.clientX}px`;
+        dragWrapper.style.pointerEvents = 'none';
+        dragWrapper.style.zIndex = '1000';
+        clonedIcon.style.transform = 'scale(4)';
+        dragWrapper.appendChild(clonedIcon);
+        this.dragClone = dragWrapper;
+        document.body.appendChild(dragWrapper);
+    }
+
+    e.target.style.cursor = 'grabbing';
+
+    var img = new Image();
+    img.src = '';
+    e.dataTransfer.setDragImage(img, 0, 0);
+},
 
     handleDragOver: function(e) {
         if (e.preventDefault) {
@@ -669,49 +702,71 @@ getTabButtons: function() {
     },
 
     handleDrop: function(e) {
-        if (e.stopPropagation) {
-            e.stopPropagation();
-        }
-        const target = e.target.closest('.ui_quick_item');
-        if (this.dragSrcEl !== target && target) {
-            const tempInnerHTML = this.dragSrcEl.innerHTML;
+    if (e.stopPropagation) {
+        e.stopPropagation();
+    }
+    const target = e.target.closest('.ui_quick_item');
+    if (this.dragSrcEl !== target && target) {
+        const tempInnerHTML = this.dragSrcEl.innerHTML;
+        const tempDataItem = this.dragSrcEl.dataset.item;
+
+        // Ensure both items exist before swapping
+        if (tempDataItem && target.dataset.item) {
             this.dragSrcEl.innerHTML = target.innerHTML;
             target.innerHTML = tempInnerHTML;
 
-            const tempDataItem = this.dragSrcEl.dataset.item;
             this.dragSrcEl.dataset.item = target.dataset.item;
             target.dataset.item = tempDataItem;
 
-            const srcIndex = this.inventories[this.currentTab].findIndex(item => item.name === tempDataItem);
-            const targetIndex = this.inventories[this.currentTab].findIndex(item => item.name === this.dragSrcEl.dataset.item);
-            [this.inventories[this.currentTab][srcIndex], this.inventories[this.currentTab][targetIndex]] = [this.inventories[this.currentTab][targetIndex], this.inventories[this.currentTab][srcIndex]];
+            const srcIndex = this.inventory.findIndex(item => item.name === tempDataItem && item.category === this.currentTab);
+            const targetIndex = this.inventory.findIndex(item => item.name === this.dragSrcEl.dataset.item && item.category === this.currentTab);
 
-            if (this.currentItemIndex === srcIndex) {
-                this.currentItemIndex = targetIndex;
+            if (srcIndex !== -1 && targetIndex !== -1) {
+                [this.inventory[srcIndex], this.inventory[targetIndex]] = [this.inventory[targetIndex], this.inventory[srcIndex]];
+
+                if (this.currentItemIndex === srcIndex) {
+                    this.currentItemIndex = targetIndex;
+                }
             }
+        } else if (tempDataItem) {
+            // If target is empty, move the item to the target slot
+            target.innerHTML = tempInnerHTML;
+            target.dataset.item = tempDataItem;
 
-            this.updateScale(this.dragSrcEl);
-            this.updateScale(target);
+            this.dragSrcEl.innerHTML = '';
+            this.dragSrcEl.dataset.item = '';
 
-            this.updateItemBadges();
-
-            this.clearHighlights();
-            this.selectItem(this.currentItemIndex);
-
-            audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
-        } else {
-            audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
+            const srcIndex = this.inventory.findIndex(item => item.name === tempDataItem && item.category === this.currentTab);
+            if (srcIndex !== -1) {
+                this.inventory.splice(srcIndex, 1);  // Remove the item from the original position
+                this.inventory.push({ name: tempDataItem, amount: 1, category: this.currentTab }); // Add it to the end
+                this.currentItemIndex = this.inventory.length - 1;
+            }
         }
-        return false;
-    },
+
+        this.updateScale(this.dragSrcEl);
+        this.updateScale(target);
+
+        this.updateItemBadges();
+
+        this.clearHighlights();
+        this.selectItem(this.currentItemIndex);
+
+        audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+    } else {
+        audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
+    }
+    return false;
+},
 
     updateItemBadges: function() {
         document.querySelectorAll('.ui_quick_item').forEach(item => {
             const itemName = item.dataset.item;
             const badge = item.querySelector('.item-badge');
             if (badge) {
-                if (this.inventories[this.currentTab].find(i => i.name === itemName).amount > 1) {
-                    badge.textContent = this.inventories[this.currentTab].find(i => i.name === itemName).amount;
+                const inventoryItem = this.inventory.find(i => i.name === itemName && i.category === this.currentTab);
+                if (inventoryItem && inventoryItem.amount > 1) {
+                    badge.textContent = inventoryItem.amount;
                     badge.style.display = 'flex';
                 } else {
                     badge.style.display = 'none';
@@ -721,10 +776,19 @@ getTabButtons: function() {
     },
 
     updateScale: function(element) {
-        const icon = element.querySelector('.items_icon');
+    if (!element) {
+        console.error('Element is null, cannot update scale.');
+        return;
+    }
+
+    const icon = element.querySelector('.items_icon');
+    if (icon) {
         icon.classList.remove('scale-[4]');
         icon.classList.add('scale-[2.1]');
-    },
+    } else {
+        console.error('Icon element not found in the inventory item.');
+    }
+},
 
     handleDragEnd: function(e) {
         const draggableItems = document.querySelectorAll('.ui_quick_item');

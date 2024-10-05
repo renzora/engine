@@ -3,13 +3,13 @@ const lighting = {
     compositeOperation: 'soft-light',
     nightFilter: {
         opacity: 1,
-        color: { r: 102, g: 39, b: 255 },
+        color: { r: 57, g: 16, b: 255 },
         compositeOperation: 'multiply'
     },
     greyFilter: {
         opacity: 0.5,
         color: { r: 128, g: 128, b: 128 }, // Grey color
-        compositeOperation: 'source-over'
+        compositeOperation: 'source-out'
     },
     timeBasedUpdatesEnabled: true,
     nightAmbiencePlaying: false,
@@ -31,9 +31,20 @@ const lighting = {
     },
 
     clearLightsAndEffects: function() {
+        console.log('Clearing lights and effects, preserving player light.');
+        
+        // Preserve the player's light
+        const playerLight = lighting.lights.find(light => light.id === game.playerid + '_light');
+    
         this.lights = [];
         particles.activeEffects = {};
         game.particles = [];
+    
+        // Re-add the preserved player light
+        if (playerLight) {
+            this.lights.push(playerLight);
+            console.log('Preserved player light:', playerLight);
+        }
     },
 
     createLightMask: function() {
@@ -84,7 +95,6 @@ const lighting = {
         const existingLight = this.lights.find(light => light.id === id);
         if (!existingLight) {
             const clampedMaxIntensity = Math.min(maxIntensity, maxIntensity);
-
             const newLight = new this.LightSource(id, x, y, radius, color, clampedMaxIntensity, type, flicker, flickerSpeed, flickerAmount);
             newLight.currentIntensity = clampedMaxIntensity;
             this.lights.push(newLight);
@@ -115,7 +125,7 @@ const lighting = {
         const time = hours + minutes / 60;
     
         // Determine if it's nighttime
-        const isNightTime = time >= 22 || time < 7;
+        const isNightTime = time >= 21 || time < 7;
     
         // Update fireflies state based on nighttime
         weather.fireflysActive = isNightTime;
@@ -125,11 +135,15 @@ const lighting = {
                 audio.playAudio("nightAmbience", assets.load('nightAmbience'), 'ambience', true);
                 this.nightAmbiencePlaying = true;
             }
-            if (time >= 22 && time < 24) {
-                lighting.nightFilter.opacity = Math.min(1, (time - 22) / 2);
-            } else if (time >= 0 && time < 6) {
+    
+            if (time >= 21 && time < 24) { 
+                // Transition into night from 22:00 to 24:00
+                lighting.nightFilter.opacity = Math.min(1, (time - 21) / 2);
+            } else if (time >= 0 && time < 2) {
+                // Midnight to 2:00 - darkest point
                 lighting.nightFilter.opacity = 1;
             } else if (time >= 6 && time < 7) {
+                // Transition out of night from 6:00 to 7:00
                 const progress = (time - 6);
                 lighting.nightFilter.opacity = 1 - progress;
                 lighting.nightFilter.color = {
@@ -140,11 +154,11 @@ const lighting = {
             }
     
             if (!(time >= 6 && time < 7)) {
-                const progress = (time >= 22) ? (time - 22) / 2 : (7 - time) / 7;
+                const progress = (time >= 21) ? (time - 21) / 2 : (7 - time) / 7;
                 lighting.nightFilter.color = {
-                    r: Math.round(102 + progress * (102 - 102)),
-                    g: Math.round(39 + progress * (39 - 39)),
-                    b: Math.round(255 + progress * (255 - 255))
+                    r: 57,
+                    g: 16,
+                    b: 255
                 };
             }
         } else {
@@ -156,9 +170,9 @@ const lighting = {
             lighting.nightFilter.color = { r: 255, g: 255, b: 255 };
         }
     
-        if (time >= 22 || time < 6) {
-            if (time >= 22 && time < 24) {
-                const progress = (time - 22) / 2;
+        if (time >= 21 || time < 6) {
+            if (time >= 21 && time < 24) {
+                const progress = (time - 21) / 2;
                 lighting.updateLightsIntensity(progress);
             } else if (time >= 0 && time < 6) {
                 const progress = (6 - time) / 6;
@@ -167,10 +181,11 @@ const lighting = {
         } else if (time >= 6 && time < 7) {
             const progress = (time - 6);
             lighting.updateLightsIntensity(1 - progress);
-        } else if (time >= 7 && time < 22) {
+        } else if (time >= 7 && time < 21) {
             lighting.updateLightsIntensity(0);
         }
     },
+    
 
     drawNightFilter: function() {
         game.ctx.fillStyle = `rgba(${this.nightFilter.color.r}, ${this.nightFilter.color.g}, ${this.nightFilter.color.b}, ${this.nightFilter.opacity})`;

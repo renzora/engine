@@ -3,6 +3,7 @@ var ui = {
   activeNotifications: new Map(),
   tabs: {},
   menus: {},
+  accordions: {},
   activeMenuId: null,
   activeSubItemIndex: 0,
   toggleSwitches: {},
@@ -113,6 +114,8 @@ var ui = {
 },
 
   unmount: function(id) {
+
+    console.log("attempting to unmount", id);
     if (window[id] && typeof window[id].unmount === 'function') {
         window[id].unmount();
     }
@@ -667,6 +670,46 @@ cancelDropdownSelection: function() {
   if (this.activeDropdown) {
       this.toggleCustomDropdown(this.activeDropdown.previousElementSibling, this.activeDropdown); // Close the dropdown
   }
+},
+
+initAccordion: function(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const accordionHeaders = container.querySelectorAll('.accordion-header');
+
+    this.accordions[containerId] = { accordionHeaders };
+
+    accordionHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            const content = header.nextElementSibling;
+            if (content.classList.contains('hidden')) {
+                // Slide down
+                content.style.maxHeight = content.scrollHeight + 'px';
+                content.classList.remove('hidden');
+                content.classList.add('block');
+            } else {
+                // Slide up
+                content.style.maxHeight = '0';
+                setTimeout(() => {
+                    content.classList.remove('block');
+                    content.classList.add('hidden');
+                }, 300);
+            }
+        });
+    });
+},
+
+destroyAccordion: function(containerId) {
+    const accordion = this.accordions[containerId];
+    if (!accordion) return;
+
+    accordion.accordionHeaders.forEach(header => {
+        const newHeader = header.cloneNode(true);
+        header.replaceWith(newHeader);
+    });
+
+    delete this.accordions[containerId];
 }
 
 };

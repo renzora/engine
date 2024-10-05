@@ -43,7 +43,6 @@ var render = {
     updateGameLogic: function(deltaTime) {
         gamepad.updateGamepadState();
         
-        // Update all sprites
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
             if (sprite.update) {
@@ -52,32 +51,25 @@ var render = {
             }
         }
 
-        // Update camera
         camera.update();
-
-        // Update game time
         game.gameTime.update(deltaTime);
-
-        // Update lighting and animations
         lighting.updateDayNightCycle();
         animate.updateAnimatedTiles(deltaTime);
         weather.updateSnow(deltaTime);
         weather.updateRain(deltaTime);
         weather.updateFireflys(deltaTime);
-
-        // Update particles
         particles.updateParticles(deltaTime);
         effects.transitions.update();
         lighting.updateLights(deltaTime);
 
-        // Rain sound effect handling
         if (weather.rainActive) {
             audio.playAudio("rain", assets.load('rain'), 'ambience', true);
         } else {
             audio.stopLoopingAudio('rain', 'ambience', 0.5);
         }
 
-        // Check and update UI positions
+        actions.checkForNearbyItems();
+
         if (typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
             ui_window.checkAndUpdateUIPositions();
         }
@@ -219,31 +211,12 @@ var render = {
     },
 
     renderCarriedObjects: function () {
-        if (game.mainSprite.isCarrying) {
+        if (game.mainSprite && game.mainSprite.isCarrying) {
             const carriedItemId = game.mainSprite.carriedItem;
             const itemX = game.mainSprite.x - 8;
             const itemY = game.mainSprite.y - 32 - (game.objectData[carriedItemId][0].b.length);
 
             game.drawCarriedObject(game.ctx, carriedItemId, itemX, itemY);
-        }
-    },
-
-    renderSelectedTiles: function () {
-        game.renderSelectedTiles();
-
-        if (game.selectedObjects && game.selectedObjects.length > 0) {
-            game.selectedObjects.forEach(selectedObject => {
-                if (selectedObject) {
-                    const cachedObject = game.selectedCache.find(cache => cache.id === selectedObject.id);
-                    if (cachedObject) {
-                        const xCoordinates = selectedObject.x.map(x => parseInt(x, 10) * 16);
-                        const yCoordinates = selectedObject.y.map(y => parseInt(y, 10) * 16);
-                        const minX = Math.min(...xCoordinates);
-                        const minY = Math.min(...yCoordinates);
-                        game.ctx.drawImage(cachedObject.image, minX, minY);
-                    }
-                }
-            });
         }
     },
 
@@ -260,7 +233,6 @@ var render = {
         weather.drawRain();
         weather.drawFireflys();
         lighting.drawGreyFilter();
-        actions.checkForNearbyItems();
         render.aimTool();
     },
 
@@ -521,6 +493,4 @@ var render = {
             game.ctx.stroke();
         }
     }
-      
-    
 }

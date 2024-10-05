@@ -155,5 +155,49 @@ const effects = {
             a = Math.floor(a / pixelCount / 255);
             return `rgba(${r},${g},${b},${a})`;
         }
+    },
+
+    // New Letterbox Effect
+    letterboxEffect: {
+        active: false,
+        barHeight: 0,
+        maxBarHeight: 130, // Maximum height for the bars
+        speed: 3, // Speed at which bars move in/out
+        start: function() {
+            this.active = true;
+            this.barHeight = 0; // Start with the bars at 0 height
+        },
+        stop: function() {
+            this.active = false;
+        },
+        update: function() {
+            if (this.active && this.barHeight < this.maxBarHeight) {
+                this.barHeight += this.speed;
+                if (this.barHeight > this.maxBarHeight) {
+                    this.barHeight = this.maxBarHeight;
+                }
+            }
+            if (!this.active && this.barHeight > 0) {
+                this.barHeight -= this.speed;
+                if (this.barHeight < 0) {
+                    this.barHeight = 0;
+                }
+            }
+        },
+        render: function() {
+            if (this.barHeight > 0) {
+                // Reset any transformations and ensure bars are drawn over everything
+                game.ctx.setTransform(1, 0, 0, 1, 0, 0);
+                
+                // Draw top bar - fully black
+                game.ctx.fillStyle = 'rgba(0, 0, 0, 1)'; // Solid black color for the bars
+                game.ctx.fillRect(0, 0, game.canvas.width, this.barHeight); // Top bar
+                
+                // Draw bottom bar - fully black
+                game.ctx.fillRect(0, game.canvas.height - this.barHeight, game.canvas.width, this.barHeight); // Bottom bar
+            }
+        }
     }
+    
+
 };

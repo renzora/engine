@@ -14,10 +14,14 @@ var sprite = {
             moving: false,
             stopping: false,
             directions: {},
+            path: [], // Initialize path here
+            pathIndex: 0, // Initialize path index here
+            isMovingToTarget: false,
             body: options.body !== undefined ? options.body : 1,
             head: options.head !== undefined ? options.head : 1,
             eyes: options.eyes !== undefined ? options.eyes : 1,
             hair: options.hair !== undefined ? options.hair : 0,
+            hands: options.hands !== undefined ? options.hands : 1,
             outfit: options.outfit !== undefined ? options.outfit : 0,
             facial: options.facial !== undefined ? options.facial : 0,
             hat: options.hat !== undefined ? options.hat : 0,
@@ -33,7 +37,7 @@ var sprite = {
             maxRange: options.maxRange !== undefined ? options.maxRange : 30,
             handOffsetX: -5,
             handOffsetY: 5,
-            currentItem: 'axe',
+            currentItem: 'sword',
             directions: {},
             joystickDirections: {},
             isRunning: false,
@@ -59,7 +63,7 @@ var sprite = {
             },
             eyeFrame: 0,
             eyeFrameCounter: 0,
-            eyeBlinkInterval: Math.random() * 3000 + 2000, // Random interval between 2 and 5 seconds
+            eyeBlinkInterval: Math.random() * 3000 + 2000,
             draw: this.draw,
             drawShadow: this.drawShadow,
             addDirection: this.addDirection,
@@ -74,10 +78,12 @@ var sprite = {
             walkToClickedTile: this.walkToClickedTile,
             calculatePath: this.calculatePath,
             moveAlongPath: this.moveAlongPath,
+            stopPathfinding: this.stopPathfinding,
             update: this.update,
             checkTileActions: this.checkTileActions,
             drawEnemyAttackAimTool: this.drawEnemyAttackAimTool,
-            dealDamage: this.dealDamage
+            dealDamage: this.dealDamage,
+            drawSelectedItem: this.drawSelectedItem,
         };
     
         // Convert tile coordinates to pixel coordinates
@@ -100,11 +106,14 @@ var sprite = {
         }
 
         if (options.isPlayer) {
+            console.log(`Adding light for player: ${newSprite.id}`);
             const lightColor = { r: 255, g: 255, b: 255 }; // White light
             const lightRadius = 65; // Adjust the radius as needed
             const lightIntensity = 0.15; // Adjust the intensity as needed
             lighting.addLight(newSprite.id + '_light', newSprite.x + 8, newSprite.y + 8, lightRadius, lightColor, lightIntensity, 'playerLight', true, 0, 0);
         }
+
+        console.log(lighting.lights);
     
         // Automatically add the new sprite to the game.sprites object
         game.sprites[options.id] = newSprite;
@@ -120,7 +129,7 @@ var sprite = {
     },
 
     checkTileActions: function() {
-        const currentTileId = game.getTileIdAt(Math.floor(this.x / 16), Math.floor(this.y / 16));
+        const currentTileId = utils.getTileIdAt(Math.floor(this.x / 16), Math.floor(this.y / 16));
         const currentTileX = Math.floor(this.x / 16);
         const currentTileY = Math.floor(this.y / 16);
     
@@ -156,6 +165,7 @@ var sprite = {
     },
 
     draw: function() {
+        if (!game.displaySprite) return;
         // Load images
         let headImage = assets.load('head'); 
         let hairImage = assets.load('hair'); 
@@ -165,8 +175,13 @@ var sprite = {
         let glassesImage = assets.load('glasses');
         let eyesImage = assets.load('eyes'); 
         let handsImage = assets.load('hands'); 
-    
+        
         if (!headImage || !hairImage || !outfitImage || !facialImage || !hatImage || !glassesImage || !eyesImage || !handsImage) return;
+        
+        // Draw the item behind the sprite for specific directions
+        if (['SE', 'E', 'NE', 'N'].includes(this.direction)) {
+            this.drawSelectedItem(); // Draw behind the sprite
+        }
     
         let directionMap = {
             'S': 0,
@@ -178,23 +193,23 @@ var sprite = {
             'NE': 32,
             'NW': 32
         };
-    
+        
         let frameColumn = (Math.floor(this.currentFrame) % 8);
         let sx = (directionMap[this.direction] + frameColumn) * this.width;
         let sy = 0; // All frames are in the same row
-    
+        
         let tempCanvas = document.createElement('canvas');
         let tempCtx = tempCanvas.getContext('2d');
         tempCanvas.width = this.width;
         tempCanvas.height = this.height; 
-    
+        
         // Draw body part (16x16) and outfit if body is not 0
         if (this.body !== 0) {
             if (this.outfit !== 0) {
                 tempCtx.drawImage(outfitImage, sx, sy, this.width, 16, 0, 16, this.width, 16); // Draw outfit
             }
         }
-    
+        
         // Draw head part (16x16) if head is not 0
         if (this.head !== 0) {
             let headDirectionMap = {
@@ -209,15 +224,15 @@ var sprite = {
             };
             let headSx = headDirectionMap[this.direction] * 16;
             let headY = 3; // Default head y-position with a 4-pixel gap
-    
+        
             // Adjust head position based on the frame
             if (this.currentFrame % 4 === 1 || this.currentFrame % 4 === 2) {
                 headY += 2; // Adjust by 1 pixel down
             }
-    
+        
             // Draw the head
             tempCtx.drawImage(headImage, headSx, 0, 16, 16, 0, headY, 16, 16);
-    
+        
             // Draw eyes if present
             let eyesDirectionMap = {
                 'S': 0,
@@ -232,7 +247,7 @@ var sprite = {
             let eyesSx = eyesDirectionMap[this.direction] * 16 + this.eyeFrame * 16;
             let eyesSy = (this.eyes - 1) * 16; // Adjust for the row based on the eyes index
             tempCtx.drawImage(eyesImage, eyesSx, eyesSy, 16, 16, 0, headY, 16, 16);
-    
+        
             // Draw hair if present
             if (this.hair !== 0) {
                 let hairDirectionMap = {
@@ -249,13 +264,13 @@ var sprite = {
                 let hairSy = (this.hair - 1) * 20; // Adjust for the new height of 20
                 tempCtx.drawImage(hairImage, hairSx, hairSy, 16, 20, 0, headY, 16, 20); // Align hair with the head and account for the extra height
             }
-    
+        
             // Draw facial hair if present
             if (this.facial !== 0) {
                 let facialSy = (this.facial - 1) * 16;
                 tempCtx.drawImage(facialImage, headSx, facialSy, 16, 16, 0, headY, 16, 16); // Ensure facial hair is drawn correctly
             }
-    
+        
             // Draw glasses if present
             if (this.glasses !== 0) {
                 let glassesDirectionMap = {
@@ -270,7 +285,7 @@ var sprite = {
                 };
                 let glassesSx = glassesDirectionMap[this.direction] * 16;
                 let glassesSy = (this.glasses - 1) * 8; // Adjust for the glasses height
-    
+        
                 // Handle flipping for the SW and W directions
                 if (this.direction === 'SW' || this.direction === 'W') {
                     tempCtx.save(); // Save the current context state
@@ -281,7 +296,7 @@ var sprite = {
                     tempCtx.drawImage(glassesImage, glassesSx, glassesSy, 16, 8, 0, headY + 7, 16, 8); // Move glasses down by 7 pixels
                 }
             }
-    
+        
             // Draw hat if present
             if (this.hat !== 0) {
                 let hatDirectionMap = {
@@ -297,52 +312,129 @@ var sprite = {
                 let hatSx = hatDirectionMap[this.direction] * 16;
                 let hatSy = (this.hat - 1) * 16; // Adjust for the row based on the hat index
                 let hatY = headY - 6; // Adjusted to go up by 2 pixels
-    
+        
                 tempCtx.drawImage(hatImage, hatSx, hatSy, 16, 16, 0, hatY, 16, 16); // Align hat with the head
             }
         }
+        
+        // Draw hands (16x16) using the direction map and cycling through the correct frames
+        if (this.hands !== 0) {
+            let handsDirectionMap = {
+                'S': 0,
+                'E': 8,
+                'N': 16,
+                'SE': 24,
+                'NE': 32,
+                'W': 8,  // Use 'E' flipped
+                'SW': 24, // Use 'SE' flipped
+                'NW': 32  // Use 'NE' flipped
+            };
     
-        // Draw hands (16x16) using the direction map and cycling through 8 frames
-        let handsSx = sx; // Use the same x-coordinate as the body part
-        let handsSy = 0;  // Use the same y-coordinate as the body part
-        tempCtx.drawImage(handsImage, handsSx, handsSy, 16, 16, 0, 14, 16, 16); // Adjusted position for hands
+            let handsFrameOffsetMap = {
+                'S': 0,
+                'E': 8,
+                'N': 16,
+                'SE': 24,
+                'NE': 32,
+                'W': 8,  // Use 'E' flipped
+                'SW': 24, // Use 'SE' flipped
+                'NW': 32  // Use 'NE' flipped
+            };
     
+            let handsSx = (handsDirectionMap[this.direction] + this.currentFrame) * 16;
+            let handsSy = (this.hands - 1) * 16; // Adjust for the row based on the hands index
+            tempCtx.drawImage(handsImage, handsSx, handsSy, 16, 16, 0, 14, 16, 16); // Adjusted position for hands
+        }
+        
         game.ctx.save();
-    
+        
         // Apply vertical offset based on the frame for spring effect
         let springOffset = 0;
         if (this.moving) {
             springOffset = Math.abs(Math.sin((this.currentFrame % 8) * (Math.PI / 4))) * 2; // Adjust the multiplier for more/less spring
         }
-    
+        
         game.ctx.translate(this.x, this.y - this.verticalOffset - springOffset); // Apply vertical offset with spring effect
-    
+        
         if (this.direction === 'W' || this.direction === 'NW' || this.direction === 'SW') {
             game.ctx.scale(-this.scale, this.scale);
             game.ctx.translate(-this.width * this.scale, 0);
         } else {
             game.ctx.scale(this.scale, this.scale);
         }
-    
+        
         if (this.overlapping) {
             game.ctx.globalAlpha = 0.5; 
         } else {
             game.ctx.globalAlpha = 1;
         }
-    
+        
         game.ctx.drawImage(tempCanvas, 0, 0, this.width, this.height + 4, 0, 0, this.width * this.scale, (this.height + 4) * this.scale);
-    
+        
         game.ctx.globalAlpha = 1; 
-    
+        
         if (this.isEnemy) {
             game.ctx.fillStyle = 'red';
             game.ctx.fillRect(0, -10, this.width * this.scale, 5);
             game.ctx.fillStyle = 'green';
             game.ctx.fillRect(0, -10, this.width * this.scale * (this.health / this.maxHealth), 5);
         }
-    
+        
         game.ctx.restore();
-    },    
+        
+        // Draw the item after the sprite for other directions
+        if (['S', 'NW', 'W', 'SW'].includes(this.direction)) {
+            this.drawSelectedItem(); // Draw in front of the sprite
+        }
+    },         
+    
+    drawSelectedItem: function() {
+        if (!this.currentItem) return;
+    
+        const itemData = game.itemsData.items.find(item => item.name === this.currentItem);
+        if (!itemData) return;
+    
+        // Retrieve the direction-specific data
+        const directionData = itemData.directions[this.direction];
+        if (!directionData) return;
+    
+        // Use the angle and offset for the current direction
+        const rotationAngle = (directionData.angle || 0) * Math.PI / 180;
+        const itemXOffset = directionData.xOffset || 0;
+        const itemYOffset = directionData.yOffset || 0;
+    
+        const itemScale = itemData.scale || 1;
+        const iconSize = 16; // Assuming a 16x16 item icon
+    
+        game.ctx.save(); // Save the current canvas state
+    
+        // Translate to the item's center, apply offset, rotate, then draw the image
+        game.ctx.translate(this.x + itemXOffset, this.y + itemYOffset);
+        game.ctx.rotate(rotationAngle);
+    
+        // Apply an even stronger pulsating glow effect if the item has the `glow` property
+        if (itemData.glow) {
+            const time = Date.now();
+            const glowStrength = 0.9 + 0.8 * Math.sin(time / 120); // Very strong pulsating effect
+            game.ctx.shadowColor = `rgba(255, 255, 0, ${glowStrength})`; // Bright yellow glow
+            game.ctx.shadowBlur = 60 + 40 * Math.sin(time / 120); // Very large dynamic blur for an intense glow
+        }
+    
+        game.ctx.drawImage(
+            game.itemsImg,
+            itemData.x,
+            itemData.y,
+            iconSize,
+            iconSize,
+            -iconSize * itemScale / 2,
+            -iconSize * itemScale / 2,
+            iconSize * itemScale,
+            iconSize * itemScale
+        );
+    
+        game.ctx.restore(); // Restore the canvas state
+    },
+    
     
     drawShadow: function() {
         game.ctx.save();
@@ -382,17 +474,17 @@ var sprite = {
         var currentX = Math.floor(this.x / 16);
         var currentY = Math.floor(this.y / 16);
         this.path = this.calculatePath(currentX, currentY, tileX, tileY);
-        this.pathIndex = 0;
-        this.isMovingToTarget = true;
+        this.pathIndex = 0; // Reset the path index
+        this.isMovingToTarget = true; // Mark sprite as moving to target
         audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
-    },
+    },    
 
     calculatePath: function(startX, startY, endX, endY) {
         const grid = collision.createWalkableGrid(); // Use the cached walkable grid
         const graph = new Graph(grid, { diagonal: true });
         const start = graph.grid[startX][startY];
         const end = graph.grid[endX][endY];
-        
+    
         // Check if start and end points are walkable
         if (grid[startX][startY] === 0 || grid[endX][endY] === 0) {
             console.log("Pathfinding: Start or end point is not walkable");
@@ -410,14 +502,12 @@ var sprite = {
             return { x: node.x, y: node.y, alpha: 1 }; // Add alpha property for opacity
         });
     
-        this.path = path;
-        this.pathIndex = 0; // Reset the path index for following the path
-        return path;
-    },
+        return path; // Return the path to be stored in `this.path`
+    },    
 
     moveAlongPath: function() {
         if (!this.path || this.pathIndex >= this.path.length) {
-            this.isMovingToTarget = false;
+            this.isMovingToTarget = false; // Stop moving when the path is exhausted
             this.moving = false;
             this.stopping = true;
             this.currentFrame = 0; // Reset to default standing position
@@ -440,12 +530,12 @@ var sprite = {
         if (distance < this.speed * (game.deltaTime / 1000)) {
             this.x = targetX;
             this.y = targetY;
-            this.pathIndex++;
+            this.pathIndex++; // Move to the next step in the path
     
             // Remove the step behind the sprite    
             if (this.pathIndex > 1) {
-                this.path.shift();
-                this.pathIndex--;
+                this.path.shift(); // Remove the previous path step
+                this.pathIndex--; // Adjust the index
             }
         } else {
             const angle = Math.atan2(deltaY, deltaX);
@@ -456,13 +546,11 @@ var sprite = {
             this.x = newX;
             this.y = newY;
     
-            // Determine direction
+            // Determine direction based on movement
             if (Math.abs(deltaX) > Math.abs(deltaY)) {
-                if (deltaX > 0) this.direction = 'E';
-                else this.direction = 'W';
+                this.direction = deltaX > 0 ? 'E' : 'W';
             } else {
-                if (deltaY > 0) this.direction = 'S';
-                else this.direction = 'N';
+                this.direction = deltaY > 0 ? 'S' : 'N';
             }
     
             // Adjust direction for diagonal movement
@@ -474,6 +562,24 @@ var sprite = {
             }
         }
     },
+
+    stopPathfinding: function() {
+        // Clear the path and reset path-related variables
+        this.path = [];
+        this.pathIndex = 0;
+        this.isMovingToTarget = false;
+        this.moving = false;
+        this.stopping = true;
+    
+        // Reset the current frame to a default standing position
+        this.currentFrame = 0;
+    
+        // Stop walking sound effect
+        audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+    
+        // You can add any additional clean-up here if needed
+        console.log(`Pathfinding and movement stopped for sprite: ${this.id}`);
+    },    
 
     drawEnemyAttackAimTool: function() {
         const player = game.sprites[game.playerid];
@@ -785,8 +891,11 @@ var sprite = {
         if (this.id === game.playerid) {
             const playerLight = lighting.lights.find(light => light.id === this.id + '_light');
             if (playerLight) {
+                //console.log(`Updating player light position to: (${this.x + 8}, ${this.y + 8})`);
                 playerLight.x = this.x + 8; // Center light on sprite
                 playerLight.y = this.y + 8; // Center light on sprite
+            } else {
+                console.log(`Player light not found for ID: ${this.id + '_light'}`);
             }
         }
     },

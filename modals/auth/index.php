@@ -73,16 +73,21 @@ if(!$auth) {
     /* Add your gradient animation styles here */
   </style>
 
-  <script>
+<script>
     var auth_window = {
       login: function() {
         var login_username = document.getElementById('login_username').value;
         var login_password = document.getElementById('login_password').value;
 
         if (login_username == '' || login_password == '') {
-          modal.load('auth/error.php?code=1', 'auth_error_window');
+          modal.load({
+            id: 'auth_error_window',
+            url: 'auth/error.php?code=1',
+            name: 'Error',
+            drag: true,
+            reload: true
+          });
         } else {
-
           ui.ajax({
             outputType: 'json',
             method: 'POST',
@@ -91,11 +96,23 @@ if(!$auth) {
             success: function(data) {
               console.log(data);
               if(data.message == 'login_complete') {
-                modal.load('ui');
+                modal.load({
+                  id: 'ui',
+                  url: 'ui',
+                  name: 'User Interface',
+                  drag: true,
+                  reload: true
+                });
                 ui.notif("You are now signed in as " + login_username, 'bottom-center');
                 modal.close("auth_window");
               } else {
-                modal.load('auth/error.php?code=' + data.message, 'auth_error_window');
+                modal.load({
+                  id: 'auth_error_window',
+                  url: 'auth/error.php?code=' + data.message,
+                  name: 'Error',
+                  drag: true,
+                  reload: true
+                });
               }
             },
             error: function(data) {
@@ -109,26 +126,44 @@ if(!$auth) {
         var register_password = document.getElementById('register_password').value;
         var register_email = document.getElementById('register_email').value;
 
-          if(register_username == '' || register_password == '' || register_email == '') {
-            modal.load('auth/error.php?code=1', 'auth_error_window');
-          } else {
-            ui.ajax({
-              method: 'POST',
-              url: 'modals/auth/ajax/register_ajax.php',
-              data: 'register_username=' + register_username + '&register_password=' + register_password + '&register_email=' + register_email,
-              success: function(data) {
-                console.log(data);
-                if(data == 'registration_complete') {
-                  ui.notif("Welcome to Renzora, " + register_username + "!");
-                  modal.close("auth_window");
-                  modal.load('ui');
-                } else {
-                  modal.load('auth/error.php?code=' + data.message, 'auth_error_window');
-                }
+        if (register_username == '' || register_password == '' || register_email == '') {
+          modal.load({
+            id: 'auth_error_window',
+            url: 'auth/error.php?code=1',
+            name: 'Error',
+            drag: true,
+            reload: true
+          });
+        } else {
+          ui.ajax({
+            method: 'POST',
+            url: 'modals/auth/ajax/register_ajax.php',
+            data: 'register_username=' + register_username + '&register_password=' + register_password + '&register_email=' + register_email,
+            success: function(data) {
+              console.log(data);
+              if (data == 'registration_complete') {
+                ui.notif("Welcome to Renzora, " + register_username + "!");
+                modal.close("auth_window");
+                modal.load({
+                  id: 'ui',
+                  url: 'ui',
+                  name: 'User Interface',
+                  drag: true,
+                  reload: true
+                });
+              } else {
+                modal.load({
+                  id: 'auth_error_window',
+                  url: 'auth/error.php?code=' + data.message,
+                  name: 'Error',
+                  drag: true,
+                  reload: true
+                });
+              }
             }
           });
         }
-        },
+      },
       unmount: function() {
       },
       // Function to toggle content based on tab clicked
@@ -172,9 +207,10 @@ if(!$auth) {
         });
       }
     };
-    
+
     auth_window.initTabs(); // Initialize tabs
   </script>
+
 
 </div>
 

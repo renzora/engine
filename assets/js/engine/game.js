@@ -2,7 +2,6 @@ var game = {
     needsFilterUpdate: true,
     canvas: undefined,
     ctx: undefined,
-    isDragging: false,
     isEditMode: false,
     x: null,
     y: null,
@@ -18,17 +17,11 @@ var game = {
     sprites: {},
     playerid: null,
     sceneid: null,
-    viewportXStart: null,
-    viewportXEnd: null,
-    viewportYStart: null,
-    viewportYEnd: null,
     desiredFPS: 60,
     fixedDeltaTime: 1000 / 60,
     accumulatedTime: 0,
     lastTime: null,
     maxAccumulatedTime: 1000,
-    displayUsernames: false,
-    displayChat: false,
     displaySprite: true,
     allowControls: true,
     selectedObjects: [],
@@ -39,12 +32,10 @@ var game = {
     overlappingTiles: [],
     isPaused: false,
     sceneBg: "grass",
-    isEditorActive: false,
-    editorMode: null,
-    selectionBounds: null,
-    tooltips: [],
     activeSpriteId: null,
     inputMethod: 'keyboard',
+    fpsHistory: [],
+    maxFpsHistory: 60,
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },
@@ -55,13 +46,15 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 21,
+        hours: 0,
         minutes: 0,
         seconds: 0,
         days: 0,
         speedMultiplier: 100,
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
         update: function(deltaTime) {
+            if (!game.timeActive) return;  // Stop time updates if time is not active
+            
             const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
             this.seconds += gameSeconds;
     
@@ -83,7 +76,7 @@ var game = {
             const dayOfWeek = this.daysOfWeek[this.days % 7];
             return `${dayOfWeek} ${pad(this.hours)}:${pad(this.minutes)}`;
         }
-    },
+    },    
 
     reloadGameData: function() {
         const assetsToReload = ['objectData', 'roomData'];
@@ -140,6 +133,7 @@ var game = {
             { name: 'slotDrop', path: 'audio/sfx/ui/slotDrop.mp3' },
             { name: 'sceneDrop', path: 'audio/sfx/ui/sceneDrop.mp3' },
             { name: 'itemEquip', path: 'audio/sfx/ui/itemEquip.mp3' },
+            { name: 'pickUp', path: 'audio/sfx/fx/pickUp.mp3' },
             { name: 'nightAmbience', path: 'audio/sfx/weather/nightAmbience.mp3' },
             { name: 'rain', path: 'audio/sfx/weather/rain.mp3' },
             { name: 'meta', path: 'json/meta.json' },
@@ -156,57 +150,65 @@ var game = {
             this.itemsData = assets.load('itemsData');
             this.objectData = assets.load('objectData');
             this.fxData = assets.load('fxData');
-            
-            const playerOptions = {
-                id: this.playerid,
-                x: 29,
-                y: 23,
-                isPlayer: true,
-                speed: 85,
-                head: 1,
-                eyes: 1,
-                body: 1,
-                hair: 1,
-                outfit: 1,
-                hands: 1,
-                hat: 0,
-                facial: 0,
-                glasses: 0,
-                targetAim: false,
-                maxRange: 200
-            };
-            sprite.create(playerOptions);
+        
 
-            this.mainSprite = game.sprites[this.playerid];
-            this.setActiveSprite(this.playerid);
+            if (game.sprites[this.playerid]) {
+                this.mainSprite = game.sprites[this.playerid];
+                this.setActiveSprite(this.playerid);
+            } else {
+                console.warn(`Sprite with player ID ${this.playerid} not found.`);
+            }
 
-
+            console.log(this.mainSprite);
 
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.2);
 
-            const storedSceneId = localStorage.getItem('sceneid') || '66afd5880a19134bf10959d3';
+            const storedSceneId = localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf';
             this.loadScene(storedSceneId);
 
-            //modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
-            modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: true });
-            modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
-            modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu', drag: false, reload: false });
-            modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window', drag: false, reload: false });
-            modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
+            if (localStorage.getItem('showMainTitle') === null || localStorage.getItem('showMainTitle') === 'true') {
+                modal.load({
+                    id: "main_title_window",
+                    url: "menus/main_title/index.php",
+                    name: "Main Tiles",
+                    showInList: true
+                });
+            } else {
+                const playerOptions = {
+                    id: this.playerid,
+                    x: 29,
+                    y: 23,
+                    isPlayer: true,
+                    speed: 100,
+                    head: 1,
+                    eyes: 1,
+                    body: 1,
+                    hair: 1,
+                    outfit: 1,
+                    hands: 2,
+                    hat: 0,
+                    facial: 0,
+                    glasses: 0,
+                    targetAim: false,
+                    maxRange: 200,
+                    health: 100,
+                    energy: 100
+                  };
+              
+                  // Assuming `sprite` and `effects` are globally available
+                  sprite.create(playerOptions);
+                  this.mainSprite = this.sprites[this.playerid];
+                  this.setActiveSprite(this.playerid);
+                  this.modal_init();
+            }
+            
             //modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
 
             console.log("Connected to Main renzora server");
-            //modal.load('inventory_items', "inventory_items_window", "Inventory Items", true);
 
             this.loop();
-
-            if (this.mainSprite) {
-                this.mainSprite.updateHealth(0);
-                this.mainSprite.updateHealth(this.mainSprite.health);  
-                this.mainSprite.updateEnergy(this.mainSprite.energy);  
-            }
 
             // Send initial player state to the server
             network.send({
@@ -234,6 +236,22 @@ var game = {
         });
     },
 
+    modal_init: function() {
+        modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true });
+    
+        modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
+    
+        modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: true });
+    
+        modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
+    
+        modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu',drag: false, reload: false });
+    
+        modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+    
+        modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
+    },
+
     pause: function() {
         cancelAnimationFrame(this.animationFrameId);
         audio.pauseAll();
@@ -257,7 +275,6 @@ var game = {
     },
 
     loadScene: function(sceneId) {
-        lighting.clearLightsAndEffects();
         input.cancelPathfinding(game.sprites[game.playerid]);
         ui.ajax({
             outputType: 'json',
@@ -267,6 +284,7 @@ var game = {
             success: function(data) {
                 if (data.message === 'success') {
                     effects.lights = [];
+                    lighting.clearLightsAndEffects();
                     game.roomData = data.roomData;
                     game.sceneid = data.sceneid;
                     game.serverid = data.server_id; // Store the server_id for later use
@@ -281,8 +299,7 @@ var game = {
                     ui.notif("scene_change_notif", data.name, true);
                     audio.stopLoopingAudio('music', 0.5);
     
-                    // Recalculate the walkable grid for the new scene
-                    collision.createWalkableGrid();
+                    //game.spawnRandomItems(500);
     
                 } else {
                     console.log('Error: ' + data.message);
@@ -291,10 +308,66 @@ var game = {
             },
             error: function(data) {
                 console.log(data);
-                modal.load('menus/console/tabs/servers/ajax/error.php', 'scene_load_error_window', "server error", true);
+
+                modal.load({
+                    id: "scene_load_error_window",
+                    url: "menus/console/tabs/servers/ajax/error.php",
+                    name: "Server Error",
+                    showInList: true
+                });
             }
         });
-    },         
+    },
+
+    spawnRandomItems: function(numberOfItems) {
+        if (!this.roomData || !this.roomData.items) {
+            console.error('Room data not loaded.');
+            return;
+        }
+    
+        const itemKeys = Object.keys(this.objectData).filter(key => {
+            const item = this.objectData[key][0];
+            return item.type === "item";
+        });
+    
+        if (itemKeys.length === 0) {
+            console.error('No items with type "item" found.');
+            return;
+        }
+    
+        const maxX = this.worldWidth / 16;
+        const maxY = this.worldHeight / 16;
+    
+        for (let i = 0; i < numberOfItems; i++) {
+            let randomItemKey;
+            let randomX;
+            let randomY;
+            let tileOccupied;
+    
+            do {
+                randomItemKey = itemKeys[Math.floor(Math.random() * itemKeys.length)];
+                randomX = Math.floor(Math.random() * maxX);
+                randomY = Math.floor(Math.random() * maxY);
+                tileOccupied = utils.getTileIdAt(randomX, randomY) !== null || !collision.isTileWalkable(randomX, randomY);
+            } while (tileOccupied);
+    
+            const newItem = {
+                id: randomItemKey,
+                x: [randomX],
+                y: [randomY],
+                animationState: [{
+                    currentFrame: 0,
+                    elapsedTime: 0
+                }],
+                zIndex: [2],  // Ensure zIndex is set to 2
+                type: "item"  // Ensure type is set to "item"
+            };
+    
+            this.roomData.items.push(newItem);
+            collision.createWalkableGrid();
+            console.log(`Spawned ${randomItemKey} at (${randomX}, ${randomY}) with zIndex of 2`);
+        }
+    },    
 
     resizeCanvas: function() {
         this.canvas.width = window.innerWidth;
@@ -322,25 +395,11 @@ var game = {
         }
       },
 
-    getTileIdAt: function(x, y) {
-        if (!this.roomData || !this.roomData.items) {
-            return null;
-        }
-    
-        for (const item of this.roomData.items) {
-            const xCoordinates = item.x || [];
-            const yCoordinates = item.y || [];
-    
-            if (xCoordinates.includes(x) && yCoordinates.includes(y)) {
-                return item.id;
-            }
-        }
-        return null;
-    },
-
-    handleMouseDown: function(event) {
-        if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return;
+      handleMouseDown: function(event) {
+        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
         console.log('Game handleMouseDown triggered');
+        
+        // Only handle walk movement, no tile selection
         if (event.button === 0 || event.button === 2) {
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
@@ -351,223 +410,26 @@ var game = {
     },
 
     handleMouseMove: function(event) {
-        if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return;
+        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
     },
     
     handleMouseUp: function(event) {
-        if (this.isEditorActive || (this.mainSprite && this.mainSprite.targetAim)) return;
+        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
         console.log('Game handleMouseUp triggered');
-    
-        // Check if the console window or another menu is active
-        if (console_window.isMenuActive()) {
-            console.log('Menu is active, preventing canvas click actions.');
-            console_window.toggleConsoleWindow();
-            return;
-        }
-    
+        
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
         this.x = Math.floor(mouseX / 16);
         this.y = Math.floor(mouseY / 16);
         
-        const selectedObject = this.findObjectAt(mouseX, mouseY);
-        
-        if (selectedObject) {
-            console.log(`Selected object ID: ${selectedObject.id}`);
-            this.selectedObjects = [selectedObject];
-            if (!this.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                this.selectedCache.push({ id: selectedObject.id, image: this.drawAndOutlineObjectImage(selectedObject) });
-            }
-        }
-    
-        if(collision.isTileWalkable(this.x, this.y)) {
+        if (collision.isTileWalkable(this.x, this.y)) {
             this.selectedObjects = [];
             this.selectedCache = [];
             this.render();
             this.mainSprite.walkToClickedTile(this.x, this.y);
-            console.log('Tile is walkable, no context menu should be shown.');
-        } else if (this.selectedObjects.length > 0) {
-            setTimeout(() => {
-                click_menu_window.showContextMenu(event.clientX, event.clientY, true);
-            }, 0);
+            console.log('Tile is walkable, walking to clicked tile.');
         }
-    
-        console.log('Current selected objects:', this.selectedObjects);
-    },  
-
-    findObjectAt: function(x, y) {
-        if (!this.roomData || !this.roomData.items) return null;
-
-        const renderQueue = [];
-
-        this.roomData.items.forEach(roomItem => {
-            const itemData = assets.load('objectData')[roomItem.id];
-            if (itemData && itemData.length > 0) {
-                const tileData = itemData[0];
-                const xCoordinates = roomItem.x || [];
-                const yCoordinates = roomItem.y || [];
-
-                let index = 0;
-
-                for (let tileY = Math.min(...yCoordinates); tileY <= Math.max(...yCoordinates); tileY++) {
-                    for (let tileX = Math.min(...xCoordinates); tileX <= Math.max(...xCoordinates); tileX++) {
-                        const posX = tileX * 16;
-                        const posY = tileY * 16;
-
-                        let tileFrameIndex;
-                        if (tileData.d) {
-                            const currentFrame = tileData.currentFrame || 0;
-                            tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[(currentFrame + index) % tileData.i.length] : tileData.i;
-                        } else {
-                            tileFrameIndex = tileData.i[index];
-                        }
-
-                        renderQueue.push({
-                            tileIndex: tileFrameIndex,
-                            posX: posX,
-                            posY: posY,
-                            z: Array.isArray(tileData.z) ? tileData.z[index % tileData.z.length] : tileData.z,
-                            id: roomItem.id,
-                            item: roomItem
-                        });
-
-                        index++;
-                    }
-                }
-            }
-        });
-
-        renderQueue.sort((a, b) => a.z - b.z || a.renderOrder - b.renderOrder);
-
-        let highestZIndexObject = null;
-
-        for (const item of renderQueue) {
-            const tileRect = {
-                x: item.posX,
-                y: item.posY,
-                width: 16,
-                height: 16
-            };
-
-            if (
-                x >= tileRect.x &&
-                x <= tileRect.x + tileRect.width &&
-                y >= tileRect.y &&
-                y <= tileRect.y + tileRect.height
-            ) {
-                highestZIndexObject = item.item;
-            }
-        }
-
-        return highestZIndexObject;
-    },
-
-    drawAndOutlineObjectImage: function(object) {
-        if (!object) return null;
-
-        const cachedObject = this.selectedCache.find(cache => cache.id === object.id);
-        if (cachedObject) {
-            return cachedObject.image;
-        }
-
-        const itemData = assets.load('objectData')[object.id];
-        if (!itemData) return null;
-
-        const xCoordinates = object.x.map(x => parseInt(x, 10) * 16);
-        const yCoordinates = object.y.map(y => parseInt(y, 10) * 16);
-
-        const minX = Math.min(...xCoordinates);
-        const maxX = Math.max(...xCoordinates) + 16;
-        const minY = Math.min(...yCoordinates);
-        const maxY = Math.max(...yCoordinates) + 16;
-
-        const offscreenCanvas = document.createElement('canvas');
-        const offscreenCtx = offscreenCanvas.getContext('2d');
-        offscreenCanvas.width = maxX - minX;
-        offscreenCanvas.height = maxY - minY;
-
-        for (let i = 0; i < xCoordinates.length; i++) {
-            for (let j = 0; j < yCoordinates.length; j++) {
-                const itemX = xCoordinates[i] - minX;
-                const itemY = yCoordinates[j] - minY;
-
-                const tileIndex = j * xCoordinates.length + i;
-                const tileData = itemData[tileIndex % itemData.length];
-
-                let tileFrameIndex;
-                if (tileData.d) {
-                    const currentFrame = tileData.currentFrame || 0;
-                    tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[currentFrame % tileData.i.length] : tileData.i;
-                } else {
-                    tileFrameIndex = tileData.i[tileIndex % tileData.i.length];
-                }
-
-                const srcX = (tileFrameIndex % 150) * 16;
-                const srcY = Math.floor(tileFrameIndex / 150) * 16;
-
-                offscreenCtx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, itemX, itemY, 16, 16);
-            }
-        }
-
-        const width = offscreenCanvas.width;
-        const height = offscreenCanvas.height;
-        const imageData = offscreenCtx.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        const outlineData = new Uint8ClampedArray(data);
-        const outlinePixel = (x, y) => {
-            const index = (y * width + x) * 4;
-            outlineData[index] = 255;
-            outlineData[index + 1] = 255;
-            outlineData[index + 2] = 255;
-            outlineData[index + 3] = 255;
-        };
-
-        for (let y = 0; y < height; y++) {
-            for (let x = 0; x < width; x++) {
-                const index = (y * width + x) * 4;
-                if (data[index + 3] === 0) {
-                    const neighbors = [
-                        { x: x - 1, y: y },
-                        { x: x + 1, y: y },
-                        { x: x, y: y - 1 },
-                        { x: x, y: y + 1 },
-                        { x: x - 1, y: y - 1 },
-                        { x: x + 1, y: y - 1 },
-                        { x: x - 1, y: y + 1 },
-                        { x: x + 1, y: y + 1 }
-                    ];
-
-                    for (const neighbor of neighbors) {
-                        if (
-                            neighbor.x >= 0 && neighbor.x < width &&
-                            neighbor.y >= 0 && neighbor.y < height
-                        ) {
-                            const neighborIndex = (neighbor.y * width + neighbor.x) * 4;
-                            if (data[neighborIndex + 3] !== 0) {
-                                outlinePixel(x, y);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        for (let x = 0; x < width; x++) {
-            if (data[x * 4 + 3] !== 0) outlinePixel(x, 0);
-            if (data[((height - 1) * width + x) * 4 + 3] !== 0) outlinePixel(x, height - 1);
-        }
-        for (let y = 0; y < height; y++) {
-            if (data[(y * width) * 4 + 3] !== 0) outlinePixel(0, y);
-            if (data[(y * width + (width - 1)) * 4 + 3] !== 0) outlinePixel(width - 1, y);
-        }
-
-        const outlinedImageData = new ImageData(outlineData, width, height);
-        offscreenCtx.putImageData(outlinedImageData, 0, 0);
-        this.selectedCache.push({ id: object.id, image: offscreenCanvas });
-
-        return offscreenCanvas;
     },
 
     render: function () {
@@ -594,15 +456,29 @@ var game = {
         render.updateUI(backgroundTileCount + tileCount, spriteCount);
         render.highlightOverlappingTiles();
     
-        if (typeof debug_utils_window !== 'undefined') {
-            if (debug_utils_window.showCollisionBoundaries && typeof debug_utils_window.renderCollisionBoundaries === 'function') {
-                debug_utils_window.renderCollisionBoundaries();
+        effects.letterboxEffect.update();  // Update the effect state
+        effects.letterboxEffect.render();  // Draw the letterbox effect
+    
+    // Check if 'edit_mode_window' exists and render editor elements
+    if (utils.objExists('edit_mode_window')) {
+        edit_mode_window.renderSelectionBox();  // Render selection box
+        edit_mode_window.renderBrush();         // Render brush in brush mode
+        edit_mode_window.renderSelectedTiles(); // Render selected tiles
+
+        // Add the lasso rendering here
+        edit_mode_window.renderLasso();         // Render the lasso path
+    }
+    
+        // Check if 'ui_console_tab_window' exists and call its methods if available
+        if (utils.objExists('ui_console_tab_window')) {
+            if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
+                ui_console_tab_window.renderCollisionBoundaries();
             }
-            if (debug_utils_window.showWalkableTiles && typeof debug_utils_window.renderNearestWalkableTile === 'function') {
-                debug_utils_window.renderNearestWalkableTile();
+            if (utils.objExists('ui_console_tab_window.renderNearestWalkableTile')) {
+                ui_console_tab_window.renderNearestWalkableTile();
             }
-            if (debug_utils_window.showObjectCollision && typeof debug_utils_window.renderObjectCollision === 'function') {
-                debug_utils_window.renderObjectCollision();
+            if (utils.objExists('ui_console_tab_window.renderObjectCollision')) {
+                ui_console_tab_window.renderObjectCollision();
             }
         }
     },    
@@ -633,21 +509,30 @@ var game = {
     
         this.render();
     
-        const fpsUpdateInterval = 100;
+        const fpsUpdateInterval = 100;  // Update FPS and chart every 100ms
         if (timestamp - this.lastFpsUpdateTime >= fpsUpdateInterval) {
-            var debugFPS = document.getElementById('gameFps');
-            var fps = 1000 / timeElapsed;
+            const debugFPS = document.getElementById('gameFps');
+            const fps = 1000 / timeElapsed;
+    
+            // Update FPS display
             if (debugFPS) {
                 debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
             }
+    
+            // Update FPS chart if fps_monitor_window exists
+            if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
+                fps_monitor_window.renderChart(fps);
+            }
+    
             this.lastFpsUpdateTime = timestamp;
         }
     
-        var gameTimeDisplay = document.getElementById('game_time');
+        const gameTimeDisplay = document.getElementById('game_time');
         if (gameTimeDisplay) {
             gameTimeDisplay.innerHTML = this.gameTime.display();
         }
     
         requestAnimationFrame(this.loop.bind(this));
     }
+    
 };

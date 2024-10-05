@@ -1,5 +1,10 @@
+<?php
+include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+if ($auth) {
+?>
+
 <div data-window="ui_overlay_window" data-close="false">
-  <div id="ui_overlay_window" class="w-80 fixed top-4 right-4 z-10 flex flex-col bg-gray-900/80 text-white rounded-md shadow-lg overflow-hidden">
+  <div class="w-80 fixed top-4 right-4 z-10 flex flex-col bg-gray-900/80 text-white rounded-md shadow-lg overflow-hidden">
     <!-- Top Section with Time and Coins -->
     <div class="bg-gray-800 flex items-center justify-between rounded-t-md">
       <span id="game_time" class="text-sm font-medium text-gray-400 p-3">00:00</span>
@@ -17,10 +22,10 @@
       </div>
       <div class="flex space-x-2">
         <div class="w-1/2 bg-gray-800 rounded-full h-2">
-          <div id="health-bar" class="bg-red-500 h-2 rounded-full" style="width: 75%;"></div>
+          <div id="health-bar" class="bg-red-500 h-2 rounded-full"></div>
         </div>
         <div class="w-1/2 bg-gray-800 rounded-full h-2">
-          <div id="energy-bar" class="bg-blue-500 h-2 rounded-full" style="width: 50%;"></div>
+          <div id="energy-bar" class="bg-blue-500 h-2 rounded-full"></div>
         </div>
       </div>
     </div>
@@ -172,3 +177,7 @@ completeReload: function() {
     ui_overlay_window.start();
   </script>
 </div>
+
+<?php
+}
+?>

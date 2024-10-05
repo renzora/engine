@@ -29,6 +29,8 @@ var input = {
         window.addEventListener('resize', (e) => game.resizeCanvas(e));
         window.addEventListener('gamepada', (e) => this.gamepadAButton(e));
         window.addEventListener('gamepadb', (e) => this.gamepadBButton(e));
+        window.addEventListener('gamepadyPressed', (e) => this.gamepadYButtonPressed(e));
+        window.addEventListener('gamepadyReleased', (e) => this.gamepadYButtonReleased(e));
         window.addEventListener('gamepadxPressed', (e) => input.gamepadXButton(e));
         window.addEventListener('gamepadxReleased', (e) => input.gamepadXButtonReleased(e));
         window.addEventListener('gamepady', (e) => this.gamepadYButton(e));
@@ -59,6 +61,15 @@ var input = {
             ui_overlay_window.stopReloading(); // Stop the reloading process if the button is released
         }
         ui_overlay_window.justReloaded = false; // Allow reloading to start again on next press
+    },
+
+    gamepadYButtonPressed: function(e) {
+        this.isYButtonHeld = true; // Set the flag to true when Y button is held
+    },
+
+    // Function to handle Y button release
+    gamepadYButtonReleased: function(e) {
+        this.isYButtonHeld = false; // Set the flag to false when Y button is released
     },
 
     gamepadLeftTrigger: function() {
@@ -322,6 +333,8 @@ var input = {
     },
 
     keyDown: function(e) {
+        if (game.isEditMode) return; // Prevent key presses in edit mode
+        if (!game.allowControls) return;
         game.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             if (e.key === 'Tab') {
@@ -346,18 +359,19 @@ var input = {
             this.handleKeyDown(e);
         }
     },
-
+    
     keyUp: function(e) {
+        if (game.isEditMode) return; // Prevent key releases in edit mode
         game.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             e.preventDefault(); // Prevent default action for keyUp
             this.handleKeyUp(e);
         }
-
+    
         if (e.key.toLowerCase() === 'x') {
             ui_overlay_window.stopReloading(); // Stop the reloading process if 'X' is released
         }
-    },    
+    },
 
     handleKeyDown: function(e) {
         this.handleControlStateChange(e, true);
@@ -427,43 +441,46 @@ var input = {
     },
 
     mouseDown: function(e) {
+        if (game.isEditMode) return; // Prevent mouse clicks in edit mode
         if (e.button === 1) {
             this.isDragging = true;
             this.startX = e.clientX;
             this.startY = e.clientY;
             document.body.classList.add('move-cursor');
         }
-
+    
         // Cancel pathfinding on right-click
         if (e.button === 2) { // Right mouse button
             this.cancelPathfinding(game.mainSprite);
         }
     },
-
+    
     mouseMove: function(e) {
+        if (game.isEditMode) return; // Prevent mouse movement in edit mode
         if (this.isDragging) {
             const dx = (this.startX - e.clientX) / game.zoomLevel;
             const dy = (this.startY - e.clientY) / game.zoomLevel;
-
+    
             camera.cameraX = Math.max(0, Math.min(game.worldWidth - window.innerWidth / game.zoomLevel, camera.cameraX + dx));
             camera.cameraY = Math.max(0, Math.min(game.worldHeight - window.innerHeight / game.zoomLevel, camera.cameraY + dy));
-
+    
             this.startX = e.clientX;
             this.startY = e.clientY;
         }
-
+    
         // Update mouse coordinates for target aiming
         if (game.mainSprite && game.mainSprite.targetAim) {
             const rect = game.canvas.getBoundingClientRect();
             const newX = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
             const newY = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-
+    
             game.mainSprite.targetX = newX;
             game.mainSprite.targetY = newY;
         }
     },
-
+    
     mouseUp: function(e) {
+        if (game.isEditMode) return; // Prevent mouse up in edit mode
         this.isDragging = false;
         document.body.classList.remove('move-cursor');
     },
@@ -481,6 +498,7 @@ var input = {
     
 
     leftClick: function(e) {
+        if (game.isEditMode) return; // Prevent left clicks in edit mode
         game.updateInputMethod('keyboard');
         console.log("left button clicked");
         if (e.target.matches('[data-close], [data-esc]')) {
@@ -489,8 +507,9 @@ var input = {
             modal.close(parent);
         }
     },
-
+    
     rightClick: function(e) {
+        if (game.isEditMode) return; // Prevent right clicks in edit mode
         e.preventDefault();
         game.updateInputMethod('keyboard');
         console.log("right button clicked");
@@ -526,13 +545,15 @@ var input = {
     },
 
     updateSpriteDirections: function() {
+        if (!game.allowControls) return; // Prevent control updates when controls are disabled
+    
         const combinedDirections = {
             up: (gamepad.directions && gamepad.directions.up) || this.directions.up,
             down: (gamepad.directions && gamepad.directions.down) || this.directions.down,
             left: (gamepad.directions && gamepad.directions.left) || this.directions.left,
             right: (gamepad.directions && gamepad.directions.right) || this.directions.right
         };
-
+    
         const directions = ['up', 'down', 'left', 'right'];
         directions.forEach(direction => {
             if (game.mainSprite) {
@@ -543,7 +564,7 @@ var input = {
                 }
             }
         });
-
+    
         // Stop walking audio if no directions are pressed
         if (game.mainSprite && !combinedDirections.up && !combinedDirections.down && !combinedDirections.left && !combinedDirections.right) {
             audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);

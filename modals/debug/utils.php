@@ -10,32 +10,20 @@
         <div class='container text-light window_body p-2 text-white' style="height: 400px;">
             <div id="debug_utils_window_tabs">
                 <div id="tabs" class="flex border-b border-gray-300">
-                    <button class="tab text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 focus:outline-none" data-tab="sprite-tab">Sprite</button>
-                    <button class="tab text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 focus:outline-none" data-tab="collisions-tab">Collisions</button>
                     <button class="tab text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 focus:outline-none" data-tab="debug-tools-tab">Tools</button>
-                    <button class="tab text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 focus:outline-none" data-tab="enemy-tab">Enemy</button>
-                </div>
-                <div class="tab-content p-4 hidden text-white" data-tab-content="sprite-tab">
-                    <p>Nearest Walkable Tile: <span id="nearest_tile"></span></p>
-                    <p>Current Sprite Position: <span id="sprite_position"></span></p>
-                    <p>Sprite Tile X: <span id="sprite_tile_x"></span></p>
-                    <p>Sprite Tile Y: <span id="sprite_tile_y"></span></p>
-                </div>
-                <div class="tab-content p-4 hidden text-white" data-tab-content="collisions-tab">
-                    <p>Collisions: <span id="collisions_info"></span></p>
-                    <p>Collision Boundaries: <span id="collision_boundaries"></span></p>
+                    <button class="tab text-white bg-gray-800 hover:bg-gray-700 px-4 py-2 focus:outline-none" data-tab="sprite-tab">Sprite</button>
                 </div>
                 <div class="tab-content p-4 hidden text-white" data-tab-content="debug-tools-tab">
                     <p>Camera Position: <span id="camera_position"></span></p>
                     <div>
-        <input type="checkbox" id="show_collision_boundaries" onchange="debug_utils_window.toggleCollisionBoundaries()" checked> Show Collision Boundaries
-    </div>
-    <div>
-        <input type="checkbox" id="show_walkable_tiles" onchange="debug_utils_window.toggleWalkableTiles()" checked> Show Nearest Walkable Tile
-    </div>
-    <div>
-        <input type="checkbox" id="show_object_collision" onchange="debug_utils_window.toggleObjectCollision()"> Show Object Collision
-    </div>
+                        <input type="checkbox" id="show_collision_boundaries" onchange="debug_utils_window.toggleCollisionBoundaries()" checked> Show Collision Boundaries
+                    </div>
+                    <div>
+                        <input type="checkbox" id="show_walkable_tiles" onchange="debug_utils_window.toggleWalkableTiles()" checked> Show Nearest Walkable Tile
+                    </div>
+                    <div>
+                        <input type="checkbox" id="show_object_collision" onchange="debug_utils_window.toggleObjectCollision()"> Show Object Collision
+                    </div>
                     <div>
                         <label for="attack_slider">Attack:</label>
                         <input type="range" id="attack_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateAttribute('attack', this.value)">
@@ -52,9 +40,9 @@
                         <span id="intensity_value">50</span>
                     </div>
                 </div>
-                <div class="tab-content p-4 hidden text-white" data-tab-content="enemy-tab">
+                <div class="tab-content p-4 hidden text-white" data-tab-content="sprite-tab">
                     <p>Select Sprite:</p>
-                    <select id="enemy_select" class="mb-3" style="color: black;" onchange="debug_utils_window.updateSelectedEnemy(this.value)">
+                    <select id="sprite_select" class="mb-3" style="color: black;" onchange="debug_utils_window.updateSelectedSprite(this.value)">
                         <option value="">Select a sprite</option>
                     </select>
 
@@ -63,7 +51,7 @@
                     </div>
 
                     <div>
-                        <input type="checkbox" id="is_enemy" onchange="debug_utils_window.updateEnemyAttribute('isEnemy', this.checked)"> Is Enemy
+                        <input type="checkbox" id="is_sprite_enemy" onchange="debug_utils_window.updateSpriteAttribute('isEnemy', this.checked)"> Is Enemy
                     </div>
 
                     <div>
@@ -71,104 +59,98 @@
                     </div>
 
                     <div>
-                        <label for="enemy_attack_slider">Attack:</label>
-                        <input type="range" id="enemy_attack_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateEnemyAttribute('attack', this.value)">
-                        <span id="enemy_attack_value">100</span>
+                        <label for="sprite_attack_slider">Attack:</label>
+                        <input type="range" id="sprite_attack_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateSpriteAttribute('attack', this.value)">
+                        <span id="sprite_attack_value">100</span>
                     </div>
                     <div>
-                        <label for="enemy_maxRadius_slider">Max Range:</label>
-                        <input type="range" id="enemy_maxRadius_slider" min="0" max="500" step="1" value="30" onchange="debug_utils_window.updateEnemyAttribute('maxRange', this.value)">
-                        <span id="enemy_maxRange_value">30</span>
+                        <label for="sprite_maxRadius_slider">Max Range:</label>
+                        <input type="range" id="sprite_maxRadius_slider" min="0" max="500" step="1" value="30" onchange="debug_utils_window.updateSpriteAttribute('maxRange', this.value)">
+                        <span id="sprite_maxRange_value">30</span>
                     </div>
                     <div>
-                        <label for="enemy_defense_slider">Defense:</label>
-                        <input type="range" id="enemy_defense_slider" min="0" max="100" step="1" value="50" onchange="debug_utils_window.updateEnemyAttribute('defense', this.value)">
-                        <span id="enemy_defense_value">50</span>
+                        <label for="sprite_defense_slider">Defense:</label>
+                        <input type="range" id="sprite_defense_slider" min="0" max="100" step="1" value="50" onchange="debug_utils_window.updateSpriteAttribute('defense', this.value)">
+                        <span id="sprite_defense_value">50</span>
                     </div>
                     <div>
-                        <label for="enemy_intensity_slider">Intensity:</label>
-                        <input type="range" id="enemy_intensity_slider" min="0" max="100" step="1" value="50" onchange="debug_utils_window.updateEnemyAttribute('intensity', this.value)">
-                        <span id="enemy_intensity_value">50</span>
+                        <label for="sprite_intensity_slider">Intensity:</label>
+                        <input type="range" id="sprite_intensity_slider" min="0" max="100" step="1" value="50" onchange="debug_utils_window.updateSpriteAttribute('intensity', this.value)">
+                        <span id="sprite_intensity_value">50</span>
                     </div>
                     <div>
-                        <label for="enemy_health_slider">Health:</label>
-                        <input type="range" id="enemy_health_slider" min="0" max="100" step="1" value="100" onchange="debug_utils_window.updateEnemyAttribute('health', this.value)">
-                        <span id="enemy_health_value">100</span>
+                        <label for="sprite_health_slider">Health:</label>
+                        <input type="range" id="sprite_health_slider" min="0" max="100" step="1" value="100" onchange="debug_utils_window.updateSpriteHealth(this.value)">
+                        <span id="sprite_health_value">100</span>
                     </div>
-
                     <div>
-                        <label for="enemy_speed_slider">Speed:</label>
-                        <input type="range" id="enemy_speed_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateEnemyAttribute('speed', this.value)">
-                        <span id="enemy_Speed_value">100</span>
+                        <label for="sprite_energy_slider">Energy:</label>
+                        <input type="range" id="sprite_energy_slider" min="0" max="100" step="1" value="100" onchange="debug_utils_window.updateSpriteEnergy(this.value)">
+                        <span id="sprite_energy_value">100</span>
+                    </div>
+                    <div>
+                        <label for="sprite_speed_slider">Speed:</label>
+                        <input type="range" id="sprite_speed_slider" min="0" max="200" step="1" value="100" onchange="debug_utils_window.updateSpriteAttribute('speed', this.value)">
+                        <span id="sprite_speed_value">100</span>
                     </div>
 
                     <div class="mt-2">
-                        <button class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="debug_utils_window.applyToAllEnemies()">Apply to All</button>
+                        <button class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" onclick="debug_utils_window.applyToAllSprites()">Apply to All</button>
                     </div>
 
                     <div class="mt-4">Appearance</div>
 
                     <div>
-                        <label for="enemy_body_slider">Body:</label>
-                        <input type="range" id="enemy_body_slider" min="0" max="5" step="1" value="1" onchange="debug_utils_window.updateEnemyAttribute('body', this.value)">
-                        <span id="enemy_body_value">1</span>
+                        <label for="sprite_body_slider">Body:</label>
+                        <input type="range" id="sprite_body_slider" min="0" max="5" step="1" value="1" onchange="debug_utils_window.updateSpriteAttribute('body', this.value)">
+                        <span id="sprite_body_value">1</span>
                     </div>
                     <div>
-                        <label for="enemy_head_slider">Head:</label>
-                        <input type="range" id="enemy_head_slider" min="0" max="5" step="1" value="1" onchange="debug_utils_window.updateEnemyAttribute('head', this.value)">
-                        <span id="enemy_head_value">1</span>
+                        <label for="sprite_head_slider">Head:</label>
+                        <input type="range" id="sprite_head_slider" min="0" max="5" step="1" value="1" onchange="debug_utils_window.updateSpriteAttribute('head', this.value)">
+                        <span id="sprite_head_value">1</span>
                     </div>
                     <div>
-                        <label for="enemy_eyes_slider">Eyes:</label>
-                        <input type="range" id="enemy_eyes_slider" min="0" max="5" step="1" value="1" onchange="debug_utils_window.updateEnemyAttribute('eyes', this.value)">
-                        <span id="enemy_eyes_value">1</span>
+                        <label for="sprite_eyes_slider">Eyes:</label>
+                        <input type="range" id="sprite_eyes_slider" min="0" max="5" step="1" value="1" onchange="debug_utils_window.updateSpriteAttribute('eyes', this.value)">
+                        <span id="sprite_eyes_value">1</span>
                     </div>
                     <div>
-                        <label for="enemy_hair_slider">Hair:</label>
-                        <input type="range" id="enemy_hair_slider" min="0" max="29" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('hair', this.value)">
-                        <span id="enemy_hair_value">0</span>
+                        <label for="sprite_hair_slider">Hair:</label>
+                        <input type="range" id="sprite_hair_slider" min="0" max="29" step="1" value="0" onchange="debug_utils_window.updateSpriteAttribute('hair', this.value)">
+                        <span id="sprite_hair_value">0</span>
                     </div>
                     <div>
-                        <label for="enemy_outfit_slider">Outfit:</label>
-                        <input type="range" id="enemy_outfit_slider" min="0" max="5" step="1" value="2" onchange="debug_utils_window.updateEnemyAttribute('outfit', this.value)">
-                        <span id="enemy_outfit_value">2</span>
+                        <label for="sprite_outfit_slider">Outfit:</label>
+                        <input type="range" id="sprite_outfit_slider" min="0" max="5" step="1" value="2" onchange="debug_utils_window.updateSpriteAttribute('outfit', this.value)">
+                        <span id="sprite_outfit_value">2</span>
                     </div>
                     <div>
-                        <label for="enemy_facial_slider">Facial:</label>
-                        <input type="range" id="enemy_facial_slider" min="0" max="3" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('facial', this.value)">
-                        <span id="enemy_facial_value">0</span>
+                        <label for="sprite_facial_slider">Facial:</label>
+                        <input type="range" id="sprite_facial_slider" min="0" max="3" step="1" value="0" onchange="debug_utils_window.updateSpriteAttribute('facial', this.value)">
+                        <span id="sprite_facial_value">0</span>
                     </div>
                     <div>
-                        <label for="enemy_hat_slider">Hat:</label>
-                        <input type="range" id="enemy_hat_slider" min="0" max="6" step="1" value="4" onchange="debug_utils_window.updateEnemyAttribute('hat', this.value)">
-                        <span id="enemy_hat_value">4</span>
+                        <label for="sprite_hat_slider">Hat:</label>
+                        <input type="range" id="sprite_hat_slider" min="0" max="6" step="1" value="4" onchange="debug_utils_window.updateSpriteAttribute('hat', this.value)">
+                        <span id="sprite_hat_value">4</span>
                     </div>
                     <div>
-                        <label for="enemy_glasses_slider">Glasses:</label>
-                        <input type="range" id="enemy_glasses_slider" min="0" max="2" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('glasses', this.value)">
-                        <span id="enemy_glasses_value">0</span>
+                        <label for="sprite_glasses_slider">Glasses:</label>
+                        <input type="range" id="sprite_glasses_slider" min="0" max="2" step="1" value="0" onchange="debug_utils_window.updateSpriteAttribute('glasses', this.value)">
+                        <span id="sprite_glasses_value">0</span>
                     </div>
                     
                     <div class="mt-4">Position</div>
                     <div>
-                        <label for="enemy_x_slider">X:</label>
-                        <input type="range" id="enemy_x_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('x', this.value)">
-                        <span id="enemy_x_value">0</span>
+                        <label for="sprite_x_slider">X:</label>
+                        <input type="range" id="sprite_x_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateSpriteAttribute('x', this.value)">
+                        <span id="sprite_x_value">0</span>
                     </div>
                     <div>
-                        <label for="enemy_y_slider">Y:</label>
-                        <input type="range" id="enemy_y_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('y', this.value)">
-                        <span id="enemy_y_value">0</span>
-                    </div>
-                    <div>
-                        <label for="enemy_top_slider">Top:</label>
-                        <input type="range" id="enemy_top_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('top', this.value)">
-                        <span id="enemy_top_value">0</span>
-                    </div>
-                    <div>
-                        <label for="enemy_left_slider">Left:</label>
-                        <input type="range" id="enemy_left_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateEnemyAttribute('left', this.value)">
-                        <span id="enemy_left_value">0</span>
+                        <label for="sprite_y_slider">Y:</label>
+                        <input type="range" id="sprite_y_slider" min="0" max="500" step="1" value="0" onchange="debug_utils_window.updateSpriteAttribute('y', this.value)">
+                        <span id="sprite_y_value">0</span>
                     </div>
                 </div>
             </div>
@@ -180,12 +162,12 @@
     showCollisionBoundaries: true,
     showWalkableTiles: true,
     showAttackRadius: false,
-    selectedEnemy: null,
+    selectedSprite: null,
     showObjectCollision: false,
     start: function() {
-        ui.initTabs('debug_utils_window_tabs', 'sprite-tab'); // Initialize the first tab as active
+        ui.initTabs('debug_utils_window_tabs', 'debug-tools-tab'); // Initialize the first tab as active
         this.updateDebugInfo();
-        this.populateEnemySelect(); // Populate the enemy select box
+        this.populateSpriteSelect(); // Populate the sprite select box
         this.interval = setInterval(this.updateDebugInfo.bind(this), 1000); // Update every second
     },
     unmount: function() {
@@ -217,62 +199,100 @@
             document.getElementById(attribute + '_value').innerText = value;
         }
     },
-    updateEnemyAttribute: function(attribute, value) {
-        if (this.selectedEnemy) {
+    updateSpriteAttribute: function(attribute, value) {
+        if (this.selectedSprite) {
             if (attribute === 'isEnemy') {
-                this.selectedEnemy[attribute] = value;
+                this.selectedSprite[attribute] = value;
             } else {
-                this.selectedEnemy[attribute] = parseInt(value);
-                document.getElementById('enemy_' + attribute + '_value').innerText = value;
+                this.selectedSprite[attribute] = parseInt(value);
+                document.getElementById('sprite_' + attribute + '_value').innerText = value;
             }
         }
     },
-    updateSelectedEnemy: function(enemyId) {
-        this.selectedEnemy = game.sprites[enemyId];
-        if (this.selectedEnemy) {
-            document.getElementById('is_enemy').checked = this.selectedEnemy.isEnemy;
-            document.getElementById('enemy_attack_slider').value = this.selectedEnemy.attack;
-            document.getElementById('enemy_attack_value').innerText = this.selectedEnemy.attack;
-            document.getElementById('enemy_maxRadius_slider').value = this.selectedEnemy.maxRange;
-            document.getElementById('enemy_maxRange_value').innerText = this.selectedEnemy.maxRange;
-            document.getElementById('enemy_defense_slider').value = this.selectedEnemy.defense;
-            document.getElementById('enemy_defense_value').innerText = this.selectedEnemy.defense;
-            document.getElementById('enemy_intensity_slider').value = this.selectedEnemy.intensity;
-            document.getElementById('enemy_intensity_value').innerText = this.selectedEnemy.intensity;
-            document.getElementById('enemy_health_slider').value = this.selectedEnemy.health;
-            document.getElementById('enemy_health_value').innerText = this.selectedEnemy.health;
-            document.getElementById('enemy_speed_slider').value = this.selectedEnemy.speed;
-            document.getElementById('enemy_Speed_value').innerText = this.selectedEnemy.speed;
-            document.getElementById('enemy_x_slider').value = this.selectedEnemy.x;
-            document.getElementById('enemy_x_value').innerText = this.selectedEnemy.x;
-            document.getElementById('enemy_y_slider').value = this.selectedEnemy.y;
-            document.getElementById('enemy_y_value').innerText = this.selectedEnemy.y;
-            document.getElementById('enemy_top_slider').value = this.selectedEnemy.top;
-            document.getElementById('enemy_top_value').innerText = this.selectedEnemy.top;
-            document.getElementById('enemy_left_slider').value = this.selectedEnemy.left;
-            document.getElementById('enemy_left_value').innerText = this.selectedEnemy.left;
+    updateSpriteHealth: function(value) {
+    if (this.selectedSprite) {
+        const newValue = parseInt(value);
+        if (!isNaN(newValue)) {
+            // Directly update the sprite's health
+            this.selectedSprite.updateHealth(newValue - this.selectedSprite.health);
+            document.getElementById('sprite_health_value').innerText = newValue;
+
+            // Update health bar in overlay if this is the main sprite
+            if (this.selectedSprite === game.mainSprite) {
+                const healthBar = document.getElementById('health-bar');
+                if (healthBar) {
+                    const healthPercentage = (this.selectedSprite.health / this.selectedSprite.maxHealth) * 100;
+                    healthBar.style.width = healthPercentage + '%';
+                }
+            }
+        }
+    }
+},
+
+updateSpriteEnergy: function(value) {
+    if (this.selectedSprite) {
+        const newValue = parseInt(value);
+        if (!isNaN(newValue)) {
+            // Directly update the sprite's energy
+            this.selectedSprite.updateEnergy(newValue - this.selectedSprite.energy);
+            document.getElementById('sprite_energy_value').innerText = newValue;
+
+            // Update energy bar in overlay if this is the main sprite
+            if (this.selectedSprite === game.mainSprite) {
+                const energyBar = document.getElementById('energy-bar');
+                if (energyBar) {
+                    const energyPercentage = (this.selectedSprite.energy / this.selectedSprite.maxEnergy) * 100;
+                    energyBar.style.width = energyPercentage + '%';
+                }
+            }
+        }
+    }
+},
+    updateSelectedSprite: function(spriteId) {
+        this.selectedSprite = game.sprites[spriteId];
+        if (this.selectedSprite) {
+            document.getElementById('is_sprite_enemy').checked = this.selectedSprite.isEnemy;
+            document.getElementById('sprite_attack_slider').value = this.selectedSprite.attack || 0;
+            document.getElementById('sprite_attack_value').innerText = this.selectedSprite.attack || 0;
+            document.getElementById('sprite_maxRadius_slider').value = this.selectedSprite.maxRange || 0;
+            document.getElementById('sprite_maxRange_value').innerText = this.selectedSprite.maxRange || 0;
+            document.getElementById('sprite_defense_slider').value = this.selectedSprite.defense || 0;
+            document.getElementById('sprite_defense_value').innerText = this.selectedSprite.defense || 0;
+            document.getElementById('sprite_intensity_slider').value = this.selectedSprite.intensity || 0;
+            document.getElementById('sprite_intensity_value').innerText = this.selectedSprite.intensity || 0;
+            document.getElementById('sprite_health_slider').value = this.selectedSprite.health || 100;
+            document.getElementById('sprite_health_value').innerText = this.selectedSprite.health || 100;
+            document.getElementById('sprite_energy_slider').value = this.selectedSprite.energy || 100;
+            document.getElementById('sprite_energy_value').innerText = this.selectedSprite.energy || 100;
+            document.getElementById('sprite_speed_slider').value = this.selectedSprite.speed || 0;
+            document.getElementById('sprite_speed_value').innerText = this.selectedSprite.speed || 0;
+            document.getElementById('sprite_x_slider').value = this.selectedSprite.x || 0;
+            document.getElementById('sprite_x_value').innerText = this.selectedSprite.x || 0;
+            document.getElementById('sprite_y_slider').value = this.selectedSprite.y || 0;
+            document.getElementById('sprite_y_value').innerText = this.selectedSprite.y || 0;
         }
     },
-    populateEnemySelect: function() {
-        const enemySelect = document.getElementById('enemy_select');
-        const selectedEnemyId = enemySelect.value; // Store the currently selected enemy ID
-        enemySelect.innerHTML = '<option value="">Select a sprite</option>';
+    populateSpriteSelect: function() {
+        const spriteSelect = document.getElementById('sprite_select');
+        const selectedSpriteId = spriteSelect.value; // Store the currently selected sprite ID
+        spriteSelect.innerHTML = '<option value="">Select a sprite</option>';
         for (const id in game.sprites) {
             const sprite = game.sprites[id];
             const option = document.createElement('option');
             option.value = id;
-            option.innerText = this.truncate(id, 30); // Truncate the text to 20 characters
-            enemySelect.appendChild(option);
+            option.innerText = this.truncate(id, 30); // Truncate the text to 30 characters
+            spriteSelect.appendChild(option);
         }
-        enemySelect.value = selectedEnemyId; // Set the selected value again
+        spriteSelect.value = selectedSpriteId; // Set the selected value again
     },
-    applyToAllEnemies: function() {
-        const attackValue = parseInt(document.getElementById('enemy_attack_slider').value);
-        const maxRangeValue = parseInt(document.getElementById('enemy_maxRadius_slider').value);
-        const defenseValue = parseInt(document.getElementById('enemy_defense_slider').value);
-        const intensityValue = parseInt(document.getElementById('enemy_intensity_slider').value);
-        const healthValue = parseInt(document.getElementById('enemy_health_slider').value);
-        const speedValue = parseInt(document.getElementById('enemy_speed_slider').value);
+    applyToAllSprites: function() {
+        const attackValue = parseInt(document.getElementById('sprite_attack_slider').value);
+        const maxRangeValue = parseInt(document.getElementById('sprite_maxRadius_slider').value);
+        const defenseValue = parseInt(document.getElementById('sprite_defense_slider').value);
+        const intensityValue = parseInt(document.getElementById('sprite_intensity_slider').value);
+        const healthValue = parseInt(document.getElementById('sprite_health_slider').value);
+        const energyValue = parseInt(document.getElementById('sprite_energy_slider').value);
+        const speedValue = parseInt(document.getElementById('sprite_speed_slider').value);
 
         for (const id in game.sprites) {
             const sprite = game.sprites[id];
@@ -281,231 +301,155 @@
                 sprite.maxRange = maxRangeValue;
                 sprite.defense = defenseValue;
                 sprite.intensity = intensityValue;
-                sprite.health = healthValue;
+                sprite.updateHealth(healthValue - sprite.health);
+                sprite.updateEnergy(energyValue - sprite.energy);
                 sprite.speed = speedValue;
             }
         }
     },
     updateDebugInfo: function() {
-    const nearestTiles = this.getNearestWalkableTiles();
-    const spritePosition = this.getCurrentSpritePosition();
-    const cameraPosition = this.getCameraPosition();
-    const collisions = this.getCollisions();
-    const collisionBoundaries = this.getCollisionBoundaries();
-    const sprite = game.mainSprite;
+        const cameraPosition = this.getCameraPosition();
+        document.getElementById('camera_position').innerText = cameraPosition;
 
-    document.getElementById('nearest_tile').innerText = nearestTiles.join(', ');
-    document.getElementById('sprite_position').innerText = spritePosition;
-    if (sprite) {
-        const tileX = Math.round(sprite.x / 16);
-        const tileY = Math.round(sprite.y / 16);
-        document.getElementById('sprite_tile_x').innerText = tileX;
-        document.getElementById('sprite_tile_y').innerText = tileY;
-        document.getElementById('attack_slider').value = sprite.attack;
-        document.getElementById('defense_slider').value = sprite.defense;
-        document.getElementById('intensity_slider').value = sprite.intensity;
-        document.getElementById('attack_value').innerText = sprite.attack;
-        document.getElementById('defense_value').innerText = sprite.defense;
-        document.getElementById('intensity_value').innerText = sprite.intensity;
-    } else {
-        document.getElementById('sprite_tile_x').innerText = "No sprite found";
-        document.getElementById('sprite_tile_y').innerText = "No sprite found";
-    }
+        // Update sprite select box
+        this.populateSpriteSelect();
+    },
+    renderObjectCollision: function() {
+        console.log("Rendering object collision...");
 
-    document.getElementById('camera_position').innerText = cameraPosition;
-    document.getElementById('collisions_info').innerText = collisions;
-    document.getElementById('collision_boundaries').innerText = collisionBoundaries;
+        if (!game.roomData || !game.roomData.items) return;
 
-    // Update enemy select box
-    this.populateEnemySelect();
-},
-renderObjectCollision: function() {
-    console.log("Rendering object collision...");
+        game.roomData.items.forEach(item => {
+            const itemData = game.objectData[item.id];
+            if (!itemData) return;
 
-    if (!game.roomData || !game.roomData.items) return;
+            const tileData = itemData[0]; // Assuming the first tile data group
+            const xCoordinates = item.x || [];
+            const yCoordinates = item.y || [];
 
-    game.roomData.items.forEach(item => {
-        const itemData = game.objectData[item.id];
-        if (!itemData) return;
+            // Assuming the 'w' field in tileData contains an array of collision points for polygons
+            if (tileData.w && Array.isArray(tileData.w)) {
+                const polygonPoints = tileData.w.map(point => ({
+                    x: point.x,
+                    y: point.y
+                }));
 
-        const tileData = itemData[0]; // Assuming the first tile data group
-        const xCoordinates = item.x || [];
-        const yCoordinates = item.y || [];
-
-        // Assuming the 'w' field in tileData contains an array of collision points for polygons
-        if (tileData.w && Array.isArray(tileData.w)) {
-            const polygonPoints = tileData.w.map(point => ({
-                x: point.x,
-                y: point.y
-            }));
-
-            // Offset polygon points based on item coordinates
-            const offsetX = xCoordinates[0] * 16;
-            const offsetY = yCoordinates[0] * 16;
-            this.drawPolygon(polygonPoints, offsetX, offsetY);
-        }
-    });
-},
-
-drawPolygon: function(points, offsetX, offsetY, fillColor = 'rgba(255, 0, 0, 0.5)', borderColor = 'rgba(255, 0, 0, 1)') {
-    if (!points || points.length < 3) return; // A valid polygon needs at least 3 points
-
-    if (game.ctx) {
-        game.ctx.beginPath();
-        game.ctx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
-
-        // Draw lines to each subsequent point
-        for (let i = 1; i < points.length; i++) {
-            game.ctx.lineTo(points[i].x + offsetX, points[i].y + offsetY);
-        }
-
-        // Close the polygon
-        game.ctx.closePath();
-
-        // Fill the polygon
-        game.ctx.fillStyle = fillColor;
-        game.ctx.fill();
-
-        // Draw the border
-        game.ctx.strokeStyle = borderColor;
-        game.ctx.lineWidth = 1;
-        game.ctx.stroke();
-    } else {
-        console.error("Canvas context is not defined.");
-    }
-},
-
-
-    getNearestWalkableTiles: function() {
-        const sprite = game.mainSprite;
-        if (!sprite) return ["No sprite found"];
-        const gridX = Math.round(sprite.x / 16);
-        const gridY = Math.round(sprite.y / 16);
-        const directions = [
-            { x: 0, y: -1 }, // N
-            { x: 1, y: 0 },  // E
-            { x: 0, y: 1 },  // S
-            { x: -1, y: 0 }  // W
-        ];
-        const walkableTiles = [];
-        for (const direction of directions) {
-            const newX = gridX + direction.x;
-            const newY = gridY + direction.y;
-            if (collision.isTileWalkable(newX, newY) && !collision.check(newX * 16, newY * 16, sprite)) {
-                walkableTiles.push(`(${newX}, ${newY})`);
+                // Offset polygon points based on item coordinates
+                const offsetX = xCoordinates[0] * 16;
+                const offsetY = yCoordinates[0] * 16;
+                this.drawPolygon(polygonPoints, offsetX, offsetY);
             }
+        });
+    },
+
+    drawPolygon: function(points, offsetX, offsetY, fillColor = 'rgba(255, 0, 0, 0.5)', borderColor = 'rgba(255, 0, 0, 1)') {
+        if (!points || points.length < 3) return; // A valid polygon needs at least 3 points
+
+        if (game.ctx) {
+            game.ctx.beginPath();
+            game.ctx.moveTo(points[0].x + offsetX, points[0].y + offsetY);
+
+            // Draw lines to each subsequent point
+            for (let i = 1; i < points.length; i++) {
+                game.ctx.lineTo(points[i].x + offsetX, points[i].y + offsetY);
+            }
+
+            // Close the polygon
+            game.ctx.closePath();
+
+            // Fill the polygon
+            game.ctx.fillStyle = fillColor;
+            game.ctx.fill();
+
+            // Draw the border
+            game.ctx.strokeStyle = borderColor;
+            game.ctx.lineWidth = 1;
+            game.ctx.stroke();
+        } else {
+            console.error("Canvas context is not defined.");
         }
-        return walkableTiles.length > 0 ? walkableTiles : ["No walkable tile found"];
     },
-    getCurrentSpritePosition: function() {
-        const sprite = game.mainSprite;
-        if (!sprite) return "No sprite found";
-        return `Top: ${sprite.y}, Left: ${sprite.x}`;
-    },
+
     getCameraPosition: function() {
         return `X: ${camera.cameraX}, Y: ${camera.cameraY}`;
     },
-    getCollisions: function() {
-        const collisions = [];
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            if (collision.check(sprite.x, sprite.y, sprite)) {
-                collisions.push(`Sprite ${id} at (${sprite.x}, ${sprite.y})`);
-            }
-        }
-        return collisions.length > 0 ? collisions.join(", ") : "No collisions";
-    },
-    getCollisionBoundaries: function() {
-        const boundaries = [];
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            const boundary = {
-                left: sprite.x,
-                right: sprite.x + sprite.width,
-                top: sprite.y,
-                bottom: sprite.y + sprite.height
-            };
-            boundaries.push(`Sprite ${id}: ${JSON.stringify(boundary)}`);
-        }
-        return boundaries.join("; ");
-    },
     renderCollisionBoundaries: function() {
-    for (const id in game.sprites) {
-        const sprite = game.sprites[id];
-        const centerX = sprite.x + sprite.width / 2;
-        const centerY = sprite.y + sprite.height * 0.75; // Adjusted to half the sprite height
-        const radiusX = sprite.width / 2; // Semi-major axis (horizontal radius)
-        const radiusY = sprite.height / 4; // Semi-minor axis (vertical radius, half the bottom half)
-
-        game.ctx.save();
-        game.ctx.strokeStyle = 'red';
-        game.ctx.lineWidth = 1;
-
-        // Draw an oval (ellipse) for the collision boundary
-        game.ctx.beginPath();
-        game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
-        game.ctx.stroke();
-
-        game.ctx.restore();
-    }
-},
-renderNearestWalkableTile: function() {
-    for (const id in game.sprites) {
-        const sprite = game.sprites[id];
-        const gridX = Math.round(sprite.x / 16);
-        const gridY = Math.round(sprite.y / 16);
-
-        const directions = [
-            { x: 0, y: -1 }, // N
-            { x: 1, y: 0 },  // E
-            { x: 0, y: 1 },  // S
-            { x: -1, y: 0 }  // W
-        ];
-
-        directions.forEach(direction => {
-            const newX = gridX + direction.x;
-            const newY = gridY + direction.y;
-
-            const posX = newX * 16;
-            const posY = newY * 16;
-
-            const collisionDetected = collision.check(newX * 16, newY * 16, sprite);
-            const isWalkable = collision.isTileWalkable(newX, newY);
-
-            if (collisionDetected || !isWalkable) {
-                game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-            } else {
-                game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
-            }
-
-            // Render the square tile
-            game.ctx.fillRect(posX, posY, 16, 16);
-
-            // Render oval collision boundaries starting halfway down the sprite
+        for (const id in game.sprites) {
+            const sprite = game.sprites[id];
             const centerX = sprite.x + sprite.width / 2;
-            const centerY = sprite.y + sprite.height * 0.75; // Adjusted center
-            const radiusX = sprite.width / 2;
-            const radiusY = sprite.height / 4; // Adjusted radius
+            const centerY = sprite.y + sprite.height * 0.75; // Adjusted to half the sprite height
+            const radiusX = sprite.width / 2; // Semi-major axis (horizontal radius)
+            const radiusY = sprite.height / 4; // Semi-minor axis (vertical radius, half the bottom half)
 
             game.ctx.save();
-            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+            game.ctx.strokeStyle = 'red';
             game.ctx.lineWidth = 1;
+
+            // Draw an oval (ellipse) for the collision boundary
             game.ctx.beginPath();
             game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
             game.ctx.stroke();
-            game.ctx.restore();
 
-            // Display grid information
-            game.ctx.fillStyle = 'white';
-            game.ctx.font = '2px Tahoma';
-            game.ctx.textAlign = 'left';
-            game.ctx.textBaseline = 'top';
-            game.ctx.fillText(`x:${newX}`, posX + 1, posY + 1);
-            game.ctx.fillText(`y:${newY}`, posX + 1, posY + 3);
-            game.ctx.fillText(`${posX},${posY}`, posX + 1, posY + 6);
-        });
-    }
-},
+            game.ctx.restore();
+        }
+    },
+    renderNearestWalkableTile: function() {
+        for (const id in game.sprites) {
+            const sprite = game.sprites[id];
+            const gridX = Math.round(sprite.x / 16);
+            const gridY = Math.round(sprite.y / 16);
+
+            const directions = [
+                { x: 0, y: -1 }, // N
+                { x: 1, y: 0 },  // E
+                { x: 0, y: 1 },  // S
+                { x: -1, y: 0 }  // W
+            ];
+
+            directions.forEach(direction => {
+                const newX = gridX + direction.x;
+                const newY = gridY + direction.y;
+
+                const posX = newX * 16;
+                const posY = newY * 16;
+
+                const collisionDetected = collision.check(newX * 16, newY * 16, sprite);
+                const isWalkable = collision.isTileWalkable(newX, newY);
+
+                if (collisionDetected || !isWalkable) {
+                    game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                } else {
+                    game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                }
+
+                // Render the square tile
+                game.ctx.fillRect(posX, posY, 16, 16);
+
+                // Render oval collision boundaries starting halfway down the sprite
+                const centerX = sprite.x + sprite.width / 2;
+                const centerY = sprite.y + sprite.height * 0.75; // Adjusted center
+                const radiusX = sprite.width / 2;
+                const radiusY = sprite.height / 4; // Adjusted radius
+
+                game.ctx.save();
+                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+                game.ctx.lineWidth = 1;
+                game.ctx.beginPath();
+                game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
+                game.ctx.stroke();
+                game.ctx.restore();
+
+                // Display grid information
+                game.ctx.fillStyle = 'white';
+                game.ctx.font = '2px Tahoma';
+                game.ctx.textAlign = 'left';
+                game.ctx.textBaseline = 'top';
+                game.ctx.fillText(`x:${newX}`, posX + 1, posY + 1);
+                game.ctx.fillText(`y:${newY}`, posX + 1, posY + 3);
+                game.ctx.fillText(`${posX},${posY}`, posX + 1, posY + 6);
+            });
+        }
+    },
     renderAttackRadius: function() {
         if (!this.showAttackRadius) return; // Check if the showAttackRadius is enabled
         for (const id in game.sprites) {
@@ -521,7 +465,7 @@ renderNearestWalkableTile: function() {
                 game.ctx.arc(sprite.x + sprite.width / 2, sprite.y + sprite.height / 2, dynamicStopRadius, 0, 2 * Math.PI);
                 game.ctx.stroke();
 
-                // Draw the enemy's name
+                // Draw the sprite's name
                 game.ctx.fillStyle = 'white';
                 game.ctx.font = '10px Arial';
                 game.ctx.textAlign = 'center';
@@ -532,8 +476,8 @@ renderNearestWalkableTile: function() {
         }
     },
     changeCameraToSelectedSprite: function() {
-        if (this.selectedEnemy) {
-            game.setActiveSprite(this.selectedEnemy.id);
+        if (this.selectedSprite) {
+            game.setActiveSprite(this.selectedSprite.id);
         }
     }
 };

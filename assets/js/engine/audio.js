@@ -166,13 +166,13 @@ var audio = {
             return;
         }
     
-        // Check if a sound is already playing on this channel
-        if (this.sources[channel] && this.sources[channel].length > 0) {
-            console.log(`Sound is already playing on channel: ${channel}. Rejecting request.`);
-            return; // Reject the request if a sound is already playing
+        // Check if this particular sound is already playing on this channel
+        const isPlaying = this.sources[channel]?.some(source => source.loopId === id && source.looping);
+        if (isPlaying) {
+            return; // Reject the request if this sound is already looping
         }
     
-        // Proceed with playing the sound if no sound is currently playing
+        // Proceed with playing the sound
         const source = this.audioContext.createBufferSource();
         source.buffer = audioBuffer;
         const gainNode = this.audioContext.createGain();
@@ -187,8 +187,8 @@ var audio = {
         }
     
         source.onended = () => {
+            // Remove the source from the sources array when it ends
             this.sources[channel] = this.sources[channel].filter(s => s !== source);
-            console.log(`Sound ended on channel: ${channel}`);
         };
     
         source.start();
@@ -197,7 +197,7 @@ var audio = {
             this.sources[channel] = [];
         }
         this.sources[channel].push(source);
-    },    
+    },      
 
     processQueue: function(channel) {
         if (!this.queues[channel] || this.queues[channel].length === 0) {
