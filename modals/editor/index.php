@@ -636,44 +636,6 @@ deleteSelectedObjects: function () {
     }
 },
 
-handleToggleSelection: function (mousePosition) {
-    const clickedObject = game.roomData.items.find(item => {
-        const itemRect = {
-            x: Math.min(...item.x) * 16,
-            y: Math.min(...item.y) * 16,
-            width: (Math.max(...item.x) - Math.min(...item.x) + 1) * 16,
-            height: (Math.max(...item.y) - Math.min(...item.y) + 1) * 16
-        };
-
-        return (
-            mousePosition.x >= itemRect.x &&
-            mousePosition.x <= itemRect.x + itemRect.width &&
-            mousePosition.y >= itemRect.y &&
-            mousePosition.y <= itemRect.y + itemRect.height
-        );
-    });
-
-    if (clickedObject) {
-        const objectIndex = this.selectedObjects.indexOf(clickedObject);
-
-        if (objectIndex === -1) {
-            // If the object is not already selected, add it to the selection
-            this.selectedObjects.push(clickedObject);
-            console.log("Object selected:", clickedObject);
-        } else {
-            // If the object is already selected, remove it from the selection
-            this.selectedObjects.splice(objectIndex, 1);
-            console.log("Object deselected:", clickedObject);
-        }
-
-        // Return true to indicate that an object was clicked
-        return true;
-    }
-
-    // Return false to indicate that no object was clicked
-    return false;
-},
-
 renderSelectedTiles: function() {
     if (this.selectedObjects.length > 0) {
         this.selectedObjects.forEach(selectedObject => {
@@ -818,6 +780,15 @@ updateSelectedObjects: function (shiftKeyHeld) {
         this.selectedObjects = affectedObjects;
     }
 
+    // Push the selected objects to the bottom of the roomData.items array to render them last
+    this.selectedObjects.forEach(obj => {
+        const objIndex = game.roomData.items.indexOf(obj);
+        if (objIndex > -1) {
+            game.roomData.items.splice(objIndex, 1);  // Remove from the current position
+            game.roomData.items.push(obj);            // Push to the bottom
+        }
+    });
+
     if (this.selectedObjects.length > 0) {
         this.changeMode('move');
     }
@@ -870,52 +841,70 @@ isPointInLasso: function (point) {
 },
 
 handleKeyDown: function (event) {
-        const key = event.key;
+    const key = event.key;
 
-        // Ctrl + A to select all objects
-        if (event.ctrlKey && key === 'a') {
-            this.selectAllObjects();
-            event.preventDefault();
+    // Ctrl + A to select all objects
+    if (event.ctrlKey && key === 'a') {
+        this.selectAllObjects();
+        event.preventDefault();
+    }
+    // Ctrl + C to copy selected objects
+    else if (event.ctrlKey && key === 'c') {
+        this.copySelectedObjects();
+    }
+    // Ctrl + V to paste copied objects
+    else if (event.ctrlKey && key === 'v') {
+        this.pasteCopiedObjects();
+    }
+    // Ctrl + X to cut selected objects
+    else if (event.ctrlKey && key === 'x') {
+        this.cutSelectedObjects();
+    }
+    // Ctrl + Z to undo
+    else if (event.ctrlKey && !event.shiftKey && key === 'z') {
+        this.undo();
+    }
+    // Ctrl + Shift + Z to redo
+    else if (event.ctrlKey && event.shiftKey && key === 'Z') {
+        this.redo();
+    }
+    // Ctrl + Up to push selected objects to the top
+    else if (event.ctrlKey && key === 'ArrowUp') {
+        this.pushSelectedObjectsToTop();
+    }
+    // Ctrl + Down to push selected objects to the bottom
+    else if (event.ctrlKey && key === 'ArrowDown') {
+        this.pushSelectedObjectsToBottom();
+    }
+    // Ctrl + Shift + S to space out selected objects
+    else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 's') {
+        this.spaceOutSelectedObjects();
+    }
+    // Delete or Backspace to delete selected objects
+    else if (key === 'Delete' || key === 'Backspace') {
+        this.deleteSelectedObjects();
+    }
+    // Shift key in 'move' mode, switch to the previous mode
+    else if (key === 'Shift' && game.editorMode === 'move') {
+        if (this.previousMode === 'lasso') {
+            this.changeMode('lasso');
+        } else if (this.previousMode === 'select') {
+            this.changeMode('select');
         }
-        // Ctrl + C to copy selected objects
-        else if (event.ctrlKey && key === 'c') {
-            this.copySelectedObjects();
+    }
+    // Shift key in 'lasso' mode, stay in lasso mode
+    else if (key === 'Shift' && game.editorMode === 'lasso') {
+        // Stay in lasso mode
+    }
+    // Mode switching based on number keys (1-7)
+    else {
+        const modeIndex = parseInt(key, 10) - 1;
+        if (modeIndex >= 0 && modeIndex < this.modes.length) {
+            const selectedMode = this.modes[modeIndex];
+            this.changeMode(selectedMode);
         }
-        // Ctrl + V to paste copied objects
-        else if (event.ctrlKey && key === 'v') {
-            this.pasteCopiedObjects();
-        }
-        // Ctrl + X to cut
-        else if (event.ctrlKey && key === 'x') {
-            this.cutSelectedObjects();
-        }
-        // Ctrl + Z to undo
-        else if (event.ctrlKey && !event.shiftKey && key === 'z') {
-            this.undo();
-        }
-        // Ctrl + Shift + Z to redo
-        else if (event.ctrlKey && event.shiftKey && key === 'Z') {
-            this.redo();
-        }
-        else if (key === 'Delete' || key === 'Backspace') {
-            this.deleteSelectedObjects();
-        }
-        else if (key === 'Shift' && game.editorMode === 'move') {
-            if (this.previousMode === 'lasso') {
-                this.changeMode('lasso');
-            } else if (this.previousMode === 'select') {
-                this.changeMode('select');
-            }
-        } else if (key === 'Shift' && game.editorMode === 'lasso') {
-            // Stay in lasso mode
-        } else {
-            const modeIndex = parseInt(key, 10) - 1;
-            if (modeIndex >= 0 && modeIndex < this.modes.length) {
-                const selectedMode = this.modes[modeIndex];
-                this.changeMode(selectedMode);
-            }
-        }
-    },
+    }
+},
 
 handleKeyUp: function (event) {
     const key = event.key;
@@ -1107,6 +1096,98 @@ stopSlidingCamera: function () {
         clearInterval(this.cameraSlidingInterval);
         this.cameraSlidingInterval = null;
     }
+},
+
+pushSelectedObjectsToTop: function () {
+    if (this.selectedObjects.length === 0) {
+        console.log('No objects selected to move.');
+        return;
+    }
+
+    // Save the current state to the undo stack before making changes
+    this.pushToUndoStack();
+
+    const items = game.roomData.items;
+
+    // Remove the selected objects from the array
+    this.selectedObjects.forEach(obj => {
+        const index = items.indexOf(obj);
+        if (index > -1) {
+            items.splice(index, 1); // Remove object from current position
+        }
+    });
+
+    // Add the selected objects to the top of the array
+    items.push(...this.selectedObjects);
+
+    console.log('Selected objects moved to the top of the render queue.');
+},
+
+pushSelectedObjectsToBottom: function () {
+    if (this.selectedObjects.length === 0) {
+        console.log('No objects selected to move.');
+        return;
+    }
+
+    // Save the current state to the undo stack before making changes
+    this.pushToUndoStack();
+
+    const items = game.roomData.items;
+
+    // Remove the selected objects from the array
+    this.selectedObjects.forEach(obj => {
+        const index = items.indexOf(obj);
+        if (index > -1) {
+            items.splice(index, 1); // Remove object from current position
+        }
+    });
+
+    // Add the selected objects to the bottom of the array
+    items.unshift(...this.selectedObjects);
+
+    console.log('Selected objects moved to the bottom of the render queue.');
+},
+
+spaceOutSelectedObjects: function () {
+    if (this.selectedObjects.length <= 1) {
+        console.log('Need more than one object to space out.');
+        return;
+    }
+
+    // Set the spacing distance in pixels, slightly increased for more separation
+    const spacingDistance = 48; // Increased to 3 tiles apart
+
+    // Calculate center position of all selected objects
+    let centerX = 0;
+    let centerY = 0;
+
+    this.selectedObjects.forEach(obj => {
+        centerX += Math.min(...obj.x) * 16;
+        centerY += Math.min(...obj.y) * 16;
+    });
+
+    centerX /= this.selectedObjects.length;
+    centerY /= this.selectedObjects.length;
+
+    // Space out each selected object around the center position
+    this.selectedObjects.forEach((obj, index) => {
+        const angle = (index / this.selectedObjects.length) * Math.PI * 2;
+        let newX = centerX + Math.cos(angle) * spacingDistance;
+        let newY = centerY + Math.sin(angle) * spacingDistance;
+
+        // Ensure new positions are whole numbers
+        newX = Math.round(newX);
+        newY = Math.round(newY);
+
+        const offsetX = (newX / 16) - Math.min(...obj.x);
+        const offsetY = (newY / 16) - Math.min(...obj.y);
+
+        // Move each object to the new position
+        obj.x = obj.x.map(coord => Math.round(coord + offsetX));
+        obj.y = obj.y.map(coord => Math.round(coord + offsetY));
+    });
+
+    console.log('Objects spaced out on the map with whole number positions.');
 },
 
 saveRoomData: function () {
