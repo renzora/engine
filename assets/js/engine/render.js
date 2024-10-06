@@ -74,6 +74,7 @@ var render = {
             ui_window.checkAndUpdateUIPositions();
         }
     },
+    
     renderBackground: function (viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
         let tileCount = 0;
         const bgTileData = game.objectData[game.sceneBg][0];
@@ -115,11 +116,13 @@ var render = {
                     const yCoordinates = roomItem.y || [];
     
                     let index = 0;
-                    for (let y = Math.min(...yCoordinates); y <= Math.max(...yCoordinates); y++) {
-                        for (let x = Math.min(...xCoordinates); x <= Math.max(...xCoordinates); x++) {
+                    for (let i = 0; i < yCoordinates.length; i++) {
+                        const y = yCoordinates[i];  // Use the decimal values for y
+                        for (let j = 0; j < xCoordinates.length; j++) {
+                            const x = xCoordinates[j];  // Use the decimal values for x
                             if (x >= viewportXStart && x < viewportXEnd && y >= viewportYStart && y < viewportYEnd) {
-                                const posX = x * 16;
-                                const posY = y * 16;
+                                const posX = x * 16;  // No rounding or flooring here
+                                const posY = y * 16;  // No rounding or flooring here
     
                                 let tileFrameIndex;
                                 if (Array.isArray(tileData.i[0])) {
@@ -147,7 +150,7 @@ var render = {
                             index++;
                         }
                     }
-
+    
                     this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
                     this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
                 }
@@ -184,7 +187,7 @@ var render = {
     
         // Return counts, including background tiles
         return { backgroundTileCount, tileCount, spriteCount };
-    },
+    },    
 
     renderPathfinderLine: function () {
         if (game.mainSprite && game.mainSprite.path && game.mainSprite.path.length > 0) {

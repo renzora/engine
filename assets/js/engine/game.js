@@ -433,18 +433,29 @@ var game = {
     },
 
     render: function () {
+        // Clear the canvas and reset transformations
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        
+        // Apply zoom and translate based on camera position
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
-        
+    
+        // Calculate the viewport boundaries
         this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
         this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
         this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
     
+        // Render all the tiles and sprites
         const { backgroundTileCount, tileCount, spriteCount } = render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
+        // Render selected item following the mouse cursor if the inventory window exists and an item is selected
+        if (utils.objExists('ui_console_tab_window') && ui_console_tab_window.selectedInventoryItem) {
+            ui_console_tab_window.render();
+        }
+    
+        // Render other game effects and utilities
         render.renderPathfinderLine();
         render.renderCarriedObjects();
         render.renderLightingEffects();
@@ -453,23 +464,23 @@ var game = {
         particles.renderParticles();
         effects.transitions.render();
     
+        // Update the UI with tile and sprite counts
         render.updateUI(backgroundTileCount + tileCount, spriteCount);
         render.highlightOverlappingTiles();
     
-        effects.letterboxEffect.update();  // Update the effect state
-        effects.letterboxEffect.render();  // Draw the letterbox effect
+        // Handle effects like letterbox
+        effects.letterboxEffect.update();
+        effects.letterboxEffect.render();
     
-    // Check if 'edit_mode_window' exists and render editor elements
-    if (utils.objExists('edit_mode_window')) {
-        edit_mode_window.renderSelectionBox();  // Render selection box
-        edit_mode_window.renderBrush();         // Render brush in brush mode
-        edit_mode_window.renderSelectedTiles(); // Render selected tiles
-
-        // Add the lasso rendering here
-        edit_mode_window.renderLasso();         // Render the lasso path
-    }
+        // Render edit mode if the window exists
+        if (utils.objExists('edit_mode_window')) {
+            edit_mode_window.renderSelectionBox();
+            edit_mode_window.renderBrush();
+            edit_mode_window.renderSelectedTiles();
+            edit_mode_window.renderLasso();
+        }
     
-        // Check if 'ui_console_tab_window' exists and call its methods if available
+        // Render additional utilities for the console tab window if they exist
         if (utils.objExists('ui_console_tab_window')) {
             if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
                 ui_console_tab_window.renderCollisionBoundaries();
@@ -481,7 +492,7 @@ var game = {
                 ui_console_tab_window.renderObjectCollision();
             }
         }
-    },    
+    },       
     
     loop: function(timestamp) {
         if (!this.lastTime) {

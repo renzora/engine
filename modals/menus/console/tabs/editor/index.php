@@ -15,231 +15,269 @@ if ($auth) {
 
 <script>
 var ui_console_tab_window = {
-  clonedObject: null,
-  isDraggingObject: false,
-  selectedItem: null, // To track the selected item from the inventory
+    selectedInventoryItem: null,
+    selectedInventoryItemPos: { x: 0, y: 0 },
+    isDragging: false,
 
-  start: function() {
-    this.displayItems();
+    start: function() {
+        this.displayItems();
+        this.addGlobalListeners();
+    },
 
-    // Wait until the game canvas is initialized before adding the event listener
-    this.waitForCanvasInitialization();
-  },
+    displayItems: function() {
+        var itemData = game.objectData;
+        var gridContainer = document.querySelector('.inventory-grid');
+        var tileSize = 16;
+        var tilesPerRow = 150;
 
-  waitForCanvasInitialization: function() {
-    const interval = setInterval(() => {
-      if (game.canvas) {
-        clearInterval(interval); // Clear the interval once the canvas is available
+        gridContainer.innerHTML = '';
 
-        // Add event listener to the game canvas for placing items
-        game.canvas.addEventListener('mouseup', this.handleMapClick.bind(this));
-        game.canvas.addEventListener('wheel', this.handleZoomChange.bind(this)); // Zoom handling
-        console.log("Canvas initialized, event listeners added.");
-      }
-    }, 100); // Check every 100ms if the game canvas is initialized
-  },
+        for (var itemId in itemData) {
+            if (itemData.hasOwnProperty(itemId)) {
+                var items = itemData[itemId];
+                if (items.length === 0) continue;
 
-  handleMapClick: function(event) {
-    console.log("Map clicked at:", event.clientX, event.clientY); // Log the click position on the map
+                var itemGroupElement = document.createElement('div');
+                itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
 
-    if (this.isDraggingObject && this.clonedObject) {
-        // Remove the cloned object from the DOM
-        document.body.removeChild(this.clonedObject);
-        this.isDraggingObject = false;
-        this.clonedObject = null;
+                items.forEach(function(item) {
+                    const tilesetImage = assets.load(item.t);
+                    const itemCanvas = document.createElement('canvas');
+                    const ctx = itemCanvas.getContext('2d');
 
-        // Convert mouse position to game coordinates using the existing game.canvas
+                    const maxCol = item.a;
+                    const maxRow = item.b;
+                    itemCanvas.width = (maxCol + 1) * tileSize;
+                    itemCanvas.height = (maxRow + 1) * tileSize;
+
+                    let framesToRender = [];
+
+                    if (item.d && Array.isArray(item.i[0])) {
+                        framesToRender = item.i[0];
+                    } else if (Array.isArray(item.i[0])) {
+                        framesToRender = item.i.flat();
+                    } else {
+                        framesToRender = item.i.map(frame => {
+                            if (typeof frame === 'string' && frame.includes('-')) {
+                                return render.parseRange(frame);
+                            }
+                            return [frame];
+                        }).flat();
+                    }
+
+                    framesToRender.forEach((frame, index) => {
+                        const srcX = (frame % tilesPerRow) * tileSize;
+                        const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+
+                        const destX = (index % (maxCol + 1)) * tileSize;
+                        const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+
+                        ctx.drawImage(
+                            tilesetImage, 
+                            srcX, srcY, tileSize, tileSize, 
+                            destX, destY, tileSize, tileSize 
+                        );
+                    });
+
+                    itemCanvas.setAttribute('data-item-id', itemId);
+
+                    const canvasContainer = document.createElement('div');
+                    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden rounded-lg shadow-md transition duration-300 transform hover:scale-105';
+                    itemCanvas.className += ' w-full h-full object-contain';
+
+                    itemCanvas.addEventListener('mousedown', ui_console_tab_window.handleMouseDown);
+
+                    canvasContainer.appendChild(itemCanvas);
+                    itemGroupElement.appendChild(canvasContainer);
+                });
+
+                gridContainer.appendChild(itemGroupElement);
+            }
+        }
+    },
+
+    render: function() {
+        const itemData = game.objectData[this.selectedInventoryItem][0];
+        if (!itemData) return;
+
+        const objectWidth = (itemData.a + 1) * 16;
+        const objectHeight = (itemData.b + 1) * 16;
+
+        let posX = this.selectedInventoryItemPos.x - objectWidth / 2;
+        let posY = this.selectedInventoryItemPos.y - objectHeight / 2;
+
+        posX = Math.round(posX);
+        posY = Math.round(posY);
+
+        const parseRange = (rangeString) => {
+            const [start, end] = rangeString.split('-').map(Number);
+            const rangeArray = [];
+            for (let i = start; i <= end; i++) {
+                rangeArray.push(i);
+            }
+            return rangeArray;
+        };
+
+        let frameIndices = [];
+        if (typeof itemData.i[0] === 'string' && itemData.i[0].includes('-')) {
+            frameIndices = parseRange(itemData.i[0]);
+        } else {
+            frameIndices = itemData.i;
+        }
+
+        const img = assets.load(itemData.t);
+        if (!img) return;
+
+        let frameIndex = 0;
+        for (let row = 0; row < itemData.b + 1; row++) {
+            for (let col = 0; col < itemData.a + 1; col++) {
+                if (frameIndex >= frameIndices.length) break;
+
+                const tileFrameIndex = frameIndices[frameIndex];
+                const srcX = (tileFrameIndex % 150) * 16;
+                const srcY = Math.floor(tileFrameIndex / 150) * 16;
+
+                const tilePosX = Math.round(posX + col * 16);
+                const tilePosY = Math.round(posY + row * 16);
+
+                game.ctx.drawImage(img, srcX, srcY, 16, 16, tilePosX, tilePosY, 16, 16);
+                frameIndex++;
+            }
+        }
+    },
+
+    handleMouseDown: function(event) {
+        const clickedCanvas = event.currentTarget;
+        const itemId = clickedCanvas.getAttribute('data-item-id');
+
+        if (!itemId) {
+            console.error("Item ID not found.");
+            return;
+        }
+
+        ui_console_tab_window.stopDragging();
+
+        // Set the selected inventory item and allow continuous placement
+        edit_mode_window.isAddingNewObject = true;
+        ui_console_tab_window.selectedInventoryItem = itemId;
+
+        document.addEventListener('mousemove', ui_console_tab_window.trackMouseForItem);
+        ui_console_tab_window.isDragging = true;
+    },
+
+    trackMouseForItem: function(event) {
         const rect = game.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
         const mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-        const x = Math.floor(mouseX / 16); // Assuming tiles are 16px
-        const y = Math.floor(mouseY / 16);
 
-        console.log("Converted game coordinates:", { x, y }); // Log the game coordinates
+        ui_console_tab_window.selectedInventoryItemPos.x = mouseX;
+        ui_console_tab_window.selectedInventoryItemPos.y = mouseY;
 
-        // Add the selected object to the map's room data (game.roomData)
-        if (this.selectedItem) {
-            const itemId = this.selectedItem.getAttribute('data-item-id'); // Get the item ID
+        document.addEventListener('mouseup', ui_console_tab_window.handleMapClick);
+    },
 
-            if (itemId) {
-                // JSON structure to add to game.roomData
-                const newObject = {
-                    id: itemId,
-                    x: [x],
-                    y: [y],
-                    type: 'item'
-                };
+    handleMapClick: function(event) {
+        if (event.button === 2) return;  // Prevent right-click from triggering
 
-                // Push the new object to game.roomData.items
-                game.roomData.items.push(newObject); 
+        const clonedObjectX = ui_console_tab_window.selectedInventoryItemPos.x;
+        const clonedObjectY = ui_console_tab_window.selectedInventoryItemPos.y;
 
-                // Trigger a game re-render to display the new object
-                game.render(); 
+        if (ui_console_tab_window.selectedInventoryItem) {
+            const itemData = game.objectData[ui_console_tab_window.selectedInventoryItem][0];
+            if (!itemData) return;
 
-                console.log("Added object to map:", newObject); // Log the added object details
-            } else {
-                console.error("Failed to retrieve item ID.");
-            }
+            const objectWidth = (itemData.a + 1) * 16;
+            const objectHeight = (itemData.b + 1) * 16;
+
+            const adjustedMouseX = clonedObjectX - objectWidth / 2;
+            const adjustedMouseY = clonedObjectY - objectHeight / 2;
+
+            // Add the item to the room
+            ui_console_tab_window.addItemToRoomData(ui_console_tab_window.selectedInventoryItem, adjustedMouseX, adjustedMouseY);
+
+            // Continue allowing placement of the same object without selecting existing ones
         }
-    }
-  },
+    },
 
-  displayItems: function() {
-    var itemData = assets.load('objectData'); // Assume we have object data loaded from assets
-    console.log('Loaded itemData:', itemData);
-
-    var gridContainer = document.querySelector('.inventory-grid');
-    var tileSize = 16;
-    var tilesPerRow = 150;
-
-    for (var category in itemData) {
-        if (itemData.hasOwnProperty(category)) {
-            var items = itemData[category];
-            if (items.length === 0) continue;
-
-            var itemGroupElement = document.createElement('div');
-            itemGroupElement.classList.add('inventory-item-group', 'bg-[#202b3d]', 'py-1', 'rounded');
-
-            items.forEach(function(item) {
-                const tilesetImage = assets.load(item.t); // Load the tileset image
-                const itemCanvas = document.createElement('canvas');
-                const ctx = itemCanvas.getContext('2d');
-
-                const maxCol = item.a;
-                const maxRow = item.b;
-                itemCanvas.width = (maxCol + 1) * tileSize;
-                itemCanvas.height = (maxRow + 1) * tileSize;
-
-                let framesToRender = [];
-
-                if (item.d && Array.isArray(item.i[0])) {
-                    framesToRender = item.i[0];
-                } else if (Array.isArray(item.i[0])) {
-                    framesToRender = item.i.flat();
-                } else {
-                    framesToRender = item.i.map(frame => {
-                        if (typeof frame === 'string' && frame.includes('-')) {
-                            return render.parseRange(frame);
-                        }
-                        return [frame];
-                    }).flat();
-                }
-
-                framesToRender.forEach((frame, index) => {
-                    const srcX = (frame % tilesPerRow) * tileSize;
-                    const srcY = Math.floor(frame / tilesPerRow) * tileSize;
-
-                    const destX = (index % (maxCol + 1)) * tileSize;
-                    const destY = Math.floor(index / (maxCol + 1)) * tileSize;
-
-                    ctx.drawImage(
-                        tilesetImage, 
-                        srcX, srcY, tileSize, tileSize, 
-                        destX, destY, tileSize, tileSize 
-                    );
-                });
-
-                // Attach the item ID as a data attribute for tracking
-                itemCanvas.setAttribute('data-item-id', item.id); 
-                const canvasContainer = document.createElement('div');
-                canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden';
-                itemCanvas.className += ' w-full h-full object-contain';
-
-                canvasContainer.appendChild(itemCanvas);
-                itemGroupElement.appendChild(canvasContainer);
-            });
-
-            gridContainer.appendChild(itemGroupElement);
+    stopDragging: function() {
+        if (ui_console_tab_window.selectedInventoryItem) {
+            ui_console_tab_window.deselectInventoryItem();
+            document.removeEventListener('mousemove', ui_console_tab_window.trackMouseForItem);
+            document.removeEventListener('mouseup', ui_console_tab_window.handleMapClick);
+            ui_console_tab_window.isDragging = false;
         }
-    }
+    },
 
-    // Set up dragging functionality
-    this.setupInventoryDrag();
-  },
+    deselectInventoryItem: function() {
+        ui_console_tab_window.selectedInventoryItem = null;
+        // Re-enable normal selection behavior
+        edit_mode_window.isAddingNewObject = false;
+    },
 
-  setupInventoryDrag: function() {
-    var self = this;
-    document.querySelectorAll('.inventory-item-group canvas').forEach(item => {
-        item.addEventListener('mousedown', function(event) {
-            self.createCloneAndFollowMouse(event, item);
+    cancelAddingObject: function() {
+        // Cancel continuous placement and reset the object
+        ui_console_tab_window.stopDragging();
+        ui_console_tab_window.deselectInventoryItem();
+    },
+
+    addItemToRoomData: function(itemId, mouseX, mouseY) {
+        const baseX = Math.floor(mouseX / 16);
+        const baseY = Math.floor(mouseY / 16);
+
+        const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
+        if (!itemData) {
+            console.error("Item data not found for itemId:", itemId);
+            return;
+        }
+
+        const maxColumns = itemData.a || 1;
+        const maxRows = itemData.b || 1;
+
+        const newX = [];
+        const newY = [];
+
+        for (let col = 0; col <= maxColumns; col++) {
+            newX.push(baseX + col);
+        }
+
+        for (let row = 0; row <= maxRows; row++) {
+            newY.push(baseY + row);
+        }
+
+        const newItem = {
+            id: itemId,
+            x: newX,
+            y: newY,
+            animationState: [{ currentFrame: 0, elapsedTime: 0 }],
+            w: itemData.w || []
+        };
+
+        if (!game.roomData.items) {
+            game.roomData.items = [];
+        }
+        game.roomData.items.push(newItem);
+    },
+
+    unmount: function() {
+        ui_console_tab_window.stopDragging();
+    },
+
+    addGlobalListeners: function() {
+        document.addEventListener('contextmenu', function(event) {
+            event.preventDefault();
+            ui_console_tab_window.stopDragging();
         });
-    });
-  },
 
-  createCloneAndFollowMouse: function(event, item) {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const itemCanvas = item; // Canvas from the inventory item
-
-    // Set canvas dimensions to match the original object
-    canvas.width = itemCanvas.width * game.zoomLevel; // Scale the canvas based on game.zoomLevel
-    canvas.height = itemCanvas.height * game.zoomLevel; // Scale the canvas based on game.zoomLevel
-
-    // Draw the clone object on the new canvas, taking into account the zoom level
-    ctx.drawImage(itemCanvas, 0, 0, canvas.width, canvas.height);
-
-    // Append the clone canvas to the document body
-    document.body.appendChild(canvas);
-    this.clonedObject = canvas;
-    this.isDraggingObject = true;
-    this.selectedItem = item; // Store the selected item
-
-    // Follow the mouse movement
-    document.addEventListener('mousemove', this.moveCloneWithMouse.bind(this));
-  },
-
-  moveCloneWithMouse: function(event) {
-    if (this.isDraggingObject && this.clonedObject) {
-        const zoomFactor = game.zoomLevel; // Get the zoom level from the game
-
-        // Position the cloned object in the center of the cursor, taking the zoom level into account
-        this.clonedObject.style.position = 'absolute';
-        this.clonedObject.style.left = `${event.pageX - (this.clonedObject.width / 2)}px`;
-        this.clonedObject.style.top = `${event.pageY - (this.clonedObject.height / 2)}px`;
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                ui_console_tab_window.stopDragging();
+            }
+        });
     }
-  },
-
-  handleZoomChange: function(event) {
-    const delta = Math.sign(event.deltaY); // Get scroll direction (positive or negative)
-    const newZoomLevel = Math.max(2, Math.min(10, game.zoomLevel - delta)); // Ensure zoom level stays within 2 and 10
-
-    // Adjust the game zoom level
-    game.zoomLevel = newZoomLevel;
-    console.log("Zoom level changed:", game.zoomLevel);
-
-    // Adjust cloned object size to match the new zoom level
-    if (this.isDraggingObject && this.clonedObject) {
-        this.clonedObject.width = this.selectedItem.width * game.zoomLevel;
-        this.clonedObject.height = this.selectedItem.height * game.zoomLevel;
-    }
-  }
 };
 
-// Start the inventory window
 ui_console_tab_window.start();
-
 </script>
-
-
-<style>
-  .inventory-item canvas {
-    width: 100%;
-    height: auto;
-    display: block;
-  }
-  .inventory-item-group {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-  }
-  .inventory-item-clone canvas {
-    width: auto;
-    height: auto;
-  }
-  .inventory-item-group.active {
-    background-color: #4CAF50; 
-  }
-</style>
 
 <?php
 }

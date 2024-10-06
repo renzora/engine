@@ -2,220 +2,275 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='inventory_template_window' class='window bg-gray-700' style='width: 330px; height: 500px;'>
+<div data-window='editor_inventory_window' class='window bg-gray-800 text-white shadow-2xl rounded-lg overflow-hidden' style='width: 350px; height: 540px;'>
 
-    <div data-part='handle' class='window_title bg-gray-600 text-gray-100 p-2 rounded-t'>
-      <div class='float-right'>
-        <button class="icon close_dark mr-1 text-white" aria-label="Close (ESC)" data-close>&times;</button>
+<div data-part='handle' class='window_title' style='background-image: radial-gradient(#272031 1px, transparent 0) !important;'>
+      <div class='float-right mt-1'>
+        <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
       </div>
-      <div data-part='title' class='title_bg window_border text-gray-100'>Inventory Template</div>
+      <div data-part='title' class='title_bg window_border' style='background: #1f2937; color: #ede8d6;'>Inventory</div>
     </div>
-    
-    <div class='clearfix'></div>
-    
-    <div class='relative'>
-      <div class='container text-white p-2'>
+
+    <!-- Content Section -->
+    <div class='p-4 relative'>
 
         <!-- Inventory Grid -->
-        <div id="inventory_grid" class="inventory-grid bg-gray-800 p-2 rounded-md grid grid-cols-3 gap-2 overflow-y-auto" style="max-height: 400px;">
-          <!-- Dynamically loaded inventory items will appear here -->
+        <div id="inventory_grid" class="grid grid-cols-4 gap-4 overflow-y-auto" style="max-height: 480px;">
+            <!-- Inventory items will be dynamically inserted here -->
         </div>
-
-      </div>
     </div>
 
     <script>
-var inventory_template_window = {
-    start: function() {
-        this.displayItems();
-        this.handleObjectClick();  // Set up click event listeners for items
-    },
+    editor_inventory_window = {
+        selectedInventoryItem: null, 
+        selectedInventoryItemPos: { x: 0, y: 0 },
+        isDragging: false, 
 
-    displayItems: function() {
-        var itemData = assets.load('objectData'); // Load object data
-        console.log('Loaded itemData:', itemData);
+        start: function() {
+            this.displayItems();
+            this.addGlobalListeners();
+        },
 
-        var gridContainer = document.querySelector('#inventory_grid');
-        var tileSize = 16;
-        var tilesPerRow = 150;
+        displayItems: function() {
+            var itemData = game.objectData;
+            var gridContainer = document.querySelector('#inventory_grid');
+            var tileSize = 16;
+            var tilesPerRow = 150;
 
-        for (var category in itemData) {
-            if (itemData.hasOwnProperty(category)) {
-                var items = itemData[category];
-                if (items.length === 0) continue;
+            gridContainer.innerHTML = '';
 
-                var itemGroupElement = document.createElement('div');
-                itemGroupElement.classList.add('inventory-item-group', 'bg-[#202b3d]', 'py-1', 'rounded');
+            for (var itemId in itemData) {
+                if (itemData.hasOwnProperty(itemId)) {
+                    var items = itemData[itemId];
+                    if (items.length === 0) continue;
 
-                items.forEach(function(item) {
-                    const tilesetImage = assets.load(item.t); // Load tileset image
-                    const itemCanvas = document.createElement('canvas');
-                    const ctx = itemCanvas.getContext('2d');
+                    var itemGroupElement = document.createElement('div');
+                    itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
 
-                    const maxCol = item.a;
-                    const maxRow = item.b;
-                    itemCanvas.width = (maxCol + 1) * tileSize;
-                    itemCanvas.height = (maxRow + 1) * tileSize;
+                    items.forEach(function(item) {
+                        const tilesetImage = assets.load(item.t);
+                        const itemCanvas = document.createElement('canvas');
+                        const ctx = itemCanvas.getContext('2d');
 
-                    let framesToRender = [];
+                        const maxCol = item.a;
+                        const maxRow = item.b;
+                        itemCanvas.width = (maxCol + 1) * tileSize;
+                        itemCanvas.height = (maxRow + 1) * tileSize;
 
-                    if (item.d && Array.isArray(item.i[0])) {
-                        framesToRender = item.i[0];
-                    } else if (Array.isArray(item.i[0])) {
-                        framesToRender = item.i.flat();
-                    } else {
-                        framesToRender = item.i.map(frame => {
-                            if (typeof frame === 'string' && frame.includes('-')) {
-                                return render.parseRange(frame);
-                            }
-                            return [frame];
-                        }).flat();
-                    }
+                        let framesToRender = [];
 
-                    framesToRender.forEach((frame, index) => {
-                        const srcX = (frame % tilesPerRow) * tileSize;
-                        const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+                        if (item.d && Array.isArray(item.i[0])) {
+                            framesToRender = item.i[0];
+                        } else if (Array.isArray(item.i[0])) {
+                            framesToRender = item.i.flat();
+                        } else {
+                            framesToRender = item.i.map(frame => {
+                                if (typeof frame === 'string' && frame.includes('-')) {
+                                    return render.parseRange(frame);
+                                }
+                                return [frame];
+                            }).flat();
+                        }
 
-                        const destX = (index % (maxCol + 1)) * tileSize;
-                        const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+                        framesToRender.forEach((frame, index) => {
+                            const srcX = (frame % tilesPerRow) * tileSize;
+                            const srcY = Math.floor(frame / tilesPerRow) * tileSize;
 
-                        ctx.drawImage(
-                            tilesetImage, 
-                            srcX, srcY, tileSize, tileSize, 
-                            destX, destY, tileSize, tileSize 
-                        );
+                            const destX = (index % (maxCol + 1)) * tileSize;
+                            const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+
+                            ctx.drawImage(
+                                tilesetImage, 
+                                srcX, srcY, tileSize, tileSize, 
+                                destX, destY, tileSize, tileSize 
+                            );
+                        });
+
+                        itemCanvas.setAttribute('data-item-id', itemId);
+
+                        const canvasContainer = document.createElement('div');
+                        canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden rounded-lg shadow-md transition duration-300 transform hover:scale-105';
+                        itemCanvas.className += ' w-full h-full object-contain';
+
+                        itemCanvas.addEventListener('mousedown', editor_inventory_window.handleMouseDown);
+
+                        canvasContainer.appendChild(itemCanvas);
+                        itemGroupElement.appendChild(canvasContainer);
                     });
 
-                    // Attach the category ID as data attribute (which is the key in objectData)
-                    itemCanvas.setAttribute('data-item-id', category); 
-
-                    const canvasContainer = document.createElement('div');
-                    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden';
-                    itemCanvas.className += ' w-full h-full object-contain';
-
-                    canvasContainer.appendChild(itemCanvas);
-                    itemGroupElement.appendChild(canvasContainer);
-                });
-
-                gridContainer.appendChild(itemGroupElement);
+                    gridContainer.appendChild(itemGroupElement);
+                }
             }
-        }
-    },
+        },
 
-    handleObjectClick: function() {
-        const gridContainer = document.querySelector('#inventory_grid');
-        gridContainer.addEventListener('click', (event) => {
-            const clickedItem = event.target.closest('canvas');
-            if (clickedItem) {
-                const itemId = clickedItem.getAttribute('data-item-id');
-                this.cloneObjectToCursor(itemId);
-            }
-        });
-    },
+        render: function() {
+            const itemData = game.objectData[this.selectedInventoryItem][0];
+            if (!itemData) return;
 
-    cloneObjectToCursor: function(itemId) {
-        const objectData = assets.load('objectData');
+            const objectWidth = (itemData.a + 1) * 16;
+            const objectHeight = (itemData.b + 1) * 16;
 
-        // Debugging: Check the itemId and its data
-        console.log('Cloning Item ID:', itemId);
-        console.log('Object Data for Item:', objectData[itemId]);
+            let posX = this.selectedInventoryItemPos.x - objectWidth / 2;
+            let posY = this.selectedInventoryItemPos.y - objectHeight / 2;
 
-        const item = objectData[itemId] ? objectData[itemId][0] : null;
+            posX = Math.round(posX);
+            posY = Math.round(posY);
 
-        if (!item) {
-            console.error('Error: Item not found for ID', itemId);
-            return;
-        }
+            const parseRange = (rangeString) => {
+                const [start, end] = rangeString.split('-').map(Number);
+                const rangeArray = [];
+                for (let i = start; i <= end; i++) {
+                    rangeArray.push(i);
+                }
+                return rangeArray;
+            };
 
-        // Store the item to be added when the map is clicked
-        window.selectedItemForPlacement = item;
-
-        // Create a canvas to represent the object image that follows the cursor
-        const canvas = document.createElement('canvas');
-        canvas.width = 32; // Example size, adjust accordingly
-        canvas.height = 32;
-        const ctx = canvas.getContext('2d');
-        const tileImage = assets.load(item.t);
-
-        // Determine which frames to use for rendering
-        let framesToRender = [];
-        if (item.i && Array.isArray(item.i)) {
-            if (typeof item.i[0] === 'string' && item.i[0].includes('-')) {
-                framesToRender = render.parseRange(item.i[0]);
-            } else if (Array.isArray(item.i[0])) {
-                framesToRender = item.i.flat();
+            let frameIndices = [];
+            if (typeof itemData.i[0] === 'string' && itemData.i[0].includes('-')) {
+                frameIndices = parseRange(itemData.i[0]);
             } else {
-                framesToRender = item.i;
+                frameIndices = itemData.i;
             }
+
+            const img = assets.load(itemData.t);
+            if (!img) return;
+
+            let frameIndex = 0;
+            for (let row = 0; row < itemData.b + 1; row++) {
+                for (let col = 0; col < itemData.a + 1; col++) {
+                    if (frameIndex >= frameIndices.length) break;
+
+                    const tileFrameIndex = frameIndices[frameIndex];
+                    const srcX = (tileFrameIndex % 150) * 16;
+                    const srcY = Math.floor(tileFrameIndex / 150) * 16;
+
+                    const tilePosX = Math.round(posX + col * 16);
+                    const tilePosY = Math.round(posY + row * 16);
+
+                    game.ctx.drawImage(img, srcX, srcY, 16, 16, tilePosX, tilePosY, 16, 16);
+                    frameIndex++;
+                }
+            }
+        },
+
+        handleMouseDown: function(event) {
+            const clickedCanvas = event.currentTarget;
+            const itemId = clickedCanvas.getAttribute('data-item-id');
+
+            if (!itemId) {
+                console.error("Item ID not found.");
+                return;
+            }
+
+            editor_inventory_window.stopDragging();
+
+            editor_inventory_window.selectedInventoryItem = itemId;
+
+            document.addEventListener('mousemove', editor_inventory_window.trackMouseForItem);
+            editor_inventory_window.isDragging = true;
+        },
+
+        trackMouseForItem: function(event) {
+            const rect = game.canvas.getBoundingClientRect();
+            const mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+            const mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+            editor_inventory_window.selectedInventoryItemPos.x = mouseX;
+            editor_inventory_window.selectedInventoryItemPos.y = mouseY;
+
+            document.addEventListener('mouseup', editor_inventory_window.handleMapClick);
+        },
+
+        handleMapClick: function(event) {
+            if (event.button === 2) return;
+
+            const clonedObjectX = editor_inventory_window.selectedInventoryItemPos.x;
+            const clonedObjectY = editor_inventory_window.selectedInventoryItemPos.y;
+
+            if (editor_inventory_window.selectedInventoryItem) {
+                const itemData = game.objectData[editor_inventory_window.selectedInventoryItem][0];
+                if (!itemData) return;
+
+                const objectWidth = (itemData.a + 1) * 16;
+                const objectHeight = (itemData.b + 1) * 16;
+
+                const adjustedMouseX = clonedObjectX - objectWidth / 2;
+                const adjustedMouseY = clonedObjectY - objectHeight / 2;
+
+                editor_inventory_window.addItemToRoomData(editor_inventory_window.selectedInventoryItem, adjustedMouseX, adjustedMouseY);
+            }
+        },
+
+        stopDragging: function() {
+            if (editor_inventory_window.selectedInventoryItem) {
+                editor_inventory_window.selectedInventoryItem = null;
+                document.removeEventListener('mousemove', editor_inventory_window.trackMouseForItem);
+                document.removeEventListener('mouseup', editor_inventory_window.handleMapClick);
+                editor_inventory_window.isDragging = false;
+            }
+        },
+
+        addItemToRoomData: function(itemId, mouseX, mouseY) {
+            const baseX = Math.floor(mouseX / 16);
+            const baseY = Math.floor(mouseY / 16);
+
+            const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
+            if (!itemData) {
+                console.error("Item data not found for itemId:", itemId);
+                return;
+            }
+
+            const maxColumns = itemData.a || 1;
+            const maxRows = itemData.b || 1;
+
+            const newX = [];
+            const newY = [];
+
+            for (let col = 0; col <= maxColumns; col++) {
+                newX.push(baseX + col);
+            }
+
+            for (let row = 0; row <= maxRows; row++) {
+                newY.push(baseY + row);
+            }
+
+            const newItem = {
+                id: itemId,
+                x: newX,
+                y: newY,
+                animationState: [{ currentFrame: 0, elapsedTime: 0 }],
+                w: itemData.w || []
+            };
+
+            if (!game.roomData.items) {
+                game.roomData.items = [];
+            }
+            game.roomData.items.push(newItem);
+        },
+
+        unmount: function() {
+            editor_inventory_window.stopDragging();
+        },
+
+        addGlobalListeners: function() {
+            document.addEventListener('contextmenu', function(event) {
+                event.preventDefault();
+                editor_inventory_window.stopDragging();
+            });
+
+            document.addEventListener('keydown', function(event) {
+                if (event.key === 'Escape') {
+                    editor_inventory_window.stopDragging();
+                }
+            });
         }
+    };
 
-        // Draw the first frame of the object
-        const frame = framesToRender[0]; // Use the first frame by default
-        const srcX = (frame % 150) * 16;
-        const srcY = Math.floor(frame / 150) * 16;
-
-        ctx.drawImage(tileImage, srcX, srcY, 16, 16, 0, 0, 32, 32);
-
-        // Attach the canvas to the document body
-        canvas.style.position = 'absolute';
-        canvas.style.pointerEvents = 'none'; // Allow clicks through the object
-        document.body.appendChild(canvas);
-
-        // Update canvas position based on mouse movement
-        document.addEventListener('mousemove', function moveObject(event) {
-            canvas.style.left = `${event.pageX - 16}px`;
-            canvas.style.top = `${event.pageY - 16}px`;
-        });
-
-        // Listen for a click on the game map to place the object
-        document.addEventListener('mousedown', function placeObject(event) {
-            if (window.selectedItemForPlacement) {
-                inventory_template_window.addObjectToRoomData(window.selectedItemForPlacement, event);
-                window.selectedItemForPlacement = null;
-                document.body.removeChild(canvas);
-                document.removeEventListener('mousemove', moveObject);
-                document.removeEventListener('mousedown', placeObject);
-            }
-        });
-    },
-
-    addObjectToRoomData: function(item, event) {
-        const rect = game.canvas.getBoundingClientRect();
-        const mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-        const mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-        const x = Math.floor(mouseX / 16);
-        const y = Math.floor(mouseY / 16);
-
-        const newItem = {
-            id: item.id,
-            x: [x],
-            y: [y],
-            animationState: [{
-                currentFrame: 0,
-                elapsedTime: 0
-            }],
-            zIndex: [2], // Example zIndex, adjust accordingly
-            type: item.type || "item"
-        };
-
-        // Add the new item to the room data
-        game.roomData.items.push(newItem);
-        console.log(`Added ${item.n} to game at (${x}, ${y})`);
-
-        // Update the game rendering
-        collision.createWalkableGrid();
-        game.render();
-    }
-};
-
-// Start the inventory window
-inventory_template_window.start();
-
-
+    editor_inventory_window.start();
     </script>
 
-    <div class='resize-handle'></div>
-  </div>
+</div>
+
 <?php
 }
 ?>

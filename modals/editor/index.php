@@ -91,8 +91,8 @@ var edit_mode_window = {
     boundMouseUpHandler: null,
     boundMouseScrollHandler: null,
     boundKeyDownHandler: null,
-
-
+    clipboard: [],
+    isAddingNewObject: false,
     // New drag select properties
     isDragging: false,  // Flag to track if selection drag is active
     selectionStart: { x: 0, y: 0 },  // Coordinates where drag selection starts
@@ -165,10 +165,9 @@ var edit_mode_window = {
     window.addEventListener('keydown', this.boundKeyDownHandler);
 
     modal.minimize('ui_inventory_window');
-    modal.minimize('console_window');
+    //modal.minimize('console_window');
     modal.minimize('ui_overlay_window');
-    modal.minimize('ui_footer_window');
-    modal.load({ id: 'inventory_template_window', url: 'editor/items.php', name: 'editor Items', drag: true, reload: true });
+    //modal.minimize('ui_footer_window');
 },
 
     unmount: function () {
@@ -222,6 +221,8 @@ var edit_mode_window = {
     modal.show('console_window');
     modal.show('ui_overlay_window');
     modal.show('ui_footer_window');
+
+    console_window.load_tab_buttons();
 },
 
 changeMode: function (newMode) {
@@ -392,6 +393,10 @@ handleMouseMove: function (event) {
 },
 
 handleMouseDown: function (event) {
+    if (this.isAddingNewObject) {
+            // Prevent selection of existing objects while adding a new object
+            return;
+        }
     const rect = game.canvas.getBoundingClientRect();
     this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
@@ -539,13 +544,15 @@ handleMouseUp: function (event) {
     }
 },
 
-handleMouseScroll: function (event) {
+handleMouseScroll: function(event) {
     // Check if Shift is held down to pan left/right
     if (event.shiftKey) {
         const scrollDirection = event.deltaY < 0 ? -1 : 1;
         camera.cameraX += scrollDirection * 10;
         this.constrainCamera();
-    } else if (game.editorMode === 'select' || game.editorMode === 'lasso' || game.editorMode === 'move' || game.editorMode === 'zoom' || game.editorMode === 'delete') {
+    } 
+    // Handle different modes based on the current editor mode
+    else if (game.editorMode === 'select' || game.editorMode === 'lasso' || game.editorMode === 'move' || game.editorMode === 'zoom' || game.editorMode === 'delete') {
         camera.lerpEnabled = false;
         camera.manual = true;
 
@@ -563,11 +570,15 @@ handleMouseScroll: function (event) {
         camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
 
         this.constrainCamera();
-    } else if (game.editorMode === 'pan') {
+    } 
+    // Pan the camera vertically in pan mode
+    else if (game.editorMode === 'pan') {
         const scrollDirection = event.deltaY < 0 ? -1 : 1;
         camera.cameraY += scrollDirection * 10;
         this.constrainCamera();
-    } else if (game.editorMode === 'brush') {
+    } 
+    // Handle brush mode for changing brush size or zooming
+    else if (game.editorMode === 'brush') {
         // Check if the Ctrl key is held down for zooming
         if (event.ctrlKey) {
             const scrollDirection = event.deltaY < 0 ? 1 : -1;
@@ -586,11 +597,13 @@ handleMouseScroll: function (event) {
 
             this.constrainCamera();
         } else {
+            // Adjust the brush size with scrolling, allowing for a larger maximum brush size
             const scrollDirection = event.deltaY < 0 ? 5 : -5;  // Change the brush size faster by using a larger step value
-            this.brushRadius = Math.max(16, Math.min(this.brushRadius + scrollDirection, 100));  // Set minimum to 16 and maximum to 100 pixels
+            this.brushRadius = Math.max(16, Math.min(this.brushRadius + scrollDirection, 500));  // Set minimum to 16 and maximum to 500 pixels
         }
     }
 },
+
 
 
 deleteSelectedObjects: function () {
@@ -857,46 +870,52 @@ isPointInLasso: function (point) {
 },
 
 handleKeyDown: function (event) {
-    const key = event.key;
+        const key = event.key;
 
-    // Ctrl + X to cut
-    if (event.ctrlKey && key === 'x') {
-        this.cutSelectedObjects();
-    } 
-    // Ctrl + Z to undo
-    else if (event.ctrlKey && !event.shiftKey && key === 'z') {
-        this.undo();
-    } 
-    // Ctrl + Shift + Z to redo
-    else if (event.ctrlKey && event.shiftKey && key === 'Z') {
-        this.redo();
-    } 
-    // Delete or Backspace to delete selected objects
-    else if (key === 'Delete' || key === 'Backspace') {
-        this.deleteSelectedObjects();
-    } 
-    // Shift key down in move mode - return to the exact previous mode (either 'select' or 'lasso')
-    else if (key === 'Shift' && game.editorMode === 'move') {
-        if (this.previousMode === 'lasso') {
-            this.changeMode('lasso');
-        } else if (this.previousMode === 'select') {
-            this.changeMode('select');
+        // Ctrl + A to select all objects
+        if (event.ctrlKey && key === 'a') {
+            this.selectAllObjects();
+            event.preventDefault();
         }
-    } 
-    // Stay in lasso mode if Shift is held while already in lasso
-    else if (key === 'Shift' && game.editorMode === 'lasso') {
-        // Do nothing, stay in lasso mode
-    }
-    // Number keys to switch modes
-    else {
-        const modeIndex = parseInt(key, 10) - 1;
-        if (modeIndex >= 0 && modeIndex < this.modes.length) {
-            const selectedMode = this.modes[modeIndex];
-            this.changeMode(selectedMode);
+        // Ctrl + C to copy selected objects
+        else if (event.ctrlKey && key === 'c') {
+            this.copySelectedObjects();
         }
-    }
-},
-
+        // Ctrl + V to paste copied objects
+        else if (event.ctrlKey && key === 'v') {
+            this.pasteCopiedObjects();
+        }
+        // Ctrl + X to cut
+        else if (event.ctrlKey && key === 'x') {
+            this.cutSelectedObjects();
+        }
+        // Ctrl + Z to undo
+        else if (event.ctrlKey && !event.shiftKey && key === 'z') {
+            this.undo();
+        }
+        // Ctrl + Shift + Z to redo
+        else if (event.ctrlKey && event.shiftKey && key === 'Z') {
+            this.redo();
+        }
+        else if (key === 'Delete' || key === 'Backspace') {
+            this.deleteSelectedObjects();
+        }
+        else if (key === 'Shift' && game.editorMode === 'move') {
+            if (this.previousMode === 'lasso') {
+                this.changeMode('lasso');
+            } else if (this.previousMode === 'select') {
+                this.changeMode('select');
+            }
+        } else if (key === 'Shift' && game.editorMode === 'lasso') {
+            // Stay in lasso mode
+        } else {
+            const modeIndex = parseInt(key, 10) - 1;
+            if (modeIndex >= 0 && modeIndex < this.modes.length) {
+                const selectedMode = this.modes[modeIndex];
+                this.changeMode(selectedMode);
+            }
+        }
+    },
 
 handleKeyUp: function (event) {
     const key = event.key;
@@ -938,6 +957,46 @@ redo: function () {
 
     console.log("Redo completed.");
 },
+
+selectAllObjects: function () {
+    // Select all objects in the room
+    this.selectedObjects = game.roomData.items.slice();  // Copy all items to selectedObjects
+    console.log("All objects selected:", this.selectedObjects);
+
+    // Switch to move mode since objects are now selected
+    if (this.selectedObjects.length > 0) {
+        this.changeMode('move');
+    }
+},
+
+copySelectedObjects: function () {
+        if (this.selectedObjects.length > 0) {
+            // Deep clone the selected objects to the clipboard
+            this.clipboard = this.selectedObjects.map(obj => JSON.parse(JSON.stringify(obj)));
+            console.log("Objects copied:", this.clipboard);
+        }
+    },
+
+    pasteCopiedObjects: function () {
+        if (this.clipboard.length > 0) {
+            // Deep clone the copied objects and adjust their position
+            const pastedObjects = this.clipboard.map(obj => {
+                const newObj = JSON.parse(JSON.stringify(obj));
+                // Shift pasted objects slightly to differentiate them from the originals
+                newObj.x = newObj.x.map(coord => coord + 1);  // Shift by 1 tile
+                newObj.y = newObj.y.map(coord => coord + 1);  // Shift by 1 tile
+                return newObj;
+            });
+
+            // Add the pasted objects to the room data
+            game.roomData.items.push(...pastedObjects);
+            console.log("Objects pasted:", pastedObjects);
+
+            // Update walkable grid and re-render the scene
+            collision.createWalkableGrid();
+            game.render();
+        }
+    },
 
 pushToUndoStack: function () {
     const currentState = JSON.parse(JSON.stringify(game.roomData));
