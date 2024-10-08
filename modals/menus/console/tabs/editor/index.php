@@ -177,8 +177,8 @@ var ui_console_tab_window = {
     },
 
     handleMapClick: function(event) {
-        if (event.button === 2) return;  // Prevent right-click from triggering
-
+    // Prevent selection when adding a new object
+    if (edit_mode_window.isAddingNewObject) {
         const clonedObjectX = ui_console_tab_window.selectedInventoryItemPos.x;
         const clonedObjectY = ui_console_tab_window.selectedInventoryItemPos.y;
 
@@ -196,8 +196,11 @@ var ui_console_tab_window = {
             ui_console_tab_window.addItemToRoomData(ui_console_tab_window.selectedInventoryItem, adjustedMouseX, adjustedMouseY);
 
             // Continue allowing placement of the same object without selecting existing ones
+            return; // Stop further event propagation
         }
-    },
+    }
+},
+
 
     stopDragging: function() {
         if (ui_console_tab_window.selectedInventoryItem) {
