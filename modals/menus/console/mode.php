@@ -61,7 +61,7 @@ if ($mode === 'editor') {
       <div class="icon inventory"></div>
       <span class="absolute top-0 right-0.5 bg-red-700 text-white text-xs rounded-sm px-0.5 flex items-center justify-center">48</span>
     </button>
-    <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Edit Mode" onclick="console_window.load_tab_buttons('editor'); modal.load({ id: 'editor_window', url: 'editor/index.php', name: 'Editor', showInList: true });">
+    <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Edit Mode" onclick="console_window.load_tab_buttons('editor'); modal.load({ id: 'editor_window', url: 'editor/index.php', name: 'Editor', showInList: true }); modal.load({ id: 'editor_utils_window', url: 'editor/utils.php', name: 'Editor Utils', showInList: true });">
       <div class="icon editor"></div>
     </button>
     <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="chat" aria-label="Chat">

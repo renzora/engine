@@ -221,42 +221,55 @@ var ui_console_tab_window = {
     },
 
     addItemToRoomData: function(itemId, mouseX, mouseY) {
-        const baseX = Math.floor(mouseX / 16);
-        const baseY = Math.floor(mouseY / 16);
+    const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
+    if (!itemData) {
+        console.error("Item data not found for itemId:", itemId);
+        return;
+    }
 
-        const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
-        if (!itemData) {
-            console.error("Item data not found for itemId:", itemId);
-            return;
+    // Determine whether to snap or use pixel-perfect placement
+    let baseX = editor_utils_window.isSnapEnabled ? Math.floor(mouseX / 16) * 16 : Math.round(mouseX);
+    let baseY = editor_utils_window.isSnapEnabled ? Math.floor(mouseY / 16) * 16 : Math.round(mouseY);
+
+    const maxColumns = itemData.a || 1;
+    const maxRows = itemData.b || 1;
+
+    const newX = [];
+    const newY = [];
+
+    for (let col = 0; col <= maxColumns; col++) {
+        if (editor_utils_window.isSnapEnabled) {
+            newX.push(Math.floor(baseX / 16) + col);  // Snap to grid when enabled
+        } else {
+            newX.push((baseX + col * 16) / 16);  // Pixel-perfect position (exact without grid snapping)
         }
+    }
 
-        const maxColumns = itemData.a || 1;
-        const maxRows = itemData.b || 1;
-
-        const newX = [];
-        const newY = [];
-
-        for (let col = 0; col <= maxColumns; col++) {
-            newX.push(baseX + col);
+    for (let row = 0; row <= maxRows; row++) {
+        if (editor_utils_window.isSnapEnabled) {
+            newY.push(Math.floor(baseY / 16) + row);  // Snap to grid when enabled
+        } else {
+            newY.push((baseY + row * 16) / 16);  // Pixel-perfect position (exact without grid snapping)
         }
+    }
 
-        for (let row = 0; row <= maxRows; row++) {
-            newY.push(baseY + row);
-        }
+    const newItem = {
+        id: itemId,
+        x: newX,
+        y: newY,
+        animationState: [{ currentFrame: 0, elapsedTime: 0 }],
+        w: itemData.w || []
+    };
 
-        const newItem = {
-            id: itemId,
-            x: newX,
-            y: newY,
-            animationState: [{ currentFrame: 0, elapsedTime: 0 }],
-            w: itemData.w || []
-        };
+    if (!game.roomData.items) {
+        game.roomData.items = [];
+    }
+    game.roomData.items.push(newItem);
 
-        if (!game.roomData.items) {
-            game.roomData.items = [];
-        }
-        game.roomData.items.push(newItem);
-    },
+    console.log('New object added with', editor_utils_window.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect', 'placement.');
+},
+
+
 
     unmount: function() {
         ui_console_tab_window.stopDragging();

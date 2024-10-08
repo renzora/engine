@@ -58,7 +58,7 @@ if ($auth) {
             <div class="ui_icon ui_save"></div>
         </button>
 
-        <button type="button" id="close_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.unmount(); modal.close('editor_window')">
+        <button type="button" id="close_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.revertToOriginalState(); edit_mode_window.unmount(); modal.close('editor_window')">
             <div class="ui_icon ui_close"></div>
         </button>
     </div>
@@ -72,6 +72,8 @@ if ($auth) {
 
   <script>
 var edit_mode_window = {
+
+    originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},
     brushRadius: 16,  // Initial brush radius in pixels
     isBrushModeActive: false,
@@ -170,7 +172,7 @@ var edit_mode_window = {
     //modal.minimize('ui_footer_window');
 },
 
-    unmount: function () {
+unmount: function () {
     console.log('Editor unmounted, game and weather restored, and scene reloaded.');
 
     // Restore game controls and state
@@ -192,7 +194,6 @@ var edit_mode_window = {
     game.canvas.removeEventListener('wheel', this.boundMouseScrollHandler);
     window.removeEventListener('keydown', this.boundKeyDownHandler);
     window.removeEventListener('keyup', this.boundKeyUpHandler);  // Unmount keyup event listener as well
-
 
     // Reset selection states and flags
     this.isDragging = false;
@@ -223,6 +224,7 @@ var edit_mode_window = {
     modal.show('ui_footer_window');
 
     console_window.load_tab_buttons();
+    modal.close('editor_utils_window');
 },
 
 changeMode: function (newMode) {
@@ -257,6 +259,16 @@ changeMode: function (newMode) {
     this.isMovingObjects = (newMode === 'move');
     this.isPanning = (newMode === 'pan');
 
+    // Show or hide the brush size input based on the active mode, only if the element exists
+    const brushSizeInput = document.getElementById('brush_amount');
+    if (brushSizeInput && brushSizeInput.parentElement) {
+        if (this.isBrushModeActive) {
+            brushSizeInput.parentElement.style.display = 'flex';
+        } else {
+            brushSizeInput.parentElement.style.display = 'none';
+        }
+    }
+
     // Update the cursor based on the current mode
     switch (newMode) {
         case 'select':
@@ -275,6 +287,7 @@ changeMode: function (newMode) {
     document.body.style.cursor = this.defaultCursor;
 },
 
+
 handleMouseMove: function (event) {
     const rect = game.canvas.getBoundingClientRect();
     this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
@@ -286,22 +299,58 @@ handleMouseMove: function (event) {
 
     // Handle moving selected objects without camera panning
     if (this.isDragging && game.editorMode === 'move' && !event.shiftKey) {
-        const deltaX = this.mouseX - this.lastMouseX;
-        const deltaY = this.mouseY - this.lastMouseY;
+        let totalDeltaX = this.mouseX - this.lastMouseX;
+        let totalDeltaY = this.mouseY - this.lastMouseY;
 
-        // Move the selected objects if they are being dragged
+        let snapDeltaX = 0;
+        let snapDeltaY = 0;
+
+        if (editor_utils_window.isSnapEnabled) {
+            // Snap X axis if movement is 16 pixels or more
+            if (Math.abs(totalDeltaX) >= 16) {
+                snapDeltaX = Math.floor(totalDeltaX / 16) * 16;
+                this.lastMouseX += snapDeltaX; // Update the last mouse position for X after snapping
+            }
+
+            // Snap Y axis if movement is 16 pixels or more
+            if (Math.abs(totalDeltaY) >= 16) {
+                snapDeltaY = Math.floor(totalDeltaY / 16) * 16;
+                this.lastMouseY += snapDeltaY; // Update the last mouse position for Y after snapping
+            }
+        } else {
+            // If snapping is disabled, allow free movement without snapping
+            snapDeltaX = totalDeltaX;
+            snapDeltaY = totalDeltaY;
+            this.lastMouseX = this.mouseX; // Update the last mouse position to the current mouse position
+            this.lastMouseY = this.mouseY;
+        }
+
+        // Move the selected objects if they are being dragged and apply snapping or free movement
         if (this.selectedObjects.length > 0) {
             this.selectedObjects.forEach((obj, index) => {
                 const offset = this.initialOffsets[index];
 
-                // Update object coordinates without camera movement
-                obj.x = obj.x.map((coord) => coord + deltaX / 16);
-                obj.y = obj.y.map((coord) => coord + deltaY / 16);
-            });
+                // Snap objects to the nearest grid if snapping is enabled and they aren't aligned
+                obj.x = obj.x.map((coord) => {
+                    if (editor_utils_window.isSnapEnabled) {
+                        // Snap to nearest 16x16 grid before moving
+                        let snappedX = Math.round(coord * 16) / 16;  // Snap to the nearest grid
+                        return snappedX + snapDeltaX / 16;
+                    } else {
+                        return coord + snapDeltaX / 16;
+                    }
+                });
 
-            // Update the last mouse position for the next movement step
-            this.lastMouseX = this.mouseX;
-            this.lastMouseY = this.mouseY;
+                obj.y = obj.y.map((coord) => {
+                    if (editor_utils_window.isSnapEnabled) {
+                        // Snap to nearest 16x16 grid before moving
+                        let snappedY = Math.round(coord * 16) / 16;  // Snap to the nearest grid
+                        return snappedY + snapDeltaY / 16;
+                    } else {
+                        return coord + snapDeltaY / 16;
+                    }
+                });
+            });
 
             this.constrainCamera();  // Ensure the camera stays within bounds
         }
@@ -373,19 +422,37 @@ handleMouseMove: function (event) {
 
         // Handle moving selected objects
         if (game.editorMode === 'move' && !event.shiftKey && this.selectedObjects.length > 0) {
-            const deltaX = this.mouseX - this.lastMouseX;
-            const deltaY = this.mouseY - this.lastMouseY;
+            let totalDeltaX = this.mouseX - this.lastMouseX;
+            let totalDeltaY = this.mouseY - this.lastMouseY;
+
+            let snapDeltaX = 0;
+            let snapDeltaY = 0;
+
+            if (editor_utils_window.isSnapEnabled) {
+                // Snap X axis if movement is 16 pixels or more
+                if (Math.abs(totalDeltaX) >= 16) {
+                    snapDeltaX = Math.floor(totalDeltaX / 16) * 16;
+                    this.lastMouseX += snapDeltaX; // Update the last mouse position for X after snapping
+                }
+
+                // Snap Y axis if movement is 16 pixels or more
+                if (Math.abs(totalDeltaY) >= 16) {
+                    snapDeltaY = Math.floor(totalDeltaY / 16) * 16;
+                    this.lastMouseY += snapDeltaY; // Update the last mouse position for Y after snapping
+                }
+            } else {
+                // If snapping is disabled, allow free movement without snapping
+                snapDeltaX = totalDeltaX;
+                snapDeltaY = totalDeltaY;
+                this.lastMouseX = this.mouseX; // Update the last mouse position to the current mouse position
+                this.lastMouseY = this.mouseY;
+            }
 
             // Move the selected objects based on exact cursor movement
             this.selectedObjects.forEach((obj, index) => {
-                const offset = this.initialOffsets[index];
-                obj.x = obj.x.map((coord) => coord + deltaX / 16);
-                obj.y = obj.y.map((coord) => coord + deltaY / 16);
+                obj.x = obj.x.map((coord) => editor_utils_window.isSnapEnabled ? Math.round(coord + snapDeltaX / 16) : coord + snapDeltaX / 16);
+                obj.y = obj.y.map((coord) => editor_utils_window.isSnapEnabled ? Math.round(coord + snapDeltaY / 16) : coord + snapDeltaY / 16);
             });
-
-            // Update the last mouse position for the next movement step
-            this.lastMouseX = this.mouseX;
-            this.lastMouseY = this.mouseY;
 
             this.constrainCamera();  // Ensure the camera stays within bounds
         }
@@ -560,7 +627,7 @@ handleMouseScroll: function(event) {
         const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
         const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
         const zoomFactor = event.deltaY < 0 ? 1 : -1;
-        const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));
+        const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));  // Set the minimum zoom level to 1
 
         game.zoomLevel = newZoomLevel;
         const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
@@ -582,7 +649,7 @@ handleMouseScroll: function(event) {
         // Check if the Ctrl key is held down for zooming
         if (event.ctrlKey) {
             const scrollDirection = event.deltaY < 0 ? 1 : -1;
-            const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + scrollDirection, 10));
+            const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + scrollDirection, 10));  // Set the minimum zoom level to 1
 
             const rect = game.canvas.getBoundingClientRect();
             const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
@@ -603,8 +670,6 @@ handleMouseScroll: function(event) {
         }
     }
 },
-
-
 
 deleteSelectedObjects: function () {
     if (this.selectedObjects.length === 0) {
@@ -780,19 +845,16 @@ updateSelectedObjects: function (shiftKeyHeld) {
         this.selectedObjects = affectedObjects;
     }
 
-    // Push the selected objects to the bottom of the roomData.items array to render them last
-    this.selectedObjects.forEach(obj => {
-        const objIndex = game.roomData.items.indexOf(obj);
-        if (objIndex > -1) {
-            game.roomData.items.splice(objIndex, 1);  // Remove from the current position
-            game.roomData.items.push(obj);            // Push to the bottom
-        }
-    });
+    // Show or hide the bring buttons based on whether any objects are selected
+    editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
 
+    // Removed the code that moves objects to the front of the array.
     if (this.selectedObjects.length > 0) {
         this.changeMode('move');
     }
 },
+
+
 
 updateSelectedObjectsWithLasso: function (shiftKeyHeld) {
     const affectedObjects = game.roomData.items.filter(item => {
@@ -817,12 +879,16 @@ updateSelectedObjectsWithLasso: function (shiftKeyHeld) {
         this.selectedObjects = affectedObjects;
     }
 
+    // Show or hide the bring buttons based on whether any objects are selected
+    editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
+
     if (this.selectedObjects.length > 0 && !shiftKeyHeld) {
         this.changeMode('move');
     }
 
     console.log('Selected objects:', this.selectedObjects);
 },
+
 
 
 isPointInLasso: function (point) {
@@ -868,43 +934,43 @@ handleKeyDown: function (event) {
     else if (event.ctrlKey && event.shiftKey && key === 'Z') {
         this.redo();
     }
-    // Ctrl + Up to push selected objects to the top
+    // Ctrl + G to toggle grid
+    else if (event.ctrlKey && !event.shiftKey && key.toLowerCase() === 'g') {
+        editor_utils_window.toggleGridCheckbox();
+        event.preventDefault();
+    }
+    // Ctrl + Shift + G to toggle snap
+    else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 'g') {
+        editor_utils_window.toggleSnapCheckbox();
+        event.preventDefault();
+    }
+    // Ctrl + Arrow Up to move selected objects to the top
     else if (event.ctrlKey && key === 'ArrowUp') {
         this.pushSelectedObjectsToTop();
+        event.preventDefault();
     }
-    // Ctrl + Down to push selected objects to the bottom
+    // Ctrl + Arrow Down to move selected objects to the bottom
     else if (event.ctrlKey && key === 'ArrowDown') {
         this.pushSelectedObjectsToBottom();
+        event.preventDefault();
+    }
+    // Arrow keys to move selected objects
+    else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+        this.moveSelectedObjectsWithArrowKeys(key);
+        event.preventDefault();
     }
     // Ctrl + Shift + S to space out selected objects
     else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 's') {
         this.spaceOutSelectedObjects();
+        event.preventDefault();
     }
     // Delete or Backspace to delete selected objects
     else if (key === 'Delete' || key === 'Backspace') {
         this.deleteSelectedObjects();
-    }
-    // Shift key in 'move' mode, switch to the previous mode
-    else if (key === 'Shift' && game.editorMode === 'move') {
-        if (this.previousMode === 'lasso') {
-            this.changeMode('lasso');
-        } else if (this.previousMode === 'select') {
-            this.changeMode('select');
-        }
-    }
-    // Shift key in 'lasso' mode, stay in lasso mode
-    else if (key === 'Shift' && game.editorMode === 'lasso') {
-        // Stay in lasso mode
-    }
-    // Mode switching based on number keys (1-7)
-    else {
-        const modeIndex = parseInt(key, 10) - 1;
-        if (modeIndex >= 0 && modeIndex < this.modes.length) {
-            const selectedMode = this.modes[modeIndex];
-            this.changeMode(selectedMode);
-        }
+        event.preventDefault();
     }
 },
+
 
 handleKeyUp: function (event) {
     const key = event.key;
@@ -913,6 +979,42 @@ handleKeyUp: function (event) {
     if (key === 'Shift' && (game.editorMode === 'select' || game.editorMode === 'lasso')) {
         this.changeMode('move');  // Return to move mode when Shift is released
     }
+},
+
+moveSelectedObjectsWithArrowKeys: function (direction) {
+    if (this.selectedObjects.length === 0) {
+        console.log("No objects selected to move.");
+        return;
+    }
+
+    // Define the movement step size
+    const step = editor_utils_window.isSnapEnabled ? 16 : 1;
+
+    // Determine movement direction
+    let deltaX = 0, deltaY = 0;
+    switch (direction) {
+        case 'ArrowUp':
+            deltaY = -step;
+            break;
+        case 'ArrowDown':
+            deltaY = step;
+            break;
+        case 'ArrowLeft':
+            deltaX = -step;
+            break;
+        case 'ArrowRight':
+            deltaX = step;
+            break;
+    }
+
+    // Move the selected objects
+    this.selectedObjects.forEach(obj => {
+        obj.x = obj.x.map(coord => coord + deltaX / 16);  // Move on X axis
+        obj.y = obj.y.map(coord => coord + deltaY / 16);  // Move on Y axis
+    });
+
+    console.log(`Objects moved ${direction} by ${step} pixels.`);
+
 },
 
     undo: function () {
@@ -967,25 +1069,59 @@ copySelectedObjects: function () {
     },
 
     pasteCopiedObjects: function () {
-        if (this.clipboard.length > 0) {
-            // Deep clone the copied objects and adjust their position
-            const pastedObjects = this.clipboard.map(obj => {
-                const newObj = JSON.parse(JSON.stringify(obj));
-                // Shift pasted objects slightly to differentiate them from the originals
-                newObj.x = newObj.x.map(coord => coord + 1);  // Shift by 1 tile
-                newObj.y = newObj.y.map(coord => coord + 1);  // Shift by 1 tile
-                return newObj;
+    if (this.clipboard.length > 0) {
+        // Use the current mouse position for placing the pasted objects
+        const mouseX = this.mouseX;
+        const mouseY = this.mouseY;
+
+        // Determine the reference point (top-left corner) of the selection based on the clipboard objects
+        const minClipboardX = Math.min(...this.clipboard.map(obj => Math.min(...obj.x))) * 16;
+        const minClipboardY = Math.min(...this.clipboard.map(obj => Math.min(...obj.y))) * 16;
+
+        // Calculate the offset between the clipboard's top-left corner and the current mouse position
+        const offsetX = mouseX - minClipboardX;
+        const offsetY = mouseY - minClipboardY;
+
+        // If snapping is enabled, snap the offsets to the nearest grid size (16x16 grid), otherwise, use pixel-perfect positioning
+        const offsetForX = editor_utils_window.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX);
+        const offsetForY = editor_utils_window.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY);
+
+        // Deep clone the copied objects and adjust their position relative to the mouse cursor
+        const pastedObjects = this.clipboard.map(obj => {
+            const newObj = JSON.parse(JSON.stringify(obj));
+
+            // Adjust each object's x and y coordinates
+            newObj.x = newObj.x.map(coord => {
+                const newCoordX = coord * 16 + offsetForX;
+                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
+                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
             });
 
-            // Add the pasted objects to the room data
-            game.roomData.items.push(...pastedObjects);
-            console.log("Objects pasted:", pastedObjects);
+            newObj.y = newObj.y.map(coord => {
+                const newCoordY = coord * 16 + offsetForY;
+                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
+                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
+            });
 
-            // Update walkable grid and re-render the scene
-            collision.createWalkableGrid();
-            game.render();
-        }
-    },
+            return newObj;
+        });
+
+        // Add the pasted objects to the room data
+        game.roomData.items.push(...pastedObjects);
+        console.log("Objects pasted at", editor_utils_window.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
+
+        // Update walkable grid and re-render the scene
+        collision.createWalkableGrid();
+
+        // Select the pasted objects
+        this.selectedObjects = pastedObjects;
+        console.log("Pasted objects are now selected:", this.selectedObjects);
+
+        // Switch to 'move' mode after pasting
+        this.changeMode('move');
+    }
+},
+
 
 pushToUndoStack: function () {
     const currentState = JSON.parse(JSON.stringify(game.roomData));
@@ -1218,6 +1354,21 @@ saveRoomData: function () {
             // Optionally handle error UI or notifications here
         }
     });
+},
+
+revertToOriginalState: function () {
+    if (this.originalRoomData) {
+        // Restore the original room data
+        game.roomData = JSON.parse(JSON.stringify(this.originalRoomData));
+
+        // Recreate the walkable grid and re-render the map
+        collision.createWalkableGrid();
+        game.render();
+
+        console.log("Room reverted to original state.");
+    } else {
+        console.error("Original room data not found.");
+    }
 }
 
 };

@@ -9,7 +9,7 @@ var game = {
     lastTime: 0,
     deltaTime: 0,
     worldWidth: 1280,
-    worldHeight: 1280,
+    worldHeight: 944,
     zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 4,
     targetX: 0,
     targetY: 0,
@@ -100,10 +100,23 @@ var game = {
     },
 
     setZoomLevel: function(newZoomLevel) {
-        this.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10)); 
-        localStorage.setItem('zoomLevel', game.zoomLevel);
-        console.log('setting zoom level');
-    },
+        this.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10));
+        localStorage.setItem('zoomLevel', this.zoomLevel);
+    
+        // Adjust the canvas size based on the zoom level
+        const baseWidth = window.innerWidth;
+        const baseHeight = window.innerHeight;
+    
+        // Increase or decrease the canvas size depending on the zoom level
+        const scaledWidth = baseWidth / this.zoomLevel;
+        const scaledHeight = baseHeight / this.zoomLevel;
+    
+        // Update the canvas element size to reflect the zoom
+        this.canvas.width = scaledWidth;
+        this.canvas.height = scaledHeight;
+    
+        console.log('Zoom level set to:', this.zoomLevel);
+    },    
 
     init: function() {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
@@ -247,7 +260,7 @@ var game = {
     
         modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu',drag: false, reload: false });
     
-        modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+        //modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
     
         modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
     },
@@ -433,8 +446,11 @@ var game = {
     },
 
     render: function () {
-        // Clear the canvas and reset transformations
-        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        // Clear the canvas and fill with the background color
+        this.ctx.fillStyle = '#333';
+        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    
+        // Reset transformations before rendering the map
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         
         // Apply zoom and translate based on camera position
@@ -492,7 +508,7 @@ var game = {
                 ui_console_tab_window.renderObjectCollision();
             }
         }
-    },       
+    },    
     
     loop: function(timestamp) {
         if (!this.lastTime) {

@@ -105,8 +105,15 @@ var render = {
             return acc;
         }, {});
     
+        // 1. Render the background first
         backgroundTileCount = this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
     
+        // 2. Render the grid if enabled (after the background but before other objects)
+        if (utils.objExists('editor_utils_window.renderGrid')) {
+            editor_utils_window.renderGrid();  // Call the renderGrid function from the utils modal
+        }
+    
+        // 3. Render the game objects
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(roomItem => {
                 const itemData = expandedObjectData[roomItem.id];
@@ -187,7 +194,7 @@ var render = {
     
         // Return counts, including background tiles
         return { backgroundTileCount, tileCount, spriteCount };
-    },    
+    },      
 
     renderPathfinderLine: function () {
         if (game.mainSprite && game.mainSprite.path && game.mainSprite.path.length > 0) {

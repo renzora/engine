@@ -208,6 +208,14 @@ html, body {
   background-position: -640px 0;
 }
 
+.ui_bring_front {
+  background-position: -672px 0;
+}
+
+.ui_bring_back {
+  background-position: -704px 0;
+}
+
 .globe {
   width: 32px;
   background-position: 0 0;
