@@ -72,7 +72,6 @@ if ($auth) {
 
   <script>
 var edit_mode_window = {
-
     originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},
     brushRadius: 16,  // Initial brush radius in pixels
@@ -95,17 +94,13 @@ var edit_mode_window = {
     boundKeyDownHandler: null,
     clipboard: [],
     isAddingNewObject: false,
-    // New drag select properties
     isDragging: false,  // Flag to track if selection drag is active
     selectionStart: { x: 0, y: 0 },  // Coordinates where drag selection starts
     selectionEnd: { x: 0, y: 0 },  // Coordinates where drag selection ends
     selectedObjects: [],  // Stores objects inside the selected area
-
     undoStack: [],  // Stack for undo operations
     redoStack: [],  // Stack for redo operations
-
-        // Properties for move mode
-        isMovingObjects: false,
+    isMovingObjects: false,
     moveOffsetX: 0,
     moveOffsetY: 0,
 
@@ -398,6 +393,37 @@ handleMouseScroll: function(event) {
     }
 },
 
+handlePanning: function (event) {
+    if (event.button === 1 || game.editorMode === 'pan') {
+        this.isDragging = true;
+        this.isPanning = true;
+        this.lastMouseX = event.clientX;
+        this.lastMouseY = event.clientY;
+        document.body.style.cursor = 'grabbing';
+        return true; // Exit early after setting panning mode
+    }
+    return false;
+},
+
+handleCameraPanning: function(event) {
+    const deltaX = event.clientX - this.lastMouseX;
+    const deltaY = event.clientY - this.lastMouseY;
+    camera.cameraX -= deltaX / game.zoomLevel;
+    camera.cameraY -= deltaY / game.zoomLevel;
+    this.constrainCamera();
+    this.lastMouseX = event.clientX;
+    this.lastMouseY = event.clientY;
+},
+
+handleZoomDrag: function (event) {
+    if (event.button === 0) {
+        this.isDragging = true;
+        this.lastMouseY = event.clientY;
+        return true; // Exit early to handle zoom dragging
+    }
+    return false;
+},
+
 handleObjectMovement: function() {
     let totalDeltaX = this.mouseX - this.lastMouseX;
     let totalDeltaY = this.mouseY - this.lastMouseY;
@@ -429,41 +455,21 @@ handleObjectMovement: function() {
     }
 },
 
-handleCameraPanning: function(event) {
-    const deltaX = event.clientX - this.lastMouseX;
-    const deltaY = event.clientY - this.lastMouseY;
-    camera.cameraX -= deltaX / game.zoomLevel;
-    camera.cameraY -= deltaY / game.zoomLevel;
-    this.constrainCamera();
-    this.lastMouseX = event.clientX;
-    this.lastMouseY = event.clientY;
-},
+handleSelectionStart: function (event) {
+    if (edit_mode_window.isAddingNewObject) return;  // Prevent selection when adding a new object
 
-handleZoomDragging: function(event) {
-    const deltaY = event.clientY - this.lastMouseY;
-    this.cumulativeZoomDrag = (this.cumulativeZoomDrag || 0) + deltaY;
-    const zoomThreshold = 50;
+    // Continue with the usual selection logic
+    this.isDragging = true;
+    const rect = game.canvas.getBoundingClientRect();
+    this.selectionStart = {
+        x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
+        y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
+    };
+    this.selectionEnd = { ...this.selectionStart };
 
-    if (Math.abs(this.cumulativeZoomDrag) > zoomThreshold) {
-        const zoomFactor = this.cumulativeZoomDrag < 0 ? 1 : -1;
-        const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));
-        const rect = game.canvas.getBoundingClientRect();
-        const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-        const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-        game.zoomLevel = newZoomLevel;
-        const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-        const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-        camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
-        camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
-        this.constrainCamera();
-        this.cumulativeZoomDrag = 0;
+    if (!event.shiftKey) {
+        this.selectedObjects = [];
     }
-    this.lastMouseY = event.clientY;
-},
-
-handleLassoDragging: function() {
-    this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
-    this.renderLasso();
 },
 
 handleSelectionBox: function(event, rect) {
@@ -476,33 +482,6 @@ handleSelectionBox: function(event, rect) {
     }
 },
 
-updateMousePosition: function (event) {
-    const rect = game.canvas.getBoundingClientRect();
-    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-},
-
-handlePanning: function (event) {
-    if (event.button === 1 || game.editorMode === 'pan') {
-        this.isDragging = true;
-        this.isPanning = true;
-        this.lastMouseX = event.clientX;
-        this.lastMouseY = event.clientY;
-        document.body.style.cursor = 'grabbing';
-        return true; // Exit early after setting panning mode
-    }
-    return false;
-},
-
-handleZoomDrag: function (event) {
-    if (event.button === 0) {
-        this.isDragging = true;
-        this.lastMouseY = event.clientY;
-        return true; // Exit early to handle zoom dragging
-    }
-    return false;
-},
-
 handleLassoStart: function (event) {
     if (event.button === 0) {
         this.isDragging = true;
@@ -510,6 +489,11 @@ handleLassoStart: function (event) {
         return true; // Exit early after starting lasso path
     }
     return false;
+},
+
+handleLassoDragging: function() {
+    this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
+    this.renderLasso();
 },
 
 handleMoveMode: function (event) {
@@ -538,17 +522,6 @@ checkIfClickedOnSelectedObject: function () {
     });
 },
 
-changeToSelectModeAndStart: function (event) {
-    this.changeMode('select');
-    this.isDragging = true;
-    const rect = game.canvas.getBoundingClientRect();
-    this.selectionStart = {
-        x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
-        y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
-    };
-    this.selectionEnd = { ...this.selectionStart };
-},
-
 startObjectMove: function (event) {
     this.isDragging = true;
     this.initialOffsets = [];
@@ -566,10 +539,8 @@ startObjectMove: function (event) {
     this.clearSelectionBox();
 },
 
-handleSelectionStart: function (event) {
-    if (edit_mode_window.isAddingNewObject) return;  // Prevent selection when adding a new object
-
-    // Continue with the usual selection logic
+changeToSelectModeAndStart: function (event) {
+    this.changeMode('select');
     this.isDragging = true;
     const rect = game.canvas.getBoundingClientRect();
     this.selectionStart = {
@@ -577,21 +548,6 @@ handleSelectionStart: function (event) {
         y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
     };
     this.selectionEnd = { ...this.selectionStart };
-
-    if (!event.shiftKey) {
-        this.selectedObjects = [];
-    }
-},
-
-handlePanningEnd: function (event) {
-    if (event.button === 1 || game.editorMode === 'pan') {
-        this.isPanning = false;
-        this.isDragging = false;
-        document.body.style.cursor = this.defaultCursor;
-        this.stopSlidingCamera();
-        return true;
-    }
-    return false;
 },
 
 handleSelectionEnd: function (event) {
@@ -618,41 +574,57 @@ finalizeObjectMovement: function () {
     }
 },
 
-// Helper functions
-panCameraHorizontally: function(deltaY) {
-    const scrollDirection = deltaY < 0 ? -1 : 1;
-    camera.cameraX += scrollDirection * 10;
-    this.constrainCamera();
+handlePanningEnd: function (event) {
+    if (event.button === 1 || game.editorMode === 'pan') {
+        this.isPanning = false;
+        this.isDragging = false;
+        document.body.style.cursor = this.defaultCursor;
+        this.stopSlidingCamera();
+        return true;
+    }
+    return false;
 },
 
-isModeWithZoomOrMovement: function() {
-    return ['select', 'lasso', 'move', 'zoom', 'delete'].includes(game.editorMode);
+moveSelectedObjectsWithArrowKeys: function (direction) {
+    if (this.selectedObjects.length === 0) {
+        console.log("No objects selected to move.");
+        return;
+    }
+
+    // Define the movement step size
+    const step = editor_utils_window.isSnapEnabled ? 16 : 1;
+
+    // Determine movement direction
+    let deltaX = 0, deltaY = 0;
+    switch (direction) {
+        case 'ArrowUp':
+            deltaY = -step;
+            break;
+        case 'ArrowDown':
+            deltaY = step;
+            break;
+        case 'ArrowLeft':
+            deltaX = -step;
+            break;
+        case 'ArrowRight':
+            deltaX = step;
+            break;
+    }
+
+    // Move the selected objects
+    this.selectedObjects.forEach(obj => {
+        obj.x = obj.x.map(coord => coord + deltaX / 16);  // Move on X axis
+        obj.y = obj.y.map(coord => coord + deltaY / 16);  // Move on Y axis
+    });
+
+    console.log(`Objects moved ${direction} by ${step} pixels.`);
+
 },
 
-handleZoomOrMovement: function(deltaY, event) {
-    camera.lerpEnabled = false;
-    camera.manual = true;
-
+updateMousePosition: function (event) {
     const rect = game.canvas.getBoundingClientRect();
-    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-    const zoomFactor = deltaY < 0 ? 1 : -1;
-    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));  // Set minimum zoom level to 2
-
-    game.zoomLevel = newZoomLevel;
-    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-
-    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
-    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
-
-    this.constrainCamera();
-},
-
-panCameraVertically: function(deltaY) {
-    const scrollDirection = deltaY < 0 ? -1 : 1;
-    camera.cameraY += scrollDirection * 10;
-    this.constrainCamera();
+    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
 },
 
 handleBrushModeScroll: function(deltaY, ctrlKeyPressed, event) {
@@ -660,59 +632,6 @@ handleBrushModeScroll: function(deltaY, ctrlKeyPressed, event) {
         this.zoomInBrushMode(deltaY, event);
     } else {
         this.adjustBrushSize(deltaY);
-    }
-},
-
-zoomInBrushMode: function(deltaY, event) {
-    const scrollDirection = deltaY < 0 ? 1 : -1;
-    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + scrollDirection, 10));  // Set minimum zoom level to 2
-
-    const rect = game.canvas.getBoundingClientRect();
-    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-
-    game.zoomLevel = newZoomLevel;
-    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-
-    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
-    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
-
-    this.constrainCamera();
-},
-
-adjustBrushSize: function(deltaY) {
-    const scrollDirection = deltaY < 0 ? 5 : -5;
-    this.brushRadius = Math.max(16, Math.min(this.brushRadius + scrollDirection, 500));  // Set minimum to 16 and maximum to 500 pixels
-},
-
-deleteSelectedObjects: function () {
-    if (this.selectedObjects.length === 0) {
-        console.log("No objects selected to delete.");
-        return;
-    }
-
-    // Add current room state to undo stack before deleting
-    this.pushToUndoStack();
-
-    // Filter out the selected objects from the room data
-    game.roomData.items = game.roomData.items.filter(item => {
-        return !this.selectedObjects.includes(item);
-    });
-
-    // Clear the selected objects array
-    this.selectedObjects = [];
-
-    // Update the walkable grid after removing objects
-    collision.createWalkableGrid();
-
-    console.log("Selected objects deleted.");
-
-    // Switch back to select or lasso mode based on the previous mode
-    if (this.previousMode === 'lasso') {
-        this.changeMode('lasso');
-    } else {
-        this.changeMode('select'); // Default to select mode if not in lasso
     }
 },
 
@@ -806,28 +725,14 @@ renderSelectionBox: function () {
     }
 },
 
-renderBrush: function () {
-    if (this.isBrushModeActive) {
-        const centerX = this.mouseX;
-        const centerY = this.mouseY;
-
-        game.ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';  // Set brush color and transparency
-        game.ctx.beginPath();
-        game.ctx.arc(centerX, centerY, this.brushRadius / 2, 0, Math.PI * 2);  // Draw a circle with the brushRadius
-        game.ctx.fill();
-    }
-},
-
 renderLasso: function () {
     if (this.lassoPath.length > 1) {
-        const pulseSpeed = (performance.now() / 500) % 1;  // Control the pulse speed
-        const pulseOpacity = 0.6 + 0.4 * Math.sin(pulseSpeed * Math.PI * 2);  // Create a pulsing opacity effect
+        const dashSpeed = performance.now() / 100;  // Adjust speed by dividing time
 
-        game.ctx.strokeStyle = `rgba(0, 255, 0, ${pulseOpacity})`;
+        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';  // White dashed line
         game.ctx.lineWidth = 2;
         game.ctx.setLineDash([6, 3]);  // Dash pattern: 6px line, 3px gap
-        game.ctx.shadowColor = `rgba(0, 255, 0, ${pulseOpacity})`;  // Adjust shadow opacity based on pulse
-        game.ctx.shadowBlur = 8;
+        game.ctx.lineDashOffset = -dashSpeed;  // Animate dashes by offsetting
 
         game.ctx.beginPath();
         game.ctx.moveTo(this.lassoPath[0].x, this.lassoPath[0].y);
@@ -836,12 +741,52 @@ renderLasso: function () {
             game.ctx.lineTo(this.lassoPath[i].x, this.lassoPath[i].y);
         }
 
-        game.ctx.closePath();  // Optionally close the lasso path
         game.ctx.stroke();
 
-        // Reset shadow and line dash for other elements
+        // Reset line dash settings for other elements
         game.ctx.setLineDash([]);
-        game.ctx.shadowBlur = 0;
+        game.ctx.lineDashOffset = 0;
+    }
+},
+
+renderBrush: function() {
+    if (this.isBrushModeActive) {
+        const halfBrushSize = this.brushRadius / 2;
+        const topLeftX = this.mouseX - halfBrushSize;
+        const topLeftY = this.mouseY - halfBrushSize;
+
+        game.ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';  // Set brush color and transparency
+        game.ctx.fillRect(topLeftX, topLeftY, this.brushRadius, this.brushRadius);  // Draw square brush
+    }
+},
+
+deleteSelectedObjects: function () {
+    if (this.selectedObjects.length === 0) {
+        console.log("No objects selected to delete.");
+        return;
+    }
+
+    // Add current room state to undo stack before deleting
+    this.pushToUndoStack();
+
+    // Filter out the selected objects from the room data
+    game.roomData.items = game.roomData.items.filter(item => {
+        return !this.selectedObjects.includes(item);
+    });
+
+    // Clear the selected objects array
+    this.selectedObjects = [];
+
+    // Update the walkable grid after removing objects
+    collision.createWalkableGrid();
+
+    console.log("Selected objects deleted.");
+
+    // Switch back to select or lasso mode based on the previous mode
+    if (this.previousMode === 'lasso') {
+        this.changeMode('lasso');
+    } else {
+        this.changeMode('select'); // Default to select mode if not in lasso
     }
 },
 
@@ -926,8 +871,6 @@ updateSelectedObjectsWithLasso: function (shiftKeyHeld) {
     console.log('Selected objects:', this.selectedObjects);
 },
 
-
-
 isPointInLasso: function (point) {
     let inside = false;
     const { x, y } = point;
@@ -941,6 +884,361 @@ isPointInLasso: function (point) {
     }
 
     return inside;
+},
+
+pushSelectedObjectsToTop: function () {
+    if (this.selectedObjects.length === 0) {
+        console.log('No objects selected to move.');
+        return;
+    }
+
+    // Save the current state to the undo stack before making changes
+    this.pushToUndoStack();
+
+    const items = game.roomData.items;
+
+    // Remove the selected objects from the array
+    this.selectedObjects.forEach(obj => {
+        const index = items.indexOf(obj);
+        if (index > -1) {
+            items.splice(index, 1); // Remove object from current position
+        }
+    });
+
+    // Add the selected objects to the top of the array
+    items.push(...this.selectedObjects);
+
+    console.log('Selected objects moved to the top of the render queue.');
+},
+
+pushSelectedObjectsToBottom: function () {
+    if (this.selectedObjects.length === 0) {
+        console.log('No objects selected to move.');
+        return;
+    }
+
+    // Save the current state to the undo stack before making changes
+    this.pushToUndoStack();
+
+    const items = game.roomData.items;
+
+    // Remove the selected objects from the array
+    this.selectedObjects.forEach(obj => {
+        const index = items.indexOf(obj);
+        if (index > -1) {
+            items.splice(index, 1); // Remove object from current position
+        }
+    });
+
+    // Add the selected objects to the bottom of the array
+    items.unshift(...this.selectedObjects);
+
+    console.log('Selected objects moved to the bottom of the render queue.');
+},
+
+spaceOutSelectedObjects: function () {
+    if (this.selectedObjects.length <= 1) {
+        console.log('Need more than one object to space out.');
+        return;
+    }
+
+    // Set the spacing distance in pixels, slightly increased for more separation
+    const spacingDistance = 48; // Increased to 3 tiles apart
+
+    // Calculate center position of all selected objects
+    let centerX = 0;
+    let centerY = 0;
+
+    this.selectedObjects.forEach(obj => {
+        centerX += Math.min(...obj.x) * 16;
+        centerY += Math.min(...obj.y) * 16;
+    });
+
+    centerX /= this.selectedObjects.length;
+    centerY /= this.selectedObjects.length;
+
+    // Space out each selected object around the center position
+    this.selectedObjects.forEach((obj, index) => {
+        const angle = (index / this.selectedObjects.length) * Math.PI * 2;
+        let newX = centerX + Math.cos(angle) * spacingDistance;
+        let newY = centerY + Math.sin(angle) * spacingDistance;
+
+        // Ensure new positions are whole numbers
+        newX = Math.round(newX);
+        newY = Math.round(newY);
+
+        const offsetX = (newX / 16) - Math.min(...obj.x);
+        const offsetY = (newY / 16) - Math.min(...obj.y);
+
+        // Move each object to the new position
+        obj.x = obj.x.map(coord => Math.round(coord + offsetX));
+        obj.y = obj.y.map(coord => Math.round(coord + offsetY));
+    });
+
+    console.log('Objects spaced out on the map with whole number positions.');
+},
+
+selectAllObjects: function () {
+    // Select all objects in the room
+    this.selectedObjects = game.roomData.items.slice();  // Copy all items to selectedObjects
+    console.log("All objects selected:", this.selectedObjects);
+
+    // Switch to move mode since objects are now selected
+    if (this.selectedObjects.length > 0) {
+        this.changeMode('move');
+    }
+},
+
+copySelectedObjects: function () {
+        if (this.selectedObjects.length > 0) {
+            // Deep clone the selected objects to the clipboard
+            this.clipboard = this.selectedObjects.map(obj => JSON.parse(JSON.stringify(obj)));
+            console.log("Objects copied:", this.clipboard);
+        }
+    },
+
+    pasteCopiedObjects: function () {
+    if (this.clipboard.length > 0) {
+        // Use the current mouse position for placing the pasted objects
+        const mouseX = this.mouseX;
+        const mouseY = this.mouseY;
+
+        // Determine the center of the clipboard objects
+        const clipboardCenterX = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.x) * 16, 0) / this.clipboard.length;
+        const clipboardCenterY = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.y) * 16, 0) / this.clipboard.length;
+
+        // Calculate the offset to center the objects on the mouse cursor
+        const offsetX = mouseX - clipboardCenterX;
+        const offsetY = mouseY - clipboardCenterY;
+
+        // If snapping is enabled, snap the offsets to the nearest grid size (16x16 grid), otherwise, use pixel-perfect positioning
+        const offsetForX = editor_utils_window.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX);
+        const offsetForY = editor_utils_window.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY);
+
+        // Deep clone the copied objects and adjust their position relative to the mouse cursor
+        const pastedObjects = this.clipboard.map(obj => {
+            const newObj = JSON.parse(JSON.stringify(obj));
+
+            // Adjust each object's x and y coordinates
+            newObj.x = newObj.x.map(coord => {
+                const newCoordX = coord * 16 + offsetForX;
+                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
+                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
+            });
+
+            newObj.y = newObj.y.map(coord => {
+                const newCoordY = coord * 16 + offsetForY;
+                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
+                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
+            });
+
+            return newObj;
+        });
+
+        // Add the pasted objects to the room data
+        game.roomData.items.push(...pastedObjects);
+        console.log("Objects pasted at", editor_utils_window.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
+
+        // Update walkable grid and re-render the scene
+        collision.createWalkableGrid();
+
+        // Select the pasted objects
+        this.selectedObjects = pastedObjects;
+        console.log("Pasted objects are now selected:", this.selectedObjects);
+
+        // Switch to 'move' mode after pasting
+        this.changeMode('move');
+    }
+},
+
+undo: function () {
+    if (this.undoStack.length === 0) {
+        console.log("Nothing to undo.");
+        return;
+    }
+
+    // Push the current state to redo stack before undoing
+    this.pushToRedoStack();
+
+    // Restore the last state from the undo stack
+    const lastState = this.undoStack.pop();
+    this.restoreRoomData(lastState);
+
+    console.log("Undo completed.");
+},
+
+redo: function () {
+    if (this.redoStack.length === 0) {
+        console.log("Nothing to redo.");
+        return;
+    }
+
+    // Push the current state to undo stack before redoing
+    this.pushToUndoStack();
+
+    // Restore the last state from the redo stack
+    const lastState = this.redoStack.pop();
+    this.restoreRoomData(lastState);
+
+    console.log("Redo completed.");
+},
+
+saveRoomData: function () {
+    const data = {
+        sceneid: game.sceneid,
+        roomData: game.roomData
+    };
+    const dataToSend = JSON.stringify(data);
+    console.log('Data being sent to server:', dataToSend);
+
+    ui.ajax({
+        outputType: 'json',
+        method: 'POST',
+        url: 'modals/editor/ajax/save_map.php',
+        data: dataToSend,
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        success: function (data) {
+            console.log('Room data saved successfully:', data);
+            
+            // After a successful save, close the editor modal
+            edit_mode_window.unmount(); // Call the unmount function to clean up
+            modal.close('editor_window'); // Close the editor window
+        },
+        error: function (data) {
+            console.error('Error saving room data:', data);
+            // Optionally handle error UI or notifications here
+        }
+    });
+},
+
+revertToOriginalState: function () {
+    if (this.originalRoomData) {
+        // Restore the original room data
+        game.roomData = JSON.parse(JSON.stringify(this.originalRoomData));
+
+        // Recreate the walkable grid and re-render the map
+        collision.createWalkableGrid();
+
+        console.log("Room reverted to original state.");
+    } else {
+        console.error("Original room data not found.");
+    }
+},
+
+constrainCamera: function () {
+        const scaledWindowWidth = window.innerWidth / game.zoomLevel;
+        const scaledWindowHeight = window.innerHeight / game.zoomLevel;
+
+        const maxCameraX = game.worldWidth - scaledWindowWidth;
+        camera.cameraX = Math.max(0, Math.min(camera.cameraX, maxCameraX));
+
+        const maxCameraY = game.worldHeight - scaledWindowHeight;
+        camera.cameraY = Math.max(0, Math.min(camera.cameraY, maxCameraY));
+    },
+
+    pushToUndoStack: function () {
+    const currentState = JSON.parse(JSON.stringify(game.roomData));
+    this.undoStack.push(currentState);
+    console.log("Undo stack pushed, current undo stack size:", this.undoStack.length);
+    // Clear redo stack whenever a new action is performed
+    this.redoStack = [];
+},
+
+pushToRedoStack: function () {
+    const currentState = JSON.parse(JSON.stringify(game.roomData));
+    this.redoStack.push(currentState);
+    console.log("Redo stack pushed, current redo stack size:", this.redoStack.length);
+},
+
+restoreRoomData: function (state) {
+    if (!state) {
+        console.error("Error: Attempting to restore an undefined state.");
+        return; // Prevent parsing an invalid state
+    }
+
+    try {
+        game.roomData = JSON.parse(JSON.stringify(state));
+        console.log("Restored room data:", game.roomData.items);  // Log the restored object positions
+
+        // Update walkable grid and re-render the map
+        collision.createWalkableGrid();
+    } catch (error) {
+        console.error("Error restoring room data:", error);
+    }
+},
+
+    clearSelectionBox: function () {
+    this.selectionStart = { x: 0, y: 0 };  // Reset the selection start coordinates
+    this.selectionEnd = { x: 0, y: 0 };    // Reset the selection end coordinates
+    game.render();  // Trigger a re-render to clear any visual artifacts from the selection box
+},
+
+clearLassoPath: function () {
+    // Clear the lasso path if rendered
+    this.lassoPath = [];
+    game.render();  // Optionally trigger a re-render to clear any visual artifacts
+},
+
+// Helper functions
+panCameraHorizontally: function(deltaY) {
+    const scrollDirection = deltaY < 0 ? -1 : 1;
+    camera.cameraX += scrollDirection * 10;
+    this.constrainCamera();
+},
+
+isModeWithZoomOrMovement: function() {
+    return ['select', 'lasso', 'move', 'zoom', 'delete'].includes(game.editorMode);
+},
+
+handleZoomOrMovement: function(deltaY, event) {
+    camera.lerpEnabled = false;
+    camera.manual = true;
+
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+    const zoomFactor = deltaY < 0 ? 1 : -1;
+    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));  // Set minimum zoom level to 2
+
+    game.zoomLevel = newZoomLevel;
+    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
+    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
+
+    this.constrainCamera();
+},
+
+panCameraVertically: function(deltaY) {
+    const scrollDirection = deltaY < 0 ? -1 : 1;
+    camera.cameraY += scrollDirection * 10;
+    this.constrainCamera();
+},
+
+zoomInBrushMode: function(deltaY, event) {
+    const scrollDirection = deltaY < 0 ? 1 : -1;
+    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + scrollDirection, 10));  // Set minimum zoom level to 2
+
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+    game.zoomLevel = newZoomLevel;
+    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
+    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
+
+    this.constrainCamera();
+},
+
+adjustBrushSize: function(deltaY) {
+    const scrollDirection = deltaY < 0 ? 5 : -5;
+    this.brushRadius = Math.max(16, Math.min(this.brushRadius + scrollDirection, 500));  // Set minimum to 16 and maximum to 500 pixels
 },
 
 findConnectedClusters: function() {
@@ -1041,10 +1339,6 @@ handleKeyDown: function (event) {
     else if (event.ctrlKey && key === 'v') {
         this.pasteCopiedObjects();
     }
-    // Ctrl + X to cut selected objects
-    else if (event.ctrlKey && key === 'x') {
-        this.cutSelectedObjects();
-    }
     // Ctrl + Z to undo
     else if (event.ctrlKey && !event.shiftKey && key === 'z') {
         this.undo();
@@ -1102,338 +1396,6 @@ handleKeyUp: function (event) {
     // Shift key up - return to 'move' mode only if the previous mode was 'move'
     if (key === 'Shift' && (game.editorMode === 'select' || game.editorMode === 'lasso')) {
         this.changeMode('move');  // Return to move mode when Shift is released
-    }
-},
-
-
-moveSelectedObjectsWithArrowKeys: function (direction) {
-    if (this.selectedObjects.length === 0) {
-        console.log("No objects selected to move.");
-        return;
-    }
-
-    // Define the movement step size
-    const step = editor_utils_window.isSnapEnabled ? 16 : 1;
-
-    // Determine movement direction
-    let deltaX = 0, deltaY = 0;
-    switch (direction) {
-        case 'ArrowUp':
-            deltaY = -step;
-            break;
-        case 'ArrowDown':
-            deltaY = step;
-            break;
-        case 'ArrowLeft':
-            deltaX = -step;
-            break;
-        case 'ArrowRight':
-            deltaX = step;
-            break;
-    }
-
-    // Move the selected objects
-    this.selectedObjects.forEach(obj => {
-        obj.x = obj.x.map(coord => coord + deltaX / 16);  // Move on X axis
-        obj.y = obj.y.map(coord => coord + deltaY / 16);  // Move on Y axis
-    });
-
-    console.log(`Objects moved ${direction} by ${step} pixels.`);
-
-},
-
-    undo: function () {
-    if (this.undoStack.length === 0) {
-        console.log("Nothing to undo.");
-        return;
-    }
-
-    // Push the current state to redo stack before undoing
-    this.pushToRedoStack();
-
-    // Restore the last state from the undo stack
-    const lastState = this.undoStack.pop();
-    this.restoreRoomData(lastState);
-
-    console.log("Undo completed.");
-},
-
-redo: function () {
-    if (this.redoStack.length === 0) {
-        console.log("Nothing to redo.");
-        return;
-    }
-
-    // Push the current state to undo stack before redoing
-    this.pushToUndoStack();
-
-    // Restore the last state from the redo stack
-    const lastState = this.redoStack.pop();
-    this.restoreRoomData(lastState);
-
-    console.log("Redo completed.");
-},
-
-selectAllObjects: function () {
-    // Select all objects in the room
-    this.selectedObjects = game.roomData.items.slice();  // Copy all items to selectedObjects
-    console.log("All objects selected:", this.selectedObjects);
-
-    // Switch to move mode since objects are now selected
-    if (this.selectedObjects.length > 0) {
-        this.changeMode('move');
-    }
-},
-
-copySelectedObjects: function () {
-        if (this.selectedObjects.length > 0) {
-            // Deep clone the selected objects to the clipboard
-            this.clipboard = this.selectedObjects.map(obj => JSON.parse(JSON.stringify(obj)));
-            console.log("Objects copied:", this.clipboard);
-        }
-    },
-
-    pasteCopiedObjects: function () {
-    if (this.clipboard.length > 0) {
-        // Use the current mouse position for placing the pasted objects
-        const mouseX = this.mouseX;
-        const mouseY = this.mouseY;
-
-        // Determine the center of the clipboard objects
-        const clipboardCenterX = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.x) * 16, 0) / this.clipboard.length;
-        const clipboardCenterY = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.y) * 16, 0) / this.clipboard.length;
-
-        // Calculate the offset to center the objects on the mouse cursor
-        const offsetX = mouseX - clipboardCenterX;
-        const offsetY = mouseY - clipboardCenterY;
-
-        // If snapping is enabled, snap the offsets to the nearest grid size (16x16 grid), otherwise, use pixel-perfect positioning
-        const offsetForX = editor_utils_window.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX);
-        const offsetForY = editor_utils_window.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY);
-
-        // Deep clone the copied objects and adjust their position relative to the mouse cursor
-        const pastedObjects = this.clipboard.map(obj => {
-            const newObj = JSON.parse(JSON.stringify(obj));
-
-            // Adjust each object's x and y coordinates
-            newObj.x = newObj.x.map(coord => {
-                const newCoordX = coord * 16 + offsetForX;
-                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
-                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
-            });
-
-            newObj.y = newObj.y.map(coord => {
-                const newCoordY = coord * 16 + offsetForY;
-                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
-                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
-            });
-
-            return newObj;
-        });
-
-        // Add the pasted objects to the room data
-        game.roomData.items.push(...pastedObjects);
-        console.log("Objects pasted at", editor_utils_window.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
-
-        // Update walkable grid and re-render the scene
-        collision.createWalkableGrid();
-
-        // Select the pasted objects
-        this.selectedObjects = pastedObjects;
-        console.log("Pasted objects are now selected:", this.selectedObjects);
-
-        // Switch to 'move' mode after pasting
-        this.changeMode('move');
-    }
-},
-
-pushToUndoStack: function () {
-    const currentState = JSON.parse(JSON.stringify(game.roomData));
-    this.undoStack.push(currentState);
-    console.log("Undo stack pushed, current undo stack size:", this.undoStack.length);
-    // Clear redo stack whenever a new action is performed
-    this.redoStack = [];
-},
-
-pushToRedoStack: function () {
-    const currentState = JSON.parse(JSON.stringify(game.roomData));
-    this.redoStack.push(currentState);
-    console.log("Redo stack pushed, current redo stack size:", this.redoStack.length);
-},
-
-restoreRoomData: function (state) {
-    if (!state) {
-        console.error("Error: Attempting to restore an undefined state.");
-        return; // Prevent parsing an invalid state
-    }
-
-    try {
-        game.roomData = JSON.parse(JSON.stringify(state));
-        console.log("Restored room data:", game.roomData.items);  // Log the restored object positions
-
-        // Update walkable grid and re-render the map
-        collision.createWalkableGrid();
-    } catch (error) {
-        console.error("Error restoring room data:", error);
-    }
-},
-
-    constrainCamera: function () {
-        const scaledWindowWidth = window.innerWidth / game.zoomLevel;
-        const scaledWindowHeight = window.innerHeight / game.zoomLevel;
-
-        const maxCameraX = game.worldWidth - scaledWindowWidth;
-        camera.cameraX = Math.max(0, Math.min(camera.cameraX, maxCameraX));
-
-        const maxCameraY = game.worldHeight - scaledWindowHeight;
-        camera.cameraY = Math.max(0, Math.min(camera.cameraY, maxCameraY));
-    },
-
-    clearSelectionBox: function () {
-    this.selectionStart = { x: 0, y: 0 };  // Reset the selection start coordinates
-    this.selectionEnd = { x: 0, y: 0 };    // Reset the selection end coordinates
-    game.render();  // Trigger a re-render to clear any visual artifacts from the selection box
-},
-
-clearLassoPath: function () {
-    // Clear the lasso path if rendered
-    this.lassoPath = [];
-    game.render();  // Optionally trigger a re-render to clear any visual artifacts
-},
-
-pushSelectedObjectsToTop: function () {
-    if (this.selectedObjects.length === 0) {
-        console.log('No objects selected to move.');
-        return;
-    }
-
-    // Save the current state to the undo stack before making changes
-    this.pushToUndoStack();
-
-    const items = game.roomData.items;
-
-    // Remove the selected objects from the array
-    this.selectedObjects.forEach(obj => {
-        const index = items.indexOf(obj);
-        if (index > -1) {
-            items.splice(index, 1); // Remove object from current position
-        }
-    });
-
-    // Add the selected objects to the top of the array
-    items.push(...this.selectedObjects);
-
-    console.log('Selected objects moved to the top of the render queue.');
-},
-
-pushSelectedObjectsToBottom: function () {
-    if (this.selectedObjects.length === 0) {
-        console.log('No objects selected to move.');
-        return;
-    }
-
-    // Save the current state to the undo stack before making changes
-    this.pushToUndoStack();
-
-    const items = game.roomData.items;
-
-    // Remove the selected objects from the array
-    this.selectedObjects.forEach(obj => {
-        const index = items.indexOf(obj);
-        if (index > -1) {
-            items.splice(index, 1); // Remove object from current position
-        }
-    });
-
-    // Add the selected objects to the bottom of the array
-    items.unshift(...this.selectedObjects);
-
-    console.log('Selected objects moved to the bottom of the render queue.');
-},
-
-spaceOutSelectedObjects: function () {
-    if (this.selectedObjects.length <= 1) {
-        console.log('Need more than one object to space out.');
-        return;
-    }
-
-    // Set the spacing distance in pixels, slightly increased for more separation
-    const spacingDistance = 48; // Increased to 3 tiles apart
-
-    // Calculate center position of all selected objects
-    let centerX = 0;
-    let centerY = 0;
-
-    this.selectedObjects.forEach(obj => {
-        centerX += Math.min(...obj.x) * 16;
-        centerY += Math.min(...obj.y) * 16;
-    });
-
-    centerX /= this.selectedObjects.length;
-    centerY /= this.selectedObjects.length;
-
-    // Space out each selected object around the center position
-    this.selectedObjects.forEach((obj, index) => {
-        const angle = (index / this.selectedObjects.length) * Math.PI * 2;
-        let newX = centerX + Math.cos(angle) * spacingDistance;
-        let newY = centerY + Math.sin(angle) * spacingDistance;
-
-        // Ensure new positions are whole numbers
-        newX = Math.round(newX);
-        newY = Math.round(newY);
-
-        const offsetX = (newX / 16) - Math.min(...obj.x);
-        const offsetY = (newY / 16) - Math.min(...obj.y);
-
-        // Move each object to the new position
-        obj.x = obj.x.map(coord => Math.round(coord + offsetX));
-        obj.y = obj.y.map(coord => Math.round(coord + offsetY));
-    });
-
-    console.log('Objects spaced out on the map with whole number positions.');
-},
-
-saveRoomData: function () {
-    const data = {
-        sceneid: game.sceneid,
-        roomData: game.roomData
-    };
-    const dataToSend = JSON.stringify(data);
-    console.log('Data being sent to server:', dataToSend);
-
-    ui.ajax({
-        outputType: 'json',
-        method: 'POST',
-        url: 'modals/editor/ajax/save_map.php',
-        data: dataToSend,
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        success: function (data) {
-            console.log('Room data saved successfully:', data);
-            
-            // After a successful save, close the editor modal
-            edit_mode_window.unmount(); // Call the unmount function to clean up
-            modal.close('editor_window'); // Close the editor window
-        },
-        error: function (data) {
-            console.error('Error saving room data:', data);
-            // Optionally handle error UI or notifications here
-        }
-    });
-},
-
-revertToOriginalState: function () {
-    if (this.originalRoomData) {
-        // Restore the original room data
-        game.roomData = JSON.parse(JSON.stringify(this.originalRoomData));
-
-        // Recreate the walkable grid and re-render the map
-        collision.createWalkableGrid();
-
-        console.log("Room reverted to original state.");
-    } else {
-        console.error("Original room data not found.");
     }
 }
 

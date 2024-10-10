@@ -583,13 +583,14 @@ updatePolygon: function() {
 },
 
 
-        renderItemPreview: function(item, canvasId) {
+renderItemPreview: function(item, canvasId) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
     const tileSize = 16;
 
-    const maxCol = Math.max(...item.a) + 1;
-    const maxRow = Math.max(...item.b) + 1;
+    // Ensure item.a and item.b are arrays
+    const maxCol = Array.isArray(item.a) ? Math.max(...item.a) + 1 : item.a + 1;
+    const maxRow = Array.isArray(item.b) ? Math.max(...item.b) + 1 : item.b + 1;
 
     canvas.width = maxCol * tileSize;
     canvas.height = maxRow * tileSize;
@@ -598,31 +599,33 @@ updatePolygon: function() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Helper function to parse ranges like "1822-1827"
+    function parseRange(range) {
+        const [start, end] = range.split('-').map(Number);
+        const frames = [];
+        for (let i = start; i <= end; i++) {
+            frames.push(i);
+        }
+        return frames;
+    }
+
     // Determine which frames to render
     let framesToRender = [];
 
-    if (item.d && Array.isArray(item.i[0])) {
-        // Animated item with duration, only render the first frame
-        framesToRender = item.i[0];
-    } else if (Array.isArray(item.i[0])) {
-        // Animated item without duration, render all frames
-        framesToRender = item.i.flat();
+    if (Array.isArray(item.i)) {
+        framesToRender = item.i.flatMap(frame => typeof frame === 'string' && frame.includes('-') ? parseRange(frame) : frame);
     } else {
-        // Non-animated item, parse ranges and render all
-        framesToRender = item.i.map(frame => {
-            if (typeof frame === 'string' && frame.includes('-')) {
-                return render.parseRange(frame);
-            }
-            return [frame];
-        }).flat();
+        framesToRender = [item.i];  // Handle single frame
     }
 
-    // Draw each tile
+    // Iterate over the frame indices and corresponding coordinates
     framesToRender.forEach((tileIndex, index) => {
         const srcX = (tileIndex % 150) * tileSize;
         const srcY = Math.floor(tileIndex / 150) * tileSize;
-        const destX = item.a[index] * tileSize;
-        const destY = item.b[index] * tileSize;
+
+        // Use a (x) and b (y) as arrays for multiple tiles, otherwise default to single values
+        const destX = Array.isArray(item.a) ? item.a[index] * tileSize : item.a * tileSize;
+        const destY = Array.isArray(item.b) ? item.b[index] * tileSize : item.b * tileSize;
 
         ctx.drawImage(
             tilesetImage,
@@ -637,21 +640,24 @@ updatePolygon: function() {
     canvas.style.height = (canvas.height * scaleFactor) + 'px';
 },
 
+
+
 drawGrid: function(canvasId, item, skipGridLines = false) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
     const tileSize = 16;
 
     // Validate item and its properties
-    if (!item || !Array.isArray(item.a) || !Array.isArray(item.b)) {
+    if (!item || (!Array.isArray(item.a) && typeof item.a !== 'number') || (!Array.isArray(item.b) && typeof item.b !== 'number')) {
         console.error('Invalid item data:', item);
         return;
     }
 
     console.log('Drawing grid for item:', item);
 
-    const maxCol = Math.max(...item.a) + 1;
-    const maxRow = Math.max(...item.b) + 1;
+    // Check if item.a and item.b are arrays, otherwise treat them as single values
+    const maxCol = Array.isArray(item.a) ? Math.max(...item.a) + 1 : item.a + 1;
+    const maxRow = Array.isArray(item.b) ? Math.max(...item.b) + 1 : item.b + 1;
 
     // Adjust canvas size based on the item's dimensions
     canvas.width = maxCol * tileSize + 1;
@@ -663,6 +669,7 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
         ctx.strokeStyle = 'rgba(136, 136, 136, 1)';
         ctx.lineWidth = 1;
 
+        // Draw vertical grid lines
         for (let x = 0.5; x <= canvas.width; x += tileSize) {
             ctx.beginPath();
             ctx.moveTo(x, 0.5);
@@ -670,6 +677,7 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
             ctx.stroke();
         }
 
+        // Draw horizontal grid lines
         for (let y = 0.5; y <= canvas.height; y += tileSize) {
             ctx.beginPath();
             ctx.moveTo(0.5, y);
@@ -685,6 +693,7 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
 
     console.log('Grid drawn successfully on canvas:', canvasId);
 },
+
 
 
 

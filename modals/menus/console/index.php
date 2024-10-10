@@ -20,12 +20,12 @@ if ($auth) {
     isOpen: false,
     currentTabIndex: 0,
     eventListeners: [],
+    tab_name: null, // Store the currently active tab
 
     start: function() {
         this.load_tab_buttons();
         this.toggleConsoleWindow(false);
         this.bindGamepadButtons();
-        modal.front('console_window');
     },
 
     bindGamepadButtons: function() {
@@ -77,7 +77,6 @@ if ($auth) {
             this.activateCurrentTab();
         } else {
             this.hideConsoleWindow(consoleElement, tabsElement);
-            modal.front('ui_inventory_window');
         }
     },
 
@@ -86,6 +85,7 @@ if ($auth) {
         consoleElement.classList.add('translate-x-0');
         consoleElement.style.marginLeft = '46px';
         tabsElement.style.marginLeft = '-48px';
+        modal.front('console_window');
     },
 
     hideConsoleWindow: function(consoleElement, tabsElement) {
@@ -93,7 +93,7 @@ if ($auth) {
         consoleElement.classList.add('-translate-x-full');
         consoleElement.style.marginLeft = '0px';
         tabsElement.style.marginLeft = '407px';
-        this.clearActiveTabs();
+        modal.front('ui_inventory_window');
     },
 
     activateCurrentTab: function() {
@@ -104,7 +104,6 @@ if ($auth) {
 },
 
     setupTabListeners: function() {
-    // Select tabs using a more specific selector unique to the console window
     const tabs = document.querySelectorAll('#console_window .console_tab');
     tabs.forEach((tab, index) => {
         const listener = () => this.handleTabClick(tab, index);
@@ -113,25 +112,37 @@ if ($auth) {
     });
 },
 
-    handleTabClick: function(tab, index) {
-        console.log(`Tab clicked: ${tab.getAttribute('data-tab')}`);
-        this.currentTabIndex = index;
-        this.clearActiveTabs();
-        tab.classList.add('bg-[#2b3b55]', 'text-white');
-
-        if (!this.isOpen) {
-            this.toggleConsoleWindow();
-        } else {
-            this.loadTabContent(tab.getAttribute('data-tab'));
-        }
-    },
+handleTabClick: function(tab, index) {
+    const newTabName = tab.getAttribute('data-tab');
+    
+    if (this.tab_name && this.tab_name !== newTabName) {
+        ui.unmount(`ui_console_${this.tab_name}`);
+        console.log(`Unmounting ui_console_${this.tab_name}`);
+    }
+    
+    this.currentTabIndex = index;
+    this.tab_name = newTabName;
+    
+    this.clearActiveTabs();
+    tab.classList.add('bg-[#2b3b55]', 'text-white');
+    
+    if (!this.isOpen) {
+        this.toggleConsoleWindow();
+    } else {
+        this.loadTabContent(newTabName);
+    }
+},
 
     loadTabContent: function(target) {
-        this.unmountCurrentTab();
-        modal.front('console_window');
+        if (this.tab_name) {
+            ui.unmount('ui_console_' + this.tab_name);
+            console.log(`Unmounting ui_console_${this.tab_name}`);
+        }
+
+        this.tab_name = target;
         const contentDiv = document.getElementById('console_window_content');
         if (contentDiv) {
-            contentDiv.innerHTML = ''; // Clear previous content before loading new content
+            contentDiv.innerHTML = ''; 
             ui.ajax({
                 method: 'POST',
                 url: `modals/menus/console/tabs/${target}/index.php`,
@@ -152,7 +163,7 @@ if ($auth) {
         console.log("unmounting ui_console_tab_window");
         const contentDiv = document.getElementById('console_window_content');
         if (contentDiv) {
-            contentDiv.innerHTML = ''; // Clear content on unmount
+            contentDiv.innerHTML = '';
         }
     },
 
@@ -188,33 +199,32 @@ if ($auth) {
     if (!document.fullscreenElement) {
         if (document.documentElement.requestFullscreen) {
             document.documentElement.requestFullscreen();
-        } else if (document.documentElement.mozRequestFullScreen) { // Firefox
+        } else if (document.documentElement.mozRequestFullScreen) { 
             document.documentElement.mozRequestFullScreen();
-        } else if (document.documentElement.webkitRequestFullscreen) { // Chrome, Safari, and Opera
+        } else if (document.documentElement.webkitRequestFullscreen) { 
             document.documentElement.webkitRequestFullscreen();
-        } else if (document.documentElement.msRequestFullscreen) { // IE/Edge
+        } else if (document.documentElement.msRequestFullscreen) { 
             document.documentElement.msRequestFullscreen();
         }
     } else {
         if (document.exitFullscreen) {
             document.exitFullscreen();
-        } else if (document.mozCancelFullScreen) { // Firefox
+        } else if (document.mozCancelFullScreen) { 
             document.mozCancelFullScreen();
-        } else if (document.webkitExitFullscreen) { // Chrome, Safari, and Opera
+        } else if (document.webkitExitFullscreen) { 
             document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) { // IE/Edge
+        } else if (document.msExitFullscreen) { 
             document.msExitFullscreen();
         }
     }
 },
 
-
     unmount: function() {
         this.eventListeners.forEach(({ element, event, handler }) => {
             element.removeEventListener(event, handler);
         });
-        this.eventListeners = []; // Clear the event listeners array
-        this.unmountCurrentTab(); // Clear the current tab's content
+        this.eventListeners = [];
+        this.unmountCurrentTab(); 
         console.log("All event listeners have been removed.");
     }
 };

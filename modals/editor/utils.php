@@ -36,6 +36,14 @@ if ($auth) {
         <div class="ui_icon ui_bring_back"></div>
     </div>
 
+
+        <!-- "Select Type" button to select all objects of the same type -->
+        <div class="flex items-center mr-4 cursor-pointer" id="select_type_button">
+        <button class="mode-button shadow border rounded-sm px-4 py-1 text-white leading-tight focus:outline-none flex items-center justify-between bg-gray-700 border-gray-600 hover:bg-gray-800 cursor-pointer">
+            Select Types
+        </button>
+    </div>
+
     <style>
         /* Hide the default checkbox */
         .custom-checkbox {
@@ -82,7 +90,8 @@ if ($auth) {
         gridCheckbox: document.getElementById('grid_checkbox'),
         snapCheckbox: document.getElementById('snap_checkbox'),
         bringFrontButton: document.getElementById('move_front_button'),
-        bringBackButton: document.getElementById('move_back_button')
+        bringBackButton: document.getElementById('move_back_button'),
+        selectTypeButton: document.getElementById('select_type_button')
     };
 
     // Programmatically set checkbox states based on the isGridEnabled and isSnapEnabled flags
@@ -110,6 +119,9 @@ if ($auth) {
     this.modeButtons.bringBackButton.addEventListener('click', () => {
         edit_mode_window.pushSelectedObjectsToBottom(); // Move objects to the back
     });
+
+    this.modeButtons.selectTypeButton.addEventListener('click', () => this.selectAllObjectsOfType());
+
 },
 
 // Function to toggle the visibility of the brush size input
@@ -130,24 +142,38 @@ toggleBringButtons: function (show) {
         bringBackButton.style.display = show ? 'flex' : 'none';
     }
 },
-        unmount: function () {
-            console.log("Utility window unmounted and features reset.");
+unmount: function () {
+    console.log("Utility window unmounted and features reset.");
 
-            // Remove event listeners
-            this.modeButtons.gridCheckbox.removeEventListener('change', this.updateGridCheckboxState);
-            this.modeButtons.snapCheckbox.removeEventListener('change', this.updateSnapCheckboxState);
-            document.getElementById('brush_amount').removeEventListener('change', this.updateBrushAmount);
+    // Check if modeButtons is initialized before removing event listeners
+    if (this.modeButtons.gridCheckbox) {
+        this.modeButtons.gridCheckbox.removeEventListener('change', this.updateGridCheckboxState);
+    }
+    if (this.modeButtons.snapCheckbox) {
+        this.modeButtons.snapCheckbox.removeEventListener('change', this.updateSnapCheckboxState);
+    }
+    const brushAmountElement = document.getElementById('brush_amount');
+    if (brushAmountElement) {
+        brushAmountElement.removeEventListener('change', this.updateBrushAmount);
+    }
 
-            // Reset flags and disable grid and snap
-            this.isGridEnabled = false;
-            this.isSnapEnabled = false;
-            this.modeButtons.gridCheckbox.checked = false;
-            this.modeButtons.snapCheckbox.checked = false;
-            console.log("Grid and snap disabled.");
+    // Reset flags and disable grid and snap
+    this.isGridEnabled = false;
+    this.isSnapEnabled = false;
+    if (this.modeButtons.gridCheckbox) {
+        this.modeButtons.gridCheckbox.checked = false;
+    }
+    if (this.modeButtons.snapCheckbox) {
+        this.modeButtons.snapCheckbox.checked = false;
+    }
+    console.log("Grid and snap disabled.");
 
-            // Clear brush and other settings
-            this.modeButtons.brushAmount.value = 1;  // Reset brush size to default
-        },
+    // Clear brush and other settings
+    if (this.modeButtons.brushAmount) {
+        this.modeButtons.brushAmount.value = 1;  // Reset brush size to default
+    }
+},
+
 
         // Function to update grid state when checkbox is manually clicked
         updateGridCheckboxState: function () {
@@ -191,7 +217,45 @@ toggleBringButtons: function (show) {
         updateBrushAmount: function () {
             let brushAmountValue = this.modeButtons.brushAmount.value;
             console.log("Brush size updated to:", brushAmountValue);
-        }
+        },
+        selectAllObjectsOfType: function () {
+    if (edit_mode_window.selectedObjects.length === 0) {
+        console.log("No objects selected.");
+        return;
+    }
+
+    // Create a Set to hold unique object type ids from the selected objects
+    const selectedTypeIds = new Set(edit_mode_window.selectedObjects.map(obj => obj.id));
+
+    if (selectedTypeIds.size === 0) {
+        console.log("No valid object types found.");
+        return;
+    }
+
+    // Access the items array inside game.roomData
+    const roomDataArray = game.roomData.items;
+
+    if (!Array.isArray(roomDataArray)) {
+        console.error("roomData.items is not an array.");
+        return;
+    }
+
+    // Filter the objects in roomData that match any of the selected types
+    const objectsOfType = roomDataArray.filter(obj => selectedTypeIds.has(obj.id));
+
+    // Update the selectedObjects with all the matching objects
+    edit_mode_window.selectedObjects = objectsOfType;
+
+    console.log(`Selected all objects with ids: ${[...selectedTypeIds].join(', ')}`);
+    console.log(edit_mode_window.selectedObjects);
+
+    // Optionally, switch to move mode after selecting all objects
+    edit_mode_window.changeMode('move');
+}
+
+
+
+
     };
 
     // Start the utility window

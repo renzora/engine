@@ -160,6 +160,7 @@ var input = {
     },
 
     handleLeftAxes: function(axes) {
+
         const threshold = 0.2; // Dead zone threshold
     
         // Calculate axis pressures
@@ -179,6 +180,11 @@ var input = {
             gamepad.directions.down = axes[1] > threshold;
             gamepad.directions.up = axes[1] < -threshold;
     
+            // Call toggleVisibility if the stick has moved and the console is open
+            if (console_window.isOpen) {
+                console_window.toggleConsoleWindow();
+            }
+    
             // Update the sprite's directions based on combined states
             this.updateSpriteDirections(axes);
         } else {
@@ -189,7 +195,7 @@ var input = {
     
         // Update the sprite's directions based on combined states
         this.updateSpriteDirections(axes);
-    },
+    },    
 
     handleRightAxes: function(axes) {
         const deadZone = 0.1; // Dead zone threshold for minimal stick movement

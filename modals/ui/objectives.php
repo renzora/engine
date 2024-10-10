@@ -1,5 +1,5 @@
 <div data-window='ui_objectives_window' data-close="false">
-  <div id="ui_objectives_window" class="w-72 fixed top-1/3 right-2 z-10 flex rounded flex-col tracking-tight">
+  <div id="ui_objectives_window" class="w-72 fixed top-1/4 right-2 z-10 flex rounded flex-col tracking-tight">
     <div id="ui_objectives_container" class="flex flex-col space-y-1 p-2">
       <!-- Objectives will be dynamically inserted here by the displayObjectives method -->
     </div>

@@ -33,6 +33,7 @@ var game = {
     isPaused: false,
     sceneBg: "grass",
     activeSpriteId: null,
+    timeActive: true,
     inputMethod: 'keyboard',
     fpsHistory: [],
     maxFpsHistory: 60,
@@ -163,6 +164,13 @@ var game = {
             this.itemsData = assets.load('itemsData');
             this.objectData = assets.load('objectData');
             this.fxData = assets.load('fxData');
+
+
+            game.canvas.addEventListener('click', function(event) {
+                if (console_window.isOpen) {
+                    console_window.toggleConsoleWindow();
+                }
+            });
         
 
             if (game.sprites[this.playerid]) {
@@ -260,9 +268,9 @@ var game = {
     
         modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu',drag: false, reload: false });
     
-        //modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
-    
         modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
+
+        modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
     },
 
     pause: function() {
@@ -309,7 +317,7 @@ var game = {
                     game.selectedCache = [];
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
-                    ui.notif("scene_change_notif", data.name, true);
+                    //ui.notif("scene_change_notif", data.name, true);
                     audio.stopLoopingAudio('music', 0.5);
     
                     //game.spawnRandomItems(500);
@@ -467,8 +475,8 @@ var game = {
         const { backgroundTileCount, tileCount, spriteCount } = render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
         // Render selected item following the mouse cursor if the inventory window exists and an item is selected
-        if (utils.objExists('ui_console_tab_window') && ui_console_tab_window.selectedInventoryItem) {
-            ui_console_tab_window.render();
+        if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
+            ui_console_editor_inventory.render();
         }
     
         // Render other game effects and utilities
