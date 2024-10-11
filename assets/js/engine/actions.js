@@ -5,11 +5,12 @@ const actions = {
 
         const tileScript = tileData[0].script;
         const sprite = game.mainSprite;
-        const spriteX = Math.round(sprite.x);
-        const spriteY = Math.round(sprite.y);
+        const spriteX = sprite.x;  // Use exact sprite coordinates (not rounded)
+        const spriteY = sprite.y;
+
+        const proximityThreshold = 16;  // Define a proximity threshold (16 pixels)
 
         if (tileScript && tileScript.walk) {
-            // Check if a required button needs to be pressed
             if (tileScript.walk.requiredButton && !this.isButtonPressed(tileScript.walk.requiredButton)) {
                 return; // Exit if the required button is not pressed
             }
@@ -18,15 +19,35 @@ const actions = {
                 this.swim();
             }
 
-            if (tileScript.walk.tile) {
-                tileScript.walk.tile.forEach(tileAction => {
-                    if (tileAction.x === spriteX && tileAction.y === spriteY) {
-                        this[tileAction.action]();
+            if (tileScript.walk.rotate === true) {
+                // Find the specific object in roomData near the sprite's current position
+                game.roomData.items.forEach(roomItem => {
+                    const xCoordinates = roomItem.x || [];
+                    const yCoordinates = roomItem.y || [];
+
+                    // Adjust the logic to account for all tiles occupied by the object
+                    const isNearObject = xCoordinates.some((x, i) => {
+                        const y = yCoordinates[i];
+
+                        // Check if the player is within proximity to any tile of the object
+                        return Math.abs(x * 16 - spriteX) <= proximityThreshold &&
+                               Math.abs(y * 16 - spriteY) <= proximityThreshold;
+                    });
+
+                    // Ensure the correct tile is rotating and it's near the player
+                    if (roomItem.id === tileId && isNearObject) {
+                        // Start rotation for the object
+                        roomItem.isRotating = true;
+                        roomItem.rotationElapsed = 0;  // Initialize rotationElapsed for smooth tracking
+                        actions.handleRotation(roomItem);
+
+                        console.log(`Rotation started for object near position (${spriteX}, ${spriteY}) with ID: ${roomItem.id}`);
                     }
                 });
             }
         }
     },
+
 
     handleExitTileAction: function(tileId) {
         const tileData = game.objectData[tileId];
@@ -37,6 +58,45 @@ const actions = {
         if (tileScript.exit) {
             if (tileScript.exit.swim === false) {
                 this.restoreBody();
+            }
+        }
+    },
+
+    handleRotation: function(roomItem) {
+        let baseSwayAngle = Math.PI / 12; // Default baseline sway angle
+        let directionMultiplier = 1; // Multiplier to affect the sway direction and intensity
+
+        const sprite = game.sprites[game.playerid]; // Assuming the player sprite controls direction
+        if (sprite) {
+            if (sprite.direction === 'left' || sprite.direction === 'W') {
+                directionMultiplier = -1; // Sway more to the left
+            } else if (sprite.direction === 'right' || sprite.direction === 'E') {
+                directionMultiplier = 1; // Sway more to the right
+            }
+
+            // Calculate sway using time and direction
+            const maxSwayAngle = baseSwayAngle + (Math.random() * Math.PI / 24) * directionMultiplier;
+            const swaySpeed = 150;
+            const totalRotationDuration = 150;
+            const recoveryTime = 300;
+            const elapsedTime = roomItem.rotationElapsed || 0;
+            roomItem.rotationElapsed = elapsedTime + game.deltaTime;
+
+            let sway = 0;
+            if (elapsedTime < totalRotationDuration) {
+                sway = directionMultiplier * (Math.sin((elapsedTime / totalRotationDuration) * (Math.PI / 2)) * maxSwayAngle);
+            } else if (elapsedTime < totalRotationDuration + recoveryTime) {
+                const recoveryElapsed = elapsedTime - totalRotationDuration;
+                sway = directionMultiplier * (Math.cos((recoveryElapsed / recoveryTime) * (Math.PI / 2)) * maxSwayAngle);
+            }
+
+            roomItem.rotation = sway;
+
+            // Reset rotation after a complete cycle
+            if (elapsedTime >= totalRotationDuration + recoveryTime) {
+                roomItem.isRotating = false;
+                roomItem.rotationElapsed = 0;
+                roomItem.rotation = 0;
             }
         }
     },

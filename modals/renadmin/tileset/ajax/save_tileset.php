@@ -102,12 +102,19 @@ if ($auth) {
             // Add the new object to the items array with the unique ID as the key
             $objectData[$uniqueId] = [$newObject];
 
+            // Modify 'a' and 'b' values in the object data before saving the JSON
+            $objectDataWithAdjustedAB = $objectData;
+
+            // Adjust the 'a' and 'b' values for the new object inside the objectData
+            $objectDataWithAdjustedAB[$uniqueId][0]['a'] -= 1;
+            $objectDataWithAdjustedAB[$uniqueId][0]['b'] -= 1;
+
             // Update the tile count in the meta section
             $metaData['tile_count'] += count($aCoords);
             file_put_contents($logFile, "[{$timestamp}] - New tile count: {$metaData['tile_count']}\n", FILE_APPEND);
 
-            // Save updated object data without JSON_PRETTY_PRINT to avoid whitespace
-            if (file_put_contents($objectDataFile, json_encode($objectData)) === false) {
+            // Save updated object data with adjusted 'a' and 'b' values
+            if (file_put_contents($objectDataFile, json_encode($objectDataWithAdjustedAB)) === false) {
                 throw new Exception('Failed to save object data.');
             }
 

@@ -8,8 +8,10 @@
     <span id="tiles_rendered" class="text-white rounded-md"></span>
     <span id="lights_rendered" class="text-white rounded-md"></span>
     <span id="effects_rendered" class="text-white rounded-md"></span>
+    <span id="animations_rendered" class="text-white rounded-md"></span>
   </div>
 </div>
+
 
 <script>
   var ui_footer_window = {

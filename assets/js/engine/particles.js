@@ -9,16 +9,16 @@ const particles = {
         const spreadRad = spread * (Math.PI / 180);
         const colors = options.colors || ['rgba(255, 0, 0, 1)'];
         const repeat = options.repeat || false;
-        const gravity = options.gravity || 0; // New: Gravity effect
-        const sway = options.sway || 0; // New: Sway effect
-        const twinkleSpeed = options.twinkle || 0; // New: Twinkle effect
-
+        const gravity = options.gravity || 0;
+        const sway = options.sway || 0;
+        const twinkleSpeed = options.twinkle || 0;
+    
         for (let i = 0; i < particleCount; i++) {
             const randomSpread = (Math.random() - 0.5) * spreadRad;
             const angle = baseAngle + randomSpread;
             const speed = baseSpeed * (0.5 + Math.random() * 0.5);
             const color = colors[Math.floor(Math.random() * colors.length)];
-
+    
             const particle = {
                 x: x,
                 y: y,
@@ -36,20 +36,21 @@ const particles = {
                 initialOpacity: options.opacity || 1,
                 blur: options.blur || 0,
                 shape: options.shape || 'circle',
-                gravity: gravity, // Apply gravity
-                sway: sway, // Apply sway
-                twinkleSpeed: twinkleSpeed, // Apply twinkle
-                initialSize: options.size || 2, // Keep initial size for twinkle
-                opacity: options.opacity || 1 // Keep initial opacity for fade
+                gravity: gravity,
+                sway: sway,
+                twinkleSpeed: twinkleSpeed,
+                initialSize: options.size || 2,
+                opacity: options.opacity || 1,
+                effectId: effectId // Track the effectId for future removal
             };
-
+    
             if (!this.activeEffects[effectId]) {
                 this.activeEffects[effectId] = [];
             }
             this.activeEffects[effectId].push(particle);
             game.particles.push(particle);
         }
-    },
+    },    
 
     updateParticles: function(deltaTime) {
         game.particles = game.particles.filter(particle => particle.life > 0);
@@ -137,5 +138,18 @@ const particles = {
                 delete this.activeEffects[effectId];
             }
         }
-    }
+    },
+
+    removeParticles: function(effectId) {
+        // Check if the effect exists in activeEffects
+        if (this.activeEffects[effectId]) {
+            // Remove the particles associated with this effect
+            delete this.activeEffects[effectId];
+    
+            // Also filter out particles from the global game.particles array that belong to this effect
+            game.particles = game.particles.filter(particle => particle.effectId !== effectId);
+        } else {
+            console.warn(`Effect with ID '${effectId}' not found.`);
+        }
+    }    
 };

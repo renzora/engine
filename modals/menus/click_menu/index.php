@@ -25,7 +25,7 @@ var click_menu_window = {
         const gridX = Math.floor(mouseX / 16);
         const gridY = Math.floor(mouseY / 16);
 
-        const selectedObject = game.findObjectAt(mouseX, mouseY);
+        const selectedObject = utils.findObjectAt(mouseX, mouseY);
         const isTileWalkable = collision.isTileWalkable(gridX, gridY);
 
         const contextMenu = document.getElementById('rightClickMenu');
@@ -46,12 +46,7 @@ var click_menu_window = {
         }
 
         if (selectedObject) {
-            if (!game.selectedObjects.includes(selectedObject)) {
-                game.selectedObjects.push(selectedObject);
-                if (!game.selectedCache.some(cache => cache.id === selectedObject.id)) {
-                    game.selectedCache.push({ id: selectedObject.id, image: game.drawAndOutlineObjectImage(selectedObject) });
-                }
-            }
+
 
             const pickUpItemOption = document.createElement('li');
             pickUpItemOption.textContent = game.selectedObjects.length > 1 ? 'Pick Up Items' : 'Pick Up Item';

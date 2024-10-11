@@ -180,11 +180,15 @@ var game = {
                 console.warn(`Sprite with player ID ${this.playerid} not found.`);
             }
 
+
+
+
             console.log(this.mainSprite);
 
             weather.createFireflys();
             weather.createRain(0.7);
-            weather.createSnow(0.2);
+            weather.createSnow(0.6);
+            weather.createClouds();
 
             const storedSceneId = localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf';
             this.loadScene(storedSceneId);
@@ -399,23 +403,6 @@ var game = {
         this.canvas.style.transform = 'translate(-50%, -50%)';
     },
 
-    grid: function() {
-        game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-        game.ctx.lineWidth = 1;
-        for (var x = 0; x <= game.worldWidth; x += 16) {
-          game.ctx.beginPath();
-          game.ctx.moveTo(x, 0);
-          game.ctx.lineTo(x, game.worldHeight);
-          game.ctx.stroke();
-        }
-        for (var y = 0; y <= game.worldHeight; y += 16) {
-          game.ctx.beginPath();
-          game.ctx.moveTo(0, y);
-          game.ctx.lineTo(game.worldWidth, y);
-          game.ctx.stroke();
-        }
-      },
-
       handleMouseDown: function(event) {
         if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
         console.log('Game handleMouseDown triggered');
@@ -431,7 +418,7 @@ var game = {
     },
 
     handleMouseMove: function(event) {
-        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
+
     },
     
     handleMouseUp: function(event) {
@@ -472,7 +459,7 @@ var game = {
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
     
         // Render all the tiles and sprites
-        const { backgroundTileCount, tileCount, spriteCount } = render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+        const { backgroundTileCount, tileCount, spriteCount, animationCount } = render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
         // Render selected item following the mouse cursor if the inventory window exists and an item is selected
         if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
@@ -488,8 +475,8 @@ var game = {
         particles.renderParticles();
         effects.transitions.render();
     
-        // Update the UI with tile and sprite counts
-        render.updateUI(backgroundTileCount + tileCount, spriteCount);
+        // Update the UI with tile, sprite, and animation counts
+        render.updateUI(backgroundTileCount + tileCount, spriteCount, animationCount);
         render.highlightOverlappingTiles();
     
         // Handle effects like letterbox
@@ -516,7 +503,7 @@ var game = {
                 ui_console_tab_window.renderObjectCollision();
             }
         }
-    },    
+    },
     
     loop: function(timestamp) {
         if (!this.lastTime) {
