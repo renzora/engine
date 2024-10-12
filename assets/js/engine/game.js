@@ -47,7 +47,7 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 0,
+        hours: 7,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -101,23 +101,23 @@ var game = {
     },
 
     setZoomLevel: function(newZoomLevel) {
-        this.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10));
+        this.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10)); // Allow decimals between 2 and 10
         localStorage.setItem('zoomLevel', this.zoomLevel);
     
         // Adjust the canvas size based on the zoom level
         const baseWidth = window.innerWidth;
         const baseHeight = window.innerHeight;
     
-        // Increase or decrease the canvas size depending on the zoom level
+        // Scale the canvas size based on the decimal zoom level
         const scaledWidth = baseWidth / this.zoomLevel;
         const scaledHeight = baseHeight / this.zoomLevel;
     
-        // Update the canvas element size to reflect the zoom
         this.canvas.width = scaledWidth;
         this.canvas.height = scaledHeight;
     
         console.log('Zoom level set to:', this.zoomLevel);
-    },    
+    },
+    
 
     init: function() {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
@@ -158,6 +158,7 @@ var game = {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
             this.ctx = this.canvas.getContext('2d');
+            this.ctx.imageSmoothingEnabled = false;
             document.body.appendChild(this.canvas);
             this.resizeCanvas();
             this.itemsImg = assets.load('itemsImg');
@@ -266,7 +267,7 @@ var game = {
     
         modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
     
-        modal.load({ id: 'console_window', url: 'menus/console', name: 'console', drag: false, reload: true });
+        modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
     
         modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
     
@@ -304,7 +305,7 @@ var game = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/menus/console/tabs/servers/ajax/getSceneData.php',
+            url: 'modals/console/tabs/servers/ajax/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
@@ -328,7 +329,7 @@ var game = {
     
                 } else {
                     console.log('Error: ' + data.message);
-                    modal.load('menus/console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
+                    modal.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
                 }
             },
             error: function(data) {
@@ -336,7 +337,7 @@ var game = {
 
                 modal.load({
                     id: "scene_load_error_window",
-                    url: "menus/console/tabs/servers/ajax/error.php",
+                    url: "console/tabs/servers/ajax/error.php",
                     name: "Server Error",
                     showInList: true
                 });
@@ -395,27 +396,34 @@ var game = {
     },    
 
     resizeCanvas: function() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
-        this.canvas.style.position = 'absolute';
-        this.canvas.style.left = '50%';
-        this.canvas.style.top = '50%';
-        this.canvas.style.transform = 'translate(-50%, -50%)';
-    },
-
-      handleMouseDown: function(event) {
-        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
-        console.log('Game handleMouseDown triggered');
-        
-        // Only handle walk movement, no tile selection
-        if (event.button === 0 || event.button === 2) {
-            const rect = this.canvas.getBoundingClientRect();
-            const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
-            const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
-            this.x = Math.floor(mouseX / 16);
-            this.y = Math.floor(mouseY / 16);
+        const consoleElement = document.getElementById('console_window');
+        const adjacentMenu = document.getElementById('tabs'); // Assuming this is the ID of the adjacent menu
+        let consoleWidth = 0;
+        let menuWidth = 0;
+    
+        // Get the widths of the console and adjacent menu if they are open
+        if (consoleElement && console_window.isOpen) {
+            consoleWidth = consoleElement.offsetWidth;
         }
-    },
+    
+        if (adjacentMenu && adjacentMenu.style.display !== 'none') { // Adjust based on your menu's display logic
+            menuWidth = adjacentMenu.offsetWidth;
+        }
+    
+        const totalOffsetWidth = consoleWidth + menuWidth; // Combine the widths of both elements
+        const availableWidth = window.innerWidth - totalOffsetWidth;
+        
+        // Resize the canvas to fit the available space on the left
+        this.canvas.width = availableWidth;
+        this.canvas.height = window.innerHeight;
+    
+        // Keep the canvas positioned on the right, leaving space for the console and menu
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.right = totalOffsetWidth > 0 ? `${totalOffsetWidth}px` : '0'; // Adjust based on combined width
+        this.canvas.style.top = '50%';
+        this.canvas.style.transform = 'translate(0, -50%)'; // Center vertically
+    },    
+    
 
     handleMouseMove: function(event) {
 
@@ -444,6 +452,8 @@ var game = {
         // Clear the canvas and fill with the background color
         this.ctx.fillStyle = '#333';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+        this.ctx.imageSmoothingEnabled = false;
     
         // Reset transformations before rendering the map
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);

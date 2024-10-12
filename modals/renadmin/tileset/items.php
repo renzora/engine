@@ -587,19 +587,17 @@ renderItemPreview: function(item, canvasId) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
     const tileSize = 16;
+    const tilesPerRow = 150;  // Assuming 150 tiles per row in your tileset image
 
-    // Ensure item.a and item.b are arrays
-    const maxCol = Array.isArray(item.a) ? Math.max(...item.a) + 1 : item.a + 1;
-    const maxRow = Array.isArray(item.b) ? Math.max(...item.b) + 1 : item.b + 1;
-
-    canvas.width = maxCol * tileSize;
-    canvas.height = maxRow * tileSize;
+    // Adjust canvas size based on the number of columns (a) and rows (b)
+    canvas.width = (item.a + 1) * tileSize; // Width is determined by columns (X-axis)
+    canvas.height = (item.b + 1) * tileSize; // Height is determined by rows (Y-axis)
 
     var tilesetImage = assets.load(item.t);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Helper function to parse ranges like "1822-1827"
+    // Helper function to parse ranges like "2009-2218"
     function parseRange(range) {
         const [start, end] = range.split('-').map(Number);
         const frames = [];
@@ -609,7 +607,7 @@ renderItemPreview: function(item, canvasId) {
         return frames;
     }
 
-    // Determine which frames to render
+    // Determine which frames to render (from tilesheet indices)
     let framesToRender = [];
 
     if (Array.isArray(item.i)) {
@@ -618,28 +616,31 @@ renderItemPreview: function(item, canvasId) {
         framesToRender = [item.i];  // Handle single frame
     }
 
-    // Iterate over the frame indices and corresponding coordinates
-    framesToRender.forEach((tileIndex, index) => {
-        const srcX = (tileIndex % 150) * tileSize;
-        const srcY = Math.floor(tileIndex / 150) * tileSize;
+    // Iterate over the frame indices and calculate the X and Y positions in the grid
+    framesToRender.forEach((frame, index) => {
+        const srcX = (frame % tilesPerRow) * tileSize;
+        const srcY = Math.floor(frame / tilesPerRow) * tileSize;
 
-        // Use a (x) and b (y) as arrays for multiple tiles, otherwise default to single values
-        const destX = Array.isArray(item.a) ? item.a[index] * tileSize : item.a * tileSize;
-        const destY = Array.isArray(item.b) ? item.b[index] * tileSize : item.b * tileSize;
+        // Calculate destination X and Y based on object's dimensions (a and b)
+        const destX = (index % (item.a + 1)) * tileSize; // X (horizontal) based on columns
+        const destY = Math.floor(index / (item.a + 1)) * tileSize; // Y (vertical) based on rows
 
+        // Log the destination X and Y for debugging
+        console.log(`Tile index ${frame}: destX = ${destX}, destY = ${destY}`);
+
+        // Draw the image tile on the canvas
         ctx.drawImage(
             tilesetImage,
-            srcX, srcY, tileSize, tileSize,
-            destX, destY, tileSize, tileSize
+            srcX, srcY, tileSize, tileSize,  // Source (tilesheet position)
+            destX, destY, tileSize, tileSize  // Destination (canvas position)
         );
     });
 
+    // Apply scaling if necessary
     const scaleFactor = this.getScaleFactor(canvas);
-
     canvas.style.width = (canvas.width * scaleFactor) + 'px';
     canvas.style.height = (canvas.height * scaleFactor) + 'px';
 },
-
 
 
 drawGrid: function(canvasId, item, skipGridLines = false) {
@@ -656,14 +657,21 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
     console.log('Drawing grid for item:', item);
 
     // Check if item.a and item.b are arrays, otherwise treat them as single values
-    const maxCol = Array.isArray(item.a) ? Math.max(...item.a) + 1 : item.a + 1;
-    const maxRow = Array.isArray(item.b) ? Math.max(...item.b) + 1 : item.b + 1;
+    const maxCol = Array.isArray(item.a) ? Math.max(...item.a) + 1 : item.a + 1; // Ensure we cover the entire width of the object
+    const maxRow = Array.isArray(item.b) ? Math.max(...item.b) + 1 : item.b + 1; // Ensure we cover the entire height of the object
 
     // Adjust canvas size based on the item's dimensions
-    canvas.width = maxCol * tileSize + 1;
-    canvas.height = maxRow * tileSize + 1;
+    canvas.width = maxCol * tileSize;
+    canvas.height = maxRow * tileSize;
+
+    console.log('Canvas dimensions set to:', canvas.width, 'x', canvas.height);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Draw a border around the canvas to show the grid's outline
+    ctx.strokeStyle = 'blue';  // Use blue for the border color
+    ctx.lineWidth = 3;  // Set border width to 3 pixels
+    ctx.strokeRect(0, 0, canvas.width, canvas.height);  // Draw the border
 
     if (!skipGridLines) {
         ctx.strokeStyle = 'rgba(136, 136, 136, 1)';

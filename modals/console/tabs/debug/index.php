@@ -314,7 +314,6 @@ updateSpriteEnergy: function(value) {
         this.populateSpriteSelect();
     },
     renderObjectCollision: function() {
-        console.log("Rendering object collision...");
 
         if (!game.roomData || !game.roomData.items) return;
 

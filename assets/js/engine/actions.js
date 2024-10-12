@@ -2,51 +2,55 @@ const actions = {
     handleTileAction: function(tileId) {
         const tileData = game.objectData[tileId];
         if (!tileData || !tileData[0]) return;
-
+    
         const tileScript = tileData[0].script;
         const sprite = game.mainSprite;
         const spriteX = sprite.x;  // Use exact sprite coordinates (not rounded)
         const spriteY = sprite.y;
-
+    
         const proximityThreshold = 16;  // Define a proximity threshold (16 pixels)
-
+    
         if (tileScript && tileScript.walk) {
-            if (tileScript.walk.requiredButton && !this.isButtonPressed(tileScript.walk.requiredButton)) {
-                return; // Exit if the required button is not pressed
-            }
+            if (tileScript.walk.requiredButton && this.isButtonPressed(tileScript.walk.requiredButton)) {
 
+            }
+    
+            // Handle grass cutting if the "cut" action is defined
+            if (tileScript.walk.cut === true) {
+                this.chop();  // Call the chop function for cutting grass
+                console.log('Grass cut action triggered!');
+            }
+    
             if (tileScript.walk.swim) {
                 this.swim();
             }
-
-            if (tileScript.walk.rotate === true) {
+    
+            if (tileScript.walk.sway === true) {
                 // Find the specific object in roomData near the sprite's current position
                 game.roomData.items.forEach(roomItem => {
                     const xCoordinates = roomItem.x || [];
                     const yCoordinates = roomItem.y || [];
-
+    
                     // Adjust the logic to account for all tiles occupied by the object
                     const isNearObject = xCoordinates.some((x, i) => {
                         const y = yCoordinates[i];
-
+    
                         // Check if the player is within proximity to any tile of the object
                         return Math.abs(x * 16 - spriteX) <= proximityThreshold &&
                                Math.abs(y * 16 - spriteY) <= proximityThreshold;
                     });
-
+    
                     // Ensure the correct tile is rotating and it's near the player
                     if (roomItem.id === tileId && isNearObject) {
                         // Start rotation for the object
                         roomItem.isRotating = true;
                         roomItem.rotationElapsed = 0;  // Initialize rotationElapsed for smooth tracking
                         actions.handleRotation(roomItem);
-
-                        console.log(`Rotation started for object near position (${spriteX}, ${spriteY}) with ID: ${roomItem.id}`);
                     }
                 });
             }
         }
-    },
+    },    
 
 
     handleExitTileAction: function(tileId) {
@@ -338,7 +342,7 @@ const actions = {
 
     // Utility to check if a required button is pressed
     isButtonPressed: function(button) {
-        return this.buttons.includes(button);
+        return gamepad.buttons.includes(button);
     },
 
     showTooltip: function(text, x, y) {

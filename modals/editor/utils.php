@@ -44,6 +44,14 @@ if ($auth) {
         </button>
     </div>
 
+
+            <!-- "Select Type" button to select all objects of the same type -->
+            <div class="flex items-center mr-4 cursor-pointer" id="select_terrain_button">
+        <button class="mode-button shadow border rounded-sm px-4 py-1 text-white leading-tight focus:outline-none flex items-center justify-between bg-gray-700 border-gray-600 hover:bg-gray-800 cursor-pointer">
+            Terrain
+        </button>
+    </div>
+
     <style>
         /* Hide the default checkbox */
         .custom-checkbox {

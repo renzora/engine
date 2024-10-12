@@ -102,7 +102,7 @@ var ui_console_tab_window = {
     openCreateServerModal: function() {
         modal.load({
             id: 'server_create_window',
-            url: 'menus/console/tabs/servers/createServer.php',
+            url: 'console/tabs/servers/createServer.php',
             name: 'Create Server',
             drag: true,
             reload: false
@@ -116,7 +116,7 @@ var ui_console_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/menus/console/tabs/servers/ajax/getServers.php',
+            url: 'modals/console/tabs/servers/ajax/getServers.php',
             data: JSON.stringify({ tabType: tabType }),
             headers: {
                 'Content-Type': 'application/json'
@@ -135,40 +135,47 @@ var ui_console_tab_window = {
     },
 
     displayServers: function(servers, serverListDiv) {
-        serverListDiv.classList.remove('hidden');
+    serverListDiv.classList.remove('hidden');
 
-        if (servers.length === 0) {
-            serverListDiv.innerHTML = 'No servers found.';
-        } else {
-            serverListDiv.innerHTML = '<ul>' + servers.map((server, index) => `
-                <li class="server-item ${index === 0 ? 'rounded-t' : ''} ${index === servers.length - 1 ? 'rounded-b' : ''} ${index % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800'} text-white shadow-md cursor-pointer" data-server-id="${server.id}">
-                    <div class="flex justify-between items-center pl-4 pr-2 py-2">
-                        <span class="text-lg font-semibold">${server.name}</span>
-                        <div class="flex space-x-2">
-                            <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_console_tab_window.loadEditServerModal('${server.id}', '${server.name}')">Edit</button>
-                        </div>
+    if (servers.length === 0) {
+        serverListDiv.innerHTML = 'No servers found.';
+    } else {
+        serverListDiv.innerHTML = '<ul>' + servers.map((server, index) => `
+            <li class="server-item ${index === 0 ? 'rounded-t' : ''} ${index === servers.length - 1 ? 'rounded-b' : ''} ${index % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800'} text-white shadow-md cursor-pointer" data-server-id="${server.id}">
+                <div class="flex justify-between items-center pl-4 pr-2 py-2">
+                    <span class="text-lg font-semibold">${server.name}</span>
+                    <div class="flex space-x-2">
+                        <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_console_tab_window.loadEditServerModal('${server.id}', '${server.name}')">Edit</button>
+                        <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({
+                            id: 'scene_create_window',
+                            url: 'console/tabs/servers/createScene.php?id=${server.id}',
+                            name: 'Create New Scene',
+                            drag: true,
+                            reload: false
+                        })">New</button> <!-- Corrected New Scene button -->
                     </div>
-                    <div id="scenes-${server.id}" class="scenes-list hidden transition-all ease-in-out duration-300 overflow-hidden max-h-0"></div>
-                </li>
-            `).join('') + '</ul>';
+                </div>
+                <div id="scenes-${server.id}" class="scenes-list hidden transition-all ease-in-out duration-300 overflow-hidden max-h-0"></div>
+            </li>
+        `).join('') + '</ul>';
 
-            serverListDiv.querySelectorAll('.server-item').forEach((item, index) => {
-                const listener = (event) => {
-                    if (event.target.tagName.toLowerCase() !== 'button') {
-                        const serverId = item.getAttribute('data-server-id');
-                        ui_console_tab_window.toggleScenes(serverId, item);
-                    }
-                };
-                item.addEventListener('click', listener);
-                this.eventListeners.push({ element: item, event: 'click', handler: listener });
-
-                if (index === 0) {
+        serverListDiv.querySelectorAll('.server-item').forEach((item, index) => {
+            const listener = (event) => {
+                if (event.target.tagName.toLowerCase() !== 'button') {
                     const serverId = item.getAttribute('data-server-id');
                     ui_console_tab_window.toggleScenes(serverId, item);
                 }
-            });
-        }
-    },
+            };
+            item.addEventListener('click', listener);
+            this.eventListeners.push({ element: item, event: 'click', handler: listener });
+
+            if (index === 0) {
+                const serverId = item.getAttribute('data-server-id');
+                ui_console_tab_window.toggleScenes(serverId, item);
+            }
+        });
+    }
+},
 
     toggleScenes: function(serverId, serverItem) {
         const sceneListDiv = document.getElementById(`scenes-${serverId}`);
@@ -204,7 +211,7 @@ var ui_console_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/menus/console/tabs/servers/ajax/getScenes.php',
+            url: 'modals/console/tabs/servers/ajax/getScenes.php',
             data: JSON.stringify({ serverId: serverId }),
             headers: {
                 'Content-Type': 'application/json'
@@ -243,7 +250,7 @@ var ui_console_tab_window = {
     loadEditServerModal: function(serverId, serverName) {
         modal.load({
             id: 'server_edit_window',
-            url: `menus/console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`,
+            url: `console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`,
             name: 'Edit Server',
             drag: true,
             reload: false
@@ -253,7 +260,7 @@ var ui_console_tab_window = {
     loadEditSceneModal: function(sceneId, sceneName, serverId) {
         modal.load({
             id: 'scene_edit_window',
-            url: `menus/console/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`,
+            url: `console/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`,
             name: 'Edit Scene',
             drag: true,
             reload: false

@@ -1,5 +1,8 @@
 var render = {
     overlappingTiles: [],
+    cachedBackgroundCanvas: null,
+    cachedBackgroundCtx: null,
+    backgroundCacheDirty: true, // Set to true when the background needs to be re-rende
     parseRange: function(rangeString) {
         const [start, end] = rangeString.split('-').map(Number);
         const rangeArray = [];
@@ -76,22 +79,57 @@ var render = {
         }
     },
 
-    renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        let tileCount = 0;
-        const bgTileData = game.objectData[game.sceneBg][0];
-        for (let y = viewportYStart; y < viewportYEnd; y++) {
-            for (let x = viewportXStart; x < viewportXEnd; x++) {
-                const posX = x * 16;
-                const posY = y * 16;
-                const tileFrameIndex = bgTileData.i;
-                const srcX = (tileFrameIndex % 150) * 16;
-                const srcY = Math.floor(tileFrameIndex / 150) * 16;
-
-                game.ctx.drawImage(assets.load(bgTileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
-                tileCount++;
-            }
+    initBackgroundCache: function() {
+        if (!this.cachedBackgroundCanvas) {
+            this.cachedBackgroundCanvas = document.createElement('canvas');
+            this.cachedBackgroundCtx = this.cachedBackgroundCanvas.getContext('2d');
         }
-        return tileCount;
+
+        // Set the size of the cached canvas to match the world dimensions
+        this.cachedBackgroundCanvas.width = game.worldWidth;
+        this.cachedBackgroundCanvas.height = game.worldHeight;
+
+        this.backgroundCacheDirty = true; // Mark the cache as dirty (needs re-rendering)
+    },
+
+    // Modify renderBackground to use cached background for the entire world
+    renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+        // Initialize the cache if necessary or if marked as dirty
+        if (!this.cachedBackgroundCanvas || this.backgroundCacheDirty) {
+            this.initBackgroundCache();
+            
+            const bgTileData = game.objectData[game.sceneBg][0];
+
+            // Render the entire background to the cached canvas
+            for (let y = 0; y < game.worldHeight / 16; y++) {
+                for (let x = 0; x < game.worldWidth / 16; x++) {
+                    const posX = x * 16;
+                    const posY = y * 16;
+                    const tileFrameIndex = bgTileData.i;
+                    const srcX = (tileFrameIndex % 150) * 16;
+                    const srcY = Math.floor(tileFrameIndex / 150) * 16;
+
+                    this.cachedBackgroundCtx.drawImage(assets.load(bgTileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
+                }
+            }
+
+            this.backgroundCacheDirty = false;
+ 
+        }
+
+        // Draw only the visible part of the cached background to the main canvas
+        const viewportWidth = (viewportXEnd - viewportXStart) * 16;
+        const viewportHeight = (viewportYEnd - viewportYStart) * 16;
+        const viewportX = viewportXStart * 16;
+        const viewportY = viewportYStart * 16;
+
+        game.ctx.drawImage(this.cachedBackgroundCanvas, viewportX, viewportY, viewportWidth, viewportHeight, viewportX, viewportY, viewportWidth, viewportHeight);
+    },
+
+    // Invalidate the background cache when the background needs to be re-rendered
+    invalidateBackgroundCache: function() {
+        this.backgroundCacheDirty = true;
+        console.log('Background cache invalidated, will re-render on next request.');
     },
 
     draw: function(tileData, roomItem, centerX, bottomY, xCoordinates, yCoordinates, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd, rotation, horizontalShift) {
@@ -247,7 +285,7 @@ var render = {
             item.draw();
         });
     
-        weather.drawClouds();  // Draw faint clouds/mist here
+        //weather.drawClouds();  // Draw faint clouds/mist here
     
         // Return counts, including background tiles
         return { backgroundTileCount, tileCount, spriteCount, animationCount }; // Return animation count

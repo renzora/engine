@@ -42,6 +42,11 @@ var input = {
         window.addEventListener('gamepadr2Released', gamepad.throttle((e) => this.gamepadRightTriggerReleased(),50));
 
         window.addEventListener('gamepadl2Released', (e) => this.gamepadLeftTrigger());
+
+    window.addEventListener('gamepadrightStickPressed', gamepad.throttle(() => {
+        this.toggleSubmenu();
+        this.flashR3Button();
+    }, 500)); // 500ms delay
     },
 
     gamepadXButton: function(e) {
@@ -160,42 +165,72 @@ var input = {
     },
 
     handleLeftAxes: function(axes) {
-
-        const threshold = 0.2; // Dead zone threshold
+        const threshold = 0.1; // Dead zone threshold for minimal stick movement
     
         // Calculate axis pressures
-        const leftStickX = Math.abs(axes[0]);
-        const leftStickY = Math.abs(axes[1]);
+        const leftStickX = axes[0];
+        const leftStickY = axes[1];
     
         // Reset gamepad directions
         gamepad.directions = { left: false, right: false, up: false, down: false };
     
-        if (leftStickX > threshold || leftStickY > threshold) {
-            gamepad.axesPressures.leftStickX = leftStickX;
-            gamepad.axesPressures.leftStickY = leftStickY;
+        if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
+            gamepad.axesPressures.leftStickX = Math.abs(leftStickX);
+            gamepad.axesPressures.leftStickY = Math.abs(leftStickY);
     
-            // Left stick movement (axes[0] = left/right, axes[1] = up/down)
-            gamepad.directions.right = axes[0] > threshold;
-            gamepad.directions.left = axes[0] < -threshold;
-            gamepad.directions.down = axes[1] > threshold;
-            gamepad.directions.up = axes[1] < -threshold;
+            // Calculate speed based on stick pressure
+            const pressure = Math.max(Math.abs(leftStickX), Math.abs(leftStickY));
+            game.mainSprite.speed = 25 + (pressure * 60); // Speed ranges from 20 to 60
     
-            // Call toggleVisibility if the stick has moved and the console is open
-            if (console_window.isOpen) {
-                console_window.toggleConsoleWindow();
+            // Angle-based movement detection for more flexibility
+            const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
+    
+            // Define angular ranges for each direction
+            const up = (angle >= -Math.PI / 8 && angle < Math.PI / 8);             // Right
+            const upRight = (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8);     // SE
+            const right = (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8);   // Down
+            const downRight = (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8); // SW
+            const down = (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8);   // Left
+            const downLeft = (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8); // NW
+            const left = (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8);  // Up
+            const upLeft = (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8);    // NE
+    
+            // Set directions based on the angle ranges
+            if (up) {
+                gamepad.directions.right = true;
+            } else if (upRight) {
+                gamepad.directions.down = true;
+                gamepad.directions.right = true;
+            } else if (right) {
+                gamepad.directions.down = true;
+            } else if (downRight) {
+                gamepad.directions.down = true;
+                gamepad.directions.left = true;
+            } else if (down) {
+                gamepad.directions.left = true;
+            } else if (downLeft) {
+                gamepad.directions.up = true;
+                gamepad.directions.left = true;
+            } else if (left) {
+                gamepad.directions.up = true;
+            } else if (upLeft) {
+                gamepad.directions.up = true;
+                gamepad.directions.right = true;
             }
     
             // Update the sprite's directions based on combined states
             this.updateSpriteDirections(axes);
         } else {
-            // Reset the directions for left stick if below threshold
+            // Reset the directions for the left stick if below threshold
             gamepad.axesPressures.leftStickX = 0;
             gamepad.axesPressures.leftStickY = 0;
+            game.mainSprite.speed = 20; // Set minimum speed when no significant movement is detected
         }
     
         // Update the sprite's directions based on combined states
         this.updateSpriteDirections(axes);
-    },    
+    },
+ 
 
     handleRightAxes: function(axes) {
         const deadZone = 0.1; // Dead zone threshold for minimal stick movement
@@ -492,16 +527,8 @@ var input = {
     },
 
     mouseWheelScroll: function(e) {
-        console.log('mouse scrolling');
-        game.updateInputMethod('keyboard');
-        const isEventOnCanvas = e.target === game.canvas || game.canvas.contains(e.target);
-    
-        if (isEventOnCanvas) {
-            e.preventDefault(); // Prevent default scroll behavior for all cases
-    
-        }
+
     },    
-    
 
     leftClick: function(e) {
         if (game.isEditMode) return; // Prevent left clicks in edit mode
@@ -523,6 +550,27 @@ var input = {
     },
 
     doubleClick: function(e) {},
+
+    flashR3Button: function() {
+        const r3Button = document.getElementById('toggle-submenu');
+        if (r3Button) {
+            // Apply the temporary color change
+            r3Button.classList.add('bg-green-500');  // Change this to your desired highlight color
+            
+            // Revert back to the original color after a short delay
+            setTimeout(() => {
+                r3Button.classList.remove('bg-green-500');
+            }, 200); // 200ms for the color flash duration
+        }
+    },
+
+    toggleSubmenu: function() {
+        const submenu = document.getElementById('submenu');
+        if (submenu) {
+            submenu.classList.toggle('max-h-0');
+            submenu.classList.toggle('max-h-[500px]'); // Adjust based on your content height
+        }
+    },
 
     cancelPathfinding: function(sprite) {
         if (sprite && sprite.isMovingToTarget) {

@@ -47,12 +47,12 @@ var camera = {
 
     update: function() {
         let activeSprite = game.sprites[game.activeSpriteId];
-
+    
         // Check if the game is in editor mode; if so, stop any camera updates
         if (game.isEditorActive) {
             return; // Exit early if editor mode is active
         }
-
+    
         // Check if there is an active sprite to track
         if (activeSprite && !this.cutsceneMode) {
             // Enable automatic camera tracking if the sprite has moved and cutsceneMode is off
@@ -61,23 +61,23 @@ var camera = {
                 this.panning = false; // Stop panning when sprite moves
             }
         }
-
+    
         if (this.activeCamera || this.panning) {
             // Skip automatic updates if manual mode is active
             if (this.manual && !this.panning) {
                 return;  // Exit the update function if manual mode is active
             }
-
+    
             if (this.panning) {
                 // Calculate the distance between the current camera position and the target
                 let deltaX = this.targetCameraX - this.cameraX;
                 let deltaY = this.targetCameraY - this.cameraY;
-
+    
                 // Calculate the distance to move in this frame based on speed
                 let distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
                 let moveX = (deltaX / distance) * this.panSpeed;
                 let moveY = (deltaY / distance) * this.panSpeed;
-
+    
                 // Check if the camera has reached the target (or close enough)
                 if (distance > this.panSpeed) {
                     this.cameraX += moveX;
@@ -87,7 +87,7 @@ var camera = {
                     this.cameraX = this.targetCameraX;
                     this.cameraY = this.targetCameraY;
                     this.panning = false;
-
+    
                     // Optionally resume automatic tracking if cutscene ends after panning
                     if (!this.cutsceneMode) {
                         this.activeCamera = true;
@@ -95,15 +95,17 @@ var camera = {
                 }
             } else if (this.activeCamera && activeSprite) {
                 // Automatic camera tracking of the active sprite
-                var scaledWindowWidth = window.innerWidth / game.zoomLevel;
-                var scaledWindowHeight = window.innerHeight / game.zoomLevel;
-
+                var scaledWindowWidth = game.canvas.width / game.zoomLevel; // Updated to reflect new canvas width
+                var scaledWindowHeight = game.canvas.height / game.zoomLevel;
+    
+                // Center the camera on the sprite
                 this.targetCameraX = activeSprite.x + activeSprite.width / 2 - scaledWindowWidth / 2;
                 this.targetCameraY = activeSprite.y + activeSprite.height / 2 - scaledWindowHeight / 2;
-
+    
+                // Recalculate camera boundaries based on the new canvas size and ensure we respect world boundaries
                 this.targetCameraX = Math.max(0, Math.min(this.targetCameraX, game.worldWidth - scaledWindowWidth));
                 this.targetCameraY = Math.max(0, Math.min(this.targetCameraY, game.worldHeight - scaledWindowHeight));
-
+    
                 if (this.lerpEnabled) {
                     this.cameraX = this.lerp(this.cameraX, this.targetCameraX, this.lerpFactor);
                     this.cameraY = this.lerp(this.cameraY, this.targetCameraY, this.lerpFactor);
@@ -114,7 +116,7 @@ var camera = {
             }
         }
     },
-
+        
     lerp: function(start, end, t) {
         return start * (1 - t) + end * t;
     }

@@ -16,64 +16,94 @@ var collision = {
         return isInside;
     },
 
+    // Check if a line (sprite's movement path) intersects a polygon
+    lineIntersectsPolygon: function(x1, y1, x2, y2, polygon) {
+        for (let i = 0; i < polygon.length; i++) {
+            const p1 = polygon[i];
+            const p2 = polygon[(i + 1) % polygon.length]; // Next point or wrap around
+
+            if (this.lineIntersectsLine(x1, y1, x2, y2, p1.x, p1.y, p2.x, p2.y)) {
+                return true; // Collision detected with the polygon's edge
+            }
+        }
+        return false;
+    },
+
+    // Helper function to check if two line segments intersect
+    lineIntersectsLine: function(x1, y1, x2, y2, x3, y3, x4, y4) {
+        const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+        if (denom === 0) return false; // Lines are parallel
+
+        const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+        const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+
+        return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
+    },
+
+    // Enhanced collision check that uses swept collision detection
     check: function(x, y, sprite) {
         if (!game.roomData?.items) {
             return { collisionDetected: false };
         }
-    
-        const pointsToCheck = [];
+
         const a = sprite.width / 2;
         const b = sprite.height / 4;
         const centerX = x + a;
         const centerY = y + sprite.height * 0.75;
-    
+
         const numPoints = 8;
-    
+        const pointsToCheck = [];
+
         for (let i = 0; i < numPoints; i++) {
             const angle = (i / numPoints) * 2 * Math.PI;
             const px = centerX + a * Math.cos(angle);
             const py = centerY + b * Math.sin(angle);
             pointsToCheck.push({ px, py });
         }
-    
+
         for (const item of game.roomData.items) {
             const itemData = assets.load('objectData')[item.id]?.[0];
             if (!itemData?.w && itemData.w !== 0) continue;
-    
+
             if (Array.isArray(itemData.w)) {
-                // Handle polygon collision detection
                 const polygon = itemData.w.map(point => ({
                     x: point.x + item.x[0] * 16,
                     y: point.y + item.y[0] * 16
                 }));
-    
+
+                // Perform swept collision detection: Check the entire movement path for collision
+                for (let i = 0; i < pointsToCheck.length - 1; i++) {
+                    if (this.lineIntersectsPolygon(pointsToCheck[i].px, pointsToCheck[i].py, pointsToCheck[i + 1].px, pointsToCheck[i + 1].py, polygon)) {
+                        return { collisionDetected: true };
+                    }
+                }
+
+                // Also check if any point is inside the polygon (in case the sprite starts inside)
                 for (const point of pointsToCheck) {
                     if (this.pointInPolygon(point.px, point.py, polygon)) {
                         return { collisionDetected: true };
                     }
                 }
             } else {
-                // Handle simple walkable or non-walkable cases
                 if (itemData.w === 0) {
                     return { collisionDetected: true };
                 }
             }
         }
-    
+
         return { collisionDetected: false };
-    },    
+    },
 
     // Optimized createWalkableGrid with caching
     createWalkableGrid: function() {
         const now = Date.now();
         if (this.walkableGridCache && now - this.cacheTime < 5000) {
-            // Reuse the cached grid if it's still valid
             return this.walkableGridCache;
         }
 
         const width = game.worldWidth / 16;
         const height = game.worldHeight / 16;
-        const grid = Array.from({ length: width }, () => Array(height).fill(1)); // Initialize all tiles as walkable
+        const grid = Array.from({ length: width }, () => Array(height).fill(1));
 
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(item => {
@@ -83,38 +113,33 @@ var collision = {
                 let polygonPoints = itemData[0].w;
 
                 if (Array.isArray(polygonPoints)) {
-                    // Calculate the polygon's absolute position
                     const polygon = polygonPoints.map(point => ({
                         x: point.x + item.x[0] * 16,
                         y: point.y + item.y[0] * 16
                     }));
 
-                    // Iterate over each tile in the grid
                     for (let gridX = 0; gridX < width; gridX++) {
                         for (let gridY = 0; gridY < height; gridY++) {
                             const tileX = gridX * 16;
                             const tileY = gridY * 16;
 
-                            // Define points around the tile's perimeter to check for collision
                             const pointsToCheck = [
-                                { px: tileX, py: tileY },                  // Top-left
-                                { px: tileX + 16, py: tileY },            // Top-right
-                                { px: tileX, py: tileY + 16 },            // Bottom-left
-                                { px: tileX + 16, py: tileY + 16 },       // Bottom-right
-                                { px: tileX + 8, py: tileY + 8 }          // Center
+                                { px: tileX, py: tileY }, 
+                                { px: tileX + 16, py: tileY },
+                                { px: tileX, py: tileY + 16 },
+                                { px: tileX + 16, py: tileY + 16 },
+                                { px: tileX + 8, py: tileY + 8 }
                             ];
 
-                            // Check if any of these points are inside the polygon
                             for (const point of pointsToCheck) {
                                 if (this.pointInPolygon(point.px, point.py, polygon)) {
-                                    grid[gridX][gridY] = 0; // Mark as non-walkable
-                                    break; // No need to check further points for this tile
+                                    grid[gridX][gridY] = 0;
+                                    break;
                                 }
                             }
                         }
                     }
                 } else if (polygonPoints === 0) {
-                    // If w is 0, mark the entire item area as non-walkable
                     const itemX = item.x[0];
                     const itemY = item.y[0];
                     const itemWidth = itemData[0].a;
@@ -122,52 +147,20 @@ var collision = {
 
                     for (let gridX = itemX; gridX < itemX + itemWidth; gridX++) {
                         for (let gridY = itemY; gridY < itemY + itemHeight; gridY++) {
-                            grid[gridX][gridY] = 0; // Mark as non-walkable
+                            grid[gridX][gridY] = 0;
                         }
                     }
                 }
             });
         }
 
-        this.walkableGridCache = grid; // Cache the computed grid
-        this.cacheTime = now; // Update the cache timestamp
+        this.walkableGridCache = grid;
+        this.cacheTime = now;
         return grid;
     },
 
-    // Check if a tile is walkable based on the walkable grid
     isTileWalkable: function(gridX, gridY) {
         const grid = this.createWalkableGrid();
-        if (!grid[gridX] || grid[gridX][gridY] !== 1) {
-            return false; // Tile is not walkable based on grid data
-        }
-
-        // Check for collision using the polygon boundary
-        const tileCenterX = gridX * 16 + 8; // Center of the tile in pixels
-        const tileCenterY = gridY * 16 + 8; // Center of the tile in pixels
-        const pointsToCheck = [{ px: tileCenterX, py: tileCenterY }];
-
-        for (const item of game.roomData.items) {
-            const itemData = assets.load('objectData')[item.id]?.[0];
-            if (!itemData?.w) continue;
-
-            if (Array.isArray(itemData.w)) {
-                // Get the absolute positions of the polygon points
-                const polygon = itemData.w.map(point => ({
-                    x: point.x + item.x[0] * 16,
-                    y: point.y + item.y[0] * 16
-                }));
-
-                // Check each point around the tile's center
-                for (const point of pointsToCheck) {
-                    if (this.pointInPolygon(point.px, point.py, polygon)) {
-                        return false; // Collision detected, tile is not walkable
-                    }
-                }
-            } else if (itemData.w === 0) {
-                return false; // Tile is within a non-walkable area
-            }
-        }
-
-        return true; // Tile is walkable
+        return grid[gridX]?.[gridY] === 1;
     }
 };

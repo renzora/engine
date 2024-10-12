@@ -3,10 +3,9 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 
-<div data-window="console_window" id='console_window' class='window fixed top-0 left-0 h-screen w-screen bg-[#152032] transition-transform duration-300 ease-in-out -translate-x-full' style="border-radius: 0;" data-drag="false">
-
-  <div id="tabs" class="console_window_tab_buttons fixed top-0 left-0 h-full bg-[#1c3660] flex flex-col w-[48px] space-y-2 py-4 transition-transform duration-300 ease-in-out border-r-2 border-r-[#151a23] ml-[400px]" style="margin-top: -1px;"></div>
-
+<div data-window="console_window" id='console_window' class='window fixed top-0 right-0 h-screen w-screen bg-[#152032] transition-transform duration-300 ease-in-out translate-x-full' style="border-radius: 0;" data-drag="false">
+  <div id="tabs" class="console_window_tab_buttons fixed top-0 right-0 h-full bg-[#1c3660] flex flex-col w-[48px] space-y-2 py-4 transition-transform duration-300 ease-in-out border-l-2 border-l-[#151a23] mr-[400px]" style="margin-top: -1px;"></div>
+  
   <div class='relative flex-1 window_body' style="max-height: 99%;">
     <div class="flex w-full bg-[#152032] h-full">
       <div class='flex-1'>
@@ -14,6 +13,7 @@ if ($auth) {
       </div>
     </div>
   </div>
+</div>
 
   <script>
  var console_window = {
@@ -54,7 +54,7 @@ if ($auth) {
         ui.ajax({
           method: 'GET',
           data: 'mode='+id,
-          url: `modals/menus/console/mode.php`,
+          url: `modals/console/mode.php`,
           success: function (data) {
             ui.html('.console_window_tab_buttons', data, 'replace');
             console_window.setupTabListeners();
@@ -66,35 +66,38 @@ if ($auth) {
         });
       },
 
-    toggleConsoleWindow: function(toggle = true, tabName = null) {
-        const consoleElement = document.getElementById('console_window');
-        const tabsElement = document.getElementById('tabs');
+      toggleConsoleWindow: function(toggle = true, tabName = null) {
+    const consoleElement = document.getElementById('console_window');
+    const tabsElement = document.getElementById('tabs');
 
-        if (toggle) this.isOpen = !this.isOpen;
+    if (toggle) this.isOpen = !this.isOpen;
 
-        if (this.isOpen) {
-            this.showConsoleWindow(consoleElement, tabsElement);
-            this.activateCurrentTab();
-        } else {
-            this.hideConsoleWindow(consoleElement, tabsElement);
-        }
-    },
+    if (this.isOpen) {
+        this.showConsoleWindow(consoleElement, tabsElement);
+        this.activateCurrentTab();
+    } else {
+        this.hideConsoleWindow(consoleElement, tabsElement);
+    }
 
-    showConsoleWindow: function(consoleElement, tabsElement) {
-        consoleElement.classList.remove('-translate-x-full');
-        consoleElement.classList.add('translate-x-0');
-        consoleElement.style.marginLeft = '46px';
-        tabsElement.style.marginLeft = '-48px';
-        modal.front('console_window');
-    },
+    game.resizeCanvas();
+},
 
-    hideConsoleWindow: function(consoleElement, tabsElement) {
-        consoleElement.classList.remove('translate-x-0');
-        consoleElement.classList.add('-translate-x-full');
-        consoleElement.style.marginLeft = '0px';
-        tabsElement.style.marginLeft = '407px';
-        modal.front('ui_inventory_window');
-    },
+
+showConsoleWindow: function(consoleElement, tabsElement) {
+    consoleElement.classList.remove('translate-x-full');
+    consoleElement.classList.add('-translate-x-0');
+    consoleElement.style.marginRight = '46px';
+    tabsElement.style.marginRight = '-48px';
+    modal.front('console_window');
+},
+
+hideConsoleWindow: function(consoleElement, tabsElement) {
+    consoleElement.classList.remove('-translate-x-0');
+    consoleElement.classList.add('translate-x-full');
+    consoleElement.style.marginRight = '0px';
+    tabsElement.style.marginRight = '407px';
+    modal.front('ui_inventory_window');
+},
 
     activateCurrentTab: function() {
     const tabs = document.querySelectorAll('#console_window .console_tab');
@@ -145,7 +148,7 @@ handleTabClick: function(tab, index) {
             contentDiv.innerHTML = ''; 
             ui.ajax({
                 method: 'POST',
-                url: `modals/menus/console/tabs/${target}/index.php`,
+                url: `modals/console/tabs/${target}/index.php`,
                 success: function(data) {
                     ui.html(contentDiv, data, 'replace');
                     console.log(target, "loaded successfully");
