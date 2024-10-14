@@ -7,15 +7,11 @@ error_reporting(E_ALL);
 
 header('Content-Type: application/json');
 
-// Define the log file path
-$logFile = $_SERVER['DOCUMENT_ROOT'] . '/modals/renadmin/tileset/ajax/log.txt';
-
 if ($auth) {
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         try {
             // Log the received POST request
             $timestamp = date("Y-m-d H:i:s");
-            file_put_contents($logFile, "[{$timestamp}] - Received POST request.\n", FILE_APPEND);
 
             // Get the JSON input
             $input = json_decode(file_get_contents('php://input'), true);
@@ -28,9 +24,6 @@ if ($auth) {
             $aCoords = $input['newObject']['a'];
             $bCoords = $input['newObject']['b'];
             $imageDataBase64 = $input['imageData'];
-
-            // Log the base64 image data
-            file_put_contents($logFile, "[{$timestamp}] - Base64 Image Data: " . $imageDataBase64 . "\n", FILE_APPEND);
 
             // Decode the base64 image data
             $imageData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $imageDataBase64));
@@ -58,9 +51,6 @@ if ($auth) {
                 throw new Exception('Failed to decode object data JSON: ' . json_last_error_msg());
             }
 
-            // Log the object data load success
-            file_put_contents($logFile, "[{$timestamp}] - Object data loaded successfully.\n", FILE_APPEND);
-
             // Load the meta tile count
             $metaDataFile = $_SERVER['DOCUMENT_ROOT'] . '/assets/json/meta.json';
             if (!file_exists($metaDataFile)) {
@@ -79,7 +69,6 @@ if ($auth) {
 
             // Calculate the initial index for the new tiles
             $initialTileIndex = $metaData['tile_count'];
-            file_put_contents($logFile, "[{$timestamp}] - Initial tile count: {$initialTileIndex}\n", FILE_APPEND);
 
             // Populate the 'i' field with the correct index range as a string
             $startIndex = $initialTileIndex;
@@ -96,9 +85,6 @@ if ($auth) {
             $newObject['a'] = $columnCount;
             $newObject['b'] = $rowCount;
 
-            // Log the updated newObject with populated indices and dimensions
-            file_put_contents($logFile, "[{$timestamp}] - Updated newObject: " . json_encode($newObject) . "\n", FILE_APPEND);
-
             // Add the new object to the items array with the unique ID as the key
             $objectData[$uniqueId] = [$newObject];
 
@@ -111,7 +97,6 @@ if ($auth) {
 
             // Update the tile count in the meta section
             $metaData['tile_count'] += count($aCoords);
-            file_put_contents($logFile, "[{$timestamp}] - New tile count: {$metaData['tile_count']}\n", FILE_APPEND);
 
             // Save updated object data with adjusted 'a' and 'b' values
             if (file_put_contents($objectDataFile, json_encode($objectDataWithAdjustedAB)) === false) {
@@ -126,9 +111,6 @@ if ($auth) {
             // Set the file permissions back to read-only
             chmod($objectDataFile, 0444);
             chmod($metaDataFile, 0444);
-
-            // Log the object data and meta data save success
-            file_put_contents($logFile, "[{$timestamp}] - Object data and meta data saved successfully.\n", FILE_APPEND);
 
             // Load existing tileset image
             $tilesetImagePath = $_SERVER['DOCUMENT_ROOT'] . '/assets/img/tiles/gen1.png';
@@ -192,15 +174,9 @@ if ($auth) {
                 ob_end_clean();
                 $tileImageBase64 = 'data:image/png;base64,' . base64_encode($tileImageData);
 
-                // Log the base64 image data of each tile with x and y positions
-                file_put_contents($logFile, "[{$timestamp}] - Tile Index {$index}, SrcX: {$srcX}, SrcY: {$srcY} Base64 Image Data: " . $tileImageBase64 . "\n", FILE_APPEND);
-
                 // Calculate the destination position in the tileset image
                 $destX = (($initialTileIndex + $index) % $tilesPerRow) * $tileSize;
                 $destY = floor(($initialTileIndex + $index) / $tilesPerRow) * $tileSize;
-
-                // Log the destination position
-                file_put_contents($logFile, "[{$timestamp}] - Destination Position - Tile Index {$index}, X: {$destX}, Y: {$destY}\n", FILE_APPEND);
 
                 // Copy the tile to the tileset image
                 if (!imagecopy($tilesetImage, $tileImage, $destX, $destY, 0, 0, $tileSize, $tileSize)) {
@@ -223,24 +199,14 @@ if ($auth) {
             ob_end_clean();
             $savedImageBase64 = 'data:image/png;base64,' . base64_encode($savedImageData);
 
-            // Log the base64 image data of the saved image
-            file_put_contents($logFile, "[{$timestamp}] - Saved Base64 Image Data: " . $savedImageBase64 . "\n", FILE_APPEND);
-
             // Set the file permissions back to read-only
             chmod($tilesetImagePath, 0444);
 
             imagedestroy($tilesetImage);
             imagedestroy($uploadedImage);
 
-            file_put_contents($logFile, "[{$timestamp}] - Tileset updated successfully.\n", FILE_APPEND);
-
             echo json_encode(['success' => true]);
         } catch (Exception $e) {
-            // Add detailed error information for meta data save failure
-            file_put_contents($logFile, "[{$timestamp}] - Error: " . $e->getMessage() . "\n", FILE_APPEND);
-            if ($e->getMessage() == 'Failed to save meta data.') {
-                file_put_contents($logFile, "[{$timestamp}] - Meta data: " . json_encode($metaData) . "\n", FILE_APPEND);
-            }
             echo json_encode(['success' => false, 'message' => $e->getMessage()]);
         }
     } else {
