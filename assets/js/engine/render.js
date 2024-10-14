@@ -51,7 +51,6 @@ var render = {
             const sprite = game.sprites[id];
             if (sprite.update) {
                 sprite.update(deltaTime);
-                sprite.checkTileActions();
             }
         }
 
@@ -193,7 +192,7 @@ var render = {
             }
         }
         game.ctx.restore();
-    },    
+    },
 
     renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
         const renderQueue = [];
@@ -332,6 +331,26 @@ var render = {
 
             game.ctx.stroke();
         }
+    },
+
+    drawBorderAroundObject: function(roomItem) {
+        if (!roomItem) return;
+
+        // Calculate the object's bounding box using the min/max of its coordinates
+        const xCoordinates = roomItem.x || [];
+        const yCoordinates = roomItem.y || [];
+    
+        const minX = Math.min(...xCoordinates) * 16;  // Convert to pixel positions
+        const minY = Math.min(...yCoordinates) * 16;
+        const maxX = Math.max(...xCoordinates) * 16 + 16;  // +16 for tile size
+        const maxY = Math.max(...yCoordinates) * 16 + 16;  // +16 for tile size
+    
+        // Draw the border around the object using its calculated position and size
+        game.ctx.save();
+        game.ctx.strokeStyle = 'red';  // Border color
+        game.ctx.lineWidth = 2;
+        game.ctx.strokeRect(minX - camera.cameraX, minY - camera.cameraY, maxX - minX, maxY - minY);
+        game.ctx.restore();
     },
 
     renderCarriedObjects: function () {

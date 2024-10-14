@@ -1,70 +1,4 @@
 const actions = {
-    handleTileAction: function(tileId) {
-        const tileData = game.objectData[tileId];
-        if (!tileData || !tileData[0]) return;
-    
-        const tileScript = tileData[0].script;
-        const sprite = game.mainSprite;
-        const spriteX = sprite.x;  // Use exact sprite coordinates (not rounded)
-        const spriteY = sprite.y;
-    
-        const proximityThreshold = 16;  // Define a proximity threshold (16 pixels)
-    
-        if (tileScript && tileScript.walk) {
-            if (tileScript.walk.requiredButton && this.isButtonPressed(tileScript.walk.requiredButton)) {
-
-            }
-    
-            // Handle grass cutting if the "cut" action is defined
-            if (tileScript.walk.cut === true) {
-                this.chop();  // Call the chop function for cutting grass
-                console.log('Grass cut action triggered!');
-            }
-    
-            if (tileScript.walk.swim) {
-                this.swim();
-            }
-    
-            if (tileScript.walk.sway === true) {
-                // Find the specific object in roomData near the sprite's current position
-                game.roomData.items.forEach(roomItem => {
-                    const xCoordinates = roomItem.x || [];
-                    const yCoordinates = roomItem.y || [];
-    
-                    // Adjust the logic to account for all tiles occupied by the object
-                    const isNearObject = xCoordinates.some((x, i) => {
-                        const y = yCoordinates[i];
-    
-                        // Check if the player is within proximity to any tile of the object
-                        return Math.abs(x * 16 - spriteX) <= proximityThreshold &&
-                               Math.abs(y * 16 - spriteY) <= proximityThreshold;
-                    });
-    
-                    // Ensure the correct tile is rotating and it's near the player
-                    if (roomItem.id === tileId && isNearObject) {
-                        // Start rotation for the object
-                        roomItem.isRotating = true;
-                        roomItem.rotationElapsed = 0;  // Initialize rotationElapsed for smooth tracking
-                        actions.handleRotation(roomItem);
-                    }
-                });
-            }
-        }
-    },    
-
-
-    handleExitTileAction: function(tileId) {
-        const tileData = game.objectData[tileId];
-        if (!tileData || !tileData[0] || !tileData[0].script) return;
-
-        const tileScript = tileData[0].script;
-
-        if (tileScript.exit) {
-            if (tileScript.exit.swim === false) {
-                this.restoreBody();
-            }
-        }
-    },
 
     handleRotation: function(roomItem) {
         let baseSwayAngle = Math.PI / 12; // Default baseline sway angle
@@ -178,167 +112,132 @@ const actions = {
     
     dropWoodOnCampfire: function (item, object) {
         console.log('YAYY WOOD!');
-    },
-
-    addToInventory: function(itemName) {
-        // Ensure that ui_inventory_window and its inventory array are initialized
-        if (!ui_inventory_window || !Array.isArray(ui_inventory_window.inventory)) {
-            console.error("ui_inventory_window or its inventory array is not initialized.");
-            return;
-        }
-        
-        // Look up the item in the itemsData to check its properties
-        const itemData = game.itemsData.items.find(data => data.name === itemName);
-        
-        if (!itemData) {
-            console.error(`Item data for ${itemName} not found.`);
-            return;
-        }
-        
-        // Check if the item is already in the inventory and has collect set to false
-        const inventoryItem = ui_inventory_window.inventory.find(item => item.name === itemName);
-        
-        if (inventoryItem && itemData.collect === false) {
-            console.log(`${itemName} is already in the inventory and cannot be collected again.`);
-            return; // Exit if the item cannot be collected again and is already in the inventory
-        }
-        
-        // Track the currently selected index before adding the new item
-        const previousSelectedIndex = ui_inventory_window.currentItemIndex;
-        
-        // Remove the item from roomData only if it's being collected for the first time or if it can be collected multiple times
-        if (!inventoryItem || itemData.collect !== false) {
-            const itemIndex = game.roomData.items.findIndex(item => {
-                const itemRoomData = game.objectData[item.id];
-                return itemRoomData && itemRoomData[0].n === itemName;
-            });
-            
-            if (itemIndex !== -1) {
-                game.roomData.items.splice(itemIndex, 1);
-            }
-        }
-        
-        // Set the collected flag to true for this item if it has collect set to false
-        if (itemData.collect === false) {
-            itemData.collected = true;
-        }
-        
-        // Add the item to the currently active tab
-        const currentTab = ui_inventory_window.currentTab;
-        
-        // Check if the item is already in the current tab
-        const tabItem = ui_inventory_window.inventory.find(item => item.name === itemName && item.category === currentTab);
-        
-        if (tabItem) {
-            tabItem.amount += 1; // Increase the amount if it already exists in the active tab
-        } else {
-            // Add new item to the current tab in the inventory if not already present
-            ui_inventory_window.inventory.push({
-                name: itemName,
-                amount: 1,
-                category: currentTab,
-                damage: 0
-            });
-        }
-        
-        // Re-render the inventory items
-        ui_inventory_window.renderInventoryItems();
-        ui_inventory_window.displayInventoryItems();
-        ui_inventory_window.updateItemBadges();
-        
-        // Reapply the selection after re-rendering
-        if (previousSelectedIndex !== null && previousSelectedIndex < ui_inventory_window.inventory.length) {
-            ui_inventory_window.selectItem(previousSelectedIndex);
-        }
-    },
+    },  
 
     checkForNearbyItems: function() {
         // Ensure roomData and items are present
         if (!game.roomData || !game.roomData.items) {
             return;
         }
-        
+    
         // Ensure mainSprite exists before proceeding
         const sprite = game.mainSprite;
         if (!sprite) {
-            //console.warn('Main sprite is not available.');
             return;
         }
-        
-        const maxPickupRadius = 16;
-        const spriteX = Math.round(sprite.x);
-        const spriteY = Math.round(sprite.y);
-        
+    
+        // Define the sprite's boundary box
+        const spriteBoundary = {
+            left: sprite.x,
+            right: sprite.x + sprite.width,
+            top: sprite.y,
+            bottom: sprite.y + sprite.height
+        };
+    
         let closestItem = null;
-        let closestDistance = maxPickupRadius;
-        
+    
         // Loop through room items
         game.roomData.items.forEach(item => {
             const objectData = game.objectData[item.id];
-            if (!objectData || objectData.length === 0) return;
-        
-            if (objectData[0].type !== "item") return;
-        
-            const itemX = item.x[0] * 16;
-            const itemY = item.y[0] * 16; 
-            const distance = Math.sqrt(Math.pow(spriteX - itemX, 2) + Math.pow(spriteY - itemY, 2));
+            if (!objectData || !objectData[0] || !objectData[0].script) return;
     
-            if (distance <= maxPickupRadius && distance < closestDistance) {
+            const script = objectData[0].script;
+    
+            // Calculate the object's full width and height
+            const itemX = Math.min(...item.x) * 16; // Leftmost x-coordinate of the object (in pixels)
+            const itemY = Math.min(...item.y) * 16; // Topmost y-coordinate of the object (in pixels)
+            const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16; // Full width of the object (in pixels)
+            const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16; // Full height of the object (in pixels)
+    
+            // Define the object's boundary box
+            const objectBoundary = {
+                left: itemX,
+                right: itemX + itemWidth,
+                top: itemY,
+                bottom: itemY + itemHeight
+            };
+    
+            // Check if the sprite is overlapping with the object
+            const isSpriteInsideObject = (
+                spriteBoundary.right >= objectBoundary.left &&
+                spriteBoundary.left <= objectBoundary.right &&
+                spriteBoundary.bottom >= objectBoundary.top &&
+                spriteBoundary.top <= objectBoundary.bottom
+            );
+    
+            // If the sprite is inside the object's boundary, handle actions
+            if (isSpriteInsideObject) {
                 closestItem = item;
-                closestDistance = distance;
-            }
-        });
-        
-        // If a close item is found
-        if (closestItem) {
-            const objectData = game.objectData[closestItem.id][0];
-            const itemName = objectData.n;
-            const itemData = game.itemsData.items.find(data => data.name === itemName);
     
-            if (!itemData) {
-                console.error(`Item data for ${itemName} not found in itemsData.`);
-                return;
-            }
+                const spriteScreenX = (sprite.x - camera.cameraX) * game.zoomLevel;
+                const spriteScreenY = (sprite.y - camera.cameraY) * game.zoomLevel;
     
-            const itemScreenX = (closestItem.x[0] * 16 - camera.cameraX) * game.zoomLevel;
-            const itemScreenY = (closestItem.y[0] * 16 - camera.cameraY) * game.zoomLevel;
-            const canvasRect = game.canvas.getBoundingClientRect();
-            const tooltipX = canvasRect.left + itemScreenX;
-            const tooltipY = canvasRect.top + itemScreenY;
+                const canvasRect = game.canvas.getBoundingClientRect();
+                const tooltipX = canvasRect.left + spriteScreenX;
+                const tooltipY = canvasRect.top + spriteScreenY - sprite.height - 10; // Adjust -10 for spacing above the sprite
     
-            const inventoryItem = ui_inventory_window.inventory.find(item => item.name === itemName);
-            if (inventoryItem && itemData.collect === false) {
-                console.log(`Cannot pick up item: ${itemName} already in inventory`);
-                this.showTooltip(`${itemName} Already in inventory`, tooltipX, tooltipY);
-                return;
-            }
-    
-            this.showTooltip(`Press Y to pick up ${itemName}`, tooltipX, tooltipY);
-    
-            // Check if the "Y" button is held
-            if (input.isYButtonHeld) {
-                audio.playAudio('itemPickup', assets.load('itemEquip'), 'sfx');
-    
-                // Ensure the item is not in the inventory before adding
-                if (!(ui_inventory_window.inventory.find(item => item.name === itemName) && itemData.collect === false)) {
-                    // Remove item from room data
-                    game.roomData.items = game.roomData.items.filter(item => {
-                        const itemX = item.x[0] * 16;
-                        const itemY = item.y[0] * 16;
-                        return !(itemX === closestItem.x[0] * 16 && itemY === closestItem.y[0] * 16 && item.id === closestItem.id);
-                    });
+                // Show tooltip if defined in the script
+                if (script.walk && script.walk.tooltip) {
+                    this.showTooltip(script.walk.tooltip, tooltipX, tooltipY);
                 }
     
-                // Add the item to inventory
-                this.addToInventory(itemName);
+                // Handle walk actions like sway or pick up
+                if (script.walk && script.walk.sway) {
+                    // Trigger the sway effect for the item
+                    closestItem.isRotating = true;
+                    closestItem.rotationElapsed = 0;
+                    actions.handleRotation(closestItem);
+                }
     
-                // Hide tooltip after picking up the item
-                this.hideTooltip();
+                // Handle picking up items with gamepadY
+                if (script.walk && script.walk.gamepadY && input.isYButtonHeld) {
+                    const reward = script.walk.gamepadY.reward;
+                    if (reward) {
+                        // Add item to inventory using ui_inventory_window.addToInventory
+                        ui_inventory_window.addToInventory(reward.id, reward.amount); // Using the existing inventory function from ui_inventory_window
+                    }
+                    this.hideTooltip();
+                }
+    
+                // Handle scene loading if the script includes a scene action
+                if (script.walk && script.walk.scene) {
+                    if (input.isAButtonHeld) {  // Check if the "A" button is held to trigger the scene change
+                        game.loadScene(script.walk.scene);  // Load the new scene
+                        this.hideTooltip();  // Hide the tooltip after loading the scene
+                    }
+                }
+    
+                // Handle item dropping logic
+                if (script.drop) {
+                    const selectedItem = ui_inventory_window.selectedInventoryItem;  // Get the currently selected item from inventory
+                    if (selectedItem && selectedItem.name === script.drop.requiredItem) {
+                        // Show drop action tooltip
+                        this.showTooltip(`Press [X] to drop ${selectedItem.name}`, tooltipX, tooltipY);
+    
+                        // Check if the player presses the "X" button to drop the item
+                        if (input.isXButtonHeld) {
+                            const actionFunction = script.drop.action;
+    
+                            if (typeof actions[actionFunction] === 'function') {
+                                // Execute the action function
+                                actions[actionFunction](selectedItem, closestItem);
+                            } else {
+                                console.error(`Action function ${actionFunction} not found in actions object`);
+                            }
+    
+                            this.hideTooltip();  // Hide tooltip after performing the drop action
+                        }
+                    }
+                }
             }
-        } else {
-            this.hideTooltip();  // Hide tooltip if no item is nearby
+        });
+    
+        // If no item is nearby or the sprite is outside of any object, hide the tooltip
+        if (!closestItem) {
+            this.hideTooltip();
         }
     },    
+    
 
     // Utility to check if a required button is pressed
     isButtonPressed: function(button) {

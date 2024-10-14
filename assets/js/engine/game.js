@@ -424,6 +424,9 @@ var game = {
         this.canvas.style.transform = 'translate(0, -50%)'; // Center vertically
     },    
     
+    handleMouseDown: function(event) {
+
+    },
 
     handleMouseMove: function(event) {
 

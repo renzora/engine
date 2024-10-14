@@ -166,7 +166,7 @@ var input = {
 
     handleLeftAxes: function(axes) {
         const threshold = 0.1; // Dead zone threshold for minimal stick movement
-    
+        
         // Calculate axis pressures
         const leftStickX = axes[0];
         const leftStickY = axes[1];
@@ -175,60 +175,64 @@ var input = {
         gamepad.directions = { left: false, right: false, up: false, down: false };
     
         if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
+            // The stick is moved beyond the threshold, so update speed and movement directions
             gamepad.axesPressures.leftStickX = Math.abs(leftStickX);
             gamepad.axesPressures.leftStickY = Math.abs(leftStickY);
     
             // Calculate speed based on stick pressure
             const pressure = Math.max(Math.abs(leftStickX), Math.abs(leftStickY));
-            game.mainSprite.speed = 25 + (pressure * 60); // Speed ranges from 20 to 60
+            game.mainSprite.speed = 25 + (pressure * 60); // Speed ranges from 25 to 85 depending on pressure
     
-            // Angle-based movement detection for more flexibility
+            // Set directions based on movement angle
             const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
-    
-            // Define angular ranges for each direction
-            const up = (angle >= -Math.PI / 8 && angle < Math.PI / 8);             // Right
-            const upRight = (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8);     // SE
-            const right = (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8);   // Down
-            const downRight = (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8); // SW
-            const down = (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8);   // Left
-            const downLeft = (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8); // NW
-            const left = (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8);  // Up
-            const upLeft = (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8);    // NE
-    
-            // Set directions based on the angle ranges
-            if (up) {
-                gamepad.directions.right = true;
-            } else if (upRight) {
-                gamepad.directions.down = true;
-                gamepad.directions.right = true;
-            } else if (right) {
-                gamepad.directions.down = true;
-            } else if (downRight) {
-                gamepad.directions.down = true;
-                gamepad.directions.left = true;
-            } else if (down) {
-                gamepad.directions.left = true;
-            } else if (downLeft) {
-                gamepad.directions.up = true;
-                gamepad.directions.left = true;
-            } else if (left) {
-                gamepad.directions.up = true;
-            } else if (upLeft) {
-                gamepad.directions.up = true;
-                gamepad.directions.right = true;
-            }
+            this.updateGamepadDirections(angle);
     
             // Update the sprite's directions based on combined states
-            this.updateSpriteDirections(axes);
+            this.updateSpriteDirections();
         } else {
-            // Reset the directions for the left stick if below threshold
+            // If stick is in the dead zone (neutral position), reset the speed to default
             gamepad.axesPressures.leftStickX = 0;
             gamepad.axesPressures.leftStickY = 0;
-            game.mainSprite.speed = 20; // Set minimum speed when no significant movement is detected
-        }
+            
+            // Reset speed to default when gamepad stick is released
+            game.mainSprite.speed = 70; // Replace 70 with your default speed
     
-        // Update the sprite's directions based on combined states
-        this.updateSpriteDirections(axes);
+            this.updateSpriteDirections();
+        }
+    },
+    
+    updateGamepadDirections: function(angle) {
+        const up = (angle >= -Math.PI / 8 && angle < Math.PI / 8);             // Right
+        const upRight = (angle >= Math.PI / 8 && angle < 3 * Math.PI / 8);     // SE
+        const right = (angle >= 3 * Math.PI / 8 && angle < 5 * Math.PI / 8);   // Down
+        const downRight = (angle >= 5 * Math.PI / 8 && angle < 7 * Math.PI / 8); // SW
+        const down = (angle >= 7 * Math.PI / 8 || angle < -7 * Math.PI / 8);   // Left
+        const downLeft = (angle >= -7 * Math.PI / 8 && angle < -5 * Math.PI / 8); // NW
+        const left = (angle >= -5 * Math.PI / 8 && angle < -3 * Math.PI / 8);  // Up
+        const upLeft = (angle >= -3 * Math.PI / 8 && angle < -Math.PI / 8);    // NE
+    
+        // Set directions based on the angle ranges
+        if (up) {
+            gamepad.directions.right = true;
+        } else if (upRight) {
+            gamepad.directions.down = true;
+            gamepad.directions.right = true;
+        } else if (right) {
+            gamepad.directions.down = true;
+        } else if (downRight) {
+            gamepad.directions.down = true;
+            gamepad.directions.left = true;
+        } else if (down) {
+            gamepad.directions.left = true;
+        } else if (downLeft) {
+            gamepad.directions.up = true;
+            gamepad.directions.left = true;
+        } else if (left) {
+            gamepad.directions.up = true;
+        } else if (upLeft) {
+            gamepad.directions.up = true;
+            gamepad.directions.right = true;
+        }
     },
  
 

@@ -32,7 +32,7 @@ if ($auth) {
   <script>
 var ui_inventory_window = {
     inventory: [
-        { name: "sword", amount: 0, category: "pewpew", damage: 60 },
+        { key: "66cdbbc45f5b8", amount: 0, category: "pewpew", damage: 60 },
     ],
 
     currentTab: 'pewpew',
@@ -159,7 +159,7 @@ var ui_inventory_window = {
             this.highlightTabButton(this.currentTabButtonIndex);
             audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
         } else {
-            this.currentItemIndex = (this.currentItemIndex - 1 + 15) % 15;  // Move left through the slots, including empty ones
+            this.currentItemIndex = (this.currentItemIndex - 1 + 10) % 10;  // Move left through the slots, including empty ones
             this.selectItem(this.currentItemIndex);
             audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
         }
@@ -175,7 +175,7 @@ rightButton: function(e) {
             this.highlightTabButton(this.currentTabButtonIndex);
             audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
         } else {
-            this.currentItemIndex = (this.currentItemIndex + 1) % 15;  // Move right through the slots, including empty ones
+            this.currentItemIndex = (this.currentItemIndex + 1) % 10;  // Move right through the slots, including empty ones
             this.selectItem(this.currentItemIndex);
             audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
         }
@@ -384,40 +384,49 @@ selectItem: function(index) {
     const quickItemsContainer = document.getElementById('ui_quick_items_container');
     quickItemsContainer.innerHTML = '';
 
-    // Get the items for the current tab
     const filteredItems = this.getFilteredInventory();
 
-    // Ensure that there are 15 slots, even if there are fewer items
-    for (let i = 0; i < 15; i++) {
-        const item = filteredItems[i]; // May be undefined if the index is out of bounds
+    for (let i = 0; i < 10; i++) {
+        const item = filteredItems[i];
         const itemElement = document.createElement('div');
         itemElement.className = 'ui_quick_item relative cursor-move w-14 h-14 bg-[#18202f] rounded-md shadow-inner hover:shadow-lg transition-shadow duration-300 flex items-center justify-center';
-        itemElement.dataset.item = item ? item.name : '';
+        itemElement.dataset.item = item ? item.key : '';
 
         if (item) {
-            // Calculate remaining condition based on damage
-            const condition = 100 - (item.damage || 0); // Default to 100% condition if no damage is present
+            const objectData = game.objectData[item.key] ? game.objectData[item.key][0] : null;
 
-            // Determine the damage bar color based on the condition
-            let barColor = 'bg-green-500';
-            if (condition <= 15) {
-                barColor = 'bg-red-500';
-            } else if (condition <= 50) {
-                barColor = 'bg-orange-500';
+            if (objectData) {
+                const index = objectData.i[0].split('-');
+                const tileIndex = parseInt(index[0], 10);
+                const tileX = (tileIndex % 150) * 16;
+                const tileY = Math.floor(tileIndex / 150) * 16;
+
+                const canvas = document.createElement('canvas');
+                canvas.width = 16;
+                canvas.height = 16;
+                const ctx = canvas.getContext('2d');
+                const spriteSheet = assets.load(objectData.t);
+
+                ctx.drawImage(spriteSheet, tileX, tileY, 16, 16, 0, 0, 16, 16);
+
+                const imageDataUrl = canvas.toDataURL();
+                const condition = 100 - (item.damage || 0);
+                let barColor = 'bg-green-500';
+                if (condition <= 15) barColor = 'bg-red-500';
+                else if (condition <= 50) barColor = 'bg-orange-500';
+
+                itemElement.innerHTML = `
+                    <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
+                    <img class="items_icon scale-[2.1] z-10" src="${imageDataUrl}" width="16" height="16" />
+                    ${item.amount > 1 ? `
+                    <div class="item-badge absolute top-0 left-0 z-20 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
+                        ${item.amount}
+                    </div>
+                    ` : ''}
+                    <div class="damage-bar absolute bottom-0 left-0 right-0 h-1 ${barColor} rounded-full" style="width: ${condition}%;"></div>
+                `;
             }
-
-            itemElement.innerHTML = `
-                <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
-                <div class="items_icon items_${item.name} scale-[2.1] z-10"></div>
-                ${item.amount > 1 ? `
-                <div class="item-badge absolute top-0 left-0 z-20 bg-[#18202f] text-white rounded-full text-xs w-5 h-5 flex items-center justify-center">
-                    ${item.amount}
-                </div>
-                ` : ''}
-                <div class="damage-bar absolute bottom-0 left-0 right-0 h-1 ${barColor} rounded-full" style="width: ${condition}%;"></div>
-            `;
         } else {
-            // Empty slot - no damage bar or item-specific content
             itemElement.innerHTML = `
                 <div class="timeout-indicator absolute inset-0 bg-red-500 transition-all ease-linear z-0 hidden rounded-md"></div>
             `;
@@ -427,10 +436,11 @@ selectItem: function(index) {
     }
 },
 
+
 getFilteredInventory: function() {
     // This ensures that if the inventory is empty, we still return an array with 15 empty slots
     const filtered = this.inventory.filter(item => item.category === this.currentTab);
-    const emptySlots = Array(15 - filtered.length).fill(null);  // Fill with `null` for empty slots
+    const emptySlots = Array(10 - filtered.length).fill(null);  // Fill with `null` for empty slots
     return [...filtered, ...emptySlots];  // Merge filled items and empty slots
 },
 
@@ -486,58 +496,50 @@ getFilteredInventory: function() {
     },
 
     displayInventoryItems: function() {
-    if (!game.itemsData || !game.itemsData.items) {
-        console.error("itemsData or items array is not defined.");
-        return;
-    }
-
-    this.getFilteredInventory().forEach((item, index) => {
-        if (!item) {
-            return; // Skip null or empty slots
+        if (!game.objectData) {
+            console.error("objectData is not defined.");
+            return;
         }
 
-        const itemData = game.itemsData.items.find(data => data.name === item.name);
-        if (itemData) {
-            let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.name}"]`);
+        this.getFilteredInventory().forEach((item, index) => {
+            if (!item) return; // Skip null or empty slots
 
-            if (itemElement) {
-                this.setItemIcon(itemElement, itemData);
-                itemElement.dataset.cd = itemData.cd;
-                itemElement.querySelector('.items_icon').classList.add(`items_${item.name}`);
+            const objectData = game.objectData[item.key] ? game.objectData[item.key][0] : null;
+
+            if (objectData) {
+                let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.key}"]`);
+                if (itemElement) {
+                    this.setItemIcon(itemElement, objectData);
+                }
+            } else {
+                console.error('Object data not found for key:', item.key);
             }
-        } else {
-            console.error('Item data not found for item:', item);
-        }
-    });
-},
+        });
+    },
 
-    setItemIcon: function(element, itemData) {
+    setItemIcon: function(element, objectData) {
         const iconDiv = element.querySelector('.items_icon');
         if (iconDiv) {
-            const iconSize = 16;
+            const index = objectData.i[0].split('-'); // e.g., "472-472"
+            const tileIndex = parseInt(index[0], 10);
+            const tileX = (tileIndex % 150) * 16;
+            const tileY = Math.floor(tileIndex / 150) * 16;
+
             const canvas = document.createElement('canvas');
+            canvas.width = 16;
+            canvas.height = 16;
             const ctx = canvas.getContext('2d');
 
-            canvas.width = iconSize;
-            canvas.height = iconSize;
+            // Load the actual image from assets
+            const spriteSheet = assets.load(objectData.t);
 
-            if (game.itemsImg && game.itemsImg instanceof HTMLImageElement) {
-                ctx.drawImage(
-                    game.itemsImg, 
-                    itemData.x, itemData.y, 
-                    iconSize, iconSize, 
-                    0, 0, 
-                    iconSize, iconSize
-                );
+            // Draw the sprite on the canvas
+            ctx.drawImage(spriteSheet, tileX, tileY, 16, 16, 0, 0, 16, 16);
 
-                const dataURL = canvas.toDataURL();
-                iconDiv.style.backgroundImage = `url(${dataURL})`;
-                iconDiv.style.width = `${iconSize}px`;
-                iconDiv.style.height = `${iconSize}px`;
-                iconDiv.style.backgroundSize = 'cover';
-            } else {
-                console.error("Invalid or unloaded image source.");
-            }
+            // Set the icon's src as the canvas data URL
+            iconDiv.src = canvas.toDataURL();
+            iconDiv.width = 16;
+            iconDiv.height = 16;
         }
     },
 
@@ -759,21 +761,92 @@ getFilteredInventory: function() {
     return false;
 },
 
-    updateItemBadges: function() {
-        document.querySelectorAll('.ui_quick_item').forEach(item => {
-            const itemName = item.dataset.item;
-            const badge = item.querySelector('.item-badge');
-            if (badge) {
-                const inventoryItem = this.inventory.find(i => i.name === itemName && i.category === this.currentTab);
-                if (inventoryItem && inventoryItem.amount > 1) {
-                    badge.textContent = inventoryItem.amount;
-                    badge.style.display = 'flex';
-                } else {
-                    badge.style.display = 'none';
-                }
+addToInventory: function(itemKey) {
+        // Ensure that the inventory array is initialized
+        if (!Array.isArray(this.inventory)) {
+            console.error("Inventory array is not initialized.");
+            return;
+        }
+
+        // Look up the item in the objectData using the item key
+        const itemData = game.objectData[itemKey] && game.objectData[itemKey][0]; // Access the first element of the array
+        
+        if (!itemData) {
+            console.error(`Item data for ${itemKey} not found.`);
+            return;
+        }
+
+        // Check if the item is already in the inventory and has collect set to false
+        const inventoryItem = this.inventory.find(item => item.key === itemKey);
+        
+        if (inventoryItem && itemData.collect === false) {
+            console.log(`${itemKey} is already in the inventory and cannot be collected again.`);
+            return; // Exit if the item cannot be collected again and is already in the inventory
+        }
+
+        // Track the currently selected index before adding the new item
+        const previousSelectedIndex = this.currentItemIndex;
+
+        // Remove the item from roomData if it's being collected for the first time or if it can be collected multiple times
+        if (!inventoryItem || itemData.collect !== false) {
+            const itemIndex = game.roomData.items.findIndex(item => item.id === itemKey);
+
+            if (itemIndex !== -1) {
+                game.roomData.items.splice(itemIndex, 1); // Remove the item from roomData
             }
-        });
+        }
+
+        // Set the collected flag to true for this item if it has collect set to false
+        if (itemData.collect === false) {
+            itemData.collected = true;
+        }
+
+        // Add the item to the currently active tab
+        const currentTab = this.currentTab;
+
+        // Check if the item is already in the current tab
+        const tabItem = this.inventory.find(item => item.key === itemKey && item.category === currentTab);
+
+        if (tabItem) {
+            tabItem.amount += 1; // Increase the amount if it already exists in the active tab
+        } else {
+            // Add new item to the current tab in the inventory if not already present
+            this.inventory.push({
+                key: itemKey, // Use the item key here
+                amount: 1,
+                category: currentTab,
+                damage: 0
+            });
+        }
+
+        // Re-render the inventory items
+        this.renderInventoryItems();
+        this.displayInventoryItems();
+        this.updateItemBadges();
+
+        // Reapply the selection after re-rendering
+        if (previousSelectedIndex !== null && previousSelectedIndex < this.inventory.length) {
+            this.selectItem(previousSelectedIndex);
+        }
     },
+
+    updateItemBadges: function() {
+    document.querySelectorAll('.ui_quick_item').forEach(item => {
+        const itemName = item.dataset.item;
+        const badge = item.querySelector('.item-badge');
+
+        if (badge) {
+            const inventoryItem = this.inventory.find(i => i.key === itemName && i.category === this.currentTab);
+            if (inventoryItem && inventoryItem.amount > 1) {
+                badge.textContent = inventoryItem.amount;
+                badge.style.display = 'flex';
+            } else {
+                badge.style.display = 'none';
+            }
+        }
+    });
+},
+
 
     updateScale: function(element) {
     if (!element) {

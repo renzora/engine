@@ -37,7 +37,7 @@ var sprite = {
             maxRange: options.maxRange !== undefined ? options.maxRange : 30,
             handOffsetX: -5,
             handOffsetY: 5,
-            currentItem: 'sword',
+            currentItem: null,
             directions: {},
             joystickDirections: {},
             isRunning: false,
@@ -80,7 +80,6 @@ var sprite = {
             moveAlongPath: this.moveAlongPath,
             stopPathfinding: this.stopPathfinding,
             update: this.update,
-            checkTileActions: this.checkTileActions,
             drawEnemyAttackAimTool: this.drawEnemyAttackAimTool,
             dealDamage: this.dealDamage,
             drawSelectedItem: this.drawSelectedItem,
@@ -126,22 +125,6 @@ var sprite = {
         }
     
         return newSprite;
-    },
-
-    checkTileActions: function() {
-        const currentTileId = utils.getTileIdAt(Math.floor(this.x / 16), Math.floor(this.y / 16));
-        const currentTileX = Math.floor(this.x / 16);
-        const currentTileY = Math.floor(this.y / 16);
-    
-        if (currentTileId !== actions.lastTileId || currentTileX !== actions.lastTileX || currentTileY !== actions.lastTileY) {
-            if (actions.lastTileId !== null) {
-                actions.handleExitTileAction(actions.lastTileId);
-            }
-            actions.handleTileAction(currentTileId, currentTileX, currentTileY);
-            actions.lastTileId = currentTileId;
-            actions.lastTileX = currentTileX;
-            actions.lastTileY = currentTileY;
-        }
     },
 
     moveSprite: function (sprite, direction, duration) {
@@ -477,7 +460,7 @@ var sprite = {
         this.pathIndex = 0; // Reset the path index
         this.isMovingToTarget = true; // Mark sprite as moving to target
         audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
-    },    
+    },  
 
     calculatePath: function(startX, startY, endX, endY) {
         const grid = collision.createWalkableGrid(); // Use the cached walkable grid
