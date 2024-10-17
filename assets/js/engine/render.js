@@ -1,8 +1,10 @@
 var render = {
+    spriteCount: 0,
+    animationCount: 0,
+    backgroundTileCount: 0,  // Count background tiles in the viewport
+    tileCount: 0,  // Count room tiles in the viewport
     overlappingTiles: [],
-    cachedBackgroundCanvas: null,
-    cachedBackgroundCtx: null,
-    backgroundCacheDirty: true, // Set to true when the background needs to be re-rende
+    renderQueue: [],
     parseRange: function(rangeString) {
         const [start, end] = rangeString.split('-').map(Number);
         const rangeArray = [];
@@ -26,7 +28,6 @@ var render = {
         if (Array.isArray(tileData.i)) {
             expandedTileData.i = tileData.i.map(frame => {
                 if (Array.isArray(frame)) {
-                    // Handle case where each frame is an array (animation frames)
                     return frame.map(value => {
                         if (typeof value === 'string' && value.includes('-')) {
                             return this.parseRange(value);
@@ -34,7 +35,6 @@ var render = {
                         return value;
                     }).flat();  // Flatten after expanding ranges
                 } else if (typeof frame === 'string' && frame.includes('-')) {
-                    // Handle single range
                     return this.parseRange(frame);
                 }
                 return frame;
@@ -78,101 +78,80 @@ var render = {
         }
     },
 
-    initBackgroundCache: function() {
-        if (!this.cachedBackgroundCanvas) {
-            this.cachedBackgroundCanvas = document.createElement('canvas');
-            this.cachedBackgroundCtx = this.cachedBackgroundCanvas.getContext('2d');
-        }
-
-        // Set the size of the cached canvas to match the world dimensions
-        this.cachedBackgroundCanvas.width = game.worldWidth;
-        this.cachedBackgroundCanvas.height = game.worldHeight;
-
-        this.backgroundCacheDirty = true; // Mark the cache as dirty (needs re-rendering)
-    },
-
     // Modify renderBackground to use cached background for the entire world
     renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        // Initialize the cache if necessary or if marked as dirty
-        if (!this.cachedBackgroundCanvas || this.backgroundCacheDirty) {
-            this.initBackgroundCache();
-            
-            const bgTileData = game.objectData[game.sceneBg][0];
+        this.backgroundTileCount = 0;  // Reset background tile count
+        const bgTileData = game.objectData[game.sceneBg][0];
+        const tileSize = 16;
 
-            // Render the entire background to the cached canvas
-            for (let y = 0; y < game.worldHeight / 16; y++) {
-                for (let x = 0; x < game.worldWidth / 16; x++) {
-                    const posX = x * 16;
-                    const posY = y * 16;
-                    const tileFrameIndex = bgTileData.i;
-                    const srcX = (tileFrameIndex % 150) * 16;
-                    const srcY = Math.floor(tileFrameIndex / 150) * 16;
+        // Loop through only the tiles in the viewport
+        for (let y = Math.floor(viewportYStart); y <= Math.floor(viewportYEnd); y++) {
+            for (let x = Math.floor(viewportXStart); x <= Math.floor(viewportXEnd); x++) {
+                const posX = x * tileSize;
+                const posY = y * tileSize;
 
-                    this.cachedBackgroundCtx.drawImage(assets.load(bgTileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
-                }
+                const tileFrameIndex = bgTileData.i;
+                const srcX = (tileFrameIndex % 150) * tileSize;
+                const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
+
+                // Draw each background tile inside the viewport
+                game.ctx.drawImage(assets.load(bgTileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
+
+                // Increment the visible background tile count
+                this.backgroundTileCount++;
+                this.tileCount++;  // Increment total tile count
             }
-
-            this.backgroundCacheDirty = false;
- 
         }
-
-        // Draw only the visible part of the cached background to the main canvas
-        const viewportWidth = (viewportXEnd - viewportXStart) * 16;
-        const viewportHeight = (viewportYEnd - viewportYStart) * 16;
-        const viewportX = viewportXStart * 16;
-        const viewportY = viewportYStart * 16;
-
-        game.ctx.drawImage(this.cachedBackgroundCanvas, viewportX, viewportY, viewportWidth, viewportHeight, viewportX, viewportY, viewportWidth, viewportHeight);
-    },
-
-    // Invalidate the background cache when the background needs to be re-rendered
-    invalidateBackgroundCache: function() {
-        this.backgroundCacheDirty = true;
-        console.log('Background cache invalidated, will re-render on next request.');
     },
 
     draw: function(tileData, roomItem, centerX, bottomY, xCoordinates, yCoordinates, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd, rotation, horizontalShift) {
         const tileSize = 16;
         const bottomX = centerX * tileSize;
         const bottomYPixel = bottomY * tileSize;
-    
-        // Calculate sway if needed
-        if (tileData.sway === true) {
-            rotation += this.handleSway(roomItem); // Add sway to the rotation
-        }
-    
+
         // Calculate the item's bounding box with sway and offset (rotation and horizontalShift)
         const itemMinX = Math.min(...xCoordinates) * tileSize - horizontalShift;
         const itemMaxX = Math.max(...xCoordinates) * tileSize - horizontalShift;
         const itemMinY = Math.min(...yCoordinates) * tileSize;
         const itemMaxY = Math.max(...yCoordinates) * tileSize;
-    
-        // Convert viewport boundaries to pixel values for comparison
-        const viewportXStartPixel = viewportXStart * tileSize;
-        const viewportXEndPixel = viewportXEnd * tileSize;
-        const viewportYStartPixel = viewportYStart * tileSize;
-        const viewportYEndPixel = viewportYEnd * tileSize;
-    
-        // Check if the item's bounding box is outside the viewport
-        if (itemMaxX < viewportXStartPixel || itemMinX >= viewportXEndPixel || 
-            itemMaxY < viewportYStartPixel || itemMinY >= viewportYEndPixel) {
+
+        // Extend viewport boundaries slightly to render edge tiles and objects
+        const tileBuffer = 1; // Allow tiles partially within the viewport to render
+        const viewportXStartPixel = (viewportXStart - tileBuffer) * tileSize;
+        const viewportXEndPixel = (viewportXEnd + tileBuffer) * tileSize;
+        const viewportYStartPixel = (viewportYStart - tileBuffer) * tileSize;
+        const viewportYEndPixel = (viewportYEnd + tileBuffer) * tileSize;
+
+        // Check if the item's bounding box is outside the extended viewport
+        const isInViewport = !(itemMaxX < viewportXStartPixel || itemMinX >= viewportXEndPixel ||
+                               itemMaxY < viewportYStartPixel || itemMinY >= viewportYEndPixel);
+        if (!isInViewport) {
             return; // Skip rendering if out of viewport
         }
-    
+
         // Proceed with rendering if inside the viewport
         game.ctx.save();
         game.ctx.translate(bottomX + horizontalShift, bottomYPixel);
+
+        // Only animate sway if the object is in the viewport
+        if (tileData.sway === true) {
+            rotation += this.handleSway(roomItem); // Add sway to the rotation
+        }
+
         game.ctx.rotate(rotation);
-    
+
         let index = 0;
+        let animationCounted = false;  // Ensure animation is counted only once per object
+
         for (let i = 0; i < yCoordinates.length; i++) {
             const y = yCoordinates[i];
             for (let j = 0; j < xCoordinates.length; j++) {
                 const x = xCoordinates[j];
-                if (x >= viewportXStart && x < viewportXEnd && y >= viewportYStart && y < viewportYEnd) {
+                if (x >= viewportXStart - tileBuffer && x < viewportXEnd + tileBuffer &&
+                    y >= viewportYStart - tileBuffer && y < viewportYEnd + tileBuffer) {
                     const posX = (x - centerX) * tileSize;
                     const posY = (y - bottomY) * tileSize;
-    
+
                     let tileFrameIndex;
                     if (Array.isArray(tileData.i[0])) {
                         const animationData = tileData.i;
@@ -181,11 +160,20 @@ var render = {
                     } else {
                         tileFrameIndex = tileData.i[index];
                     }
-    
+
                     if (tileFrameIndex !== undefined) {
                         const srcX = (tileFrameIndex % 150) * tileSize;
                         const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
                         game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
+
+                        // Increment tile count if the tile is in the viewport
+                        this.tileCount++;
+
+                        // Only increment animation count once for this object, if animating and within the viewport
+                        if (!animationCounted && Array.isArray(tileData.i[0])) {
+                            this.animationCount++;
+                            animationCounted = true;  // Mark animation as counted for this object
+                        }
                     }
                 }
                 index++;
@@ -195,19 +183,22 @@ var render = {
     },
 
     renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        const renderQueue = [];
-        let backgroundTileCount = 0;
-        let tileCount = 0;
-        let spriteCount = 0;
-        let animationCount = 0; // New counter for animations
-    
+        this.renderQueue = [];
+        this.spriteCount = 0;  // Reset sprite count
+        this.animationCount = 0;  // Reset animation count
+        this.tileCount = 0;  // Reset total tile count
+        this.backgroundTileCount = 0;  // Reset background tile count
+
+        // Expand object data for rendering
         const expandedObjectData = Object.keys(game.objectData).reduce((acc, key) => {
             acc[key] = game.objectData[key].map(this.expandTileData.bind(this));
             return acc;
         }, {});
-    
-        backgroundTileCount = this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
-    
+
+        // Render the background
+        this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+
+        // Render the room items (tiles/objects)
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(roomItem => {
                 const itemData = expandedObjectData[roomItem.id];
@@ -217,77 +208,80 @@ var render = {
                     const yCoordinates = roomItem.y || [];
                     const centerX = (Math.min(...xCoordinates) + Math.max(...xCoordinates)) / 2;
                     const bottomY = Math.max(...yCoordinates);
-    
+
                     let rotation = tileData.rotation || 0;
                     let horizontalShift = 0;
-    
+
                     // If the item is rotating, apply the rotation
                     if (roomItem.isRotating) {
                         actions.handleRotation(roomItem);
                         rotation = roomItem.rotation;
                     }
-    
-                    // If the item has the sway attribute, apply the sway effect
-                    if (tileData.sway === true) {
+
+                    // Check if the item is within the viewport and mark it
+                    const itemMinX = Math.min(...xCoordinates) * 16;
+                    const itemMaxX = Math.max(...xCoordinates) * 16;
+                    const itemMinY = Math.min(...yCoordinates) * 16;
+                    const itemMaxY = Math.max(...yCoordinates) * 16;
+                    const isInViewport = !(itemMaxX < viewportXStart * 16 || itemMinX >= viewportXEnd * 16 ||
+                                           itemMaxY < viewportYStart * 16 || itemMinY >= viewportYEnd * 16);
+                    roomItem.isInViewport = isInViewport;
+
+                    // Only apply sway if the object is in the viewport
+                    if (tileData.sway === true && isInViewport) {
                         rotation += this.handleSway(roomItem);
-                        animationCount++; // Count sway animation as an animation
                     }
-    
-                    // Check if the item has animation frames
-                    if (Array.isArray(tileData.i[0])) {
-                        animationCount++; // Count tile animations
-                    }
-    
+
                     // Add to renderQueue with zIndex
                     const zIndex = tileData.zIndex || tileData.z || 1;
-                    renderQueue.push({
+                    this.renderQueue.push({
                         zIndex,
                         draw: () => this.draw(tileData, roomItem, centerX, bottomY, xCoordinates, yCoordinates, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd, rotation, horizontalShift)
                     });
-    
+
+                    // Handle lights for the item
                     this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+
+                    // Handle effects for the item
                     this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
                 }
             });
         }
-    
-        // Collect sprites for rendering
+
+        // Render sprites
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
             const spriteRight = sprite.x + sprite.width;
             const spriteBottom = sprite.y + sprite.height;
-    
+
+            // Check if the sprite is within the viewport
             if (spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
                 spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16) {
-    
-                renderQueue.push({
+
+                // Add sprite to the renderQueue
+                this.renderQueue.push({
                     zIndex: 2,  // All sprites should have a zIndex of 2
                     draw: function () {
                         game.sprites[id].draw();
                     }
                 });
-    
-                spriteCount++; // Increment sprite count
-    
+
+                this.spriteCount++; // Increment sprite count
+
                 // Check if the sprite has an animation
                 if (sprite.isAnimating) {
-                    animationCount++; // Count sprite animations
+                    this.animationCount++; // Count sprite animations
                 }
             }
         }
-    
+
         // Sort the combined renderQueue by zIndex before rendering
-        renderQueue.sort((a, b) => a.zIndex - b.zIndex);
-    
+        this.renderQueue.sort((a, b) => a.zIndex - b.zIndex);
+
         // Draw the items in the renderQueue
-        renderQueue.forEach(item => {
+        this.renderQueue.forEach(item => {
             item.draw();
         });
-    
-        //weather.drawClouds();  // Draw faint clouds/mist here
-    
-        // Return counts, including background tiles
-        return { backgroundTileCount, tileCount, spriteCount, animationCount }; // Return animation count
     },
 
     handleSway: function(roomItem) {
@@ -298,15 +292,20 @@ var render = {
             roomItem.swayInitialized = true; // Mark as initialized
         }
 
-        // Calculate the elapsed time for the sway effect
-        const elapsedTime = roomItem.swayElapsed || 0;
-        roomItem.swayElapsed = elapsedTime + game.deltaTime;
+        // Only update sway when the object is within the viewport
+        if (roomItem.isInViewport) {
+            // Calculate the elapsed time for the sway effect
+            const elapsedTime = roomItem.swayElapsed || 0;
+            roomItem.swayElapsed = elapsedTime + game.deltaTime;
 
-        // Use a sine wave for smooth back-and-forth motion, applying the precomputed random sway angle and speed
-        const sway = Math.sin((roomItem.swayElapsed / roomItem.swaySpeed) * Math.PI * 2) * roomItem.swayAngle;
+            // Use a sine wave for smooth back-and-forth motion, applying the precomputed random sway angle and speed
+            const sway = Math.sin((roomItem.swayElapsed / roomItem.swaySpeed) * Math.PI * 2) * roomItem.swayAngle;
 
-        // Apply the random sway angle to the object
-        return sway;
+            // Apply the random sway angle to the object
+            return sway;
+        }
+
+        return 0;  // No sway if outside the viewport
     },
 
     renderPathfinderLine: function () {
@@ -394,10 +393,17 @@ var render = {
         }
     },
 
-    updateUI: function (tileCount, spriteCount, animationCount) {
+    updateUI: function () {
         var tilesRenderedDisplay = document.getElementById('tiles_rendered');
+
         if (tilesRenderedDisplay) {
-            tilesRenderedDisplay.innerHTML = `Tiles: ${tileCount} | Sprites: ${spriteCount}`;
+            tilesRenderedDisplay.innerHTML = `Tiles: ${this.tileCount}`;
+        }
+
+        var background_rendered = document.getElementById('background_rendered');
+
+        if (background_rendered) {
+            background_rendered.innerHTML = `Background: ${this.backgroundTileCount}`;
         }
     
         var lightsRenderedDisplay = document.getElementById('lights_rendered');
@@ -412,9 +418,9 @@ var render = {
     
         var animationsRenderedDisplay = document.getElementById('animations_rendered');
         if (animationsRenderedDisplay) {
-            animationsRenderedDisplay.innerHTML = `Animations: ${animationCount}`; // Update animation count
+            animationsRenderedDisplay.innerHTML = `Animations: ${this.animationCount}`; // Update animation count
         }
-    },
+    }, 
 
     highlightOverlappingTiles: function () {
         this.overlappingTiles.forEach(tile => {

@@ -1,132 +1,24 @@
 const actions = {
 
-    handleRotation: function(roomItem) {
-        let baseSwayAngle = Math.PI / 12; // Default baseline sway angle
-        let directionMultiplier = 1; // Multiplier to affect the sway direction and intensity
-
-        const sprite = game.sprites[game.playerid]; // Assuming the player sprite controls direction
-        if (sprite) {
-            if (sprite.direction === 'left' || sprite.direction === 'W') {
-                directionMultiplier = -1; // Sway more to the left
-            } else if (sprite.direction === 'right' || sprite.direction === 'E') {
-                directionMultiplier = 1; // Sway more to the right
-            }
-
-            // Calculate sway using time and direction
-            const maxSwayAngle = baseSwayAngle + (Math.random() * Math.PI / 24) * directionMultiplier;
-            const swaySpeed = 150;
-            const totalRotationDuration = 150;
-            const recoveryTime = 300;
-            const elapsedTime = roomItem.rotationElapsed || 0;
-            roomItem.rotationElapsed = elapsedTime + game.deltaTime;
-
-            let sway = 0;
-            if (elapsedTime < totalRotationDuration) {
-                sway = directionMultiplier * (Math.sin((elapsedTime / totalRotationDuration) * (Math.PI / 2)) * maxSwayAngle);
-            } else if (elapsedTime < totalRotationDuration + recoveryTime) {
-                const recoveryElapsed = elapsedTime - totalRotationDuration;
-                sway = directionMultiplier * (Math.cos((recoveryElapsed / recoveryTime) * (Math.PI / 2)) * maxSwayAngle);
-            }
-
-            roomItem.rotation = sway;
-
-            // Reset rotation after a complete cycle
-            if (elapsedTime >= totalRotationDuration + recoveryTime) {
-                roomItem.isRotating = false;
-                roomItem.rotationElapsed = 0;
-                roomItem.rotation = 0;
-            }
-        }
-    },
-
-    getCategory: function(itemName) {
-        const categories = {
-            sword: "pewpew",
-            potion: "meals",
-            shield: "defence",
-            key: "random",
-            wood: "pewpew",
-            gift: "random",
-            fireball: "pewpew",
-            banana: "meals",
-            sweet: "meals",
-            fish: "meals"
-        };
-        return categories[itemName] || "random";
-    },
-
-    swim: function () {
-        game.sprites[game.playerid].body = 0;
-        game.sprites[game.playerid].speed = 55;
-    },
-
-    restoreBody: function () {
-        game.sprites[game.playerid].body = 1;
-        game.sprites[game.playerid].speed = 90;
-    },
-
-    chop: function () {
-        console.log("Chopping tree!");
-    },
-    
-    dropItemOnObject: function (item, object) {
-        const objectData = game.objectData[object.id];
-        if (!objectData || !objectData[0]) {
-            console.log(`No data found for object ${object.id}`);
-            return;
-        }
-
-        const objectActions = objectData[0].script;
-        if (objectActions && objectActions.drop) {
-            const dropAction = objectActions.drop;
-
-            // Check if the required button is pressed for the drop action
-            if (dropAction.requiredButton && !this.isButtonPressed(dropAction.requiredButton)) {
-                console.log(`Action requires button ${dropAction.requiredButton} to be pressed.`);
-                return; // Exit if the required button is not pressed
-            }
-
-            if (dropAction.requiredItem === item) {
-                const actionFunction = dropAction.action;
-                if (typeof this[actionFunction] === 'function') {
-                    this[actionFunction](item, object);
-                } else {
-                    console.error(`Action function ${actionFunction} not found in actions object`);
-                }
-            } else {
-                this.notifyInvalidDrop(item, object.id);
+    // Central handler to execute actions that may require a button press
+    executeActionWithButton: function (action, config, context, item) {
+        // Check for individual button first, then fall back to the global button
+        const buttonToCheck = config.button || context.button;
+        
+        if (buttonToCheck) {
+            if (this.isButtonPressed(buttonToCheck)) {
+                this[action](config, context, item); // Run the action only if the button is pressed
             }
         } else {
-            console.log(`No drop action defined for ${object.id}`);
+            this[action](config, context, item); // If no button, run automatically
         }
-    },    
+    }, 
 
-    notifyInvalidDrop: function(item, objectId) {
-        const objectName = this.getObjectNameById(objectId);
-        ui.notif("scene_change_notif", `You cannot drop a ${item} into ${objectName}`, true);
-    },
-
-    getObjectNameById: function(objectId) {
-        return objectId;
-    },
-    
-    dropWoodOnCampfire: function (item, object) {
-        console.log('YAYY WOOD!');
-    },  
-
-    checkForNearbyItems: function() {
-        // Ensure roomData and items are present
-        if (!game.roomData || !game.roomData.items) {
-            return;
-        }
-    
-        // Ensure mainSprite exists before proceeding
+    checkForNearbyItems: function () {
+        if (!game.roomData || !game.roomData.items) return;
         const sprite = game.mainSprite;
-        if (!sprite) {
-            return;
-        }
+        if (!sprite) return;
     
-        // Define the sprite's boundary box
         const spriteBoundary = {
             left: sprite.x,
             right: sprite.x + sprite.width,
@@ -136,20 +28,27 @@ const actions = {
     
         let closestItem = null;
     
-        // Loop through room items
         game.roomData.items.forEach(item => {
             const objectData = game.objectData[item.id];
             if (!objectData || !objectData[0] || !objectData[0].script) return;
     
-            const script = objectData[0].script;
+            const scriptData = objectData[0].script;
     
-            // Calculate the object's full width and height
-            const itemX = Math.min(...item.x) * 16; // Leftmost x-coordinate of the object (in pixels)
-            const itemY = Math.min(...item.y) * 16; // Topmost y-coordinate of the object (in pixels)
-            const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16; // Full width of the object (in pixels)
-            const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16; // Full height of the object (in pixels)
+            // Process script if it's YAML or object
+            let script;
+            if (typeof scriptData === 'string') {
+                script = utils.parseYaml(scriptData);
+            } else if (typeof scriptData === 'object' && scriptData !== null) {
+                script = scriptData;
+            } else {
+                return; // Exit early if script is invalid
+            }
     
-            // Define the object's boundary box
+            const itemX = Math.min(...item.x) * 16;
+            const itemY = Math.min(...item.y) * 16;
+            const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
+            const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
+    
             const objectBoundary = {
                 left: itemX,
                 right: itemX + itemWidth,
@@ -157,7 +56,6 @@ const actions = {
                 bottom: itemY + itemHeight
             };
     
-            // Check if the sprite is overlapping with the object
             const isSpriteInsideObject = (
                 spriteBoundary.right >= objectBoundary.left &&
                 spriteBoundary.left <= objectBoundary.right &&
@@ -165,86 +63,145 @@ const actions = {
                 spriteBoundary.top <= objectBoundary.bottom
             );
     
-            // If the sprite is inside the object's boundary, handle actions
             if (isSpriteInsideObject) {
                 closestItem = item;
     
-                const spriteScreenX = (sprite.x - camera.cameraX) * game.zoomLevel;
-                const spriteScreenY = (sprite.y - camera.cameraY) * game.zoomLevel;
+                // Execute the script actions
+                if (script.walk) {
+                    const globalButton = script.walk.button; // Extract the global button
     
-                const canvasRect = game.canvas.getBoundingClientRect();
-                const tooltipX = canvasRect.left + spriteScreenX;
-                const tooltipY = canvasRect.top + spriteScreenY - sprite.height - 10; // Adjust -10 for spacing above the sprite
-    
-                // Show tooltip if defined in the script
-                if (script.walk && script.walk.tooltip) {
-                    this.showTooltip(script.walk.tooltip, tooltipX, tooltipY);
-                }
-    
-                // Handle walk actions like sway or pick up
-                if (script.walk && script.walk.sway) {
-                    // Trigger the sway effect for the item
-                    closestItem.isRotating = true;
-                    closestItem.rotationElapsed = 0;
-                    actions.handleRotation(closestItem);
-                }
-    
-                // Handle picking up items with gamepadY
-                if (script.walk && script.walk.gamepadY && input.isYButtonHeld) {
-                    const reward = script.walk.gamepadY.reward;
-                    if (reward) {
-                        // Add item to inventory using ui_inventory_window.addToInventory
-                        ui_inventory_window.addToInventory(reward.id, reward.amount); // Using the existing inventory function from ui_inventory_window
+                    // Show tooltip, replacing {name} with the object's actual name from objectData
+                    if (script.walk.tooltip) {
+                        const objectName = objectData[0].n || 'Unnamed Object'; // Get name from objectData
+                        const tooltipText = script.walk.tooltip.replace('{name}', objectName);
+                        this.tooltip(tooltipText, item, sprite);  // Pass modified tooltip text
                     }
-                    this.hideTooltip();
-                }
     
-                // Handle scene loading if the script includes a scene action
-                if (script.walk && script.walk.scene) {
-                    if (input.isAButtonHeld) {  // Check if the "A" button is held to trigger the scene change
-                        game.loadScene(script.walk.scene);  // Load the new scene
-                        this.hideTooltip();  // Hide the tooltip after loading the scene
-                    }
-                }
-    
-                // Handle item dropping logic
-                if (script.drop) {
-                    const selectedItem = ui_inventory_window.selectedInventoryItem;  // Get the currently selected item from inventory
-                    if (selectedItem && selectedItem.name === script.drop.requiredItem) {
-                        // Show drop action tooltip
-                        this.showTooltip(`Press [X] to drop ${selectedItem.name}`, tooltipX, tooltipY);
-    
-                        // Check if the player presses the "X" button to drop the item
-                        if (input.isXButtonHeld) {
-                            const actionFunction = script.drop.action;
-    
-                            if (typeof actions[actionFunction] === 'function') {
-                                // Execute the action function
-                                actions[actionFunction](selectedItem, closestItem);
-                            } else {
-                                console.error(`Action function ${actionFunction} not found in actions object`);
+                    // Check if the global button is pressed first
+                    if (!globalButton || this.isButtonPressed(globalButton)) {
+                        for (let action in script.walk) {
+                            if (action !== 'button' && action !== 'tooltip' && this[action] && typeof this[action] === 'function') {
+                                this.executeActionWithButton(action, script.walk[action], item, sprite); // Use centralized handler
                             }
-    
-                            this.hideTooltip();  // Hide tooltip after performing the drop action
                         }
                     }
                 }
+            } else {
+                item.swayTriggered = false;
             }
         });
     
-        // If no item is nearby or the sprite is outside of any object, hide the tooltip
+        // Hide tooltip if no item is close
         if (!closestItem) {
             this.hideTooltip();
         }
     },    
-    
+  
 
-    // Utility to check if a required button is pressed
-    isButtonPressed: function(button) {
-        return gamepad.buttons.includes(button);
+    sway: function (config, context, item) {
+        if (context && !context.swayTriggered) {
+            context.swayTriggered = true;
+            context.isRotating = true;
+            context.rotationElapsed = 0;
+            this.handleRotation(context); // Ensure handleRotation is properly defined
+        }
     },
 
-    showTooltip: function(text, x, y) {
+    tooltip: function (config, context, item) {
+        const sprite = game.mainSprite;
+        if (sprite) {
+            const spriteScreenX = (sprite.x - camera.cameraX) * game.zoomLevel;
+            const spriteScreenY = (sprite.y - camera.cameraY) * game.zoomLevel;
+            const spriteCenterX = spriteScreenX + (sprite.width * game.zoomLevel) / 2;
+    
+            // Replace placeholder {name} with the actual object name from context or item
+            let tooltipText = config.replace('{name}', context.name || item.name || 'Object');
+    
+            this.showTooltip(tooltipText, spriteCenterX, spriteScreenY);
+    
+            const tooltip = document.getElementById('game_tooltip');
+            if (tooltip) {
+                const tooltipWidth = tooltip.offsetWidth;
+                const centeredX = spriteCenterX - (tooltipWidth / 2);
+                tooltip.style.left = `${centeredX}px`;
+                tooltip.style.top = `${spriteScreenY}px`;
+            }
+        }
+    },    
+
+    speech: function (config, context, item) {
+        if (config.message && Array.isArray(config.message.message)) {
+            // Ensure speech hasn't already been triggered
+            if (!item.speechTriggered) {
+                // Disable player controls while speech is active
+                game.allowControls = false;
+    
+                // Start the speech with the full array of messages
+                speech_window.startSpeech(
+                    config.message.message,  // Send the full array of messages
+                    () => { 
+                        item.speechTriggered = false;
+                        // Re-enable player controls when speech ends
+                        game.allowControls = true;
+                    }
+                );
+    
+                // Mark speech as triggered to avoid re-triggering
+                item.speechTriggered = true;
+            }
+        }
+    },    
+
+    reward: function (config, context, item) {
+        // If the id is 'self', use the context's id as the reward id
+        const rewardId = config.id === 'self' ? context.id : config.id;
+        
+        // Proceed if rewardId and amount are valid, and if the reward hasn't been given yet
+        if (rewardId && config.amount && !item.rewardGiven) {
+            // Add the item (or self) to the inventory
+            ui_inventory_window.addToInventory(rewardId, config.amount);
+            item.rewardGiven = true;
+        
+            // Reset reward after a delay or condition
+            setTimeout(() => {
+                item.rewardGiven = false; // Reset after 5 seconds (example)
+            }, 100);
+            
+            // Check if the remove property is set to true
+            if (config.remove) {
+                // Remove the item from the game, for example, by removing it from the room data
+                const itemIndex = game.roomData.items.indexOf(item);
+                if (itemIndex !== -1) {
+                    game.roomData.items.splice(itemIndex, 1); // Remove the item from the game room
+                }
+            }
+        }
+    },
+    
+    random: function(config, context, item) {
+        console.log("random function for object");
+    },
+
+    another: function(config, context, item) {
+        console.log("another function for object");
+    },
+
+    silly: function(config, context, item) {
+        console.log("silly function for object");
+    },
+
+    // Utility to check if a required button is pressed
+    isButtonPressed: function (button) {
+        const buttonMap = {
+            'y': 'YButton',
+            'x': 'XButton',
+            'a': 'AButton',
+            'b': 'BButton'
+        };
+        return input[`is${buttonMap[button]}Held`]; // Check if the specified button is held
+    },
+
+    showTooltip: function (text, x, y) {
         let tooltip = document.getElementById('game_tooltip');
         if (!tooltip) {
             tooltip = document.createElement('div');
@@ -255,26 +212,60 @@ const actions = {
             tooltip.style.color = 'white';
             tooltip.style.borderRadius = '5px';
             tooltip.style.pointerEvents = 'none';
-            tooltip.style.zIndex = '1000'; // Ensure it's on top of other elements
-            tooltip.style.whiteSpace = 'nowrap'; // Prevent text wrapping
+            tooltip.style.zIndex = '10';
+            tooltip.style.whiteSpace = 'nowrap';
             document.body.appendChild(tooltip);
         }
-        
+
         tooltip.innerText = text;
         tooltip.style.display = 'block';
-        
-        // Calculate the width of the tooltip
+
         const tooltipWidth = tooltip.offsetWidth;
-    
-        // Center the tooltip horizontally
         tooltip.style.left = `${x - (tooltipWidth / 2)}px`;
-        tooltip.style.top = `${y - 20}px`; // Position the tooltip above the item
+        tooltip.style.top = `${y - 20}px`;
     },
-    
-    hideTooltip: function() {
+
+    hideTooltip: function () {
         const tooltip = document.getElementById('game_tooltip');
         if (tooltip) {
             tooltip.style.display = 'none';
+        }
+    },
+
+    // Ensure the handleRotation function is defined and accessible
+    handleRotation: function (context) {
+        let baseSwayAngle = Math.PI / 12;
+        let directionMultiplier = 1;
+        const sprite = game.sprites[game.playerid];
+
+        if (sprite) {
+            if (sprite.direction === 'left' || sprite.direction === 'W') {
+                directionMultiplier = -1;
+            } else if (sprite.direction === 'right' || sprite.direction === 'E') {
+                directionMultiplier = 1;
+            }
+
+            const maxSwayAngle = baseSwayAngle + (Math.random() * Math.PI / 24) * directionMultiplier;
+            const totalRotationDuration = 150;
+            const recoveryTime = 300;
+            const elapsedTime = context.rotationElapsed || 0;
+            context.rotationElapsed = elapsedTime + game.deltaTime;
+
+            let sway = 0;
+            if (elapsedTime < totalRotationDuration) {
+                sway = directionMultiplier * Math.sin((elapsedTime / totalRotationDuration) * (Math.PI / 2)) * maxSwayAngle;
+            } else if (elapsedTime < totalRotationDuration + recoveryTime) {
+                const recoveryElapsed = elapsedTime - totalRotationDuration;
+                sway = directionMultiplier * Math.cos((recoveryElapsed / recoveryTime) * (Math.PI / 2)) * maxSwayAngle;
+            }
+
+            context.rotation = sway;
+
+            if (elapsedTime >= totalRotationDuration + recoveryTime) {
+                context.isRotating = false;
+                context.rotationElapsed = 0;
+                context.rotation = 0;
+            }
         }
     }
 };

@@ -781,14 +781,17 @@ var sprite = {
         if (!this.lastBlinkTime) {
             this.lastBlinkTime = Date.now();
         }
-
+    
         const currentTime = Date.now();
         const timeSinceLastBlink = currentTime - this.lastBlinkTime;
-
+    
         if (timeSinceLastBlink >= this.eyeBlinkInterval && !this.eyeBlinking) {
             this.eyeBlinking = true;
             this.lastBlinkTime = currentTime;
-
+    
+            // Randomize the blink interval after each blink, between 2 to 5 seconds
+            this.eyeBlinkInterval = Math.random() * 3000 + 2000;
+    
             // Blink sequence
             setTimeout(() => {
                 this.eyeFrame = 1;
@@ -801,7 +804,7 @@ var sprite = {
                 }, 80); // Time between the first and second frame of the blink
             }, 0); // Start blink immediately
         }
-    },     
+    },  
 
     update: function(deltaTime) {
         const margin = 4; // Define a margin to keep the sprite away from the edges

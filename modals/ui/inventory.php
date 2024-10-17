@@ -59,7 +59,6 @@ var ui_inventory_window = {
             console.error("itemsData or itemsImg is not loaded.");
         }
 
-        this.checkAndUpdateUIPositions();
         this.selectItem(0);
 
         document.addEventListener('dragover', this.documentDragOverHandler.bind(this));
@@ -543,40 +542,6 @@ getFilteredInventory: function() {
         }
     },
 
-    checkAndUpdateUIPositions: function() {
-        const sprite = game.sprites[game.playerid];
-        if (!sprite) return;
-
-        const thresholdY = game.worldHeight - 50;
-        const thresholdX = game.worldWidth - 80;
-
-        const inventoryElement = document.getElementById('ui_inventory_window');
-        if (inventoryElement) {
-            if (sprite.y > thresholdY) {
-                inventoryElement.classList.add('top-4');
-                inventoryElement.classList.remove('bottom-4');
-            } else {
-                inventoryElement.classList.add('bottom-4');
-                inventoryElement.classList.remove('top-4');
-            }
-        } else {
-            console.error('Inventory element not found.');
-        }
-
-        const objectivesElement = document.getElementById('ui_objectives_window');
-        if (objectivesElement) {
-            if (sprite.x > thresholdX) {
-                objectivesElement.classList.add('left-2');
-                objectivesElement.classList.remove('right-2');
-            } else {
-                objectivesElement.classList.add('right-2');
-                objectivesElement.classList.remove('left-2');
-            }
-        } else {
-            console.error('Objectives element not found.');
-        }
-    },
-
     initializeDragAndDrop: function() {
         const draggableItems = document.querySelectorAll('.ui_quick_item');
 
@@ -762,73 +727,77 @@ getFilteredInventory: function() {
 },
 
 addToInventory: function(itemKey) {
-        // Ensure that the inventory array is initialized
-        if (!Array.isArray(this.inventory)) {
-            console.error("Inventory array is not initialized.");
-            return;
+    // Ensure that the inventory array is initialized
+    if (!Array.isArray(this.inventory)) {
+        console.error("Inventory array is not initialized.");
+        return;
+    }
+
+    // Check if the item already exists in the inventory
+    const existingItem = this.inventory.find(item => item.key === itemKey);
+
+    // Check if the inventory is full (assumed maximum capacity is 10)
+    const filteredItems = this.getFilteredInventory().filter(item => item !== null);
+    if (filteredItems.length >= 10 && !existingItem) {
+        console.log("Inventory is full. Cannot add new items.");
+        return; // Exit if the inventory is full and the item does not already exist
+    }
+
+    // Look up the item in the objectData using the item key
+    const itemData = game.objectData[itemKey] && game.objectData[itemKey][0]; // Access the first element of the array
+
+    if (!itemData) {
+        console.error(`Item data for ${itemKey} not found.`);
+        return;
+    }
+
+    // If the item is already in the inventory and has collect set to false, prevent adding it again
+    if (existingItem && itemData.collect === false) {
+        console.log(`${itemKey} is already in the inventory and cannot be collected again.`);
+        return;
+    }
+
+    // Track the currently selected index before adding the new item
+    const previousSelectedIndex = this.currentItemIndex;
+
+    // Remove the item from roomData if it's being collected for the first time or if it can be collected multiple times
+    if (!existingItem || itemData.collect !== false) {
+        const itemIndex = game.roomData.items.findIndex(item => item.id === itemKey);
+        if (itemIndex !== -1) {
+            game.roomData.items.splice(itemIndex, 1); // Remove the item from roomData
         }
+    }
 
-        // Look up the item in the objectData using the item key
-        const itemData = game.objectData[itemKey] && game.objectData[itemKey][0]; // Access the first element of the array
-        
-        if (!itemData) {
-            console.error(`Item data for ${itemKey} not found.`);
-            return;
-        }
+    // Set the collected flag to true for this item if it has collect set to false
+    if (itemData.collect === false) {
+        itemData.collected = true;
+    }
 
-        // Check if the item is already in the inventory and has collect set to false
-        const inventoryItem = this.inventory.find(item => item.key === itemKey);
-        
-        if (inventoryItem && itemData.collect === false) {
-            console.log(`${itemKey} is already in the inventory and cannot be collected again.`);
-            return; // Exit if the item cannot be collected again and is already in the inventory
-        }
+    // Check if the item is already in the current tab
+    const tabItem = this.inventory.find(item => item.key === itemKey && item.category === this.currentTab);
 
-        // Track the currently selected index before adding the new item
-        const previousSelectedIndex = this.currentItemIndex;
+    if (tabItem) {
+        tabItem.amount += 1; // Increase the amount if it already exists in the active tab
+    } else {
+        // Add new item to the current tab in the inventory if not already present
+        this.inventory.push({
+            key: itemKey, // Use the item key here
+            amount: 1,
+            category: this.currentTab,
+            damage: 0
+        });
+    }
 
-        // Remove the item from roomData if it's being collected for the first time or if it can be collected multiple times
-        if (!inventoryItem || itemData.collect !== false) {
-            const itemIndex = game.roomData.items.findIndex(item => item.id === itemKey);
+    // Re-render the inventory items
+    this.renderInventoryItems();
+    this.displayInventoryItems();
+    this.updateItemBadges();
 
-            if (itemIndex !== -1) {
-                game.roomData.items.splice(itemIndex, 1); // Remove the item from roomData
-            }
-        }
-
-        // Set the collected flag to true for this item if it has collect set to false
-        if (itemData.collect === false) {
-            itemData.collected = true;
-        }
-
-        // Add the item to the currently active tab
-        const currentTab = this.currentTab;
-
-        // Check if the item is already in the current tab
-        const tabItem = this.inventory.find(item => item.key === itemKey && item.category === currentTab);
-
-        if (tabItem) {
-            tabItem.amount += 1; // Increase the amount if it already exists in the active tab
-        } else {
-            // Add new item to the current tab in the inventory if not already present
-            this.inventory.push({
-                key: itemKey, // Use the item key here
-                amount: 1,
-                category: currentTab,
-                damage: 0
-            });
-        }
-
-        // Re-render the inventory items
-        this.renderInventoryItems();
-        this.displayInventoryItems();
-        this.updateItemBadges();
-
-        // Reapply the selection after re-rendering
-        if (previousSelectedIndex !== null && previousSelectedIndex < this.inventory.length) {
-            this.selectItem(previousSelectedIndex);
-        }
-    },
+    // Reapply the selection after re-rendering
+    if (previousSelectedIndex !== null && previousSelectedIndex < this.inventory.length) {
+        this.selectItem(previousSelectedIndex);
+    }
+},
 
     updateItemBadges: function() {
     document.querySelectorAll('.ui_quick_item').forEach(item => {

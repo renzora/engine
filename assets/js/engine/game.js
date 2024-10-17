@@ -160,6 +160,7 @@ var game = {
             this.ctx = this.canvas.getContext('2d');
             this.ctx.imageSmoothingEnabled = false;
             document.body.appendChild(this.canvas);
+            this.canvas.style.marginTop = '33px'; // Add outer margin here
             this.resizeCanvas();
             this.itemsImg = assets.load('itemsImg');
             this.itemsData = assets.load('itemsData');
@@ -266,6 +267,8 @@ var game = {
         modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true });
     
         modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
+
+        modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
     
         modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
     
@@ -275,7 +278,7 @@ var game = {
     
         modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
 
-        modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+        modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true });
     },
 
     pause: function() {
@@ -413,16 +416,16 @@ var game = {
         const totalOffsetWidth = consoleWidth + menuWidth; // Combine the widths of both elements
         const availableWidth = window.innerWidth - totalOffsetWidth;
         
-        // Resize the canvas to fit the available space on the left
+        // Resize the canvas to fit the available space on the right
         this.canvas.width = availableWidth;
         this.canvas.height = window.innerHeight;
     
         // Keep the canvas positioned on the right, leaving space for the console and menu
         this.canvas.style.position = 'absolute';
-        this.canvas.style.right = totalOffsetWidth > 0 ? `${totalOffsetWidth}px` : '0'; // Adjust based on combined width
+        this.canvas.style.left = totalOffsetWidth > 0 ? `${totalOffsetWidth}px` : '0'; // Adjust based on combined width
         this.canvas.style.top = '50%';
         this.canvas.style.transform = 'translate(0, -50%)'; // Center vertically
-    },    
+    },  
     
     handleMouseDown: function(event) {
 
@@ -472,7 +475,7 @@ var game = {
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
     
         // Render all the tiles and sprites
-        const { backgroundTileCount, tileCount, spriteCount, animationCount } = render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+        render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
         // Render selected item following the mouse cursor if the inventory window exists and an item is selected
         if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
@@ -489,7 +492,7 @@ var game = {
         effects.transitions.render();
     
         // Update the UI with tile, sprite, and animation counts
-        render.updateUI(backgroundTileCount + tileCount, spriteCount, animationCount);
+        render.updateUI();
         render.highlightOverlappingTiles();
     
         // Handle effects like letterbox

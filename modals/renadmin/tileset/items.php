@@ -6,7 +6,7 @@ if ($auth) {
 
     // JavaScript will take care of retrieving the item details from the game object data
 ?>
-  <div data-window='tileset_item_editor_window' class='window window_bg' style='width: 500px; background: #60975c;'>
+  <div data-window='tileset_item_editor_window' class='window window_bg' style='width: 700px; background: #60975c;'>
 
 <div data-part='handle' class='window_title' style='background-image: radial-gradient(#406d3d 1px, transparent 0) !important;'>
   <div class='float-right'>
@@ -133,70 +133,77 @@ if ($auth) {
         console.warn("Skipping background grid drawing due to invalid item data");
     }
     if (item.script) {
-        document.getElementById('item_scripts').value = JSON.stringify(item.script, null, 2);
+    // Load YAML script directly into the textarea
+    const yamlScript = item.script;
+    document.getElementById('item_scripts').value = yamlScript; // Display YAML script in editor
     } else {
         document.getElementById('item_scripts').value = '';
     }
+
     this.setupScriptInputHandlers();
 },
 
-    setupScriptInputHandlers: function() {
+setupScriptInputHandlers: function() {
     const textarea = document.getElementById('item_scripts');
+    const tabSize = 4; // Define the tab size as 4 spaces
 
     textarea.addEventListener('keydown', function(event) {
-        // Handle tab key for indentation
+        // Handle Tab key for indentation
         if (event.key === 'Tab') {
             event.preventDefault();
             const start = textarea.selectionStart;
             const end = textarea.selectionEnd;
-            textarea.value = textarea.value.substring(0, start) + "\t" + textarea.value.substring(end);
-            textarea.selectionStart = textarea.selectionEnd = start + 1;
+
+            // Insert four spaces for YAML indentation
+            const indent = ' '.repeat(tabSize); // Four spaces for YAML indentation
+            textarea.value = textarea.value.substring(0, start) + indent + textarea.value.substring(end);
+
+            // Move the cursor forward by the length of the indent
+            textarea.selectionStart = textarea.selectionEnd = start + indent.length;
         }
 
-        // Handle Enter key for maintaining indentation and auto-inserting closing brace
-        if (event.key === 'Enter') {
+        // Handle Backspace key to remove a full tab (four spaces)
+        if (event.key === 'Backspace') {
             const start = textarea.selectionStart;
             const textBeforeCursor = textarea.value.substring(0, start);
-            const currentLine = textBeforeCursor.substring(textBeforeCursor.lastIndexOf('\n') + 1);
-            const indentMatch = currentLine.match(/^\s*/); // Match leading whitespace characters
+            if (textBeforeCursor.endsWith(' '.repeat(tabSize))) {
+                event.preventDefault();
+                textarea.value = textBeforeCursor.slice(0, -tabSize) + textarea.value.substring(start);
+                textarea.selectionStart = textarea.selectionEnd = start - tabSize;
+            }
+        }
+
+        // Handle Enter key for creating a new line with proper indentation
+        if (event.key === 'Enter') {
+            event.preventDefault(); // Prevent the default action of the Enter key
+
+            const start = textarea.selectionStart; // Cursor position
+            const textBeforeCursor = textarea.value.substring(0, start); // Text before the cursor
+            const currentLine = textBeforeCursor.substring(textBeforeCursor.lastIndexOf('\n') + 1); // Current line content
+            const indentMatch = currentLine.match(/^\s*/); // Match leading spaces for indentation
 
             let indent = '';
             if (indentMatch) {
-                indent = indentMatch[0];
+                indent = indentMatch[0]; // Preserve the current indentation level
             }
 
-            // Check if the previous character is an opening curly brace
-            if (textBeforeCursor.trim().endsWith('{')) {
-                event.preventDefault();
+            const textAfterCursor = textarea.value.substring(textarea.selectionEnd); // Text after the cursor
 
-                const newIndent = indent + "\t";
-                const textAfterCursor = textarea.value.substring(start);
-
-                // Insert a new line, add the closing brace with indentation
-                textarea.value = textBeforeCursor + '\n' + newIndent + '\n' + indent + '}' + textAfterCursor;
-
-                // Move the cursor to the empty line between the braces
-                textarea.selectionStart = textarea.selectionEnd = start + newIndent.length + 1;
-
-                // Force the textarea to scroll to the bottom
-                requestAnimationFrame(() => {
-                    textarea.scrollTop = textarea.scrollHeight;
-                });
-            } else {
-                // Regular Enter behavior with indentation
-                event.preventDefault();
-
-                const textAfterCursor = textarea.value.substring(textarea.selectionEnd);
-                textarea.value = textBeforeCursor + '\n' + indent + textAfterCursor;
-
-                // Move the cursor to the end of the new line
-                textarea.selectionStart = textarea.selectionEnd = start + 1 + indent.length;
-
-                // Force the textarea to scroll to the bottom
-                requestAnimationFrame(() => {
-                    textarea.scrollTop = textarea.scrollHeight;
-                });
+            // Check if the current line ends with a colon (YAML structure indicator)
+            if (currentLine.trim().endsWith(':')) {
+                indent += ' '.repeat(tabSize); // Add an additional level of indentation if the line ends with ":"
             }
+
+            // Insert a new line with the correct level of indentation
+            textarea.value = textBeforeCursor + '\n' + indent + textAfterCursor;
+
+            // Move the cursor to the end of the new line with the correct indentation
+            textarea.selectionStart = textarea.selectionEnd = start + 1 + indent.length;
+
+            // Ensure the textarea scrolls to show the new line
+            requestAnimationFrame(() => {
+                textarea.scrollTop = textarea.scrollHeight;
+            });
         }
     });
 },
@@ -734,45 +741,38 @@ updateGameObjectData: function() {
 saveData: function(itemId) {
     var item = game.objectData[itemId][0];
 
+    // Get the item name from the input field
     var itemName = document.getElementById('item_name').value.trim();
     item.n = itemName;
 
+    // Get the walkable polygon data from the points
     item.w = tileset_item_editor_window.polygonPoints.map(point => ({ x: point.x, y: point.y }));
 
-    // Collect all z-index values
-    const zValues = item.i.map((tileIndex, index) => {
-        let x = item.a[index];
-        let y = item.b[index];
-        let key = `${x},${y}`;
-        return this.zIndexData[key] ? parseInt(this.zIndexData[key], 10) : 0;
-    });
-
-    // Check if all z-index values are the same
-    const allSameZ = zValues.every((z, _, arr) => z === arr[0]);
-
-    if (allSameZ) {
-        item.z = zValues[0]; // Save as a single integer if all are the same
-    } else {
-        item.z = zValues; // Save as an array if they differ
-    }
-
+    // Collect the script from the editor in YAML format
     var itemScripts = document.getElementById('item_scripts').value.trim();
+
     if (itemScripts) {
-        try {
-            item.script = JSON.parse(itemScripts);
-        } catch (error) {
-            ui.notif("Invalid JSON format in scripts!", "error");
-            console.error('Error parsing JSON:', error);
-            return;
-        }
+        // Remove commas at the end of lines while preserving indentation
+        // Also remove any trailing commas before closing objects or at the end of the script
+        var cleanYamlScript = itemScripts
+            .replace(/,+\n(\s*)/g, '\n$1')      // Remove one or more commas before newlines, preserving indentation
+            .replace(/,(\s*[\}\]])/g, '$1')    // Remove commas before closing braces/brackets
+            .replace(/,(\s*[\}\]]\s*)/g, '$1') // Ensure multiple consecutive commas before closing braces/brackets are removed
+            .replace(/,+\s*$/g, '');           // Remove any trailing commas at the end of the script
+
+        // Store the cleaned YAML string in the 'script' field
+        item.script = cleanYamlScript;
     } else {
-        delete item.script;
+        delete item.script; // Remove the script if it's empty
     }
 
+    console.log("Cleaned script with proper indentation:", item.script);
+
+    // Perform an AJAX request to save the data on the server
     ui.ajax({
         method: 'POST',
         url: 'modals/renadmin/tileset/ajax/save_item.php',
-        data: JSON.stringify(game.objectData),
+        data: JSON.stringify(game.objectData), // Send the whole object data as JSON
         outputType: 'json',
         success: function(response) {
             if (response.success) {

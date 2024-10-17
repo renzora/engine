@@ -95,8 +95,8 @@ var camera = {
                 }
             } else if (this.activeCamera && activeSprite) {
                 // Automatic camera tracking of the active sprite
-                var scaledWindowWidth = game.canvas.width / game.zoomLevel; // Updated to reflect new canvas width
-                var scaledWindowHeight = game.canvas.height / game.zoomLevel;
+                var scaledWindowWidth = game.canvas.width / game.zoomLevel;
+                var scaledWindowHeight = (game.canvas.height / game.zoomLevel) - (50 / game.zoomLevel); // Adjust height for the 50px margin
     
                 // Center the camera on the sprite
                 this.targetCameraX = activeSprite.x + activeSprite.width / 2 - scaledWindowWidth / 2;
@@ -115,7 +115,7 @@ var camera = {
                 }
             }
         }
-    },
+    },    
         
     lerp: function(start, end, t) {
         return start * (1 - t) + end * t;

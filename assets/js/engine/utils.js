@@ -88,5 +88,61 @@ const utils = {
         } catch (e) {
             return false;
         }
-    }
+    },
+
+    parseYaml: function(yaml) {
+        const lines = yaml.split('\n');
+        const result = {};
+        let currentObject = result;
+        let objectStack = [result];
+        let indentStack = [0];
+        let previousIndent = 0;
+        let lastKey = '';
+    
+        lines.forEach(line => {
+            // Remove comments after #
+            const cleanLine = line.split('#')[0].trim();
+    
+            // Skip empty lines after removing comments
+            if (cleanLine === '') return;
+    
+            const indent = line.search(/\S/);
+    
+            if (indent < previousIndent && objectStack.length > 1) {
+                while (indent <= indentStack[indentStack.length - 1]) {
+                    objectStack.pop();
+                    indentStack.pop();
+                }
+                currentObject = objectStack[objectStack.length - 1];
+            }
+    
+            if (cleanLine.startsWith('- ')) {
+                const listItem = cleanLine.slice(2).trim().replace(/^["']|["']$/g, '');
+                if (Array.isArray(currentObject[lastKey])) {
+                    currentObject[lastKey].push(listItem);
+                } else {
+                    currentObject[lastKey] = [listItem];
+                }
+            } else if (cleanLine.includes(':')) {
+                const [rawKey, ...rawValue] = cleanLine.split(':');
+                const key = rawKey.trim();
+                let value = rawValue.join(':').trim().replace(/^["']|["']$/g, '');
+    
+                if (value === '') {
+                    currentObject[key] = {};
+                    objectStack.push(currentObject[key]);
+                    currentObject = currentObject[key];
+                    indentStack.push(indent);
+                } else {
+                    currentObject[key] = value;
+                }
+                lastKey = key;
+            }
+    
+            previousIndent = indent;
+        });
+    
+        return result;
+    }    
+    
 }

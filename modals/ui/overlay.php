@@ -4,7 +4,7 @@ if ($auth) {
 ?>
 
 <div data-window="ui_overlay_window" data-close="false">
-  <div class="w-auto mx-auto fixed top-0 left-1/2 transform -translate-x-1/2 flex flex-col justify-between items-center bg-gray-900/80 text-white rounded-b-md shadow-lg overflow-hidden px-4 py-2">
+  <div class="w-auto mx-auto fixed top-0 left-1/2 transform -translate-x-1/2 flex flex-col justify-between items-center text-white overflow-hidden py-2">
 
     <!-- Top Section: Health, Energy Bars, Player Info, and R3 Button -->
     <div class="flex items-center justify-between w-full space-x-4">
@@ -67,7 +67,7 @@ if ($auth) {
     <div id="submenu" class="max-h-0 overflow-hidden transition-all duration-300 ease-in-out">
 
       <!-- Divider (part of the submenu) -->
-      <div class="w-full border-b border-gray-700 pt-2 mb-2"></div>
+      <div class="w-full border-b border-gray-700 pt-2 b-2"></div>
 
       <!-- Submenu Content as Columns -->
       <div class="flex space-x-8">

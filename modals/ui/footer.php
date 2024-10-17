@@ -6,6 +6,7 @@
     <span class="text-white" id="input_method">Input: keyboard</span>
     <span class="text-white rounded-md cursor-pointer" id="gameFps" onclick="modal.load({ id: 'fps_monitor_window', url: 'debug/fps.php', name: 'FPS monitor', drag: true, reload: true });"></span>
     <span id="tiles_rendered" class="text-white rounded-md"></span>
+    <span id="background_rendered" class="text-white rounded-md"></span>
     <span id="lights_rendered" class="text-white rounded-md"></span>
     <span id="effects_rendered" class="text-white rounded-md"></span>
     <span id="animations_rendered" class="text-white rounded-md"></span>
