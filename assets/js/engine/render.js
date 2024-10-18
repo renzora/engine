@@ -104,101 +104,27 @@ var render = {
         }
     },
 
-    draw: function(tileData, roomItem, centerX, bottomY, xCoordinates, yCoordinates, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd, rotation, horizontalShift) {
-        const tileSize = 16;
-        const bottomX = centerX * tileSize;
-        const bottomYPixel = bottomY * tileSize;
-
-        // Calculate the item's bounding box with sway and offset (rotation and horizontalShift)
-        const itemMinX = Math.min(...xCoordinates) * tileSize - horizontalShift;
-        const itemMaxX = Math.max(...xCoordinates) * tileSize - horizontalShift;
-        const itemMinY = Math.min(...yCoordinates) * tileSize;
-        const itemMaxY = Math.max(...yCoordinates) * tileSize;
-
-        // Extend viewport boundaries slightly to render edge tiles and objects
-        const tileBuffer = 1; // Allow tiles partially within the viewport to render
-        const viewportXStartPixel = (viewportXStart - tileBuffer) * tileSize;
-        const viewportXEndPixel = (viewportXEnd + tileBuffer) * tileSize;
-        const viewportYStartPixel = (viewportYStart - tileBuffer) * tileSize;
-        const viewportYEndPixel = (viewportYEnd + tileBuffer) * tileSize;
-
-        // Check if the item's bounding box is outside the extended viewport
-        const isInViewport = !(itemMaxX < viewportXStartPixel || itemMinX >= viewportXEndPixel ||
-                               itemMaxY < viewportYStartPixel || itemMinY >= viewportYEndPixel);
-        if (!isInViewport) {
-            return; // Skip rendering if out of viewport
-        }
-
-        // Proceed with rendering if inside the viewport
-        game.ctx.save();
-        game.ctx.translate(bottomX + horizontalShift, bottomYPixel);
-
-        // Only animate sway if the object is in the viewport
-        if (tileData.sway === true) {
-            rotation += this.handleSway(roomItem); // Add sway to the rotation
-        }
-
-        game.ctx.rotate(rotation);
-
-        let index = 0;
-        let animationCounted = false;  // Ensure animation is counted only once per object
-
-        for (let i = 0; i < yCoordinates.length; i++) {
-            const y = yCoordinates[i];
-            for (let j = 0; j < xCoordinates.length; j++) {
-                const x = xCoordinates[j];
-                if (x >= viewportXStart - tileBuffer && x < viewportXEnd + tileBuffer &&
-                    y >= viewportYStart - tileBuffer && y < viewportYEnd + tileBuffer) {
-                    const posX = (x - centerX) * tileSize;
-                    const posY = (y - bottomY) * tileSize;
-
-                    let tileFrameIndex;
-                    if (Array.isArray(tileData.i[0])) {
-                        const animationData = tileData.i;
-                        const currentFrame = tileData.currentFrame || 0;
-                        tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
-                    } else {
-                        tileFrameIndex = tileData.i[index];
-                    }
-
-                    if (tileFrameIndex !== undefined) {
-                        const srcX = (tileFrameIndex % 150) * tileSize;
-                        const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
-                        game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
-
-                        // Increment tile count if the tile is in the viewport
-                        this.tileCount++;
-
-                        // Only increment animation count once for this object, if animating and within the viewport
-                        if (!animationCounted && Array.isArray(tileData.i[0])) {
-                            this.animationCount++;
-                            animationCounted = true;  // Mark animation as counted for this object
-                        }
-                    }
-                }
-                index++;
-            }
-        }
-        game.ctx.restore();
-    },
-
     renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        this.renderQueue = [];
-        this.spriteCount = 0;  // Reset sprite count
-        this.animationCount = 0;  // Reset animation count
-        this.tileCount = 0;  // Reset total tile count
-        this.backgroundTileCount = 0;  // Reset background tile count
-
-        // Expand object data for rendering
+        const renderQueue = [];
+        this.backgroundTileCount = 0;
+        this.tileCount = 0;
+        this.spriteCount = 0;
+    
+        // Apply expandTileData to objectData
         const expandedObjectData = Object.keys(game.objectData).reduce((acc, key) => {
             acc[key] = game.objectData[key].map(this.expandTileData.bind(this));
             return acc;
         }, {});
-
-        // Render the background
+    
+        // 1. Render the background first
         this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
-
-        // Render the room items (tiles/objects)
+    
+        // 2. Render the grid if enabled
+        if (utils.objExists('editor_utils_window.renderGrid')) {
+            editor_utils_window.renderGrid();
+        }
+    
+        // 3. Render the game objects
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(roomItem => {
                 const itemData = expandedObjectData[roomItem.id];
@@ -206,83 +132,122 @@ var render = {
                     const tileData = itemData[0];
                     const xCoordinates = roomItem.x || [];
                     const yCoordinates = roomItem.y || [];
+    
+                    // Calculate the center (or bottom) of the object for correct rotation
                     const centerX = (Math.min(...xCoordinates) + Math.max(...xCoordinates)) / 2;
                     const bottomY = Math.max(...yCoordinates);
-
+    
+                    // Handle rotation for the entire object
                     let rotation = tileData.rotation || 0;
-                    let horizontalShift = 0;
-
-                    // If the item is rotating, apply the rotation
                     if (roomItem.isRotating) {
-                        actions.handleRotation(roomItem);
-                        rotation = roomItem.rotation;
+                        actions.handleRotation(roomItem);  // Apply the rotation logic
+                        rotation = roomItem.rotation;      // Use the updated rotation value
                     }
-
-                    // Check if the item is within the viewport and mark it
-                    const itemMinX = Math.min(...xCoordinates) * 16;
-                    const itemMaxX = Math.max(...xCoordinates) * 16;
-                    const itemMinY = Math.min(...yCoordinates) * 16;
-                    const itemMaxY = Math.max(...yCoordinates) * 16;
-                    const isInViewport = !(itemMaxX < viewportXStart * 16 || itemMinX >= viewportXEnd * 16 ||
-                                           itemMaxY < viewportYStart * 16 || itemMinY >= viewportYEnd * 16);
-                    roomItem.isInViewport = isInViewport;
-
-                    // Only apply sway if the object is in the viewport
-                    if (tileData.sway === true && isInViewport) {
+    
+                    // Apply sway if necessary
+                    if (tileData.sway === true) {
                         rotation += this.handleSway(roomItem);
                     }
-
-                    // Add to renderQueue with zIndex
-                    const zIndex = tileData.zIndex || tileData.z || 1;
-                    this.renderQueue.push({
-                        zIndex,
-                        draw: () => this.draw(tileData, roomItem, centerX, bottomY, xCoordinates, yCoordinates, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd, rotation, horizontalShift)
-                    });
-
-                    // Handle lights for the item
+    
+                    let index = 0;
+                    for (let i = 0; i < yCoordinates.length; i++) {
+                        const y = yCoordinates[i];  // Use the decimal values for y
+                        for (let j = 0; j < xCoordinates.length; j++) {
+                            const x = xCoordinates[j];  // Use the decimal values for x
+    
+                            // Check if any part of the tile is inside the viewport (edge case handling)
+                            if ((x * 16 + 16) >= (viewportXStart * 16) && (x * 16) < (viewportXEnd * 16) &&
+                                (y * 16 + 16) >= (viewportYStart * 16) && (y * 16) < (viewportYEnd * 16)) {
+    
+                                const posX = (x - centerX) * 16;
+                                const posY = (y - bottomY) * 16;
+    
+                                let tileFrameIndex;
+                                if (Array.isArray(tileData.i[0])) {
+                                    const animationData = tileData.i;
+                                    const currentFrame = tileData.currentFrame || 0;
+                                    tileFrameIndex = animationData[currentFrame][index % animationData[currentFrame].length];
+                                } else {
+                                    tileFrameIndex = tileData.i[index];
+                                }
+    
+                                if (tileFrameIndex !== undefined) {
+                                    const srcX = (tileFrameIndex % 150) * 16;
+                                    const srcY = Math.floor(tileFrameIndex / 150) * 16;
+    
+                                    // Determine the z (zIndex) with fallback to 1 if undefined
+                                    let z;
+                                    if (Array.isArray(tileData.z)) {
+                                        z = tileData.z[index % tileData.z.length];
+                                    } else {
+                                        z = tileData.z;
+                                    }
+    
+                                    if (z === undefined) {
+                                        z = 1;  // Fallback value
+                                    }
+    
+                                    renderQueue.push({
+                                        zIndex: z,
+                                        draw: () => {
+                                            game.ctx.save();
+    
+                                            // Translate to the center of the object before rotating
+                                            const centerXPixel = centerX * 16;
+                                            const bottomYPixel = bottomY * 16;
+                                            game.ctx.translate(centerXPixel, bottomYPixel);
+    
+                                            // Apply rotation to the entire object
+                                            game.ctx.rotate(rotation);
+    
+                                            // Now render each tile relative to the object's center
+                                            game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
+    
+                                            game.ctx.restore();
+                                        }
+                                    });
+    
+                                    this.tileCount++;
+                                }
+                            }
+                            index++;
+                        }
+                    }
+    
                     this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
-
-                    // Handle effects for the item
                     this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
                 }
             });
         }
-
-        // Render sprites
+    
+        // Collect sprites for rendering
         for (let id in game.sprites) {
             const sprite = game.sprites[id];
             const spriteRight = sprite.x + sprite.width;
             const spriteBottom = sprite.y + sprite.height;
-
-            // Check if the sprite is within the viewport
+    
             if (spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
                 spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16) {
-
-                // Add sprite to the renderQueue
-                this.renderQueue.push({
+    
+                renderQueue.push({
                     zIndex: 2,  // All sprites should have a zIndex of 2
                     draw: function () {
                         game.sprites[id].draw();
                     }
                 });
-
-                this.spriteCount++; // Increment sprite count
-
-                // Check if the sprite has an animation
-                if (sprite.isAnimating) {
-                    this.animationCount++; // Count sprite animations
-                }
+    
+                this.spriteCount++;
             }
         }
-
-        // Sort the combined renderQueue by zIndex before rendering
-        this.renderQueue.sort((a, b) => a.zIndex - b.zIndex);
-
+    
+        // Sort the renderQueue by zIndex before rendering
+        renderQueue.sort((a, b) => a.zIndex - b.zIndex);
+    
         // Draw the items in the renderQueue
-        this.renderQueue.forEach(item => {
+        renderQueue.forEach(item => {
             item.draw();
         });
-    },
+    },    
 
     handleSway: function(roomItem) {
         // Initialize random sway values once per object to avoid jittering
@@ -301,12 +266,19 @@ var render = {
             // Use a sine wave for smooth back-and-forth motion, applying the precomputed random sway angle and speed
             const sway = Math.sin((roomItem.swayElapsed / roomItem.swaySpeed) * Math.PI * 2) * roomItem.swayAngle;
 
-            // Apply the random sway angle to the object
             return sway;
         }
 
         return 0;  // No sway if outside the viewport
     },
+
+    initializeSway: function(roomItem) {
+        roomItem.swayAngle = Math.PI / (160 + Math.random() * 40); // Randomize between a subtle range
+        roomItem.swaySpeed = 5000 + Math.random() * 2000; // Randomize between 5 and 7 seconds per cycle
+        roomItem.swayElapsed = 0;  // Initialize elapsed time
+        roomItem.swayInitialized = true;  // Mark as initialized
+    },
+       
 
     renderPathfinderLine: function () {
         if (game.mainSprite && game.mainSprite.path && game.mainSprite.path.length > 0) {
@@ -535,11 +507,11 @@ var render = {
         if (game.mainSprite && game.mainSprite.targetAim) {
             const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;
             const handY = game.mainSprite.y + game.mainSprite.height / 2 + game.mainSprite.handOffsetY;
-
+    
             const deltaX = game.mainSprite.targetX - handX;
             const deltaY = game.mainSprite.targetY - handY;
             const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
+    
             let adjustedTargetX = game.mainSprite.targetX;
             let adjustedTargetY = game.mainSprite.targetY;
             if (distance > game.mainSprite.maxRange) {
@@ -547,16 +519,17 @@ var render = {
                 adjustedTargetX = handX + deltaX * ratio;
                 adjustedTargetY = handY + deltaY * ratio;
             }
-
+    
+            // Obstruction check logic (same as before)
             const isObstructed = (x, y) => {
                 if (game.roomData && game.roomData.items) {
                     for (const roomItem of game.roomData.items) {
                         const itemData = assets.load('objectData')[roomItem.id];
                         if (!itemData) continue;
-
+    
                         const xCoordinates = roomItem.x || [];
                         const yCoordinates = roomItem.y || [];
-
+    
                         for (let i = 0; i < xCoordinates.length; i++) {
                             const itemX = parseInt(xCoordinates[i], 10) * 16;
                             const itemY = parseInt(yCoordinates[i], 10) * 16;
@@ -566,7 +539,7 @@ var render = {
                                 width: 16,
                                 height: 16
                             };
-
+    
                             if (
                                 x >= tileRect.x &&
                                 x <= tileRect.x + tileRect.width &&
@@ -583,12 +556,12 @@ var render = {
                 }
                 return { obstructed: false };
             };
-
+    
             let finalTargetX = adjustedTargetX;
             let finalTargetY = adjustedTargetY;
             const steps = Math.ceil(distance);
             let obstructionDetected = false;
-
+    
             for (let i = 1; i <= steps; i++) {
                 const stepX = handX + (deltaX * i) / steps;
                 const stepY = handY + (deltaY * i) / steps;
@@ -600,42 +573,46 @@ var render = {
                     break;
                 }
             }
-
+    
             if (obstructionDetected && Math.sqrt((finalTargetX - handX) ** 2 + (finalTargetY - handY) ** 2) < 10) {
                 return;
             }
-
-            const crosshairSize = 10;
-            const sniperLineLength = 15;
-
-            // Draw the line in white
-            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            game.ctx.lineWidth = 1;
-            game.ctx.setLineDash([5, 5]);
+    
+            const crosshairSize = 8; // Slightly smaller for pixel look
+            const sniperLineLength = 12; // Shorter lines for a blocky look
+    
+            // Pixelated line style
+            game.ctx.strokeStyle = 'rgba(200, 100, 0, 1)'; // Muted orange, no transparency
+            game.ctx.lineWidth = 2; // Thicker lines for pixelated feel
+            game.ctx.lineCap = 'butt'; // Square line ends for pixel look
+    
+            // Draw the blocky line
             game.ctx.beginPath();
-            game.ctx.moveTo(handX, handY);
-            game.ctx.lineTo(finalTargetX, finalTargetY);
+            game.ctx.moveTo(Math.floor(handX), Math.floor(handY)); // Floor to integers for pixel style
+            game.ctx.lineTo(Math.floor(finalTargetX), Math.floor(finalTargetY));
             game.ctx.stroke();
-            game.ctx.setLineDash([]);
-
-            // Determine the color for the aim circle and crosshairs based on R2
-            const aimCrosshairColor = gamepad.buttons.includes('r2') ? 'rgba(255, 0, 0, 0.8)' : 'rgba(255, 255, 255, 0.8)';
-
-            // Draw the aim circle
+    
+            // Crosshair and aim circle
+            const aimCrosshairColor = gamepad.buttons.includes('r2') ? 'rgba(200, 0, 0, 1)' : 'rgba(255, 255, 255, 1)';
+    
+            // Blocky aim circle
             game.ctx.strokeStyle = aimCrosshairColor;
+            game.ctx.lineWidth = 1.5;
             game.ctx.beginPath();
-            game.ctx.arc(finalTargetX, finalTargetY, game.mainSprite.targetRadius, 0, 2 * Math.PI);
+            game.ctx.arc(Math.floor(finalTargetX), Math.floor(finalTargetY), game.mainSprite.targetRadius, 0, 2 * Math.PI);
             game.ctx.stroke();
-
-            // Draw the crosshairs
+    
+            // Pixelated crosshairs
+            game.ctx.strokeStyle = aimCrosshairColor;
+            game.ctx.lineWidth = 1.5;
             game.ctx.beginPath();
             game.ctx.moveTo(finalTargetX - crosshairSize, finalTargetY);
             game.ctx.lineTo(finalTargetX + crosshairSize, finalTargetY);
             game.ctx.moveTo(finalTargetX, finalTargetY - crosshairSize);
             game.ctx.lineTo(finalTargetX, finalTargetY + crosshairSize);
             game.ctx.stroke();
-
-            // Draw the sniper lines in the same color as the crosshairs
+    
+            // Pixelated sniper lines
             game.ctx.beginPath();
             game.ctx.moveTo(finalTargetX - sniperLineLength, finalTargetY);
             game.ctx.lineTo(finalTargetX - crosshairSize, finalTargetY);
@@ -648,4 +625,6 @@ var render = {
             game.ctx.stroke();
         }
     }
+    
+    
 };

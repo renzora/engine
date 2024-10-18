@@ -125,6 +125,10 @@ if ($auth) {
     console.log("Current 'w' (collision) data:", item.w || "No collision data available");
 
     this.initializeOtherData(itemId, item);
+    
+    // Call the function to initialize zIndexData
+    this.initializeZIndexData(item);
+
     this.setupLineDrawingHandlers('item_grid_canvas_walkable');
     this.renderPolygonOnLoad(item);
     if (item && Array.isArray(item.a) && Array.isArray(item.b)) {
@@ -132,10 +136,11 @@ if ($auth) {
     } else {
         console.warn("Skipping background grid drawing due to invalid item data");
     }
+
     if (item.script) {
-    // Load YAML script directly into the textarea
-    const yamlScript = item.script;
-    document.getElementById('item_scripts').value = yamlScript; // Display YAML script in editor
+        // Load YAML script directly into the textarea
+        const yamlScript = item.script;
+        document.getElementById('item_scripts').value = yamlScript; // Display YAML script in editor
     } else {
         document.getElementById('item_scripts').value = '';
     }
@@ -255,28 +260,42 @@ setupScriptInputHandlers: function() {
     initializeZIndexData: function(item) {
     let zIndexData = {};
 
-    if (Array.isArray(item.z)) {
-        // If z is an array, map each index to the corresponding tile
-        item.i.forEach((tileIndex, index) => {
-            let key = `${item.a[index]},${item.b[index]}`;
-            zIndexData[key] = item.z[index] !== undefined ? item.z[index].toString() : '0';
-        });
-    } else if (typeof item.z === 'number') {
-        // If z is a single integer, apply it uniformly to all tiles
-        let zIndexValue = item.z.toString();
-        item.i.forEach((tileIndex, index) => {
-            let key = `${item.a[index]},${item.b[index]}`;
-            zIndexData[key] = zIndexValue;
-        });
-    } else {
-        // If z is not defined, default to 0
-        item.i.forEach((tileIndex, index) => {
-            let key = `${item.a[index]},${item.b[index]}`;
-            zIndexData[key] = '0';
+    // Calculate total number of tiles based on grid size (a * b)
+    const tileCount = (item.a + 1) * (item.b + 1);
+
+    // Handle case where z is a single number (apply the same zIndex to all tiles)
+    if (typeof item.z === 'number') {
+        for (let index = 0; index < tileCount; index++) {
+            let x = index % (item.a + 1);  // X coordinate
+            let y = Math.floor(index / (item.a + 1));  // Y coordinate
+            let key = `${x},${y}`;  // Tile key for zIndexData
+            zIndexData[key] = item.z.toString();  // Apply the same zIndex to all tiles
+        }
+    }
+
+    // Handle case where z is an array (each tile gets its own zIndex value)
+    else if (Array.isArray(item.z)) {
+        item.z.forEach((zValue, index) => {
+            let x = index % (item.a + 1);  // X coordinate
+            let y = Math.floor(index / (item.a + 1));  // Y coordinate
+            let key = `${x},${y}`;  // Tile key for zIndexData
+            zIndexData[key] = zValue.toString();  // Apply respective zIndex value
         });
     }
 
-    return zIndexData;
+    // Default case if z is not defined (initialize zIndex to 0 for all tiles)
+    else {
+        for (let index = 0; index < tileCount; index++) {
+            let x = index % (item.a + 1);  // X coordinate
+            let y = Math.floor(index / (item.a + 1));  // Y coordinate
+            let key = `${x},${y}`;  // Tile key for zIndexData
+            zIndexData[key] = '0';  // Default zIndex is 0
+        }
+    }
+
+    // Assign the zIndexData to the editor window
+    tileset_item_editor_window.zIndexData = zIndexData;
+    console.log("Initialized zIndexData:", tileset_item_editor_window.zIndexData);
 },
 
 renderPolygonOnLoad: function(item) {
@@ -335,7 +354,7 @@ renderPolygonOnLoad: function(item) {
     canvas.addEventListener('mousemove', (event) => {
         const deltaX = Math.abs(event.clientX - this.mouseDownPosition.x);
         const deltaY = Math.abs(event.clientY - this.mouseDownPosition.y);
-        const movementThreshold = 5;
+        const movementThreshold = 0;
 
         if (deltaX > movementThreshold || deltaY > movementThreshold) {
             this.isDragging = true;
@@ -745,22 +764,40 @@ saveData: function(itemId) {
     var itemName = document.getElementById('item_name').value.trim();
     item.n = itemName;
 
-    // Get the walkable polygon data from the points
-    item.w = tileset_item_editor_window.polygonPoints.map(point => ({ x: point.x, y: point.y }));
+    // Get the walkable polygon data from the points and combine it with the existing polygon data
+    item.w = this.walkableData.polygon.concat(this.polygonPoints);
+    
+    console.log("Walkable data saved:", item.w);
+
+    // Initialize zIndex array
+    const zIndexArray = [];
+
+    // Collect zIndex values from tileset_item_editor_window.zIndexData
+    for (let key in this.zIndexData) {
+        if (this.zIndexData.hasOwnProperty(key)) {
+            let zIndexValue = parseInt(this.zIndexData[key], 10) || 0; // Default to 0 if empty or invalid
+            zIndexArray.push(zIndexValue);
+            console.log(`zIndex for tile ${key} is: ${zIndexValue}`);
+        }
+    }
+
+    // Save the zIndex array to the item
+    item.z = zIndexArray;
+
+    console.log("zIndexArray:", zIndexArray);
+    console.log("item.z:", item.z);
 
     // Collect the script from the editor in YAML format
     var itemScripts = document.getElementById('item_scripts').value.trim();
 
     if (itemScripts) {
-        // Remove commas at the end of lines while preserving indentation
-        // Also remove any trailing commas before closing objects or at the end of the script
+        // Clean the YAML script before saving
         var cleanYamlScript = itemScripts
             .replace(/,+\n(\s*)/g, '\n$1')      // Remove one or more commas before newlines, preserving indentation
             .replace(/,(\s*[\}\]])/g, '$1')    // Remove commas before closing braces/brackets
             .replace(/,(\s*[\}\]]\s*)/g, '$1') // Ensure multiple consecutive commas before closing braces/brackets are removed
             .replace(/,+\s*$/g, '');           // Remove any trailing commas at the end of the script
 
-        // Store the cleaned YAML string in the 'script' field
         item.script = cleanYamlScript;
     } else {
         delete item.script; // Remove the script if it's empty

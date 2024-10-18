@@ -30,3 +30,5 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'fps_monitor_window', url: 'debug/fps.php', name: 'FPS monitor', drag: true, reload: true });">FPS Monitor</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'yamltojson_window', url: 'testing/yamltojson.php', name: 'yamltojson', drag: true, reload: true });">Yaml to json</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'colorflash_window', url: 'minigames/colorflash.php', name: 'colorflash', drag: true, reload: true });">colorflash</button>
