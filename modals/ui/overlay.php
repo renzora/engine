@@ -4,157 +4,176 @@ if ($auth) {
 ?>
 
 <div data-window="ui_overlay_window" data-close="false">
-  <div class="w-auto mx-auto fixed top-0 left-1/2 transform -translate-x-1/2 flex flex-col justify-between items-center text-white overflow-hidden py-2">
+  <div class="w-auto fixed top-2 right-2 flex flex-col justify-between items-start text-white bg-gray-900 bg-opacity-80 rounded-lg p-4 shadow-lg">
 
-    <!-- Top Section: Health, Energy Bars, Player Info, and R3 Button -->
-    <div class="flex items-center justify-between w-full space-x-4">
-      <div class="flex items-center space-x-4">
+    <!-- Top Section: Health, Energy Bars, Player Info -->
+    <div class="flex flex-col space-y-4">
+      
+      <!-- Health and Energy Bars -->
+      <div class="flex justify-between items-center space-x-8">
+        <!-- Health -->
         <div class="flex items-center">
-          <span class="text-sm font-medium text-gray-400 mr-2">Health</span>
-          <div class="w-28 bg-gray-800 rounded-full h-2">
-            <div id="health-bar" class="bg-red-500 h-2 rounded-full"></div>
-          </div>
-        </div>
-        <div class="flex items-center">
-          <span class="text-sm font-medium text-gray-400 mr-2">Energy</span>
-          <div class="w-28 bg-gray-800 rounded-full h-2">
-            <div id="energy-bar" class="bg-blue-500 h-2 rounded-full"></div>
+          <span class="text-xs font-medium text-gray-400 mr-2">Health</span>
+          <div class="w-28 bg-gray-700 rounded h-3">
+            <div id="health-bar" class="bg-red-500 h-3 rounded" style="width: 100%;"></div>
           </div>
         </div>
 
-        <!-- Player Info: Level, XP -->
+        <!-- Energy -->
         <div class="flex items-center">
-          <span class="text-sm font-medium text-gray-400 mr-2">Level:</span>
-          <span id="player-level" class="text-sm font-semibold text-green-400">10</span>
-        </div>
-        <div class="flex items-center">
-          <span class="text-sm font-medium text-gray-400 mr-2">XP:</span>
-          <div class="w-28 bg-gray-800 rounded-full h-2">
-            <div id="xp-bar" class="bg-purple-500 h-2 rounded-full" style="width: 60%;"></div>
+          <span class="text-xs font-medium text-gray-400 mr-2">Energy</span>
+          <div class="w-28 bg-gray-700 rounded h-3">
+            <div id="energy-bar" class="bg-blue-500 h-3 rounded" style="width: 80%;"></div>
           </div>
         </div>
       </div>
 
-      <!-- Center Section: Bullet Counter with Reload Meter -->
-      <div class="flex items-center space-x-4 relative">
-        <div class="relative flex items-center">
-          <div class="absolute inset-0 rounded-md z-0 h-full flex items-center">
-            <div id="reload-meter" class="bg-green-600 h-full rounded-md" style="width: 0%;"></div>
-          </div>
-          <span id="bullet-round-counter" class="text-sm font-semibold text-gray-200 relative z-10 px-2"></span>
-        </div>
-        <div id="bullet-container" class="flex z-10 relative space-x-1">
-          <?php for ($i = 0; $i < 10; $i++): ?>
-            <span class="bullet h-5 w-2 shadow-inner rounded-b-md bg-gray-600"></span>
-          <?php endfor; ?>
-        </div>
-      </div>
-
-      <!-- Right Section: Game Time, Coins, and R3 Button -->
-      <div class="flex items-center space-x-4">
-        <span id="game_time" class="text-sm font-medium text-gray-400 ml-4"></span>
+      <!-- Player Info: Level and XP -->
+      <div class="flex justify-between items-center space-x-8">
+        <!-- Level -->
         <div class="flex items-center">
-          <span class="text-sm font-medium text-gray-400 mr-2">Coins:</span>
-          <span id="player-coins" class="text-sm font-semibold text-yellow-400">100</span>
+          <span class="text-xs font-medium text-gray-400 mr-2">Level</span>
+          <span id="player-level" class="text-xs font-semibold text-green-400">10</span>
         </div>
 
-<button id="toggle-submenu" class="bg-gray-700 text-white text-sm rounded-md px-1">R3</button>
-
+        <!-- XP -->
+        <div class="flex items-center">
+          <span class="text-xs font-medium text-gray-400 mr-2">XP</span>
+          <div class="w-28 bg-gray-700 rounded h-3">
+            <div id="xp-bar" class="bg-purple-500 h-3 rounded" style="width: 60%;"></div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <!-- Submenu Section with Divider (Hidden by Default) -->
-    <div id="submenu" class="max-h-0 overflow-hidden transition-all duration-300 ease-in-out">
+    <!-- Middle Section: Bullet Counter and Reload Meter -->
+    <div class="flex items-center justify-between space-x-8 mt-4">
+      <!-- Reload Meter and Counter -->
+      <div class="relative flex items-center w-32">
+        <div class="absolute inset-0 rounded-md z-0 h-full flex items-center">
+          <div id="reload-meter" class="bg-green-600 h-full rounded-md" style="width: 0%;"></div>
+        </div>
+        <span id="bullet-round-counter" class="text-xs font-semibold text-gray-200 relative z-10 px-2">80/13</span>
+      </div>
 
-      <!-- Divider (part of the submenu) -->
-      <div class="w-full border-b border-gray-700 pt-2 b-2"></div>
+      <!-- Bullet Container -->
+      <div id="bullet-container" class="flex space-x-1">
+        <?php for ($i = 0; $i < 10; $i++): ?>
+          <span class="bullet h-5 w-2 bg-gray-600 rounded-b-md"></span>
+        <?php endfor; ?>
+      </div>
+    </div>
 
-      <!-- Submenu Content as Columns -->
-      <div class="flex space-x-8">
+    <!-- Bottom Section: Game Time, Coins, and R3 Button -->
+    <div class="flex items-center justify-between space-x-8 mt-4">
+      <!-- Game Time -->
+      <span id="game_time" class="text-xs font-medium text-gray-400">12:34</span>
+
+      <!-- Coins -->
+      <div class="flex items-center">
+        <span class="text-xs font-medium text-gray-400 mr-2">Coins:</span>
+        <span id="player-coins" class="text-xs font-semibold text-yellow-400">100</span>
+      </div>
+
+      <!-- R3 Button -->
+      <button id="toggle-submenu" class="bg-gray-700 text-white text-xs rounded-md px-2 py-1">R3</button>
+    </div>
+
+    <!-- Submenu Section (Hidden by Default) -->
+    <div id="submenu" class="max-h-0 overflow-hidden transition-all duration-300 ease-in-out mt-2 w-full">
+
+      <!-- Submenu Content -->
+      <div class="flex flex-col space-y-4 mt-4">
 
         <!-- Stats Section -->
-        <div class="flex flex-col space-y-2 bg-gray-800 p-4 rounded-md w-1/5">
-          <span class="text-sm font-medium text-gray-300">Player Stats</span>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Strength:</span>
-            <span class="text-sm font-semibold text-white">15</span>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Agility:</span>
-            <span class="text-sm font-semibold text-white">12</span>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Intelligence:</span>
-            <span class="text-sm font-semibold text-white">18</span>
+        <div class="bg-gray-800 p-3 rounded-md">
+          <span class="text-xs font-medium text-gray-300">Player Stats</span>
+          <div class="flex flex-col space-y-2 mt-2">
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-medium text-gray-400">Strength:</span>
+              <span class="text-xs font-semibold text-white">15</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-medium text-gray-400">Agility:</span>
+              <span class="text-xs font-semibold text-white">12</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-medium text-gray-400">Intelligence:</span>
+              <span class="text-xs font-semibold text-white">18</span>
+            </div>
           </div>
         </div>
 
         <!-- Skills Section -->
-        <div class="flex flex-col space-y-2 bg-gray-800 p-4 rounded-md w-1/5">
-          <span class="text-sm font-medium text-gray-300">Skills Progress</span>
-          <div class="flex items-center">
-            <span class="text-sm font-medium text-gray-400">Sword Mastery</span>
-            <div class="w-28 bg-gray-700 rounded-full h-2 ml-2">
-              <div id="sword-skill" class="bg-red-500 h-2 rounded-full" style="width: 80%;"></div>
+        <div class="bg-gray-800 p-3 rounded-md">
+          <span class="text-xs font-medium text-gray-300">Skills Progress</span>
+          <div class="flex flex-col space-y-2 mt-2">
+            <div class="flex items-center">
+              <span class="text-xs font-medium text-gray-400">Sword Mastery</span>
+              <div class="w-28 bg-gray-700 rounded-full h-3 ml-2">
+                <div id="sword-skill" class="bg-red-500 h-3 rounded-full" style="width: 80%;"></div>
+              </div>
             </div>
-          </div>
-          <div class="flex items-center">
-            <span class="text-sm font-medium text-gray-400">Archery</span>
-            <div class="w-28 bg-gray-700 rounded-full h-2 ml-2">
-              <div id="archery-skill" class="bg-green-500 h-2 rounded-full" style="width: 60%;"></div>
+            <div class="flex items-center">
+              <span class="text-xs font-medium text-gray-400">Archery</span>
+              <div class="w-28 bg-gray-700 rounded-full h-3 ml-2">
+                <div id="archery-skill" class="bg-green-500 h-3 rounded-full" style="width: 60%;"></div>
+              </div>
             </div>
-          </div>
-          <div class="flex items-center">
-            <span class="text-sm font-medium text-gray-400">Magic</span>
-            <div class="w-28 bg-gray-700 rounded-full h-2 ml-2">
-              <div id="magic-skill" class="bg-blue-500 h-2 rounded-full" style="width: 90%;"></div>
+            <div class="flex items-center">
+              <span class="text-xs font-medium text-gray-400">Magic</span>
+              <div class="w-28 bg-gray-700 rounded-full h-3 ml-2">
+                <div id="magic-skill" class="bg-blue-500 h-3 rounded-full" style="width: 90%;"></div>
+              </div>
             </div>
           </div>
         </div>
 
         <!-- Inventory Section -->
-        <div class="flex flex-col space-y-2 bg-gray-800 p-4 rounded-md w-1/5">
-          <span class="text-sm font-medium text-gray-300">Inventory</span>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Potions:</span>
-            <span class="text-sm font-semibold text-white">3</span>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Weapons:</span>
-            <span class="text-sm font-semibold text-white">2</span>
-          </div>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Armor:</span>
-            <span class="text-sm font-semibold text-white">1</span>
+        <div class="bg-gray-800 p-3 rounded-md">
+          <span class="text-xs font-medium text-gray-300">Inventory</span>
+          <div class="flex flex-col space-y-2 mt-2">
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-medium text-gray-400">Potions:</span>
+              <span class="text-xs font-semibold text-white">3</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-medium text-gray-400">Weapons:</span>
+              <span class="text-xs font-semibold text-white">2</span>
+            </div>
+            <div class="flex items-center space-x-2">
+              <span class="text-xs font-medium text-gray-400">Armor:</span>
+              <span class="text-xs font-semibold text-white">1</span>
+            </div>
           </div>
         </div>
 
         <!-- Next Level Progress Section -->
-        <div class="flex flex-col space-y-2 bg-gray-800 p-4 rounded-md w-1/5">
-          <span class="text-sm font-medium text-gray-300">Next Level</span>
-          <div class="flex items-center">
-            <span class="text-sm font-medium text-gray-400">XP to Level Up:</span>
-            <div class="w-28 bg-gray-700 rounded-full h-2 ml-2">
-              <div id="level-up-progress" class="bg-purple-500 h-2 rounded-full" style="width: 50%;"></div>
+        <div class="bg-gray-800 p-3 rounded-md">
+          <span class="text-xs font-medium text-gray-300">Next Level</span>
+          <div class="flex items-center mt-2">
+            <span class="text-xs font-medium text-gray-400">XP to Level Up:</span>
+            <div class="w-28 bg-gray-700 rounded-full h-3 ml-2">
+              <div id="level-up-progress" class="bg-purple-500 h-3 rounded-full" style="width: 50%;"></div>
             </div>
           </div>
         </div>
 
         <!-- Other Section -->
-        <div class="flex flex-col space-y-2 bg-gray-800 p-4 rounded-md w-1/5">
-          <span class="text-sm font-medium text-gray-300">Other</span>
-          <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Quests:</span>
-            <span class="text-sm font-semibold text-white">5</span>
+        <div class="bg-gray-800 p-3 rounded-md">
+          <span class="text-xs font-medium text-gray-300">Other</span>
+          <div class="flex items-center space-x-2 mt-2">
+            <span class="text-xs font-medium text-gray-400">Quests:</span>
+            <span class="text-xs font-semibold text-white">5</span>
           </div>
           <div class="flex items-center space-x-2">
-            <span class="text-sm font-medium text-gray-400">Achievements:</span>
-            <span class="text-sm font-semibold text-white">10</span>
+            <span class="text-xs font-medium text-gray-400">Achievements:</span>
+            <span class="text-xs font-semibold text-white">10</span>
           </div>
         </div>
+
       </div>
     </div>
-
   </div>
 
   <script>
@@ -177,15 +196,14 @@ if ($auth) {
       },
 
       initializeMenuToggle: function() {
-  const toggleButton = document.getElementById('toggle-submenu');
-  const submenu = document.getElementById('submenu');
+        const toggleButton = document.getElementById('toggle-submenu');
+        const submenu = document.getElementById('submenu');
 
-  toggleButton.addEventListener('click', function() {
-    // Toggle between max-h-0 (collapsed) and max-h-[500px] (expanded)
-    submenu.classList.toggle('max-h-0');
-    submenu.classList.toggle('max-h-[500px]'); // Adjust the height as per your submenu content
-  });
-},
+        toggleButton.addEventListener('click', function() {
+          submenu.classList.toggle('max-h-0');
+          submenu.classList.toggle('max-h-[500px]');
+        });
+      },
 
       updateBullets: function(remaining) {
         const bullets = document.querySelectorAll('#bullet-container > span');
@@ -286,7 +304,6 @@ if ($auth) {
         }
       },
 
-      // Update player stats (level, XP)
       updatePlayerStats: function() {
         document.getElementById('player-level').textContent = "10"; // Example level
         document.getElementById('xp-bar').style.width = "60%"; // Example XP bar width

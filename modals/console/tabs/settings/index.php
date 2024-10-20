@@ -32,3 +32,9 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'yamltojson_window', url: 'testing/yamltojson.php', name: 'yamltojson', drag: true, reload: true });">Yaml to json</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'colorflash_window', url: 'minigames/colorflash.php', name: 'colorflash', drag: true, reload: true });">colorflash</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="actions.mountHorse(game.playerid, 'horse1');">mount horse</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="actions.dismountHorse('horse1');">dismount horse</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'dvd_window', url: 'silly/dvd/index.php', name: 'dvd window', drag: true, reload: true });">dvd</button>

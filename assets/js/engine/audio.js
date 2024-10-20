@@ -156,7 +156,7 @@ var audio = {
     },
 
     playAudio: function(id, audioBuffer, channel = 'sfx', loop = false) {
-        // Ensure the audio context is running before playing sound
+        
         if (this.audioContext.state !== 'running') {
             console.log('Audio context not running, attempting to resume.');
             this.audioContext.resume().then(() => {
@@ -197,7 +197,7 @@ var audio = {
             this.sources[channel] = [];
         }
         this.sources[channel].push(source);
-    },      
+    },    
 
     processQueue: function(channel) {
         if (!this.queues[channel] || this.queues[channel].length === 0) {

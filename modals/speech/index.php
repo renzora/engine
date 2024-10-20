@@ -61,6 +61,9 @@ var speech_window = {
         this.typingInProgress = true;
         this.speechFinished = false; // Speech is not yet finished
 
+        // Start playing the audio when typing begins
+        audio.playAudio('electronic_readout_01', assets.load('electronic_readout_01'), 'sfx', true);
+
         const typeWriter = () => {
             if (i < text.length && this.typingInProgress) {
                 speechElement.textContent += text.charAt(i);
@@ -70,6 +73,9 @@ var speech_window = {
                 // Typing is done
                 this.typingInProgress = false;
                 this.speechFinished = true;
+
+                // Stop the looping audio once typing is finished
+                audio.stopLoopingAudio('electronic_readout_01', 'sfx');
             }
         };
 
@@ -82,11 +88,19 @@ var speech_window = {
         this.throttle = true;
         setTimeout(() => { this.throttle = false; }, 300);
 
+        // Play speech_menu_01 for regular speech interactions
+        if (this.currentSpeechIndex < this.speechText.length - 1 || this.typingInProgress) {
+            audio.playAudio('speech_menu_01', assets.load('speech_menu_01'), 'sfx', false);
+        }
+
         if (this.typingInProgress) {
             let fullText = this.speechText[this.currentSpeechIndex];
             document.getElementById('speech_content').textContent = fullText;
             this.typingInProgress = false;
             this.speechFinished = true;
+
+            // Stop the audio when skipping the typing
+            audio.stopLoopingAudio('electronic_readout_01', 'sfx');
         } else if (this.speechFinished) {
             this.nextSpeech();
         }
@@ -97,6 +111,9 @@ var speech_window = {
             this.currentSpeechIndex++;
             this.typeSpeech(this.speechText[this.currentSpeechIndex]);
         } else {
+            // Play closeModal sound when the last speech ends
+            audio.playAudio('closeModal', assets.load('closeModal'), 'sfx', false);
+
             modal.minimize('speech_window');
             modal.show('ui_inventory_window');
             modal.front('ui_inventory_window');

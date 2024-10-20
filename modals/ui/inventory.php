@@ -3,39 +3,19 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 
-<div data-window='ui_inventory_window' data-close="false" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
-  
-  <!-- Tab Buttons -->
-  <div id="ui_inventory_tabs" class="flex bg-[#0a0d14] border border-black border-b-0 rounded-tl-lg rounded-tr-lg">
-    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black rounded-tl-lg" data-tab="pewpew">
-        Pew Pew
-    </button>
-    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black" data-tab="armour">
-        Armour
-    </button>
-    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black" data-tab="defence">
-        Defence
-    </button>
-    <button class="tab-button text-white py-1 px-2 text-xs flex items-center border-r border-black" data-tab="meals">
-        Nutritious Meals
-    </button>
-    <button class="tab-button text-white py-1 px-2 text-xs flex items-center rounded-tr-lg" data-tab="random">
-        Random shit lol
-    </button>
-</div>
+<div data-window='ui_inventory_window' data-close="false" class="fixed bottom-2 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
 
   <!-- Inventory Slots -->
-  <div id="ui_inventory_window" class="flex space-x-2 bg-[#0a0d14] p-2 shadow-inner hover:shadow-lg border border-black rounded-lg rounded-tl-none">
+  <div id="ui_inventory_window" class="flex space-x-2 bg-[#0a0d14] p-2 shadow-inner hover:shadow-lg border border-black rounded-lg">
     <div class="flex space-x-2" id="ui_quick_items_container"></div>
   </div>
 
   <script>
 var ui_inventory_window = {
     inventory: [
-        { key: "66cdbbc45f5b8", amount: 0, category: "pewpew", damage: 60 },
+        { key: "66cdbbc45f5b8", amount: 0, damage: 60 },
     ],
 
-    currentTab: 'pewpew',
     currentItemIndex: 0,
     lastButtonPress: 0,
     throttleDuration: 150,
@@ -63,22 +43,6 @@ var ui_inventory_window = {
 
         document.addEventListener('dragover', this.documentDragOverHandler.bind(this));
         document.addEventListener('drop', this.documentDropHandler.bind(this));
-
-        const tabButtons = document.querySelectorAll('.tab-button');
-        tabButtons.forEach(button => {
-            button.addEventListener('click', (e) => {
-                this.switchTab(e.target.getAttribute('data-tab'));
-            });
-        });
-
-        if (tabButtons.length > 0) {
-            // Apply rounded corners to the first and last tab buttons
-            tabButtons[0].classList.add('rounded-tl-lg'); // First tab button
-            tabButtons[tabButtons.length - 1].classList.add('rounded-tr-lg'); // Last tab button
-        }
-
-        this.clearTabHighlights();
-        this.highlightSelectedTab();  // Ensure the active tab is highlighted on load
     },
 
     clearTabHighlights: function() {
@@ -116,7 +80,7 @@ var ui_inventory_window = {
     this.initializeQuickItems();
 },
 
-    setupGamepadEvents: function() {
+setupGamepadEvents: function() {
         window.addEventListener('gamepadConnected', () => {
             this.switchToGamepadMode();
         });
@@ -131,7 +95,6 @@ var ui_inventory_window = {
 
         gamepad.throttle((e) => this.upButton(e), this.throttleDuration);
         gamepad.throttle((e) => this.downButton(e), this.throttleDuration);
-        gamepad.throttle((e) => this.enterTabButton(e), this.throttleDuration);
     },
 
     switchToGamepadMode: function() {
@@ -139,7 +102,7 @@ var ui_inventory_window = {
         this.selectItem(0);
     },
 
-        throttle: function(callback) {
+    throttle: function(callback) {
         const currentTime = Date.now();
         if (currentTime - this.lastButtonPress < this.throttleDuration) {
             return false;
@@ -150,36 +113,20 @@ var ui_inventory_window = {
     },
 
     leftButton: function(e) {
-    this.throttle(() => {
-        if (this.inTabSwitchingMode) {
-            this.currentTabButtonIndex = (this.currentTabButtonIndex - 1 + this.getTabButtons().length) % this.getTabButtons().length;
-            this.clearTabHighlights();
-            this.highlightSelectedTab();
-            this.highlightTabButton(this.currentTabButtonIndex);
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-        } else {
+        this.throttle(() => {
             this.currentItemIndex = (this.currentItemIndex - 1 + 10) % 10;  // Move left through the slots, including empty ones
             this.selectItem(this.currentItemIndex);
             audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-        }
-    });
-},
+        });
+    },
 
-rightButton: function(e) {
-    this.throttle(() => {
-        if (this.inTabSwitchingMode) {
-            this.currentTabButtonIndex = (this.currentTabButtonIndex + 1) % this.getTabButtons().length;
-            this.clearTabHighlights();
-            this.highlightSelectedTab();
-            this.highlightTabButton(this.currentTabButtonIndex);
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-        } else {
+    rightButton: function(e) {
+        this.throttle(() => {
             this.currentItemIndex = (this.currentItemIndex + 1) % 10;  // Move right through the slots, including empty ones
             this.selectItem(this.currentItemIndex);
             audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-        }
-    });
-},
+        });
+    },
 
     upButton: function(e) {
         if (!this.inTabSwitchingMode) {
@@ -199,26 +146,23 @@ rightButton: function(e) {
     },
 
     aButton: function(e) {
-    this.throttle(() => {
-        if (this.inTabSwitchingMode) {
-            this.enterTabButton(e);  // Simulates the "Enter" button behavior
-            audio.playAudio("switchInventoryTab", assets.load('click'), 'sfx', false);
-        } else if (!this.isItemSelected) {
-            // Enter swap mode and highlight the selected item with green, or keep the yellow border on an empty slot
-            this.isItemSelected = true;
-            this.highlightSelectedItem();  // Highlights the item or empty slot
-            this.targetItemIndex = this.currentItemIndex;  // Set the target index for swapping
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-        } else {
-            // Attempt to swap the items, but still allow highlighting of an empty slot
-            this.swapItems();
-            this.isItemSelected = false;
-            this.clearHighlights();
-            this.selectItem(this.currentItemIndex); // Re-select the current item to maintain the yellow border
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
-        }
-    });
-},
+        this.throttle(() => {
+            if (!this.isItemSelected) {
+                // Enter swap mode and highlight the selected item with green, or keep the yellow border on an empty slot
+                this.isItemSelected = true;
+                this.highlightSelectedItem();  // Highlights the item or empty slot
+                this.targetItemIndex = this.currentItemIndex;  // Set the target index for swapping
+                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            } else {
+                // Attempt to swap the items, but still allow highlighting of an empty slot
+                this.swapItems();
+                this.isItemSelected = false;
+                this.clearHighlights();
+                this.selectItem(this.currentItemIndex); // Re-select the current item to maintain the yellow border
+                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            }
+        });
+    },
 
     bButton: function(e) {
         this.throttle(() => {
@@ -276,8 +220,8 @@ rightButton: function(e) {
 
     // Only proceed with the swap if both slots have items
     if (selectedItem && targetItem) {
-        const selectedInventoryIndex = this.inventory.findIndex(item => item.name === selectedItem.name && item.category === this.currentTab);
-        const targetInventoryIndex = this.inventory.findIndex(item => item.name === targetItem.name && item.category === this.currentTab);
+        const selectedInventoryIndex = this.inventory.findIndex(item => item.name === selectedItem.name);
+        const targetInventoryIndex = this.inventory.findIndex(item => item.name === targetItem.name);
 
         if (selectedInventoryIndex !== -1 && targetInventoryIndex !== -1) {
             // Swap items directly in the inventory array based on visual slot index
@@ -438,7 +382,7 @@ selectItem: function(index) {
 
 getFilteredInventory: function() {
     // This ensures that if the inventory is empty, we still return an array with 15 empty slots
-    const filtered = this.inventory.filter(item => item.category === this.currentTab);
+    const filtered = this.inventory.filter(item => item);
     const emptySlots = Array(10 - filtered.length).fill(null);  // Fill with `null` for empty slots
     return [...filtered, ...emptySlots];  // Merge filled items and empty slots
 },
@@ -685,8 +629,8 @@ getFilteredInventory: function() {
             this.dragSrcEl.dataset.item = target.dataset.item;
             target.dataset.item = tempDataItem;
 
-            const srcIndex = this.inventory.findIndex(item => item.name === tempDataItem && item.category === this.currentTab);
-            const targetIndex = this.inventory.findIndex(item => item.name === this.dragSrcEl.dataset.item && item.category === this.currentTab);
+            const srcIndex = this.inventory.findIndex(item => item.key === tempDataItem);
+            const targetIndex = this.inventory.findIndex(item => item.key === this.dragSrcEl.dataset.item);
 
             if (srcIndex !== -1 && targetIndex !== -1) {
                 [this.inventory[srcIndex], this.inventory[targetIndex]] = [this.inventory[targetIndex], this.inventory[srcIndex]];
@@ -703,10 +647,10 @@ getFilteredInventory: function() {
             this.dragSrcEl.innerHTML = '';
             this.dragSrcEl.dataset.item = '';
 
-            const srcIndex = this.inventory.findIndex(item => item.name === tempDataItem && item.category === this.currentTab);
+            const srcIndex = this.inventory.findIndex(item => item.key === tempDataItem);
             if (srcIndex !== -1) {
                 this.inventory.splice(srcIndex, 1);  // Remove the item from the original position
-                this.inventory.push({ name: tempDataItem, amount: 1, category: this.currentTab }); // Add it to the end
+                this.inventory.push({ key: tempDataItem, amount: 1, damage: 0 }); // Add it to the end
                 this.currentItemIndex = this.inventory.length - 1;
             }
         }
@@ -774,16 +718,15 @@ addToInventory: function(itemKey) {
     }
 
     // Check if the item is already in the current tab
-    const tabItem = this.inventory.find(item => item.key === itemKey && item.category === this.currentTab);
+    const tabItem = this.inventory.find(item => item.key === itemKey);
 
     if (tabItem) {
-        tabItem.amount += 1; // Increase the amount if it already exists in the active tab
+        tabItem.amount += 1; // Increase the amount if it already exists in the inventory
     } else {
-        // Add new item to the current tab in the inventory if not already present
+        // Add new item to the inventory if not already present
         this.inventory.push({
             key: itemKey, // Use the item key here
             amount: 1,
-            category: this.currentTab,
             damage: 0
         });
     }
@@ -805,7 +748,7 @@ addToInventory: function(itemKey) {
         const badge = item.querySelector('.item-badge');
 
         if (badge) {
-            const inventoryItem = this.inventory.find(i => i.key === itemName && i.category === this.currentTab);
+            const inventoryItem = this.inventory.find(i => i.key === itemName);
             if (inventoryItem && inventoryItem.amount > 1) {
                 badge.textContent = inventoryItem.amount;
                 badge.style.display = 'flex';

@@ -3,13 +3,13 @@ var sprite = {
     create: function (options) {
         let newSprite = {
             id: options.id,
-            width: 16,
-            height: 32,
+            width: options.isAnimal ? options.width || 48 : 16,
+            height: options.isAnimal ? options.height || 32 : 32,
             scale: 1,
             speed: options.speed !== undefined ? options.speed : 70,
             currentFrame: 0,
             direction: 'S',
-            animationSpeed: 0.2,
+            animationSpeed: options.animationSpeed !== undefined ? options.animationSpeed : 0.2,
             frameCounter: 0,
             moving: false,
             stopping: false,
@@ -17,6 +17,9 @@ var sprite = {
             path: [], // Initialize path here
             pathIndex: 0, // Initialize path index here
             isMovingToTarget: false,
+            isAnimal: options.isAnimal !== undefined ? options.isAnimal : false,
+            animalType: options.animalType || null,
+            riderId: null,
             body: options.body !== undefined ? options.body : 1,
             head: options.head !== undefined ? options.head : 1,
             eyes: options.eyes !== undefined ? options.eyes : 1,
@@ -65,6 +68,7 @@ var sprite = {
             eyeFrameCounter: 0,
             eyeBlinkInterval: Math.random() * 3000 + 2000,
             draw: this.draw,
+            drawAnimal: this.drawAnimal,
             drawShadow: this.drawShadow,
             addDirection: this.addDirection,
             removeDirection: this.removeDirection,
@@ -148,6 +152,10 @@ var sprite = {
     },
 
     draw: function() {
+        if (this.isAnimal) {
+            this.drawAnimal();
+            return;
+        }
         if (!game.displaySprite) return;
         // Load images
         let headImage = assets.load('head'); 
@@ -369,7 +377,84 @@ var sprite = {
         if (['S', 'NW', 'W', 'SW'].includes(this.direction)) {
             this.drawSelectedItem(); // Draw in front of the sprite
         }
-    },         
+    },
+    
+    drawAnimal: function () {
+        let animalImage;
+        switch (this.animalType) {
+            case 'horse':
+                animalImage = assets.load('horse'); // Load horse sprite
+                break;
+            default:
+                console.log('Unknown animal type');
+                return;
+        }
+    
+        if (!animalImage) {
+            console.log('Animal image not found');
+            return;
+        }
+    
+        // Determine the correct row based on direction (sy value)
+        const directionMap = {
+            'E': 0,    // Rows 1-2 for East (sy = 0)
+            'W': 0,    // Rows 1-2 for West (flip E frames)
+            'N': 32,   // Rows 3-4 for North (sy = 32)
+            'S': 64    // Rows 5-6 for South (sy = 64)
+        };
+        
+        // Get sy based on direction, flipping for W direction
+        let sy = directionMap[this.direction === 'W' ? 'E' : this.direction] || 0;
+    
+        // Determine the correct animation frame based on movement type (idle, walking, jogging, sprinting)
+        let frameOffset = 0;
+        if (this.moving) {
+            if (this.speed <= 70) {
+                frameOffset = 192; // Walking animation starts at columns 13-24
+            } else if (this.speed > 70 && this.speed <= 120) {
+                frameOffset = 384; // Jogging animation starts at columns 25-36
+            } else {
+                frameOffset = 576; // Sprinting animation starts at columns 37-48
+            }
+        } else {
+            frameOffset = 0; // Idle animation starts at columns 1-12
+        }
+        
+        // Each frame is 48px wide, with 4 total frames per animation cycle
+        const frameMap = {
+            0: 0,    // Frame 1: Columns 1-3 (no offset)
+            1: 48,   // Frame 2: Columns 4-6
+            2: 96,   // Frame 3: Columns 7-9
+            3: 144   // Frame 4: Columns 10-12
+        };
+    
+        // Calculate the current frame (0-3)
+        const currentFrame = Math.floor(this.currentFrame) % 4;
+    
+        // Set sx based on the current frame and the movement type
+        const sx = frameMap[currentFrame] + frameOffset;
+    
+        // Save the context before making transformations
+        game.ctx.save();
+    
+        // Translate the canvas to the sprite's position
+        game.ctx.translate(this.x, this.y);
+    
+        // Check if we need to flip the sprite (for West direction)
+        if (this.direction === 'W' || this.direction === 'NW' || this.direction === 'SW') {
+            // Flip horizontally for West and its diagonals
+            game.ctx.scale(-1, 1); // Flip the canvas horizontally
+            game.ctx.translate(-48, 0);  // Adjust for the flipped image width (48px in your case)
+        }
+    
+        // Draw the animal sprite from the sprite sheet
+        game.ctx.drawImage(animalImage, sx, sy, 48, 32, 0, 0, 48, 32);
+    
+        // Restore the context
+        game.ctx.restore();
+    },
+    
+    
     
     drawSelectedItem: function() {
         if (!this.currentItem) return;
@@ -459,7 +544,7 @@ var sprite = {
         this.path = this.calculatePath(currentX, currentY, tileX, tileY);
         this.pathIndex = 0; // Reset the path index
         this.isMovingToTarget = true; // Mark sprite as moving to target
-        audio.playAudio("walkGrass", assets.load('walkGrass'), 'sfx', true);
+        audio.playAudio("footsteps1", assets.load('footsteps1'), 'sfx', true);
     },  
 
     calculatePath: function(startX, startY, endX, endY) {
@@ -495,7 +580,7 @@ var sprite = {
             this.stopping = true;
             this.currentFrame = 0; // Reset to default standing position
             this.path = []; // Clear the path once the destination is reached
-            audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+            audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
             return;
         }
     
@@ -558,7 +643,7 @@ var sprite = {
         this.currentFrame = 0;
     
         // Stop walking sound effect
-        audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+        audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
     
         // You can add any additional clean-up here if needed
         console.log(`Pathfinding and movement stopped for sprite: ${this.id}`);
@@ -679,7 +764,7 @@ var sprite = {
         this.stopping = false;
     
         if (this.id === game.playerid) {
-            audio.playAudio('walkGrass', assets.load('walkGrass'), 'sfx', true);
+            audio.playAudio('footsteps1', assets.load('footsteps1'), 'sfx', true);
         }
     },
 
@@ -748,9 +833,39 @@ var sprite = {
     },    
 
     animate: function() {
-        if (this.moving) {
+        // If this sprite is an animal, handle the animal-specific animation
+        if (this.isAnimal) {
+            const isIdle = !this.moving; // Check if the animal is idle or moving
+            const totalFrames = 3; // Number of frames per animation set (idle, walking, etc.)
+    
+            this.frameCounter += this.animationSpeed; // Increment the frame counter by animation speed
+    
+            // Adjust speed for idle animation (slower) and movement animation (faster)
+            const frameDuration = isIdle ? 5 : 1; // Slower idle, faster walking
+    
+            if (this.frameCounter >= frameDuration) {
+                this.currentFrame = (this.currentFrame + 1) % totalFrames; // Cycle through 3 frames (0, 1, 2)
+                this.frameCounter = 0; // Reset the frame counter after switching frames
+            }
+    
+            // Set the correct frame based on whether the animal is idle or moving
+            let frameOffset = 0;
+            if (isIdle) {
+                frameOffset = 0; // Idle frames are 1-3 (frameOffset 0 corresponds to columns 1-3)
+            } else {
+                frameOffset = 3; // Walking frames are 4-6 (frameOffset 3 corresponds to columns 4-6)
+            }
+    
+            const frameColumn = this.currentFrame + frameOffset; // Combine currentFrame with offset for the final frame
+    
+            // Log the current frame for debugging purposes
+            //console.log(`Current Frame (Idle: ${isIdle}): ${frameColumn}`);
+        } else if (this.moving) {
+            // Handle non-animal sprites moving
             this.frameCounter += this.animationSpeed;
+    
             if (this.stopping) {
+                // Handle stopping animation (frames 4-7)
                 if (this.currentFrame < 4 || this.currentFrame > 7) {
                     this.currentFrame = 4;
                 } else if (this.frameCounter >= 1) {
@@ -760,6 +875,7 @@ var sprite = {
             } else if (this.currentFrame < 0 || this.currentFrame >= 8) {
                 this.currentFrame = 0;
             } else if (this.frameCounter >= 1) {
+                // Normal movement animation (cycle through frames 0-7)
                 if (this.currentFrame < 7) {
                     this.currentFrame++;
                 } else {
@@ -767,7 +883,11 @@ var sprite = {
                 }
                 this.frameCounter = 0;
             }
+    
+            // Log the current frame while moving
+            console.log(`Current Frame (Moving): ${this.currentFrame}`);
         } else if (this.stopping && this.frameCounter >= 1) {
+            // Handle stopping animation (frames 4-7)
             if (this.currentFrame < 7) {
                 this.currentFrame++;
             } else {
@@ -775,8 +895,13 @@ var sprite = {
                 this.currentFrame = 0; // Reset to default standing position
             }
             this.frameCounter = 0;
+    
+            // Log the current frame during stopping
+            console.log(`Current Frame (Stopping): ${this.currentFrame}`);
         }
     },
+    
+
     animateEyes: function() {
         if (!this.lastBlinkTime) {
             this.lastBlinkTime = Date.now();
@@ -807,7 +932,7 @@ var sprite = {
     },  
 
     update: function(deltaTime) {
-        const margin = 4; // Define a margin to keep the sprite away from the edges
+        const margin = 0; // Define a margin to keep the sprite away from the edges
     
         if (this.isMovingToTarget) {
             this.moveAlongPath();
@@ -881,7 +1006,7 @@ var sprite = {
                 playerLight.x = this.x + 8; // Center light on sprite
                 playerLight.y = this.y + 8; // Center light on sprite
             } else {
-                console.log(`Player light not found for ID: ${this.id + '_light'}`);
+                //console.log(`Player light not found for ID: ${this.id + '_light'}`);
             }
         }
     },

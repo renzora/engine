@@ -80,18 +80,19 @@ var input = {
     gamepadLeftTrigger: function() {
         if (gamepad.buttons.includes('l2')) {
             if (game.mainSprite) {
-                game.mainSprite.targetAim = true;
+                game.mainSprite.targetAim = true; // Enable aiming
             }
         } else {
             if (game.mainSprite) {
-                game.mainSprite.targetAim = false;
+                game.mainSprite.targetAim = false; // Disable aiming when l2 is released
             }
         }
     },
 
     gamepadRightTrigger: function() {
-        if (ui_overlay_window.remainingBullets > 0) {  // Check if bullets are available
-            if (gamepad.buttons.includes('r2')) {
+        if (gamepad.buttons.includes('l2')) { 
+            // If l2 is held, fire the weapon
+            if (ui_overlay_window.remainingBullets > 0) {  // Check if bullets are available
                 game.mainSprite.speed = 120; // Fire rate speed
                 gamepad.vibrate(500, 1.0, 1.0); // Trigger vibration
     
@@ -101,30 +102,34 @@ var input = {
                     audio.playAudio("machinegun1", assets.load('machinegun1'), 'sfx', true);
                     effects.shakeMap(200, 4);
                 }
+            } else {
+                // Handle no bullets case
+                audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
+    
+                if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds > 0) {
+                    console.log("Out of bullets! Press and hold 'X' on the gamepad to reload.");
+                    audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                    ui.notif("no_bullets_notif", `Out of bullets! Press and hold 'X' on the gamepad to reload.`, true);
+                } else if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds <= 0) {
+                    console.log("No bullets and no rounds left");
+                    audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                    ui_overlay_window.noBulletsLeft();
+                }
             }
         } else {
-            // Stop the machine gun sound immediately if out of bullets
-            audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
-    
-            if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds > 0) {
-                console.log("Out of bullets! Press and hold 'X' on the gamepad to reload.");
-                audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
-                ui.notif("no_bullets_notif", `Out of bullets! Press and hold 'X' on the gamepad to reload.`, true);
-            } else if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds <= 0) {
-                console.log("No bullets and no rounds left");
-                audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
-                ui_overlay_window.noBulletsLeft();
-            }
+            // Sprinting when only r2 is pressed (without l2)
+            game.mainSprite.speed = 170; // Sprint speed
+            console.log("Sprinting", game.mainSprite.speed);
         }
-    },
+    },    
     
     gamepadRightTriggerReleased: function() {
         this.changeSpeed();
         audio.stopLoopingAudio('machinegun1', 'sfx', 1.0); // Stop the machine gun sound
-    },
+    },    
     
     changeSpeed: function() {
-        game.mainSprite.speed = 70;
+        game.mainSprite.speed = 70; // Reset to normal speed (default walking speed)
     },
 
     gamepadLeftBumper: function(e) {
@@ -174,32 +179,42 @@ var input = {
         // Reset gamepad directions
         gamepad.directions = { left: false, right: false, up: false, down: false };
     
-        if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
-            // The stick is moved beyond the threshold, so update speed and movement directions
-            gamepad.axesPressures.leftStickX = Math.abs(leftStickX);
-            gamepad.axesPressures.leftStickY = Math.abs(leftStickY);
+        // Only adjust speed if r2 is NOT being pressed
+        if (!gamepad.buttons.includes('r2')) {
+            if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
+                // The stick is moved beyond the threshold, so update speed and movement directions
+                gamepad.axesPressures.leftStickX = Math.abs(leftStickX);
+                gamepad.axesPressures.leftStickY = Math.abs(leftStickY);
     
-            // Calculate speed based on stick pressure
-            const pressure = Math.max(Math.abs(leftStickX), Math.abs(leftStickY));
-            game.mainSprite.speed = 25 + (pressure * 60); // Speed ranges from 25 to 85 depending on pressure
+                // Calculate speed based on stick pressure
+                const pressure = Math.max(Math.abs(leftStickX), Math.abs(leftStickY));
+                game.mainSprite.speed = 25 + (pressure * 60); // Speed ranges from 25 to 85 depending on pressure
     
-            // Set directions based on movement angle
-            const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
-            this.updateGamepadDirections(angle);
+                // Set directions based on movement angle
+                const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
+                this.updateGamepadDirections(angle);
     
-            // Update the sprite's directions based on combined states
-            this.updateSpriteDirections();
+                // Update the sprite's directions based on combined states
+                this.updateSpriteDirections();
+            } else {
+                // If stick is in the dead zone (neutral position), reset the speed to default
+                gamepad.axesPressures.leftStickX = 0;
+                gamepad.axesPressures.leftStickY = 0;
+    
+                // Reset speed to default when gamepad stick is released
+                game.mainSprite.speed = 70; // Replace 70 with your default walking speed
+    
+                this.updateSpriteDirections();
+            }
         } else {
-            // If stick is in the dead zone (neutral position), reset the speed to default
-            gamepad.axesPressures.leftStickX = 0;
-            gamepad.axesPressures.leftStickY = 0;
-            
-            // Reset speed to default when gamepad stick is released
-            game.mainSprite.speed = 70; // Replace 70 with your default speed
-    
-            this.updateSpriteDirections();
+            // If r2 is being pressed, don't adjust speed here, just update the directions
+            if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
+                const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
+                this.updateGamepadDirections(angle);
+                this.updateSpriteDirections();
+            }
         }
-    },
+    },    
     
     updateGamepadDirections: function(angle) {
         const up = (angle >= -Math.PI / 8 && angle < Math.PI / 8);             // Right
@@ -581,7 +596,7 @@ var input = {
             sprite.isMovingToTarget = false;
             sprite.path = [];
             sprite.moving = false; // Reset the moving flag
-            audio.stopLoopingAudio('walkGrass', 'sfx', 0.5); // Stop walking audio
+            audio.stopLoopingAudio('footsteps1', 'sfx', 0.5); // Stop walking audio
         }
     },
 
@@ -625,7 +640,7 @@ var input = {
     
         // Stop walking audio if no directions are pressed
         if (game.mainSprite && !combinedDirections.up && !combinedDirections.down && !combinedDirections.left && !combinedDirections.right) {
-            audio.stopLoopingAudio('walkGrass', 'sfx', 0.5);
+            audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
         }
     },
 

@@ -1,4 +1,6 @@
 const actions = {
+    audioCooldown: 0.5, // Cooldown period in seconds
+    lastPlayedTimesByType: {}, // Track last played time by object type
 
     // Central handler to execute actions that may require a button press
     executeActionWithButton: function (action, config, context, item) {
@@ -27,76 +29,117 @@ const actions = {
         };
     
         let closestItem = null;
+        const proximityThreshold = 100; // Example value, adjust as necessary for your game
     
-        game.roomData.items.forEach(item => {
-            const objectData = game.objectData[item.id];
-            if (!objectData || !objectData[0] || !objectData[0].script) return;
+        game.roomData.items
+            .filter(item => {
+                const itemX = Math.min(...item.x) * 16;
+                const itemY = Math.min(...item.y) * 16;
+                const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
+                const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
     
-            const scriptData = objectData[0].script;
+                const distanceX = Math.abs(sprite.x - itemX);
+                const distanceY = Math.abs(sprite.y - itemY);
     
-            // Process script if it's YAML or object
-            let script;
-            if (typeof scriptData === 'string') {
-                script = utils.parseYaml(scriptData);
-            } else if (typeof scriptData === 'object' && scriptData !== null) {
-                script = scriptData;
-            } else {
-                return; // Exit early if script is invalid
-            }
+                return distanceX < proximityThreshold && distanceY < proximityThreshold;
+            })
+            .forEach(item => {
+                const objectData = game.objectData[item.id];
+                if (!objectData || !objectData[0] || !objectData[0].script) return;
     
-            const itemX = Math.min(...item.x) * 16;
-            const itemY = Math.min(...item.y) * 16;
-            const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
-            const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
+                const scriptData = objectData[0].script;
     
-            const objectBoundary = {
-                left: itemX,
-                right: itemX + itemWidth,
-                top: itemY,
-                bottom: itemY + itemHeight
-            };
+                let script;
+                if (typeof scriptData === 'string') {
+                    script = utils.parseYaml(scriptData);
+                } else if (typeof scriptData === 'object' && scriptData !== null) {
+                    script = scriptData;
+                } else {
+                    return; // Exit early if script is invalid
+                }
     
-            const isSpriteInsideObject = (
-                spriteBoundary.right >= objectBoundary.left &&
-                spriteBoundary.left <= objectBoundary.right &&
-                spriteBoundary.bottom >= objectBoundary.top &&
-                spriteBoundary.top <= objectBoundary.bottom
-            );
+                const itemX = Math.min(...item.x) * 16;
+                const itemY = Math.min(...item.y) * 16;
+                const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
+                const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
     
-            if (isSpriteInsideObject) {
-                closestItem = item;
+                const objectBoundary = {
+                    left: itemX,
+                    right: itemX + itemWidth,
+                    top: itemY,
+                    bottom: itemY + itemHeight
+                };
     
-                // Execute the script actions
-                if (script.walk) {
-                    const globalButton = script.walk.button; // Extract the global button
+                const isSpriteInsideObject = (
+                    spriteBoundary.right >= objectBoundary.left &&
+                    spriteBoundary.left <= objectBoundary.right &&
+                    spriteBoundary.bottom >= objectBoundary.top &&
+                    spriteBoundary.top <= objectBoundary.bottom
+                );
     
-                    // Show tooltip, replacing {name} with the object's actual name from objectData
-                    if (script.walk.tooltip) {
-                        const objectName = objectData[0].n || 'Unnamed Object'; // Get name from objectData
-                        const tooltipText = script.walk.tooltip.replace('{name}', objectName);
-                        this.tooltip(tooltipText, item, sprite);  // Pass modified tooltip text
-                    }
+                if (isSpriteInsideObject) {
+                    closestItem = item;
     
-                    // Check if the global button is pressed first
-                    if (!globalButton || this.isButtonPressed(globalButton)) {
-                        for (let action in script.walk) {
-                            if (action !== 'button' && action !== 'tooltip' && this[action] && typeof this[action] === 'function') {
-                                this.executeActionWithButton(action, script.walk[action], item, sprite); // Use centralized handler
+                    const objectType = objectData[0].type || item.id;
+    
+                    // Execute the script actions
+                    if (script.walk) {
+                        const globalButton = script.walk.button; // Extract the global button
+    
+                        if (script.walk.tooltip) {
+                            const objectName = objectData[0].n || 'Unnamed Object';
+                            const tooltipText = script.walk.tooltip.replace('{name}', objectName);
+                            this.tooltip(tooltipText, item, sprite);  // Pass modified tooltip text
+                        }
+    
+                        // Handle audio playback
+                        this.audio(script, item, objectType);
+    
+                        // Handle modal popup if present
+                        if (script.walk.modal) {
+                            this.modal(script.walk.modal, item, objectType);
+                        }
+    
+                        // Execute other actions
+                        if (!globalButton || this.isButtonPressed(globalButton)) {
+                            for (let action in script.walk) {
+                                if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && this[action] && typeof this[action] === 'function') {
+                                    this.executeActionWithButton(action, script.walk[action], item, sprite);
+                                }
                             }
                         }
                     }
+                } else {
+                    if (item.audioPlaying) {
+                        audio.stopLoopingAudio(script.walk.audio.soundId, 'sfx');
+                        item.audioPlaying = false;
+                    }
+                    item.swayTriggered = false;
                 }
-            } else {
-                item.swayTriggered = false;
-            }
-        });
+            });
     
         // Hide tooltip if no item is close
         if (!closestItem) {
             this.hideTooltip();
         }
-    },    
-  
+    },
+
+    modal: function (config, context, item) {
+        // Check if a button is required to trigger the modal
+        const buttonToCheck = config.button || null;
+        
+        // If no button is required or the required button is pressed, open the modal
+        if (!buttonToCheck || this.isButtonPressed(buttonToCheck)) {
+            modal.load({
+                id: config.id || 'modal_window',
+                url: config.url || '',
+                name: config.name || 'Modal',
+                drag: config.drag || false,
+                reload: config.reload || false,
+            });
+        }
+    },
+    
 
     sway: function (config, context, item) {
         if (context && !context.swayTriggered) {
@@ -149,6 +192,44 @@ const actions = {
                 // Mark speech as triggered to avoid re-triggering
                 item.speechTriggered = true;
             }
+        }
+    },
+
+    audio: function (script, item, objectType) {
+        const sprite = game.mainSprite;
+        if (!sprite || !script.walk.audio) return;
+    
+        const soundId = script.walk.audio.soundId;
+        const audioBuffer = assets.load(soundId); // Assuming assets.load loads the audio buffer
+    
+        // Use the custom cooldown if provided, otherwise default to audioCooldown
+        const customCooldown = script.walk.audio.cooldown || this.audioCooldown;
+    
+        // Add cooldown check based on object type
+        const currentTime = Date.now();
+        const lastPlayedTime = this.lastPlayedTimesByType[objectType] || 0;
+        const timeSinceLastPlay = (currentTime - lastPlayedTime) / 1000; // Convert to seconds
+    
+        // Check if a button is defined
+        const buttonToCheck = script.walk.audio.button || null;
+    
+        // Play audio if button is pressed OR sprite is moving and no button is required
+        const shouldPlayAudio = (!buttonToCheck && sprite.moving) || (buttonToCheck && this.isButtonPressed(buttonToCheck));
+    
+        if (audioBuffer && timeSinceLastPlay > customCooldown && shouldPlayAudio) {
+            // Play the audio if it’s not already playing
+            if (!item.audioPlaying) {
+                audio.playAudio(soundId, audioBuffer, 'sfx', script.walk.audio.loop || false);
+                item.audioPlaying = true;
+                this.lastPlayedTimesByType[objectType] = currentTime; // Update last played time by object type
+            }
+        }
+    
+        // Stop audio if sprite stops moving or button is released (if applicable)
+        const shouldStopAudio = (!buttonToCheck && !sprite.moving) || (buttonToCheck && !this.isButtonPressed(buttonToCheck));
+        if (item.audioPlaying && shouldStopAudio) {
+            audio.stopLoopingAudio(soundId, 'sfx');
+            item.audioPlaying = false;
         }
     },    
 
@@ -267,5 +348,62 @@ const actions = {
                 context.rotation = 0;
             }
         }
+    },
+    
+    mountHorse: function (playerId, horseId) {
+        const playerSprite = game.sprites[playerId];
+        const horseSprite = game.sprites[horseId];
+    
+        if (!playerSprite || !horseSprite) {
+            console.log('Player or horse not found');
+            return;
+        }
+    
+        // Set the horse's riderId to the player ID
+        horseSprite.riderId = playerId;
+    
+        // Set the active sprite to the horse so the player controls the horse
+        game.mainSprite = horseSprite;
+        game.setActiveSprite(horseId); // Set the active sprite to the horse
+    
+        // Update the player's sprite position to match the horse's position continuously
+        playerSprite.onHorse = true; // Add a flag to indicate that the player is mounted
+    
+        console.log(`${playerId} is now riding ${horseId}`);
+    },
+    
+
+    dismountHorse: function (horseId) {
+        const horseSprite = game.sprites[horseId];
+    
+        if (!horseSprite) {
+            console.log('Horse not found');
+            return;
+        }
+    
+        // Get the rider's ID, which should be suffixed with "_riding"
+        const riderId = horseSprite.riderId;
+        if (!riderId) {
+            console.log('No rider on this horse');
+            return;
+        }
+    
+        // Remove the riderId from the horse sprite
+        horseSprite.riderId = null;
+    
+        // Restore the original playerId by removing the "_riding" suffix
+        const playerId = riderId.replace('_riding', '');
+        game.sprites[playerId] = game.sprites[riderId]; // Restore the original player sprite
+        delete game.sprites[riderId]; // Remove the "_riding" entry
+    
+        // Set the active sprite back to the player
+        game.mainSprite = game.sprites[playerId];
+        game.setActiveSprite(playerId); // Switch back to the player sprite
+    
+        // Show the player sprite again when dismounting
+        game.sprites[playerId].visible = true; // Ensure the player is visible after dismounting
+    
+        console.log(`${playerId} has dismounted from ${horseId}`);
     }
+    
 };

@@ -10,63 +10,66 @@ var weather = {
     rainActive: false,
     fireflysActive: false,
     nightActive: false,
-    clouds: [],  // Array to store cloud layers
-    maxClouds: 15,  // Number of cloud layers for patchy fog
-    cloudSpeed: 0.3,  // Speed at which clouds move across the scene
-    cloudsActive: true,  // Flag to control cloud rendering
-    cloudSizeMultiplier: 2,  // Size multiplier for cloud patches
-    darkGreyMinOpacity: 0.05,  // Minimum opacity for dark grey clouds
-    darkGreyMaxOpacity: 0.1,  // Maximum opacity for dark grey clouds
+    cloudShadows: [],  // Array for cloud shadows only
+    maxClouds: 15,  // Number of cloud shadow layers
+    cloudSpeed: 0.3,  // Speed at which cloud shadows move across the scene
+    cloudsActive: true,  // Flag to control cloud shadow rendering
+    cloudSizeMultiplier: 2,  // Size multiplier for cloud shadows
+    darkGreyMinOpacity: 0.05,  // Minimum opacity for cloud shadows
+    darkGreyMaxOpacity: 0.1,  // Maximum opacity for cloud shadows
 
-  // Create patchy dark grey clouds
-  createClouds: function() {
-    this.clouds = [];
-    for (let i = 0; i < this.maxClouds; i++) {
-        const greyShade = Math.floor(Math.random() * (200 - 50) + 50);  // Random grey shades (darker)
-        this.clouds.push({
-            x: Math.random() * game.canvas.width,  // Random starting X position
-            y: Math.random() * game.canvas.height,  // Spread clouds vertically across the entire canvas
-            width: Math.random() * 300 + 200,  // Large width for clouds
-            height: Math.random() * 150 + 100,  // Large height for clouds
-            color: `rgba(${greyShade}, ${greyShade}, ${greyShade}, 1)`,  // Random grey color
-            opacity: Math.random() * (this.darkGreyMaxOpacity - this.darkGreyMinOpacity) + this.darkGreyMinOpacity,  // Random opacity for patchiness
-            speed: Math.random() * this.cloudSpeed + 0.02  // Slight variation in speed for each cloud
-        });
-    }
-},
+    // Create cloud shadows
+    createCloudShadows: function() {
+        this.cloudShadows = [];
+        for (let i = 0; i < this.maxClouds; i++) {
+            const greyShade = Math.floor(Math.random() * (80 - 50) + 50);  // Random darker grey shades for shadows
+            const opacity = Math.random() * (this.darkGreyMaxOpacity - this.darkGreyMinOpacity) + this.darkGreyMinOpacity;
+            const speed = Math.random() * this.cloudSpeed + 0.02;
 
-// Update the cloud positions to create a slow-moving patchy effect
-updateClouds: function() {
-    if (!this.cloudsActive) return;
-
-    this.clouds.forEach(cloud => {
-        cloud.x += cloud.speed;  // Slowly move each cloud horizontally
-
-        // If the cloud moves beyond the canvas, reset its position to loop back
-        if (cloud.x > game.canvas.width) {
-            cloud.x = -cloud.width;  // Loop back to the start
-            cloud.y = Math.random() * game.canvas.height;  // Randomize Y position again for variation
+            // Cloud shadow
+            const shadow = {
+                x: Math.random() * game.canvas.width,
+                y: Math.random() * game.canvas.height,
+                width: Math.random() * 300 + 200,
+                height: Math.random() * 150 + 100,
+                color: `rgba(${greyShade}, ${greyShade}, ${greyShade}, 1)`,  // Darker shade for the shadow
+                opacity: opacity * 0.5,  // Reduced opacity for a subtle shadow
+                speed: speed
+            };
+            this.cloudShadows.push(shadow);
         }
-    });
-},
+    },
 
-// Render the patchy, darker grey clouds
-drawClouds: function() {
-    if (!this.cloudsActive || !this.clouds.length) return;
+    // Update the cloud shadow positions to create movement
+    updateCloudShadows: function() {
+        if (!this.cloudsActive) return;
 
-    game.ctx.save();
+        this.cloudShadows.forEach((shadow) => {
+            shadow.x += shadow.speed;
 
-    this.clouds.forEach(cloud => {
-        game.ctx.globalAlpha = cloud.opacity;  // Apply faint opacity for each cloud
-        game.ctx.fillStyle = cloud.color;  // Use the randomly generated grey color for patchiness
-        game.ctx.filter = 'blur(20px)';  // Add blur to soften the edges
-        game.ctx.beginPath();
-        game.ctx.ellipse(cloud.x, cloud.y, cloud.width * this.cloudSizeMultiplier, cloud.height * this.cloudSizeMultiplier, 0, 0, Math.PI * 2);  // Draw large patchy clouds
-        game.ctx.fill();
-    });
+            // Reset shadow position if it moves off screen
+            if (shadow.x > game.canvas.width) {
+                shadow.x = -shadow.width;
+                shadow.y = Math.random() * game.canvas.height;  // Randomize Y position again for variation
+            }
+        });
+    },
 
-    game.ctx.restore();
-},
+    // Render the cloud shadows (no clouds, just shadows)
+    drawCloudShadows: function() {
+        if (!this.cloudsActive || !this.cloudShadows.length) return;
+
+        game.ctx.save();
+        this.cloudShadows.forEach(shadow => {
+            game.ctx.globalAlpha = shadow.opacity;  // Apply faint opacity for the shadow
+            game.ctx.fillStyle = shadow.color;  // Use the shadow color
+            game.ctx.filter = 'blur(15px)';  // Add blur to soften the shadow edges
+            game.ctx.beginPath();
+            game.ctx.ellipse(shadow.x, shadow.y, shadow.width * this.cloudSizeMultiplier, shadow.height * this.cloudSizeMultiplier, 0, 0, Math.PI * 2);
+            game.ctx.fill();
+        });
+        game.ctx.restore();
+    },
 
     createSnow: function(opacity) {
         if (!this.snowActive) return;

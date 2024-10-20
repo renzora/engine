@@ -131,7 +131,9 @@ var game = {
             { name: 'glasses', path: 'img/sprites/character/test/glasses.png' },
             { name: 'facial', path: 'img/sprites/character/test/facial.png' },
             { name: 'outfit', path: 'img/sprites/character/test/outfit.png' },
+            { name: 'horse', path: 'img/sprites/animals/horse/1.png' },
             { name: 'gen1', path: 'img/tiles/gen1.png' },
+            { name: 'gameplay_music_01', path: 'audio/music/gameplay_music_01.mp3' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
@@ -148,19 +150,25 @@ var game = {
             { name: 'sceneDrop', path: 'audio/sfx/ui/sceneDrop.mp3' },
             { name: 'itemEquip', path: 'audio/sfx/ui/itemEquip.mp3' },
             { name: 'pickUp', path: 'audio/sfx/fx/pickUp.mp3' },
+            { name: 'door_open_01', path: 'audio/sfx/movement/door.mp3' },
             { name: 'nightAmbience', path: 'audio/sfx/weather/nightAmbience.mp3' },
+            { name: 'grass1', path: 'audio/sfx/movement/grass1.mp3' },
+            { name: 'footstep_01', path: 'audio/sfx/movement/footstep.wav' },
+            { name: 'footsteps1', path: 'audio/sfx/movement/footsteps1.wav' },
+            { name: 'speech_menu_01', path: 'audio/sfx/ui/speech_menu_01.wav' },
             { name: 'rain', path: 'audio/sfx/weather/rain.mp3' },
             { name: 'meta', path: 'json/meta.json' },
             { name: 'machinegun1', path: 'audio/sfx/fx/machineGun.mp3' },
             { name: 'reload_gun', path: 'audio/sfx/fx/reload_gun.mp3' },
             { name: 'empty_gun', path: 'audio/sfx/fx/empty_gun.mp3' },
+            { name: 'electronic_readout_01', path: 'audio/sfx/ui/electronic_readout_01.wav' },
+            { name: 'store_chime_01', path: 'audio/sfx/fx/store_chime_01.mp3' },
         ], () => {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
             this.ctx = this.canvas.getContext('2d');
             this.ctx.imageSmoothingEnabled = false;
             document.body.appendChild(this.canvas);
-            this.canvas.style.marginTop = '33px'; // Add outer margin here
             this.resizeCanvas();
             this.itemsImg = assets.load('itemsImg');
             this.itemsData = assets.load('itemsData');
@@ -182,15 +190,12 @@ var game = {
                 console.warn(`Sprite with player ID ${this.playerid} not found.`);
             }
 
-
-
-
             console.log(this.mainSprite);
 
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.6);
-            weather.createClouds();
+            weather.createCloudShadows();
 
             const storedSceneId = localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf';
             this.loadScene(storedSceneId);
@@ -204,7 +209,7 @@ var game = {
                 });
             } else {
                 const playerOptions = {
-                    id: this.playerid,
+                    id: 'sprite_1',  
                     x: 29,
                     y: 23,
                     isPlayer: true,
@@ -224,10 +229,32 @@ var game = {
                     energy: 100
                   };
               
-                  // Assuming `sprite` and `effects` are globally available
                   sprite.create(playerOptions);
-                  this.mainSprite = this.sprites[this.playerid];
-                  this.setActiveSprite(this.playerid);
+
+                  const horseOptions = {
+                    id: this.playerid,
+                    x: 23,
+                    y: 24,
+                    isAnimal: true,
+                    animalType: 'horse',
+                    direction: 'E',
+                    speed: 70,
+                    width: 48,
+                    height: 32,
+                    maxRange: 300,
+                    health: 200,
+                    energy: 100,
+                    animationSpeed: 0.15
+                };
+                
+
+                sprite.create(horseOptions);
+
+                this.mainSprite = this.sprites[this.playerid];
+                this.setActiveSprite(this.playerid);
+
+                
+
                   this.modal_init();
             }
             
@@ -326,7 +353,8 @@ var game = {
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
                     //ui.notif("scene_change_notif", data.name, true);
-                    audio.stopLoopingAudio('music', 0.5);
+                    audio.playAudio('gameplay_music_01', assets.load('gameplay_music_01'), 'music', true, '0.5');
+                    audio.stopLoopingAudio('gameplay_music_01', 0.5);
     
                     //game.spawnRandomItems(500);
     
