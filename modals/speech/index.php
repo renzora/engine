@@ -2,20 +2,27 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='speech_window' class='window bg-gray-900 fixed inset-x-0 bottom-10 mx-auto p-6 border-4 border-yellow-600 text-center' style='width: 700px;'>
-
-    <div class='relative grid grid-cols-3 gap-4'>
+  <div data-window='speech_window' class='window bg-gray-800/90 shadow-xl rounded-lg fixed inset-x-0 bottom-10 mx-auto text-center pixel-corners transition-all transform hover:scale-105' style='width: 500px; position: relative;'>
+    
+    <div class='relative grid grid-cols-3 gap-2'>
       <!-- Left column for image -->
-      <div class='col-span-1'>
-        <img src="https://via.placeholder.com/200x200.png" alt="Character" class="w-full h-auto">
+      <div class='col-span-1 flex justify-center items-center rounded-lg'>
+        <canvas id="speech_icon_canvas" class="w-full h-auto" height="250"></canvas>
       </div>
 
       <!-- Right column for text -->
-      <div class='col-span-2 flex items-center'>
-        <div class='container text-yellow-100 text-2xl font-mono tracking-wider'>
-          <p id="speech_content">This is where the speech text will appear.</p>
+      <div class='col-span-2 flex items-center mr-2'>
+        <div class='container text-yellow-100 text-xl md:text-2xl lg:text-3xl font-mono tracking-widest leading-snug'>
+          <p id="speech_content" class="pixel-corners">This is where the speech text will appear.</p>
         </div>
       </div>
+    </div>
+
+    <!-- Buttons for [A] Next and [A] Close -->
+    <div class="flex justify-center items-center mb-2">
+      <button class="text-yellow-100 text-xl md:text-xl lg:text-2xl font-mono tracking-widest px-4 py-2 bg-gray-700 border-2 rounded-lg hover:bg-gray-600" onclick="speech_window.aButton()">
+        Press A
+      </button>
     </div>
 
     <script>
@@ -32,26 +39,105 @@ var speech_window = {
         modal.front('ui_inventory_window');
     },
 
-    startSpeech: function(speechArray, callback) {
-        // Check if the speechArray is a string; if so, convert it to an array
+    startSpeech: function(speechArray, callback, icon) {
         if (typeof speechArray === 'string') {
-            speechArray = [speechArray]; // Wrap the string into an array
+            speechArray = [speechArray];
         }
 
-        // Reset the speech index and add the new text to speechText
         this.speechText = speechArray;
         this.currentSpeechIndex = 0;
-
-        // Store the callback to reset the flag when speech ends
         this.endSpeechCallback = callback;
 
-        // Bring the speech window to the front
         modal.show('speech_window');
         modal.front('speech_window');
 
-        // Start typing the first speech text
+        // Check if the icon is "self" or a specific object and render it
+        this.renderIcon(icon);
+
         this.typeSpeech(this.speechText[this.currentSpeechIndex]);
     },
+
+    renderIcon: function(icon) {
+    const canvas = document.getElementById('speech_icon_canvas');
+    if (!canvas) {
+        console.log('Canvas not found');
+        return;
+    }
+    const ctx = canvas.getContext('2d');
+
+    // Disable image smoothing for pixel-perfect rendering
+    ctx.imageSmoothingEnabled = false;
+
+    // Clear any previous icon drawings
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    console.log('Canvas cleared for rendering icon');
+
+    // Use the icon (context.id) as a key to find the object in objectData
+    const objectToRender = game.objectData[icon] ? game.objectData[icon][0] : null;
+    if (!objectToRender) {
+        console.log(`Object with key ${icon} not found in game.objectData`);
+        return;
+    }
+
+    console.log(`Object found: ${objectToRender.n} (Type: ${objectToRender.t})`);
+
+    // Get the object image and render it on the canvas
+    const img = assets.load(objectToRender.t); // Load the texture based on 't' (texture reference)
+    if (!img) {
+        console.log(`Image for texture ${objectToRender.t} not found`);
+        return;
+    }
+
+    const objectWidth = (objectToRender.a + 1) * 16; // Width in pixels
+    const objectHeight = (objectToRender.b + 1) * 16; // Height in pixels
+
+    // Calculate the scaling factor to fit the object within the canvas
+    const scaleX = canvas.width / objectWidth;
+    const scaleY = canvas.height / objectHeight;
+    const scale = Math.min(scaleX, scaleY); // Use the smallest scaling factor to maintain aspect ratio
+
+    // Adjust the position to keep the object centered
+    let posX = Math.round((canvas.width - Math.round(objectWidth * scale)) / 2);
+    let posY = Math.round((canvas.height - Math.round(objectHeight * scale)) / 2);
+
+    // Parse the range if it's a range string (e.g., "306-353")
+    const parseRange = (rangeString) => {
+        const [start, end] = rangeString.split('-').map(Number);
+        const rangeArray = [];
+        for (let i = start; i <= end; i++) {
+            rangeArray.push(i);
+        }
+        return rangeArray;
+    };
+
+    let frameIndices = [];
+    if (typeof objectToRender.i[0] === 'string' && objectToRender.i[0].includes('-')) {
+        frameIndices = parseRange(objectToRender.i[0]);
+    } else {
+        frameIndices = objectToRender.i;
+    }
+
+    let frameIndex = 0;
+    for (let row = 0; row < objectToRender.b + 1; row++) {
+        for (let col = 0; col < objectToRender.a + 1; col++) {
+            if (frameIndex >= frameIndices.length) break;
+
+            const tileFrameIndex = frameIndices[frameIndex];
+            const srcX = (tileFrameIndex % 150) * 16;
+            const srcY = Math.floor(tileFrameIndex / 150) * 16;
+
+            const tilePosX = Math.round(posX + col * Math.round(16 * scale));
+            const tilePosY = Math.round(posY + row * Math.round(16 * scale));
+
+            // Draw the image with scaling and smoothing disabled
+            ctx.drawImage(img, srcX, srcY, 16, 16, tilePosX, tilePosY, Math.round(16 * scale), Math.round(16 * scale));
+            frameIndex++;
+        }
+    }
+
+    console.log(`Icon rendered on canvas with scaling and smoothing disabled, object key: ${icon}`);
+},
+
 
     typeSpeech: function(text) {
         let i = 0;

@@ -1,4 +1,4 @@
-<div data-window='fps_monitor_window' class='window bg-gray-800 shadow-lg rounded-lg overflow-hidden fixed bottom-10 right-5' style='width: 300px; height: 200px;'>
+<div data-window='fps_monitor_window' class='window pixel-corners bg-gray-800 shadow-lg rounded-lg overflow-hidden fixed bottom-10 right-5' style='width: 300px; height: 200px;'>
 
     <div data-part='handle' class='window_title bg-gray-800 text-gray-100 font-semibold'>
         <div class='float-right'>

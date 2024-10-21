@@ -4,7 +4,9 @@ if ($auth) {
 ?>
 
 <div data-window="ui_overlay_window" data-close="false">
-  <div class="w-auto fixed top-2 right-2 flex flex-col justify-between items-start text-white bg-gray-900 bg-opacity-80 rounded-lg p-4 shadow-lg">
+  <div class="w-auto fixed top-2 right-2 flex flex-col justify-between items-start text-white">
+
+  <div class="bg-gray-900 bg-opacity-80 rounded-lg p-4 shadow-lg pixel-corners">
 
     <!-- Top Section: Health, Energy Bars, Player Info -->
     <div class="flex flex-col space-y-4">
@@ -30,15 +32,13 @@ if ($auth) {
 
       <!-- Player Info: Level and XP -->
       <div class="flex justify-between items-center space-x-8">
-        <!-- Level -->
-        <div class="flex items-center">
-          <span class="text-xs font-medium text-gray-400 mr-2">Level</span>
-          <span id="player-level" class="text-xs font-semibold text-green-400">10</span>
-        </div>
 
         <!-- XP -->
         <div class="flex items-center">
-          <span class="text-xs font-medium text-gray-400 mr-2">XP</span>
+        <div class="flex items-center">
+  <span class="text-xs font-medium text-gray-400 mr-2">Level</span>
+  <span id="player-level" class="text-xs font-semibold text-green-400 mr-2">10</span>
+</div>
           <div class="w-28 bg-gray-700 rounded h-3">
             <div id="xp-bar" class="bg-purple-500 h-3 rounded" style="width: 60%;"></div>
           </div>
@@ -175,6 +175,8 @@ if ($auth) {
       </div>
     </div>
   </div>
+
+        </div>
 
   <script>
     var ui_overlay_window = {

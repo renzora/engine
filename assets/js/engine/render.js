@@ -343,12 +343,10 @@ var render = {
     },
 
     renderWeatherEffects: function () {
-        weather.drawCloudShadows();
-        weather.drawSnow();
-        weather.drawRain();
-        weather.drawFireflys();
-        lighting.drawGreyFilter();
-        weather.updateCloudShadows();
+        //weather.drawSnow();
+        //weather.drawRain();
+        //weather.drawFireflys();
+        //lighting.drawGreyFilter();
         render.aimTool();
     },
 

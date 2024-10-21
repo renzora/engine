@@ -195,7 +195,6 @@ var game = {
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.6);
-            weather.createCloudShadows();
 
             const storedSceneId = localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf';
             this.loadScene(storedSceneId);

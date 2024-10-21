@@ -82,34 +82,60 @@ const actions = {
     
                     const objectType = objectData[0].type || item.id;
     
-                    // Execute the script actions
-                    if (script.walk) {
-                        const globalButton = script.walk.button; // Extract the global button
+                    // Handle tooltip
+                    if (script.walk && script.walk.tooltip) {
+                        const objectName = objectData[0].n || 'Unnamed Object';
+                        const tooltipText = script.walk.tooltip.replace('{name}', objectName);
+                        this.tooltip(tooltipText, item, sprite);  // Pass modified tooltip text
+                    }
     
-                        if (script.walk.tooltip) {
-                            const objectName = objectData[0].n || 'Unnamed Object';
-                            const tooltipText = script.walk.tooltip.replace('{name}', objectName);
-                            this.tooltip(tooltipText, item, sprite);  // Pass modified tooltip text
+                    // Handle scene loading directly using game.loadScene
+                    if (script.walk && script.walk.scene) {
+                        const sceneButton = script.walk.scene.button || script.walk.button; // Use scene-specific or global button
+                        if (sceneButton && this.isButtonPressed(sceneButton)) {
+                            const activeTime = script.walk.scene.active || "0-24"; // Default active time
+                            if (this.isWithinActiveTime(activeTime)) {
+                                game.loadScene(script.walk.scene.id);
+                                console.log(`Loading scene: ${script.walk.scene.id}`);
+                            } else {
+                                console.log(`Scene ${script.walk.scene.id} is closed. Active hours are ${activeTime}`);
+                            }
                         }
+                    }
     
-                        // Handle audio playback
-                        this.audio(script, item, objectType);
-    
-                        // Handle modal popup if present
-                        if (script.walk.modal) {
-                            this.modal(script.walk.modal, item, objectType);
+                    // Handle speech
+                    if (script.walk && script.walk.speech) {
+                        const speechButton = script.walk.speech.button || script.walk.button; // Use speech-specific or global button
+                        if (speechButton && this.isButtonPressed(speechButton)) {
+                            if (!script.walk.speech.active || this.isWithinActiveTime(script.walk.speech.active)) {
+                                const icon = script.walk.speech.icon || 'self'; // Get the icon field, default to 'self'
+                                this.speech(script.walk.speech, item, sprite, icon); // Pass the icon to the speech function
+                            } else {
+                                console.log(`Speech is unavailable. Active hours are ${script.walk.speech.active}`);
+                            }
                         }
+                    }
+                    
+                                       
     
-                        // Execute other actions
-                        if (!globalButton || this.isButtonPressed(globalButton)) {
-                            for (let action in script.walk) {
-                                if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && this[action] && typeof this[action] === 'function') {
-                                    this.executeActionWithButton(action, script.walk[action], item, sprite);
-                                }
+                    // Handle audio playback
+                    this.audio(script, item, objectType);
+    
+                    // Handle modal popup if present
+                    if (script.walk && script.walk.modal) {
+                        this.modal(script.walk.modal, item, objectType);
+                    }
+    
+                    // Execute other actions
+                    if (!script.walk.button || this.isButtonPressed(script.walk.button)) {
+                        for (let action in script.walk) {
+                            if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && action !== 'scene' && action !== 'speech' && this[action] && typeof this[action] === 'function') {
+                                this.executeActionWithButton(action, script.walk[action], item, sprite);
                             }
                         }
                     }
                 } else {
+                    // Stop any active audio if the sprite moves away from the item
                     if (item.audioPlaying) {
                         audio.stopLoopingAudio(script.walk.audio.soundId, 'sfx');
                         item.audioPlaying = false;
@@ -122,7 +148,7 @@ const actions = {
         if (!closestItem) {
             this.hideTooltip();
         }
-    },
+    }, 
 
     modal: function (config, context, item) {
         // Check if a button is required to trigger the modal
@@ -139,7 +165,40 @@ const actions = {
             });
         }
     },
+
+    handleClosedTime: function (item) {
+        if (item.audioPlaying) {
+            audio.stopLoopingAudio(script.walk.audio.soundId, 'sfx');
+            item.audioPlaying = false;
+        }
+        item.swayTriggered = false;
+    },
+
+    isWithinActiveTime: function(activeTime) {
+        const currentHour = game.gameTime.hours + (game.gameTime.minutes / 60);  // Convert current time to decimal hours
+        console.log(`Current game time (hours): ${game.gameTime.hours}:${game.gameTime.minutes}, as decimal: ${currentHour}`);
     
+        const [startTime, endTime] = activeTime.split('-').map(time => {
+            if (time.includes(':')) {
+                const [hours, minutes] = time.split(':').map(Number);
+                return hours + (minutes / 60);  // Convert to decimal hours
+            }
+            return parseFloat(time);  // Assume it's in "H-H" format
+        });
+    
+        console.log(`Checking active time range: ${startTime} to ${endTime}`);
+    
+        if (startTime <= endTime) {
+            // Regular time range (e.g., 8:00-17:00)
+            return currentHour >= startTime && currentHour <= endTime;
+        } else {
+            // Spanning midnight (e.g., 17:01-7:59)
+            // We check for hours after startTime OR before endTime
+            const inActiveRange = currentHour >= startTime || currentHour <= endTime;
+            console.log(`Midnight-spanning time range check: ${inActiveRange}`);
+            return inActiveRange;
+        }
+    },      
 
     sway: function (config, context, item) {
         if (context && !context.swayTriggered) {
@@ -174,27 +233,25 @@ const actions = {
 
     speech: function (config, context, item) {
         if (config.message && Array.isArray(config.message.message)) {
-            // Ensure speech hasn't already been triggered
             if (!item.speechTriggered) {
-                // Disable player controls while speech is active
                 game.allowControls = false;
     
-                // Start the speech with the full array of messages
+                // Start the speech, passing context.id as the icon
                 speech_window.startSpeech(
                     config.message.message,  // Send the full array of messages
                     () => { 
                         item.speechTriggered = false;
-                        // Re-enable player controls when speech ends
                         game.allowControls = true;
-                    }
+                    },
+                    context.id // Pass the object's id (context.id) as the icon
                 );
     
-                // Mark speech as triggered to avoid re-triggering
                 item.speechTriggered = true;
             }
         }
     },
-
+    
+    
     audio: function (script, item, objectType) {
         const sprite = game.mainSprite;
         if (!sprite || !script.walk.audio) return;

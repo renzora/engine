@@ -3,6 +3,9 @@ $mode = isset($_GET['mode']) ? $_GET['mode'] : 'standard';
 
 if ($mode === 'editor') {
     ?>
+       <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="servers" aria-label="Online Servers">
+      <div class="icon globe"></div>
+    </button>
         <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_inventory" aria-label="Inventory">
       <div class="ui_icon ui_backpack"></div>
     </button>

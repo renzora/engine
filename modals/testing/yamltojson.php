@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='yamltojson_window' class='window bg-yellow-700' style='width: 600px;'>
+  <div data-window='yamltojson_window' class='window pixel-corners bg-yellow-700' style='width: 600px;'>
 
     <div data-part='handle' class='window_title bg-yellow-600 text-yellow-100 p-2 rounded-t'>
       <div class='float-right'>
