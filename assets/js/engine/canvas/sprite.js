@@ -634,7 +634,7 @@ var sprite = {
         },  
     
         calculatePath: function(startX, startY, endX, endY) {
-            const grid = collision.createWalkableGrid(); // Use the cached walkable grid
+            const grid = collision.walkableGridCache; // Use the cached walkable grid
             const graph = new Graph(grid, { diagonal: true });
             const start = graph.grid[startX][startY];
             const end = graph.grid[endX][endY];

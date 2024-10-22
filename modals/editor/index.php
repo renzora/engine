@@ -777,9 +777,6 @@ deleteSelectedObjects: function () {
     // Clear the selected objects array
     this.selectedObjects = [];
 
-    // Update the walkable grid after removing objects
-    collision.createWalkableGrid();
-
     console.log("Selected objects deleted.");
 
     // Switch back to select or lasso mode based on the previous mode
@@ -1039,9 +1036,6 @@ copySelectedObjects: function () {
         game.roomData.items.push(...pastedObjects);
         console.log("Objects pasted at", editor_utils_window.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
 
-        // Update walkable grid and re-render the scene
-        collision.createWalkableGrid();
-
         // Select the pasted objects
         this.selectedObjects = pastedObjects;
         console.log("Pasted objects are now selected:", this.selectedObjects);
@@ -1105,6 +1099,7 @@ saveRoomData: function () {
             // After a successful save, close the editor modal
             edit_mode_window.unmount(); // Call the unmount function to clean up
             modal.close('editor_window'); // Close the editor window
+            collision.createWalkableGrid();
         },
         error: function (data) {
             console.error('Error saving room data:', data);

@@ -1,6 +1,5 @@
 var collision = {
     walkableGridCache: null, // Cache for the walkable grid
-    cacheTime: 0, // Timestamp to manage cache invalidation
 
     // Check if a point is inside a polygon
     pointInPolygon: function(px, py, polygon) {
@@ -96,10 +95,13 @@ var collision = {
 
     // Optimized createWalkableGrid with caching
     createWalkableGrid: function() {
-        const now = Date.now();
-        if (this.walkableGridCache && now - this.cacheTime < 5000) {
+        // If the grid already exists, return the cached version
+        if (this.walkableGridCache) {
+            console.log("Using cached walkable grid.");
             return this.walkableGridCache;
         }
+
+        console.log("Creating walkable grid.");
 
         const width = game.worldWidth / 16;
         const height = game.worldHeight / 16;
@@ -154,8 +156,9 @@ var collision = {
             });
         }
 
+        // Cache the grid after it's created
         this.walkableGridCache = grid;
-        this.cacheTime = now;
+
         return grid;
     },
 

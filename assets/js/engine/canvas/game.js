@@ -252,8 +252,7 @@ var game = {
                 this.mainSprite = this.sprites[this.playerid];
                 this.setActiveSprite(this.playerid);
 
-
-                for (let i = 0; i < 1; i++) {
+                for (let i = 0; i < 10; i++) {
                     const npc = {
                         id: `npc${i}`,
                         x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
@@ -262,7 +261,7 @@ var game = {
                         boundaryY: 60, // Boundary y coordinate
                     isAnimal: true,
                     animalType: 'horse',
-                    speed: Math.floor(Math.random() * 200),
+                    speed: 170,
                     targetAim: false,
                     maxRange: 200,
                     health: 100,
@@ -270,8 +269,6 @@ var game = {
                     };
                     sprite.create(npc);
                 }
-
-                
 
                   this.modal_init();
             }
@@ -363,18 +360,16 @@ var game = {
                     game.sceneid = data.sceneid;
                     game.serverid = data.server_id; // Store the server_id for later use
 
+                    collision.createWalkableGrid();
+
                     this.overlappingTiles = [];
                     camera.update();
                     localStorage.setItem('sceneid', game.sceneid);
-                    game.selectedObjects = [];
-                    game.selectedCache = [];
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
                     //ui.notif("scene_change_notif", data.name, true);
                     audio.playAudio('gameplay_music_01', assets.use('gameplay_music_01'), 'music', true, '0.5');
                     audio.stopLoopingAudio('gameplay_music_01', 0.5);
-    
-                    //game.spawnRandomItems(500);
     
                 } else {
                     console.log('Error: ' + data.message);

@@ -411,14 +411,14 @@ updateSpriteEnergy: function(value) {
                 const posX = newX * 16;
                 const posY = newY * 16;
 
-                const collisionDetected = collision.check(newX * 16, newY * 16, sprite);
-                const isWalkable = collision.isTileWalkable(newX, newY);
+                const collisionResult = collision.check(newX * 16, newY * 16, sprite);
+            const isWalkable = !collisionResult.collisionDetected;
 
-                if (collisionDetected || !isWalkable) {
-                    game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-                } else {
-                    game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
-                }
+            if (collisionResult.collisionDetected || !isWalkable) {
+                game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+            } else {
+                game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+            }
 
                 // Render the square tile
                 game.ctx.fillRect(posX, posY, 16, 16);
