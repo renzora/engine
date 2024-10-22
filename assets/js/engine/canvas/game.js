@@ -84,7 +84,7 @@ var game = {
 
         assets.reloadAssets(assetsToReload, () => {
             console.log("Game data reloaded");
-            this.roomData = assets.load('roomData');
+            this.roomData = assets.use('roomData');
             this.updateGameElements();
         });
     },
@@ -170,10 +170,10 @@ var game = {
             this.ctx.imageSmoothingEnabled = false;
             document.body.appendChild(this.canvas);
             this.resizeCanvas();
-            this.itemsImg = assets.load('itemsImg');
-            this.itemsData = assets.load('itemsData');
-            this.objectData = assets.load('objectData');
-            this.fxData = assets.load('fxData');
+            this.itemsImg = assets.use('itemsImg');
+            this.itemsData = assets.use('itemsData');
+            this.objectData = assets.use('objectData');
+            this.fxData = assets.use('fxData');
 
 
             game.canvas.addEventListener('click', function(event) {
@@ -251,6 +251,25 @@ var game = {
 
                 this.mainSprite = this.sprites[this.playerid];
                 this.setActiveSprite(this.playerid);
+
+
+                for (let i = 0; i < 1; i++) {
+                    const npc = {
+                        id: `npc${i}`,
+                        x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
+                        y: 0 + Math.floor(Math.random() * 30), // Starting y coordinate
+                        boundaryX: 90, // Boundary x coordinate
+                        boundaryY: 60, // Boundary y coordinate
+                    isAnimal: true,
+                    animalType: 'horse',
+                    speed: Math.floor(Math.random() * 200),
+                    targetAim: false,
+                    maxRange: 200,
+                    health: 100,
+                    energy: 100
+                    };
+                    sprite.create(npc);
+                }
 
                 
 
@@ -352,7 +371,7 @@ var game = {
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
                     //ui.notif("scene_change_notif", data.name, true);
-                    audio.playAudio('gameplay_music_01', assets.load('gameplay_music_01'), 'music', true, '0.5');
+                    audio.playAudio('gameplay_music_01', assets.use('gameplay_music_01'), 'music', true, '0.5');
                     audio.stopLoopingAudio('gameplay_music_01', 0.5);
     
                     //game.spawnRandomItems(500);

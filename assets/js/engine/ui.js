@@ -10,7 +10,7 @@ var ui = {
 
   notif: function(id, message, replace = false) {
       return new Promise(resolve => {
-        audio.playAudio("notification", assets.load('notification'), 'sfx', false);
+        audio.playAudio("notification", assets.use('notification'), 'sfx', false);
           let container = document.getElementById('notification');
           if (!container) {
               container = document.createElement('div');
@@ -228,7 +228,7 @@ ajax: async function({ url, method = 'GET', data = null, outputType = 'text', su
                 const target = button.getAttribute('data-tab');
                 const containerId = button.getAttribute('data-container');
                 this.showTab(target, containerId);
-                audio.playAudio("click", assets.load('click'), 'sfx');
+                audio.playAudio("click", assets.use('click'), 'sfx');
             });
         });
 

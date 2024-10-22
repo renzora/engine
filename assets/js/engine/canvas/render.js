@@ -66,7 +66,7 @@ var render = {
         lighting.updateLights(deltaTime);
 
         if (weather.rainActive) {
-            audio.playAudio("rain", assets.load('rain'), 'ambience', true);
+            audio.playAudio("rain", assets.use('rain'), 'ambience', true);
         } else {
             audio.stopLoopingAudio('rain', 'ambience', 0.5);
         }
@@ -95,7 +95,7 @@ var render = {
                 const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
 
                 // Draw each background tile inside the viewport
-                game.ctx.drawImage(assets.load(bgTileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
+                game.ctx.drawImage(assets.use(bgTileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
 
                 // Increment the visible background tile count
                 this.backgroundTileCount++;
@@ -201,7 +201,7 @@ var render = {
                                             game.ctx.rotate(rotation);
     
                                             // Now render each tile relative to the object's center
-                                            game.ctx.drawImage(assets.load(tileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
+                                            game.ctx.drawImage(assets.use(tileData.t), srcX, srcY, 16, 16, posX, posY, 16, 16);
     
                                             game.ctx.restore();
                                         }

@@ -115,7 +115,7 @@ var assets = {
         this.updateLoadingBar(asset.name);
     },
 
-    load: function(name) {
+    use: function(name) {
         return this.loadedAssets[name];
     },
 

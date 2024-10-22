@@ -116,7 +116,7 @@ setupGamepadEvents: function() {
         this.throttle(() => {
             this.currentItemIndex = (this.currentItemIndex - 1 + 10) % 10;  // Move left through the slots, including empty ones
             this.selectItem(this.currentItemIndex);
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
         });
     },
 
@@ -124,7 +124,7 @@ setupGamepadEvents: function() {
         this.throttle(() => {
             this.currentItemIndex = (this.currentItemIndex + 1) % 10;  // Move right through the slots, including empty ones
             this.selectItem(this.currentItemIndex);
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
         });
     },
 
@@ -132,7 +132,7 @@ setupGamepadEvents: function() {
         if (!this.inTabSwitchingMode) {
             this.inTabSwitchingMode = true;
             this.highlightTabButton(this.currentTabButtonIndex);
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
         }
     },
 
@@ -141,7 +141,7 @@ setupGamepadEvents: function() {
             this.inTabSwitchingMode = false;
             this.clearTabHighlights();
             this.highlightSelectedTab();  // Ensure the active tab remains grey
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
         }
     },
 
@@ -152,14 +152,14 @@ setupGamepadEvents: function() {
                 this.isItemSelected = true;
                 this.highlightSelectedItem();  // Highlights the item or empty slot
                 this.targetItemIndex = this.currentItemIndex;  // Set the target index for swapping
-                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
             } else {
                 // Attempt to swap the items, but still allow highlighting of an empty slot
                 this.swapItems();
                 this.isItemSelected = false;
                 this.clearHighlights();
                 this.selectItem(this.currentItemIndex); // Re-select the current item to maintain the yellow border
-                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
             }
         });
     },
@@ -173,7 +173,7 @@ setupGamepadEvents: function() {
             } else {
                 // Implement any other behavior for B button when not in swap mode
                 console.log('B button pressed, no swap mode active.');
-                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
             }
         });
     },
@@ -348,7 +348,7 @@ selectItem: function(index) {
                 canvas.width = 16;
                 canvas.height = 16;
                 const ctx = canvas.getContext('2d');
-                const spriteSheet = assets.load(objectData.t);
+                const spriteSheet = assets.use(objectData.t);
 
                 ctx.drawImage(spriteSheet, tileX, tileY, 16, 16, 0, 0, 16, 16);
 
@@ -474,7 +474,7 @@ getFilteredInventory: function() {
             const ctx = canvas.getContext('2d');
 
             // Load the actual image from assets
-            const spriteSheet = assets.load(objectData.t);
+            const spriteSheet = assets.use(objectData.t);
 
             // Draw the sprite on the canvas
             ctx.drawImage(spriteSheet, tileX, tileY, 16, 16, 0, 0, 16, 16);
@@ -600,7 +600,7 @@ getFilteredInventory: function() {
             this.clearHighlights();
             target.classList.add('border-2', 'border-dashed', 'border-yellow-500');
             if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
-                audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
                 this.hasPlayedDragOverSound = true;
                 this.lastHoveredSlot = target;
             }
@@ -663,9 +663,9 @@ getFilteredInventory: function() {
         this.clearHighlights();
         this.selectItem(this.currentItemIndex);
 
-        audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+        audio.playAudio("sceneDrop", assets.use('sceneDrop'), 'sfx', false);
     } else {
-        audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
+        audio.playAudio("slotDrop", assets.use('slotDrop'), 'sfx', false);
     }
     return false;
 },

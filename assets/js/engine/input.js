@@ -56,7 +56,7 @@ var input = {
             ui_overlay_window.startReloading(); // Start the reloading process
         } else if (ui_overlay_window.remainingRounds <= 0) {
             console.log("X button held - No rounds left");
-            audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+            audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
         }
     },
     
@@ -99,7 +99,7 @@ var input = {
                 if (game.mainSprite.targetAim) {
                     game.mainSprite.dealDamage();
                     ui_overlay_window.updateBullets(ui_overlay_window.remainingBullets - 1);
-                    audio.playAudio("machinegun1", assets.load('machinegun1'), 'sfx', true);
+                    audio.playAudio("machinegun1", assets.use('machinegun1'), 'sfx', true);
                     effects.shakeMap(200, 4);
                 }
             } else {
@@ -108,11 +108,11 @@ var input = {
     
                 if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds > 0) {
                     console.log("Out of bullets! Press and hold 'X' on the gamepad to reload.");
-                    audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                    audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
                     ui.notif("no_bullets_notif", `Out of bullets! Press and hold 'X' on the gamepad to reload.`, true);
                 } else if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds <= 0) {
                     console.log("No bullets and no rounds left");
-                    audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                    audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
                     ui_overlay_window.noBulletsLeft();
                 }
             }
@@ -373,7 +373,7 @@ var input = {
         // Check objects
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(item => {
-                const itemData = assets.load('objectData')[item.id];
+                const itemData = assets.use('objectData')[item.id];
                 if (itemData) {
                     const itemCenterX = item.x[0] * 16 + 8; // Center X coordinate
                     const itemCenterY = item.y[0] * 16 + 8; // Center Y coordinate
@@ -412,7 +412,7 @@ var input = {
                     ui_overlay_window.handleReload(); // Handle reload if bullets are at zero
                 } else {
                     console.log("No rounds left to reload");
-                    audio.playAudio("empty_gun", assets.load('empty_gun'), 'sfx', false);
+                    audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
                 }
             }
     

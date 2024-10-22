@@ -257,7 +257,7 @@ const actions = {
         if (!sprite || !script.walk.audio) return;
     
         const soundId = script.walk.audio.soundId;
-        const audioBuffer = assets.load(soundId); // Assuming assets.load loads the audio buffer
+        const audioBuffer = assets.use(soundId); // Assuming assets.load loads the audio buffer
     
         // Use the custom cooldown if provided, otherwise default to audioCooldown
         const customCooldown = script.walk.audio.cooldown || this.audioCooldown;

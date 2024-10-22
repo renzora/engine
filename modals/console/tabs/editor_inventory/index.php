@@ -25,7 +25,7 @@ var ui_console_editor_inventory = {
     },
 
     displayItems: function() {
-    var itemData = assets.load('objectData'); // Load object data from version 1
+    var itemData = assets.use('objectData'); // Load object data from version 1
     var gridContainer = document.querySelector('.inventory-grid');
     var tileSize = 16;
     var tilesPerRow = 150;
@@ -41,7 +41,7 @@ var ui_console_editor_inventory = {
             itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
 
             items.forEach(function(item) {
-                const tilesetImage = assets.load(item.t); // Load tileset image
+                const tilesetImage = assets.use(item.t); // Load tileset image
                 const itemCanvas = document.createElement('canvas');
                 const ctx = itemCanvas.getContext('2d');
 
@@ -125,7 +125,7 @@ var ui_console_editor_inventory = {
             frameIndices = itemData.i;
         }
 
-        const img = assets.load(itemData.t);
+        const img = assets.use(itemData.t);
         if (!img) return;
 
         let frameIndex = 0;

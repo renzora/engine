@@ -21,7 +21,7 @@ const utils = {
         const renderQueue = [];
 
         game.roomData.items.forEach(roomItem => {
-            const itemData = assets.load('objectData')[roomItem.id];
+            const itemData = assets.use('objectData')[roomItem.id];
             if (itemData && itemData.length > 0) {
                 const tileData = itemData[0];
                 const xCoordinates = roomItem.x || [];

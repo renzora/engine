@@ -48,7 +48,7 @@ if ($auth) {
                     itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
 
                     items.forEach(function(item) {
-                        const tilesetImage = assets.load(item.t);
+                        const tilesetImage = assets.use(item.t);
                         const itemCanvas = document.createElement('canvas');
                         const ctx = itemCanvas.getContext('2d');
 
@@ -132,7 +132,7 @@ if ($auth) {
                 frameIndices = itemData.i;
             }
 
-            const img = assets.load(itemData.t);
+            const img = assets.use(itemData.t);
             if (!img) return;
 
             let frameIndex = 0;

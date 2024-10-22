@@ -326,7 +326,7 @@ var modal = {
             }
 
             modalElement.remove();
-            audio.playAudio("closModal", assets.load('closeModal'), 'sfx');
+            audio.playAudio("closModal", assets.use('closeModal'), 'sfx');
             this.modals = this.modals.filter(modal => modal.getAttribute('data-window') !== id);
             ui.unmount(id);
 

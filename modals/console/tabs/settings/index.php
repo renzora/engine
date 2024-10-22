@@ -38,3 +38,6 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="actions.dismountHorse('horse1');">dismount horse</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="modal.load({ id: 'dvd_window', url: 'silly/dvd/index.php', name: 'dvd window', drag: true, reload: true });">dvd</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.toggleWebGL(true);">Turn on WebGL</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.toggleWebGL(false);">Turn off WebGL</button>

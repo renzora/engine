@@ -2,7 +2,7 @@
 
 header('Content-type: application/json');
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
-include $_SERVER['DOCUMENT_ROOT'] . '/ajax/helpers/inputCheck.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/helpers/inputCheck.php';
 
 use Firebase\JWT\JWT;
 

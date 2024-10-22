@@ -191,7 +191,7 @@
           this.clearHighlights();
           target.classList.add('border-2', 'border-dashed', 'border-yellow-500');
           if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
-            audio.playAudio("menuDrop", assets.load('menuDrop'), 'sfx', false);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
             this.hasPlayedDragOverSound = true;
             this.lastHoveredSlot = target;
           }
@@ -230,9 +230,9 @@
           ui_inventory_window.updateScale(this.dragSrcEl);
           ui_inventory_window.updateScale(target);
 
-          audio.playAudio("sceneDrop", assets.load('sceneDrop'), 'sfx', false);
+          audio.playAudio("sceneDrop", assets.use('sceneDrop'), 'sfx', false);
         } else {
-          audio.playAudio("slotDrop", assets.load('slotDrop'), 'sfx', false);
+          audio.playAudio("slotDrop", assets.use('slotDrop'), 'sfx', false);
         }
         this.clearHighlights();
         return false;

@@ -62,7 +62,7 @@ var collision = {
         }
 
         for (const item of game.roomData.items) {
-            const itemData = assets.load('objectData')[item.id]?.[0];
+            const itemData = assets.use('objectData')[item.id]?.[0];
             if (!itemData?.w && itemData.w !== 0) continue;
 
             if (Array.isArray(itemData.w)) {
@@ -107,7 +107,7 @@ var collision = {
 
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(item => {
-                const itemData = assets.load('objectData')[item.id];
+                const itemData = assets.use('objectData')[item.id];
                 if (!itemData || itemData.length === 0) return;
 
                 let polygonPoints = itemData[0].w;
