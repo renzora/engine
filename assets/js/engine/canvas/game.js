@@ -252,23 +252,7 @@ var game = {
                 this.mainSprite = this.sprites[this.playerid];
                 this.setActiveSprite(this.playerid);
 
-                for (let i = 0; i < 10; i++) {
-                    const npc = {
-                        id: `npc${i}`,
-                        x: 0 + Math.floor(Math.random() * 60), // Starting x coordinate
-                        y: 0 + Math.floor(Math.random() * 30), // Starting y coordinate
-                        boundaryX: 90, // Boundary x coordinate
-                        boundaryY: 60, // Boundary y coordinate
-                    isAnimal: true,
-                    animalType: 'horse',
-                    speed: 170,
-                    targetAim: false,
-                    maxRange: 200,
-                    health: 100,
-                    energy: 100
-                    };
-                    sprite.create(npc);
-                }
+
 
                   this.modal_init();
             }
@@ -312,7 +296,7 @@ var game = {
 
         modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
     
-        modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
+        //modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
     
         modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
     
@@ -321,6 +305,8 @@ var game = {
         modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
 
         modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true });
+
+        modal.load({ id: 'navigator_window', url: 'navigator/index.php', name: 'navigator', drag: true, reload: true });
     },
 
     pause: function() {
