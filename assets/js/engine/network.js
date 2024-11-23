@@ -1,5 +1,5 @@
 var network = {
-    ws_uri: "wss://localhost:3002",
+    ws_uri: "wss://localhost:3000",
     socket: null,
 
     init: function() {

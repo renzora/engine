@@ -371,83 +371,64 @@ updateSpriteEnergy: function(value) {
     getCameraPosition: function() {
         return `X: ${camera.cameraX}, Y: ${camera.cameraY}`;
     },
-    renderCollisionBoundaries: function() {
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            const centerX = sprite.x + sprite.width / 2;
-            const centerY = sprite.y + sprite.height * 0.75; // Adjusted to half the sprite height
-            const radiusX = sprite.width / 2; // Semi-major axis (horizontal radius)
-            const radiusY = sprite.height / 4; // Semi-minor axis (vertical radius, half the bottom half)
+renderCollisionBoundaries: function() {
+    for (const id in game.sprites) {
+        const sprite = game.sprites[id];
+        const rectX = sprite.x;
+        const rectY = sprite.y + sprite.height / 2; // Positioned halfway down the sprite's height
+        const rectWidth = sprite.width;
+        const rectHeight = sprite.height / 2; // The lower half of the sprite
 
-            game.ctx.save();
-            game.ctx.strokeStyle = 'red';
-            game.ctx.lineWidth = 1;
+        game.ctx.save();
+        game.ctx.strokeStyle = 'white';
+        game.ctx.lineWidth = 1;
+        game.ctx.strokeRect(rectX, rectY, rectWidth, rectHeight); // Draw the rectangle
+        game.ctx.restore();
+    }
+},
+renderNearestWalkableTile: function() {
+    for (const id in game.sprites) {
+        const sprite = game.sprites[id];
+        const gridX = Math.round(sprite.x / 16);
+        const gridY = Math.round(sprite.y / 16);
 
-            // Draw an oval (ellipse) for the collision boundary
-            game.ctx.beginPath();
-            game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
-            game.ctx.stroke();
+        const directions = [
+            { x: 0, y: -1 }, // N
+            { x: 1, y: 0 },  // E
+            { x: 0, y: 1 },  // S
+            { x: -1, y: 0 }  // W
+        ];
 
-            game.ctx.restore();
-        }
-    },
-    renderNearestWalkableTile: function() {
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            const gridX = Math.round(sprite.x / 16);
-            const gridY = Math.round(sprite.y / 16);
+        directions.forEach(direction => {
+            const newX = gridX + direction.x;
+            const newY = gridY + direction.y;
 
-            const directions = [
-                { x: 0, y: -1 }, // N
-                { x: 1, y: 0 },  // E
-                { x: 0, y: 1 },  // S
-                { x: -1, y: 0 }  // W
-            ];
+            const posX = newX * 16;
+            const posY = newY * 16;
 
-            directions.forEach(direction => {
-                const newX = gridX + direction.x;
-                const newY = gridY + direction.y;
-
-                const posX = newX * 16;
-                const posY = newY * 16;
-
-                const collisionResult = collision.check(newX * 16, newY * 16, sprite);
+            const collisionResult = collision.check(newX * 16, newY * 16, sprite);
             const isWalkable = !collisionResult.collisionDetected;
 
             if (collisionResult.collisionDetected || !isWalkable) {
-                game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+                game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Red for unwalkable
             } else {
-                game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)';
+                game.ctx.fillStyle = 'rgba(0, 255, 0, 0.5)'; // Green for walkable
             }
 
-                // Render the square tile
-                game.ctx.fillRect(posX, posY, 16, 16);
+            // Render the square tile
+            game.ctx.fillRect(posX, posY, 16, 16);
 
-                // Render oval collision boundaries starting halfway down the sprite
-                const centerX = sprite.x + sprite.width / 2;
-                const centerY = sprite.y + sprite.height * 0.75; // Adjusted center
-                const radiusX = sprite.width / 2;
-                const radiusY = sprite.height / 4; // Adjusted radius
-
-                game.ctx.save();
-                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-                game.ctx.lineWidth = 1;
-                game.ctx.beginPath();
-                game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
-                game.ctx.stroke();
-                game.ctx.restore();
-
-                // Display grid information
-                game.ctx.fillStyle = 'white';
-                game.ctx.font = '2px Tahoma';
-                game.ctx.textAlign = 'left';
-                game.ctx.textBaseline = 'top';
-                game.ctx.fillText(`x:${newX}`, posX + 1, posY + 1);
-                game.ctx.fillText(`y:${newY}`, posX + 1, posY + 3);
-                game.ctx.fillText(`${posX},${posY}`, posX + 1, posY + 6);
-            });
-        }
-    },
+            // Display grid information
+            game.ctx.fillStyle = 'white';
+            game.ctx.font = '2px Tahoma';
+            game.ctx.textAlign = 'left';
+            game.ctx.textBaseline = 'top';
+            game.ctx.fillText(`x:${newX}`, posX + 1, posY + 1);
+            game.ctx.fillText(`y:${newY}`, posX + 1, posY + 3);
+            game.ctx.fillText(`${posX},${posY}`, posX + 1, posY + 6);
+        });
+    }
+},
     renderAttackRadius: function() {
         if (!this.showAttackRadius) return; // Check if the showAttackRadius is enabled
         for (const id in game.sprites) {

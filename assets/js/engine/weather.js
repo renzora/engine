@@ -43,6 +43,7 @@ var weather = {
                 snowflake.x = Math.random() * game.canvas.width;
             }
         });
+        utils.tracker('weather.updateSnow');
     },
 
     drawSnow: function() {
@@ -92,6 +93,7 @@ var weather = {
                 star.x = Math.random() * game.canvas.width;
             }
         }
+        utils.tracker('weather.updateFireflys');
     },
 
     drawFireflys: function() {
@@ -142,5 +144,6 @@ var weather = {
                 drop.x = Math.random() * game.canvas.width;
             }
         }
+        utils.tracker('weather.updateRain');
     }
 };

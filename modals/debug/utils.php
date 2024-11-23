@@ -373,26 +373,30 @@ updateSpriteEnergy: function(value) {
     getCameraPosition: function() {
         return `X: ${camera.cameraX}, Y: ${camera.cameraY}`;
     },
-    renderCollisionBoundaries: function() {
-        for (const id in game.sprites) {
-            const sprite = game.sprites[id];
-            const centerX = sprite.x + sprite.width / 2;
-            const centerY = sprite.y + sprite.height * 0.75; // Adjusted to half the sprite height
-            const radiusX = sprite.width / 2; // Semi-major axis (horizontal radius)
-            const radiusY = sprite.height / 4; // Semi-minor axis (vertical radius, half the bottom half)
+renderCollisionBoundaries: function() {
+    for (const id in game.sprites) {
+        const sprite = game.sprites[id];
+        
+        // Calculate the boundary rectangle dimensions
+        const boundaryX = sprite.x;
+        const boundaryY = sprite.y + sprite.height / 2; // Start from the midpoint of the sprite height
+        const boundaryWidth = sprite.width; // Full width of the sprite
+        const boundaryHeight = sprite.height / 2; // Bottom half of the sprite height
 
-            game.ctx.save();
-            game.ctx.strokeStyle = 'red';
-            game.ctx.lineWidth = 1;
+        game.ctx.save();
+        game.ctx.strokeStyle = 'red';
+        game.ctx.lineWidth = 1;
 
-            // Draw an oval (ellipse) for the collision boundary
-            game.ctx.beginPath();
-            game.ctx.ellipse(centerX, centerY, radiusX, radiusY, 0, 0, 2 * Math.PI);
-            game.ctx.stroke();
+        // Draw the collision boundary as a rectangle
+        game.ctx.strokeRect(boundaryX, boundaryY, boundaryWidth, boundaryHeight);
 
-            game.ctx.restore();
-        }
-    },
+        // Optionally, fill the rectangle with transparency to highlight the area
+        game.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
+        game.ctx.fillRect(boundaryX, boundaryY, boundaryWidth, boundaryHeight);
+
+        game.ctx.restore();
+    }
+},
     renderNearestWalkableTile: function() {
         for (const id in game.sprites) {
             const sprite = game.sprites[id];

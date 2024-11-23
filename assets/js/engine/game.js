@@ -31,7 +31,7 @@ var game = {
     particles: [],
     overlappingTiles: [],
     isPaused: false,
-    sceneBg: "grass",
+    sceneBg: '6737dcd37d05e',
     activeSpriteId: null,
     timeActive: true,
     inputMethod: 'keyboard',
@@ -47,7 +47,7 @@ var game = {
         { name: "Collect 100 coins from merchant", status: false }
     ],
     gameTime: {
-        hours: 7,
+        hours: 0,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -123,6 +123,7 @@ var game = {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
 
         assets.preload([
+            { name: 'character', path: 'img/sprites/character/test/character.png' },
             { name: 'head', path: 'img/sprites/character/test/head.png' },
             { name: 'eyes', path: 'img/sprites/character/test/eyes.png' },
             { name: 'hair', path: 'img/sprites/character/test/hair.png' },
@@ -132,11 +133,17 @@ var game = {
             { name: 'facial', path: 'img/sprites/character/test/facial.png' },
             { name: 'outfit', path: 'img/sprites/character/test/outfit.png' },
             { name: 'horse', path: 'img/sprites/animals/horse/1.png' },
+            { name: 'cow', path: 'img/sprites/animals/cow/1.png' },
+            { name: 'chick', path: 'img/sprites/animals/chick/1.png' },
+            { name: 'chicken', path: 'img/sprites/animals/chicken/1.gif' },
+            { name: 'pig', path: 'img/sprites/animals/pig/1.png' },
+            { name: 'female-01', path: 'img/sprites/character/female-01/1.png' },
             { name: 'gen1', path: 'img/tiles/gen1.png' },
             { name: 'gameplay_music_01', path: 'audio/music/gameplay_music_01.mp3' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
+            { name: 'spritesData', path: 'json/spritesData.json' },
             { name: 'fxData', path: 'json/fxData.json' },
             { name: 'walkGrass', path: 'audio/sfx/movement/footstep.wav' },
             { name: 'closeModal', path: 'audio/sfx/ui/closeModal.mp3' },
@@ -169,6 +176,7 @@ var game = {
             this.ctx = this.canvas.getContext('2d');
             this.ctx.imageSmoothingEnabled = false;
             document.body.appendChild(this.canvas);
+            
             this.resizeCanvas();
             this.itemsImg = assets.use('itemsImg');
             this.itemsData = assets.use('itemsData');
@@ -181,14 +189,6 @@ var game = {
                     console_window.toggleConsoleWindow();
                 }
             });
-        
-
-            if (game.sprites[this.playerid]) {
-                this.mainSprite = game.sprites[this.playerid];
-                this.setActiveSprite(this.playerid);
-            } else {
-                console.warn(`Sprite with player ID ${this.playerid} not found.`);
-            }
 
             console.log(this.mainSprite);
 
@@ -207,21 +207,15 @@ var game = {
                     showInList: true
                 });
             } else {
+
+
                 const playerOptions = {
-                    id: 'sprite_1',  
-                    x: 29,
-                    y: 23,
+                    id: this.playerid,  
+                    x: null,
+                    y: null,
                     isPlayer: true,
-                    speed: 100,
-                    head: 1,
-                    eyes: 1,
-                    body: 1,
-                    hair: 1,
-                    outfit: 1,
-                    hands: 2,
-                    hat: 0,
-                    facial: 0,
-                    glasses: 0,
+                    topSpeed: 100,
+                    animalType: 'female-01',
                     targetAim: false,
                     maxRange: 200,
                     health: 100,
@@ -230,29 +224,11 @@ var game = {
               
                   sprite.create(playerOptions);
 
-                  const horseOptions = {
-                    id: this.playerid,
-                    x: 23,
-                    y: 24,
-                    isAnimal: true,
-                    animalType: 'horse',
-                    direction: 'E',
-                    speed: 70,
-                    width: 48,
-                    height: 32,
-                    maxRange: 300,
-                    health: 200,
-                    energy: 100,
-                    animationSpeed: 0.15
-                };
-                
-
-                sprite.create(horseOptions);
 
                 this.mainSprite = this.sprites[this.playerid];
                 this.setActiveSprite(this.playerid);
 
-                
+
 
                   this.modal_init();
             }
@@ -305,6 +281,8 @@ var game = {
         modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
 
         modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true });
+
+        //modal.load({ id: 'navigator_window', url: 'navigator/index.php', name: 'navigator', drag: true, reload: true });
     },
 
     pause: function() {
@@ -343,19 +321,24 @@ var game = {
                     game.roomData = data.roomData;
                     game.sceneid = data.sceneid;
                     game.serverid = data.server_id; // Store the server_id for later use
+                    game.worldWidth = data.width || 1280;
+                    game.worldHeight = data.height || 944;
+                    game.sceneBg = data.bg || 'grass';
+                    game.resizeCanvas();
+                    game.mainSprite.x = data.startingX || 0;
+                    game.mainSprite.y = data.startingY || 0;
+                    game.mainSprite.direction = data.facing || 'S';
+                    collision.walkableGridCache = null;
+                    collision.createWalkableGrid();
 
                     this.overlappingTiles = [];
                     camera.update();
                     localStorage.setItem('sceneid', game.sceneid);
-                    game.selectedObjects = [];
-                    game.selectedCache = [];
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
                     //ui.notif("scene_change_notif", data.name, true);
                     audio.playAudio('gameplay_music_01', assets.use('gameplay_music_01'), 'music', true, '0.5');
                     audio.stopLoopingAudio('gameplay_music_01', 0.5);
-    
-                    //game.spawnRandomItems(500);
     
                 } else {
                     console.log('Error: ' + data.message);
@@ -425,34 +408,55 @@ var game = {
         }
     },    
 
-    resizeCanvas: function() {
-        const consoleElement = document.getElementById('console_window');
-        const adjacentMenu = document.getElementById('tabs'); // Assuming this is the ID of the adjacent menu
-        let consoleWidth = 0;
-        let menuWidth = 0;
-    
-        // Get the widths of the console and adjacent menu if they are open
-        if (consoleElement && console_window.isOpen) {
-            consoleWidth = consoleElement.offsetWidth;
-        }
-    
-        if (adjacentMenu && adjacentMenu.style.display !== 'none') { // Adjust based on your menu's display logic
-            menuWidth = adjacentMenu.offsetWidth;
-        }
-    
-        const totalOffsetWidth = consoleWidth + menuWidth; // Combine the widths of both elements
-        const availableWidth = window.innerWidth - totalOffsetWidth;
-        
-        // Resize the canvas to fit the available space on the right
-        this.canvas.width = availableWidth;
-        this.canvas.height = window.innerHeight;
-    
-        // Keep the canvas positioned on the right, leaving space for the console and menu
-        this.canvas.style.position = 'absolute';
-        this.canvas.style.left = totalOffsetWidth > 0 ? `${totalOffsetWidth}px` : '0'; // Adjust based on combined width
-        this.canvas.style.top = '50%';
-        this.canvas.style.transform = 'translate(0, -50%)'; // Center vertically
-    },  
+resizeCanvas: function() {
+    const consoleElement = document.getElementById('console_window');
+    const adjacentMenu = document.getElementById('tabs');
+    let consoleWidth = 0;
+    let menuWidth = 0;
+
+    // Calculate total width offsets (console and menu)
+    if (consoleElement && console_window.isOpen) {
+        consoleWidth = consoleElement.offsetWidth;
+    }
+    if (adjacentMenu && adjacentMenu.style.display !== 'none') {
+        menuWidth = adjacentMenu.offsetWidth;
+    }
+
+    const totalOffsetWidth = consoleWidth + menuWidth;
+
+    // Calculate available dimensions independently
+    const availableWidth = window.innerWidth - totalOffsetWidth;
+    const availableHeight = window.innerHeight;
+
+    // Determine canvas dimensions based on world size and zoom level
+    const canvasWidth = Math.min(this.worldWidth * this.zoomLevel, availableWidth);
+    const canvasHeight = Math.min(this.worldHeight * this.zoomLevel, availableHeight);
+
+    // Set canvas dimensions independently
+    this.canvas.width = canvasWidth;
+    this.canvas.height = canvasHeight;
+
+    // Update canvas CSS styles to match calculated dimensions
+    this.canvas.style.width = `${canvasWidth}px`;
+    this.canvas.style.height = `${canvasHeight}px`;
+
+    // Center the canvas in the viewport
+    const horizontalOffset = (availableWidth - canvasWidth) / 2 + totalOffsetWidth;
+    const verticalOffset = (availableHeight - canvasHeight) / 2;
+
+    this.canvas.style.position = 'absolute';
+    this.canvas.style.left = `${horizontalOffset}px`;
+    this.canvas.style.top = `${verticalOffset}px`;
+
+    // Log dimensions and offsets for debugging
+    console.log(`Viewport Dimensions: ${window.innerWidth}x${window.innerHeight}`);
+    console.log(`Canvas Dimensions: ${this.canvas.width}x${this.canvas.height}`);
+    console.log(`Available Width: ${availableWidth}, Available Height: ${availableHeight}`);
+    console.log(`Offsets - Horizontal: ${horizontalOffset}, Vertical: ${verticalOffset}`);
+    console.log(`Console Width: ${consoleWidth}, Menu Width: ${menuWidth}`);
+},
+
+
     
     handleMouseDown: function(event) {
 
@@ -483,7 +487,7 @@ var game = {
 
     render: function () {
         // Clear the canvas and fill with the background color
-        this.ctx.fillStyle = '#333';
+        this.ctx.fillStyle = '#181D29';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.ctx.imageSmoothingEnabled = false;
@@ -549,55 +553,58 @@ var game = {
     },
     
     loop: function(timestamp) {
-        if (!this.lastTime) {
-            this.lastTime = timestamp;
-            this.lastFpsUpdateTime = timestamp;
-            requestAnimationFrame(this.loop.bind(this));
-            return;
-        }
-    
-        const timeElapsed = timestamp - this.lastTime;
-    
-        if (timeElapsed > 1000) {
-            this.accumulatedTime = this.fixedDeltaTime;
-        } else {
-            this.accumulatedTime += timeElapsed;
-        }
-    
-        this.deltaTime = this.fixedDeltaTime;
+    if (!this.lastTime) {
         this.lastTime = timestamp;
-    
-        while (this.accumulatedTime >= this.fixedDeltaTime) {
-            render.updateGameLogic(this.fixedDeltaTime);
-            this.accumulatedTime -= this.fixedDeltaTime;
-        }
-    
-        this.render();
-    
-        const fpsUpdateInterval = 100;  // Update FPS and chart every 100ms
-        if (timestamp - this.lastFpsUpdateTime >= fpsUpdateInterval) {
-            const debugFPS = document.getElementById('gameFps');
-            const fps = 1000 / timeElapsed;
-    
-            // Update FPS display
-            if (debugFPS) {
-                debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
-            }
-    
-            // Update FPS chart if fps_monitor_window exists
-            if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
-                fps_monitor_window.renderChart(fps);
-            }
-    
-            this.lastFpsUpdateTime = timestamp;
-        }
-    
-        const gameTimeDisplay = document.getElementById('game_time');
-        if (gameTimeDisplay) {
-            gameTimeDisplay.innerHTML = this.gameTime.display();
-        }
-    
+        this.lastFpsUpdateTime = timestamp;
         requestAnimationFrame(this.loop.bind(this));
+        return;
+    }
+
+    const timeElapsed = timestamp - this.lastTime;
+
+    if (timeElapsed > 1000) {
+        this.accumulatedTime = this.fixedDeltaTime;
+    } else {
+        this.accumulatedTime += timeElapsed;
+    }
+
+    this.deltaTime = this.fixedDeltaTime;
+    this.lastTime = timestamp;
+
+    while (this.accumulatedTime >= this.fixedDeltaTime) {
+        render.updateGameLogic(this.fixedDeltaTime);
+        this.accumulatedTime -= this.fixedDeltaTime;
+    }
+
+    this.render();
+
+    // Calculate FPS
+    const fps = 1000 / timeElapsed;
+
+    // Track FPS using utils.tracker
+    utils.tracker('fps', fps);
+  
+
+    // Update FPS chart if fps_monitor_window exists
+    if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
+        utils.finalizeFrame();
+        fps_monitor_window.renderChart();
+    }
+
+    // Update FPS display in debug UI
+    const debugFPS = document.getElementById('gameFps');
+    if (debugFPS) {
+        debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
+    }
+
+    // Update game time display
+    const gameTimeDisplay = document.getElementById('game_time');
+    if (gameTimeDisplay) {
+        gameTimeDisplay.innerHTML = this.gameTime.display();
+    }
+
+    // Request the next animation frame
+    requestAnimationFrame(this.loop.bind(this));
     }
     
 };

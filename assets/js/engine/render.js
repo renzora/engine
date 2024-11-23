@@ -44,65 +44,82 @@ var render = {
         return expandedTileData;
     },
 
-    updateGameLogic: function(deltaTime) {
-        gamepad.updateGamepadState();
+updateGameLogic: function(deltaTime) {
+    gamepad.updateGamepadState();
 
-        for (let id in game.sprites) {
-            const sprite = game.sprites[id];
+    const viewportXStart = Math.floor(camera.cameraX / 16);
+    const viewportXEnd = Math.ceil((camera.cameraX + window.innerWidth / game.zoomLevel) / 16);
+    const viewportYStart = Math.floor(camera.cameraY / 16);
+    const viewportYEnd = Math.ceil((camera.cameraY + window.innerHeight / game.zoomLevel) / 16);
+
+    for (let id in game.sprites) {
+        const sprite = game.sprites[id];
+        const spriteRight = sprite.x + sprite.width;
+        const spriteBottom = sprite.y + sprite.height;
+
+        // Only update sprites in the viewport
+        if (
+            spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
+            spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16
+        ) {
             if (sprite.update) {
                 sprite.update(deltaTime);
             }
         }
+    }
 
-        camera.update();
-        game.gameTime.update(deltaTime);
-        lighting.updateDayNightCycle();
-        animate.updateAnimatedTiles(deltaTime);
-        weather.updateSnow(deltaTime);
-        weather.updateRain(deltaTime);
-        weather.updateFireflys(deltaTime);
-        particles.updateParticles(deltaTime);
-        effects.transitions.update();
-        lighting.updateLights(deltaTime);
+    camera.update();
+    game.gameTime.update(deltaTime);
+    lighting.updateDayNightCycle();
+    animate.updateAnimatedTiles(deltaTime);
+    weather.updateSnow(deltaTime);
+    weather.updateRain(deltaTime);
+    weather.updateFireflys(deltaTime);
+    particles.updateParticles(deltaTime);
+    effects.transitions.update();
 
-        if (weather.rainActive) {
-            audio.playAudio("rain", assets.use('rain'), 'ambience', true);
-        } else {
-            audio.stopLoopingAudio('rain', 'ambience', 0.5);
-        }
+    if (weather.rainActive) {
+        audio.playAudio("rain", assets.use('rain'), 'ambience', true);
+    } else {
+        audio.stopLoopingAudio('rain', 'ambience', 0.5);
+    }
 
-        actions.checkForNearbyItems();
+    actions.checkForNearbyItems();
+},
 
-        if (typeof ui_window !== 'undefined' && ui_window.checkAndUpdateUIPositions) {
-            ui_window.checkAndUpdateUIPositions();
-        }
-    },
 
     // Modify renderBackground to use cached background for the entire world
-    renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        this.backgroundTileCount = 0;  // Reset background tile count
-        const bgTileData = game.objectData[game.sceneBg][0];
-        const tileSize = 16;
+renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
+    this.backgroundTileCount = 0; // Reset background tile count
+    
+    // Check if sceneBg is null
+    if (!game.sceneBg) {
+        return;
+    }
 
-        // Loop through only the tiles in the viewport
-        for (let y = Math.floor(viewportYStart); y <= Math.floor(viewportYEnd); y++) {
-            for (let x = Math.floor(viewportXStart); x <= Math.floor(viewportXEnd); x++) {
-                const posX = x * tileSize;
-                const posY = y * tileSize;
+    const bgTileData = game.objectData[game.sceneBg][0];
+    const tileSize = 16;
 
-                const tileFrameIndex = bgTileData.i;
-                const srcX = (tileFrameIndex % 150) * tileSize;
-                const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
+    // Loop through only the tiles in the viewport
+    for (let y = Math.floor(viewportYStart); y <= Math.floor(viewportYEnd); y++) {
+        for (let x = Math.floor(viewportXStart); x <= Math.floor(viewportXEnd); x++) {
+            const posX = x * tileSize;
+            const posY = y * tileSize;
 
-                // Draw each background tile inside the viewport
-                game.ctx.drawImage(assets.use(bgTileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
+            const tileFrameIndex = bgTileData.i;
+            const srcX = (tileFrameIndex % 150) * tileSize;
+            const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
 
-                // Increment the visible background tile count
-                this.backgroundTileCount++;
-                this.tileCount++;  // Increment total tile count
-            }
+            // Draw each background tile inside the viewport
+            game.ctx.drawImage(assets.use(bgTileData.t), srcX, srcY, tileSize, tileSize, posX, posY, tileSize, tileSize);
+
+            // Increment the visible background tile count
+            this.backgroundTileCount++;
+            this.tileCount++; // Increment total tile count
         }
-    },
+    }
+    utils.tracker('render.renderBackground');
+},
 
     renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
         const renderQueue = [];
@@ -118,11 +135,6 @@ var render = {
     
         // 1. Render the background first
         this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
-    
-        // 2. Render the grid if enabled
-        if (utils.objExists('editor_utils_window.renderGrid')) {
-            editor_utils_window.renderGrid();
-        }
     
         // 3. Render the game objects
         if (game.roomData && game.roomData.items) {
@@ -247,6 +259,13 @@ var render = {
         renderQueue.forEach(item => {
             item.draw();
         });
+
+                // 2. Render the grid if enabled
+        if (utils.objExists('editor_utils_window.renderGrid')) {
+            editor_utils_window.renderGrid();
+        }
+
+        utils.tracker('render.renderAll');
     },    
 
     handleSway: function(roomItem) {
@@ -268,6 +287,8 @@ var render = {
 
             return sway;
         }
+
+        utils.tracker('render.handleSway');
 
         return 0;  // No sway if outside the viewport
     },
@@ -334,19 +355,32 @@ var render = {
         }
     },
 
-    renderLightingEffects: function () {
-        lighting.drawNightFilter();
-        game.ctx.globalCompositeOperation = lighting.compositeOperation;
-        game.ctx.drawImage(lighting.createLightMask(), 0, 0);
-        game.ctx.globalCompositeOperation = 'source-over';
-        game.ctx.imageSmoothingEnabled = false;
-    },
+renderLightingEffects: function () {
+    const ctx = game.ctx;
+
+    // Save the current context state
+    ctx.save();
+
+    // Apply the night filter over the entire scene
+    ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
+    ctx.globalCompositeOperation = 'multiply'; // Darken the scene
+    ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+
+    // Apply the light mask using 'screen' blending mode for additive effect
+    ctx.globalCompositeOperation = 'screen';
+    ctx.drawImage(lighting.createLightMask(), 0, 0);
+
+    // Restore the context to default
+    ctx.restore();
+},
+
+
 
     renderWeatherEffects: function () {
-        //weather.drawSnow();
-        //weather.drawRain();
-        //weather.drawFireflys();
-        //lighting.drawGreyFilter();
+        weather.drawSnow();
+        weather.drawRain();
+        weather.drawFireflys();
+        lighting.drawGreyFilter();
         render.aimTool();
     },
 
@@ -444,6 +478,7 @@ var render = {
                         }
                     }
                 }
+
             });
         }
     },
@@ -497,6 +532,7 @@ var render = {
                             console.log(`Effect removed: ${fxId}`);
                         }
                     }
+
                 }
             });
         }

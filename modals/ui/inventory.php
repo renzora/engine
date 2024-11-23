@@ -3,7 +3,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 
-<div data-window='ui_inventory_window' data-close="false" class="fixed bottom-2 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
+<div data-window='ui_inventory_window' data-close="false" class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
 
   <!-- Inventory Slots -->
   <div id="ui_inventory_window" class="pixel-corners flex space-x-2 bg-[#0a0d14] p-2 shadow-inner hover:shadow-lg border border-black rounded-lg">

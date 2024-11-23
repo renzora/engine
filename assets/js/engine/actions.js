@@ -1,6 +1,18 @@
 const actions = {
     audioCooldown: 0.5, // Cooldown period in seconds
     lastPlayedTimesByType: {}, // Track last played time by object type
+    throttleInterval: 2000, // Global throttle interval in milliseconds (2 seconds)
+    lastExecutionTime: 0, // Tracks the last execution time for any action
+
+        isThrottled: function () {
+        const now = Date.now();
+        if (now - this.lastExecutionTime < this.throttleInterval) {
+            return true; // Throttled
+        }
+
+        this.lastExecutionTime = now; // Update the last executed time
+        return false; // Not throttled
+    },
 
     // Central handler to execute actions that may require a button press
     executeActionWithButton: function (action, config, context, item) {
@@ -16,139 +28,147 @@ const actions = {
         }
     }, 
 
-    checkForNearbyItems: function () {
-        if (!game.roomData || !game.roomData.items) return;
-        const sprite = game.mainSprite;
-        if (!sprite) return;
-    
-        const spriteBoundary = {
-            left: sprite.x,
-            right: sprite.x + sprite.width,
-            top: sprite.y,
-            bottom: sprite.y + sprite.height
-        };
-    
-        let closestItem = null;
-        const proximityThreshold = 100; // Example value, adjust as necessary for your game
-    
-        game.roomData.items
-            .filter(item => {
-                const itemX = Math.min(...item.x) * 16;
-                const itemY = Math.min(...item.y) * 16;
-                const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
-                const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
-    
-                const distanceX = Math.abs(sprite.x - itemX);
-                const distanceY = Math.abs(sprite.y - itemY);
-    
-                return distanceX < proximityThreshold && distanceY < proximityThreshold;
-            })
-            .forEach(item => {
-                const objectData = game.objectData[item.id];
-                if (!objectData || !objectData[0] || !objectData[0].script) return;
-    
-                const scriptData = objectData[0].script;
-    
-                let script;
-                if (typeof scriptData === 'string') {
-                    script = utils.parseYaml(scriptData);
-                } else if (typeof scriptData === 'object' && scriptData !== null) {
-                    script = scriptData;
-                } else {
-                    return; // Exit early if script is invalid
+checkForNearbyItems: function () {
+    if (!game.roomData || !game.roomData.items) return;
+    const sprite = game.mainSprite;
+    if (!sprite) return;
+
+    const spriteBoundary = {
+        left: sprite.x,
+        right: sprite.x + sprite.width,
+        top: sprite.y,
+        bottom: sprite.y + sprite.height,
+    };
+
+    let closestItem = null;
+    const proximityThreshold = 100; // Example value, adjust as necessary for your game
+
+    game.roomData.items
+        .filter((item) => {
+            const itemX = Math.min(...item.x) * 16;
+            const itemY = Math.min(...item.y) * 16;
+            const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
+            const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
+
+            const distanceX = Math.abs(sprite.x - itemX);
+            const distanceY = Math.abs(sprite.y - itemY);
+
+            return distanceX < proximityThreshold && distanceY < proximityThreshold;
+        })
+        .forEach((item) => {
+            const objectData = game.objectData[item.id];
+            if (!objectData || !objectData[0] || !objectData[0].script) return;
+
+            const scriptData = objectData[0].script;
+
+            let script;
+            if (typeof scriptData === 'string') {
+                script = utils.parseYaml(scriptData);
+            } else if (typeof scriptData === 'object' && scriptData !== null) {
+                script = scriptData;
+            } else {
+                return; // Exit early if script is invalid
+            }
+
+            const itemX = Math.min(...item.x) * 16;
+            const itemY = Math.min(...item.y) * 16;
+            const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
+            const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
+
+            const objectBoundary = {
+                left: itemX,
+                right: itemX + itemWidth,
+                top: itemY,
+                bottom: itemY + itemHeight,
+            };
+
+            const isSpriteInsideObject = (
+                spriteBoundary.right >= objectBoundary.left &&
+                spriteBoundary.left <= objectBoundary.right &&
+                spriteBoundary.bottom >= objectBoundary.top &&
+                spriteBoundary.top <= objectBoundary.bottom
+            );
+
+            if (isSpriteInsideObject) {
+                closestItem = item;
+
+                const objectType = objectData[0].type || item.id;
+
+                // Handle tooltip
+                if (script.walk && script.walk.tooltip) {
+                    const objectName = objectData[0].n || 'Unnamed Object';
+                    const tooltipText = script.walk.tooltip.replace('{name}', objectName);
+                    this.tooltip(tooltipText, item, sprite); // Pass modified tooltip text
                 }
-    
-                const itemX = Math.min(...item.x) * 16;
-                const itemY = Math.min(...item.y) * 16;
-                const itemWidth = (Math.max(...item.x) - Math.min(...item.x) + 1) * 16;
-                const itemHeight = (Math.max(...item.y) - Math.min(...item.y) + 1) * 16;
-    
-                const objectBoundary = {
-                    left: itemX,
-                    right: itemX + itemWidth,
-                    top: itemY,
-                    bottom: itemY + itemHeight
-                };
-    
-                const isSpriteInsideObject = (
-                    spriteBoundary.right >= objectBoundary.left &&
-                    spriteBoundary.left <= objectBoundary.right &&
-                    spriteBoundary.bottom >= objectBoundary.top &&
-                    spriteBoundary.top <= objectBoundary.bottom
-                );
-    
-                if (isSpriteInsideObject) {
-                    closestItem = item;
-    
-                    const objectType = objectData[0].type || item.id;
-    
-                    // Handle tooltip
-                    if (script.walk && script.walk.tooltip) {
-                        const objectName = objectData[0].n || 'Unnamed Object';
-                        const tooltipText = script.walk.tooltip.replace('{name}', objectName);
-                        this.tooltip(tooltipText, item, sprite);  // Pass modified tooltip text
-                    }
-    
-                    // Handle scene loading directly using game.loadScene
-                    if (script.walk && script.walk.scene) {
-                        const sceneButton = script.walk.scene.button || script.walk.button; // Use scene-specific or global button
-                        if (sceneButton && this.isButtonPressed(sceneButton)) {
-                            const activeTime = script.walk.scene.active || "0-24"; // Default active time
-                            if (this.isWithinActiveTime(activeTime)) {
-                                game.loadScene(script.walk.scene.id);
-                                console.log(`Loading scene: ${script.walk.scene.id}`);
-                            } else {
-                                console.log(`Scene ${script.walk.scene.id} is closed. Active hours are ${activeTime}`);
-                            }
+
+                // Scene change logic with button throttling
+                if (script.walk && script.walk.scene) {
+                    const sceneButton = script.walk.scene.button || script.walk.button; // Use scene-specific or global button
+                    if (sceneButton && this.isButtonPressed(sceneButton)) {
+                        if (this.isThrottled(sceneButton)) {
+                            console.log('Scene change action throttled');
+                            return;
+                        }
+
+                        const activeTime = script.walk.scene.active || "0-24"; // Default active time
+                        if (this.isWithinActiveTime(activeTime)) {
+                            game.loadScene(script.walk.scene.id);
+                            console.log(`Loading scene: ${script.walk.scene.id}`);
+                        } else {
+                            console.log(`Scene ${script.walk.scene.id} is closed. Active hours are ${activeTime}`);
                         }
                     }
-    
-                    // Handle speech
-                    if (script.walk && script.walk.speech) {
-                        const speechButton = script.walk.speech.button || script.walk.button; // Use speech-specific or global button
-                        if (speechButton && this.isButtonPressed(speechButton)) {
-                            if (!script.walk.speech.active || this.isWithinActiveTime(script.walk.speech.active)) {
-                                const icon = script.walk.speech.icon || 'self'; // Get the icon field, default to 'self'
-                                this.speech(script.walk.speech, item, sprite, icon); // Pass the icon to the speech function
-                            } else {
-                                console.log(`Speech is unavailable. Active hours are ${script.walk.speech.active}`);
-                            }
-                        }
-                    }
-                    
-                                       
-    
-                    // Handle audio playback
-                    this.audio(script, item, objectType);
-    
-                    // Handle modal popup if present
-                    if (script.walk && script.walk.modal) {
-                        this.modal(script.walk.modal, item, objectType);
-                    }
-    
-                    // Execute other actions
-                    if (!script.walk.button || this.isButtonPressed(script.walk.button)) {
-                        for (let action in script.walk) {
-                            if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && action !== 'scene' && action !== 'speech' && this[action] && typeof this[action] === 'function') {
-                                this.executeActionWithButton(action, script.walk[action], item, sprite);
-                            }
-                        }
-                    }
-                } else {
-                    // Stop any active audio if the sprite moves away from the item
-                    if (item.audioPlaying) {
-                        audio.stopLoopingAudio(script.walk.audio.soundId, 'sfx');
-                        item.audioPlaying = false;
-                    }
-                    item.swayTriggered = false;
                 }
-            });
-    
-        // Hide tooltip if no item is close
-        if (!closestItem) {
-            this.hideTooltip();
-        }
-    }, 
+
+                // Handle speech with button throttling
+                if (script.walk && script.walk.speech) {
+                    const speechButton = script.walk.speech.button || script.walk.button; // Use speech-specific or global button
+                    if (speechButton && this.isButtonPressed(speechButton)) {
+                        if (this.isThrottled(speechButton)) {
+                            console.log('Speech action throttled');
+                            return;
+                        }
+
+                        if (!script.walk.speech.active || this.isWithinActiveTime(script.walk.speech.active)) {
+                            const icon = script.walk.speech.icon || 'self'; // Get the icon field, default to 'self'
+                            this.speech(script.walk.speech, item, sprite, icon); // Pass the icon to the speech function
+                        } else {
+                            console.log(`Speech is unavailable. Active hours are ${script.walk.speech.active}`);
+                        }
+                    }
+                }
+
+                // Handle audio playback
+                this.audio(script, item, objectType);
+
+                // Handle modal popup if present
+                if (script.walk && script.walk.modal) {
+                    this.modal(script.walk.modal, item, objectType);
+                }
+
+                // Execute other actions
+                if (!script.walk.button || this.isButtonPressed(script.walk.button)) {
+                    for (let action in script.walk) {
+                        if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && action !== 'scene' && action !== 'speech' && this[action] && typeof this[action] === 'function') {
+                            this.executeActionWithButton(action, script.walk[action], item, sprite);
+                        }
+                    }
+                }
+            } else {
+                // Stop any active audio if the sprite moves away from the item
+                if (item.audioPlaying) {
+                    audio.stopLoopingAudio(script.walk.audio.soundId, 'sfx');
+                    item.audioPlaying = false;
+                }
+                item.swayTriggered = false;
+            }
+        });
+
+    // Hide tooltip if no item is close
+    if (!closestItem) {
+        this.hideTooltip();
+    }
+},
 
     modal: function (config, context, item) {
         // Check if a button is required to trigger the modal
@@ -231,25 +251,37 @@ const actions = {
         }
     },    
 
-    speech: function (config, context, item) {
+speech: function (config, context, item) {
+    const speechButton = config.button || null; // Use speech-specific button or null if no button is required
+
+    if (speechButton && this.isButtonPressed(speechButton)) {
+        if (this.isThrottled(speechButton)) {
+            console.log('Speech action throttled');
+            return;
+        }
+
         if (config.message && Array.isArray(config.message.message)) {
             if (!item.speechTriggered) {
                 game.allowControls = false;
-    
+
                 // Start the speech, passing context.id as the icon
                 speech_window.startSpeech(
-                    config.message.message,  // Send the full array of messages
+                    config.message.message, // Send the full array of messages
                     () => { 
                         item.speechTriggered = false;
                         game.allowControls = true;
                     },
                     context.id // Pass the object's id (context.id) as the icon
                 );
-    
+
                 item.speechTriggered = true;
             }
         }
-    },
+    } else {
+        console.log('Speech button not pressed or not defined');
+    }
+},
+
     
     
     audio: function (script, item, objectType) {

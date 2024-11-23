@@ -21,6 +21,7 @@ if ($auth) {
     currentTabIndex: 0,
     eventListeners: [],
     tab_name: null, // Store the currently active tab
+    allowToggle: true,
 
     start: function() {
         this.load_tab_buttons();
@@ -66,11 +67,17 @@ if ($auth) {
         });
       },
 
-      toggleConsoleWindow: function(toggle = true, tabName = null) {
+toggleConsoleWindow: function(toggle = true, tabName = null) {
     const consoleElement = document.getElementById('console_window');
     const tabsElement = document.getElementById('tabs');
 
-    if (toggle) this.isOpen = !this.isOpen;
+    if (toggle) {
+        if (!this.allowToggle && this.isOpen) {
+            console.log("Console window is already open and cannot be closed.");
+            return;
+        }
+        this.isOpen = !this.isOpen;
+    }
 
     if (this.isOpen) {
         this.showConsoleWindow(consoleElement, tabsElement);

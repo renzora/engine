@@ -82,7 +82,7 @@ var speech_window = {
     console.log(`Object found: ${objectToRender.n} (Type: ${objectToRender.t})`);
 
     // Get the object image and render it on the canvas
-    const img = assets.load(objectToRender.t); // Load the texture based on 't' (texture reference)
+    const img = assets.use(objectToRender.t); // Load the texture based on 't' (texture reference)
     if (!img) {
         console.log(`Image for texture ${objectToRender.t} not found`);
         return;
@@ -148,7 +148,7 @@ var speech_window = {
         this.speechFinished = false; // Speech is not yet finished
 
         // Start playing the audio when typing begins
-        audio.playAudio('electronic_readout_01', assets.load('electronic_readout_01'), 'sfx', true);
+        audio.playAudio('electronic_readout_01', assets.use('electronic_readout_01'), 'sfx', true);
 
         const typeWriter = () => {
             if (i < text.length && this.typingInProgress) {
@@ -176,7 +176,7 @@ var speech_window = {
 
         // Play speech_menu_01 for regular speech interactions
         if (this.currentSpeechIndex < this.speechText.length - 1 || this.typingInProgress) {
-            audio.playAudio('speech_menu_01', assets.load('speech_menu_01'), 'sfx', false);
+            audio.playAudio('speech_menu_01', assets.use('speech_menu_01'), 'sfx', false);
         }
 
         if (this.typingInProgress) {
@@ -198,7 +198,7 @@ var speech_window = {
             this.typeSpeech(this.speechText[this.currentSpeechIndex]);
         } else {
             // Play closeModal sound when the last speech ends
-            audio.playAudio('closeModal', assets.load('closeModal'), 'sfx', false);
+            audio.playAudio('closeModal', assets.use('closeModal'), 'sfx', false);
 
             modal.minimize('speech_window');
             modal.show('ui_inventory_window');

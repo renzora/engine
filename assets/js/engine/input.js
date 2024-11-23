@@ -89,47 +89,50 @@ var input = {
         }
     },
 
-    gamepadRightTrigger: function() {
-        if (gamepad.buttons.includes('l2')) { 
-            // If l2 is held, fire the weapon
-            if (ui_overlay_window.remainingBullets > 0) {  // Check if bullets are available
-                game.mainSprite.speed = 120; // Fire rate speed
-                gamepad.vibrate(500, 1.0, 1.0); // Trigger vibration
-    
-                if (game.mainSprite.targetAim) {
-                    game.mainSprite.dealDamage();
-                    ui_overlay_window.updateBullets(ui_overlay_window.remainingBullets - 1);
-                    audio.playAudio("machinegun1", assets.use('machinegun1'), 'sfx', true);
-                    effects.shakeMap(200, 4);
-                }
-            } else {
-                // Handle no bullets case
-                audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
-    
-                if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds > 0) {
-                    console.log("Out of bullets! Press and hold 'X' on the gamepad to reload.");
-                    audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
-                    ui.notif("no_bullets_notif", `Out of bullets! Press and hold 'X' on the gamepad to reload.`, true);
-                } else if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds <= 0) {
-                    console.log("No bullets and no rounds left");
-                    audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
-                    ui_overlay_window.noBulletsLeft();
-                }
+gamepadRightTrigger: function() {
+    if (gamepad.buttons.includes('l2')) { 
+        if (ui_overlay_window.remainingBullets > 0) {  
+            game.mainSprite.speed = 120; // Fire rate speed
+            gamepad.vibrate(500, 1.0, 1.0); 
+
+            if (game.mainSprite.targetAim) {
+                game.mainSprite.dealDamage();
+                ui_overlay_window.updateBullets(ui_overlay_window.remainingBullets - 1);
+                audio.playAudio("machinegun1", assets.use('machinegun1'), 'sfx', true);
+                effects.shakeMap(200, 4);
+
+                // Set override animation
+                game.mainSprite.overrideAnimation = 'shooting_gun';
             }
         } else {
-            // Sprinting when only r2 is pressed (without l2)
-            game.mainSprite.speed = 170; // Sprint speed
-            console.log("Sprinting", game.mainSprite.speed);
+            audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
+            if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds > 0) {
+                console.log("Out of bullets! Press and hold 'X' on the gamepad to reload.");
+                audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
+                ui.notif("no_bullets_notif", `Out of bullets! Press and hold 'X' on the gamepad to reload.`, true);
+                game.mainSprite.overrideAnimation = null;
+            } else if (ui_overlay_window.remainingBullets <= 0 && ui_overlay_window.remainingRounds <= 0) {
+                console.log("No bullets and no rounds left");
+                audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
+                ui_overlay_window.noBulletsLeft();
+            }
         }
-    },    
+    } else {
+        game.mainSprite.speed = 170; // Sprint speed
+        console.log("Sprinting", game.mainSprite.speed);
+    }
+},    
     
     gamepadRightTriggerReleased: function() {
         this.changeSpeed();
         audio.stopLoopingAudio('machinegun1', 'sfx', 1.0); // Stop the machine gun sound
+        const player = game.mainSprite;
+        player.changeAnimation('shooting_gun');
     },    
     
     changeSpeed: function() {
         game.mainSprite.speed = 70; // Reset to normal speed (default walking speed)
+        game.mainSprite.overrideAnimation = null; // Reset the override animation
     },
 
     gamepadLeftBumper: function(e) {
@@ -169,52 +172,46 @@ var input = {
         this.handleRightAxes(axes);
     },
 
-    handleLeftAxes: function(axes) {
-        const threshold = 0.1; // Dead zone threshold for minimal stick movement
-        
-        // Calculate axis pressures
-        const leftStickX = axes[0];
-        const leftStickY = axes[1];
-    
-        // Reset gamepad directions
-        gamepad.directions = { left: false, right: false, up: false, down: false };
-    
-        // Only adjust speed if r2 is NOT being pressed
-        if (!gamepad.buttons.includes('r2')) {
-            if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
-                // The stick is moved beyond the threshold, so update speed and movement directions
-                gamepad.axesPressures.leftStickX = Math.abs(leftStickX);
-                gamepad.axesPressures.leftStickY = Math.abs(leftStickY);
-    
-                // Calculate speed based on stick pressure
-                const pressure = Math.max(Math.abs(leftStickX), Math.abs(leftStickY));
-                game.mainSprite.speed = 25 + (pressure * 60); // Speed ranges from 25 to 85 depending on pressure
-    
-                // Set directions based on movement angle
-                const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
-                this.updateGamepadDirections(angle);
-    
-                // Update the sprite's directions based on combined states
-                this.updateSpriteDirections();
-            } else {
-                // If stick is in the dead zone (neutral position), reset the speed to default
-                gamepad.axesPressures.leftStickX = 0;
-                gamepad.axesPressures.leftStickY = 0;
-    
-                // Reset speed to default when gamepad stick is released
-                game.mainSprite.speed = 70; // Replace 70 with your default walking speed
-    
-                this.updateSpriteDirections();
-            }
-        } else {
-            // If r2 is being pressed, don't adjust speed here, just update the directions
-            if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
-                const angle = Math.atan2(leftStickY, leftStickX); // Get angle in radians (-PI to PI)
-                this.updateGamepadDirections(angle);
-                this.updateSpriteDirections();
-            }
+handleLeftAxes: function(axes) {
+    const threshold = 0.1; // Dead zone threshold for minimal stick movement
+    const leftStickX = axes[0];
+    const leftStickY = axes[1];
+
+    gamepad.directions = { left: false, right: false, up: false, down: false };
+
+    if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
+        const pressure = Math.min(1, Math.sqrt(leftStickX ** 2 + leftStickY ** 2)); // Clamp between 0 and 1
+
+        // Use the sprite's properties for speed calculation
+        const sprite = game.mainSprite;
+        const minSpeed = 10; // Define a minimum speed for any movement
+        const topSpeed = sprite.topSpeed; // Maximum speed for the sprite
+
+        // Cap speed at 0.6x topSpeed without R2
+        const r2Boost = gamepad.buttons.includes('r2') ? 1.0 : 0.6;
+
+        // Calculate relative speed: scale from minSpeed to topSpeed
+        const relativeSpeed = minSpeed + (pressure * (topSpeed - minSpeed) * r2Boost);
+
+        // Ensure speed does not exceed topSpeed
+        sprite.speed = Math.min(relativeSpeed, topSpeed);
+
+        // Update directions based on stick angle
+        const angle = Math.atan2(leftStickY, leftStickX);
+        this.updateGamepadDirections(angle);
+        this.updateSpriteDirections();
+    } else {
+        // If joystick is in the dead zone, reset speed to minSpeed
+        gamepad.axesPressures.leftStickX = 0;
+        gamepad.axesPressures.leftStickY = 0;
+        if (game.mainSprite) {
+            game.mainSprite.speed = 0; // No movement when in the dead zone
         }
-    },    
+
+        this.updateSpriteDirections();
+    }
+},
+
     
     updateGamepadDirections: function(angle) {
         const up = (angle >= -Math.PI / 8 && angle < Math.PI / 8);             // Right

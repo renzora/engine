@@ -90,6 +90,8 @@ var collision = {
             }
         }
 
+        utils.tracker('collision.check');
+
         return { collisionDetected: false };
     },
 
@@ -158,6 +160,7 @@ var collision = {
 
         // Cache the grid after it's created
         this.walkableGridCache = grid;
+        utils.tracker('collision.createWalkableGrid');
 
         return grid;
     },

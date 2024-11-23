@@ -1,4 +1,62 @@
 const utils = {
+    functionCalls: {},
+
+    tracker: function(functionName, value = null) {
+        // Initialize tracking for the function if not already present
+        if (!this.functionCalls[functionName]) {
+            this.functionCalls[functionName] = {
+                frameCount: 0, // Tracks how many times the function is executed in the current frame
+                valueHistory: [], // Stores actual values passed in
+                countHistory: [], // Stores per-frame call counts
+                lastValue: null // Tracks the last value passed
+            };
+        }
+
+        const trackedFunction = this.functionCalls[functionName];
+
+        // Increment the count for this function in the current frame
+        trackedFunction.frameCount++;
+
+        // If a value is provided, update the lastValue and store it
+        if (value !== null) {
+            trackedFunction.lastValue = value;
+        }
+    },
+
+    finalizeFrame: function() {
+        // At the end of each frame, push frame counts and values into history and reset
+        for (const key in this.functionCalls) {
+            const trackedFunction = this.functionCalls[key];
+
+            // Save the frame count and last value into their respective histories
+            trackedFunction.countHistory.push(trackedFunction.frameCount);
+            trackedFunction.valueHistory.push(trackedFunction.lastValue);
+
+            // Reset frame count for the next frame
+            trackedFunction.frameCount = 0;
+
+            // Limit history lengths to avoid excessive memory usage
+            if (trackedFunction.countHistory.length > game.maxFpsHistory) {
+                trackedFunction.countHistory.shift();
+            }
+            if (trackedFunction.valueHistory.length > game.maxFpsHistory) {
+                trackedFunction.valueHistory.shift();
+            }
+        }
+    },
+
+    getTrackedCalls: function() {
+        // Returns both count and value histories for all tracked functions
+        const result = {};
+        for (const key in this.functionCalls) {
+            result[key] = {
+                countHistory: this.functionCalls[key].countHistory,
+                valueHistory: this.functionCalls[key].valueHistory
+            };
+        }
+        return result;
+    },
+
     getTileIdAt: function(x, y) {
         if (!game.roomData || !game.roomData.items) {
             return null;
@@ -143,6 +201,6 @@ const utils = {
         });
     
         return result;
-    }    
+    }
     
 }

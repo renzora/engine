@@ -24,7 +24,13 @@ try {
             'name' => $scene['name'],
             'roomData' => $scene['roomData'],
             'sceneid' => (string) $scene['_id'],
-            'server_id' => isset($scene['server_id']) ? (string) $scene['server_id'] : null  // Add server_id to output
+            'server_id' => isset($scene['server_id']) ? (string) $scene['server_id'] : null,
+            'startingX' => isset($scene['startingX']) ? (int) $scene['startingX'] : 0,
+            'startingY' => isset($scene['startingY']) ? (int) $scene['startingY'] : 0,
+            'width' => isset($scene['width']) ? (int) $scene['width'] : 1280,
+            'height' => isset($scene['height']) ? (int) $scene['height'] : 944,
+            'bg' => isset($scene['bg']) ? $scene['bg'] : 'grass',
+            'facing' => isset($scene['facing']) ? $scene['facing'] : 'S'
         ]);
     } else {
         echo json_encode([

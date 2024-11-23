@@ -34,18 +34,7 @@ if ($mode === 'editor') {
       <div class="ui_icon ui_key"></div>
     </button>
     <div class="flex-1"></div>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Undo">
-      <div class="ui_icon ui_undo"></div>
-    </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Redo">
-      <div class="ui_icon ui_redo"></div>
-    </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Save">
-      <div class="ui_icon ui_save"></div>
-    </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Delete">
-      <div class="ui_icon ui_delete"></div>
-    </button>
+
     <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="console_window.toggleFullScreen();">
       <div class="icon full_screen"></div>
     </button>

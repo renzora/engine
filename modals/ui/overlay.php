@@ -285,7 +285,7 @@ if ($auth) {
         this.stopReloading();
         this.nextRound();
         console.log("Reload complete!");
-        audio.playAudio("reload_gun", assets.load('reload_gun'), 'sfx', false);
+        audio.playAudio("reload_gun", assets.use('reload_gun'), 'sfx', false);
         this.isReloading = false;
         this.justReloaded = true;
       },

@@ -46,7 +46,13 @@ try {
         'created_by' => (int)$user->id,
         'created_at' => time(),
         'roomData' => new stdClass(), // Set roomData as an empty object
-        'public' => $publicValue // Add the public field with the determined value
+        'public' => $publicValue, // Add the public field with the determined value
+        'width' => 1280,
+        'height' => 944,
+        'startingX' => 0, // Add startingX with a value of 0
+        'startingY' => 0,  // Add startingY with a value of 0
+        'bg' => 'grass',
+        'facing' => 's'
     ]);
 
     // Get the inserted scene's ID
@@ -61,7 +67,13 @@ try {
             'server_id' => $serverId,
             'created_by' => (int)$user->id,
             'created_at' => time(),
-            'public' => $publicValue // Include public in the response
+            'public' => $publicValue, // Include public in the response
+            'width' => 1280,
+            'height' => 944,
+            'startingX' => 0, // Include startingX in the response
+            'startingY' => 0,  // Include startingY in the response
+            'bg' => 'grass',
+            'facing' => 's'
         ],
         'server_id' => $serverId,
         'error' => false // Ensure 'error' is false to indicate success

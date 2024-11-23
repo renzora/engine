@@ -160,9 +160,6 @@ var ui_console_editor_inventory = {
     // Set the selected inventory item and allow continuous placement
     edit_mode_window.isAddingNewObject = true;
     ui_console_editor_inventory.selectedInventoryItem = itemId;
-
-    // Toggle the inventory menu
-    console_window.toggleConsoleWindow();
     
     document.addEventListener('mousemove', ui_console_editor_inventory.trackMouseForItem);
     ui_console_editor_inventory.isDragging = true;
@@ -231,7 +228,6 @@ handleMapClick: function(event) {
     // Cancel continuous placement and reset the object
     ui_console_editor_inventory.stopDragging();
     ui_console_editor_inventory.deselectInventoryItem();
-    console_window.toggleConsoleWindow();
 
     console.log("object selection cancelled");
 },

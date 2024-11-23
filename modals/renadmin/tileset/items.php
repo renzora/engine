@@ -132,7 +132,7 @@ if ($auth) {
     this.setupLineDrawingHandlers('item_grid_canvas_walkable');
     this.renderPolygonOnLoad(item);
     if (item && Array.isArray(item.a) && Array.isArray(item.b)) {
-        this.drawGrid('item_grid_background_canvas_walkable', item);
+        this.drawGrid('item_grid_background_canvas_walkable', item, false, 10);
     } else {
         console.warn("Skipping background grid drawing due to invalid item data");
     }
@@ -213,35 +213,32 @@ setupScriptInputHandlers: function() {
     });
 },
 
-    initializeOtherData: function(itemId, item) {
-        this.walkableData = this.initializeWalkableData(item);
-        this.zIndexData = this.initializeZIndexData(item);
+initializeOtherData: function(itemId, item) {
+    this.walkableData = this.initializeWalkableData(item);
+    this.zIndexData = this.initializeZIndexData(item);
 
-        this.setupCanvasClickHandlersZIndex(item, 'item_preview_canvas_zindex');
+    // Populate polygonPoints from walkableData
+    this.polygonPoints = [...this.walkableData.polygon];
 
-        document.getElementById('item_id').textContent = itemId;
+    this.setupCanvasClickHandlersZIndex(item, 'item_preview_canvas_zindex');
 
-        // Prefill the item name
-        document.getElementById('item_name').value = item.n;
+    document.getElementById('item_id').textContent = itemId;
+    document.getElementById('item_name').value = item.n;
 
-        this.renderItemPreview(item, 'item_preview_canvas_walkable');
-        this.renderItemPreview(item, 'item_preview_canvas_stack');
-        this.renderItemPreview(item, 'item_preview_canvas_zindex');
-        this.renderItemPreview(item, 'item_preview_canvas_effects');
+    this.renderItemPreview(item, 'item_preview_canvas_walkable', 10);
 
-        this.drawGrid('item_grid_canvas_walkable', item, true);
-        this.drawGrid('item_grid_canvas_stack', item);
-        this.drawGrid('item_grid_canvas_zindex', item);
-        this.drawGrid('item_grid_canvas_effects', item);
+    // Render the polygon and ensure resize handles are added
+    this.renderPolygonOnLoad(item);
 
-        ui.initTabs('item_editor_tabs', 'tab-details');
+    this.drawGrid('item_grid_canvas_walkable', item, false, 10);
+    ui.initTabs('item_editor_tabs', 'tab-details');
 
-        this.setupZIndexInputHandlers();
+    this.setupZIndexInputHandlers();
 
-        document.getElementById('save_button').addEventListener('click', this.saveData.bind(this, itemId));
+    document.getElementById('save_button').addEventListener('click', this.saveData.bind(this, itemId));
 
-        document.getElementById('clear_polygon_button').addEventListener('click', this.clearPolygon.bind(this));
-    },
+    document.getElementById('clear_polygon_button').addEventListener('click', this.clearPolygon.bind(this));
+},
 
     initializeWalkableData: function(item) {
         let walkableData = {};
@@ -299,15 +296,18 @@ setupScriptInputHandlers: function() {
 },
 
 renderPolygonOnLoad: function(item) {
-        const canvas = document.getElementById('item_grid_canvas_walkable');
-        const ctx = canvas.getContext('2d');
+    const canvas = document.getElementById('item_grid_canvas_walkable');
+    const ctx = canvas.getContext('2d');
+    const padding = 10;
 
-        if (this.walkableData.polygon.length > 0) {
-            this.renderPolygon(ctx, [this.walkableData.polygon]);
-            this.addResizeHandles(ctx); // Add this line to show the resize handles on load
-        }
-    },
+    if (this.walkableData.polygon.length > 0) {
+        // Render the polygon
+        this.renderPolygon(ctx, [this.walkableData.polygon], padding);
 
+        // Add resize handles explicitly
+        this.addResizeHandles(ctx, padding);
+    }
+},
 
     clearPolygon: function() {
         this.walkableData.polygon = [];
@@ -373,30 +373,24 @@ renderPolygonOnLoad: function(item) {
 },
 
 addPoint: function(event, canvas, ctx, scaleFactor) {
+    const padding = 10; // Margin around the canvas
     let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
     let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
 
-    let x = Math.round(rawX);
-    let y = Math.round(rawY);
+    let x = Math.round(rawX) - padding; // Remove margin for recalculated position
+    let y = Math.round(rawY) - padding; // Remove margin for recalculated position
 
-    // If there is already a point, adjust the new point to align it
     if (this.polygonPoints.length > 0) {
         const lastPoint = this.polygonPoints[this.polygonPoints.length - 1];
 
-        // Calculate the differences in x and y axes
         const dx = Math.abs(x - lastPoint.x);
         const dy = Math.abs(y - lastPoint.y);
 
-        // If horizontal movement is larger, align vertically
         if (dx > dy) {
             y = lastPoint.y;
-        }
-        // If vertical movement is larger, align horizontally
-        else if (dy > dx) {
+        } else if (dy > dx) {
             x = lastPoint.x;
-        }
-        // If the movement is diagonal, make it a perfect diagonal
-        else {
+        } else {
             const signX = x > lastPoint.x ? 1 : -1;
             const signY = y > lastPoint.y ? 1 : -1;
             x = lastPoint.x + signX * dx;
@@ -404,32 +398,23 @@ addPoint: function(event, canvas, ctx, scaleFactor) {
         }
     }
 
-    // Now push the adjusted point to the polygon points array
-    this.polygonPoints.push({ x, y });
-    this.renderPolygon(ctx, [...this.walkableData.polygon, this.polygonPoints]);
+    this.polygonPoints.push({ x, y }); // Add new point
+    this.renderPolygon(ctx, [...this.walkableData.polygon, this.polygonPoints], padding); // Render polygon with padding
+    this.addResizeHandles(ctx, padding); // Add resize handles
 
-    // Update the 'w' field in the item data in real-time
-    this.updateGameObjectData();
-
-    if (this.polygonPoints.length > 1) {
-        const prevPoint = this.polygonPoints[this.polygonPoints.length - 2];
-        ctx.beginPath();
-        ctx.moveTo(prevPoint.x, prevPoint.y);
-        ctx.lineTo(x, y);
-        ctx.stroke();
-    }
-
-    this.addResizeHandles(ctx);
+    this.updateGameObjectData(); // Update objectData in real-time
 },
 
+
 removePoint: function(event, canvas, scaleFactor) {
+    const padding = 10;
     let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
     let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
 
-    let x = Math.round(rawX);
-    let y = Math.round(rawY);
+    let x = Math.round(rawX) - padding;
+    let y = Math.round(rawY) - padding;
 
-    // Find the closest point and remove it
+    // Find the closest point to the cursor
     let closestPointIndex = null;
     let minDistance = Infinity;
 
@@ -444,87 +429,94 @@ removePoint: function(event, canvas, scaleFactor) {
     }
 
     if (closestPointIndex !== null && minDistance < 10) { // Adjust threshold as needed
-        this.polygonPoints.splice(closestPointIndex, 0);
-        this.updatePolygon();
-        this.updateGameObjectData();
+        this.polygonPoints.splice(closestPointIndex, 1); // Remove the point
+        this.updatePolygon(); // Redraw the polygon
+        this.updateGameObjectData(); // Update objectData in real-time
     }
 },
 
-addResizeHandles: function(ctx) {
-    ctx.fillStyle = 'blue';
-    const handleRadius = 2; // Adjust the size of the resize handles
+
+addResizeHandles: function(ctx, padding = 0) {
+    ctx.fillStyle = 'blue'; // Color of the resize handles
+    const handleRadius = 4; // Radius of the resize handles
 
     this.polygonPoints.forEach(point => {
         ctx.beginPath();
-        ctx.arc(point.x, point.y, handleRadius, 0, 2 * Math.PI);
+        ctx.arc(point.x + padding, point.y + padding, handleRadius, 0, 2 * Math.PI); // Render with padding
         ctx.fill();
     });
 },
 
-
-    startResizing: function(canvas, event) {
-        const scaleFactor = this.getScaleFactor(canvas);
-        let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
-        let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
-
-        let x = Math.round(rawX);
-        let y = Math.round(rawY);
-
-        this.currentlyResizingPoint = this.polygonPoints.find(point => {
-            return Math.abs(point.x - x) < 5 && Math.abs(point.y - y) < 5;
-        });
-
-        if (this.currentlyResizingPoint) {
-            this.isResizing = true;
-        }
-    },
-
-    resizePoint: function(canvas, event) {
-    if (!this.isResizing || !this.currentlyResizingPoint) return;
-
+startResizing: function(canvas, event) {
     const scaleFactor = this.getScaleFactor(canvas);
+    const padding = 10;
+
     let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
     let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
 
-    let x = Math.round(rawX);
-    let y = Math.round(rawY);
+    let x = Math.round(rawX) - padding; // Adjust for margin
+    let y = Math.round(rawY) - padding; // Adjust for margin
 
-    // Update the current point position
+    // Find the closest point to the cursor (including padding)
+    this.currentlyResizingPoint = this.polygonPoints.find(point => {
+        return Math.abs(point.x - x) < 5 && Math.abs(point.y - y) < 5; // Adjust the threshold as needed
+    });
+
+    if (this.currentlyResizingPoint) {
+        this.isResizing = true;
+    }
+},
+
+resizePoint: function(canvas, event) {
+    if (!this.isResizing || !this.currentlyResizingPoint) return;
+
+    const scaleFactor = this.getScaleFactor(canvas);
+    const padding = 10;
+
+    let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
+    let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
+
+    let x = Math.round(rawX) - padding; // Remove margin for recalculated position
+    let y = Math.round(rawY) - padding; // Remove margin for recalculated position
+
     this.currentlyResizingPoint.x = x;
     this.currentlyResizingPoint.y = y;
 
-    // Update the polygon and the game object data in real-time
-    this.updatePolygon();
+    this.updatePolygon(); // Redraw the polygon and resize handles
+    this.updateGameObjectData(); // Update objectData in real-time
 },
+
 
 stopResizing: function() {
     this.isResizing = false;
     this.currentlyResizingPoint = null;
 
     // Update the 'w' field in the item data after resizing
-    game.objectData[<?php echo json_encode($itemId); ?>][0].w = [...this.walkableData.polygon];
+    game.objectData[<?php echo json_encode($itemId); ?>][0].w = [...this.walkableData.polygon, ...this.polygonPoints];
 },
+
 
 updatePolygon: function() {
     const canvas = document.getElementById('item_grid_canvas_walkable');
     const ctx = canvas.getContext('2d');
+    const padding = 10;
 
-    // Update the polygon rendering and handles
-    this.renderPolygon(ctx, [...this.walkableData.polygon, this.polygonPoints]);
-    this.addResizeHandles(ctx);
+    this.renderPolygon(ctx, [...this.walkableData.polygon, this.polygonPoints], padding);
+    this.addResizeHandles(ctx, padding);
 
-    // Update game object data in real-time during dragging
-    this.updateGameObjectData();
+    this.updateGameObjectData(); // Update objectData after polygon updates
 },
 
-    renderPolygon: function(ctx, polygons) {
+
+renderPolygon: function(ctx, polygons, padding = 0) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
     polygons.forEach(path => {
+        if (path.length === 0) return; // Skip empty paths
         ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
+        ctx.moveTo(path[0].x + padding, path[0].y + padding); // Add padding for rendering
         for (let i = 1; i < path.length; i++) {
-            ctx.lineTo(path[i].x, path[i].y);
+            ctx.lineTo(path[i].x + padding, path[i].y + padding); // Add padding for rendering
         }
         ctx.closePath();
         ctx.strokeStyle = 'rgba(255, 0, 0, 1)';
@@ -533,8 +525,10 @@ updatePolygon: function() {
         ctx.fill();
     });
 
-    this.addResizeHandles(ctx); // Ensure handles are added after each polygon render
+    // Add resize handles after drawing the polygon
+    this.addResizeHandles(ctx, padding);
 },
+
 
         getScaleFactor: function(canvas) {
           const modalWidth = document.querySelector('[data-window="tileset_item_editor_window"]').clientWidth;
@@ -609,17 +603,17 @@ updatePolygon: function() {
 },
 
 
-renderItemPreview: function(item, canvasId) {
+renderItemPreview: function(item, canvasId, padding = 10) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
     const tileSize = 16;
-    const tilesPerRow = 150;  // Assuming 150 tiles per row in your tileset image
+    const tilesPerRow = 150; // Assuming 150 tiles per row in your tileset image
 
-    // Adjust canvas size based on the number of columns (a) and rows (b)
-    canvas.width = (item.a + 1) * tileSize; // Width is determined by columns (X-axis)
-    canvas.height = (item.b + 1) * tileSize; // Height is determined by rows (Y-axis)
+    // Adjust canvas size based on the number of columns (a) and rows (b) and padding
+    canvas.width = (item.a + 1) * tileSize + padding * 2; // Width with padding
+    canvas.height = (item.b + 1) * tileSize + padding * 2; // Height with padding
 
-    var tilesetImage = assets.load(item.t);
+    var tilesetImage = assets.use(item.t);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -639,7 +633,7 @@ renderItemPreview: function(item, canvasId) {
     if (Array.isArray(item.i)) {
         framesToRender = item.i.flatMap(frame => typeof frame === 'string' && frame.includes('-') ? parseRange(frame) : frame);
     } else {
-        framesToRender = [item.i];  // Handle single frame
+        framesToRender = [item.i]; // Handle single frame
     }
 
     // Iterate over the frame indices and calculate the X and Y positions in the grid
@@ -647,9 +641,9 @@ renderItemPreview: function(item, canvasId) {
         const srcX = (frame % tilesPerRow) * tileSize;
         const srcY = Math.floor(frame / tilesPerRow) * tileSize;
 
-        // Calculate destination X and Y based on object's dimensions (a and b)
-        const destX = (index % (item.a + 1)) * tileSize; // X (horizontal) based on columns
-        const destY = Math.floor(index / (item.a + 1)) * tileSize; // Y (vertical) based on rows
+        // Calculate destination X and Y with padding
+        const destX = padding + (index % (item.a + 1)) * tileSize; // X (horizontal) based on columns
+        const destY = padding + Math.floor(index / (item.a + 1)) * tileSize; // Y (vertical) based on rows
 
         // Log the destination X and Y for debugging
         console.log(`Tile index ${frame}: destX = ${destX}, destY = ${destY}`);
@@ -657,8 +651,8 @@ renderItemPreview: function(item, canvasId) {
         // Draw the image tile on the canvas
         ctx.drawImage(
             tilesetImage,
-            srcX, srcY, tileSize, tileSize,  // Source (tilesheet position)
-            destX, destY, tileSize, tileSize  // Destination (canvas position)
+            srcX, srcY, tileSize, tileSize, // Source (tilesheet position)
+            destX, destY, tileSize, tileSize // Destination (canvas position)
         );
     });
 
@@ -669,7 +663,7 @@ renderItemPreview: function(item, canvasId) {
 },
 
 
-drawGrid: function(canvasId, item, skipGridLines = false) {
+drawGrid: function(canvasId, item, skipGridLines = false, padding = 10) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
     const tileSize = 16;
@@ -686,36 +680,36 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
     const maxCol = Array.isArray(item.a) ? Math.max(...item.a) + 1 : item.a + 1; // Ensure we cover the entire width of the object
     const maxRow = Array.isArray(item.b) ? Math.max(...item.b) + 1 : item.b + 1; // Ensure we cover the entire height of the object
 
-    // Adjust canvas size based on the item's dimensions
-    canvas.width = maxCol * tileSize;
-    canvas.height = maxRow * tileSize;
+    // Adjust canvas size based on the item's dimensions and padding
+    canvas.width = maxCol * tileSize + padding * 2;
+    canvas.height = maxRow * tileSize + padding * 2;
 
     console.log('Canvas dimensions set to:', canvas.width, 'x', canvas.height);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Draw a border around the canvas to show the grid's outline
-    ctx.strokeStyle = 'blue';  // Use blue for the border color
-    ctx.lineWidth = 3;  // Set border width to 3 pixels
-    ctx.strokeRect(0, 0, canvas.width, canvas.height);  // Draw the border
+    ctx.strokeStyle = 'blue'; // Use blue for the border color
+    ctx.lineWidth = 3; // Set border width to 3 pixels
+    ctx.strokeRect(padding, padding, canvas.width - padding * 2, canvas.height - padding * 2); // Draw the border within the padding
 
     if (!skipGridLines) {
         ctx.strokeStyle = 'rgba(136, 136, 136, 1)';
         ctx.lineWidth = 1;
 
         // Draw vertical grid lines
-        for (let x = 0.5; x <= canvas.width; x += tileSize) {
+        for (let x = padding + 0.5; x <= canvas.width - padding; x += tileSize) {
             ctx.beginPath();
-            ctx.moveTo(x, 0.5);
-            ctx.lineTo(x, canvas.height);
+            ctx.moveTo(x, padding + 0.5);
+            ctx.lineTo(x, canvas.height - padding);
             ctx.stroke();
         }
 
         // Draw horizontal grid lines
-        for (let y = 0.5; y <= canvas.height; y += tileSize) {
+        for (let y = padding + 0.5; y <= canvas.height - padding; y += tileSize) {
             ctx.beginPath();
-            ctx.moveTo(0.5, y);
-            ctx.lineTo(canvas.width, y);
+            ctx.moveTo(padding + 0.5, y);
+            ctx.lineTo(canvas.width - padding, y);
             ctx.stroke();
         }
     }
@@ -727,7 +721,6 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
 
     console.log('Grid drawn successfully on canvas:', canvasId);
 },
-
 
 
 
@@ -748,14 +741,16 @@ drawGrid: function(canvasId, item, skipGridLines = false) {
 },
 
 updateGameObjectData: function() {
-    // Directly update the game object data with the current polygon points
     const itemId = <?php echo json_encode($itemId); ?>;
     const item = game.objectData[itemId][0];
-    
-    item.w = [...this.walkableData.polygon, this.polygonPoints];
-    
-    console.log('Updated objectData in real-time:', item.w);
+
+    // Update only the 'w' field with the new polygon data
+    item.w = [...this.walkableData.polygon, ...this.polygonPoints];
+
+    console.log('Updated objectData in real-time (preserving other fields):', game.objectData);
 },
+
+
 
 saveData: function(itemId) {
     var item = game.objectData[itemId][0];
@@ -844,7 +839,5 @@ unmount: function() {
     <div class='resize-handle'></div>
   </div>
 <?php
-} else {
-    echo "Unauthorized access.";
 }
 ?>
