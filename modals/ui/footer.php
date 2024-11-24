@@ -11,11 +11,39 @@
     <span id="effects_rendered" class="text-white rounded-md"></span>
     <span id="animations_rendered" class="text-white rounded-md"></span>
   </div>
-</div>
 
 
 <script>
   var ui_footer_window = {
+    updateUI: function () {
+        var tilesRenderedDisplay = document.getElementById('tiles_rendered');
 
+        if (tilesRenderedDisplay) {
+            tilesRenderedDisplay.innerHTML = `Tiles: ${render.tileCount}`;
+        }
+
+        var background_rendered = document.getElementById('background_rendered');
+
+        if (background_rendered) {
+            background_rendered.innerHTML = `Background: ${render.backgroundTileCount}`;
+        }
+    
+        var lightsRenderedDisplay = document.getElementById('lights_rendered');
+        if (lightsRenderedDisplay) {
+            lightsRenderedDisplay.innerHTML = `Lights: ${lighting.lights.length}`;
+        }
+    
+        var effectsRenderedDisplay = document.getElementById('effects_rendered');
+        if (effectsRenderedDisplay) {
+            effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(particles.activeEffects).length}`;
+        }
+    
+        var animationsRenderedDisplay = document.getElementById('animations_rendered');
+        if (animationsRenderedDisplay) {
+            animationsRenderedDisplay.innerHTML = `Animations: ${render.animationCount}`;
+        }
+    }
   };
 </script>
+
+</div>

@@ -94,15 +94,8 @@ if(!$auth) {
             url: 'modals/auth/ajax/login_ajax.php',
             data: 'login_username=' + login_username + '&login_password=' + login_password,
             success: function(data) {
-              console.log(data);
+              console.log(data.message);
               if(data.message == 'login_complete') {
-                modal.load({
-                  id: 'ui',
-                  url: 'ui',
-                  name: 'User Interface',
-                  drag: true,
-                  reload: true
-                });
                 ui.notif("You are now signed in as " + login_username, 'bottom-center');
                 modal.close("auth_window");
               } else {

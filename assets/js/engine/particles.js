@@ -90,7 +90,7 @@ const particles = {
         });
     },
 
-    renderParticles: function() {
+    render: function() {
         Object.values(this.activeEffects).forEach(effectParticles => {
             effectParticles.forEach(particle => {
                 const ctx = game.ctx;

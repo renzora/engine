@@ -282,6 +282,8 @@ var game = {
 
         modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true });
 
+        //modal.load({ id: 'joypad_window', url: 'joypad/index.php', name: 'joypad', drag: false, reload: true });
+
         //modal.load({ id: 'navigator_window', url: 'navigator/index.php', name: 'navigator', drag: true, reload: true });
     },
 
@@ -447,13 +449,6 @@ resizeCanvas: function() {
     this.canvas.style.position = 'absolute';
     this.canvas.style.left = `${horizontalOffset}px`;
     this.canvas.style.top = `${verticalOffset}px`;
-
-    // Log dimensions and offsets for debugging
-    console.log(`Viewport Dimensions: ${window.innerWidth}x${window.innerHeight}`);
-    console.log(`Canvas Dimensions: ${this.canvas.width}x${this.canvas.height}`);
-    console.log(`Available Width: ${availableWidth}, Available Height: ${availableHeight}`);
-    console.log(`Offsets - Horizontal: ${horizontalOffset}, Vertical: ${verticalOffset}`);
-    console.log(`Console Width: ${consoleWidth}, Menu Width: ${menuWidth}`);
 },
 
 
@@ -516,14 +511,13 @@ resizeCanvas: function() {
         // Render other game effects and utilities
         render.renderPathfinderLine();
         render.renderCarriedObjects();
-        render.renderLightingEffects();
-        render.renderWeatherEffects();
+        lighting.render();
+        weather.render();
         render.handleDebugUtilities();
-        particles.renderParticles();
+        particles.render();
         effects.transitions.render();
     
-        // Update the UI with tile, sprite, and animation counts
-        render.updateUI();
+        if(utils.objExists('ui_footer_window')) { ui_footer_window.updateUI(); }
         render.highlightOverlappingTiles();
     
         // Handle effects like letterbox

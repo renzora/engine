@@ -325,25 +325,7 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
         }
     },
 
-    drawBorderAroundObject: function(roomItem) {
-        if (!roomItem) return;
 
-        // Calculate the object's bounding box using the min/max of its coordinates
-        const xCoordinates = roomItem.x || [];
-        const yCoordinates = roomItem.y || [];
-    
-        const minX = Math.min(...xCoordinates) * 16;  // Convert to pixel positions
-        const minY = Math.min(...yCoordinates) * 16;
-        const maxX = Math.max(...xCoordinates) * 16 + 16;  // +16 for tile size
-        const maxY = Math.max(...yCoordinates) * 16 + 16;  // +16 for tile size
-    
-        // Draw the border around the object using its calculated position and size
-        game.ctx.save();
-        game.ctx.strokeStyle = 'red';  // Border color
-        game.ctx.lineWidth = 2;
-        game.ctx.strokeRect(minX - camera.cameraX, minY - camera.cameraY, maxX - minX, maxY - minY);
-        game.ctx.restore();
-    },
 
     renderCarriedObjects: function () {
         if (game.mainSprite && game.mainSprite.isCarrying) {
@@ -353,35 +335,6 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
 
             game.drawCarriedObject(game.ctx, carriedItemId, itemX, itemY);
         }
-    },
-
-renderLightingEffects: function () {
-    const ctx = game.ctx;
-
-    // Save the current context state
-    ctx.save();
-
-    // Apply the night filter over the entire scene
-    ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
-    ctx.globalCompositeOperation = 'multiply'; // Darken the scene
-    ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
-
-    // Apply the light mask using 'screen' blending mode for additive effect
-    ctx.globalCompositeOperation = 'screen';
-    ctx.drawImage(lighting.createLightMask(), 0, 0);
-
-    // Restore the context to default
-    ctx.restore();
-},
-
-
-
-    renderWeatherEffects: function () {
-        weather.drawSnow();
-        weather.drawRain();
-        weather.drawFireflys();
-        lighting.drawGreyFilter();
-        render.aimTool();
     },
 
     handleDebugUtilities: function () {
@@ -397,35 +350,6 @@ renderLightingEffects: function () {
             }
         }
     },
-
-    updateUI: function () {
-        var tilesRenderedDisplay = document.getElementById('tiles_rendered');
-
-        if (tilesRenderedDisplay) {
-            tilesRenderedDisplay.innerHTML = `Tiles: ${this.tileCount}`;
-        }
-
-        var background_rendered = document.getElementById('background_rendered');
-
-        if (background_rendered) {
-            background_rendered.innerHTML = `Background: ${this.backgroundTileCount}`;
-        }
-    
-        var lightsRenderedDisplay = document.getElementById('lights_rendered');
-        if (lightsRenderedDisplay) {
-            lightsRenderedDisplay.innerHTML = `Lights: ${lighting.lights.length}`;
-        }
-    
-        var effectsRenderedDisplay = document.getElementById('effects_rendered');
-        if (effectsRenderedDisplay) {
-            effectsRenderedDisplay.innerHTML = `Effects: ${Object.keys(particles.activeEffects).length}`;
-        }
-    
-        var animationsRenderedDisplay = document.getElementById('animations_rendered');
-        if (animationsRenderedDisplay) {
-            animationsRenderedDisplay.innerHTML = `Animations: ${this.animationCount}`; // Update animation count
-        }
-    }, 
 
     highlightOverlappingTiles: function () {
         this.overlappingTiles.forEach(tile => {

@@ -59,18 +59,6 @@ const effects = {
                 case 'fadeOut':
                     this.renderFadeOut();
                     break;
-                case 'swirl':
-                    this.renderSwirl();
-                    break;
-                case 'square':
-                    this.renderSquare();
-                    break;
-                case 'pixelate':
-                    this.renderPixelate();
-                    break;
-                case 'de-pixelate':
-                    this.renderDepixelate();
-                    break;
             }
         },
 
@@ -84,76 +72,6 @@ const effects = {
             const opacity = this.progress;
             game.ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
             game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
-        },
-
-        renderSwirl: function() {
-            const angle = this.progress * Math.PI * 2;
-            const radius = Math.max(game.canvas.width, game.canvas.height);
-            game.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
-            game.ctx.save();
-            game.ctx.translate(game.canvas.width / 2, game.canvas.height / 2);
-            game.ctx.rotate(angle);
-            game.ctx.fillRect(-radius, -radius, radius * 2, radius * 2);
-            game.ctx.restore();
-        },
-
-        renderSquare: function() {
-            const size = this.progress * Math.max(game.canvas.width, game.canvas.height);
-            const halfSize = size / 2;
-            game.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
-            game.ctx.fillRect(
-                game.canvas.width / 2 - halfSize,
-                game.canvas.height / 2 - halfSize,
-                size,
-                size
-            );
-        },
-
-        renderPixelate: function() {
-            const pixelSize = Math.ceil(this.progress * 20);
-            for (let y = 0; y < game.canvas.height; y += pixelSize) {
-                for (let x = 0; x < game.canvas.width; x += pixelSize) {
-                    const color = this.getPixelColor(x, y, pixelSize);
-                    if (color) {
-                        game.ctx.fillStyle = color;
-                        game.ctx.fillRect(x, y, pixelSize, pixelSize);
-                    }
-                }
-            }
-        },
-
-        renderDepixelate: function() {
-            const pixelSize = Math.ceil((1 - this.progress) * 20);
-            for (let y = 0; y < game.canvas.height; y += pixelSize) {
-                for (let x = 0; x < game.canvas.width; x += pixelSize) {
-                    const color = this.getPixelColor(x, y, pixelSize);
-                    if (color) {
-                        game.ctx.fillStyle = color;
-                        game.ctx.fillRect(x, y, pixelSize, pixelSize);
-                    }
-                }
-            }
-        },
-
-        getPixelColor: function(x, y, size) {
-            const validWidth = Math.min(size, game.canvas.width - x);
-            const validHeight = Math.min(size, game.canvas.height - y);
-            if (validWidth <= 0 || validHeight <= 0) return null;
-
-            const data = game.ctx.getImageData(x, y, validWidth, validHeight).data;
-            let r = 0, g = 0, b = 0, a = 0;
-            for (let i = 0; i < data.length; i += 4) {
-                r += data[i];
-                g += data[i + 1];
-                b += data[i + 2];
-                a += data[i + 3];
-            }
-            const pixelCount = data.length / 4;
-            r = Math.floor(r / pixelCount);
-            g = Math.floor(g / pixelCount);
-            b = Math.floor(b / pixelCount);
-            a = Math.floor(a / pixelCount / 255);
-            return `rgba(${r},${g},${b},${a})`;
         }
     },
 

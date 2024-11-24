@@ -145,5 +145,13 @@ var weather = {
             }
         }
         utils.tracker('weather.updateRain');
-    }
+    },
+
+    render: function () {
+        this.drawSnow();
+        this.drawRain();
+        this.drawFireflys();
+        lighting.drawGreyFilter();
+        render.aimTool();
+    },
 };

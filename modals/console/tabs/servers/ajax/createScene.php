@@ -52,7 +52,7 @@ try {
         'startingX' => 0, // Add startingX with a value of 0
         'startingY' => 0,  // Add startingY with a value of 0
         'bg' => 'grass',
-        'facing' => 's'
+        'facing' => 'S'
     ]);
 
     // Get the inserted scene's ID
@@ -73,7 +73,7 @@ try {
             'startingX' => 0, // Include startingX in the response
             'startingY' => 0,  // Include startingY in the response
             'bg' => 'grass',
-            'facing' => 's'
+            'facing' => 'S'
         ],
         'server_id' => $serverId,
         'error' => false // Ensure 'error' is false to indicate success

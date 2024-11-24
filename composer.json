@@ -1,6 +1,8 @@
 {
     "require": {
-        "firebase/php-jwt": "^6.10",
+        "firebase/php-jwt": "dev-main#76808fa",
         "mongodb/mongodb": "^1.17"
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

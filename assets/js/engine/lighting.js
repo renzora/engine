@@ -87,33 +87,6 @@ createLightMask: function() {
     return lightCanvas;
 },
 
-
-    addLight: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
-        const existingLight = this.lights.find(light => light.id === id);
-        if (!existingLight) {
-            const clampedMaxIntensity = Math.min(maxIntensity, maxIntensity);
-            const newLight = new this.LightSource(id, x, y, radius, color, clampedMaxIntensity, type, flicker, flickerSpeed, flickerAmount);
-            newLight.currentIntensity = clampedMaxIntensity;
-            this.lights.push(newLight);
-        }
-    },
-
-    updateLights: function(deltaTime) {
-        this.lights.forEach(light => {
-            if (light.maxIntensity > 0) {
-                if (light.flicker) {
-                    const flickerValue = Math.sin((performance.now() + light.flickerOffset) * light.flickerSpeed) * light.flickerAmount;
-                    light.currentIntensity = light.maxIntensity + flickerValue;
-                } else {
-                    light.currentIntensity = light.maxIntensity;
-                }
-                light.currentIntensity = Math.max(0, Math.min(light.currentIntensity, light.maxIntensity));
-            } else {
-                light.currentIntensity = 0;
-            }
-        });
-    },
-
 updateDayNightCycle: function() {
     if (!this.timeBasedUpdatesEnabled) return;
 
@@ -140,20 +113,6 @@ updateDayNightCycle: function() {
         }
     }
 
-    // Adjust night filter opacity smoothly between times
-    if (time >= 18 && time < 20) { // Transition into night from 18:00 to 20:00
-        this.nightFilter.opacity = (time - 18) / 2; // Transition from 0 to 1 opacity over 2 hours
-    } else if (time >= 20 || time < 5) { // Night time from 20:00 to 5:00
-        this.nightFilter.opacity = 1;
-    } else if (time >= 5 && time < 7) { // Transition out of night from 5:00 to 7:00
-        this.nightFilter.opacity = 1 - ((time - 5) / 2); // Transition from 1 to 0 opacity over 2 hours
-    } else {
-        this.nightFilter.opacity = 0; // Daytime
-    }
-
-    // Ensure opacity stays within [0, 1]
-    this.nightFilter.opacity = Math.min(Math.max(this.nightFilter.opacity, 0), 1);
-
     // Adjust light intensities based on time
     if (time >= 18 && time < 20) { // Transition into night
         const progress = (time - 18) / 2; // Progress from 0 to 1 over 2 hours
@@ -167,15 +126,52 @@ updateDayNightCycle: function() {
         this.updateLightsIntensity(0); // Daytime, lights off
     }
 },
-    
 
-drawNightFilter: function() {
-    game.ctx.save();
-    game.ctx.globalCompositeOperation = 'multiply';
-    game.ctx.fillStyle = `rgba(${this.nightFilter.color.r}, ${this.nightFilter.color.g}, ${this.nightFilter.color.b}, ${this.nightFilter.opacity})`;
-    game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
-    game.ctx.restore();
+render: function () {
+    const ctx = game.ctx;
+
+    // Save the current context state
+    ctx.save();
+
+    // Apply the night filter over the entire scene
+    ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
+    ctx.globalCompositeOperation = 'multiply'; // Darken the scene
+    ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+
+    // Apply the light mask using 'screen' blending mode for additive effect
+    ctx.globalCompositeOperation = 'screen';
+    ctx.drawImage(this.createLightMask(), 0, 0);
+
+    // Restore the context to default
+    ctx.restore();
 },
+
+
+    addLight: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
+        const existingLight = this.lights.find(light => light.id === id);
+        if (!existingLight) {
+            const clampedMaxIntensity = Math.min(maxIntensity, maxIntensity);
+            const newLight = new this.LightSource(id, x, y, radius, color, clampedMaxIntensity, type, flicker, flickerSpeed, flickerAmount);
+            newLight.currentIntensity = clampedMaxIntensity;
+            this.lights.push(newLight);
+        }
+    },
+
+    updateLights: function(deltaTime) {
+        this.lights.forEach(light => {
+            if (light.maxIntensity > 0) {
+                if (light.flicker) {
+                    const flickerValue = Math.sin((performance.now() + light.flickerOffset) * light.flickerSpeed) * light.flickerAmount;
+                    light.currentIntensity = light.maxIntensity + flickerValue;
+                } else {
+                    light.currentIntensity = light.maxIntensity;
+                }
+                light.currentIntensity = Math.max(0, Math.min(light.currentIntensity, light.maxIntensity));
+            } else {
+                light.currentIntensity = 0;
+            }
+        });
+    },
     
     drawGreyFilter: function() {
         if (!weather.rainActive) return;
