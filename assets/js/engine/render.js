@@ -69,7 +69,7 @@ updateGameLogic: function(deltaTime) {
     }
 
     camera.update();
-    game.gameTime.update(deltaTime);
+    utils.gameTime.update(deltaTime);
     lighting.updateDayNightCycle();
     animate.updateAnimatedTiles(deltaTime);
     weather.updateSnow(deltaTime);
@@ -351,13 +351,6 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
         }
     },
 
-    highlightOverlappingTiles: function () {
-        this.overlappingTiles.forEach(tile => {
-            game.ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
-            game.ctx.fillRect(tile.x * 16, tile.y * 16, 16, 16);
-        });
-    },
-
     handleLights: function (tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
         if (tileData.l && tileData.l.length > 0) {
             tileData.l.forEach(light => {
@@ -380,8 +373,8 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
 
                         const lightId = `${roomItem.id}_${tileX}_${tileY}`;
 
-                        const hours = game.gameTime.hours;
-                        const minutes = game.gameTime.minutes;
+                        const hours = utils.gameTime.hours;
+                        const minutes = utils.gameTime.minutes;
                         const time = hours + minutes / 60;
                         const isNightTime = time >= 22 || time < 7;
 

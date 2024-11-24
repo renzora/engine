@@ -2,7 +2,6 @@ var weather = {
     fireflys: [],
     rainDrops: [],
     snowflakes: [],
-    fogs: [],
     maxSnowflakes: 1000,
     snowflakeSize: 0.5,
     swayDirection: -1,
@@ -24,12 +23,10 @@ var weather = {
                 opacity: opacity
             });
         }
-        this.setBodyBackgroundForSnow(true); // Apply white background to body
     },
 
     stopSnow: function() {
         this.snowflakes = [];
-        this.setBodyBackgroundForSnow(false); // Remove white background from body
     },
 
     updateSnow: function() {
@@ -58,14 +55,6 @@ var weather = {
             game.ctx.fill();
         });
         game.ctx.restore();
-    },
-
-    setBodyBackgroundForSnow: function(apply) {
-        if (apply) {
-            document.body.style.background = 'rgba(240, 248, 255, 0.8)'; // Light snow-like color with opacity
-        } else {
-            document.body.style.background = ''; // Reset to default
-        }
     },
 
     createFireflys: function() {
@@ -151,7 +140,5 @@ var weather = {
         this.drawSnow();
         this.drawRain();
         this.drawFireflys();
-        lighting.drawGreyFilter();
-        render.aimTool();
     },
 };

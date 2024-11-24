@@ -7,11 +7,20 @@
 
   <script>
   var ui_objectives_window = {
+    objectives: [
+        { name: "Find the hidden sword", status: false },
+        { name: "Plant the apple seeds in renzora Garden", status: false },
+        { name: "Sell gold at oakenbridge Market", status: false },
+        { name: "Find the hidden sword", status: true },
+        { name: "Find the hidden sword", status: true },
+        { name: "Defeat the dragon", status: true },
+        { name: "Collect 100 coins from merchant", status: false }
+    ],
     displayObjectives: function() {
       const objectivesContainer = document.getElementById('ui_objectives_container');
       if (objectivesContainer) {
         objectivesContainer.innerHTML = '';
-        game.objectives.forEach(obj => {
+        this.objectives.forEach(obj => {
           const objectiveItem = document.createElement('div');
           objectiveItem.classList.add('flex', 'items-start', 'space-x-2');
 

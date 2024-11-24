@@ -37,47 +37,6 @@ var game = {
     inputMethod: 'keyboard',
     fpsHistory: [],
     maxFpsHistory: 60,
-    objectives: [
-        { name: "Find the hidden sword", status: false },
-        { name: "Plant the apple seeds in renzora Garden", status: false },
-        { name: "Sell gold at oakenbridge Market", status: false },
-        { name: "Find the hidden sword", status: true },
-        { name: "Find the hidden sword", status: true },
-        { name: "Defeat the dragon", status: true },
-        { name: "Collect 100 coins from merchant", status: false }
-    ],
-    gameTime: {
-        hours: 0,
-        minutes: 0,
-        seconds: 0,
-        days: 0,
-        speedMultiplier: 100,
-        daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-        update: function(deltaTime) {
-            if (!game.timeActive) return;  // Stop time updates if time is not active
-            
-            const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
-            this.seconds += gameSeconds;
-    
-            if (this.seconds >= 60) {
-                this.minutes += Math.floor(this.seconds / 60);
-                this.seconds = this.seconds % 60;
-            }
-            if (this.minutes >= 60) {
-                this.hours += Math.floor(this.minutes / 60);
-                this.minutes = this.minutes % 60;
-            }
-            if (this.hours >= 24) {
-                this.days += Math.floor(this.hours / 24);
-                this.hours = this.hours % 24;
-            }
-        },
-        display: function() {
-            const pad = (num) => String(num).padStart(2, '0');
-            const dayOfWeek = this.daysOfWeek[this.days % 7];
-            return `${dayOfWeek} ${pad(this.hours)}:${pad(this.minutes)}`;
-        }
-    },    
 
     reloadGameData: function() {
         const assetsToReload = ['objectData', 'roomData'];
@@ -85,39 +44,9 @@ var game = {
         assets.reloadAssets(assetsToReload, () => {
             console.log("Game data reloaded");
             this.roomData = assets.use('roomData');
-            this.updateGameElements();
+            console.log("Game elements updated");
         });
     },
-
-    updateInputMethod: function(method, name = '') {
-        const inputMethodDisplay = document.getElementById('input_method');
-        if (inputMethodDisplay) {
-            inputMethodDisplay.innerText = `Input: ${method}${name ? ' (' + name + ')' : ''}`;
-        }
-    },
-
-    updateGameElements: function() {
-        console.log("Game elements updated");
-    },
-
-    setZoomLevel: function(newZoomLevel) {
-        this.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10)); // Allow decimals between 2 and 10
-        localStorage.setItem('zoomLevel', this.zoomLevel);
-    
-        // Adjust the canvas size based on the zoom level
-        const baseWidth = window.innerWidth;
-        const baseHeight = window.innerHeight;
-    
-        // Scale the canvas size based on the decimal zoom level
-        const scaledWidth = baseWidth / this.zoomLevel;
-        const scaledHeight = baseHeight / this.zoomLevel;
-    
-        this.canvas.width = scaledWidth;
-        this.canvas.height = scaledHeight;
-    
-        console.log('Zoom level set to:', this.zoomLevel);
-    },
-    
 
     init: function() {
         this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
@@ -190,8 +119,6 @@ var game = {
                 }
             });
 
-            console.log(this.mainSprite);
-
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.6);
@@ -249,8 +176,7 @@ var game = {
             });
 
         window.reloadGameData = this.reloadGameData.bind(this);
-        this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+
         this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -360,63 +286,12 @@ var game = {
         });
     },
 
-    spawnRandomItems: function(numberOfItems) {
-        if (!this.roomData || !this.roomData.items) {
-            console.error('Room data not loaded.');
-            return;
-        }
-    
-        const itemKeys = Object.keys(this.objectData).filter(key => {
-            const item = this.objectData[key][0];
-            return item.type === "item";
-        });
-    
-        if (itemKeys.length === 0) {
-            console.error('No items with type "item" found.');
-            return;
-        }
-    
-        const maxX = this.worldWidth / 16;
-        const maxY = this.worldHeight / 16;
-    
-        for (let i = 0; i < numberOfItems; i++) {
-            let randomItemKey;
-            let randomX;
-            let randomY;
-            let tileOccupied;
-    
-            do {
-                randomItemKey = itemKeys[Math.floor(Math.random() * itemKeys.length)];
-                randomX = Math.floor(Math.random() * maxX);
-                randomY = Math.floor(Math.random() * maxY);
-                tileOccupied = utils.getTileIdAt(randomX, randomY) !== null || !collision.isTileWalkable(randomX, randomY);
-            } while (tileOccupied);
-    
-            const newItem = {
-                id: randomItemKey,
-                x: [randomX],
-                y: [randomY],
-                animationState: [{
-                    currentFrame: 0,
-                    elapsedTime: 0
-                }],
-                zIndex: [2],  // Ensure zIndex is set to 2
-                type: "item"  // Ensure type is set to "item"
-            };
-    
-            this.roomData.items.push(newItem);
-            collision.createWalkableGrid();
-            console.log(`Spawned ${randomItemKey} at (${randomX}, ${randomY}) with zIndex of 2`);
-        }
-    },    
-
 resizeCanvas: function() {
     const consoleElement = document.getElementById('console_window');
     const adjacentMenu = document.getElementById('tabs');
     let consoleWidth = 0;
     let menuWidth = 0;
 
-    // Calculate total width offsets (console and menu)
     if (consoleElement && console_window.isOpen) {
         consoleWidth = consoleElement.offsetWidth;
     }
@@ -425,27 +300,16 @@ resizeCanvas: function() {
     }
 
     const totalOffsetWidth = consoleWidth + menuWidth;
-
-    // Calculate available dimensions independently
     const availableWidth = window.innerWidth - totalOffsetWidth;
     const availableHeight = window.innerHeight;
-
-    // Determine canvas dimensions based on world size and zoom level
     const canvasWidth = Math.min(this.worldWidth * this.zoomLevel, availableWidth);
     const canvasHeight = Math.min(this.worldHeight * this.zoomLevel, availableHeight);
-
-    // Set canvas dimensions independently
     this.canvas.width = canvasWidth;
     this.canvas.height = canvasHeight;
-
-    // Update canvas CSS styles to match calculated dimensions
     this.canvas.style.width = `${canvasWidth}px`;
     this.canvas.style.height = `${canvasHeight}px`;
-
-    // Center the canvas in the viewport
     const horizontalOffset = (availableWidth - canvasWidth) / 2 + totalOffsetWidth;
     const verticalOffset = (availableHeight - canvasHeight) / 2;
-
     this.canvas.style.position = 'absolute';
     this.canvas.style.left = `${horizontalOffset}px`;
     this.canvas.style.top = `${verticalOffset}px`;
@@ -453,17 +317,8 @@ resizeCanvas: function() {
 
 
     
-    handleMouseDown: function(event) {
-
-    },
-
-    handleMouseMove: function(event) {
-
-    },
-    
     handleMouseUp: function(event) {
-        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return; // Add this check for isEditMode
-        console.log('Game handleMouseUp triggered');
+        if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return;
         
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
@@ -481,59 +336,48 @@ resizeCanvas: function() {
     },
 
     render: function () {
-        // Clear the canvas and fill with the background color
-        this.ctx.fillStyle = '#181D29';
-        this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
 
         this.ctx.imageSmoothingEnabled = false;
-    
-        // Reset transformations before rendering the map
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         
-        // Apply zoom and translate based on camera position
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
     
-        // Calculate the viewport boundaries
         this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
         this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
         this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
         this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
     
-        // Render all the tiles and sprites
         render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
-        // Render selected item following the mouse cursor if the inventory window exists and an item is selected
+        lighting.render();
+        weather.render();
+        particles.render();
+        
+        effects.transitions.render();
+        render.renderPathfinderLine();
+        render.renderCarriedObjects();
+        render.handleDebugUtilities();
+        render.aimTool();
+    
+        if(utils.objExists('ui_footer_window')) {
+            ui_footer_window.updateUI();
+        }
+    
+        effects.letterbox.update();
+
         if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
             ui_console_editor_inventory.render();
         }
     
-        // Render other game effects and utilities
-        render.renderPathfinderLine();
-        render.renderCarriedObjects();
-        lighting.render();
-        weather.render();
-        render.handleDebugUtilities();
-        particles.render();
-        effects.transitions.render();
-    
-        if(utils.objExists('ui_footer_window')) { ui_footer_window.updateUI(); }
-        render.highlightOverlappingTiles();
-    
-        // Handle effects like letterbox
-        effects.letterboxEffect.update();
-        effects.letterboxEffect.render();
-    
-        // Render edit mode if the window exists
-        if (utils.objExists('edit_mode_window')) {
+        if(utils.objExists('edit_mode_window')) {
             edit_mode_window.renderSelectionBox();
             edit_mode_window.renderBrush();
             edit_mode_window.renderSelectedTiles();
             edit_mode_window.renderLasso();
         }
     
-        // Render additional utilities for the console tab window if they exist
-        if (utils.objExists('ui_console_tab_window')) {
+        if(utils.objExists('ui_console_tab_window')) {
             if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
                 ui_console_tab_window.renderCollisionBoundaries();
             }
@@ -572,32 +416,24 @@ resizeCanvas: function() {
 
     this.render();
 
-    // Calculate FPS
     const fps = 1000 / timeElapsed;
-
-    // Track FPS using utils.tracker
     utils.tracker('fps', fps);
   
-
-    // Update FPS chart if fps_monitor_window exists
     if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
         utils.finalizeFrame();
         fps_monitor_window.renderChart();
     }
 
-    // Update FPS display in debug UI
     const debugFPS = document.getElementById('gameFps');
     if (debugFPS) {
         debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
     }
 
-    // Update game time display
     const gameTimeDisplay = document.getElementById('game_time');
     if (gameTimeDisplay) {
-        gameTimeDisplay.innerHTML = this.gameTime.display();
+        gameTimeDisplay.innerHTML = utils.gameTime.display();
     }
 
-    // Request the next animation frame
     requestAnimationFrame(this.loop.bind(this));
     }
     

@@ -1,5 +1,37 @@
 const utils = {
     functionCalls: {},
+    gameTime: {
+        hours: 0,
+        minutes: 0,
+        seconds: 0,
+        days: 0,
+        speedMultiplier: 100,
+        daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+        update: function(deltaTime) {
+            if (!game.timeActive) return;  // Stop time updates if time is not active
+            
+            const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
+            this.seconds += gameSeconds;
+    
+            if (this.seconds >= 60) {
+                this.minutes += Math.floor(this.seconds / 60);
+                this.seconds = this.seconds % 60;
+            }
+            if (this.minutes >= 60) {
+                this.hours += Math.floor(this.minutes / 60);
+                this.minutes = this.minutes % 60;
+            }
+            if (this.hours >= 24) {
+                this.days += Math.floor(this.hours / 24);
+                this.hours = this.hours % 24;
+            }
+        },
+        display: function() {
+            const pad = (num) => String(num).padStart(2, '0');
+            const dayOfWeek = this.daysOfWeek[this.days % 7];
+            return `${dayOfWeek} ${pad(this.hours)}:${pad(this.minutes)}`;
+        }
+    },
 
     tracker: function(functionName, value = null) {
         // Initialize tracking for the function if not already present
@@ -146,6 +178,20 @@ const utils = {
         } catch (e) {
             return false;
         }
+    },
+
+    setZoomLevel: function(newZoomLevel) {
+        game.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10));
+        localStorage.setItem('zoomLevel', game.zoomLevel);
+        const baseWidth = window.innerWidth;
+        const baseHeight = window.innerHeight;
+        const scaledWidth = baseWidth / game.zoomLevel;
+        const scaledHeight = baseHeight / game.zoomLevel;
+    
+        game.canvas.width = scaledWidth;
+        game.canvas.height = scaledHeight;
+    
+        console.log('Zoom level set to:', game.zoomLevel);
     },
 
     parseYaml: function(yaml) {

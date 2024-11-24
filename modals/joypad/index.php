@@ -66,6 +66,8 @@ var joypad_window = {
         const updateJoystickPosition = (event) => {
     if (!this.isDragging) return;
 
+    input.updateInputMethod('mobile');
+
     event.preventDefault();
 
     const containerRect = joystickContainer.getBoundingClientRect();

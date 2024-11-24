@@ -6,7 +6,7 @@ const effects = {
 
         let elapsed = 0;
         const shakeInterval = setInterval(() => {
-            elapsed += 16; // Approximate frame duration
+            elapsed += 16;
 
             if (elapsed < duration) {
                 const offsetX = (Math.random() - 0.5) * intensity;
@@ -75,15 +75,14 @@ const effects = {
         }
     },
 
-    // New Letterbox Effect
-    letterboxEffect: {
+    letterbox: {
         active: false,
         barHeight: 0,
-        maxBarHeight: 130, // Maximum height for the bars
-        speed: 3, // Speed at which bars move in/out
+        maxBarHeight: 130,
+        speed: 3,
         start: function() {
             this.active = true;
-            this.barHeight = 0; // Start with the bars at 0 height
+            this.barHeight = 0;
         },
         stop: function() {
             this.active = false;
@@ -101,21 +100,16 @@ const effects = {
                     this.barHeight = 0;
                 }
             }
+            this.render();
         },
         render: function() {
             if (this.barHeight > 0) {
-                // Reset any transformations and ensure bars are drawn over everything
                 game.ctx.setTransform(1, 0, 0, 1, 0, 0);
-                
-                // Draw top bar - fully black
-                game.ctx.fillStyle = 'rgba(0, 0, 0, 1)'; // Solid black color for the bars
-                game.ctx.fillRect(0, 0, game.canvas.width, this.barHeight); // Top bar
-                
-                // Draw bottom bar - fully black
+                game.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
+                game.ctx.fillRect(0, 0, game.canvas.width, this.barHeight);
                 game.ctx.fillRect(0, game.canvas.height - this.barHeight, game.canvas.width, this.barHeight); // Bottom bar
             }
         }
     }
-    
 
 };

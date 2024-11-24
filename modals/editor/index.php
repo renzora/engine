@@ -126,10 +126,6 @@ var edit_mode_window = {
 
     // Hide the main sprite
     game.displaySprite = false;
-
-    // Set the time to 12:00 noon and stop time updates
-    game.gameTime.hours = 12;  // Set to 12 noon
-    game.gameTime.minutes = 0;  // Set minutes to 0
     game.timeActive = false;  // Stop time updates
 
     // Disable game pathfinding and enable editor mode

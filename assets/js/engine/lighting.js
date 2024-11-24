@@ -6,11 +6,6 @@ nightFilter: {
     color: { r: 20, g: 20, b: 50 }, // A darker blue tint
     compositeOperation: 'multiply'
 },
-    greyFilter: {
-        opacity: 0.5,
-        color: { r: 128, g: 128, b: 128 }, // Grey color
-        compositeOperation: 'source-out'
-    },
     timeBasedUpdatesEnabled: true,
     nightAmbiencePlaying: false,
 
@@ -90,8 +85,8 @@ createLightMask: function() {
 updateDayNightCycle: function() {
     if (!this.timeBasedUpdatesEnabled) return;
 
-    const hours = game.gameTime.hours;
-    const minutes = game.gameTime.minutes;
+    const hours = utils.gameTime.hours;
+    const minutes = utils.gameTime.minutes;
     const time = hours + minutes / 60;
 
     // Determine if it's nighttime
@@ -172,26 +167,11 @@ render: function () {
             }
         });
     },
-    
-    drawGreyFilter: function() {
-        if (!weather.rainActive) return;
-    
-        const hours = game.gameTime.hours;
-        const minutes = game.gameTime.minutes;
-        const time = hours + minutes / 60;
-    
-        if (time >= 7 && time < 22) { // Daytime check
-            game.ctx.save();
-            game.ctx.fillStyle = `rgba(${this.greyFilter.color.r}, ${this.greyFilter.color.g}, ${this.greyFilter.color.b}, ${this.greyFilter.opacity})`;
-            game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
-            game.ctx.restore();
-        }
-    },
 
     updateLightsIntensity: function(progress) {
         this.lights.forEach(light => {
-            const hours = game.gameTime.hours;
-            const minutes = game.gameTime.minutes;
+            const hours = utils.gameTime.hours;
+            const minutes = utils.gameTime.minutes;
             const time = hours + minutes / 60;
             let targetIntensity = 0;
 

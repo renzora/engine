@@ -49,6 +49,13 @@ var input = {
     }, 500)); // 500ms delay
     },
 
+    updateInputMethod: function(method, name = '') {
+        const inputMethodDisplay = document.getElementById('input_method');
+        if (inputMethodDisplay) {
+            inputMethodDisplay.innerText = `Input: ${method}${name ? ' (' + name + ')' : ''}`;
+        }
+    },
+
     gamepadXButton: function(e) {
         console.log("X button held down");
         if (ui_overlay_window.remainingBullets < ui_overlay_window.bulletsPerRound && ui_overlay_window.remainingRounds > 0 && !ui_overlay_window.isReloading) {
@@ -392,7 +399,7 @@ handleLeftAxes: function(axes) {
     keyDown: function(e) {
         if (game.isEditMode) return; // Prevent key presses in edit mode
         if (!game.allowControls) return;
-        game.updateInputMethod('keyboard');
+        this.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             if (e.key === 'Tab') {
                 e.preventDefault();
@@ -419,7 +426,7 @@ handleLeftAxes: function(axes) {
     
     keyUp: function(e) {
         if (game.isEditMode) return; // Prevent key releases in edit mode
-        game.updateInputMethod('keyboard');
+        this.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             e.preventDefault(); // Prevent default action for keyUp
             this.handleKeyUp(e);
@@ -548,7 +555,7 @@ handleLeftAxes: function(axes) {
 
     leftClick: function(e) {
         if (game.isEditMode) return; // Prevent left clicks in edit mode
-        game.updateInputMethod('keyboard');
+        this.updateInputMethod('keyboard');
         console.log("left button clicked");
         if (e.target.matches('[data-close], [data-esc]')) {
             console.log("data close clicked");
@@ -560,7 +567,7 @@ handleLeftAxes: function(axes) {
     rightClick: function(e) {
         if (game.isEditMode) return; // Prevent right clicks in edit mode
         e.preventDefault();
-        game.updateInputMethod('keyboard');
+        this.updateInputMethod('keyboard');
         console.log("right button clicked");
         this.cancelPathfinding(game.mainSprite);
     },
