@@ -335,60 +335,66 @@ resizeCanvas: function() {
         }
     },
 
-    render: function () {
+// game.js
+render: function () {
+    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    
+    this.ctx.scale(this.zoomLevel, this.zoomLevel);
+    this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
 
-        this.ctx.imageSmoothingEnabled = false;
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        
-        this.ctx.scale(this.zoomLevel, this.zoomLevel);
-        this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
-    
-        this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
-        this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
-        this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
-        this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
-    
-        render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
-    
-        lighting.render();
-        weather.render();
-        particles.render();
-        
-        effects.transitions.render();
-        render.renderPathfinderLine();
-        render.renderCarriedObjects();
-        render.handleDebugUtilities();
-        render.aimTool();
-    
-        if(utils.objExists('ui_footer_window')) {
-            ui_footer_window.updateUI();
-        }
-    
-        effects.letterbox.update();
+    this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
+    this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
+    this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
+    this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
 
-        if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
-            ui_console_editor_inventory.render();
-        }
+    // Render background and sprites
+    render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+    render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+
+    // Apply the night filter
+    lighting.renderNightFilter();
+
     
-        if(utils.objExists('edit_mode_window')) {
-            edit_mode_window.renderSelectionBox();
-            edit_mode_window.renderBrush();
-            edit_mode_window.renderSelectedTiles();
-            edit_mode_window.renderLasso();
-        }
+    weather.render();
+    particles.render();
     
-        if(utils.objExists('ui_console_tab_window')) {
-            if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
-                ui_console_tab_window.renderCollisionBoundaries();
-            }
-            if (utils.objExists('ui_console_tab_window.renderNearestWalkableTile')) {
-                ui_console_tab_window.renderNearestWalkableTile();
-            }
-            if (utils.objExists('ui_console_tab_window.renderObjectCollision')) {
-                ui_console_tab_window.renderObjectCollision();
-            }
+    effects.transitions.render();
+    render.renderPathfinderLine();
+    render.renderCarriedObjects();
+    render.handleDebugUtilities();
+    render.aimTool();
+
+    if(utils.objExists('ui_footer_window')) {
+        ui_footer_window.updateUI();
+    }
+
+    effects.letterbox.update();
+
+    if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
+        ui_console_editor_inventory.render();
+    }
+
+    if(utils.objExists('edit_mode_window')) {
+        edit_mode_window.renderSelectionBox();
+        edit_mode_window.renderBrush();
+        edit_mode_window.renderSelectedTiles();
+        edit_mode_window.renderLasso();
+    }
+
+    if(utils.objExists('ui_console_tab_window')) {
+        if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
+            ui_console_tab_window.renderCollisionBoundaries();
         }
-    },
+        if (utils.objExists('ui_console_tab_window.renderNearestWalkableTile')) {
+            ui_console_tab_window.renderNearestWalkableTile();
+        }
+        if (utils.objExists('ui_console_tab_window.renderObjectCollision')) {
+            ui_console_tab_window.renderObjectCollision();
+        }
+    }
+},
+
     
     loop: function(timestamp) {
     if (!this.lastTime) {

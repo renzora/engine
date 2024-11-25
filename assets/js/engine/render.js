@@ -133,9 +133,6 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
             return acc;
         }, {});
     
-        // 1. Render the background first
-        this.renderBackground(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
-    
         // 3. Render the game objects
         if (game.roomData && game.roomData.items) {
             game.roomData.items.forEach(roomItem => {

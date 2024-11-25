@@ -1,13 +1,14 @@
+// lighting.js
 const lighting = {
     lights: [],
-    compositeOperation: 'soft-light',
-nightFilter: {
-    opacity: 0.7, // Adjust to control the overall darkness
-    color: { r: 20, g: 20, b: 50 }, // A darker blue tint
-    compositeOperation: 'multiply'
-},
+    nightFilter: {
+        opacity: 0, // Start with day opacity
+        color: { r: 255, g: 255, b: 255 }, // Day color (white)
+        compositeOperation: 'multiply', // Use 'multiply' blending mode
+    },
     timeBasedUpdatesEnabled: true,
     nightAmbiencePlaying: false,
+    lightIntensityMultiplier: 0, // Multiplier for light intensities based on time of day
 
     LightSource: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
         this.id = id;
@@ -42,126 +43,236 @@ nightFilter: {
         }
     },
 
-createLightMask: function() {
-    const lightCanvas = document.createElement('canvas');
-    lightCanvas.width = game.canvas.width;
-    lightCanvas.height = game.canvas.height;
-    const lightCtx = lightCanvas.getContext('2d');
 
-    // Clear the canvas
-    lightCtx.clearRect(0, 0, lightCanvas.width, lightCanvas.height);
+    createNightFilterMask: function () {
+        const maskCanvas = document.createElement('canvas');
+        maskCanvas.width = game.canvas.width;
+        maskCanvas.height = game.canvas.height;
+        const maskCtx = maskCanvas.getContext('2d');
 
-    // Set composite operation to 'source-over' for proper layering
-    lightCtx.globalCompositeOperation = 'source-over';
+        // Fill the mask with the night filter color
+        maskCtx.fillStyle = `rgba(${this.nightFilter.color.r}, ${this.nightFilter.color.g}, ${this.nightFilter.color.b}, ${this.nightFilter.opacity})`;
+        maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
 
-    this.lights.forEach(light => {
-        const gradient = lightCtx.createRadialGradient(
-            light.x, light.y, 0,
-            light.x, light.y, light.baseRadius
-        );
+        // Adjust the mask under the lights
+        this.lights.forEach((light) => {
+            if (light.currentIntensity > 0) {
+                // Convert world position to screen position
+                const screenX = (light.x - camera.cameraX) * game.zoomLevel;
+                const screenY = (light.y - camera.cameraY) * game.zoomLevel;
+                const screenRadius = light.baseRadius * game.zoomLevel;
 
-        const color = light.color;
-        const intensity = light.currentIntensity;
+                // Prepare the gradient for the light
+                const gradient = maskCtx.createRadialGradient(
+                    screenX,
+                    screenY,
+                    0,
+                    screenX,
+                    screenY,
+                    screenRadius
+                );
 
-        // Create a smooth gradient for softer lighting
-        gradient.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, ${intensity})`);
-        gradient.addColorStop(0.5, `rgba(${color.r}, ${color.g}, ${color.b}, ${intensity * 0.5})`);
-        gradient.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+                const { r, g, b } = light.color;
+                const intensity = light.currentIntensity;
 
-        // Apply shadow blur for softness
-        lightCtx.save();
-        lightCtx.shadowBlur = 50; // Increase for softer edges
-        lightCtx.shadowColor = `rgba(${color.r}, ${color.g}, ${color.b}, ${intensity})`;
-        lightCtx.fillStyle = gradient;
-        lightCtx.beginPath();
-        lightCtx.arc(light.x, light.y, light.baseRadius, 0, Math.PI * 2);
-        lightCtx.fill();
-        lightCtx.restore();
-    });
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${intensity})`); // Full intensity at center
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`); // Fade out at edges
 
-    return lightCanvas;
-},
+                // Use 'screen' composite operation to add light to the mask
+                maskCtx.globalCompositeOperation = 'screen';
+                maskCtx.beginPath();
+                maskCtx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+                maskCtx.fillStyle = gradient;
+                maskCtx.fill();
+            }
+        });
 
-updateDayNightCycle: function() {
-    if (!this.timeBasedUpdatesEnabled) return;
+        // Reset composite operation
+        maskCtx.globalCompositeOperation = 'source-over';
 
-    const hours = utils.gameTime.hours;
-    const minutes = utils.gameTime.minutes;
-    const time = hours + minutes / 60;
+        return maskCanvas;
+    },
 
-    // Determine if it's nighttime
-    const isNightTime = time >= 20 || time < 6;
+    updateDayNightCycle: function () {
+        if (!this.timeBasedUpdatesEnabled) return;
 
-    // Update fireflies state based on nighttime
-    weather.fireflysActive = isNightTime;
+        const hours = utils.gameTime.hours;
+        const minutes = utils.gameTime.minutes;
+        let time = hours + minutes / 60;
 
-    // Play or stop night ambience based on night time
-    if (isNightTime) {
-        if (!this.nightAmbiencePlaying) {
-            audio.playAudio("nightAmbience", assets.use('nightAmbience'), 'ambience', true);
-            this.nightAmbiencePlaying = true;
+        // Adjust time to be within 0-24 range
+        if (time >= 24) time -= 24;
+
+        // Define time periods
+        const dayStart = 7;
+        const sunsetStart = 18;
+        const nightStart = 20;
+        const nightEnd = 5;
+        const sunriseEnd = 7;
+
+        // Initialize variables
+        let opacity = 0;
+        let color = { r: 255, g: 255, b: 255 }; // Day color (white)
+        let lightIntensityMultiplier = 0; // Will be used to adjust light intensities
+
+        // Night color
+        const nightColor = { r: 19, g: 11, b: 121 };
+
+        // Determine opacity, color, and light intensity based on time
+        if (time >= dayStart && time < sunsetStart) {
+            // Daytime
+            opacity = 0;
+            color = { r: 255, g: 255, b: 255 }; // Day color (white)
+            lightIntensityMultiplier = 0; // Lights are off during the day
+        } else if (time >= sunsetStart && time < nightStart) {
+            // Sunset: 18:00 to 20:00
+            const progress = (time - sunsetStart) / (nightStart - sunsetStart); // 0 to 1
+            opacity = progress * 1; // Opacity increases from 0 to 1
+
+            // Interpolate color from day color to night color
+            const dayColor = { r: 255, g: 255, b: 255 }; // Day color (white)
+
+            color = {
+                r: Math.round(dayColor.r + (nightColor.r - dayColor.r) * progress),
+                g: Math.round(dayColor.g + (nightColor.g - dayColor.g) * progress),
+                b: Math.round(dayColor.b + (nightColor.b - dayColor.b) * progress),
+            };
+
+            lightIntensityMultiplier = progress; // Lights gradually turn on
+        } else if (time >= nightStart || time < nightEnd) {
+            // Nighttime
+            opacity = 1;
+            color = nightColor;
+            lightIntensityMultiplier = 1; // Lights are fully on
+        } else if (time >= nightEnd && time < sunriseEnd) {
+            // Sunrise: 5:00 to 7:00
+            const progress = (time - nightEnd) / (sunriseEnd - nightEnd); // 0 to 1
+            opacity = 1 - progress; // Opacity decreases from 1 to 0
+
+            // Interpolate color from night color to day color
+            const dayColor = { r: 255, g: 255, b: 255 }; // Day color (white)
+
+            color = {
+                r: Math.round(nightColor.r + (dayColor.r - nightColor.r) * progress),
+                g: Math.round(nightColor.g + (dayColor.g - nightColor.g) * progress),
+                b: Math.round(nightColor.b + (dayColor.b - nightColor.b) * progress),
+            };
+
+            lightIntensityMultiplier = 1 - progress; // Lights gradually turn off
+        } else {
+            // Default to day settings
+            opacity = 0;
+            color = { r: 255, g: 255, b: 255 }; // Day color (white)
+            lightIntensityMultiplier = 0; // Lights are off during the day
         }
-    } else {
-        if (this.nightAmbiencePlaying) {
-            audio.stopLoopingAudio('nightAmbience', 'ambience', 0.5);
-            this.nightAmbiencePlaying = false;
-        }
-    }
 
-    // Adjust light intensities based on time
-    if (time >= 18 && time < 20) { // Transition into night
-        const progress = (time - 18) / 2; // Progress from 0 to 1 over 2 hours
-        this.updateLightsIntensity(progress);
-    } else if (time >= 20 || time < 5) { // Night time
-        this.updateLightsIntensity(1);
-    } else if (time >= 5 && time < 7) { // Transition out of night
-        const progress = 1 - ((time - 5) / 2); // Progress from 1 to 0 over 2 hours
-        this.updateLightsIntensity(progress);
-    } else {
-        this.updateLightsIntensity(0); // Daytime, lights off
-    }
-},
+        // Update nightFilter with calculated opacity and color
+        this.nightFilter.opacity = opacity;
+        this.nightFilter.color = color;
 
-render: function () {
-    const ctx = game.ctx;
+        // Update light intensity multiplier
+        this.lightIntensityMultiplier = lightIntensityMultiplier;
+    },
 
-    // Save the current context state
-    ctx.save();
+    updateNightTint: function (progress) {
+        // Fixed dark blue color for night
+        this.nightFilter.color = { r: 0, g: 0, b: 40 };
+        // Increase opacity to make it darker
+        this.nightFilter.opacity = 0.9 * progress; // From 0 (day) to 0.9 (night)
+    },
 
-    // Apply the night filter over the entire scene
-    ctx.fillStyle = `rgba(${lighting.nightFilter.color.r}, ${lighting.nightFilter.color.g}, ${lighting.nightFilter.color.b}, ${lighting.nightFilter.opacity})`;
-    ctx.globalCompositeOperation = 'multiply'; // Darken the scene
-    ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
+    // New function to render the night filter
+    renderNightFilter: function () {
+        const ctx = game.ctx;
 
-    // Apply the light mask using 'screen' blending mode for additive effect
-    ctx.globalCompositeOperation = 'screen';
-    ctx.drawImage(this.createLightMask(), 0, 0);
+        // Save the current context state
+        ctx.save();
 
-    // Restore the context to default
-    ctx.restore();
-},
+        // Reset transformation to ensure we're drawing in screen coordinates
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
 
+        // Create the night filter mask
+        const maskCanvas = this.createNightFilterMask();
+
+        // Apply the night filter mask over the scene using 'multiply'
+        ctx.globalCompositeOperation = this.nightFilter.compositeOperation;
+        ctx.drawImage(maskCanvas, 0, 0);
+
+        // Restore the context state
+        ctx.restore();
+    },
+
+    // New function to render light sources
+    renderLightSources: function() {
+        const ctx = game.ctx;
+        ctx.save();
+
+        // Reset transformation to ensure we're drawing in screen coordinates
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        // Use 'lighter' composite operation to add light to the scene
+        ctx.globalCompositeOperation = 'lighter';
+
+        this.lights.forEach(light => {
+            if (light.currentIntensity > 0) {
+                // Convert world position to screen position
+                const screenX = (light.x - camera.cameraX) * game.zoomLevel;
+                const screenY = (light.y - camera.cameraY) * game.zoomLevel;
+                const screenRadius = light.baseRadius * game.zoomLevel;
+
+                const gradient = ctx.createRadialGradient(
+                    screenX, screenY, 0,
+                    screenX, screenY, screenRadius
+                );
+
+                const intensity = light.currentIntensity;
+                const { r, g, b } = light.color;
+
+                gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${intensity})`);
+                gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        });
+
+        ctx.restore();
+    },
 
     addLight: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
         const existingLight = this.lights.find(light => light.id === id);
         if (!existingLight) {
-            const clampedMaxIntensity = Math.min(maxIntensity, maxIntensity);
+            // Ensure maxIntensity is between 0 and 1
+            const clampedMaxIntensity = Math.min(Math.max(maxIntensity, 0), 1);
             const newLight = new this.LightSource(id, x, y, radius, color, clampedMaxIntensity, type, flicker, flickerSpeed, flickerAmount);
             newLight.currentIntensity = clampedMaxIntensity;
             this.lights.push(newLight);
         }
     },
 
-    updateLights: function(deltaTime) {
-        this.lights.forEach(light => {
+    updateLights: function (deltaTime) {
+        this.lights.forEach((light) => {
+            // Update maxIntensity based on time of day
+            light.maxIntensity =
+                light.initialMaxIntensity * this.lightIntensityMultiplier;
+
             if (light.maxIntensity > 0) {
                 if (light.flicker) {
-                    const flickerValue = Math.sin((performance.now() + light.flickerOffset) * light.flickerSpeed) * light.flickerAmount;
+                    const flickerValue =
+                        Math.sin(
+                            (performance.now() + light.flickerOffset) *
+                                light.flickerSpeed
+                        ) * light.flickerAmount;
                     light.currentIntensity = light.maxIntensity + flickerValue;
                 } else {
                     light.currentIntensity = light.maxIntensity;
                 }
-                light.currentIntensity = Math.max(0, Math.min(light.currentIntensity, light.maxIntensity));
+                light.currentIntensity = Math.max(
+                    0,
+                    Math.min(light.currentIntensity, light.maxIntensity)
+                );
             } else {
                 light.currentIntensity = 0;
             }
