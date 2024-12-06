@@ -47,7 +47,17 @@ if (!$auth) {
         $jwt = JWT::encode($payload, $_ENV['JWT_KEY'], 'HS256');
 
         // Set the cookie with the JWT
-        setcookie("renaccount", $jwt, time() + (10 * 365 * 24 * 60 * 60), '/');
+        setcookie(
+            "renaccount",
+            $jwt,
+            [
+                'expires' => time() + (60 * 60 * 24 * 7), // 1 week
+                'path' => '/',
+                'secure' => isset($_SERVER['HTTPS']),    // Only send over HTTPS
+                'httponly' => true,                     // Prevent access via JavaScript
+                'samesite' => 'Strict'                  // Prevent cross-site usage
+            ]
+        );
 
         // Respond with success
         $json = array("message" => "login_complete", "token" => $jwt);

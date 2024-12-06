@@ -357,11 +357,11 @@ var ui_console_tab_window = {
         var days = document.getElementById('days').value;
         var speedMultiplier = document.getElementById('speed_multiplier').value;
 
-        game.gameTime.hours = parseInt(hours);
-        game.gameTime.minutes = parseInt(minutes);
-        game.gameTime.seconds = parseInt(seconds);
-        game.gameTime.days = parseInt(days);
-        game.gameTime.speedMultiplier = parseInt(speedMultiplier);
+        utils.gameTime.hours = parseInt(hours);
+        utils.gameTime.minutes = parseInt(minutes);
+        utils.gameTime.seconds = parseInt(seconds);
+        utils.gameTime.days = parseInt(days);
+        utils.gameTime.speedMultiplier = parseInt(speedMultiplier);
 
         console.log('Game time set to: ', game.gameTime.display());
     },

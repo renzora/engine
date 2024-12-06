@@ -168,36 +168,40 @@ var modal = {
     },
 
     load: function(options) {
-        const { id, url, name = null, showInList = true, drag = true, reload = false } = options;
-
+        const { id, url, name = null, showInList = true, drag = true, reload = false, hidden = false } = options;
+    
         if (!url.includes('/')) {
             options.url += '/index.php';
         }
-
+    
         if (name) {
             this.modalNames[id] = name;
         }
-
+    
         this.showInListFlags[id] = showInList;
-
+    
         return new Promise((resolve, reject) => {
             let existingModal = document.querySelector("[data-window='" + id + "']");
             if (existingModal) {
                 if (reload) {
                     this.close(id);
                 } else {
-                    this.front(existingModal);
+                    if (!hidden) {
+                        this.front(existingModal);
+                    } else {
+                        this.minimize(id);
+                    }
                     resolve();
                     return;
                 }
             }
-
+    
             ui.ajax({
                 url: 'modals/' + url,
                 method: 'GET',
                 success: (data) => {
                     ui.html(document.body, data, 'append');
-
+    
                     this.init(`[data-window='${id}']`, {
                         start: function() {
                             this.classList.add('dragging');
@@ -208,9 +212,14 @@ var modal = {
                         },
                         drag
                     });
-
+    
+                    if (hidden) {
+                        this.minimize(id);
+                    } else {
+                        this.front(id);
+                    }
+    
                     window.modalResolves[id] = resolve;
-                    this.front(id);
                     resolve();
                 },
                 error: (error) => {
@@ -219,7 +228,7 @@ var modal = {
                 }
             });
         });
-    },
+    },    
 
     updateModalsButtonVisibility: function() {
         const modalsButton = document.getElementById('show_modals_button');

@@ -23,11 +23,14 @@ var network = {
     },
 
     open: function(e) {
-        if (!this.getToken('renaccount')) {
-            
-        }
-        audio.start();
-        game.init();
+        console.log("Connected to the WebSocket server.");
+        // Send player connection information
+        const playerData = {
+            id: this.getPlayerId(),
+            name: "PlayerName", // Replace with dynamic player name if available
+            position: { x: 0, y: 0 }, // Default or current position
+        };
+        this.send({ command: 'playerConnect', data: playerData });
     },
 
     send: function(message) {
@@ -52,26 +55,24 @@ var network = {
         if (this.socket) {
             this.socket.close();
         }
-        if (this.gameSocket) {
-            this.gameSocket.close();
-        }
     },
 
     close: function(e) {
-        modal.closeAll();
-        modal.load("errors/blank.php", "error_window", "Server Error", true);
-    },
-
-    getToken: function(name) {
-        var value = "; " + document.cookie;
-        var parts = value.split("; " + name + "=");
-        if (parts.length == 2) return parts.pop().split(";").shift();
+        console.error("Disconnected from the server.");
     },
 
     getPlayerId: function() {
-        // Implement this function to return the player ID
-        // For example, this could be stored in a cookie or local storage
-        return this.getToken('renaccount');
+        ui.ajax({
+            url: 'helpers/get_playerid.php',
+            method: 'GET',
+            outputType: 'json',
+            success: (data) => {
+                console.log('Player ID:', data.playerid);
+            },
+            error: (err) => {
+                console.error('AJAX error:', err);
+            },
+        });
     },
 
     sendReloadRequest: function() {
@@ -80,7 +81,8 @@ var network = {
 };
 
 document.addEventListener('DOMContentLoaded', (e) => {
-    network.init();
     input.init(e);
     gamepad.init(e);
+    audio.start();
+    game.init();
 });

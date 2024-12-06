@@ -53,7 +53,7 @@ var sprite = {
             isCarrying: options.isCarrying !== undefined ? options.isCarrying : false,
             carriedItem: options.carriedItem !== undefined ? options.carriedItem : false,
             messages: options.messages || [],
-            stopRadius: options.stopRadius !== undefined ? options.stopRadius : 30,
+            stopRadius: options.stopRadius !== undefined ? options.stopRadius : 30
         };
 
         Object.setPrototypeOf(newSprite, this.SpritePrototype);
@@ -78,13 +78,7 @@ setInterval(() => {
 
         }
 
-        if (options.isPlayer) {
-            console.log(`Adding light for player: ${newSprite.id}`);
-            const lightColor = { r: 255, g: 255, b: 255 }; // White light
-            const lightRadius = 65; // Adjust the radius as needed
-            const lightIntensity = 0.15; // Adjust the intensity as needed
-            lighting.addLight(newSprite.id + '_light', newSprite.x + 8, newSprite.y + 8, lightRadius, lightColor, lightIntensity, 'playerLight', true, 0, 0);
-        }
+  
 
         console.log(lighting.lights);
     
@@ -185,7 +179,7 @@ draw: function() {
             const shadowOpacity = 0.05 + (shadowOpacityFactor * frameFactor); // Base opacity plus dynamic component
         
             let shadowX = (this.width / 2) * this.scale; // Default center
-            let shadowY = (this.height - 1) * this.scale - 2; // Default bottom
+            let shadowY = (this.height - 1) * this.scale - 6; // Default bottom
         
             game.ctx.shadowBlur = 15;
             game.ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`; // Dynamic shadow opacity
@@ -540,114 +534,6 @@ update: function(deltaTime) {
 
     utils.tracker('sprite.update');
 },
-
-        drawEnemyAttackAimTool: function() {
-            const player = game.sprites[game.playerid];
-            if (!player) return;
-        
-            const deltaX = player.x - this.x;
-            const deltaY = player.y - this.y;
-            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-        
-            // Only show the aim tool if within attack range
-            if (distance > this.maxRange) return;
-        
-            // Calculate the adjusted target position
-            let adjustedTargetX = player.x;
-            let adjustedTargetY = player.y;
-        
-            // Check if within the enemy's max range
-            if (distance <= this.maxRange) {
-                adjustedTargetX = player.x;
-                adjustedTargetY = player.y;
-            } else {
-                const ratio = this.maxRange / distance;
-                adjustedTargetX = this.x + deltaX * ratio;
-                adjustedTargetY = this.y + deltaY * ratio;
-            }
-        
-            // Function to check for collision with non-walkable map objects
-            const isObstructed = (x, y) => {
-                if (game.roomData && game.roomData.items) {
-                    for (const roomItem of game.roomData.items) {
-                        const itemData = assets.use('objectData')[roomItem.id];
-                        if (!itemData) continue;
-        
-                        const xCoordinates = roomItem.x || [];
-                        const yCoordinates = roomItem.y || [];
-        
-                        for (let i = 0; i < xCoordinates.length; i++) {
-                            const itemX = parseInt(xCoordinates[i], 10) * 16;
-                            const itemY = parseInt(yCoordinates[i], 10) * 16;
-                            const tileRect = {
-                                x: itemX,
-                                y: itemY,
-                                width: 16,
-                                height: 16
-                            };
-        
-                            // Check if the point is within the tile's bounds
-                            if (
-                                x >= tileRect.x &&
-                                x <= tileRect.x + tileRect.width &&
-                                y >= tileRect.y &&
-                                y <= tileRect.y + tileRect.height
-                            ) {
-                                const tileData = itemData[0]; // Assuming single tile data for simplicity
-                                // Check if the tile is walkable
-                                if (tileData.w !== 1) { // Assuming w=1 means walkable, otherwise it's not
-                                    return { obstructed: true, collisionX: x, collisionY: y };
-                                }
-                            }
-                        }
-                    }
-                }
-                return { obstructed: false };
-            };
-        
-            // Check for obstruction along the line of sight
-            let finalTargetX = adjustedTargetX;
-            let finalTargetY = adjustedTargetY;
-            const steps = Math.ceil(distance);
-            let obstructionDetected = false;
-        
-            for (let i = 1; i <= steps; i++) {
-                const stepX = this.x + (deltaX * i) / steps;
-                const stepY = this.y + (deltaY * i) / steps;
-                const result = isObstructed(stepX, stepY);
-                if (result.obstructed) {
-                    finalTargetX = result.collisionX;
-                    finalTargetY = result.collisionY;
-                    obstructionDetected = true;
-                    break;
-                }
-            }
-        
-            // Do not show the aim if the obstruction is very close
-            if (obstructionDetected && Math.sqrt((finalTargetX - this.x) ** 2 + (finalTargetY - this.y) ** 2) < 10) {
-                return;
-            }
-        
-            // Draw the aim tool
-            game.ctx.save();
-        
-            // Draw the line to the target
-            game.ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-            game.ctx.lineWidth = 1;
-            game.ctx.setLineDash([5, 5]); // Dotted line
-            game.ctx.beginPath();
-            game.ctx.moveTo(this.x + this.width / 2, this.y + this.height / 2);
-            game.ctx.lineTo(finalTargetX + player.width / 2, finalTargetY + player.height / 2);
-            game.ctx.stroke();
-            game.ctx.setLineDash([]); // Reset line dash
-        
-            // Draw target radius at the adjusted target position
-            game.ctx.beginPath();
-            game.ctx.arc(finalTargetX + player.width / 2, finalTargetY + player.height / 2, this.targetRadius, 0, 2 * Math.PI);
-            game.ctx.stroke();
-        
-            game.ctx.restore();
-        },
     
         dealDamage: function() {
             const aimX = this.targetX;
@@ -673,55 +559,7 @@ update: function(deltaTime) {
                     }
                 }
             }
-        },
-
-        drawSelectedItem: function() {
-            if (!this.currentItem) return;
-        
-            const itemData = game.itemsData.items.find(item => item.name === this.currentItem);
-            if (!itemData) return;
-        
-            // Retrieve the direction-specific data
-            const directionData = itemData.directions[this.direction];
-            if (!directionData) return;
-        
-            // Use the angle and offset for the current direction
-            const rotationAngle = (directionData.angle || 0) * Math.PI / 180;
-            const itemXOffset = directionData.xOffset || 0;
-            const itemYOffset = directionData.yOffset || 0;
-        
-            const itemScale = itemData.scale || 1;
-            const iconSize = 16; // Assuming a 16x16 item icon
-        
-            game.ctx.save(); // Save the current canvas state
-        
-            // Translate to the item's center, apply offset, rotate, then draw the image
-            game.ctx.translate(this.x + itemXOffset, this.y + itemYOffset);
-            game.ctx.rotate(rotationAngle);
-        
-            // Apply an even stronger pulsating glow effect if the item has the `glow` property
-            if (itemData.glow) {
-                const time = Date.now();
-                const glowStrength = 0.9 + 0.8 * Math.sin(time / 120); // Very strong pulsating effect
-                game.ctx.shadowColor = `rgba(255, 255, 0, ${glowStrength})`; // Bright yellow glow
-                game.ctx.shadowBlur = 60 + 40 * Math.sin(time / 120); // Very large dynamic blur for an intense glow
-            }
-        
-            game.ctx.drawImage(
-                game.itemsImg,
-                itemData.x,
-                itemData.y,
-                iconSize,
-                iconSize,
-                -iconSize * itemScale / 2,
-                -iconSize * itemScale / 2,
-                iconSize * itemScale,
-                iconSize * itemScale
-            );
-        
-            game.ctx.restore(); // Restore the canvas state
         }
 
-        // end of prototype
     }
 };

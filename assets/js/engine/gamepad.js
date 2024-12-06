@@ -139,12 +139,18 @@ var gamepad = {
     
             // Dynamically call the function on the active modal
             const activeModalId = modal.getActiveModal();
-            const dynamicButtonName = buttonName + 'Button';
-            if (activeModalId && window[activeModalId] && typeof window[activeModalId][dynamicButtonName] === 'function') {
-                window[activeModalId][dynamicButtonName](pressure, state);
+            if (activeModalId && window[activeModalId]) {
+                const dynamicButtonName = buttonName + 'Button';
+                const dynamicReleasedName = buttonName + 'ButtonReleased';
+    
+                if (state === 'down' && typeof window[activeModalId][dynamicButtonName] === 'function') {
+                    window[activeModalId][dynamicButtonName](pressure, state);
+                } else if (state === 'up' && typeof window[activeModalId][dynamicReleasedName] === 'function') {
+                    window[activeModalId][dynamicReleasedName](pressure, state);
+                }
             }
         }
-    },
+    },    
 
     getButtonNames: function() {
         return [

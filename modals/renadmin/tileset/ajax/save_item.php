@@ -13,25 +13,49 @@ if ($auth) {
 
     // Check if json_decode failed
     if (json_last_error() !== JSON_ERROR_NONE) {
-        echo json_encode(['success' => false, 'message' => 'Invalid JSON format', 'received_data' => $jsonData]);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Invalid JSON format',
+            'error' => json_last_error_msg(),
+            'received_data' => $jsonData
+        ]);
         exit;
     }
 
-    // Save objectData, including the name and script data
+    // Define file path
     $objectDataPath = $_SERVER['DOCUMENT_ROOT'] . '/assets/json/objectData.json';
-    $originalPermissionsObjectData = fileperms($objectDataPath);
-    chmod($objectDataPath, 0777);
 
-    // Save objectData, including the new polygon format for walkable data
+    // Check if file is writable
+    if (!is_writable($objectDataPath)) {
+        echo json_encode([
+            'success' => false,
+            'message' => 'File is not writable',
+            'path' => $objectDataPath
+        ]);
+        exit;
+    }
+
+    // Save objectData
     $objectDataSaved = file_put_contents($objectDataPath, json_encode($data, JSON_UNESCAPED_UNICODE));
-    chmod($objectDataPath, $originalPermissionsObjectData);
 
     if ($objectDataSaved) {
-        echo json_encode(['success' => true, 'received_data' => $data]);
+        echo json_encode([
+            'success' => true,
+            'message' => 'Object data saved successfully',
+            'received_data' => $data
+        ]);
     } else {
-        echo json_encode(['success' => false, 'message' => 'Failed to save object data', 'received_data' => $data]);
+        echo json_encode([
+            'success' => false,
+            'message' => 'Failed to save object data',
+            'received_data' => $data
+        ]);
     }
-    
 } else {
-    echo json_encode(['success' => false, 'message' => 'Unauthorized', 'received_data' => null]);
+    echo json_encode([
+        'success' => false,
+        'message' => 'Unauthorized',
+        'received_data' => null
+    ]);
 }
+?>

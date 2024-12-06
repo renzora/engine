@@ -110,6 +110,87 @@ const effects = {
                 game.ctx.fillRect(0, game.canvas.height - this.barHeight, game.canvas.width, this.barHeight); // Bottom bar
             }
         }
+    },
+
+    bubbleEffect: {
+        activeEffects: [],
+    
+        create: function (sprite, colorHex) {
+            const effectInstance = {
+                spriteId: sprite.id,
+                bubbles: [],
+                colorHex: colorHex,
+            };
+    
+            // Generate a burst of bubbles
+            for (let i = 0; i < 30; i++) { // Number of bubbles in the burst
+                effectInstance.bubbles.push({
+                    x: Math.random() * sprite.width - sprite.width / 2, // Random x-offset relative to sprite center
+                    y: sprite.height - 5, // Start at the bottom of the sprite
+                    radius: Math.random() * 2, // Smaller bubble size
+                    opacity: 0.7, // Start fully visible
+                    riseSpeed: Math.random() * 1 + 0.5, // Moderate randomized rise speed
+                });
+            }
+    
+            this.activeEffects.push(effectInstance);
+        },
+    
+        updateAndRender: function (deltaTime) {
+            const ctx = game.ctx;
+        
+            // Loop through all active effects
+            for (let i = this.activeEffects.length - 1; i >= 0; i--) {
+                const effect = this.activeEffects[i];
+                const sprite = game.sprites[effect.spriteId];
+        
+                if (!sprite) {
+                    // If sprite no longer exists, remove the effect
+                    this.activeEffects.splice(i, 1);
+                    continue;
+                }
+        
+                // Render and update bubbles
+                effect.bubbles.forEach((bubble, index) => {
+                    const bubbleX = sprite.x + sprite.width / 2 + bubble.x;
+                    const bubbleY = sprite.y + bubble.y;
+        
+                    // Set the bubble's color with opacity
+                    const colorWithOpacity = `${effect.colorHex}${Math.floor(bubble.opacity * 255).toString(16).padStart(2, '0')}`;
+                    ctx.fillStyle = colorWithOpacity;
+        
+                    // Draw the bubble
+                    ctx.beginPath();
+                    ctx.arc(bubbleX, bubbleY, bubble.radius, 0, Math.PI * 2);
+                    ctx.fill();
+        
+                    // Update bubble properties
+                    bubble.y -= bubble.riseSpeed * deltaTime / 22; // Move upwards based on speed
+        
+                    // Gradually fade out as the bubble rises
+                    const fadeHeight = 1; // Start fading faster within half the sprite's height above the top
+                    const distanceAboveSprite = Math.max(0, sprite.y - bubbleY);
+                    if (distanceAboveSprite > fadeHeight) {
+                        bubble.opacity -= 0.04; // Faster fade-out above a certain height
+                    } else {
+                        bubble.opacity -= 0.01; // Normal fade-out otherwise
+                    }
+        
+                    // Remove bubbles that are fully transparent or just above the sprite's top
+                    if (bubble.opacity <= 0 || bubbleY < sprite.y - sprite.height - 32) { // Stop closer above the sprite
+                        effect.bubbles.splice(index, 1);
+                    }
+                });
+        
+                // Remove the effect when all bubbles are gone
+                if (effect.bubbles.length === 0) {
+                    this.activeEffects.splice(i, 1);
+                }
+            }
+        }
+        
     }
+    
+    
 
 };

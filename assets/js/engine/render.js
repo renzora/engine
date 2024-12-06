@@ -4,7 +4,7 @@ var render = {
     backgroundTileCount: 0,  // Count background tiles in the viewport
     tileCount: 0,  // Count room tiles in the viewport
     overlappingTiles: [],
-    renderQueue: [],
+    renderQueue: [],   
     parseRange: function(rangeString) {
         const [start, end] = rangeString.split('-').map(Number);
         const rangeArray = [];
@@ -71,10 +71,12 @@ updateGameLogic: function(deltaTime) {
     camera.update();
     utils.gameTime.update(deltaTime);
     lighting.updateDayNightCycle();
+    lighting.updateLights();
     animate.updateAnimatedTiles(deltaTime);
     weather.updateSnow(deltaTime);
     weather.updateRain(deltaTime);
     weather.updateFireflys(deltaTime);
+    weather.updateClouds(deltaTime);
     particles.updateParticles(deltaTime);
     effects.transitions.update();
 
@@ -241,7 +243,11 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
                 renderQueue.push({
                     zIndex: 2,  // All sprites should have a zIndex of 2
                     draw: function () {
+                        game.sprites[id].drawShadow();
+                        weather.drawClouds();
+                        render.renderPathfinderLine();
                         game.sprites[id].draw();
+                        effects.bubbleEffect.updateAndRender(game.deltaTime);
                     }
                 });
     
@@ -452,6 +458,61 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
         }
     },
 
+    renderBubbles: function(sprite, colorHex) {
+        if (!sprite.bubbleEffect) {
+            sprite.bubbleEffect = {
+                bubbles: [],
+                duration: 2000, // Animation duration in milliseconds
+                startTime: Date.now(),
+            };
+        }
+    
+        const ctx = game.ctx;
+        const currentTime = Date.now();
+        const elapsedTime = currentTime - sprite.bubbleEffect.startTime;
+    
+        if (elapsedTime > sprite.bubbleEffect.duration) {
+            // Clear the bubble effect after the duration ends
+            delete sprite.bubbleEffect;
+            return;
+        }
+    
+        // Add new bubbles periodically
+        if (sprite.bubbleEffect.bubbles.length < 10) {
+            sprite.bubbleEffect.bubbles.push({
+                x: Math.random() * sprite.width - sprite.width / 2, // Random x-offset relative to sprite center
+                y: Math.random() * -10, // Random starting height
+                radius: Math.random() * 3 + 2, // Random size for bubbles
+                opacity: 1, // Start fully visible
+                riseSpeed: Math.random() * 0.5 + 0.2, // Speed at which the bubble rises
+            });
+        }
+    
+        // Render and update bubbles
+        sprite.bubbleEffect.bubbles.forEach((bubble, index) => {
+            const bubbleX = sprite.x + sprite.width / 2 + bubble.x;
+            const bubbleY = sprite.y - bubble.y;
+    
+            // Set the bubble's color with opacity
+            const colorWithOpacity = `${colorHex}${Math.floor(bubble.opacity * 255).toString(16).padStart(2, '0')}`;
+            ctx.fillStyle = colorWithOpacity;
+    
+            // Draw the bubble
+            ctx.beginPath();
+            ctx.arc(bubbleX, bubbleY, bubble.radius, 0, Math.PI * 2);
+            ctx.fill();
+    
+            // Update bubble properties
+            bubble.y += bubble.riseSpeed * game.deltaTime / 16; // Move upwards
+            bubble.opacity -= 0.01; // Fade out gradually
+    
+            // Remove bubbles that are fully transparent or out of range
+            if (bubble.opacity <= 0 || bubbleY < sprite.y - 40) {
+                sprite.bubbleEffect.bubbles.splice(index, 1);
+            }
+        });
+    },    
+
     aimTool: function() {
         if (game.mainSprite && game.mainSprite.targetAim) {
             const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;
@@ -473,7 +534,7 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
             const isObstructed = (x, y) => {
                 if (game.roomData && game.roomData.items) {
                     for (const roomItem of game.roomData.items) {
-                        const itemData = assets.load('objectData')[roomItem.id];
+                        const itemData = assets.use('objectData')[roomItem.id];
                         if (!itemData) continue;
     
                         const xCoordinates = roomItem.x || [];
@@ -527,51 +588,66 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
                 return;
             }
     
-            const crosshairSize = 8; // Slightly smaller for pixel look
-            const sniperLineLength = 12; // Shorter lines for a blocky look
+            // Adjusted properties for slightly thicker and still small aim with subtle shadow
+            const crosshairSize = 2; // Increased size for a more noticeable crosshair
+            const sniperLineLength = 4; // Increased length for longer sniper lines
+            const targetRadius = game.mainSprite.targetRadius * 0.75; // Optionally adjust the radius
     
-            // Pixelated line style
-            game.ctx.strokeStyle = 'rgba(200, 100, 0, 1)'; // Muted orange, no transparency
-            game.ctx.lineWidth = 2; // Thicker lines for pixelated feel
-            game.ctx.lineCap = 'butt'; // Square line ends for pixel look
+            // Set subtle shadow properties
+            game.ctx.save(); // Save the current state
+            game.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'; // Maintain a transparent black shadow
+            game.ctx.shadowBlur = 2; // Maintain minimal blur for subtlety
+            game.ctx.shadowOffsetX = 0.3; // Maintain minimal horizontal offset
+            game.ctx.shadowOffsetY = 0.3; // Maintain minimal vertical offset
     
-            // Draw the blocky line
+            // Set the stroke style to red with slightly increased transparency
+            game.ctx.strokeStyle = 'rgba(255, 0, 0, 0.4)'; // Red color with 40% opacity
+            game.ctx.lineWidth = 1; // Increased line width for slightly thicker lines
+            game.ctx.lineCap = 'butt'; // Square line ends for pixelated look
+    
+            // Use precise (rounded) coordinates to ensure perfect alignment
+            const centerX = finalTargetX;
+            const centerY = finalTargetY;
+    
+            // Draw the blocky aiming line
             game.ctx.beginPath();
-            game.ctx.moveTo(Math.floor(handX), Math.floor(handY)); // Floor to integers for pixel style
-            game.ctx.lineTo(Math.floor(finalTargetX), Math.floor(finalTargetY));
+            game.ctx.moveTo(handX, handY); // Use precise coordinates
+            game.ctx.lineTo(centerX, centerY);
             game.ctx.stroke();
     
-            // Crosshair and aim circle
-            const aimCrosshairColor = gamepad.buttons.includes('r2') ? 'rgba(200, 0, 0, 1)' : 'rgba(255, 255, 255, 1)';
+            // Determine the crosshair color based on gamepad input with slightly increased transparency
+            const aimCrosshairColor = gamepad.buttons.includes('r2') ? 'rgba(200, 0, 0, 0.8)' : 'rgba(255, 0, 0, 0.4)'; // Red with 40% opacity
     
-            // Blocky aim circle
+            // Draw the crosshair and aim circle with minimal shadow
             game.ctx.strokeStyle = aimCrosshairColor;
-            game.ctx.lineWidth = 1.5;
+            game.ctx.lineWidth = 1; // Slightly thicker lines for crosshairs and sniper lines
+    
+            // Draw the aim circle centered at (centerX, centerY)
             game.ctx.beginPath();
-            game.ctx.arc(Math.floor(finalTargetX), Math.floor(finalTargetY), game.mainSprite.targetRadius, 0, 2 * Math.PI);
+            game.ctx.arc(centerX, centerY, targetRadius, 0, 2 * Math.PI);
             game.ctx.stroke();
     
-            // Pixelated crosshairs
-            game.ctx.strokeStyle = aimCrosshairColor;
-            game.ctx.lineWidth = 1.5;
+            // Draw the crosshairs centered at (centerX, centerY)
             game.ctx.beginPath();
-            game.ctx.moveTo(finalTargetX - crosshairSize, finalTargetY);
-            game.ctx.lineTo(finalTargetX + crosshairSize, finalTargetY);
-            game.ctx.moveTo(finalTargetX, finalTargetY - crosshairSize);
-            game.ctx.lineTo(finalTargetX, finalTargetY + crosshairSize);
+            game.ctx.moveTo(centerX - crosshairSize, centerY);
+            game.ctx.lineTo(centerX + crosshairSize, centerY);
+            game.ctx.moveTo(centerX, centerY - crosshairSize);
+            game.ctx.lineTo(centerX, centerY + crosshairSize);
             game.ctx.stroke();
     
-            // Pixelated sniper lines
+            // Draw the sniper lines centered at (centerX, centerY)
             game.ctx.beginPath();
-            game.ctx.moveTo(finalTargetX - sniperLineLength, finalTargetY);
-            game.ctx.lineTo(finalTargetX - crosshairSize, finalTargetY);
-            game.ctx.moveTo(finalTargetX + crosshairSize, finalTargetY);
-            game.ctx.lineTo(finalTargetX + sniperLineLength, finalTargetY);
-            game.ctx.moveTo(finalTargetX, finalTargetY - sniperLineLength);
-            game.ctx.lineTo(finalTargetX, finalTargetY - crosshairSize);
-            game.ctx.moveTo(finalTargetX, finalTargetY + crosshairSize);
-            game.ctx.lineTo(finalTargetX, finalTargetY + sniperLineLength);
+            game.ctx.moveTo(centerX - sniperLineLength, centerY);
+            game.ctx.lineTo(centerX - crosshairSize, centerY);
+            game.ctx.moveTo(centerX + crosshairSize, centerY);
+            game.ctx.lineTo(centerX + sniperLineLength, centerY);
+            game.ctx.moveTo(centerX, centerY - sniperLineLength);
+            game.ctx.lineTo(centerX, centerY - crosshairSize);
+            game.ctx.moveTo(centerX, centerY + crosshairSize);
+            game.ctx.lineTo(centerX, centerY + sniperLineLength);
             game.ctx.stroke();
+    
+            game.ctx.restore(); // Restore the state to remove shadow for other drawings
         }
     }
     

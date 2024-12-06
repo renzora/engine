@@ -16,7 +16,7 @@ var game = {
     roomData: undefined,
     sprites: {},
     playerid: null,
-    sceneid: null,
+    sceneid: localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf',
     desiredFPS: 60,
     fixedDeltaTime: 1000 / 60,
     accumulatedTime: 0,
@@ -49,7 +49,7 @@ var game = {
     },
 
     init: function() {
-        this.playerid = network.getToken('renaccount') || `player_${Math.floor(Math.random() * 10000)}`;
+        this.playerid = network.getPlayerId();
 
         assets.preload([
             { name: 'character', path: 'img/sprites/character/test/character.png' },
@@ -122,58 +122,17 @@ var game = {
             weather.createFireflys();
             weather.createRain(0.7);
             weather.createSnow(0.6);
+            weather.createClouds();
 
-            const storedSceneId = localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf';
-            this.loadScene(storedSceneId);
+            this.loadScene(this.sceneid);
 
-            if (localStorage.getItem('showMainTitle') === null || localStorage.getItem('showMainTitle') === 'true') {
-                modal.load({
-                    id: "main_title_window",
-                    url: "menus/main_title/index.php",
-                    name: "Main Tiles",
-                    showInList: true
-                });
-            } else {
-
-
-                const playerOptions = {
-                    id: this.playerid,  
-                    x: null,
-                    y: null,
-                    isPlayer: true,
-                    topSpeed: 100,
-                    animalType: 'female-01',
-                    targetAim: false,
-                    maxRange: 200,
-                    health: 100,
-                    energy: 100
-                  };
-              
-                  sprite.create(playerOptions);
-
-
-                this.mainSprite = this.sprites[this.playerid];
-                this.setActiveSprite(this.playerid);
-
-
-
-                  this.modal_init();
-            }
+            modal.load({ id: 'main_title_window', url: 'menus/main_title/index.php', name: 'Main Tiles', drag: true,reload: true });
             
             //modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
 
             console.log("Connected to Main renzora server");
 
             this.loop();
-
-            // Send initial player state to the server
-            network.send({
-                command: 'playerStateUpdate',
-                data: {
-                    id: this.playerid,
-                    ...this.sprites[this.playerid]
-                }
-            });
 
         window.reloadGameData = this.reloadGameData.bind(this);
 
@@ -192,23 +151,22 @@ var game = {
     },
 
     modal_init: function() {
-        modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true });
-    
-        modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
+       modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true }); 
+        //modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
 
         modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
     
-        modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
+        //modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
     
         modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
     
-        modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu',drag: false, reload: false });
+        modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu',drag: false, reload: false, hidden: true });
     
         modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
 
-        modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true });
+        modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true, hidden: true });
 
-        //modal.load({ id: 'joypad_window', url: 'joypad/index.php', name: 'joypad', drag: false, reload: true });
+        modal.load({ id: 'joypad_window', url: 'joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: true });
 
         //modal.load({ id: 'navigator_window', url: 'navigator/index.php', name: 'navigator', drag: true, reload: true });
     },
@@ -248,14 +206,13 @@ var game = {
                     lighting.clearLightsAndEffects();
                     game.roomData = data.roomData;
                     game.sceneid = data.sceneid;
-                    game.serverid = data.server_id; // Store the server_id for later use
+                    game.serverid = data.server_id;
                     game.worldWidth = data.width || 1280;
                     game.worldHeight = data.height || 944;
+                    game.x = data.startingX || 0;
+                    game.y = data.startingY || 0;
                     game.sceneBg = data.bg || 'grass';
                     game.resizeCanvas();
-                    game.mainSprite.x = data.startingX || 0;
-                    game.mainSprite.y = data.startingY || 0;
-                    game.mainSprite.direction = data.facing || 'S';
                     collision.walkableGridCache = null;
                     collision.createWalkableGrid();
 
@@ -284,9 +241,12 @@ var game = {
                 });
             }
         });
-    },
+    }, 
 
 resizeCanvas: function() {
+
+    utils.setZoomLevel();
+
     const consoleElement = document.getElementById('console_window');
     const adjacentMenu = document.getElementById('tabs');
     let consoleWidth = 0;
@@ -350,17 +310,17 @@ render: function () {
 
     // Render background and sprites
     render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+    
     render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
 
     // Apply the night filter
     lighting.renderNightFilter();
+    
 
     
     weather.render();
     particles.render();
-    
     effects.transitions.render();
-    render.renderPathfinderLine();
     render.renderCarriedObjects();
     render.handleDebugUtilities();
     render.aimTool();

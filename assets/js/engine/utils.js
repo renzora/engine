@@ -1,7 +1,7 @@
 const utils = {
     functionCalls: {},
     gameTime: {
-        hours: 0,
+        hours: 10,
         minutes: 0,
         seconds: 0,
         days: 0,
@@ -181,17 +181,18 @@ const utils = {
     },
 
     setZoomLevel: function(newZoomLevel) {
-        game.zoomLevel = Math.max(2, Math.min(newZoomLevel, 10));
+        const baseZoom = 4; // Default zoom level for larger viewports
+        const minZoom = 1; // Minimum zoom level for very small viewports
+        const maxZoom = 8; // Maximum zoom level for very large viewports
+    
+        // Calculate a scale factor based on the viewport dimensions
+        const scaleFactor = Math.min(window.innerWidth / game.worldWidth, window.innerHeight / game.worldHeight);
+    
+        // Adjust the zoom level within the defined bounds
+        game.zoomLevel = Math.max(minZoom, Math.min(maxZoom, Math.round(baseZoom * scaleFactor)));
+    
+        // Save zoom level to localStorage for persistence
         localStorage.setItem('zoomLevel', game.zoomLevel);
-        const baseWidth = window.innerWidth;
-        const baseHeight = window.innerHeight;
-        const scaledWidth = baseWidth / game.zoomLevel;
-        const scaledHeight = baseHeight / game.zoomLevel;
-    
-        game.canvas.width = scaledWidth;
-        game.canvas.height = scaledHeight;
-    
-        console.log('Zoom level set to:', game.zoomLevel);
     },
 
     parseYaml: function(yaml) {
@@ -247,6 +248,17 @@ const utils = {
         });
     
         return result;
-    }
-    
+    },
+
+    fullScreen: function() {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch((err) => {
+            console.error(`Error attempting to enable fullscreen mode: ${err.message}`);
+          });
+        } else {
+          document.exitFullscreen().catch((err) => {
+            console.error(`Error attempting to exit fullscreen mode: ${err.message}`);
+          });
+        }
+      }
 }

@@ -9,6 +9,7 @@
   <script src='assets/js/engine/network.js'></script>
   <script src='assets/js/engine/assets.js'></script>
   <script src='assets/js/engine/effects.js'></script>
+  <script src='assets/js/engine/collision.js'></script>
   <script src='assets/js/engine/lighting.js'></script>
   <script src='assets/js/engine/particles.js'></script>
   <script src='assets/js/engine/game.js'></script>
@@ -17,7 +18,6 @@
   <script src='assets/js/engine/sprite.js'></script>
   <script src='assets/js/engine/astar.js'></script>
   <script src='assets/js/engine/input.js'></script>
-  <script src='assets/js/engine/collision.js'></script>
   <script src='assets/js/engine/gamepad.js'></script>
   <script src='assets/js/engine/ui.js'></script>
   <script src='assets/js/engine/modal.js'></script>

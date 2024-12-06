@@ -195,8 +195,8 @@ checkForNearbyItems: function () {
     },
 
     isWithinActiveTime: function(activeTime) {
-        const currentHour = game.gameTime.hours + (game.gameTime.minutes / 60);  // Convert current time to decimal hours
-        console.log(`Current game time (hours): ${game.gameTime.hours}:${game.gameTime.minutes}, as decimal: ${currentHour}`);
+        const currentHour = utils.gameTime.hours + (utils.gameTime.minutes / 60);  // Convert current time to decimal hours
+        console.log(`Current game time (hours): ${utils.gameTime.hours}:${utils.gameTime.minutes}, as decimal: ${currentHour}`);
     
         const [startTime, endTime] = activeTime.split('-').map(time => {
             if (time.includes(':')) {
@@ -249,7 +249,7 @@ checkForNearbyItems: function () {
                 tooltip.style.top = `${spriteScreenY}px`;
             }
         }
-    },    
+    },      
 
 speech: function (config, context, item) {
     const speechButton = config.button || null; // Use speech-specific button or null if no button is required

@@ -33,12 +33,18 @@ var camera = {
         this.activeCamera = true;   // Resume automatic tracking after cutscene
     },
 
-    // Method to pan the camera from the current position to a target position at a fixed speed
-    panTo: function(targetX, targetY, speed) {
-        this.targetCameraX = targetX;
-        this.targetCameraY = targetY;
+    panTo: function(targetX, targetY, speed, random) {
+        if (random) {
+            // Generate an initial random target position within the scene boundaries
+            this.targetCameraX = Math.random() * (game.worldWidth - game.canvas.width / game.zoomLevel);
+            this.targetCameraY = Math.random() * (game.worldHeight - game.canvas.height / game.zoomLevel);
+        } else {
+            // Set the provided target position
+            this.targetCameraX = targetX;
+            this.targetCameraY = targetY;
+        }
+    
         this.panSpeed = speed || this.panSpeed;  // Use provided speed or default
-
         this.panning = true;  // Enable panning mode
         this.manual = false;  // Disable manual mode for panning
         this.activeCamera = false; // Disable automatic tracking during panning
@@ -69,29 +75,24 @@ var camera = {
             }
     
             if (this.panning) {
-                // Calculate the distance between the current camera position and the target
+                // Calculate the distance to the target
                 let deltaX = this.targetCameraX - this.cameraX;
                 let deltaY = this.targetCameraY - this.cameraY;
-    
-                // Calculate the distance to move in this frame based on speed
                 let distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-                let moveX = (deltaX / distance) * this.panSpeed;
-                let moveY = (deltaY / distance) * this.panSpeed;
-    
-                // Check if the camera has reached the target (or close enough)
-                if (distance > this.panSpeed) {
-                    this.cameraX += moveX;
-                    this.cameraY += moveY;
-                } else {
-                    // Stop panning once the target is reached
-                    this.cameraX = this.targetCameraX;
-                    this.cameraY = this.targetCameraY;
-                    this.panning = false;
-    
-                    // Optionally resume automatic tracking if cutscene ends after panning
-                    if (!this.cutsceneMode) {
-                        this.activeCamera = true;
+        
+                if (distance <= this.panSpeed) {
+                    // Target reached: Generate a new random target if random panning is enabled
+                    if (this.targetCameraX === null && this.targetCameraY === null) {
+                        this.panning = false; // Stop panning if no random target
+                    } else {
+                        // Generate new random target position
+                        this.targetCameraX = Math.random() * (game.worldWidth - game.canvas.width / game.zoomLevel);
+                        this.targetCameraY = Math.random() * (game.worldHeight - game.canvas.height / game.zoomLevel);
                     }
+                } else {
+                    // Move toward the target
+                    this.cameraX += (deltaX / distance) * Math.min(this.panSpeed, distance);
+                    this.cameraY += (deltaY / distance) * Math.min(this.panSpeed, distance);
                 }
             } else if (this.activeCamera && activeSprite) {
                 // Automatic camera tracking of the active sprite

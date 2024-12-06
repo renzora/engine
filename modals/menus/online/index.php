@@ -1,104 +1,83 @@
-<div data-window='main_title_window' class='fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center'>
+<div data-window='online_menu_window' class='fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center'>
   
 <div class="absolute inset-0 z-[-2]">
   <div class="glitch-overlay"></div>
   <div class="color-shift"></div>
   <div class="dark-overlay"></div>
-</div>
-
-<div class="fixed top-0 left-4 z-10 w-full flex items-center justify-between px-8 pt-4">
-  <div class="flex items-center space-x-8">
-    <!-- L1 Button -->
-    <button class="nav-icon relative flex items-center justify-center l1-button" onclick="main_title_window.l1Button()">
-      <span class="trigger-shape"></span>
-      <span class="nav-text">L1</span>
-    </button>
-
-    <!-- Tabs Section -->
-    <div class="tabs-container flex items-center space-x-8"></div>
-
-    <!-- R1 Button -->
-    <button class="nav-icon relative flex items-center justify-center r1-button" onclick="main_title_window.r1Button()">
-      <span class="trigger-shape"></span>
-      <span class="nav-text">R1</span>
-    </button>
-  </div>
-
-    <!-- Right: Player HUD -->
-    <div class="flex items-center justify-end space-x-8">
- <!-- Player Info -->
- <div class="text-white text-right">
-  <p class="text-xl font-bold">
-    <span class="text-yellow-400">Player123</span>
-  </p>
-  <p class="text-base">
-    XP: <span class="text-yellow-400">450/500</span>
-  </p>
-  <p class="text-base">
-    W:<span class="text-green-400">12</span> D:<span class="text-gray-400">3</span> L:<span class="text-red-400">5</span> 
-    ELO: <span class="text-blue-400">1200</span>
-  </p>
-</div>
-
-
-<!-- Avatar with XP Ring -->
-<div class="relative w-28 h-28">
-  <!-- Circular Progress Ring -->
-  <svg class="absolute inset-0 w-full h-full transform rotate-90" viewBox="0 0 42 42">
-    <circle
-      class="text-gray-300"
-      stroke-width="3"
-      fill="none"
-      r="20"
-      cx="21"
-      cy="21"
-    />
-    <circle
-      class="text-green-400 progress-ring"
-      stroke-width="3"
-      fill="none"
-      r="20"
-      cx="21"
-      cy="21"
-      stroke-dasharray="126"
-      stroke-dashoffset="126"
-    />
-  </svg>
-  <!-- Avatar Image -->
-  <img
-    src="assets/img/sprites/portrait/lady_01.png" 
-    alt="Player Avatar"
-    class="rounded-full w-full h-full object-cover border-4 border-transparent"
-  />
-  <!-- Level Badge -->
-  <div class="absolute top-0 right-0 bg-gray-800 text-white text-base font-bold px-2 py-1 rounded-full shadow-md">
-    15
-  </div>
-</div>
-
-
-
 
 </div>
-  </div>
 
+  <!-- Top Menu and HUD -->
+  <div class="fixed top-0 left-0 z-10 w-full flex items-center justify-between px-8 pt-8">
+    <!-- Left: L1 Button, Top Menu, and R1 Button -->
+    <div class="flex items-center space-x-8">
+      <!-- L1 Button -->
+      <button 
+        class="nav-icon relative flex items-center justify-center l1-button"
+        onclick="online_menu_window.l1Button()">
+        <span class="trigger-shape"></span>
+        <span class="nav-text">L1</span>
+      </button>
 
-  <div id="main_title_window_screen" class="tab-content-container flex flex-col items-center justify-center">
+      <!-- Top Menu -->
+      <button 
+        data-tab="explore" 
+        class="tab-item text-3xl font-extrabold text-white hover:text-yellow-400" 
+        onclick="online_menu_window.showTab(0)">
+        World Explore
+      </button>
+      <button 
+        data-tab="arena" 
+        class="tab-item text-3xl font-extrabold text-white hover:text-yellow-400" 
+        onclick="online_menu_window.showTab(1)">
+        Battle Arena
+      </button>
+      <button 
+        data-tab="training" 
+        class="tab-item text-3xl font-extrabold text-white hover:text-yellow-400" 
+        onclick="online_menu_window.showTab(2)">
+        Training
+      </button>
+      <button 
+        data-tab="store" 
+        class="tab-item text-3xl font-extrabold text-white hover:text-yellow-400" 
+        onclick="online_menu_window.showTab(3)">
+        Store
+      </button>
+      <button 
+        data-tab="exit" 
+        class="tab-item text-3xl font-extrabold text-white hover:text-yellow-400" 
+        onclick="online_menu_window.showTab(4)">
+        Exit
+      </button>
 
-    <div id="renzora" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="story">
-        <h2 class="text-3xl font-bold text-yellow-400">Story Mode</h2>
-        <p class="text-gray-300 mt-4">Begin your journey in Renzora and uncover its mysteries.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="network_connect">
-        <h2 class="text-3xl font-bold text-yellow-400">Play Renzora Online</h2>
-        <p class="text-gray-300 mt-4">Travel around renzora, meet real players and chat</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
+      <!-- R1 Button -->
+      <button 
+        class="nav-icon relative flex items-center justify-center r1-button"
+        onclick="online_menu_window.r1Button()">
+        <span class="trigger-shape"></span>
+        <span class="nav-text">R1</span>
+      </button>
     </div>
 
-    <div id="story" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="renzora">
+    <!-- Right: Player HUD and R1 Button -->
+    <div class="flex items-center space-x-8">
+      <!-- Player HUD -->
+      <div class="text-white text-right">
+        <p class="text-lg font-bold"><span class="text-yellow-400">Player123</span></p>
+        <p class="text-sm">Level: <span class="text-yellow-400">15</span> | XP: <span class="text-yellow-400">450/500</span></p>
+        <p class="text-sm">W: <span class="text-green-400">12</span> | D: <span class="text-gray-400">3</span> | L: <span class="text-red-400">5</span></p>
+      </div>
+
+    </div>
+  </div>
+
+
+
+
+  <div id="online_menu_window_screen" class="tab-content-container flex flex-col items-center justify-center">
+
+  <div id="online_menu_explore" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="renzora">
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
         <h2 class="text-3xl font-bold text-yellow-400">New Story</h2>
         <p class="text-gray-300 mt-4">Start a fresh adventure in Renzora.</p>
@@ -111,61 +90,31 @@
       </div>
     </div>
 
-    <div id="explore" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="renzora">
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
-        <h2 class="text-3xl font-bold text-yellow-400">World Map</h2>
-        <p class="text-gray-300 mt-4">Travel around renzora, make friends, play games</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
-        <h2 class="text-3xl font-bold text-yellow-400">Build</h2>
-        <p class="text-gray-300 mt-4">Create your own places.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-    </div>
 
-    <div id="arena" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="renzora">
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
+    <div id="online_menu_arena" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
+      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="new_story">
         <h2 class="text-3xl font-bold text-yellow-400">Battle Royale</h2>
         <p class="text-gray-300 mt-4">100 players, 1 survivor</p>
         <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
       </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
+      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="network_connect">
         <h2 class="text-3xl font-bold text-yellow-400">Team Battle</h2>
-        <p class="text-gray-300 mt-4">Work as a team to defeat your opponent</p>
+        <p class="text-gray-300 mt-4">Team up to defeat your opponents</p>
         <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
       </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
-        <h2 class="text-3xl font-bold text-yellow-400">Solo Match</h2>
-        <p class="text-gray-300 mt-4">Use your skills to defeat your opponent</p>
+      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="network_connect">
+        <h2 class="text-3xl font-bold text-yellow-400">Heads up</h2>
+        <p class="text-gray-300 mt-4">You vs a random opponent</p>
         <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
       </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Training</h2>
-        <p class="text-gray-300 mt-4">Improve your combat skills</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-    </div>
-
-    <div id="training" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="renzora">
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
-        <h2 class="text-3xl font-bold text-yellow-400">Shooting Range</h2>
-        <p class="text-gray-300 mt-4">Practise your aiming.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
-        <h2 class="text-3xl font-bold text-yellow-400">Combat</h2>
-        <p class="text-gray-300 mt-4">Practise your overall skills</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
-        <h2 class="text-3xl font-bold text-yellow-400">Defence</h2>
-        <p class="text-gray-300 mt-4">Learn how to protect yourself</p>
+      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="network_connect">
+        <h2 class="text-3xl font-bold text-yellow-400">Co-op</h2>
+        <p class="text-gray-300 mt-4">Team up with a friend to battle</p>
         <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
       </div>
     </div>
 
-    <div id="characterSelection" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="story">
+    <div id="online_menu_training" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4" data-parent="story_mode">
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="startNewStory">
         <h2 class="text-3xl font-bold text-yellow-400">Select Character</h2>
         <p class="text-gray-300 mt-4">etc etc</p>
@@ -173,26 +122,8 @@
       </div>
     </div>
 
-    <div id="packs" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Rare Gold Pack</h2>
-        <p class="text-gray-300 mt-4">12 items, 1 rare</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Open Pack</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Founders Pack</h2>
-        <p class="text-gray-300 mt-4">24 items, 3 rares, 1 super rare</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Open Pack</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Season 2 pack</h2>
-        <p class="text-gray-300 mt-4">12 items, 1 seasonal rare</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Open Pack</button>
-      </div>
-    </div>
 
-
-    <div id="social" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
+    <div id="online_menu_store" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Forums</h2>
         <p class="text-gray-300 mt-4">Join discussions and share your ideas.</p>
@@ -210,72 +141,16 @@
       </div>
     </div>
 
-    <div id="market" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
-    <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Store</h2>
-        <p class="text-gray-300 mt-4">Purchase Items.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Auction</h2>
-        <p class="text-gray-300 mt-4">Sell your items.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Battle Pass</h2>
-        <p class="text-gray-300 mt-4">Purchase a battle pass to take part in arena games.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Credits</h2>
-        <p class="text-gray-300 mt-4">Purchase credits to buy items.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-    </div>
-
-    <div id="settings" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Graphics</h2>
-        <p class="text-gray-300 mt-4">Adjust your graphics settings for optimal performance.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-      <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
-        <h2 class="text-3xl font-bold text-yellow-400">Audio</h2>
-        <p class="text-gray-300 mt-4">Adjust Music, effects, ambience volume</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
-      </div>
-    </div>
-
-    <div id="exit" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
+    <div id="online_menu_exit" class="tab-screen hidden w-full max-w-3xl space-y-4 px-4">
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="exit">
         <h2 class="text-3xl font-bold text-yellow-400">Exit</h2>
-        <p class="text-gray-300 mt-4">Back to main menu.</p>
+        <p class="text-gray-300 mt-4">Back to the main menu</p>
         <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
       </div>
     </div>
 
 
   </div>
-
-  <!-- Bottom Right: R3 Exit and Server Info -->
-<div class="fixed bottom-4 right-4 z-20 flex flex-col items-end space-y-2 text-white">
-  <!-- R3 Button -->
-  <button
-    class="flex items-center space-x-2 px-4 py-2 bg-black bg-opacity-60 rounded-lg shadow-md hover:bg-opacity-80"
-    onclick="main_title_window.exit()"
-  >
-    <span class="text-xl font-bold">[R3]</span>
-    <span class="text-lg">Exit</span>
-  </button>
-  <!-- Server Info -->
-  <div
-    class="px-4 py-2 bg-black bg-opacity-60 rounded-lg shadow-md text-sm text-right"
-  >
-    <p>Connected to Renzora Server</p>
-    <p>Ping: <span class="text-green-400 font-bold">10ms</span></p>
-  </div>
-</div>
-
 
 <style>
 .dark-overlay {
@@ -318,10 +193,11 @@
 }
 
 .color-shift {
-  background: linear-gradient(135deg, #ff0066, #00f0ff);
+  background: linear-gradient(135deg, #fff700, #ffd300); /* Bright yellow gradient */
   opacity: 0.1;
   animation: colorShift 30s linear infinite;
 }
+
 
 @keyframes glitchMove {
   0% {
@@ -492,43 +368,20 @@
   display: none;
 }
 
-.progress-ring {
-  transform: rotate(-90deg); /* Rotate to start from the top */
-  transform-origin: center;
-  stroke-linecap: round; /* Rounded ends for progress */
-  transition: stroke-dashoffset 0.5s ease-in-out;
-}
-
-svg circle:first-child {
-  stroke: #2d3748; /* Background ring color */
-}
-
-svg circle:last-child {
-  stroke: #38a169; /* Progress ring color */
-}
 
 </style>
 
 <script>
-var main_title_window = {
+var online_menu_window = {
   currentTabIndex: 0,
-  tabName: "renzora",
-  tabs: [],
+  tabName: "explore",
+  tabs: ["explore", "arena", "training", "store", "exit"],
   currentCardIndex: 0,
   throttleDuration: 200, // Throttle duration in milliseconds
   lastButtonPress: 0,
   keydownListener: null, // Placeholder for the keydown listener
   mousemoveListener: null, // Placeholder for the mousemove listener
   cursorTimeout: null, // Timeout for hiding the cursor
-  tabMenuData: [
-    { tab: "renzora", mode: "main" },
-    { tab: "explore", mode: "online" },
-    { tab: "arena", mode: "online" },
-    { tab: "packs", mode: "online", notif: 3 },
-    { tab: "social", mode: "all" },
-    { tab: "market", mode: "online" },
-    { tab: "settings", mode: "all" },
-  ],
 
   // Initialize the main title window
   start: function () {
@@ -539,17 +392,14 @@ var main_title_window = {
         ], () => {
           console.log("menu_tab_switch_loaded");
         });
-
   camera.panTo(null, null, 0.2, true);
   utils.gameTime.hours = 0;
   game.timeActive = false;
   weather.snowActive = true;
-  this.updateMenu('main');
   this.showTab(0);
   this.highlightCard();
   this.highlightCardOnHover(); // Add hover functionality
   this.initializeCardClickEvents(); // Initialize click events
-  this.updateXPRing(357, 500);
 
   this.keydownListener = (event) => {
       switch (event.key) {
@@ -598,7 +448,7 @@ var main_title_window = {
 
 },
 
-  unmount: function () {
+unmount: function () {
     if (this.keydownListener) {
       document.removeEventListener("keydown", this.keydownListener);
       this.keydownListener = null;
@@ -612,12 +462,13 @@ var main_title_window = {
       this.cursorTimeout = null;
     }
     console.log("Event listeners removed from main_title_window.");
+    modal.load({ id: 'main_title_window', url: 'menus/main_title/index.php', name: 'Main Tiles', drag: true,reload: true });
   },
 
 addEventListeners: function () {
     document.addEventListener("keydown", this.keydownListener);
     document.addEventListener("mousemove", this.mousemoveListener);
-    console.log("Event listeners added to main_title_window.");
+    console.log("Event listeners added to online_menu_window.");
   },
 
 initializeCardClickEvents: function () {
@@ -638,7 +489,7 @@ initializeCardClickEvents: function () {
           if (callback && typeof this[callback] === "function") {
             this[callback](); // Execute the callback function
           } else {
-            console.warn(`Callback function '${callback}' is not defined in main_title_window.`);
+            console.warn(`Callback function '${callback}' is not defined in online_menu_window.`);
           }
         }
       });
@@ -656,86 +507,6 @@ initializeCardClickEvents: function () {
     return true;
   },
 
-  updateMenu: function (filterMode = "all", reset = true) {
-    const tabContainer = document.querySelector(".tabs-container");
-
-    // Clear existing tab items if reset is true
-    if (reset) {
-        tabContainer.innerHTML = "";
-
-        // Filter tabs to include "all" mode items and the specified mode
-        this.tabs = this.tabMenuData
-            .filter((menu) => menu.mode === "all" || menu.mode === filterMode)
-            .map((menu) => menu.tab); // Extract tab names for the filtered items
-
-        // Add the Tab Buttons
-        this.tabMenuData
-            .filter((menu) => menu.mode === "all" || menu.mode === filterMode)
-            .forEach((menu, index) => {
-                const tabButton = document.createElement("div"); // Use a div to align text and badge side by side
-                tabButton.className = "flex items-center space-x-2 relative"; // Align items in a row with spacing
-                tabButton.setAttribute("data-tab", menu.tab);
-                tabButton.setAttribute("data-mode", filterMode);
-
-                // Text for the menu item
-                const tabText = document.createElement("button");
-                tabText.className = "tab-item text-3xl font-extrabold text-white hover:text-yellow-400";
-                tabText.textContent = menu.tab.charAt(0).toUpperCase() + menu.tab.slice(1); // Capitalize tab name
-                tabText.onclick = () => this.showTab(index);
-
-                tabButton.appendChild(tabText);
-
-                // Add notification badge if notif exists
-                if (menu.notif) {
-                    const badge = document.createElement("span");
-                    badge.className =
-                        "flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full shadow-md";
-                    badge.textContent = menu.notif;
-                    tabButton.appendChild(badge);
-                }
-
-                tabContainer.appendChild(tabButton);
-            });
-
-        console.log("Updated tabs:", this.tabs); // Debug: Log the updated tabs array
-
-        // Automatically show the first tab if there are any tabs
-        if (this.tabs.length > 0) {
-            this.showTab(0); // Show the first tab
-            document.getElementById("main_title_window_screen").classList.remove("hidden");
-        } else {
-            console.warn("No tabs available to display.");
-        }
-    } else {
-        // Update notification badges without resetting the menu items
-        this.tabMenuData.forEach((menu) => {
-            const tabButton = document.querySelector(`.tab-item[data-tab="${menu.tab}"]`);
-            if (tabButton) {
-                let badge = tabButton.nextElementSibling; // Badge is expected to be the next sibling
-                if (menu.notif) {
-                    if (!badge) {
-                        // Create a badge if it doesn't exist
-                        badge = document.createElement("span");
-                        badge.className =
-                            "flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full shadow-md ml-2";
-                        tabButton.parentElement.appendChild(badge);
-                    }
-                    badge.textContent = menu.notif;
-                } else if (badge) {
-                    // Remove the badge if notif is null or undefined
-                    badge.remove();
-                }
-            }
-        });
-    }
-},
-
-updateXPRing: function(currentXP, maxXP) {
-  const percentage = (currentXP / maxXP) * 100;
-  const offset = 126 - (126 * percentage) / 100; // 126 is the circle circumference
-  document.querySelector('.progress-ring').style.strokeDashoffset = offset;
-},
-
   // Display the specified tab by index
 
   showTab: function (tabIdentifier) {
@@ -752,10 +523,12 @@ updateXPRing: function(currentXP, maxXP) {
   const isNamedScreen = index === -1;
   const newTabName = isNamedScreen ? tabIdentifier : this.tabs[index]; // Determine the new active tab name
 
+  const newScreenId = `online_menu_${newTabName}`;
+
   // Handle invalid screen names gracefully
-  const newScreen = document.getElementById(newTabName);
+  const newScreen = document.getElementById(newScreenId);
   if (!newScreen) {
-    console.error(`Screen "${newTabName}" not found in the DOM.`);
+    console.error(`Screen "${newScreenId}" not found in the DOM.`);
     return;
   }
 
@@ -788,8 +561,6 @@ updateXPRing: function(currentXP, maxXP) {
   // Highlight the first card in the new screen
   this.resetCardSelection();
 },
-
-
 
 
   // Reset card selection to the first card
@@ -969,7 +740,7 @@ aButton: function () {
       audio.playAudio("menu_selection_confirm", assets.use("menu_selection_confirm"), "sfx");
       this[callback](); // Execute the callback function
     } else {
-      console.warn(`Callback function '${callback}' is not defined in main_title_window.`);
+      console.warn(`Callback function '${callback}' is not defined in online_menu_window.`);
     }
   });
 },
@@ -1004,77 +775,20 @@ aButton: function () {
     }
   },
 
-  story: function () {
-    this.showTab("story"); // Use the same logic for switching tabs
-  },
-
-characterSelection: function() {
-  this.showTab("characterSelection");
-},
-
-  startNewStory: function () {
-    modal.close('main_title_window');
-    game.modal_init();
-    camera.panning = false;  // Enable panning mode
-    camera.manual = false;  // Disable manual mode for panning
-    camera.activeCamera = true; // Disable automatic tracking during panning
-    camera.cutsceneMode = false;  // Treat panning as part of cutscene/movement override
-    utils.gameTime.hours = 0;
-    weather.fogActive = true;
-    game.timeActive = true;
-    weather.snowActive = true;
-
-    const playerOptions = {
-      id: this.playerid,  
-      x: game.x / 16,
-      y: game.y / 16,
-      isPlayer: true,
-      topSpeed: 100,
-      animalType: 'female-01',
-      targetAim: false,
-      maxRange: 200,
-      health: 100,
-      energy: 100,
-      handOffsetX: 8, // Offset to the right
-      handOffsetY: -5
-    };
-              
-    sprite.create(playerOptions);
-
-
-    game.mainSprite = game.sprites[game.playerid];
-    game.setActiveSprite(game.playerid);
-  },
-
-  loadSavedGame: function () {
-    console.log("Loading saved game...");
-    // Add custom logic for loading a saved game
-  },
-  online_mode: function () {
-    console.log("Entering online mode...");
-    // Add custom logic for online mode here
-  },
-
-  updateNotif: function() {
-    main_title_window.updateMenu("online", false);
-  },
-
-  network_connect: function() {
-    modal.load({ id: 'network_connect_window', url: 'network/connect.php', name: 'Network connect', drag: true,reload: true });
+  exit: function() {
+    network.close();
+    console.log("closing menu");
+    modal.close('online_menu_window');
   },
 
   // Sign-in button functionality placeholder
   signIn: function () {
     modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true }); 
-  },
-
-  exit: function() {
-    this.updateMenu('main');
   }
 };
 
 // Start the main title window
-main_title_window.start();
+online_menu_window.start();
 
 </script>
 
