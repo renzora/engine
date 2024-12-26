@@ -24,11 +24,10 @@ var network = {
 
     open: function(e) {
         console.log("Connected to the WebSocket server.");
-        // Send player connection information
         const playerData = {
             id: this.getPlayerId(),
-            name: "PlayerName", // Replace with dynamic player name if available
-            position: { x: 0, y: 0 }, // Default or current position
+            name: "PlayerName",
+            position: { x: 0, y: 0 },
         };
         this.send({ command: 'playerConnect', data: playerData });
     },
@@ -67,7 +66,7 @@ var network = {
             method: 'GET',
             outputType: 'json',
             success: (data) => {
-                console.log('Player ID:', data.playerid);
+                game.playerid = data.playerid;
             },
             error: (err) => {
                 console.error('AJAX error:', err);

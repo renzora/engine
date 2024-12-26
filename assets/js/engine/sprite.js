@@ -3,8 +3,8 @@ var sprite = {
     create: function (options) {
         let newSprite = {
             id: options.id,
-            width: options.isAnimal ? options.width || 48 : 16,
-            height: options.isAnimal ? options.height || 32 : 32,
+            width: options.isVehicle ? options.width || 44 : options.isAnimal ? options.width || 48 : 16,
+            height: options.isVehicle ? options.height || 44 : options.isAnimal ? options.height || 32 : 32,
             scale: 1,
             speed: 0,
             topSpeed: options.topSpeed !== undefined ? options.topSpeed : 70,
@@ -42,7 +42,7 @@ var sprite = {
             targetRadius: 10,
             maxRange: options.maxRange !== undefined ? options.maxRange : 30,
             currentItem: null,
-            directions: {},
+            directions: {},       // Note: directions is declared again here, so you might remove one of them.
             joystickDirections: {},
             isRunning: false,
             health: options.health !== undefined ? options.health : 100,
@@ -53,163 +53,261 @@ var sprite = {
             isCarrying: options.isCarrying !== undefined ? options.isCarrying : false,
             carriedItem: options.carriedItem !== undefined ? options.carriedItem : false,
             messages: options.messages || [],
-            stopRadius: options.stopRadius !== undefined ? options.stopRadius : 30
+            stopRadius: options.stopRadius !== undefined ? options.stopRadius : 30,
+            activeSprite: options.activeSprite !== undefined ? options.activeSprite : true,
+            canShoot: options.canShoot || false,
+            isVehicle: options.isVehicle || false,
+            directionIndex: options.directionIndex !== undefined ? options.directionIndex : 16,
+            angle: 0,
+            turnSpeed: options.turnSpeed || 1,
+            steeringSensitivity: options.steeringSensitivity || 1,
+            currentSpeed: 0,
+            maxSpeed: options.maxSpeed || 120,
+            acceleration: options.acceleration || 5,
+            braking: options.braking || 10
         };
 
         Object.setPrototypeOf(newSprite, this.SpritePrototype);
     
-        // Convert tile coordinates to pixel coordinates
         newSprite.x = options.x * 16;
         newSprite.y = options.y * 16;
+        newSprite.angle = (newSprite.directionIndex / 48) * Math.PI * 2;
     
-        // Set the boundary for movement if provided (for NPCs)
         if (options.boundaryX !== undefined && options.boundaryY !== undefined) {
             newSprite.boundary = {
                 x: options.boundaryX,
                 y: options.boundaryY
             };
-    
-setInterval(() => {
-    const targetTileX = Math.floor(Math.random() * (newSprite.boundary.x + 1)); // Random X within 0 to boundary.x
-    const targetTileY = Math.floor(Math.random() * (newSprite.boundary.y + 1)); // Random Y within 0 to boundary.y
-    newSprite.walkToClickedTile(targetTileX, targetTileY);
-}, 60000); // Update position every 5 seconds
 
-
+            setInterval(() => {
+                const targetTileX = Math.floor(Math.random() * (newSprite.boundary.x + 1));
+                const targetTileY = Math.floor(Math.random() * (newSprite.boundary.y + 1));
+                newSprite.walkToClickedTile(targetTileX, targetTileY);
+            }, 60000);
         }
 
-  
-
-        console.log(lighting.lights);
-    
-        // Automatically add the new sprite to the game.sprites object
         game.sprites[options.id] = newSprite;
     
         return newSprite;
     },
 
     SpritePrototype: {
-draw: function() {
-    const spriteData = assets.use('spritesData')[this.animalType || 'character'];
+        draw: function() {
+            if (!this.activeSprite) return;
+            
+            const spriteKey = this.animalType || this.id;
+            const spriteData = assets.use('spritesData')[spriteKey];
+        
+            if (!spriteData) {
+                console.error(`Sprite data not found for key: ${spriteKey}`);
+                return;
+            }
+        
+            const image = assets.use(spriteData.image);
+            let row = this.isVehicle ? this.directionIndex : (this.direction || 'S');
+            let flip = false;
 
-    if (!spriteData) {
-        console.error(`Sprite data not found for type: ${this.animalType || 'character'}`);
-        return;
-    }
-
-    const image = assets.use(spriteData.image);
-    let direction = this.direction || 'S';
-    let row = spriteData.directions[direction];
-
-    // Handle flipped directions
-    let flip = false;
-    if (typeof row === 'string') {
-        direction = row; // Use the flipped direction
-        row = spriteData.directions[direction]; // Get the row for the flipped direction
-        flip = true; // Mark the direction as flipped
-    }
-
-    if (row === undefined) {
-        console.error(`Invalid direction '${direction}' for sprite type: ${this.animalType || 'character'}`);
-        return;
-    }
-
-    const animation = spriteData.animations[this.currentAnimation];
-    if (!animation) {
-        console.error(`Animation '${this.currentAnimation}' not found for type: ${this.animalType || 'character'}`);
-        return;
-    }
-
-    const frameIndex = animation.frames[this.currentFrame];
-    const sx = (frameIndex - 1) * spriteData.width;
-    const sy = row * spriteData.height;
-
-    game.ctx.save();
-
-    // Calculate the offset to center the sprite inside the collision box
-    const offsetX = -spriteData.width / 2;
-    const offsetY = -spriteData.height / 2;
-
-    // Translate to the sprite's center point relative to the collision box
-    if (flip) {
-        game.ctx.translate(
-            Math.floor(this.x + this.width / 2), 
-            Math.floor(this.y + this.height / 2)
-        );
-        game.ctx.scale(-1, 1);
-    } else {
-        game.ctx.translate(
-            Math.floor(this.x + this.width / 2), 
-            Math.floor(this.y + this.height / 2)
-        );
-    }
-
-    // Draw the sprite
-    game.ctx.drawImage(
-        image,
-        sx,
-        sy,
-        spriteData.width,
-        spriteData.height,
-        offsetX,
-        offsetY,
-        spriteData.width * this.scale,
-        spriteData.height * this.scale
-    );
-
-    game.ctx.restore();
-    utils.tracker('sprite.draw');
-},
-
+            if (!this.isVehicle) {
+                row = spriteData.directions[row];
+                if (typeof row === 'string') {
+                    row = spriteData.directions[row];
+                    flip = true;
+                }
+            }
+        
+            if (row === undefined) {
+                console.error(`Invalid direction for sprite key: ${spriteKey}`);
+                return;
+            }
+        
+            const animation = spriteData.animations[this.currentAnimation];
+            if (!animation) {
+                console.error(`Animation '${this.currentAnimation}' not found for key: ${spriteKey}`);
+                return;
+            }
+        
+            const frameIndex = animation.frames[this.currentFrame];
+            const sx = (frameIndex - 1) * spriteData.width;
+            const sy = row * spriteData.height;
+        
+            game.ctx.save();
+        
+            const offsetX = -spriteData.width / 2;
+            const offsetY = -spriteData.height / 2;
+        
+            if (flip) {
+                game.ctx.translate(
+                    Math.floor(this.x + this.width / 2), 
+                    Math.floor(this.y + this.height / 2)
+                );
+                game.ctx.scale(-1, 1);
+            } else {
+                game.ctx.translate(
+                    Math.floor(this.x + this.width / 2), 
+                    Math.floor(this.y + this.height / 2)
+                );
+            }
+        
+            game.ctx.drawImage(
+                image,
+                sx,
+                sy,
+                spriteData.width,
+                spriteData.height,
+                offsetX,
+                offsetY,
+                spriteData.width * this.scale,
+                spriteData.height * this.scale
+            );
+        
+            game.ctx.restore();
+            utils.tracker('sprite.draw');
+        },
 
         drawShadow: function() {
+            if (!this.activeSprite) return;
             game.ctx.save();
-            game.ctx.translate(this.x, this.y + (this.height * this.scale / 2) - 14);
         
-            // Calculate shadow size and opacity based on the current frame
-            const shadowBaseWidth = this.width * this.scale * 0.4; // Reduced from 0.6
-            const shadowBaseHeight = this.height * this.scale * 0.1; // Reduced from 0.2
-            const shadowScaleFactor = 0.1; // Adjust this factor to control the shadow scaling intensity
-            const shadowOpacityFactor = 0.03; // Adjust this factor to control the shadow opacity intensity
+            if (this.isVehicle) {
+                // -------------------------------------------------
+                // VEHICLE SHADOW
+                // -------------------------------------------------
+                // Move context to the vehicle's center
+                const centerX = this.x + (this.width * this.scale / 2);
+                const centerY = this.y + (this.height * this.scale / 2);
+                game.ctx.translate(centerX, centerY);
         
-            // Calculate the scaling and opacity based on the current frame (simplified walking animation cycle)
-            const frameFactor = Math.abs(Math.sin((this.currentFrame % 8) * (Math.PI / 4))); // Sine wave for smooth transition
-            const shadowWidth = shadowBaseWidth + (shadowScaleFactor * frameFactor * shadowBaseWidth);
-            const shadowHeight = shadowBaseHeight + (shadowScaleFactor * frameFactor * shadowBaseHeight);
-            const shadowOpacity = 0.05 + (shadowOpacityFactor * frameFactor); // Base opacity plus dynamic component
+                // Rotate the shadow by vehicle's angle so it "points" the same way
+                game.ctx.rotate(this.angle);
         
-            let shadowX = (this.width / 2) * this.scale; // Default center
-            let shadowY = (this.height - 1) * this.scale - 6; // Default bottom
+                // Larger, more "vehicle-like" ellipse
+                const shadowWidth = this.width * this.scale * 0.5;
+                const shadowHeight = this.height * this.scale * 0.3;
         
-            game.ctx.shadowBlur = 15;
-            game.ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`; // Dynamic shadow opacity
-            game.ctx.beginPath();
-            game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
-            game.ctx.fill();
+                // Slightly opaque fill
+                game.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+                game.ctx.beginPath();
+                game.ctx.ellipse(0, 0, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
+                game.ctx.fill();
+            } else {
+                // -------------------------------------------------
+                // REGULAR SPRITE (HUMAN / ANIMAL) SHADOW
+                // -------------------------------------------------
+                game.ctx.translate(this.x, this.y + (this.height * this.scale / 2) - 14);
+        
+                const shadowBaseWidth = this.width * this.scale * 0.4;
+                const shadowBaseHeight = this.height * this.scale * 0.1;
+                const shadowScaleFactor = 0.1;
+                const shadowOpacityFactor = 0.03;
+        
+                // This "frameFactor" produces the little bobbing effect
+                const frameFactor = Math.abs(Math.sin((this.currentFrame % 8) * (Math.PI / 4)));
+                const shadowWidth = shadowBaseWidth + (shadowScaleFactor * frameFactor * shadowBaseWidth);
+                const shadowHeight = shadowBaseHeight + (shadowScaleFactor * frameFactor * shadowBaseHeight);
+                const shadowOpacity = 0.05 + (shadowOpacityFactor * frameFactor);
+        
+                const shadowX = (this.width / 2) * this.scale;
+                const shadowY = (this.height - 1) * this.scale - 7;
+        
+                game.ctx.shadowBlur = 15;
+                game.ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`;
+                game.ctx.beginPath();
+                game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
+                game.ctx.fill();
+            }
         
             game.ctx.restore();
         },
 
-changeAnimation: function(newAnimation) {
-    // If an override animation is active, don't change the animation
-    if (this.overrideAnimation && this.overrideAnimation !== newAnimation) {
-        return;
-    }
+        updateVehicleDirection: function(turnStrength, deltaTime) {
+            // turnStrength is from leftStickX input, range approx. [-1, 1]
+            
+            // Gradually adjust angle based on turnStrength, speed, and steeringSensitivity
+            const turnRate = this.steeringSensitivity * (this.currentSpeed / this.maxSpeed);
+            this.angle += turnStrength * turnRate * (deltaTime / 1000);
 
-    const spriteData = assets.use('spritesData')[this.animalType || 'character'];
+            // NEW: Apply a bit of speed reduction whenever turning
+            //      The stronger the turn (|turnStrength|), the greater the deceleration
+            if (Math.abs(turnStrength) > 0.01) {
+                // Deceleration factor can be tweaked
+                const turnDeceleration = 10; // Decrease speed by up to ~10 units/sec
+                this.currentSpeed = Math.max(
+                    0,
+                    this.currentSpeed - turnDeceleration * Math.abs(turnStrength) * (deltaTime / 1000)
+                );
+            }
 
-    if (!spriteData || !spriteData.animations[newAnimation]) {
-        console.error(`Animation '${newAnimation}' not found for type: ${this.animalType || 'character'}`);
-        return;
-    }
+            // Normalize angle between 0 and 2*PI
+            this.angle %= (2 * Math.PI);
+            if (this.angle < 0) {
+                this.angle += 2 * Math.PI;
+            }
+    
+            // Convert angle back to directionIndex (0 to 47, for 48 frames)
+            this.directionIndex = Math.round((this.angle / (2 * Math.PI)) * 48) % 48;
+        },
 
-    if (this.currentAnimation !== newAnimation) {
-        this.currentAnimation = newAnimation;
-        utils.tracker('sprite.changeAnimation');
-    }
-},
+        /**
+         * -----------------
+         * MOVE VEHICLE
+         * -----------------
+         * Updated to include collision and boundary checking,
+         * just like the human sprites do.
+         */
+        moveVehicle: function() {
+            if (this.currentSpeed !== 0) {
+                // 1) Calculate new position based on speed and angle
+                let newX = this.x + Math.cos(this.angle) * this.currentSpeed * (game.deltaTime / 1000);
+                let newY = this.y + Math.sin(this.angle) * this.currentSpeed * (game.deltaTime / 1000);
 
+                // 2) Check collisions on each axis (just like in update())
+                let collisionResultX = collision.check(newX, this.y, this);
+                let moveX = !collisionResultX.collisionDetected;
 
+                let collisionResultY = collision.check(this.x, newY, this);
+                let moveY = !collisionResultY.collisionDetected;
+
+                // 3) Apply valid movement
+                if (moveX && moveY) {
+                    this.x = newX;
+                    this.y = newY;
+                } else if (moveX) {
+                    this.x = newX;
+                } else if (moveY) {
+                    this.y = newY;
+                }
+
+                // 4) Clamp to viewport boundaries
+                const margin = 0;
+                this.x = Math.max(
+                    margin,
+                    Math.min(this.x, game.worldWidth - this.width * this.scale - margin)
+                );
+                this.y = Math.max(
+                    margin,
+                    Math.min(this.y, game.worldHeight - this.height * this.scale - margin)
+                );
+            }
+            utils.tracker('vehicle.move');
+        },
+
+        changeAnimation: function(newAnimation) {
+            if (this.overrideAnimation && this.overrideAnimation !== newAnimation) {
+                return;
+            }
+        
+            const spriteData = assets.use('spritesData')[this.animalType || 'character'];
+        
+            if (!spriteData || !spriteData.animations[newAnimation]) {
+                console.error(`Animation '${newAnimation}' not found for type: ${this.animalType || 'character'}`);
+                return;
+            }
+        
+            if (this.currentAnimation !== newAnimation) {
+                this.currentAnimation = newAnimation;
+                utils.tracker('sprite.changeAnimation');
+            }
+        },
 
         addDirection: function(direction) {
             this.directions[direction] = true;
@@ -249,7 +347,7 @@ changeAnimation: function(newAnimation) {
     
         stopRunning: function() {
             this.isRunning = false;
-            this.speed = 80; // Normal speed when not running
+            this.speed = 80;
         },
     
         updateHealth: function(amount) {
@@ -259,9 +357,8 @@ changeAnimation: function(newAnimation) {
             this.health = Math.max(0, Math.min(this.maxHealth, this.health + amount));
         
             if (this.health <= 0) {
-                // Handle sprite death
                 console.log(`${this.id} has died.`);
-                delete game.sprites[this.id]; // Remove the sprite from the game
+                delete game.sprites[this.id];
             }
         
             const healthBar = document.getElementById('ui_health');
@@ -284,36 +381,32 @@ changeAnimation: function(newAnimation) {
                 energyBar.style.width = energyPercentage + '%';
                 energyBar.nextElementSibling.innerText = `${Math.round(energyPercentage)}%`;
             }
-        },    
-    
-animate: function () {
-    const spriteData = assets.use('spritesData')[this.animalType || 'character'];
+        },
 
-    if (!spriteData || !spriteData.animations) {
-        console.error(`Animation data not found for sprite type: ${this.animalType || 'character'}`);
-        return;
-    }
-
-    const animation = spriteData.animations[this.currentAnimation];
-    if (!animation) {
-        console.error(`Animation '${this.currentAnimation}' not found`);
-        return;
-    }
-
-    // Calculate the frame duration based on animation speed
-    const frameDuration = (1 / animation.speed) * (1000 / 60); // Duration in frames at 60fps
-    this.frameCounter += game.deltaTime / frameDuration;
-
-    // Loop the animation when the end is reached
-    if (this.frameCounter >= animation.frames.length) {
-        this.frameCounter = 0; // Reset to loop
-    }
-
-    // Update the current frame based on frameCounter
-    this.currentFrame = Math.floor(this.frameCounter);
-    utils.tracker('sprite.animate');
-
-},
+        animate: function () {
+            const spriteData = assets.use('spritesData')[this.animalType || 'character'];
+        
+            if (!spriteData || !spriteData.animations) {
+                console.error(`Animation data not found for sprite type: ${this.animalType || 'character'}`);
+                return;
+            }
+        
+            const animation = spriteData.animations[this.currentAnimation];
+            if (!animation) {
+                console.error(`Animation '${this.currentAnimation}' not found`);
+                return;
+            }
+        
+            const frameDuration = (1 / animation.speed) * (1000 / 60);
+            this.frameCounter += game.deltaTime / frameDuration;
+        
+            if (this.frameCounter >= animation.frames.length) {
+                this.frameCounter = 0;
+            }
+        
+            this.currentFrame = Math.floor(this.frameCounter);
+            utils.tracker('sprite.animate');
+        },
 
         walkToClickedTile: function(tileX, tileY) {
             const boundary = this.boundary;
@@ -324,27 +417,25 @@ animate: function () {
             var currentX = Math.floor(this.x / 16);
             var currentY = Math.floor(this.y / 16);
             this.path = this.calculatePath(currentX, currentY, tileX, tileY);
-            this.pathIndex = 0; // Reset the path index
-            this.isMovingToTarget = true; // Mark sprite as moving to target
+            this.pathIndex = 0;
+            this.isMovingToTarget = true;
             audio.playAudio("footsteps1", assets.use('footsteps1'), 'sfx', true);
             this.changeAnimation('speed_1');
             utils.tracker('sprite.walkToClickedTile');
-        },  
-    
+        },
+
         calculatePath: function(startX, startY, endX, endY) {
-            const grid = collision.walkableGridCache; // Use the cached walkable grid
+            const grid = collision.walkableGridCache;
             const graph = new Graph(grid, { diagonal: true });
             const start = graph.grid[startX][startY];
             const end = graph.grid[endX][endY];
         
-            // Check if start and end points are walkable
             if (grid[startX][startY] === 0 || grid[endX][endY] === 0) {
                 console.log("Pathfinding: Start or end point is not walkable");
                 return [];
             }
         
             const result = astar.search(graph, start, end);
-
             utils.tracker('sprite.calculatePath');
         
             if (result.length === 0) {
@@ -353,188 +444,168 @@ animate: function () {
             }
         
             const path = result.map(function(node) {
-                return { x: node.x, y: node.y, alpha: 1 }; // Add alpha property for opacity
+                return { x: node.x, y: node.y, alpha: 1 };
             });
         
-            return path; // Return the path to be stored in `this.path`
-        },    
-    
-moveAlongPath: function() {
-    if (!this.path || this.pathIndex >= this.path.length) {
-        this.isMovingToTarget = false; // Stop moving when the path is exhausted
-        this.moving = false;
-        this.stopping = true;
-        this.currentFrame = 0; // Reset to default standing position
-        this.path = []; // Clear the path once the destination is reached
-        audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
-        return;
-    }
+            return path;
+        },
 
-    const nextStep = this.path[this.pathIndex];
-    const targetX = nextStep.x * 16;
-    const targetY = nextStep.y * 16;
-    const deltaX = targetX - this.x;
-    const deltaY = targetY - this.y;
-    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+        moveAlongPath: function() {
+            if (!this.path || this.pathIndex >= this.path.length) {
+                this.isMovingToTarget = false;
+                this.moving = false;
+                this.stopping = true;
+                this.currentFrame = 0;
+                this.path = [];
+                audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
+                return;
+            }
+        
+            const nextStep = this.path[this.pathIndex];
+            const targetX = nextStep.x * 16;
+            const targetY = nextStep.y * 16;
+            const deltaX = targetX - this.x;
+            const deltaY = targetY - this.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            const walkingPaceFactor = 0.6;
+            this.speed = Math.max(10, this.topSpeed * walkingPaceFactor);
+        
+            if (distance < this.speed * (game.deltaTime / 1000)) {
+                this.x = targetX;
+                this.y = targetY;
+                this.pathIndex++;
+        
+                if (this.pathIndex > 1) {
+                    this.path.shift();
+                    this.pathIndex--;
+                }
+            } else {
+                const angle = Math.atan2(deltaY, deltaX);
+                const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+                const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
+        
+                this.x = newX;
+                this.y = newY;
+        
+                if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                    this.direction = deltaX > 0 ? 'E' : 'W';
+                } else {
+                    this.direction = deltaY > 0 ? 'S' : 'N';
+                }
+        
+                if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
+                    if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
+                    else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
+                    else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
+                    else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
+                }
+            }
+            utils.tracker('sprite.moveAlongPath');
+        },
 
-    // Determine walking speed relative to topSpeed
-    const walkingPaceFactor = 0.6; // Walking speed is 60% of topSpeed
-    this.speed = Math.max(10, this.topSpeed * walkingPaceFactor); // Ensure a minimum speed of 10
-
-    if (distance < this.speed * (game.deltaTime / 1000)) {
-        this.x = targetX;
-        this.y = targetY;
-        this.pathIndex++; // Move to the next step in the path
-
-        // Remove the step behind the sprite    
-        if (this.pathIndex > 1) {
-            this.path.shift(); // Remove the previous path step
-            this.pathIndex--; // Adjust the index
-        }
-    } else {
-        const angle = Math.atan2(deltaY, deltaX);
-        const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
-        const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
-
-        // Update position directly without collision checks
-        this.x = newX;
-        this.y = newY;
-
-        // Determine direction based on movement
-        if (Math.abs(deltaX) > Math.abs(deltaY)) {
-            this.direction = deltaX > 0 ? 'E' : 'W';
-        } else {
-            this.direction = deltaY > 0 ? 'S' : 'N';
-        }
-
-        // Adjust direction for diagonal movement
-        if (Math.abs(deltaX) > 0 && Math.abs(deltaY) > 0) {
-            if (deltaX > 0 && deltaY > 0) this.direction = 'SE';
-            else if (deltaX > 0 && deltaY < 0) this.direction = 'NE';
-            else if (deltaX < 0 && deltaY > 0) this.direction = 'SW';
-            else if (deltaX < 0 && deltaY < 0) this.direction = 'NW';
-        }
-    }
-
-    utils.tracker('sprite.moveAlongPath');
-},
-    
         stopPathfinding: function() {
-            // Clear the path and reset path-related variables
             this.path = [];
             this.pathIndex = 0;
             this.isMovingToTarget = false;
             this.moving = false;
             this.stopping = true;
-        
-            // Reset the current frame to a default standing position
             this.currentFrame = 0;
-        
-            // Stop walking sound effect
             audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
-        
-            // You can add any additional clean-up here if needed
             console.log(`Pathfinding and movement stopped for sprite: ${this.id}`);
         },
 
-update: function(deltaTime) {
-    const margin = 0; // Define a margin to keep the sprite away from the edges
+        update: function(deltaTime) {
+            const margin = 0;
 
-    if (this.isMovingToTarget) {
-        this.moveAlongPath();
-    } else {
-        let dx = 0;
-        let dy = 0;
+            if (this.isMovingToTarget) {
+                this.moveAlongPath();
+            } else {
+                let dx = 0;
+                let dy = 0;
 
-        if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
-        if (this.directions['left']) dx -= this.speed * (deltaTime / 1000);
-        if (this.directions['down']) dy += this.speed * (deltaTime / 1000);
-        if (this.directions['up']) dy -= this.speed * (deltaTime / 1000);
+                if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
+                if (this.directions['left']) dx -= this.speed * (deltaTime / 1000);
+                if (this.directions['down']) dy += this.speed * (deltaTime / 1000);
+                if (this.directions['up']) dy -= this.speed * (deltaTime / 1000);
 
-        if (dx !== 0 && dy !== 0) {
-            const norm = Math.sqrt(dx * dx + dy * dy);
-            dx = (dx / norm) * this.speed * (deltaTime / 1000);
-            dy = (dy / norm) * this.speed * (deltaTime / 1000);
-        }
+                if (dx !== 0 && dy !== 0) {
+                    const norm = Math.sqrt(dx * dx + dy * dy);
+                    dx = (dx / norm) * this.speed * (deltaTime / 1000);
+                    dy = (dy / norm) * this.speed * (deltaTime / 1000);
+                }
 
-        dx = isNaN(dx) ? 0 : dx;
-        dy = isNaN(dy) ? 0 : dy;
+                dx = isNaN(dx) ? 0 : dx;
+                dy = isNaN(dy) ? 0 : dy;
 
-        this.vx = dx;
-        this.vy = dy;
+                this.vx = dx;
+                this.vy = dy;
 
-        if (dx !== 0 || dy !== 0) {
-            // Calculate new positions
-            let newX = this.x + this.vx;
-            let newY = this.y + this.vy;
+                if (dx !== 0 || dy !== 0) {
+                    let newX = this.x + this.vx;
+                    let newY = this.y + this.vy;
 
-            newX = isNaN(newX) ? this.x : newX;
-            newY = isNaN(newY) ? this.y : newY;
+                    newX = isNaN(newX) ? this.x : newX;
+                    newY = isNaN(newY) ? this.y : newY;
 
-            let moveX = true;
-            let moveY = true;
+                    let moveX = true;
+                    let moveY = true;
 
-            // Perform collision checks only if the sprite is moving
-            const collisionResultX = collision.check(newX, this.y, this);
-            moveX = !collisionResultX.collisionDetected;
-            const collisionResultY = collision.check(this.x, newY, this);
-            moveY = !collisionResultY.collisionDetected;
+                    const collisionResultX = collision.check(newX, this.y, this);
+                    moveX = !collisionResultX.collisionDetected;
+                    const collisionResultY = collision.check(this.x, newY, this);
+                    moveY = !collisionResultY.collisionDetected;
 
-            // Update position based on collision results
-            if (moveX && moveY) {
-                this.x = newX;
-                this.y = newY;
-            } else if (moveX) {
-                this.x = newX;
-            } else if (moveY) {
-                this.y = newY;
+                    if (moveX && moveY) {
+                        this.x = newX;
+                        this.y = newY;
+                    } else if (moveX) {
+                        this.x = newX;
+                    } else if (moveY) {
+                        this.y = newY;
+                    }
+
+                    this.x = Math.max(margin, Math.min(this.x, game.worldWidth - this.width * this.scale - margin));
+                    this.y = Math.max(margin, Math.min(this.y, game.worldHeight - this.height * this.scale - margin));
+
+                    this.moving = true;
+                    this.stopping = false;
+                } else {
+                    this.moving = false;
+                    this.stopping = true;
+                }
+
+                if (!this.moving && !this.overrideAnimation) {
+                    this.changeAnimation('idle');
+                } else if (!this.overrideAnimation) {
+                    if (this.speed < 50) {
+                        this.changeAnimation('speed_1');
+                    } else if (this.speed < 140) {
+                        this.changeAnimation('speed_2');
+                    } else if (this.speed <= 170) {
+                        this.changeAnimation('speed_3');
+                    } else {
+                        this.changeAnimation('speed_4');
+                    }
+                }
+
+                if (this.overrideAnimation) {
+                    this.changeAnimation(this.overrideAnimation);
+                }
             }
 
-            // Ensure the sprite stays within canvas boundaries
-            this.x = Math.max(margin, Math.min(this.x, game.worldWidth - this.width * this.scale - margin));
-            this.y = Math.max(margin, Math.min(this.y, game.worldHeight - this.height * this.scale - margin));
+            this.animate();
 
-            this.moving = true;
-            this.stopping = false;
-        } else {
-            this.moving = false;
-            this.stopping = true;
-        }
+            if (this.id === game.playerid) {
+                const playerLight = lighting.lights.find(light => light.id === this.id + '_light');
+                if (playerLight) {
+                    playerLight.x = this.x + 8;
+                    playerLight.y = this.y + 8;
+                }
+            }
 
-        // Adjust animation based on speed tiers
-    if (!this.moving && !this.overrideAnimation) {
-        this.changeAnimation('idle'); // Idle animation for 0 speed
-    } else if (!this.overrideAnimation) {
-        if (this.speed < 50) {
-            this.changeAnimation('speed_1'); // Slow movement
-        } else if (this.speed < 140) {
-            this.changeAnimation('speed_2'); // Moderate speed
-        } else if (this.speed <= 170) {
-            this.changeAnimation('speed_3'); // Fast speed
-        } else {
-            this.changeAnimation('speed_4'); // Top speed
-        }
-    }
+            utils.tracker('sprite.update');
+        },
 
-    if (this.overrideAnimation) {
-        this.changeAnimation(this.overrideAnimation); // Override animation takes priority
-    }
-    }
-
-    this.animate(); // Ensure the animation is updated in each cycle
-
-    // Update light source position
-    if (this.id === game.playerid) {
-        const playerLight = lighting.lights.find(light => light.id === this.id + '_light');
-        if (playerLight) {
-            playerLight.x = this.x + 8; // Center light on sprite
-            playerLight.y = this.y + 8; // Center light on sprite
-        }
-    }
-
-    utils.tracker('sprite.update');
-},
-    
         dealDamage: function() {
             const aimX = this.targetX;
             const aimY = this.targetY;
@@ -549,17 +620,13 @@ update: function(deltaTime) {
                     const distance = Math.sqrt((aimX - spriteCenterX) ** 2 + (aimY - spriteCenterY) ** 2);
         
                     if (distance <= maxRadius) {
-                        // Calculate damage based on distance, with maximum damage reduced to 50
                         const damage = Math.max(0, 10 - (distance / maxRadius) * 10);
                         sprite.updateHealth(-damage);
-        
-                        // Optionally, add some visual or audio feedback for the damage
                         console.log(`Enemy ${id} took ${damage.toFixed(2)} damage`);
                         effects.shakeMap(300, 2);
                     }
                 }
             }
         }
-
     }
 };

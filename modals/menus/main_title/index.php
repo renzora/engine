@@ -11,7 +11,7 @@
     <!-- L1 Button -->
     <button class="nav-icon relative flex items-center justify-center l1-button" onclick="main_title_window.l1Button()">
       <span class="trigger-shape"></span>
-      <span class="nav-text">L1</span>
+      <span class="nav-text gamepad_button_l1"></span>
     </button>
 
     <!-- Tabs Section -->
@@ -20,7 +20,7 @@
     <!-- R1 Button -->
     <button class="nav-icon relative flex items-center justify-center r1-button" onclick="main_title_window.r1Button()">
       <span class="trigger-shape"></span>
-      <span class="nav-text">R1</span>
+      <span class="nav-text gamepad_button_r1"></span>
     </button>
   </div>
 
@@ -89,12 +89,21 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="story">
         <h2 class="text-3xl font-bold text-yellow-400">Story Mode</h2>
         <p class="text-gray-300 mt-4">Begin your journey in Renzora and uncover its mysteries.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="network_connect">
-        <h2 class="text-3xl font-bold text-yellow-400">Play Renzora Online</h2>
+        <h2 class="text-3xl font-bold text-yellow-400">Renzora Online</h2>
         <p class="text-gray-300 mt-4">Travel around renzora, meet real players and chat</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -102,12 +111,22 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
         <h2 class="text-3xl font-bold text-yellow-400">New Story</h2>
         <p class="text-gray-300 mt-4">Start a fresh adventure in Renzora.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
         <h2 class="text-3xl font-bold text-yellow-400">Load Story</h2>
         <p class="text-gray-300 mt-4">Continue where you left off.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -115,12 +134,22 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
         <h2 class="text-3xl font-bold text-yellow-400">World Map</h2>
         <p class="text-gray-300 mt-4">Travel around renzora, make friends, play games</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
         <h2 class="text-3xl font-bold text-yellow-400">Build</h2>
         <p class="text-gray-300 mt-4">Create your own places.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -128,22 +157,42 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
         <h2 class="text-3xl font-bold text-yellow-400">Battle Royale</h2>
         <p class="text-gray-300 mt-4">100 players, 1 survivor</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
         <h2 class="text-3xl font-bold text-yellow-400">Team Battle</h2>
         <p class="text-gray-300 mt-4">Work as a team to defeat your opponent</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
         <h2 class="text-3xl font-bold text-yellow-400">Solo Match</h2>
         <p class="text-gray-300 mt-4">Use your skills to defeat your opponent</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Training</h2>
         <p class="text-gray-300 mt-4">Improve your combat skills</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -151,17 +200,32 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="characterSelection">
         <h2 class="text-3xl font-bold text-yellow-400">Shooting Range</h2>
         <p class="text-gray-300 mt-4">Practise your aiming.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
         <h2 class="text-3xl font-bold text-yellow-400">Combat</h2>
         <p class="text-gray-300 mt-4">Practise your overall skills</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="loadSavedGame">
         <h2 class="text-3xl font-bold text-yellow-400">Defence</h2>
         <p class="text-gray-300 mt-4">Learn how to protect yourself</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -169,7 +233,12 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="startNewStory">
         <h2 class="text-3xl font-bold text-yellow-400">Select Character</h2>
         <p class="text-gray-300 mt-4">etc etc</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -196,17 +265,32 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Forums</h2>
         <p class="text-gray-300 mt-4">Join discussions and share your ideas.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Social Media</h2>
         <p class="text-gray-300 mt-4">Follow us for freebies and latest news/content</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Announcements/Updates</h2>
         <p class="text-gray-300 mt-4">Get all the latest news and updates right here</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -214,22 +298,42 @@
     <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Store</h2>
         <p class="text-gray-300 mt-4">Purchase Items.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Auction</h2>
         <p class="text-gray-300 mt-4">Sell your items.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Battle Pass</h2>
         <p class="text-gray-300 mt-4">Purchase a battle pass to take part in arena games.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Credits</h2>
         <p class="text-gray-300 mt-4">Purchase credits to buy items.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -237,12 +341,22 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Graphics</h2>
         <p class="text-gray-300 mt-4">Adjust your graphics settings for optimal performance.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8">
         <h2 class="text-3xl font-bold text-yellow-400">Audio</h2>
         <p class="text-gray-300 mt-4">Adjust Music, effects, ambience volume</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -250,7 +364,12 @@
       <div class="card bg-black bg-opacity-60 text-white rounded-lg shadow-lg p-8" data-callback="exit">
         <h2 class="text-3xl font-bold text-yellow-400">Exit</h2>
         <p class="text-gray-300 mt-4">Back to main menu.</p>
-        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl">[A] Select</button>
+        <button class="select-btn hidden absolute bottom-4 right-4 text-yellow-400 text-xl flex items-center space-x-2">
+<span>Select</span>
+    <div class="gamepad_button_x w-6 h-6 bg-gray-800 rounded-full flex items-center justify-center"></div>
+
+</button>
+
       </div>
     </div>
 
@@ -264,7 +383,7 @@
     class="flex items-center space-x-2 px-4 py-2 bg-black bg-opacity-60 rounded-lg shadow-md hover:bg-opacity-80"
     onclick="main_title_window.exit()"
   >
-    <span class="text-xl font-bold">[R3]</span>
+    <span class="text-xl font-bold gamepad_button_rightstick"></span>
     <span class="text-lg">Exit</span>
   </button>
   <!-- Server Info -->
@@ -550,6 +669,7 @@ var main_title_window = {
   this.highlightCardOnHover(); // Add hover functionality
   this.initializeCardClickEvents(); // Initialize click events
   this.updateXPRing(357, 500);
+  gamepad.updateButtonImages();
 
   this.keydownListener = (event) => {
       switch (event.key) {
@@ -574,9 +694,6 @@ var main_title_window = {
         case "a": // Map "A" to the select button
         case "Enter": // Map "Enter" to the select button
           this.aButton();
-          break;
-        case " ": // Spacebar toggles fullscreen
-          utils.fullScreen();
           break;
         default:
           break;
@@ -620,30 +737,26 @@ addEventListeners: function () {
     console.log("Event listeners added to main_title_window.");
   },
 
-initializeCardClickEvents: function () {
-    // Add click event listeners to all cards
+  initializeCardClickEvents: function () {
     document.querySelectorAll(".card").forEach((card) => {
       card.addEventListener("click", () => {
-        // Highlight the clicked card
-        const activeTab = document.querySelectorAll(".tab-screen")[this.currentTabIndex];
+        const activeTab = document.getElementById(this.tabName);
+        if (!activeTab) return;
+
         const cards = Array.from(activeTab.querySelectorAll(".card"));
         const cardIndex = cards.indexOf(card);
 
         if (cardIndex !== -1) {
+          // Select this card
           this.currentCardIndex = cardIndex;
           this.highlightCard();
-
-          // Execute the callback function
-          const callback = card.getAttribute("data-callback");
-          if (callback && typeof this[callback] === "function") {
-            this[callback](); // Execute the callback function
-          } else {
-            console.warn(`Callback function '${callback}' is not defined in main_title_window.`);
-          }
+          // Now simulate pressing the "A" button
+          this.aButton();
         }
       });
     });
-  },
+},
+
 
   // Throttle function to limit repeated button presses
   throttle: function (callback) {
@@ -663,29 +776,25 @@ initializeCardClickEvents: function () {
     if (reset) {
         tabContainer.innerHTML = "";
 
-        // Filter tabs to include "all" mode items and the specified mode
+        // Filter tabs
         this.tabs = this.tabMenuData
             .filter((menu) => menu.mode === "all" || menu.mode === filterMode)
-            .map((menu) => menu.tab); // Extract tab names for the filtered items
+            .map((menu) => menu.tab); // Extract tab names
 
-        // Add the Tab Buttons
         this.tabMenuData
             .filter((menu) => menu.mode === "all" || menu.mode === filterMode)
             .forEach((menu, index) => {
-                const tabButton = document.createElement("div"); // Use a div to align text and badge side by side
-                tabButton.className = "flex items-center space-x-2 relative"; // Align items in a row with spacing
+                const tabButton = document.createElement("div"); 
+                tabButton.className = "flex items-center space-x-2 relative";
                 tabButton.setAttribute("data-tab", menu.tab);
                 tabButton.setAttribute("data-mode", filterMode);
 
-                // Text for the menu item
                 const tabText = document.createElement("button");
                 tabText.className = "tab-item text-3xl font-extrabold text-white hover:text-yellow-400";
-                tabText.textContent = menu.tab.charAt(0).toUpperCase() + menu.tab.slice(1); // Capitalize tab name
-                tabText.onclick = () => this.showTab(index);
-
+                tabText.textContent = menu.tab.charAt(0).toUpperCase() + menu.tab.slice(1); 
                 tabButton.appendChild(tabText);
 
-                // Add notification badge if notif exists
+                // Add notification badge if required
                 if (menu.notif) {
                     const badge = document.createElement("span");
                     badge.className =
@@ -694,27 +803,39 @@ initializeCardClickEvents: function () {
                     tabButton.appendChild(badge);
                 }
 
+                // Hover over tab item: highlight and update currentTabIndex
+                tabButton.addEventListener('mouseenter', () => {
+                    this.currentTabIndex = index;
+                    // You could optionally highlight this tab visually here, 
+                    // but showing the tab immediately on hover may not be desired.
+                    // If you'd like to switch tabs on hover automatically, you can do:
+                    // this.showTab(index);
+                });
+
+                // Click on tab item: show the corresponding tab screen
+                tabButton.addEventListener('click', () => {
+                    this.showTab(index);
+                    // Clicking a tab is analogous to selecting that tab, 
+                    // similar to pressing a button to navigate tabs.
+                });
+
                 tabContainer.appendChild(tabButton);
             });
 
-        console.log("Updated tabs:", this.tabs); // Debug: Log the updated tabs array
-
-        // Automatically show the first tab if there are any tabs
         if (this.tabs.length > 0) {
-            this.showTab(0); // Show the first tab
+            this.showTab(0);
             document.getElementById("main_title_window_screen").classList.remove("hidden");
         } else {
             console.warn("No tabs available to display.");
         }
     } else {
-        // Update notification badges without resetting the menu items
+        // Update notification badges without resetting the menu
         this.tabMenuData.forEach((menu) => {
             const tabButton = document.querySelector(`.tab-item[data-tab="${menu.tab}"]`);
             if (tabButton) {
-                let badge = tabButton.nextElementSibling; // Badge is expected to be the next sibling
+                let badge = tabButton.nextElementSibling;
                 if (menu.notif) {
                     if (!badge) {
-                        // Create a badge if it doesn't exist
                         badge = document.createElement("span");
                         badge.className =
                             "flex items-center justify-center w-5 h-5 text-xs font-bold text-white bg-red-500 rounded-full shadow-md ml-2";
@@ -722,13 +843,13 @@ initializeCardClickEvents: function () {
                     }
                     badge.textContent = menu.notif;
                 } else if (badge) {
-                    // Remove the badge if notif is null or undefined
                     badge.remove();
                 }
             }
         });
     }
 },
+
 
 updateXPRing: function(currentXP, maxXP) {
   const percentage = (currentXP / maxXP) * 100;
@@ -1013,37 +1134,9 @@ characterSelection: function() {
 },
 
   startNewStory: function () {
-    modal.close('main_title_window');
-    game.modal_init();
-    camera.panning = false;  // Enable panning mode
-    camera.manual = false;  // Disable manual mode for panning
-    camera.activeCamera = true; // Disable automatic tracking during panning
-    camera.cutsceneMode = false;  // Treat panning as part of cutscene/movement override
-    utils.gameTime.hours = 0;
-    weather.fogActive = true;
-    game.timeActive = true;
-    weather.snowActive = true;
-
-    const playerOptions = {
-      id: this.playerid,  
-      x: game.x / 16,
-      y: game.y / 16,
-      isPlayer: true,
-      topSpeed: 100,
-      animalType: 'female-01',
-      targetAim: false,
-      maxRange: 200,
-      health: 100,
-      energy: 100,
-      handOffsetX: 8, // Offset to the right
-      handOffsetY: -5
-    };
-              
-    sprite.create(playerOptions);
-
-
-    game.mainSprite = game.sprites[game.playerid];
-    game.setActiveSprite(game.playerid);
+    console.log('starting new story');
+    modal.load({ id: 'beta_window', url: 'beta/index.php', name: 'Beta Notice', drag: false, reload: true, hidden: false });
+    
   },
 
   loadSavedGame: function () {

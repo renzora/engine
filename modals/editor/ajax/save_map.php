@@ -57,6 +57,7 @@ try {
     error_log("Update Result: " . json_encode($updateResult));
 
     if ($updateResult->getMatchedCount() > 0) {
+        http_response_code(200);
         echo json_encode([
             'message' => 'Room data saved successfully'
         ]);

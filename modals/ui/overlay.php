@@ -3,82 +3,95 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 <div data-window="ui_overlay_window" data-close="false">
-  
-  <!-- Avatar and Rings fixed at top center -->
-  <div class="fixed top-4 left-1/2 transform -translate-x-1/2 flex flex-col items-center space-y-2 text-white z-50">
-    <!-- Top Section: Avatar -->
-    <div class="flex items-center space-x-6 p-4 relative">
-      <!-- Avatar Container -->
-      <div class="relative w-16 h-16">
-        <!-- Avatar Image with Grey Border -->
-        <img
-          src="assets/img/sprites/portrait/lady_01.png"
-          alt="Player Avatar"
-          class="rounded-full w-full h-full object-cover border-4 border-transparent"
-        />
 
-        <!-- Rings Container -->
-        <div class="absolute inset-0 flex items-center justify-center">
-          <!-- Energy Ring -->
-          <div class="absolute" style="width: 60px; height: 60px;">
-            <svg class="w-full h-full" viewBox="0 0 60 60">
-              <circle
-                class="progress-ring progress-ring-energy stroke-blue-500"
-                stroke-width="5"
-                fill="none"
-                r="27"
-                cx="30"
-                cy="30"
-              />
-            </svg>
-          </div>
-          <!-- Health Ring -->
-          <div class="absolute" style="width: 76px; height: 76px;">
-            <svg class="w-full h-full" viewBox="0 0 76 76">
-              <circle
-                class="progress-ring progress-ring-health stroke-red-500"
-                stroke-width="5"
-                fill="none"
-                r="33"
-                cx="38"
-                cy="38"
-              />
-            </svg>
-          </div>
-          <!-- XP Ring -->
-          <div class="absolute" style="width: 78px; height: 78px;">
-            <svg class="w-full h-full" viewBox="0 0 78 78">
-              <circle
-                class="progress-ring progress-ring-xp stroke-white-500"
-                stroke-width="6"
-                fill="none"
-                r="36"
-                cx="39"
-                cy="39"
-              />
-            </svg>
+  <!-- Existing menu fixed at top right -->
+  <div class="fixed right-4 top-1/2 transform -translate-y-1/2 space-y-2 text-white z-50">
+
+
+   <!-- Avatar, Coins and Time in the same box with minimal padding -->
+   <div id="toggle-submenu" class="cursor-pointer bg-gray-900 bg-opacity-40 fog pixel-corners p-4 rounded-lg shadow-md">
+      <div class="flex items-center justify-between space-x-4">
+      <!-- Avatar and Rings floated left -->
+      <div class="float-left">
+        <div class="relative w-16 h-16">
+          <!-- Avatar Image -->
+          <img
+            src="assets/img/sprites/portrait/lady_01.png"
+            alt="Player Avatar"
+            class="rounded-full w-full h-full object-cover border-4 border-transparent"
+          />
+
+          <!-- Rings Container -->
+          <div class="absolute inset-0 flex items-center justify-center">
+            <!-- Energy Ring -->
+            <div class="absolute" style="width: 60px; height: 60px;">
+              <svg class="w-full h-full" viewBox="0 0 60 60">
+                <circle
+                  class="progress-ring progress-ring-energy stroke-blue-500"
+                  stroke-width="5"
+                  fill="none"
+                  r="27"
+                  cx="30"
+                  cy="30"
+                />
+              </svg>
+            </div>
+            <!-- Health Ring -->
+            <div class="absolute" style="width: 76px; height: 76px;">
+              <svg class="w-full h-full" viewBox="0 0 76 76">
+                <circle
+                  class="progress-ring progress-ring-health stroke-red-500"
+                  stroke-width="5"
+                  fill="none"
+                  r="33"
+                  cx="38"
+                  cy="38"
+                />
+              </svg>
+            </div>
+            <!-- XP Ring -->
+            <div class="absolute" style="width: 78px; height: 78px;">
+              <svg class="w-full h-full" viewBox="0 0 78 78">
+                <circle
+                  class="progress-ring progress-ring-xp stroke-white-500"
+                  stroke-width="6"
+                  fill="none"
+                  r="36"
+                  cx="39"
+                  cy="39"
+                />
+              </svg>
+            </div>
           </div>
         </div>
       </div>
-      
-      <!-- Removed Player Username -->
-      <!--
-      <div class="flex flex-col justify-center">
-        <span class="text-xl font-bold text-yellow-400">Player123</span>
-        <span class="text-sm font-medium text-gray-400">
-          Coins: <span id="player-coins" class="text-yellow-400">100</span> |
+
+      <!-- Coins and Time floated right -->
+      <div class="float-right flex flex-col space-y-1 text-right">
+        <div class="text-xs text-gray-400">
+          Coins: <span id="player-coins" class="text-lg font-medium text-yellow-400">100</span>
+        </div>
+        <div class="text-xs text-gray-400">
           <span id="game_time" class="text-lg font-medium text-white">00:00</span>
-        </span>
+        </div>
+
+        
       </div>
-      -->
+
+      <button aria-expanded="false" aria-controls="submenu" class="flex flex-col space-y-1">
+      <div class="gamepad_button_rightstick"></div>
+    </button>
+</div>
     </div>
+
+    <div id="speedometer-container" class="hidden bg-gray-900 bg-opacity-40 fog pixel-corners p-4 rounded-lg shadow-md text-center">
+  <div class="text-white text-3xl font-bold">
+    <span id="speedometer-digital">0</span> km/h
   </div>
+</div>
 
-  <!-- Existing menu fixed at top right -->
-  <div class="fixed bottom-4 right-4 flex flex-col space-y-4 text-white z-10">
-
-      <!-- Gun HUD: Bullets, Reload Meter, and Bullet Counter -->
-      <div class="bg-gray-900 bg-opacity-40 fog pixel-corners p-4 rounded-lg shadow-md">
+    <!-- Gun HUD: Bullets, Reload Meter, and Bullet Counter -->
+    <div class="bg-gray-900 bg-opacity-40 fog pixel-corners p-4 rounded-lg shadow-md">
       <div class="flex items-center justify-between space-x-4">
         <!-- Reload Meter -->
         <div class="flex flex-col items-start space-y-1">
@@ -95,33 +108,6 @@ if ($auth) {
       </div>
     </div>
 
-    <!-- Moved Coins and Time to the Right Menu -->
-    <div class="bg-gray-900 bg-opacity-40 fog pixel-corners p-4 rounded-lg shadow-md">
-      <div class="flex flex-col space-y-2">
-        <div class="flex justify-between items-center">
-          <span class="text-xs text-gray-400">Coins:</span>
-          <span id="player-coins" class="text-yellow-400">100</span>
-        </div>
-        <div class="flex justify-between items-center">
-          <span class="text-xs text-gray-400">Time:</span>
-          <!-- Updated Time Span: White and Larger Text -->
-          <span id="game_time" class="text-lg font-medium text-white">00:00</span>
-        </div>
-      </div>
-    </div>
-
-    <button onclick="effects.bubbleEffect.create(game.sprites[game.playerid], '#FFFF00');">Bubbles!</button>
-
-    <!-- Submenu Toggle -->
-    <button
-      id="toggle-submenu"
-      class="bg-gray-900 bg-opacity-40 fog pixel-corners hover:bg-gray-600 text-white text-sm font-medium rounded-md px-4 py-2 shadow-md"
-      aria-expanded="false"
-      aria-controls="submenu"
-    >
-      Submenu
-    </button>
-
     <!-- Submenu -->
     <div
       id="submenu"
@@ -131,7 +117,6 @@ if ($auth) {
         <div class="flex flex-col space-y-4">
           <!-- Player Stats -->
           <div>
-            <span class="text-sm font-medium text-gray-300">Stats</span>
             <div class="grid grid-cols-3 gap-4 text-xs font-medium text-gray-400 mt-2">
               <div>Strength: <span class="text-white">15</span></div>
               <div>Agility: <span class="text-white">12</span></div>
@@ -184,22 +169,16 @@ if ($auth) {
     .progress-ring-health {
       stroke-dasharray: 214; /* Rounded from 213.63 */
       stroke-dashoffset: 214;
-      filter: drop-shadow(0 0 4px rgba(255, 0, 0, 0.7)) /* Red glow */
-              drop-shadow(0 0 6px rgba(0, 0, 0, 0.5)); /* Dark outer shadow */
     }
 
     .progress-ring-energy {
       stroke-dasharray: 163; /* Rounded from 163.36 */
       stroke-dashoffset: 163;
-      filter: drop-shadow(0 0 4px rgba(0, 0, 255, 0.7)) /* Blue glow */
-              drop-shadow(0 0 6px rgba(0, 0, 0, 0.5)); /* Dark outer shadow */
     }
 
     .progress-ring-xp {
       stroke-dasharray: 226; /* Rounded from 226.19 */
       stroke-dashoffset: 226;
-      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.7)) /* White glow */
-              drop-shadow(0 0 6px rgba(0, 0, 0, 0.5)); /* Dark outer shadow */
     }
 
     .progress-ring-health,
@@ -242,6 +221,7 @@ if ($auth) {
         this.updateXPRing(368, 500); // Example XP values
         this.updateHealthRing(57, 100); // Example health values
         this.updateEnergyRing(79, 100);
+        gamepad.updateButtonImages();
       },
 
       initializeMenuToggle: function() {
@@ -249,13 +229,9 @@ if ($auth) {
         const submenu = document.getElementById('submenu');
 
         toggleButton.addEventListener('click', () => {
-          const isExpanded = toggleButton.getAttribute('aria-expanded') === 'true';
-          toggleButton.setAttribute('aria-expanded', !isExpanded);
           
           submenu.classList.toggle('max-h-0');
-          submenu.classList.toggle('max-h-[500px]');
-          submenu.classList.toggle('p-0');
-          submenu.classList.toggle('p-4');
+          submenu.classList.toggle('max-h-[800px]');
         });
       },
 
@@ -394,7 +370,20 @@ if ($auth) {
         const percentage = (currentXP / maxXP) * 100;
         const offset = circumference - (circumference * percentage) / 100;
         document.querySelector('.progress-ring-xp').style.strokeDashoffset = offset;
+      },
+
+      update: function(currentSpeed, maxSpeed) {
+        const speedometerContainer = document.getElementById("speedometer-container");
+      const speedometerDigital = document.getElementById("speedometer-digital");
+
+      if (!game.mainSprite || !game.mainSprite.isVehicle) {
+        speedometerContainer.classList.add("hidden");
+        return;
       }
+
+      speedometerContainer.classList.remove("hidden");
+      speedometerDigital.textContent = Math.round(currentSpeed);
+    }
     };
 
     ui_overlay_window.start();

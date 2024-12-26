@@ -41,7 +41,7 @@ const particles = {
                 twinkleSpeed: twinkleSpeed,
                 initialSize: options.size || 2,
                 opacity: options.opacity || 1,
-                effectId: effectId // Track the effectId for future removal
+                effectId: effectId
             };
     
             if (!this.activeEffects[effectId]) {
@@ -62,8 +62,8 @@ const particles = {
                 particle.color = `rgba(0, 0, 255, ${particle.life / 50})`;
             } else {
                 particle.x += particle.vx * deltaTime / 16;
-                particle.y += particle.vy * deltaTime / 16 + particle.gravity; // Apply gravity
-                particle.vx += Math.sin(particle.y * 0.01) * particle.sway; // Apply sway
+                particle.y += particle.vy * deltaTime / 16 + particle.gravity;
+                particle.vx += Math.sin(particle.y * 0.01) * particle.sway;
                 particle.life -= deltaTime / 16;
 
                 const fadeStart = 0.2;
@@ -74,7 +74,7 @@ const particles = {
                     particle.opacity = particle.initialOpacity;
                 }
 
-                if (particle.twinkleSpeed > 0) { // Apply twinkle effect
+                if (particle.twinkleSpeed > 0) {
                     particle.size += particle.twinkleSpeed;
                     if (particle.size > particle.initialSize * 1.5 || particle.size < particle.initialSize * 0.5) {
                         particle.twinkleSpeed = -particle.twinkleSpeed;
@@ -141,12 +141,8 @@ const particles = {
     },
 
     removeParticles: function(effectId) {
-        // Check if the effect exists in activeEffects
         if (this.activeEffects[effectId]) {
-            // Remove the particles associated with this effect
             delete this.activeEffects[effectId];
-    
-            // Also filter out particles from the global game.particles array that belong to this effect
             game.particles = game.particles.filter(particle => particle.effectId !== effectId);
         } else {
             console.warn(`Effect with ID '${effectId}' not found.`);

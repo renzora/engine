@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='editor_window' class='window window_bg fixed top-2 right-2 rounded-sm' style='width: 57px;background: #3a445b;'>
+<div data-window='edit_mode_window' class='window window_bg fixed top-2 right-2 rounded-sm' style='width: 57px;background: #3a445b;'>
 
 <!-- Handle that spans the whole left side -->
 <div data-part='handle' class='window_title rounded-none w-full mb-1' style='height: 15px; background-image: radial-gradient(#e5e5e58a 1px, transparent 0) !important; border-radius: 0;'>
@@ -58,7 +58,7 @@ if ($auth) {
             <div class="ui_icon ui_save"></div>
         </button>
 
-        <button type="button" id="close_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.revertToOriginalState(); edit_mode_window.unmount(); modal.close('editor_window')">
+        <button type="button" id="close_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.revertToOriginalState(); edit_mode_window.unmount(); modal.close('edit_mode_window')">
             <div class="ui_icon ui_close"></div>
         </button>
     </div>
@@ -103,6 +103,11 @@ var edit_mode_window = {
     isMovingObjects: false,
     moveOffsetX: 0,
     moveOffsetY: 0,
+    currentHour: null,  // To store the current hour (e.g., 10)
+    currentMinute: null,  // To store the current minute (e.g., 30)
+    currentDay: null,
+    isSnapEnabled: false,  // Set to true or false based on your desired default state
+    isGroupObjectsEnabled: false,
 
     start: function () {
     this.modeButtons = {
@@ -126,7 +131,7 @@ var edit_mode_window = {
 
     // Hide the main sprite
     game.displaySprite = false;
-    game.timeActive = false;  // Stop time updates
+    game.timeActive = true;  // Stop time updates
 
     // Disable game pathfinding and enable editor mode
     game.isEditMode = true;
@@ -134,19 +139,12 @@ var edit_mode_window = {
     game.allowControls = false;
     camera.lerpEnabled = false;
     camera.manual = true;
-    game.zoomLevel = 2;
+    game.zoomLevel = 4;
 
     game.mainSprite.stopPathfinding();
 
-    console_window.toggleConsoleWindow();
-    console_window.loadTabContent('editor_inventory');
-    modal.close('click_menu_window');
-
-    console_window.allowToggle = false;
-
-    modal.load({ id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true });
-
     this.changeMode('select');  // Default mode
+    this.updateCurrentTimeAndDay();
 
     // Store bound event handlers
     this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
@@ -168,6 +166,19 @@ var edit_mode_window = {
     modal.minimize('ui_inventory_window');
     //modal.minimize('console_window');
     modal.minimize('ui_overlay_window');
+
+    modal.close('context_menu_window');
+    
+    console_window.toggleConsoleWindow('editor_inventory');
+    console_window.load_tab_buttons('editor');
+
+    modal.preload([
+    { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true } },
+    { priority: 2, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false } }
+]);
+
+
+    
     //modal.minimize('ui_footer_window');
 },
 
@@ -178,14 +189,12 @@ unmount: function () {
     game.isEditMode = false;
     game.pathfinding = true;
     game.allowControls = true;
-    game.gameTime.hours = 0;  // Reset to 0
-    game.gameTime.minutes = 0;
     game.timeActive = true;
-    game.displaySprite = true;  // Show the main sprite
+    utils.gameTime.hours = this.currentHour;
+    utils.gameTime.minutes = this.currentMinute;
+    game.displaySprite = true;
     camera.lerpEnabled = true;
     camera.manual = false;
-    console_window.allowToggle = true;
-    console_window.toggleConsoleWindow();
     game.zoomLevel = localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 4;
 
     // Remove all event listeners using stored references
@@ -210,25 +219,26 @@ unmount: function () {
     this.clearSelectionBox();
     this.clearLassoPath();
 
-    // Restore the weather system
-    weather.createFireflys();
-    weather.createRain(0.7);
-    weather.createSnow(0.2);
-
     // Reset the cursor to default
     document.body.style.cursor = 'default';
 
+    modal.close('editor_context_menu_window');
     // Show minimized windows
     modal.show('ui_inventory_window');
-    modal.show('console_window');
+    modal.close('console_window');
+    game.resizeCanvas();
     modal.show('ui_overlay_window');
-    modal.show('ui_footer_window');
-
-    modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
-
-    console_window.load_tab_buttons();
-    modal.close('editor_utils_window');
+    modal.close('ui_footer_window');
+    modal.load({ id: 'context_menu_window', url: 'menus/context/index.php', name: 'Context Menu', drag: false,reload: true });
 },
+
+updateCurrentTimeAndDay: function () {
+        // Fetch current game time and day from utils
+        const gameTime = utils.gameTime;
+        this.currentHour = Math.floor(gameTime.hours); // Ensure it's a whole number
+        this.currentMinute = Math.floor(gameTime.minutes); // Ensure it's a whole number
+        this.currentDay = gameTime.daysOfWeek[gameTime.days % 7];
+    },
 
 changeMode: function (newMode) {
     // Prevent mode changes if dragging is active
@@ -307,13 +317,20 @@ handleMouseDown: function (event) {
     // Update mouse position for reference
     this.updateMousePosition(event);
 
-    // Handle right-click to clear selections and switch to select mode
+    // Handle right-click (button === 2) to potentially clear selections
     if (event.button === 2) { // Right mouse button
-        this.selectedObjects = [];
-        this.clearSelectionBox();
-        this.clearLassoPath();
-        console.log('All selections cleared with right click.');
-        this.changeMode('select');
+        const isClickInsideSelection = this.isCursorInsideSelectedArea(); // Check if the right-click is on a selected object
+
+        if (!isClickInsideSelection) {
+            // Clear selections only if the right-click is outside selected objects
+            this.selectedObjects = [];
+            this.clearSelectionBox();
+            this.clearLassoPath();
+            console.log('All selections cleared with right click.');
+            this.changeMode('select');
+        } else {
+            console.log('Right-click on selected object. No deselection performed.');
+        }
         return;
     }
 
@@ -699,7 +716,7 @@ moveSelectedObjectsWithArrowKeys: function (direction) {
     }
 
     // Define the movement step size
-    const step = editor_utils_window.isSnapEnabled ? 16 : 1;
+    const step = this.isSnapEnabled ? 16 : 1;
 
     // Determine movement direction
     let deltaX = 0, deltaY = 0;
@@ -747,7 +764,7 @@ renderSelectedTiles: function () {
         // Save canvas state before rendering
         game.ctx.save();
 
-        if (editor_utils_window.isGroupObjectsEnabled) {
+        if (this.isGroupObjectsEnabled) {
             // Calculate bounding box for all selected objects (grouped)
             const groupBoundingBox = this.selectedObjects.reduce(
                 (box, obj) => {
@@ -1033,7 +1050,7 @@ updateSelectedObjects: function (shiftKeyHeld) {
     }
 
     // Show or hide the bring buttons based on whether any objects are selected
-    editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
+    //editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
 
     if (this.selectedObjects.length > 0) {
         this.changeMode('move');
@@ -1065,7 +1082,7 @@ updateSelectedObjectsWithLasso: function (shiftKeyHeld) {
     }
 
     // Show or hide the bring buttons based on whether any objects are selected
-    editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
+    //editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
 
     if (this.selectedObjects.length > 0 && !shiftKeyHeld) {
         this.changeMode('move');
@@ -1215,8 +1232,8 @@ copySelectedObjects: function () {
         const offsetY = mouseY - clipboardCenterY;
 
         // If snapping is enabled, snap the offsets to the nearest grid size (16x16 grid), otherwise, use pixel-perfect positioning
-        const offsetForX = editor_utils_window.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX);
-        const offsetForY = editor_utils_window.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY);
+        const offsetForX = this.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX);
+        const offsetForY = this.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY);
 
         // Deep clone the copied objects and adjust their position relative to the mouse cursor
         const pastedObjects = this.clipboard.map(obj => {
@@ -1226,13 +1243,13 @@ copySelectedObjects: function () {
             newObj.x = newObj.x.map(coord => {
                 const newCoordX = coord * 16 + offsetForX;
                 // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
-                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
+                return this.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
             });
 
             newObj.y = newObj.y.map(coord => {
                 const newCoordY = coord * 16 + offsetForY;
                 // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
-                return editor_utils_window.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
+                return this.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
             });
 
             return newObj;
@@ -1240,7 +1257,7 @@ copySelectedObjects: function () {
 
         // Add the pasted objects to the room data
         game.roomData.items.push(...pastedObjects);
-        console.log("Objects pasted at", editor_utils_window.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
+        console.log("Objects pasted at", this.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
 
         // Select the pasted objects
         this.selectedObjects = pastedObjects;
@@ -1304,7 +1321,7 @@ saveRoomData: function () {
             
             // After a successful save, close the editor modal
             edit_mode_window.unmount(); // Call the unmount function to clean up
-            modal.close('editor_window'); // Close the editor window
+            modal.close('edit_mode_window'); // Close the editor window
             collision.createWalkableGrid();
         },
         error: function (data) {
@@ -1411,6 +1428,7 @@ handleZoomOrMovement: function(deltaY, event) {
     camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
 
     this.constrainCamera();
+    game.resizeCanvas();
 },
 
 panCameraVertically: function(deltaY) {
@@ -1581,12 +1599,12 @@ handleKeyDown: function (event) {
     }
     // Ctrl + G to toggle grid
     else if (event.ctrlKey && !event.shiftKey && key.toLowerCase() === 'g') {
-        editor_utils_window.toggleGridCheckbox();
+        //editor_utils_window.toggleGridCheckbox();
         event.preventDefault();
     }
     // Ctrl + Shift + G to toggle snap
     else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 'g') {
-        editor_utils_window.toggleSnapCheckbox();
+        //editor_utils_window.toggleSnapCheckbox();
         event.preventDefault();
     }
     // Ctrl + Arrow Up to move selected objects to the top

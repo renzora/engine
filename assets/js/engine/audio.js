@@ -72,7 +72,6 @@ var audio = {
                 const instrument = instruments[command.inst];
                 const channelName = `instr-${command.inst}`;
 
-                // Check and apply tempo changes at the specific tick
                 if (tempos && tempos[command.tick] !== undefined) {
                     currentBpm = tempos[command.tick];
                     console.log(`Tempo changed to ${currentBpm} BPM at tick ${command.tick}`);
@@ -89,7 +88,7 @@ var audio = {
                     instrument,
                     command.note,
                     commandStartTime,
-                    channel // Use the specified channel
+                    channel
                 );
             });
 
@@ -127,7 +126,7 @@ var audio = {
         oscillator = this.audioContext.createOscillator();
         oscillator.type = this.oscillatorTypes[instrument.oscillator - 1] || 'sine';
         oscillator.frequency.value = this.calculateFrequency(noteNumber);
-        console.log(`Oscillator frequency: ${oscillator.frequency.value} Hz`); // Debug output
+        console.log(`Oscillator frequency: ${oscillator.frequency.value} Hz`);
     
         if (instrument.filter) {
             const filter = this.audioContext.createBiquadFilter();
@@ -161,18 +160,16 @@ var audio = {
             console.log('Audio context not running, attempting to resume.');
             this.audioContext.resume().then(() => {
                 console.log('Audio context resumed.');
-                this.playAudio(id, audioBuffer, channel, loop); // Retry after resuming
+                this.playAudio(id, audioBuffer, channel, loop);
             });
             return;
         }
     
-        // Check if this particular sound is already playing on this channel
         const isPlaying = this.sources[channel]?.some(source => source.loopId === id && source.looping);
         if (isPlaying) {
-            return; // Reject the request if this sound is already looping
+            return;
         }
     
-        // Proceed with playing the sound
         const source = this.audioContext.createBufferSource();
         source.buffer = audioBuffer;
         const gainNode = this.audioContext.createGain();
@@ -187,7 +184,6 @@ var audio = {
         }
     
         source.onended = () => {
-            // Remove the source from the sources array when it ends
             this.sources[channel] = this.sources[channel].filter(s => s !== source);
         };
     
@@ -204,7 +200,6 @@ var audio = {
             return;
         }
 
-        // Play the next audio in the queue
         const nextAudio = this.queues[channel].shift();
         if (nextAudio) {
 
@@ -216,12 +211,11 @@ var audio = {
 
             if (nextAudio.loop) {
                 source.loop = true;
-                source.looping = true; // Custom property to identify looping sources
-                source.gainNode = gainNode; // Attach gainNode for fade-out control
-                source.loopId = nextAudio.id; // Assign the loop ID
+                source.looping = true;
+                source.gainNode = gainNode;
+                source.loopId = nextAudio.id;
             }
 
-            // Add event listener to process the next audio when this one ends
             source.onended = () => {
                 this.sources[channel] = this.sources[channel].filter(s => s !== source);
                 this.processQueue(channel);
@@ -242,17 +236,15 @@ var audio = {
                 if (source.looping && source.loopId === id) {
                     const gainNode = source.gainNode;
                     const currentTime = this.audioContext.currentTime;
-                    gainNode.gain.setValueAtTime(gainNode.gain.value, currentTime); // Set current gain value
-                    gainNode.gain.linearRampToValueAtTime(0, currentTime + fadeDuration); // Fade out
+                    gainNode.gain.setValueAtTime(gainNode.gain.value, currentTime);
+                    gainNode.gain.linearRampToValueAtTime(0, currentTime + fadeDuration);
                     source.loop = false;
-                    source.stop(currentTime + fadeDuration); // Stop after fade-out
+                    source.stop(currentTime + fadeDuration);
                 }
             });
-            // Remove all looping sources from the array that match the loopId
             this.sources[channel] = this.sources[channel].filter(source => !source.looping || source.loopId !== id);
         }
 
-        // Mark the audio as not playing
         if (this.isLoopingAudioPlaying[channel]) {
             delete this.isLoopingAudioPlaying[channel][id];
         }
@@ -290,8 +282,6 @@ var audio = {
             gainNode.connect(this.masterGain);
             gainNode.gain.value = volume;
             this.channels[name] = gainNode;
-
-            // Dispatch an event to notify that a new channel has been created
             const event = new CustomEvent('channelCreated', { detail: { channel: name } });
             document.dispatchEvent(event);
         }
@@ -305,8 +295,6 @@ var audio = {
         this.channels[channel].disconnect();
         delete this.channels[channel];
         console.log(`Channel ${channel} removed`);
-
-        // Dispatch a custom event for channel removal
         document.dispatchEvent(new CustomEvent('channelRemoved', { detail: { channel } }));
     },
 
@@ -324,7 +312,7 @@ var audio = {
     parseNote: function(combinedNote) {
         const match = combinedNote.match(/([A-G]#?)(\d)/);
         if (match) {
-            console.log(`Parsed note: ${match[1]}${match[2]}`); // Debug output
+            console.log(`Parsed note: ${match[1]}${match[2]}`);
             return [match[1], parseInt(match[2])];
         }
         return [null, null];
@@ -333,7 +321,7 @@ var audio = {
     noteToNumber: function(pitch, octave) {
         const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const noteIndex = notes.indexOf(pitch);
-        return noteIndex + ((octave + 1) * 12); // Adjusted for MIDI standard where C4 is 60
+        return noteIndex + ((octave + 1) * 12);
     },
     calculateFrequency: function(noteNumber) {
         return 440 * Math.pow(2, (noteNumber - 69) / 12);

@@ -20,7 +20,6 @@ var assets = {
     },
 
     preload: function(assetsList, callback) {
-        // Filter out duplicates and already loaded assets
         const uniqueAssets = {};
         const assetsToLoad = assetsList.filter(asset => {
             if (!this.isAssetLoaded(asset.name) && !uniqueAssets[asset.name]) {

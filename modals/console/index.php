@@ -13,7 +13,7 @@ if ($auth) {
       </div>
     </div>
   </div>
-</div>
+
 
   <script>
  var console_window = {

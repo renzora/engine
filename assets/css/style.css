@@ -2,19 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: 'dogica';
+  src: url('../fonts/better_vcr/vcr.ttf') format('truetype');
+  font-style: normal;
+}
+
 html, body {
   width: 100%;
   height: 100%;
   margin: auto;
   overflow: hidden;
-  background: #181D29;
-  font-family: tahoma, sans-serif;
-  font-size: 14px;
-  letter-spacing: 0.5px; /* Reduce letter spacing */
-  line-height: 1.6; /* Increase line height for a softer look */
-  -webkit-font-smoothing: antialiased; /* Enable antialiasing for smoother text */
-  -moz-osx-font-smoothing: grayscale;
+  background: #000;
+  font-family: 'dogica', tahoma, sans-serif;
+  font-size: 11px;
   image-rendering: pixelated;
+  -webkit-user-select: none; /* Safari and Chrome */
+  -moz-user-select: none;    /* Firefox */
+  -ms-user-select: none;     /* Internet Explorer */
+  user-select: none;         /* Standard syntax */
+  -webkit-touch-callout: none; /* iOS Safari */
 }
 
 

@@ -6,104 +6,88 @@ var camera = {
     activeCamera: true,
     lerpFactor: parseFloat(localStorage.getItem('lerpFactor')) || 0.1,
     lerpEnabled: true,
-    manual: false, // Flag to determine if the camera is in manual mode
-    panning: false, // Flag to check if panning is in progress
-    panSpeed: 5, // Default speed for panning
-    cutsceneMode: false, // Flag to disable auto-tracking during cutscenes or manual overrides
+    manual: false,
+    panning: false,
+    panSpeed: 5,
+    cutsceneMode: false,
 
-    // Method to manually set camera position and enable manual mode
     setCameraPosition: function(x, y) {
         this.cameraX = x;
         this.cameraY = y;
-        this.manual = true;  // Enable manual mode
-        this.panning = false; // Disable panning when manually setting the camera position
-        this.activeCamera = false; // Disable automatic tracking in manual mode
-        this.cutsceneMode = false; // Turn off cutscene mode if we set a manual position
+        this.manual = true;
+        this.panning = false;
+        this.activeCamera = false;
+        this.cutsceneMode = false;
     },
 
-    // Method to start a cutscene or disable auto tracking
     startCutscene: function() {
-        this.cutsceneMode = true;  // Disable automatic tracking during the cutscene
-        this.activeCamera = false; // Ensure active camera is off
+        this.cutsceneMode = true; 
+        this.activeCamera = false;
     },
 
-    // Method to end a cutscene and resume normal camera behavior
     endCutscene: function() {
-        this.cutsceneMode = false;  // Re-enable automatic tracking if necessary
-        this.activeCamera = true;   // Resume automatic tracking after cutscene
+        this.cutsceneMode = false;
+        this.activeCamera = true;
     },
 
     panTo: function(targetX, targetY, speed, random) {
         if (random) {
-            // Generate an initial random target position within the scene boundaries
             this.targetCameraX = Math.random() * (game.worldWidth - game.canvas.width / game.zoomLevel);
             this.targetCameraY = Math.random() * (game.worldHeight - game.canvas.height / game.zoomLevel);
         } else {
-            // Set the provided target position
             this.targetCameraX = targetX;
             this.targetCameraY = targetY;
         }
     
-        this.panSpeed = speed || this.panSpeed;  // Use provided speed or default
-        this.panning = true;  // Enable panning mode
-        this.manual = false;  // Disable manual mode for panning
-        this.activeCamera = false; // Disable automatic tracking during panning
-        this.cutsceneMode = true;  // Treat panning as part of cutscene/movement override
+        this.panSpeed = speed || this.panSpeed;
+        this.panning = true; 
+        this.manual = false;
+        this.activeCamera = false;
+        this.cutsceneMode = true;
     },
 
     update: function() {
-        let activeSprite = game.sprites[game.activeSpriteId];
+        let activeSprite = game.sprites[game.playerid];
     
-        // Check if the game is in editor mode; if so, stop any camera updates
         if (game.isEditorActive) {
-            return; // Exit early if editor mode is active
+            return;
         }
     
-        // Check if there is an active sprite to track
         if (activeSprite && !this.cutsceneMode) {
-            // Enable automatic camera tracking if the sprite has moved and cutsceneMode is off
             if (activeSprite.x !== this.targetCameraX || activeSprite.y !== this.targetCameraY) {
                 this.activeCamera = true;
-                this.panning = false; // Stop panning when sprite moves
+                this.panning = false;
             }
         }
     
         if (this.activeCamera || this.panning) {
-            // Skip automatic updates if manual mode is active
             if (this.manual && !this.panning) {
-                return;  // Exit the update function if manual mode is active
+                return;
             }
     
             if (this.panning) {
-                // Calculate the distance to the target
                 let deltaX = this.targetCameraX - this.cameraX;
                 let deltaY = this.targetCameraY - this.cameraY;
                 let distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
         
                 if (distance <= this.panSpeed) {
-                    // Target reached: Generate a new random target if random panning is enabled
                     if (this.targetCameraX === null && this.targetCameraY === null) {
-                        this.panning = false; // Stop panning if no random target
+                        this.panning = false;
                     } else {
-                        // Generate new random target position
                         this.targetCameraX = Math.random() * (game.worldWidth - game.canvas.width / game.zoomLevel);
                         this.targetCameraY = Math.random() * (game.worldHeight - game.canvas.height / game.zoomLevel);
                     }
                 } else {
-                    // Move toward the target
                     this.cameraX += (deltaX / distance) * Math.min(this.panSpeed, distance);
                     this.cameraY += (deltaY / distance) * Math.min(this.panSpeed, distance);
                 }
             } else if (this.activeCamera && activeSprite) {
-                // Automatic camera tracking of the active sprite
                 var scaledWindowWidth = game.canvas.width / game.zoomLevel;
-                var scaledWindowHeight = (game.canvas.height / game.zoomLevel) - (50 / game.zoomLevel); // Adjust height for the 50px margin
+                var scaledWindowHeight = (game.canvas.height / game.zoomLevel) - (50 / game.zoomLevel);
     
-                // Center the camera on the sprite
                 this.targetCameraX = activeSprite.x + activeSprite.width / 2 - scaledWindowWidth / 2;
                 this.targetCameraY = activeSprite.y + activeSprite.height / 2 - scaledWindowHeight / 2;
     
-                // Recalculate camera boundaries based on the new canvas size and ensure we respect world boundaries
                 this.targetCameraX = Math.max(0, Math.min(this.targetCameraX, game.worldWidth - scaledWindowWidth));
                 this.targetCameraY = Math.max(0, Math.min(this.targetCameraY, game.worldHeight - scaledWindowHeight));
     

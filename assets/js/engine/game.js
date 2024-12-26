@@ -10,19 +10,18 @@ var game = {
     deltaTime: 0,
     worldWidth: 1280,
     worldHeight: 944,
-    zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 4,
+    zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 5,
     targetX: 0,
     targetY: 0,
     roomData: undefined,
     sprites: {},
     playerid: null,
-    sceneid: localStorage.getItem('sceneid') || '66c25a30091e7e9dd7040daf',
+    sceneid: localStorage.getItem('sceneid') || '6741ff4e81ea9fd1700704f3',
     desiredFPS: 60,
     fixedDeltaTime: 1000 / 60,
     accumulatedTime: 0,
     lastTime: null,
     maxAccumulatedTime: 1000,
-    displaySprite: true,
     allowControls: true,
     selectedObjects: [],
     selectedCache: [],
@@ -32,7 +31,6 @@ var game = {
     overlappingTiles: [],
     isPaused: false,
     sceneBg: '6737dcd37d05e',
-    activeSpriteId: null,
     timeActive: true,
     inputMethod: 'keyboard',
     fpsHistory: [],
@@ -49,9 +47,11 @@ var game = {
     },
 
     init: function() {
-        this.playerid = network.getPlayerId();
+        network.getPlayerId();
 
         assets.preload([
+            { name: 'gamepad_buttons', path: 'img/icons/gamepad.png' },
+            { name: 'green_truck', path: 'img/sprites/vehicles/green_truck.png' },
             { name: 'character', path: 'img/sprites/character/test/character.png' },
             { name: 'head', path: 'img/sprites/character/test/head.png' },
             { name: 'eyes', path: 'img/sprites/character/test/eyes.png' },
@@ -119,10 +119,10 @@ var game = {
                 }
             });
 
-            weather.createFireflys();
-            weather.createRain(0.7);
-            weather.createSnow(0.6);
-            weather.createClouds();
+            weather.fireflies.create();
+            weather.rain.create(0.7);
+            weather.snow.create(0.6);
+            weather.clouds.create();
 
             this.loadScene(this.sceneid);
 
@@ -139,7 +139,7 @@ var game = {
         this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        document.addEventListener('visibilitychange', () => {
+        document.addEventListener('visibilitychange', () => {   
             if (document.hidden) {
                 this.pause();
             } else {
@@ -151,24 +151,92 @@ var game = {
     },
 
     modal_init: function() {
-       modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true }); 
-        //modal.load({ id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false });
 
-        modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
-    
-        //modal.load({ id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: true });
-    
-        modal.load({ id: 'click_menu_window', url: 'menus/click_menu/index.php', name: 'click menu', drag: true, reload: false });
-    
-        modal.load({ id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'pie menu',drag: false, reload: false, hidden: true });
-    
-        modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
+        if (utils.isMobileDevice()) {
+            //modal.load({ id: 'joypad_window', url: 'utils/joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: false });
 
-        modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true, hidden: true });
+            modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true });
 
-        modal.load({ id: 'joypad_window', url: 'joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: true });
+            modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
 
-        //modal.load({ id: 'navigator_window', url: 'navigator/index.php', name: 'navigator', drag: true, reload: true });
+            modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+
+            modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true, hidden: true });
+
+            modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+
+            modal.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: true });
+
+            utils.fullScreen();
+
+        } else {
+
+            //modal.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: false });
+
+            modal.preload([
+                { priority: 1, options: { id: 'context_window', url: 'menus/context/index.php', name: 'Context Menu', drag: true, reload: false } },
+                { priority: 1, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer Window', drag: false, reload: false } },
+                { priority: 2, options: { id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'Pie Menu', drag: false, reload: false, hidden: false } },
+                { priority: 3, options: { id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'Overlay', drag: false, reload: false } },
+                { priority: 4, options: { id: 'speech_window', url: 'speech/index.php', name: 'Speech', drag: false, reload: true, hidden: true } },
+                { priority: 5, options: { id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'Inventory', drag: false, reload: false } },
+                { priority: 0, options: { id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true } },
+            ]);
+
+            camera.panning = false;
+            camera.manual = false;
+            camera.activeCamera = true;
+            camera.cutsceneMode = false;
+            utils.gameTime.hours = 10;
+            weather.fogActive = true;
+            game.timeActive = true;
+            weather.snowActive = true;
+        
+            const playerOptions = {
+              id: this.playerid,  
+              x: game.x / 16,
+              y: game.y / 16,
+              isPlayer: true,
+              topSpeed: 100,
+              canShoot: true,
+              animalType: 'female-01',
+              targetAim: false,
+              maxRange: 200,
+              health: 100,
+              energy: 100,
+              handOffsetX: 8,
+              handOffsetY: -5
+            };
+                      
+            sprite.create(playerOptions);
+        
+        
+            const carOptions = {
+              id: 'car01',  
+              x: 15,
+              y: 20,
+              isPlayer: false,
+              topSpeed: 200,
+              animalType: 'green_truck',
+              isVehicle: true,
+              targetAim: false,
+              maxRange: 200,
+              health: 100,
+              energy: 100,
+              handOffsetX: 8,
+              handOffsetY: -5,
+              maxSpeed: 160,
+              acceleration: 6,
+              directionIndex: 28,
+              braking: 2.5,
+              steeringSensitivity: 3.5
+            };
+
+            sprite.create(carOptions);
+            game.mainSprite = game.sprites[game.playerid];
+
+        }
+
     },
 
     pause: function() {
@@ -183,14 +251,6 @@ var game = {
             playerId: this.playerid
         });
         audio.resumeAll();
-    },
-
-    setActiveSprite: function(spriteId) {
-        if (this.sprites[spriteId]) {
-            this.activeSpriteId = spriteId;
-        } else {
-            console.error(`Sprite with ID ${spriteId} does not exist.`);
-        }
     },
 
     loadScene: function(sceneId) {
@@ -295,7 +355,6 @@ resizeCanvas: function() {
         }
     },
 
-// game.js
 render: function () {
     this.ctx.imageSmoothingEnabled = false;
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -308,24 +367,26 @@ render: function () {
     this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
     this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
 
-    // Render background and sprites
     render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
     
     render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
 
-    // Apply the night filter
-    lighting.renderNightFilter();
-    
-
-    
     weather.render();
+
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    const { maskCanvas, maskCtx } = lighting.createBaseNightFilter();
+    lighting.renderLightsOnFilter(maskCtx);
+    lighting.renderFinalOverlay(this.ctx, maskCanvas, maskCtx);
+    
     particles.render();
     effects.transitions.render();
     render.renderCarriedObjects();
     render.handleDebugUtilities();
     render.aimTool();
 
-    if(utils.objExists('ui_footer_window')) {
+    if(utils.objExists('ui_footer_window.updateUi')) {
         ui_footer_window.updateUI();
     }
 
@@ -335,12 +396,21 @@ render: function () {
         ui_console_editor_inventory.render();
     }
 
-    if(utils.objExists('edit_mode_window')) {
-        edit_mode_window.renderSelectionBox();
-        edit_mode_window.renderBrush();
-        edit_mode_window.renderSelectedTiles();
-        edit_mode_window.renderLasso();
+    if (utils.objExists('edit_mode_window')) {
+        if (typeof edit_mode_window.renderSelectionBox === 'function') {
+            edit_mode_window.renderSelectionBox();
+        }
+        if (typeof edit_mode_window.renderBrush === 'function') {
+            edit_mode_window.renderBrush();
+        }
+        if (typeof edit_mode_window.renderSelectedTiles === 'function') {
+            edit_mode_window.renderSelectedTiles();
+        }
+        if (typeof edit_mode_window.renderLasso === 'function') {
+            edit_mode_window.renderLasso();
+        }
     }
+    
 
     if(utils.objExists('ui_console_tab_window')) {
         if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
@@ -353,6 +423,10 @@ render: function () {
             ui_console_tab_window.renderObjectCollision();
         }
     }
+
+    if (utils.objExists("ui_overlay_window.update") && game.mainSprite.isVehicle) {
+        ui_overlay_window.update(game.mainSprite.currentSpeed, game.mainSprite.maxSpeed);
+      }
 },
 
     

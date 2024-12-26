@@ -3,7 +3,7 @@
     <a href="https://github.com/renzora/web/commit/c0f5327390e3ecc63e8cc67c77241caba4965611" 
        target="_blank" 
        class="text-white rounded-md">Renzora v0.3.5+dev-build-108</a>
-    <span class="text-white" id="input_method">Input: keyboard</span>
+    <span class="text-white" id="input_method" onclick=" modal.load({ id: 'gamepads_window', url: 'utils/gamepads/index.php', name: 'gamepads', drag: true, reload: true });">Input: keyboard</span>
     <span class="text-white rounded-md cursor-pointer" id="gameFps" onclick="modal.load({ id: 'fps_monitor_window', url: 'debug/fps.php', name: 'FPS monitor', drag: true, reload: true });"></span>
     <span id="tiles_rendered" class="text-white rounded-md"></span>
     <span id="background_rendered" class="text-white rounded-md"></span>

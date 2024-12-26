@@ -1,7 +1,6 @@
 var collision = {
-    walkableGridCache: null, // Cache for the walkable grid
+    walkableGridCache: null,
 
-    // Check if a point is inside a polygon
     pointInPolygon: function(px, py, polygon) {
         let isInside = false;
         for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
@@ -15,23 +14,21 @@ var collision = {
         return isInside;
     },
 
-    // Check if a line (sprite's movement path) intersects a polygon
     lineIntersectsPolygon: function(x1, y1, x2, y2, polygon) {
         for (let i = 0; i < polygon.length; i++) {
             const p1 = polygon[i];
-            const p2 = polygon[(i + 1) % polygon.length]; // Next point or wrap around
+            const p2 = polygon[(i + 1) % polygon.length];
 
             if (this.lineIntersectsLine(x1, y1, x2, y2, p1.x, p1.y, p2.x, p2.y)) {
-                return true; // Collision detected with the polygon's edge
+                return true;
             }
         }
         return false;
     },
 
-    // Helper function to check if two line segments intersect
     lineIntersectsLine: function(x1, y1, x2, y2, x3, y3, x4, y4) {
         const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
-        if (denom === 0) return false; // Lines are parallel
+        if (denom === 0) return false;
 
         const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
         const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
@@ -39,45 +36,45 @@ var collision = {
         return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
     },
 
-    // Enhanced collision check that uses swept collision detection
     check: function(x, y, sprite) {
         if (!game.roomData?.items) {
             return { collisionDetected: false };
         }
-
+    
         const a = sprite.width / 2;
         const b = sprite.height / 4;
         const centerX = x + a;
         const centerY = y + sprite.height * 0.75;
-
+    
         const numPoints = 8;
         const pointsToCheck = [];
-
+    
         for (let i = 0; i < numPoints; i++) {
             const angle = (i / numPoints) * 2 * Math.PI;
             const px = centerX + a * Math.cos(angle);
             const py = centerY + b * Math.sin(angle);
             pointsToCheck.push({ px, py });
         }
-
+    
         for (const item of game.roomData.items) {
             const itemData = assets.use('objectData')[item.id]?.[0];
             if (!itemData?.w && itemData.w !== 0) continue;
-
+    
+            // Skip objects where w equals 1
+            if (itemData.w === 1) continue;
+    
             if (Array.isArray(itemData.w)) {
                 const polygon = itemData.w.map(point => ({
                     x: point.x + item.x[0] * 16,
                     y: point.y + item.y[0] * 16
                 }));
-
-                // Perform swept collision detection: Check the entire movement path for collision
+    
                 for (let i = 0; i < pointsToCheck.length - 1; i++) {
                     if (this.lineIntersectsPolygon(pointsToCheck[i].px, pointsToCheck[i].py, pointsToCheck[i + 1].px, pointsToCheck[i + 1].py, polygon)) {
                         return { collisionDetected: true };
                     }
                 }
-
-                // Also check if any point is inside the polygon (in case the sprite starts inside)
+    
                 for (const point of pointsToCheck) {
                     if (this.pointInPolygon(point.px, point.py, polygon)) {
                         return { collisionDetected: true };
@@ -89,17 +86,14 @@ var collision = {
                 }
             }
         }
-
+    
         utils.tracker('collision.check');
-
+    
         return { collisionDetected: false };
-    },
+    },    
 
-    // Optimized createWalkableGrid with caching
     createWalkableGrid: function() {
-        // If the grid already exists, return the cached version
         if (this.walkableGridCache) {
-            console.log("Using cached walkable grid.");
             return this.walkableGridCache;
         }
 
@@ -158,7 +152,6 @@ var collision = {
             });
         }
 
-        // Cache the grid after it's created
         this.walkableGridCache = grid;
         utils.tracker('collision.createWalkableGrid');
 

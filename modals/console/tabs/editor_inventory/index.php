@@ -241,8 +241,8 @@ addItemToRoomData: function(itemId, mouseX, mouseY) {
     }
 
     // Determine base position (snap to grid or pixel-perfect)
-    let baseX = editor_utils_window.isSnapEnabled ? Math.floor(mouseX / 16) * 16 : Math.round(mouseX);
-    let baseY = editor_utils_window.isSnapEnabled ? Math.floor(mouseY / 16) * 16 : Math.round(mouseY);
+    let baseX = editor_context_menu_window.isSnapEnabled ? Math.floor(mouseX / 16) * 16 : Math.round(mouseX);
+    let baseY = editor_context_menu_window.isSnapEnabled ? Math.floor(mouseY / 16) * 16 : Math.round(mouseY);
 
     const maxColumns = itemData.a || 0;  // Number of columns (width)
     const maxRows = itemData.b || 0;     // Number of rows (height)
@@ -253,7 +253,7 @@ addItemToRoomData: function(itemId, mouseX, mouseY) {
 
     // Loop through columns to calculate the X positions
     for (let col = 0; col <= maxColumns; col++) {
-        if (editor_utils_window.isSnapEnabled) {
+        if (editor_context_menu_window.isSnapEnabled) {
             // Snap to grid
             newX.push(Math.floor(baseX / 16) + col);  
         } else {
@@ -264,7 +264,7 @@ addItemToRoomData: function(itemId, mouseX, mouseY) {
 
     // Loop through rows to calculate the Y positions
     for (let row = 0; row <= maxRows; row++) {
-        if (editor_utils_window.isSnapEnabled) {
+        if (editor_context_menu_window.isSnapEnabled) {
             // Snap to grid
             newY.push(Math.floor(baseY / 16) + row);  
         } else {

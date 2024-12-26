@@ -43,9 +43,6 @@ if ($auth) {
                 throw new Exception('Object data file not found.');
             }
 
-            // Temporarily set permissions to 777
-            chmod($objectDataFile, 0777);
-
             $objectData = json_decode(file_get_contents($objectDataFile), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
                 throw new Exception('Failed to decode object data JSON: ' . json_last_error_msg());
@@ -56,8 +53,6 @@ if ($auth) {
             if (!file_exists($metaDataFile)) {
                 throw new Exception('Meta data file not found.');
             }
-
-            chmod($metaDataFile, 0777);
 
             $metaData = json_decode(file_get_contents($metaDataFile), true);
             if (json_last_error() !== JSON_ERROR_NONE) {
@@ -108,18 +103,11 @@ if ($auth) {
                 throw new Exception('Failed to save meta data.');
             }
 
-            // Set the file permissions back to read-only
-            chmod($objectDataFile, 0444);
-            chmod($metaDataFile, 0444);
-
             // Load existing tileset image
             $tilesetImagePath = $_SERVER['DOCUMENT_ROOT'] . '/assets/img/tiles/gen1.png';
             if (!file_exists($tilesetImagePath)) {
                 throw new Exception('Tileset image file not found.');
             }
-
-            // Temporarily set permissions to 777
-            chmod($tilesetImagePath, 0777);
 
             $tilesetImage = imagecreatefrompng($tilesetImagePath);
             if (!$tilesetImage) {
@@ -167,13 +155,6 @@ if ($auth) {
                     throw new Exception("Failed to copy tile from uploaded image at X: {$srcX}, Y: {$srcY}.");
                 }
 
-                // Convert the tile image to base64
-                ob_start();
-                imagepng($tileImage);
-                $tileImageData = ob_get_contents();
-                ob_end_clean();
-                $tileImageBase64 = 'data:image/png;base64,' . base64_encode($tileImageData);
-
                 // Calculate the destination position in the tileset image
                 $destX = (($initialTileIndex + $index) % $tilesPerRow) * $tileSize;
                 $destY = floor(($initialTileIndex + $index) / $tilesPerRow) * $tileSize;
@@ -191,16 +172,6 @@ if ($auth) {
             if (!imagepng($tilesetImage, $tilesetImagePath)) {
                 throw new Exception('Failed to save updated tileset image.');
             }
-
-            // Convert the saved tileset image back to base64 for logging
-            ob_start();
-            imagepng($tilesetImage);
-            $savedImageData = ob_get_contents();
-            ob_end_clean();
-            $savedImageBase64 = 'data:image/png;base64,' . base64_encode($savedImageData);
-
-            // Set the file permissions back to read-only
-            chmod($tilesetImagePath, 0444);
 
             imagedestroy($tilesetImage);
             imagedestroy($uploadedImage);

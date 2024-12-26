@@ -63,6 +63,9 @@ if ($auth) {
                 <button class="flex items-center px-4 py-2 hover:bg-gray-700 w-full text-left" id="select_terrain_button">
                     Terrain Editor
                 </button>
+                <button class="flex items-center px-4 py-2 hover:bg-gray-700 w-full text-left" id="select_tileset_button">
+                    Tileset Manager
+                </button>
             </div>
         </div>
 
@@ -279,31 +282,53 @@ var editor_utils_window = {
     },
 
     unmount: function () {
-        console.log("Utility window unmounted and features reset.");
+    console.log("Utility window unmounted and features reset.");
 
-        // Remove event listeners for all checkboxes
+    // Safely remove event listeners for all checkboxes
+    if (this.modeButtons.groupObjectsCheckbox) {
         this.modeButtons.groupObjectsCheckbox.removeEventListener('change', this.updateGroupObjectsCheckboxState);
+    }
+    if (this.modeButtons.gridCheckbox) {
         this.modeButtons.gridCheckbox.removeEventListener('change', this.updateGridCheckboxState);
+    }
+    if (this.modeButtons.snapCheckbox) {
         this.modeButtons.snapCheckbox.removeEventListener('change', this.updateSnapCheckboxState);
+    }
+    if (this.modeButtons.consoleToggleCheckbox) {
         this.modeButtons.consoleToggleCheckbox.removeEventListener('change', this.updateConsoleToggleState);
+    }
 
-        // Remove event listeners for other inputs
-        document.getElementById('brush_amount').removeEventListener('change', this.updateBrushAmount);
+    // Safely remove event listeners for other inputs
+    const brushAmountInput = document.getElementById('brush_amount');
+    if (brushAmountInput) {
+        brushAmountInput.removeEventListener('change', this.updateBrushAmount);
+    }
 
-        // Reset all states
-        this.isGridEnabled = false;
-        this.isSnapEnabled = false;
-        this.isGroupObjectsEnabled = false;
+    // Reset all states
+    this.isGridEnabled = false;
+    this.isSnapEnabled = false;
+    this.isGroupObjectsEnabled = false;
 
-        // Reset UI elements
+    // Reset UI elements
+    if (this.modeButtons.groupObjectsCheckbox) {
         this.modeButtons.groupObjectsCheckbox.checked = false;
+    }
+    if (this.modeButtons.gridCheckbox) {
         this.modeButtons.gridCheckbox.checked = false;
+    }
+    if (this.modeButtons.snapCheckbox) {
         this.modeButtons.snapCheckbox.checked = false;
+    }
+    if (this.modeButtons.consoleToggleCheckbox) {
         this.modeButtons.consoleToggleCheckbox.checked = false;
-        this.modeButtons.brushAmount.value = 1;
+    }
+    if (brushAmountInput) {
+        brushAmountInput.value = 1;
+    }
 
-        console.log("All utilities reset.");
-    },
+    console.log("All utilities reset.");
+},
+
 
     updateGridCheckboxState: function () {
         this.isGridEnabled = this.modeButtons.gridCheckbox.checked;

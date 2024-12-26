@@ -1,30 +1,29 @@
 const actions = {
-    audioCooldown: 0.5, // Cooldown period in seconds
-    lastPlayedTimesByType: {}, // Track last played time by object type
-    throttleInterval: 2000, // Global throttle interval in milliseconds (2 seconds)
-    lastExecutionTime: 0, // Tracks the last execution time for any action
+    audioCooldown: 0.5,
+    lastPlayedTimesByType: {},
+    throttleInterval: 2000,
+    lastExecutionTime: 0,
 
         isThrottled: function () {
         const now = Date.now();
         if (now - this.lastExecutionTime < this.throttleInterval) {
-            return true; // Throttled
+            return true;
         }
 
-        this.lastExecutionTime = now; // Update the last executed time
-        return false; // Not throttled
+        this.lastExecutionTime = now;
+        return false;
     },
 
-    // Central handler to execute actions that may require a button press
     executeActionWithButton: function (action, config, context, item) {
-        // Check for individual button first, then fall back to the global button
+
         const buttonToCheck = config.button || context.button;
         
         if (buttonToCheck) {
             if (this.isButtonPressed(buttonToCheck)) {
-                this[action](config, context, item); // Run the action only if the button is pressed
+                this[action](config, context, item);
             }
         } else {
-            this[action](config, context, item); // If no button, run automatically
+            this[action](config, context, item);
         }
     }, 
 
@@ -41,7 +40,7 @@ checkForNearbyItems: function () {
     };
 
     let closestItem = null;
-    const proximityThreshold = 100; // Example value, adjust as necessary for your game
+    const proximityThreshold = 100;
 
     game.roomData.items
         .filter((item) => {
@@ -67,7 +66,7 @@ checkForNearbyItems: function () {
             } else if (typeof scriptData === 'object' && scriptData !== null) {
                 script = scriptData;
             } else {
-                return; // Exit early if script is invalid
+                return;
             }
 
             const itemX = Math.min(...item.x) * 16;
@@ -94,23 +93,21 @@ checkForNearbyItems: function () {
 
                 const objectType = objectData[0].type || item.id;
 
-                // Handle tooltip
                 if (script.walk && script.walk.tooltip) {
                     const objectName = objectData[0].n || 'Unnamed Object';
                     const tooltipText = script.walk.tooltip.replace('{name}', objectName);
-                    this.tooltip(tooltipText, item, sprite); // Pass modified tooltip text
+                    this.tooltip(tooltipText, item, sprite);
                 }
 
-                // Scene change logic with button throttling
                 if (script.walk && script.walk.scene) {
-                    const sceneButton = script.walk.scene.button || script.walk.button; // Use scene-specific or global button
+                    const sceneButton = script.walk.scene.button || script.walk.button;
                     if (sceneButton && this.isButtonPressed(sceneButton)) {
                         if (this.isThrottled(sceneButton)) {
                             console.log('Scene change action throttled');
                             return;
                         }
 
-                        const activeTime = script.walk.scene.active || "0-24"; // Default active time
+                        const activeTime = script.walk.scene.active || "0-24";
                         if (this.isWithinActiveTime(activeTime)) {
                             game.loadScene(script.walk.scene.id);
                             console.log(`Loading scene: ${script.walk.scene.id}`);
@@ -120,9 +117,8 @@ checkForNearbyItems: function () {
                     }
                 }
 
-                // Handle speech with button throttling
                 if (script.walk && script.walk.speech) {
-                    const speechButton = script.walk.speech.button || script.walk.button; // Use speech-specific or global button
+                    const speechButton = script.walk.speech.button || script.walk.button;
                     if (speechButton && this.isButtonPressed(speechButton)) {
                         if (this.isThrottled(speechButton)) {
                             console.log('Speech action throttled');
@@ -130,23 +126,20 @@ checkForNearbyItems: function () {
                         }
 
                         if (!script.walk.speech.active || this.isWithinActiveTime(script.walk.speech.active)) {
-                            const icon = script.walk.speech.icon || 'self'; // Get the icon field, default to 'self'
-                            this.speech(script.walk.speech, item, sprite, icon); // Pass the icon to the speech function
+                            const icon = script.walk.speech.icon || 'self';
+                            this.speech(script.walk.speech, item, sprite, icon);
                         } else {
                             console.log(`Speech is unavailable. Active hours are ${script.walk.speech.active}`);
                         }
                     }
                 }
 
-                // Handle audio playback
                 this.audio(script, item, objectType);
 
-                // Handle modal popup if present
                 if (script.walk && script.walk.modal) {
                     this.modal(script.walk.modal, item, objectType);
                 }
 
-                // Execute other actions
                 if (!script.walk.button || this.isButtonPressed(script.walk.button)) {
                     for (let action in script.walk) {
                         if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && action !== 'scene' && action !== 'speech' && this[action] && typeof this[action] === 'function') {
@@ -155,7 +148,6 @@ checkForNearbyItems: function () {
                     }
                 }
             } else {
-                // Stop any active audio if the sprite moves away from the item
                 if (item.audioPlaying) {
                     audio.stopLoopingAudio(script.walk.audio.soundId, 'sfx');
                     item.audioPlaying = false;
@@ -164,17 +156,15 @@ checkForNearbyItems: function () {
             }
         });
 
-    // Hide tooltip if no item is close
     if (!closestItem) {
         this.hideTooltip();
     }
 },
 
     modal: function (config, context, item) {
-        // Check if a button is required to trigger the modal
+
         const buttonToCheck = config.button || null;
         
-        // If no button is required or the required button is pressed, open the modal
         if (!buttonToCheck || this.isButtonPressed(buttonToCheck)) {
             modal.load({
                 id: config.id || 'modal_window',
@@ -195,25 +185,22 @@ checkForNearbyItems: function () {
     },
 
     isWithinActiveTime: function(activeTime) {
-        const currentHour = utils.gameTime.hours + (utils.gameTime.minutes / 60);  // Convert current time to decimal hours
+        const currentHour = utils.gameTime.hours + (utils.gameTime.minutes / 60);
         console.log(`Current game time (hours): ${utils.gameTime.hours}:${utils.gameTime.minutes}, as decimal: ${currentHour}`);
     
         const [startTime, endTime] = activeTime.split('-').map(time => {
             if (time.includes(':')) {
                 const [hours, minutes] = time.split(':').map(Number);
-                return hours + (minutes / 60);  // Convert to decimal hours
+                return hours + (minutes / 60);
             }
-            return parseFloat(time);  // Assume it's in "H-H" format
+            return parseFloat(time);
         });
     
         console.log(`Checking active time range: ${startTime} to ${endTime}`);
     
         if (startTime <= endTime) {
-            // Regular time range (e.g., 8:00-17:00)
             return currentHour >= startTime && currentHour <= endTime;
         } else {
-            // Spanning midnight (e.g., 17:01-7:59)
-            // We check for hours after startTime OR before endTime
             const inActiveRange = currentHour >= startTime || currentHour <= endTime;
             console.log(`Midnight-spanning time range check: ${inActiveRange}`);
             return inActiveRange;
@@ -225,7 +212,7 @@ checkForNearbyItems: function () {
             context.swayTriggered = true;
             context.isRotating = true;
             context.rotationElapsed = 0;
-            this.handleRotation(context); // Ensure handleRotation is properly defined
+            this.handleRotation(context);
         }
     },
 
@@ -236,7 +223,6 @@ checkForNearbyItems: function () {
             const spriteScreenY = (sprite.y - camera.cameraY) * game.zoomLevel;
             const spriteCenterX = spriteScreenX + (sprite.width * game.zoomLevel) / 2;
     
-            // Replace placeholder {name} with the actual object name from context or item
             let tooltipText = config.replace('{name}', context.name || item.name || 'Object');
     
             this.showTooltip(tooltipText, spriteCenterX, spriteScreenY);
@@ -252,7 +238,7 @@ checkForNearbyItems: function () {
     },      
 
 speech: function (config, context, item) {
-    const speechButton = config.button || null; // Use speech-specific button or null if no button is required
+    const speechButton = config.button || null;
 
     if (speechButton && this.isButtonPressed(speechButton)) {
         if (this.isThrottled(speechButton)) {
@@ -264,14 +250,13 @@ speech: function (config, context, item) {
             if (!item.speechTriggered) {
                 game.allowControls = false;
 
-                // Start the speech, passing context.id as the icon
                 speech_window.startSpeech(
-                    config.message.message, // Send the full array of messages
+                    config.message.message,
                     () => { 
                         item.speechTriggered = false;
                         game.allowControls = true;
                     },
-                    context.id // Pass the object's id (context.id) as the icon
+                    context.id
                 );
 
                 item.speechTriggered = true;
@@ -281,40 +266,28 @@ speech: function (config, context, item) {
         console.log('Speech button not pressed or not defined');
     }
 },
-
-    
     
     audio: function (script, item, objectType) {
         const sprite = game.mainSprite;
         if (!sprite || !script.walk.audio) return;
     
         const soundId = script.walk.audio.soundId;
-        const audioBuffer = assets.use(soundId); // Assuming assets.load loads the audio buffer
-    
-        // Use the custom cooldown if provided, otherwise default to audioCooldown
+        const audioBuffer = assets.use(soundId);
         const customCooldown = script.walk.audio.cooldown || this.audioCooldown;
-    
-        // Add cooldown check based on object type
         const currentTime = Date.now();
         const lastPlayedTime = this.lastPlayedTimesByType[objectType] || 0;
-        const timeSinceLastPlay = (currentTime - lastPlayedTime) / 1000; // Convert to seconds
-    
-        // Check if a button is defined
+        const timeSinceLastPlay = (currentTime - lastPlayedTime) / 1000;
         const buttonToCheck = script.walk.audio.button || null;
-    
-        // Play audio if button is pressed OR sprite is moving and no button is required
         const shouldPlayAudio = (!buttonToCheck && sprite.moving) || (buttonToCheck && this.isButtonPressed(buttonToCheck));
     
         if (audioBuffer && timeSinceLastPlay > customCooldown && shouldPlayAudio) {
-            // Play the audio if it’s not already playing
             if (!item.audioPlaying) {
                 audio.playAudio(soundId, audioBuffer, 'sfx', script.walk.audio.loop || false);
                 item.audioPlaying = true;
-                this.lastPlayedTimesByType[objectType] = currentTime; // Update last played time by object type
+                this.lastPlayedTimesByType[objectType] = currentTime;
             }
         }
     
-        // Stop audio if sprite stops moving or button is released (if applicable)
         const shouldStopAudio = (!buttonToCheck && !sprite.moving) || (buttonToCheck && !this.isButtonPressed(buttonToCheck));
         if (item.audioPlaying && shouldStopAudio) {
             audio.stopLoopingAudio(soundId, 'sfx');
@@ -323,26 +296,20 @@ speech: function (config, context, item) {
     },    
 
     reward: function (config, context, item) {
-        // If the id is 'self', use the context's id as the reward id
         const rewardId = config.id === 'self' ? context.id : config.id;
         
-        // Proceed if rewardId and amount are valid, and if the reward hasn't been given yet
         if (rewardId && config.amount && !item.rewardGiven) {
-            // Add the item (or self) to the inventory
             ui_inventory_window.addToInventory(rewardId, config.amount);
             item.rewardGiven = true;
         
-            // Reset reward after a delay or condition
             setTimeout(() => {
-                item.rewardGiven = false; // Reset after 5 seconds (example)
+                item.rewardGiven = false;
             }, 100);
             
-            // Check if the remove property is set to true
             if (config.remove) {
-                // Remove the item from the game, for example, by removing it from the room data
                 const itemIndex = game.roomData.items.indexOf(item);
                 if (itemIndex !== -1) {
-                    game.roomData.items.splice(itemIndex, 1); // Remove the item from the game room
+                    game.roomData.items.splice(itemIndex, 1);
                 }
             }
         }
@@ -360,7 +327,6 @@ speech: function (config, context, item) {
         console.log("silly function for object");
     },
 
-    // Utility to check if a required button is pressed
     isButtonPressed: function (button) {
         const buttonMap = {
             'y': 'YButton',
@@ -368,7 +334,7 @@ speech: function (config, context, item) {
             'a': 'AButton',
             'b': 'BButton'
         };
-        return input[`is${buttonMap[button]}Held`]; // Check if the specified button is held
+        return input[`is${buttonMap[button]}Held`];
     },
 
     showTooltip: function (text, x, y) {
@@ -402,7 +368,6 @@ speech: function (config, context, item) {
         }
     },
 
-    // Ensure the handleRotation function is defined and accessible
     handleRotation: function (context) {
         let baseSwayAngle = Math.PI / 12;
         let directionMultiplier = 1;
@@ -448,15 +413,10 @@ speech: function (config, context, item) {
             return;
         }
     
-        // Set the horse's riderId to the player ID
         horseSprite.riderId = playerId;
-    
-        // Set the active sprite to the horse so the player controls the horse
         game.mainSprite = horseSprite;
-        game.setActiveSprite(horseId); // Set the active sprite to the horse
-    
-        // Update the player's sprite position to match the horse's position continuously
-        playerSprite.onHorse = true; // Add a flag to indicate that the player is mounted
+        game.setActiveSprite(horseId);
+        playerSprite.onHorse = true;
     
         console.log(`${playerId} is now riding ${horseId}`);
     },
@@ -470,27 +430,19 @@ speech: function (config, context, item) {
             return;
         }
     
-        // Get the rider's ID, which should be suffixed with "_riding"
         const riderId = horseSprite.riderId;
         if (!riderId) {
             console.log('No rider on this horse');
             return;
         }
     
-        // Remove the riderId from the horse sprite
         horseSprite.riderId = null;
-    
-        // Restore the original playerId by removing the "_riding" suffix
         const playerId = riderId.replace('_riding', '');
-        game.sprites[playerId] = game.sprites[riderId]; // Restore the original player sprite
-        delete game.sprites[riderId]; // Remove the "_riding" entry
-    
-        // Set the active sprite back to the player
+        game.sprites[playerId] = game.sprites[riderId];
+        delete game.sprites[riderId];
         game.mainSprite = game.sprites[playerId];
-        game.setActiveSprite(playerId); // Switch back to the player sprite
-    
-        // Show the player sprite again when dismounting
-        game.sprites[playerId].visible = true; // Ensure the player is visible after dismounting
+        game.setActiveSprite(playerId);
+        game.sprites[playerId].visible = true;
     
         console.log(`${playerId} has dismounted from ${horseId}`);
     }

@@ -33,6 +33,10 @@ if ($mode === 'editor') {
     <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Security">
       <div class="ui_icon ui_key"></div>
     </button>
+
+    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="settings" aria-label="Settings & Controls">
+      <div class="icon settings"></div>
+    </button>
     <div class="flex-1"></div>
 
     <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="console_window.toggleFullScreen();">
@@ -52,9 +56,6 @@ if ($mode === 'editor') {
     <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="inventory" aria-label="Inventory">
       <div class="icon inventory"></div>
       <span class="absolute top-0 right-0.5 bg-red-700 text-white text-xs rounded-sm px-0.5 flex items-center justify-center">48</span>
-    </button>
-    <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Edit Mode" onclick="console_window.load_tab_buttons('editor'); modal.load({ id: 'editor_window', url: 'editor/index.php', name: 'Editor', showInList: true }); modal.load({ id: 'editor_utils_window', url: 'editor/utils.php', name: 'Editor Utils', showInList: true });">
-      <div class="icon editor"></div>
     </button>
     <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="chat" aria-label="Chat">
       <div class="icon chat"></div>

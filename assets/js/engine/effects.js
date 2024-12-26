@@ -107,7 +107,7 @@ const effects = {
                 game.ctx.setTransform(1, 0, 0, 1, 0, 0);
                 game.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
                 game.ctx.fillRect(0, 0, game.canvas.width, this.barHeight);
-                game.ctx.fillRect(0, game.canvas.height - this.barHeight, game.canvas.width, this.barHeight); // Bottom bar
+                game.ctx.fillRect(0, game.canvas.height - this.barHeight, game.canvas.width, this.barHeight);
             }
         }
     },
@@ -122,14 +122,13 @@ const effects = {
                 colorHex: colorHex,
             };
     
-            // Generate a burst of bubbles
-            for (let i = 0; i < 30; i++) { // Number of bubbles in the burst
+            for (let i = 0; i < 30; i++) {
                 effectInstance.bubbles.push({
-                    x: Math.random() * sprite.width - sprite.width / 2, // Random x-offset relative to sprite center
-                    y: sprite.height - 5, // Start at the bottom of the sprite
-                    radius: Math.random() * 2, // Smaller bubble size
-                    opacity: 0.7, // Start fully visible
-                    riseSpeed: Math.random() * 1 + 0.5, // Moderate randomized rise speed
+                    x: Math.random() * sprite.width - sprite.width / 2,
+                    y: sprite.height - 5,
+                    radius: Math.random() * 2,
+                    opacity: 0.7,
+                    riseSpeed: Math.random() * 1 + 0.5,
                 });
             }
     
@@ -139,57 +138,142 @@ const effects = {
         updateAndRender: function (deltaTime) {
             const ctx = game.ctx;
         
-            // Loop through all active effects
             for (let i = this.activeEffects.length - 1; i >= 0; i--) {
                 const effect = this.activeEffects[i];
                 const sprite = game.sprites[effect.spriteId];
         
                 if (!sprite) {
-                    // If sprite no longer exists, remove the effect
                     this.activeEffects.splice(i, 1);
                     continue;
                 }
         
-                // Render and update bubbles
                 effect.bubbles.forEach((bubble, index) => {
                     const bubbleX = sprite.x + sprite.width / 2 + bubble.x;
                     const bubbleY = sprite.y + bubble.y;
         
-                    // Set the bubble's color with opacity
                     const colorWithOpacity = `${effect.colorHex}${Math.floor(bubble.opacity * 255).toString(16).padStart(2, '0')}`;
                     ctx.fillStyle = colorWithOpacity;
         
-                    // Draw the bubble
                     ctx.beginPath();
                     ctx.arc(bubbleX, bubbleY, bubble.radius, 0, Math.PI * 2);
                     ctx.fill();
         
-                    // Update bubble properties
-                    bubble.y -= bubble.riseSpeed * deltaTime / 22; // Move upwards based on speed
+                    bubble.y -= bubble.riseSpeed * deltaTime / 22;
         
-                    // Gradually fade out as the bubble rises
-                    const fadeHeight = 1; // Start fading faster within half the sprite's height above the top
+                    const fadeHeight = 1;
                     const distanceAboveSprite = Math.max(0, sprite.y - bubbleY);
                     if (distanceAboveSprite > fadeHeight) {
-                        bubble.opacity -= 0.04; // Faster fade-out above a certain height
+                        bubble.opacity -= 0.04;
                     } else {
-                        bubble.opacity -= 0.01; // Normal fade-out otherwise
+                        bubble.opacity -= 0.01;
                     }
         
-                    // Remove bubbles that are fully transparent or just above the sprite's top
-                    if (bubble.opacity <= 0 || bubbleY < sprite.y - sprite.height - 32) { // Stop closer above the sprite
+                    if (bubble.opacity <= 0 || bubbleY < sprite.y - sprite.height - 32) {
                         effect.bubbles.splice(index, 1);
                     }
                 });
         
-                // Remove the effect when all bubbles are gone
                 if (effect.bubbles.length === 0) {
                     this.activeEffects.splice(i, 1);
                 }
             }
         }
         
-    }
+    },
+
+    dirtCloudEffect: {
+        activeClouds: [],
+        lastCloudTime: 0,
+        cloudInterval: 350,
+    
+        create: function (sprite, colorHex = '#8B4513') {
+            const currentTime = performance.now();
+    
+            if (currentTime - this.lastCloudTime < this.cloudInterval) {
+                return;
+            }
+    
+            this.lastCloudTime = currentTime;
+    
+            const directionOffsets = {
+                N: { x: 0, y: -1 },
+                NE: { x: -0.5, y: -0.5 },
+                E: { x: -0.5, y: 0 },
+                SE: { x: -0.5, y: 0.5 },
+                S: { x: 0, y: 0.5 },
+                SW: { x: 0.5, y: 0.5 },
+                W: { x: 0.5, y: 0 },
+                NW: { x: 0.5, y: -0.5 },
+            };
+    
+            const dir = sprite.direction || 'S';
+            const offset = directionOffsets[dir];
+    
+            const cloudInstance = {
+                spriteId: sprite.id,
+                colorHex: colorHex,
+                x: sprite.x + sprite.width / 2,
+                y: sprite.y + sprite.height - 5,
+                dx: offset.x * (Math.random() * 0.02 + 0.01),
+                dy: offset.y * (Math.random() * 0.02 + 0.01),
+                shapes: this.generateIrregularShape(),
+                opacity: 0.2,
+                fadeSpeed: Math.random() * 0.001 + 0.0005,
+            };
+    
+            this.activeClouds.push(cloudInstance);
+        },
+    
+        generateIrregularShape: function () {
+            const shapePoints = [];
+            const numPoints = Math.random() * 5 + 5;
+            const maxRadius = Math.random() * 3 + 2;
+    
+            for (let i = 0; i < numPoints; i++) {
+                const angle = (i / numPoints) * Math.PI * 2;
+                const radius = maxRadius * (Math.random() * 0.5 + 0.75);
+                shapePoints.push({
+                    x: Math.cos(angle) * radius,
+                    y: Math.sin(angle) * radius,
+                });
+            }
+    
+            return shapePoints;
+        },
+    
+        updateAndRender: function (deltaTime) {
+            const ctx = game.ctx;
+    
+            for (let i = this.activeClouds.length - 1; i >= 0; i--) {
+                const cloud = this.activeClouds[i];
+    
+                cloud.x += cloud.dx * deltaTime / 30;
+                cloud.y += cloud.dy * deltaTime / 30;
+    
+                cloud.opacity -= cloud.fadeSpeed * deltaTime;
+    
+                if (cloud.opacity > 0) {
+                    ctx.save();
+                    ctx.globalAlpha = cloud.opacity;
+                    ctx.fillStyle = cloud.colorHex;
+    
+                    ctx.beginPath();
+                    ctx.moveTo(cloud.x + cloud.shapes[0].x, cloud.y + cloud.shapes[0].y);
+                    for (let point of cloud.shapes) {
+                        ctx.lineTo(cloud.x + point.x, cloud.y + point.y);
+                    }
+                    ctx.closePath();
+                    ctx.fill();
+                    ctx.restore();
+                }
+    
+                if (cloud.opacity <= 0) {
+                    this.activeClouds.splice(i, 1);
+                }
+            }
+        },
+    },
+    
     
     
 

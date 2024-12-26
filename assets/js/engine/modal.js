@@ -4,8 +4,8 @@ var modal = {
     modals: [],
     baseZIndex: null,
     modalNames: {},
-    showInListFlags: {},
     activeModal: null,
+    preloadQueue: [],
 
     init: function(selector, options) {
         const element = document.querySelector(selector);
@@ -19,7 +19,7 @@ var modal = {
         }
 
         this.initDraggable(element, options);
-        this.initMinimizeAndCloseButtons(element);
+        this.initCloseButton(element);
 
         const highestZIndex = this.baseZIndex + this.modals.length;
         element.style.zIndex = highestZIndex.toString();
@@ -64,9 +64,13 @@ var modal = {
         }
     
         let isDragging = false;
-        let originalX, originalY, mouseX, mouseY;
+        let originalX, originalY, startX, startY;
     
-        const onMouseDown = (e) => {
+        const onStart = (e) => {
+            const isTouchEvent = e.type === 'touchstart';
+            const clientX = isTouchEvent ? e.touches[0].clientX : e.clientX;
+            const clientY = isTouchEvent ? e.touches[0].clientY : e.clientY;
+    
             if (e.target.closest('.window_body') || e.target.closest('.resize-handle')) {
                 return;
             }
@@ -74,9 +78,8 @@ var modal = {
             isDragging = true;
             originalX = element.offsetLeft;
             originalY = element.offsetTop;
-    
-            mouseX = e.clientX;
-            mouseY = e.clientY;
+            startX = clientX;
+            startY = clientY;
     
             if (options && typeof options.start === 'function') {
                 options.start.call(element, e);
@@ -85,15 +88,25 @@ var modal = {
             document.onselectstart = () => false;
             document.body.style.userSelect = 'none';
             this.front(element);
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
+    
+            if (isTouchEvent) {
+                document.addEventListener('touchmove', onMove, { passive: false });
+                document.addEventListener('touchend', onEnd);
+            } else {
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onEnd);
+            }
         };
     
-        const onMouseMove = (e) => {
+        const onMove = (e) => {
             if (!isDragging) return;
     
-            const dx = e.clientX - mouseX;
-            const dy = e.clientY - mouseY;
+            const isTouchEvent = e.type === 'touchmove';
+            const clientX = isTouchEvent ? e.touches[0].clientX : e.clientX;
+            const clientY = isTouchEvent ? e.touches[0].clientY : e.clientY;
+    
+            const dx = clientX - startX;
+            const dy = clientY - startY;
     
             let newLeft = originalX + dx;
             let newTop = originalY + dy;
@@ -102,6 +115,7 @@ var modal = {
             const windowHeight = window.innerHeight;
             const modalRect = element.getBoundingClientRect();
     
+            // Constrain within viewport
             if (newLeft < 0) newLeft = 0;
             if (newTop < 0) newTop = 0;
             if (newLeft + modalRect.width > windowWidth) newLeft = windowWidth - modalRect.width;
@@ -113,9 +127,13 @@ var modal = {
             if (options && typeof options.drag === 'function') {
                 options.drag.call(element, e);
             }
+    
+            if (isTouchEvent) {
+                e.preventDefault(); // Prevent scrolling while dragging
+            }
         };
     
-        const onMouseUp = (e) => {
+        const onEnd = (e) => {
             if (!isDragging) return;
             isDragging = false;
     
@@ -126,29 +144,28 @@ var modal = {
                 options.stop.call(element, e);
             }
     
-            document.removeEventListener('mousemove', onMouseMove);
-            document.removeEventListener('mouseup', onMouseUp);
+            const isTouchEvent = e.type === 'touchend';
+            if (isTouchEvent) {
+                document.removeEventListener('touchmove', onMove);
+                document.removeEventListener('touchend', onEnd);
+            } else {
+                document.removeEventListener('mousemove', onMove);
+                document.removeEventListener('mouseup', onEnd);
+            }
         };
     
-        element.addEventListener('mousedown', onMouseDown);
+        element.addEventListener('mousedown', onStart);
+        element.addEventListener('touchstart', onStart, { passive: false });
     },
+    
 
-    initMinimizeAndCloseButtons: function(element) {
+    initCloseButton: function(element) {
         const closeButton = element.querySelector('[data-close]');
         if (closeButton) {
             closeButton.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const modalId = element.getAttribute('data-window');
                 this.close(modalId);
-            });
-        }
-
-        const minimizeButton = element.querySelector('[data-minimize]');
-        if (minimizeButton) {
-            minimizeButton.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const modalId = element.getAttribute('data-window');
-                this.minimize(modalId);
             });
         }
     },
@@ -167,21 +184,50 @@ var modal = {
         }
     },
 
+    preload: function(modalList) {
+        // modalList = [{ id, url, options, priority }, ...]
+        this.preloadQueue = modalList.sort((a, b) => a.priority - b.priority);
+        this.loadNextPreload();
+    },
+
+    loadNextPreload: function() {
+        if (this.preloadQueue.length === 0) return;
+
+        const nextModal = this.preloadQueue.shift();
+        this.load(nextModal.options).then(() => {
+            this.loadNextPreload();
+        });
+    },
+
     load: function(options) {
-        const { id, url, name = null, showInList = true, drag = true, reload = false, hidden = false } = options;
-    
+        const {
+            id,
+            url,
+            name = null,
+            showInList = true,
+            drag = true,
+            reload = false,
+            hidden = false,
+            onBeforeLoad = null,
+            onAfterLoad = null,
+            onError = null,
+        } = options;
+
         if (!url.includes('/')) {
             options.url += '/index.php';
         }
-    
+
         if (name) {
             this.modalNames[id] = name;
         }
-    
-        this.showInListFlags[id] = showInList;
-    
+
         return new Promise((resolve, reject) => {
             let existingModal = document.querySelector("[data-window='" + id + "']");
+
+            if (onBeforeLoad && typeof onBeforeLoad === 'function') {
+                onBeforeLoad(id);
+            }
+
             if (existingModal) {
                 if (reload) {
                     this.close(id);
@@ -191,131 +237,54 @@ var modal = {
                     } else {
                         this.minimize(id);
                     }
+                    if (onAfterLoad && typeof onAfterLoad === 'function') {
+                        onAfterLoad(id);
+                    }
                     resolve();
                     return;
                 }
             }
-    
+
             ui.ajax({
                 url: 'modals/' + url,
                 method: 'GET',
                 success: (data) => {
                     ui.html(document.body, data, 'append');
-    
+
                     this.init(`[data-window='${id}']`, {
-                        start: function() {
+                        start: function () {
                             this.classList.add('dragging');
                         },
-                        drag: function() {},
-                        stop: function() {
+                        drag: function () {},
+                        stop: function () {
                             this.classList.remove('dragging');
                         },
-                        drag
+                        drag,
                     });
-    
+
                     if (hidden) {
                         this.minimize(id);
                     } else {
                         this.front(id);
                     }
-    
+
                     window.modalResolves[id] = resolve;
+
+                    if (onAfterLoad && typeof onAfterLoad === 'function') {
+                        onAfterLoad(id);
+                    }
+
                     resolve();
                 },
                 error: (error) => {
                     console.error('Error loading modal:', id, error);
-                    reject(`Failed to load modal from ${url}: ${error}`);
-                }
-            });
-        });
-    },    
-
-    updateModalsButtonVisibility: function() {
-        const modalsButton = document.getElementById('show_modals_button');
-        const modalsList = document.getElementById('modals_list');
-
-        const visibleModals = this.modals.filter(modal => {
-            const modalName = modal.getAttribute('data-window');
-            return this.showInListFlags[modalName];
-        });
-
-        if (visibleModals.length > 0) {
-            modalsButton.classList.remove('hidden');
-            if (modalsList) {
-                modalsList.classList.remove('hidden');
-            }
-        } else {
-            modalsButton.classList.add('hidden');
-            if (modalsList) {
-                modalsList.classList.add('hidden');
-            }
-        }
-    },
-
-    showModalsList: function() {
-        const modalsList = document.getElementById('modals_list');
-        modalsList.innerHTML = '';
-
-        const visibleModals = this.modals.filter(modal => {
-            const modalName = modal.getAttribute('data-window');
-            return this.showInListFlags[modalName];
-        });
-
-        if (visibleModals.length > 0) {
-            visibleModals.forEach(modal => {
-                const modalName = modal.getAttribute('data-window');
-                const displayName = this.modalNames[modalName] || modalName;
-                const modalItem = document.createElement('div');
-                modalItem.classList.add('relative', 'flex', 'items-center', 'p-2', 'hover:bg-gray-700', 'rounded-md', 'cursor-pointer', 'text-white', 'overflow-hidden', 'w-full');
-
-                const modalText = document.createElement('div');
-                modalText.textContent = displayName;
-                modalText.classList.add('flex-grow', 'truncate', 'text-white');
-
-                const closeButton = document.createElement('button');
-                closeButton.classList.add('icon', 'close_dark', 'absolute', 'right-0', 'hint--left', 'text-white', 'hover:text-red-500', 'hidden');
-                closeButton.setAttribute('aria-label', 'Close');
-                closeButton.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    this.close(modalName);
-                    modalsList.removeChild(modalItem);
-                    if (modalsList.children.length === 0) {
-                        modalsList.classList.add('hidden');
-                        this.updateModalsButtonVisibility();
+                    if (onError && typeof onError === 'function') {
+                        onError(error, id);
                     }
-                });
-
-                modalItem.addEventListener('mouseover', () => {
-                    closeButton.classList.remove('hidden');
-                });
-
-                modalItem.addEventListener('mouseout', () => {
-                    closeButton.classList.add('hidden');
-                });
-
-                modalItem.addEventListener('click', () => {
-                    this.front(modal);
-                    this.show(modalName);
-                    modalsList.classList.add('hidden');
-                });
-
-                modalItem.appendChild(modalText);
-                modalItem.appendChild(closeButton);
-                modalsList.appendChild(modalItem);
+                    reject(`Failed to load modal from ${url}: ${error}`);
+                },
             });
-            modalsList.classList.remove('hidden');
-        } else {
-            modalsList.classList.add('hidden');
-        }
-        document.addEventListener('click', this.hideModalsList);
-    },
-
-    hideModalsList: function(event) {
-        const modalsList = document.getElementById('modals_list');
-        if (!modalsList.contains(event.target) && event.target.id !== 'show_modals_button') {
-            modalsList.classList.add('hidden');
-            document.removeEventListener('click', modal.hideModalsList);
-        }
+        });
     },
 
     show: function(modalId) {
@@ -335,7 +304,7 @@ var modal = {
             }
 
             modalElement.remove();
-            audio.playAudio("closModal", assets.use('closeModal'), 'sfx');
+            audio.playAudio("closeModal", assets.use('closeModal'), 'sfx');
             this.modals = this.modals.filter(modal => modal.getAttribute('data-window') !== id);
             ui.unmount(id);
 

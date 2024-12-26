@@ -502,7 +502,7 @@ var tileset_window = {
 
 drawItemOnCanvas: function (item) {
     // Assuming assets.load(item.t) returns a tileset image
-    const tilesetImage = assets.load(item.t);
+    const tilesetImage = assets.use(item.t);
 
     // Determine the number of tiles and the canvas size
     const tileSize = 16; // Size of each tile (e.g., 16x16)
@@ -634,7 +634,6 @@ function addToTileset() {
     // Prepare data to send to server
     var data = {
         newObject: newObject,
-        itemCount: game.objectData.item_count,
         selectedTiles: tileset_window.selectedTiles,
         imageData: imageData
     };
@@ -654,7 +653,6 @@ function addToTileset() {
                 // Update the game object data and item count
                 game.objectData[name] = game.objectData[name] || [];
                 game.objectData[name].push(newObject);
-                game.objectData.item_count += tileset_window.selectedTiles.length;
             } else {
                 console.error('Error:', data.message);
                 alert('Failed to add tileset item: ' + data.message);

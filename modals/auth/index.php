@@ -97,7 +97,11 @@ if(!$auth) {
               console.log(data.message);
               if(data.message == 'login_complete') {
                 ui.notif("You are now signed in as " + login_username, 'bottom-center');
+
+                game.modal_init();
                 modal.close("auth_window");
+
+
               } else {
                 modal.load({
                   id: 'auth_error_window',
