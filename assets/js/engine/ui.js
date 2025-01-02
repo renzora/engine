@@ -721,6 +721,121 @@ destroyAccordion: function(containerId) {
     });
 
     delete this.accordions[containerId];
+},
+
+contextMenu: {
+  showContextMenu: function (menuElement, menuItemsElement, config, clientX, clientY) {
+    // Clear existing items
+    menuItemsElement.innerHTML = '';
+
+    // Build menu
+    this.buildMenu(menuItemsElement, config);
+
+    // Temporarily unhide to measure
+    menuElement.classList.remove('hidden');
+    const w = menuElement.offsetWidth;
+    const h = menuElement.offsetHeight;
+
+    // Position
+    menuElement.style.left = Math.min(clientX, window.innerWidth - w) + 'px';
+    menuElement.style.top = Math.min(clientY, window.innerHeight - h) + 'px';
+  },
+
+  buildMenu: function (parentUl, items) {
+    items.forEach((item) => {
+      let li = document.createElement('li');
+      li.classList.add('px-4', 'py-2', 'cursor-pointer', 'hover:bg-gray-900', 'text-white');
+
+      if (item.type === 'checkbox') {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = item.id;
+        checkbox.checked = item.initialValue;
+        li.style.userSelect = 'none';
+
+        li.addEventListener('click', () => {
+          checkbox.checked = !checkbox.checked;
+          item.initialValue = checkbox.checked;
+          if (item.callback) item.callback(checkbox.checked);
+        });
+
+        li.appendChild(checkbox);
+        li.appendChild(document.createTextNode(' ' + item.label));
+      }
+      else if (item.type === 'number') {
+        li.textContent = item.label;
+
+        const numberInput = document.createElement('input');
+        numberInput.type = 'number';
+        numberInput.id = item.id;
+        numberInput.value = item.initialValue;
+        numberInput.classList.add('ml-2', 'w-16', 'text-black', 'px-1', 'py-1', 'border', 'border-gray-600');
+
+        // Don’t close the menu if user clicks inside
+        numberInput.addEventListener('click', (e) => e.stopPropagation());
+
+        // Update value on input
+        numberInput.addEventListener('input', (e) => {
+          item.initialValue = Number(e.target.value);
+          if (item.callback) item.callback(Number(e.target.value));
+        });
+
+        li.appendChild(numberInput);
+      }
+      else if (item.subMenu) {
+        li.textContent = item.label;
+
+        let arrow = document.createElement('span');
+        arrow.textContent = '▶';
+        arrow.classList.add('ml-2', 'text-gray-400');
+        li.appendChild(arrow);
+
+        li.classList.add('relative', 'group');
+
+        let nestedUl = document.createElement('ul');
+        nestedUl.classList.add('hidden', 'absolute', 'bg-black', 'rounded-lg', 'shadow-lg', 'z-50', 'top-0', 'text-white');
+        nestedUl.style.minWidth = '200px';
+
+        // Recursively build the submenu
+        this.buildMenu(nestedUl, item.subMenu);
+        li.appendChild(nestedUl);
+
+        // Show/hide on hover
+        li.addEventListener('mouseenter', () => {
+          nestedUl.classList.remove('hidden');
+          let rect = li.getBoundingClientRect();
+          nestedUl.style.left = rect.width + 'px';
+        });
+        li.addEventListener('mouseleave', () => {
+          nestedUl.classList.add('hidden');
+        });
+      }
+      else {
+        // Normal menu item
+        li.textContent = item.label;
+        if (item.callback) {
+          li.onclick = (e) => item.callback(e.clientX, e.clientY);
+        }
+      }
+
+      parentUl.appendChild(li);
+    });
+  },
+
+  hideMenus: function (event, menuElement) {
+    if (
+      event &&
+      ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName)
+    ) {
+      return; // don’t hide if clicking on input
+    }
+    menuElement.classList.add('hidden');
+  },
+
+  disableDefaultContextMenu: function (event, callback) {
+    event.preventDefault();
+    if (callback) callback(event.clientX, event.clientY);
+  },
 }
 
 };

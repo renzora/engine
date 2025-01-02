@@ -74,19 +74,19 @@ if ($auth) {
 var edit_mode_window = {
     originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},
-    brushRadius: 16,  // Initial brush radius in pixels
+    brushRadius: 16,
     isBrushModeActive: false,
-    isPanning: false,  // Flag for tracking if the pan mode is active
-    isMiddleClickPanning: false,  // Flag for panning via middle mouse click
-    mouseX: 0,  // Track mouse X position
-    mouseY: 0,  // Track mouse Y position
-    lastMouseX: 0,  // Track the last mouse position for panning
-    lastMouseY: 0,  // Track the last mouse position for panning
-    defaultCursor: 'default',  // Store the default cursor for the current mode
+    isPanning: false,
+    isMiddleClickPanning: false,
+    mouseX: 0,
+    mouseY: 0,
+    lastMouseX: 0,
+    lastMouseY: 0,
+    defaultCursor: 'default',
     previousMode: null,
     modes: ['select', 'brush', 'zoom', 'delete', 'pan', 'lasso', 'move'],
-    lassoPath: [],  // Stores the points of the lasso path
-    isLassoActive: false,  // Tracks if the lasso is being drawn
+    lassoPath: [],
+    isLassoActive: false,
     boundMouseMoveHandler: null,
     boundMouseDownHandler: null,
     boundMouseUpHandler: null,
@@ -94,19 +94,19 @@ var edit_mode_window = {
     boundKeyDownHandler: null,
     clipboard: [],
     isAddingNewObject: false,
-    isDragging: false,  // Flag to track if selection drag is active
-    selectionStart: { x: 0, y: 0 },  // Coordinates where drag selection starts
-    selectionEnd: { x: 0, y: 0 },  // Coordinates where drag selection ends
-    selectedObjects: [],  // Stores objects inside the selected area
-    undoStack: [],  // Stack for undo operations
-    redoStack: [],  // Stack for redo operations
+    isDragging: false,
+    selectionStart: { x: 0, y: 0 },
+    selectionEnd: { x: 0, y: 0 },
+    selectedObjects: [],
+    undoStack: [],
+    redoStack: [],
     isMovingObjects: false,
     moveOffsetX: 0,
     moveOffsetY: 0,
-    currentHour: null,  // To store the current hour (e.g., 10)
-    currentMinute: null,  // To store the current minute (e.g., 30)
+    currentHour: null,
+    currentMinute: null,
     currentDay: null,
-    isSnapEnabled: false,  // Set to true or false based on your desired default state
+    isSnapEnabled: false,
     isGroupObjectsEnabled: false,
 
     start: function () {
@@ -120,7 +120,6 @@ var edit_mode_window = {
         move: document.getElementById('move_button')
     };
 
-    // Attach click handlers to each button
     this.modeButtons.brush.addEventListener('click', () => this.changeMode('brush'));
     this.modeButtons.select.addEventListener('click', () => this.changeMode('select'));
     this.modeButtons.zoom.addEventListener('click', () => this.changeMode('zoom'));
@@ -129,63 +128,48 @@ var edit_mode_window = {
     this.modeButtons.lasso.addEventListener('click', () => this.changeMode('lasso'));
     this.modeButtons.move.addEventListener('click', () => this.changeMode('move'));
 
-    // Hide the main sprite
-    game.displaySprite = false;
-    game.timeActive = true;  // Stop time updates
-
-    // Disable game pathfinding and enable editor mode
+    game.timeActive = true;
     game.isEditMode = true;
     game.pathfinding = false;
-    game.allowControls = false;
+    game.allowControls = true;
     camera.lerpEnabled = false;
     camera.manual = true;
-    game.zoomLevel = 4;
 
     game.mainSprite.stopPathfinding();
 
-    this.changeMode('select');  // Default mode
+    this.changeMode('select');
     this.updateCurrentTimeAndDay();
 
-    // Store bound event handlers
     this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
     this.boundMouseDownHandler = this.handleMouseDown.bind(this);
     this.boundMouseUpHandler = this.handleMouseUp.bind(this);
     this.boundMouseScrollHandler = this.handleMouseScroll.bind(this);
     this.boundKeyDownHandler = this.handleKeyDown.bind(this);
 
-    // Add mouse move and scroll event listeners
     game.canvas.addEventListener('mousemove', this.boundMouseMoveHandler);
     game.canvas.addEventListener('mousedown', this.boundMouseDownHandler);
     game.canvas.addEventListener('mouseup', this.boundMouseUpHandler);
     game.canvas.addEventListener('wheel', this.boundMouseScrollHandler);
     window.addEventListener('keyup', this.handleKeyUp.bind(this));
-    
-    // Add keyboard listener for switching modes
     window.addEventListener('keydown', this.boundKeyDownHandler);
 
     modal.minimize('ui_inventory_window');
-    //modal.minimize('console_window');
     modal.minimize('ui_overlay_window');
-
     modal.close('context_menu_window');
     
-    console_window.toggleConsoleWindow('editor_inventory');
     console_window.load_tab_buttons('editor');
+    console_window.toggleConsoleWindow('editor_inventory');
 
     modal.preload([
-    { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true } },
-    { priority: 2, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false } }
-]);
+        { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true } },
+        { priority: 2, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false } }
+    ]);
 
-
-    
-    //modal.minimize('ui_footer_window');
 },
 
 unmount: function () {
     console.log('Editor unmounted, game and weather restored, and scene reloaded.');
 
-    // Restore game controls and state
     game.isEditMode = false;
     game.pathfinding = true;
     game.allowControls = true;
@@ -197,15 +181,13 @@ unmount: function () {
     camera.manual = false;
     game.zoomLevel = localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 4;
 
-    // Remove all event listeners using stored references
     game.canvas.removeEventListener('mousemove', this.boundMouseMoveHandler);
     game.canvas.removeEventListener('mousedown', this.boundMouseDownHandler);
     game.canvas.removeEventListener('mouseup', this.boundMouseUpHandler);
     game.canvas.removeEventListener('wheel', this.boundMouseScrollHandler);
     window.removeEventListener('keydown', this.boundKeyDownHandler);
-    window.removeEventListener('keyup', this.boundKeyUpHandler);  // Unmount keyup event listener as well
+    window.removeEventListener('keyup', this.boundKeyUpHandler);
 
-    // Reset selection states and flags
     this.isDragging = false;
     this.isLassoActive = false;
     this.selectedObjects = [];
@@ -215,15 +197,12 @@ unmount: function () {
     this.isMovingObjects = false;
     this.isMiddleClickPanning = false;
 
-    // Clear selection visuals
     this.clearSelectionBox();
     this.clearLassoPath();
 
-    // Reset the cursor to default
     document.body.style.cursor = 'default';
 
     modal.close('editor_context_menu_window');
-    // Show minimized windows
     modal.show('ui_inventory_window');
     modal.close('console_window');
     game.resizeCanvas();
@@ -233,30 +212,23 @@ unmount: function () {
 },
 
 updateCurrentTimeAndDay: function () {
-        // Fetch current game time and day from utils
         const gameTime = utils.gameTime;
-        this.currentHour = Math.floor(gameTime.hours); // Ensure it's a whole number
-        this.currentMinute = Math.floor(gameTime.minutes); // Ensure it's a whole number
+        this.currentHour = Math.floor(gameTime.hours);
+        this.currentMinute = Math.floor(gameTime.minutes);
         this.currentDay = gameTime.daysOfWeek[gameTime.days % 7];
     },
 
 changeMode: function (newMode) {
-    // Prevent mode changes if dragging is active
     if (this.isDragging) {
         console.log("Mode change prevented while dragging objects.");
         return;
     }
 
-    // Avoid redundant mode changes
     if (game.editorMode === newMode) return;
 
-    // Clear the cursor to default before setting a new one
     document.body.style.cursor = 'default';
-
-    // Change the editor mode to the new mode
     game.editorMode = newMode;
 
-    // Reset button styles and apply selected mode style
     Object.values(this.modeButtons).forEach(button => {
         button.style.background = '#4f618b';
         button.style.color = 'white';
@@ -267,7 +239,6 @@ changeMode: function (newMode) {
         this.modeButtons[newMode].style.color = '#276b49';
     }
 
-    // Set cursor and mode-specific flags
     switch (newMode) {
         case 'select':
             this.defaultCursor = 'pointer';
@@ -282,15 +253,12 @@ changeMode: function (newMode) {
             this.defaultCursor = 'default';
     }
 
-    // Update the cursor based on the current mode
     document.body.style.cursor = this.defaultCursor;
 
-    // Set mode-specific flags
     this.isBrushModeActive = (newMode === 'brush');
     this.isMovingObjects = (newMode === 'move');
     this.isPanning = (newMode === 'pan');
 
-    // Show or hide brush size input if applicable
     const brushSizeInput = document.getElementById('brush_amount');
     if (brushSizeInput && brushSizeInput.parentElement) {
         if (this.isBrushModeActive) {
@@ -300,29 +268,24 @@ changeMode: function (newMode) {
         }
     }
 
-    // Special logic for lasso mode
     if (newMode === 'lasso') {
-        this.clearSelectionBox(); // Clear any selection box if switching to lasso mode
+        this.clearSelectionBox();
     }
 
-    // Store the previous mode when switching to move mode
     if (newMode === 'move' && (this.previousMode === 'select' || this.previousMode === 'lasso')) {
-        this.previousMode = game.editorMode; // Store the exact previous mode
+        this.previousMode = game.editorMode;
     }
 },
 
 handleMouseDown: function (event) {
-    if (edit_mode_window.isAddingNewObject) return; // Prevent any mouse down action when adding a new object
+    if (edit_mode_window.isAddingNewObject) return;
 
-    // Update mouse position for reference
     this.updateMousePosition(event);
 
-    // Handle right-click (button === 2) to potentially clear selections
-    if (event.button === 2) { // Right mouse button
-        const isClickInsideSelection = this.isCursorInsideSelectedArea(); // Check if the right-click is on a selected object
+    if (event.button === 2) {
+        const isClickInsideSelection = this.isCursorInsideSelectedArea();
 
         if (!isClickInsideSelection) {
-            // Clear selections only if the right-click is outside selected objects
             this.selectedObjects = [];
             this.clearSelectionBox();
             this.clearLassoPath();
@@ -334,7 +297,6 @@ handleMouseDown: function (event) {
         return;
     }
 
-    // Handle middle mouse button for panning
     if (event.button === 1) {
         this.previousMode = game.editorMode;
         this.changeMode('pan');
@@ -346,9 +308,7 @@ handleMouseDown: function (event) {
         return;
     }
 
-    // Handle left-click actions
     if (event.button === 0) {
-        // Shift + click inside a selection area to deselect an object
         if (event.shiftKey && game.editorMode === 'move' && this.selectedObjects.length > 0) {
             const clickedObject = this.selectedObjects.find(obj => {
                 const objRect = {
@@ -370,7 +330,6 @@ handleMouseDown: function (event) {
                 this.selectedObjects = this.selectedObjects.filter(obj => obj !== clickedObject);
                 console.log('Deselected object:', clickedObject);
 
-                // Update selection visuals if any remain
                 if (this.selectedObjects.length === 0) {
                     this.changeMode('select');
                 }
@@ -380,7 +339,6 @@ handleMouseDown: function (event) {
             }
         }
 
-        // Handle other modes or regular selection
         if (game.editorMode === 'pan') {
             this.isPanning = true;
             this.lastMouseX = event.clientX;
@@ -405,8 +363,6 @@ isCursorInsideSelectedArea: function () {
             width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
             height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
         };
-
-        console.log('Cursor:', this.mouseX, this.mouseY, 'Object Rect:', objRect);
 
         return (
             this.mouseX >= objRect.x &&
