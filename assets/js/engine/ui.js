@@ -736,9 +736,25 @@ contextMenu: {
     const w = menuElement.offsetWidth;
     const h = menuElement.offsetHeight;
 
-    // Position
-    menuElement.style.left = Math.min(clientX, window.innerWidth - w) + 'px';
-    menuElement.style.top = Math.min(clientY, window.innerHeight - h) + 'px';
+    // Calculate final position to avoid main-menu overflow
+    let finalLeft = clientX;
+    let finalTop = clientY;
+
+    // If menu goes out of the right edge, flip to left side
+    if (clientX + w > window.innerWidth) {
+      finalLeft = clientX - w;
+      if (finalLeft < 0) finalLeft = 0; // clamp to screen
+    }
+
+    // If menu goes out of the bottom edge, flip to top side
+    if (clientY + h > window.innerHeight) {
+      finalTop = clientY - h;
+      if (finalTop < 0) finalTop = 0; // clamp to screen
+    }
+
+    // Position the main menu
+    menuElement.style.left = finalLeft + 'px';
+    menuElement.style.top = finalTop + 'px';
   },
 
   buildMenu: function (parentUl, items) {
@@ -753,6 +769,7 @@ contextMenu: {
         checkbox.checked = item.initialValue;
         li.style.userSelect = 'none';
 
+        // Toggle the checkbox manually, do not hide menu
         li.addEventListener('click', () => {
           checkbox.checked = !checkbox.checked;
           item.initialValue = checkbox.checked;
@@ -763,6 +780,7 @@ contextMenu: {
         li.appendChild(document.createTextNode(' ' + item.label));
       }
       else if (item.type === 'number') {
+        // Number input
         li.textContent = item.label;
 
         const numberInput = document.createElement('input');
@@ -771,10 +789,10 @@ contextMenu: {
         numberInput.value = item.initialValue;
         numberInput.classList.add('ml-2', 'w-16', 'text-black', 'px-1', 'py-1', 'border', 'border-gray-600');
 
-        // Don’t close the menu if user clicks inside
+        // Keep menu open if user clicks in the input
         numberInput.addEventListener('click', (e) => e.stopPropagation());
 
-        // Update value on input
+        // Trigger callback on input
         numberInput.addEventListener('input', (e) => {
           item.initialValue = Number(e.target.value);
           if (item.callback) item.callback(Number(e.target.value));
@@ -783,6 +801,7 @@ contextMenu: {
         li.appendChild(numberInput);
       }
       else if (item.subMenu) {
+        // Nested submenus
         li.textContent = item.label;
 
         let arrow = document.createElement('span');
@@ -793,19 +812,54 @@ contextMenu: {
         li.classList.add('relative', 'group');
 
         let nestedUl = document.createElement('ul');
-        nestedUl.classList.add('hidden', 'absolute', 'bg-black', 'rounded-lg', 'shadow-lg', 'z-50', 'top-0', 'text-white');
+        nestedUl.classList.add(
+          'hidden',
+          'absolute',
+          'bg-black',
+          'rounded-lg',
+          'shadow-lg',
+          'z-50',
+          'top-0',
+          'text-white'
+        );
         nestedUl.style.minWidth = '200px';
 
         // Recursively build the submenu
         this.buildMenu(nestedUl, item.subMenu);
         li.appendChild(nestedUl);
 
-        // Show/hide on hover
+        // Show/hide with flipping logic
         li.addEventListener('mouseenter', () => {
+          // Temporarily unhide to measure
           nestedUl.classList.remove('hidden');
-          let rect = li.getBoundingClientRect();
-          nestedUl.style.left = rect.width + 'px';
+
+          // Position sub-menu to the right by default
+          nestedUl.style.left = li.offsetWidth + 'px';
+          nestedUl.style.top = '0';
+
+          // Measure
+          let subW = nestedUl.offsetWidth;
+          let subH = nestedUl.offsetHeight;
+
+          let liRect = li.getBoundingClientRect();
+          let rightEdge = liRect.left + liRect.width + subW;
+          let bottomEdge = liRect.top + subH;
+
+          // Flip horizontally if needed
+          if (rightEdge > window.innerWidth) {
+            // Position sub-menu to the left
+            nestedUl.style.left = -subW + 'px';
+          }
+
+          // Flip vertically if needed
+          let topVal = 0;
+          if (bottomEdge > window.innerHeight) {
+            // Move it up so it's fully visible
+            topVal = -(subH - liRect.height);
+          }
+          nestedUl.style.top = topVal + 'px';
         });
+
         li.addEventListener('mouseleave', () => {
           nestedUl.classList.add('hidden');
         });
@@ -820,16 +874,21 @@ contextMenu: {
 
       parentUl.appendChild(li);
     });
+
+    // After building items, round the first and last item in the list
+    const allLis = parentUl.querySelectorAll(':scope > li');
+    if (allLis.length > 0) {
+      allLis[0].classList.add('rounded-t-lg');
+      allLis[allLis.length - 1].classList.add('rounded-b-lg');
+    }
   },
 
   hideMenus: function (event, menuElement) {
-    if (
-      event &&
-      ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName)
-    ) {
-      return; // don’t hide if clicking on input
+    // If the click is outside the menu, hide it. 
+    // If the click is inside the menu, do nothing (keep it open).
+    if (!menuElement.contains(event.target)) {
+      menuElement.classList.add('hidden');
     }
-    menuElement.classList.add('hidden');
   },
 
   disableDefaultContextMenu: function (event, callback) {

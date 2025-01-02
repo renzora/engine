@@ -1,7 +1,7 @@
 <div data-window="editor_context_menu_window" data-close="false">
   <div
     id="editor_context_menu_window"
-    class="bg-black opacity-70 text-white rounded-lg shadow-lg absolute z-50 hidden"
+    class="bg-black text-white rounded-lg shadow-lg absolute z-50 hidden"
     style="max-height: 400px; min-width: 200px;"
   >
     <ul id="editor_menuItems" class="space-y-1"></ul>
@@ -9,22 +9,23 @@
 
   <script>
     var editor_context_menu_window = {
-      // Example state
       isGridEnabled: true,
       isSnapEnabled: true,
       isNightfilterEnabled: false,
+
       contextMenuElement: null,
       menuItemsElement: null,
       contextmenuHandler: null,
       clickHandler: null,
 
+      // Only the array is compressed:
       menuItemsConfig: [
         {label:"Edit",subMenu:[
           {label:"Manual Camera",type:"checkbox",id:"snap_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.cameraSnapToggle(checked)}},
           {label:"Adjust camera position",callback:function(){editor_context_menu_window.openTerrainEditor()}}
         ]},
         {label:"Scene",subMenu:[
-          {label:"Scene Properties",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}},
+          {label:"Change viewport size",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}},
           {label:"Set Background",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}},
           {label:"Advanced Options",subMenu:[
             {label:"Option 1",callback:function(){editor_context_menu_window.advancedOption1()}},
@@ -42,9 +43,10 @@
           {label:"Allow Movement",type:"checkbox",id:"sprite_active_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.spriteActiveToggle(checked)}}
         ]},
         {label:"Camera",subMenu:[
-          {label:"Manual Camera",type:"checkbox",id:"manual_camera_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.cameraManualToggle(checked)}}
+          {label:"Free Movement",type:"checkbox",id:"manual_camera_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.cameraManualToggle(checked)}}
         ]},
         {label:"Lighting",subMenu:[
+          {label:"Night Filter",type:"checkbox",id:"toggle_nightfilter_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleNightFilter(checked)}},
           {label:"Lighting Sources",callback:function(x,y){editor_context_menu_window.spriteSetStartingPosition(x,y)}}
         ]},
         {label:"Effects",subMenu:[
@@ -57,7 +59,6 @@
         ]},
         {label:"Utils",subMenu:[
           {label:"Grid",type:"checkbox",id:"toggle_grid_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleGrid(checked)}},
-          {label:"Night Filter",type:"checkbox",id:"toggle_nightfilter_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleNightFilter(checked)}},
           {label:"Adjust Day/Time",callback:function(){editor_context_menu_window.openTerrainEditor()}}
         ]},
         {label:"Scripting",subMenu:[

@@ -1,7 +1,7 @@
 <div data-window="context_menu_window" data-close="false">
   <div
     id="context_menu_window"
-    class="bg-black opacity-70 text-white rounded-lg shadow-lg absolute z-50 hidden"
+    class="bg-black text-white rounded-lg shadow-lg absolute z-50 hidden"
     style="max-height: 400px; min-width: 200px;"
   >
     <ul id="menuItems" class="space-y-1"></ul>
@@ -51,10 +51,7 @@
       populateMenuItems: function (clientX, clientY) {
         this.menuItemsConfig = [];
 
-        const { mouseX, mouseY, gridX, gridY } = this.getMouseCoordinates(
-          clientX,
-          clientY
-        );
+        const { mouseX, mouseY, gridX, gridY } = this.getMouseCoordinates(clientX, clientY);
         const selectedObject = utils.findObjectAt(mouseX, mouseY);
         const isTileWalkable = collision.isTileWalkable(gridX, gridY);
 
@@ -79,10 +76,8 @@
 
       getMouseCoordinates: function (clientX, clientY) {
         const rect = game.canvas.getBoundingClientRect();
-        const mouseX =
-          (clientX - rect.left) / game.zoomLevel + camera.cameraX;
-        const mouseY =
-          (clientY - rect.top) / game.zoomLevel + camera.cameraY;
+        const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
+        const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
         const gridX = Math.floor(mouseX / 16);
         const gridY = Math.floor(mouseY / 16);
         return { mouseX, mouseY, gridX, gridY };
