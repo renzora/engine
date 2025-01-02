@@ -30,21 +30,10 @@ var game = {
     particles: [],
     overlappingTiles: [],
     isPaused: false,
-    sceneBg: '6737dcd37d05e',
     timeActive: true,
     inputMethod: 'keyboard',
     fpsHistory: [],
     maxFpsHistory: 60,
-
-    reloadGameData: function() {
-        const assetsToReload = ['objectData', 'roomData'];
-
-        assets.reloadAssets(assetsToReload, () => {
-            console.log("Game data reloaded");
-            this.roomData = assets.use('roomData');
-            console.log("Game elements updated");
-        });
-    },
 
     init: function() {
         network.getPlayerId();
@@ -52,15 +41,6 @@ var game = {
         assets.preload([
             { name: 'gamepad_buttons', path: 'img/icons/gamepad.png' },
             { name: 'green_truck', path: 'img/sprites/vehicles/green_truck.png' },
-            { name: 'character', path: 'img/sprites/character/test/character.png' },
-            { name: 'head', path: 'img/sprites/character/test/head.png' },
-            { name: 'eyes', path: 'img/sprites/character/test/eyes.png' },
-            { name: 'hair', path: 'img/sprites/character/test/hair.png' },
-            { name: 'hands', path: 'img/sprites/character/test/hands.png' },
-            { name: 'hats', path: 'img/sprites/character/test/hats.png' },
-            { name: 'glasses', path: 'img/sprites/character/test/glasses.png' },
-            { name: 'facial', path: 'img/sprites/character/test/facial.png' },
-            { name: 'outfit', path: 'img/sprites/character/test/outfit.png' },
             { name: 'horse', path: 'img/sprites/animals/horse/1.png' },
             { name: 'cow', path: 'img/sprites/animals/cow/1.png' },
             { name: 'chick', path: 'img/sprites/animals/chick/1.png' },
@@ -68,37 +48,11 @@ var game = {
             { name: 'pig', path: 'img/sprites/animals/pig/1.png' },
             { name: 'female-01', path: 'img/sprites/character/female-01/1.png' },
             { name: 'gen1', path: 'img/tiles/gen1.png' },
-            { name: 'gameplay_music_01', path: 'audio/music/gameplay_music_01.mp3' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
             { name: 'spritesData', path: 'json/spritesData.json' },
             { name: 'fxData', path: 'json/fxData.json' },
-            { name: 'walkGrass', path: 'audio/sfx/movement/footstep.wav' },
-            { name: 'closeModal', path: 'audio/sfx/ui/closeModal.mp3' },
-            { name: 'menuDrop', path: 'audio/sfx/ui/menuDrop.mp3' },
-            { name: 'objectDrop', path: 'audio/sfx/ui/dropObject.mp3' },
-            { name: 'notification', path: 'audio/sfx/ui/notification.mp3' },
-            { name: 'music1', path: 'audio/music/music1.mp3' },
-            { name: 'bump1', path: 'audio/sfx/movement/bump.mp3' },
-            { name: 'click', path: 'audio/sfx/ui/click.mp3' },
-            { name: 'slotDrop', path: 'audio/sfx/ui/slotDrop.mp3' },
-            { name: 'sceneDrop', path: 'audio/sfx/ui/sceneDrop.mp3' },
-            { name: 'itemEquip', path: 'audio/sfx/ui/itemEquip.mp3' },
-            { name: 'pickUp', path: 'audio/sfx/fx/pickUp.mp3' },
-            { name: 'door_open_01', path: 'audio/sfx/movement/door.mp3' },
-            { name: 'nightAmbience', path: 'audio/sfx/weather/nightAmbience.mp3' },
-            { name: 'grass1', path: 'audio/sfx/movement/grass1.mp3' },
-            { name: 'footstep_01', path: 'audio/sfx/movement/footstep.wav' },
-            { name: 'footsteps1', path: 'audio/sfx/movement/footsteps1.wav' },
-            { name: 'speech_menu_01', path: 'audio/sfx/ui/speech_menu_01.wav' },
-            { name: 'rain', path: 'audio/sfx/weather/rain.mp3' },
-            { name: 'meta', path: 'json/meta.json' },
-            { name: 'machinegun1', path: 'audio/sfx/fx/machineGun.mp3' },
-            { name: 'reload_gun', path: 'audio/sfx/fx/reload_gun.mp3' },
-            { name: 'empty_gun', path: 'audio/sfx/fx/empty_gun.mp3' },
-            { name: 'electronic_readout_01', path: 'audio/sfx/ui/electronic_readout_01.wav' },
-            { name: 'store_chime_01', path: 'audio/sfx/fx/store_chime_01.mp3' },
         ], () => {
             console.log("All assets loaded");
             this.canvas = document.createElement('canvas');
@@ -194,8 +148,8 @@ var game = {
         
             const playerOptions = {
               id: this.playerid,  
-              x: game.x / 16,
-              y: game.y / 16,
+              x: game.x,
+              y: game.y,
               isPlayer: true,
               topSpeed: 100,
               canShoot: true,
@@ -210,29 +164,6 @@ var game = {
                       
             sprite.create(playerOptions);
         
-        
-            const carOptions = {
-              id: 'car01',  
-              x: 15,
-              y: 20,
-              isPlayer: false,
-              topSpeed: 200,
-              animalType: 'green_truck',
-              isVehicle: true,
-              targetAim: false,
-              maxRange: 200,
-              health: 100,
-              energy: 100,
-              handOffsetX: 8,
-              handOffsetY: -5,
-              maxSpeed: 160,
-              acceleration: 6,
-              directionIndex: 28,
-              braking: 2.5,
-              steeringSensitivity: 3.5
-            };
-
-            sprite.create(carOptions);
             game.mainSprite = game.sprites[game.playerid];
 
         }
@@ -269,9 +200,17 @@ var game = {
                     game.serverid = data.server_id;
                     game.worldWidth = data.width || 1280;
                     game.worldHeight = data.height || 944;
-                    game.x = data.startingX || 0;
-                    game.y = data.startingY || 0;
-                    game.sceneBg = data.bg || 'grass';
+                    game.x = data.startingX || 0; // Actual top-left pixel X
+                    game.y = data.startingY || 0; // Actual top-left pixel Y
+    
+                    // Update sprite position if player exists
+                    const playerSprite = game.sprites[game.playerid];
+                    if (playerSprite) {
+                        playerSprite.x = game.x;
+                        playerSprite.y = game.y;
+                    }
+
+                    render.sceneBg = data.bg || null;
                     game.resizeCanvas();
                     collision.walkableGridCache = null;
                     collision.createWalkableGrid();
@@ -382,9 +321,9 @@ render: function () {
     
     particles.render();
     effects.transitions.render();
-    render.renderCarriedObjects();
-    render.handleDebugUtilities();
-    render.aimTool();
+    //render.renderCarriedObjects();
+    //render.handleDebugUtilities();
+    //render.aimTool();
 
     if(utils.objExists('ui_footer_window.updateUi')) {
         ui_footer_window.updateUI();

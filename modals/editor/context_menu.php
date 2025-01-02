@@ -245,7 +245,7 @@ disableDefaultContextMenu: (event) => {
                 this.isGridEnabled = checked;
                 if (checked) {
                     console.log("Grid is now enabled.");
-                    this.renderGrid();
+                    this.render2dGrid();
                 } else {
                     console.log("Grid is now disabled.");
                 }
@@ -267,29 +267,76 @@ disableDefaultContextMenu: (event) => {
 
             },
 
-            renderGrid: function () {
-                if (!this.isGridEnabled) return;
+            render2dGrid: function () {
+    if (!this.isGridEnabled) return;
 
-                // Set grid line style to be dark and subtle
-                game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-                game.ctx.lineWidth = 1;
+    // Set grid line style to be dark and subtle
+    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    game.ctx.lineWidth = 1;
 
-                // Draw vertical lines
-                for (let x = 0; x < game.worldWidth; x += 16) {
-                    game.ctx.beginPath();
-                    game.ctx.moveTo(x, 0);
-                    game.ctx.lineTo(x, game.worldHeight);
-                    game.ctx.stroke();
-                }
+    // Draw vertical lines
+    for (let x = 0; x < game.worldWidth; x += 16) {
+        game.ctx.beginPath();
+        game.ctx.moveTo(x, 0);
+        game.ctx.lineTo(x, game.worldHeight);
+        game.ctx.stroke();
+    }
 
-                // Draw horizontal lines
-                for (let y = 0; y < game.worldHeight; y += 16) {
-                    game.ctx.beginPath();
-                    game.ctx.moveTo(0, y);
-                    game.ctx.lineTo(game.worldWidth, y);
-                    game.ctx.stroke();
-                }
-            },
+    // Draw horizontal lines
+    for (let y = 0; y < game.worldHeight; y += 16) {
+        game.ctx.beginPath();
+        game.ctx.moveTo(0, y);
+        game.ctx.lineTo(game.worldWidth, y);
+        game.ctx.stroke();
+    }
+
+    // Draw a red border around the outer edge of the grid
+    game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    game.ctx.lineWidth = 2; // Make the border slightly thicker
+    game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
+},
+
+renderIsometricGrid: function () {
+    if (!this.isGridEnabled) return;
+
+    const tileWidth = 32;
+    const tileHeight = 16;
+    
+    // Instead of halfWorldWidth / halfWorldHeight, use the full game.worldWidth / game.worldHeight
+    // so we can overshoot and ensure the diagonal lines fill the entire canvas
+    const maxY = game.worldHeight;
+    const minY = -game.worldHeight;
+
+    // Light grid lines
+    game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    game.ctx.lineWidth = 1;
+
+    // Draw lines slanted to the right
+    for (let y = minY; y <= maxY; y += tileHeight) {
+        game.ctx.beginPath();
+        // Move from left edge down
+        game.ctx.moveTo(0, game.worldHeight / 2 + y);
+        // Draw to right edge, shifted up by half the width
+        game.ctx.lineTo(game.worldWidth, game.worldHeight / 2 + y - game.worldWidth / 2);
+        game.ctx.stroke();
+    }
+
+    // Draw lines slanted to the left
+    for (let y = minY; y <= maxY; y += tileHeight) {
+        game.ctx.beginPath();
+        // Move from right edge down
+        game.ctx.moveTo(game.worldWidth, game.worldHeight / 2 + y);
+        // Draw to left edge, shifted up by half the width
+        game.ctx.lineTo(0, game.worldHeight / 2 + y - game.worldWidth / 2);
+        game.ctx.stroke();
+    }
+
+    // Border (optional)
+    game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    game.ctx.lineWidth = 2;
+    game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
+},
+
 
             updateStartingPosition: function(gridX, gridY) {
                 const sceneId = game.sceneid;

@@ -95,9 +95,18 @@ checkForNearbyItems: function () {
 
                 if (script.walk && script.walk.tooltip) {
                     const objectName = objectData[0].n || 'Unnamed Object';
-                    const tooltipText = script.walk.tooltip.replace('{name}', objectName);
-                    this.tooltip(tooltipText, item, sprite);
-                }
+                    const buttonName = script.walk.button || 'button';
+                
+                    const tooltipText = script.walk.tooltip
+                        .replace('{name}', objectName)
+                        .replace(
+                            '{button}',
+                            `<div class="gamepad_button_${buttonName.toLowerCase()}"></div>`
+                        );
+                
+                    this.tooltip(tooltipText, item, sprite); // Pass HTML content to the tooltip method
+                    gamepad.updateButtonImages();
+                }                         
 
                 if (script.walk && script.walk.scene) {
                     const sceneButton = script.walk.scene.button || script.walk.button;
@@ -216,26 +225,34 @@ checkForNearbyItems: function () {
         }
     },
 
-    tooltip: function (config, context, item) {
+    tooltip: function (htmlContent, context, item) {
         const sprite = game.mainSprite;
         if (sprite) {
             const spriteScreenX = (sprite.x - camera.cameraX) * game.zoomLevel;
             const spriteScreenY = (sprite.y - camera.cameraY) * game.zoomLevel;
             const spriteCenterX = spriteScreenX + (sprite.width * game.zoomLevel) / 2;
     
-            let tooltipText = config.replace('{name}', context.name || item.name || 'Object');
-    
-            this.showTooltip(tooltipText, spriteCenterX, spriteScreenY);
-    
-            const tooltip = document.getElementById('game_tooltip');
-            if (tooltip) {
-                const tooltipWidth = tooltip.offsetWidth;
-                const centeredX = spriteCenterX - (tooltipWidth / 2);
-                tooltip.style.left = `${centeredX}px`;
-                tooltip.style.top = `${spriteScreenY}px`;
+            let tooltip = document.getElementById('game_tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'game_tooltip';
+                tooltip.className = `
+                    absolute px-4 py-2 bg-black bg-opacity-70 text-white 
+                    rounded-md pointer-events-none flex items-center gap-2 
+                    whitespace-nowrap z-10
+                `;
+                document.body.appendChild(tooltip);
             }
+    
+            tooltip.innerHTML = htmlContent; // Render HTML content
+            tooltip.style.display = 'flex';
+    
+            const tooltipWidth = tooltip.offsetWidth;
+            tooltip.style.left = `${spriteCenterX - tooltipWidth / 2}px`;
+            tooltip.style.top = `${spriteScreenY - 20}px`;
         }
-    },      
+    },
+          
 
 speech: function (config, context, item) {
     const speechButton = config.button || null;

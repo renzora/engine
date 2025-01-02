@@ -1,10 +1,12 @@
+
 var render = {
     spriteCount: 0,
     animationCount: 0,
     backgroundTileCount: 0,
     tileCount: 0,
     overlappingTiles: [],
-    renderQueue: [],   
+    renderQueue: [],
+    sceneBg: null,
     parseRange: function(rangeString) {
         const [start, end] = rangeString.split('-').map(Number);
         const rangeArray = [];
@@ -90,13 +92,23 @@ updateGameLogic: function(deltaTime) {
 
 renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
     this.backgroundTileCount = 0;
-    
-    if (!game.sceneBg) {
+
+    const tileSize = 16;
+
+    // Fill the entire viewport with black
+    game.ctx.fillStyle = 'black';
+    game.ctx.fillRect(
+        viewportXStart * tileSize, 
+        viewportYStart * tileSize, 
+        (viewportXEnd - viewportXStart + 1) * tileSize, 
+        (viewportYEnd - viewportYStart + 1) * tileSize
+    );
+
+    if (!this.sceneBg) {
         return;
     }
 
-    const bgTileData = game.objectData[game.sceneBg][0];
-    const tileSize = 16;
+    const bgTileData = game.objectData[this.sceneBg][0];
 
     for (let y = Math.floor(viewportYStart); y <= Math.floor(viewportYEnd); y++) {
         for (let x = Math.floor(viewportXStart); x <= Math.floor(viewportXEnd); x++) {
@@ -288,8 +300,8 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
     renderQueue.forEach(item => item.draw());
 
     // 6) If the editor’s grid is active, render it last
-    if (utils.objExists("editor_context_menu_window.renderGrid")) {
-        editor_context_menu_window.renderGrid();
+    if (utils.objExists("editor_context_menu_window.renderIsometricGrid")) {
+        editor_context_menu_window.renderIsometricGrid();
     }
 
     utils.tracker("render.renderAll");

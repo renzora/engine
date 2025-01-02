@@ -1,5 +1,7 @@
 var collision = {
     walkableGridCache: null,
+    lastKnownPosition: null,
+    cornerBuffer: 16,
 
     pointInPolygon: function(px, py, polygon) {
         let isInside = false;
@@ -14,30 +16,9 @@ var collision = {
         return isInside;
     },
 
-    lineIntersectsPolygon: function(x1, y1, x2, y2, polygon) {
-        for (let i = 0; i < polygon.length; i++) {
-            const p1 = polygon[i];
-            const p2 = polygon[(i + 1) % polygon.length];
-
-            if (this.lineIntersectsLine(x1, y1, x2, y2, p1.x, p1.y, p2.x, p2.y)) {
-                return true;
-            }
-        }
-        return false;
-    },
-
-    lineIntersectsLine: function(x1, y1, x2, y2, x3, y3, x4, y4) {
-        const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
-        if (denom === 0) return false;
-
-        const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
-        const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
-
-        return ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1;
-    },
-
-    check: function(x, y, sprite) {
+    check: function(x, y, sprite, previousX, previousY) {
         if (!game.roomData?.items) {
+            this.lastKnownPosition = null;
             return { collisionDetected: false };
         }
     
@@ -49,6 +30,7 @@ var collision = {
         const numPoints = 8;
         const pointsToCheck = [];
     
+        // Generate points around the ellipse for collision checking
         for (let i = 0; i < numPoints; i++) {
             const angle = (i / numPoints) * 2 * Math.PI;
             const px = centerX + a * Math.cos(angle);
@@ -60,7 +42,6 @@ var collision = {
             const itemData = assets.use('objectData')[item.id]?.[0];
             if (!itemData?.w && itemData.w !== 0) continue;
     
-            // Skip objects where w equals 1
             if (itemData.w === 1) continue;
     
             if (Array.isArray(itemData.w)) {
@@ -68,29 +49,104 @@ var collision = {
                     x: point.x + item.x[0] * 16,
                     y: point.y + item.y[0] * 16
                 }));
-    
-                for (let i = 0; i < pointsToCheck.length - 1; i++) {
-                    if (this.lineIntersectsPolygon(pointsToCheck[i].px, pointsToCheck[i].py, pointsToCheck[i + 1].px, pointsToCheck[i + 1].py, polygon)) {
-                        return { collisionDetected: true };
+
+                // Check if we're currently inside the polygon
+                const isCurrentlyInside = this.pointInPolygon(centerX, centerY, polygon);
+                const wasInsidePreviously = this.lastKnownPosition?.insidePolygon;
+                
+                // Update last known position
+                this.lastKnownPosition = {
+                    x: centerX,
+                    y: centerY,
+                    insidePolygon: isCurrentlyInside,
+                    polygonId: isCurrentlyInside ? item.id : null
+                };
+
+                // If we're moving from inside to outside the polygon
+                if (wasInsidePreviously && !isCurrentlyInside && 
+                    this.lastKnownPosition.polygonId === item.id) {
+                    return { 
+                        collisionDetected: true,
+                        slideVector: this.calculateSlideVector(previousX, previousY, x, y, polygon)
+                    };
+                }
+
+                // If we're outside and trying to enter the polygon
+                if (!wasInsidePreviously && !isCurrentlyInside) {
+                    // Check if any points would enter the polygon
+                    for (const point of pointsToCheck) {
+                        if (this.pointInPolygon(point.px, point.py, polygon)) {
+                            return { 
+                                collisionDetected: true,
+                                slideVector: this.calculateSlideVector(previousX, previousY, x, y, polygon)
+                            };
+                        }
                     }
                 }
-    
-                for (const point of pointsToCheck) {
-                    if (this.pointInPolygon(point.px, point.py, polygon)) {
-                        return { collisionDetected: true };
-                    }
-                }
-            } else {
-                if (itemData.w === 0) {
-                    return { collisionDetected: true };
-                }
+            } else if (itemData.w === 0) {
+                return { collisionDetected: true };
             }
         }
     
         utils.tracker('collision.check');
-    
         return { collisionDetected: false };
-    },    
+    },
+
+    calculateSlideVector: function(startX, startY, endX, endY, polygon) {
+        const direction = {
+            x: endX - startX,
+            y: endY - startY
+        };
+        
+        // Normalize direction
+        const length = Math.hypot(direction.x, direction.y);
+        if (length === 0) return null;
+        
+        direction.x /= length;
+        direction.y /= length;
+        
+        // Calculate perpendicular vector
+        const perpendicular = {
+            x: -direction.y,
+            y: direction.x
+        };
+        
+        // Try both perpendicular directions
+        const leftPath = this.checkPath(startX, startY, perpendicular.x, perpendicular.y, polygon);
+        const rightPath = this.checkPath(startX, startY, -perpendicular.x, -perpendicular.y, polygon);
+        
+        // Choose the better path
+        const path = leftPath.distance < rightPath.distance ? leftPath : rightPath;
+        
+        // Scale the slide vector to match original movement magnitude
+        return {
+            x: path.vector.x * length,
+            y: path.vector.y * length
+        };
+    },
+
+    checkPath: function(startX, startY, dirX, dirY, polygon) {
+        let clear = false;
+        let distance = 16; // Start with minimum distance
+        let maxDistance = 64; // Maximum distance to check
+        
+        while (!clear && distance <= maxDistance) {
+            const testX = startX + dirX * distance;
+            const testY = startY + dirY * distance;
+            
+            if (!this.pointInPolygon(testX, testY, polygon)) {
+                clear = true;
+                break;
+            }
+            
+            distance += 16;
+        }
+        
+        return {
+            distance: distance,
+            vector: { x: dirX, y: dirY }
+        };
+    },
 
     createWalkableGrid: function() {
         if (this.walkableGridCache) {
@@ -129,10 +185,13 @@ var collision = {
                                 { px: tileX + 8, py: tileY + 8 }
                             ];
 
-                            for (const point of pointsToCheck) {
-                                if (this.pointInPolygon(point.px, point.py, polygon)) {
-                                    grid[gridX][gridY] = 0;
-                                    break;
+                            if (!this.lastKnownPosition?.insidePolygon || 
+                                this.lastKnownPosition.polygonId !== item.id) {
+                                for (const point of pointsToCheck) {
+                                    if (this.pointInPolygon(point.px, point.py, polygon)) {
+                                        grid[gridX][gridY] = 0;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -161,5 +220,10 @@ var collision = {
     isTileWalkable: function(gridX, gridY) {
         const grid = this.createWalkableGrid();
         return grid[gridX]?.[gridY] === 1;
+    },
+
+    reset: function() {
+        this.lastKnownPosition = null;
+        this.walkableGridCache = null;
     }
 };

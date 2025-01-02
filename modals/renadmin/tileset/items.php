@@ -22,7 +22,6 @@ if ($auth) {
         <button class="tab text-gray-800 p-2" data-tab="tab-details">Details</button>
         <button class="tab text-gray-800 p-2" data-tab="tab-walkable">Walkable</button>
         <button class="tab text-gray-800 p-2" data-tab="tab-stack">Stack</button>
-        <button class="tab text-gray-800 p-2" data-tab="tab-zindex">zIndex</button>
         <button class="tab text-gray-800 p-2" data-tab="tab-effects">Effects</button>
         <button class="tab text-gray-800 p-2" data-tab="tab-scripts">Scripts</button>
       </div>
@@ -63,11 +62,6 @@ if ($auth) {
           </div>
 
           <div class="tab-content p-4 hidden" data-tab-content="tab-zindex">
-            <div id="zindex_controls" class="flex justify-between mb-2 hidden">
-              <label>
-                zIndex: <input type="text" id="zindex_input" class="border p-1 w-12">
-              </label>
-            </div>
 
             <!-- Content removed as requested -->
             <div class="mt-4 relative flex justify-center items-center">
@@ -103,7 +97,6 @@ if ($auth) {
     <script>
       var tileset_item_editor_window = {
         walkableData: {},
-    zIndexData: {},
     polygonPoints: [],
     isResizing: false,
     currentlyResizingPoint: null,
@@ -125,9 +118,6 @@ if ($auth) {
     console.log("Current 'w' (collision) data:", item.w || "No collision data available");
 
     this.initializeOtherData(itemId, item);
-    
-    // Call the function to initialize zIndexData
-    this.initializeZIndexData(item);
 
     this.setupLineDrawingHandlers('item_grid_canvas_walkable');
     this.renderPolygonOnLoad(item);
@@ -215,12 +205,9 @@ setupScriptInputHandlers: function() {
 
 initializeOtherData: function(itemId, item) {
     this.walkableData = this.initializeWalkableData(item);
-    this.zIndexData = this.initializeZIndexData(item);
 
     // Populate polygonPoints from walkableData
     this.polygonPoints = [...this.walkableData.polygon];
-
-    this.setupCanvasClickHandlersZIndex(item, 'item_preview_canvas_zindex');
 
     document.getElementById('item_id').textContent = itemId;
     document.getElementById('item_name').value = item.n;
@@ -232,8 +219,6 @@ initializeOtherData: function(itemId, item) {
 
     this.drawGrid('item_grid_canvas_walkable', item, false, 10);
     ui.initTabs('item_editor_tabs', 'tab-details');
-
-    this.setupZIndexInputHandlers();
 
     document.getElementById('save_button').addEventListener('click', this.saveData.bind(this, itemId));
 
@@ -253,47 +238,6 @@ initializeOtherData: function(itemId, item) {
 
         return walkableData;
     },
-
-    initializeZIndexData: function(item) {
-    let zIndexData = {};
-
-    // Calculate total number of tiles based on grid size (a * b)
-    const tileCount = (item.a + 1) * (item.b + 1);
-
-    // Handle case where z is a single number (apply the same zIndex to all tiles)
-    if (typeof item.z === 'number') {
-        for (let index = 0; index < tileCount; index++) {
-            let x = index % (item.a + 1);  // X coordinate
-            let y = Math.floor(index / (item.a + 1));  // Y coordinate
-            let key = `${x},${y}`;  // Tile key for zIndexData
-            zIndexData[key] = item.z.toString();  // Apply the same zIndex to all tiles
-        }
-    }
-
-    // Handle case where z is an array (each tile gets its own zIndex value)
-    else if (Array.isArray(item.z)) {
-        item.z.forEach((zValue, index) => {
-            let x = index % (item.a + 1);  // X coordinate
-            let y = Math.floor(index / (item.a + 1));  // Y coordinate
-            let key = `${x},${y}`;  // Tile key for zIndexData
-            zIndexData[key] = zValue.toString();  // Apply respective zIndex value
-        });
-    }
-
-    // Default case if z is not defined (initialize zIndex to 0 for all tiles)
-    else {
-        for (let index = 0; index < tileCount; index++) {
-            let x = index % (item.a + 1);  // X coordinate
-            let y = Math.floor(index / (item.a + 1));  // Y coordinate
-            let key = `${x},${y}`;  // Tile key for zIndexData
-            zIndexData[key] = '0';  // Default zIndex is 0
-        }
-    }
-
-    // Assign the zIndexData to the editor window
-    tileset_item_editor_window.zIndexData = zIndexData;
-    console.log("Initialized zIndexData:", tileset_item_editor_window.zIndexData);
-},
 
 renderPolygonOnLoad: function(item) {
     const canvas = document.getElementById('item_grid_canvas_walkable');
@@ -536,73 +480,6 @@ renderPolygon: function(ctx, polygons, padding = 0) {
           return Math.min(5, maxCanvasWidth / canvas.width);
         },
 
-        setupCanvasClickHandlersZIndex: function(item, canvasId) {
-          var canvas = document.getElementById(canvasId);
-          const tileSize = 16;
-
-          canvas.addEventListener('click', (event) => {
-            const rect = canvas.getBoundingClientRect();
-            const modalWidth = document.querySelector('[data-window="tileset_item_editor_window"]').clientWidth;
-            const maxCanvasWidth = modalWidth - 40;
-            const scaleFactor = Math.min(5, maxCanvasWidth / canvas.width);
-
-            const clickX = (event.clientX - rect.left) / scaleFactor;
-            const clickY = (event.clientY - rect.top) / scaleFactor;
-
-            const x = Math.floor(clickX / tileSize);
-            const y = Math.floor(clickY / tileSize);
-            const tileKey = `${x},${y}`;
-
-            console.log(`Tile clicked for zIndex: (${x}, ${y})`);
-
-            document.getElementById('zindex_input').value = this.zIndexData[tileKey];
-            document.getElementById('zindex_controls').classList.remove('hidden');
-            document.getElementById('zindex_controls').dataset.tileKey = tileKey;
-            document.getElementById('zindex_input').focus();
-
-            this.updateCanvasZIndex(tileKey);
-          });
-        },
-
-        setupZIndexInputHandlers: function() {
-          const input = document.getElementById('zindex_input');
-          input.addEventListener('input', (event) => {
-            const value = event.target.value;
-            const tileKey = document.getElementById('zindex_controls').dataset.tileKey;
-
-            this.zIndexData[tileKey] = value;
-
-            console.log('Updated zIndex data:', this.zIndexData);
-            this.updateCanvasZIndex(tileKey);
-          });
-        },
-
-        updateCanvasZIndex: function(tileKey) {
-    var item = game.objectData[<?php echo json_encode($itemId); ?>][0];
-
-    // Construct the zIndex array
-    const zIndexArray = item.i.map((tileIndex, index) => {
-        let x = item.a[index];
-        let y = item.b[index];
-        let key = `${x},${y}`;
-        return this.zIndexData[key] ? parseInt(this.zIndexData[key], 10) : 0;
-    });
-
-    // Check if all z-index values are the same
-    const allSameZ = zIndexArray.every((z, _, arr) => z === arr[0]);
-
-    if (allSameZ) {
-        item.z = zIndexArray[0]; // Save as a single integer if all are the same
-    } else {
-        item.z = zIndexArray; // Save as an array if they differ
-    }
-
-    console.log('Updated zIndex array:', item.z); // Properly log the array or value
-    this.renderItemPreview(item, 'item_preview_canvas_zindex');
-    this.drawGrid('item_grid_canvas_zindex', item);
-},
-
-
 renderItemPreview: function(item, canvasId, padding = 10) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
@@ -763,24 +640,6 @@ saveData: function(itemId) {
     item.w = this.walkableData.polygon.concat(this.polygonPoints);
     
     console.log("Walkable data saved:", item.w);
-
-    // Initialize zIndex array
-    const zIndexArray = [];
-
-    // Collect zIndex values from tileset_item_editor_window.zIndexData
-    for (let key in this.zIndexData) {
-        if (this.zIndexData.hasOwnProperty(key)) {
-            let zIndexValue = parseInt(this.zIndexData[key], 10) || 0; // Default to 0 if empty or invalid
-            zIndexArray.push(zIndexValue);
-            console.log(`zIndex for tile ${key} is: ${zIndexValue}`);
-        }
-    }
-
-    // Save the zIndex array to the item
-    item.z = zIndexArray;
-
-    console.log("zIndexArray:", zIndexArray);
-    console.log("item.z:", item.z);
 
     // Collect the script from the editor in YAML format
     var itemScripts = document.getElementById('item_scripts').value.trim();

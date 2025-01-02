@@ -650,6 +650,18 @@ function addToTileset() {
             console.log('PHP Response:', data);
             if (data.success) {
                 alert('Tileset item added successfully.');
+
+                const assetsToReload = [
+                    { name: 'gen1', path: 'img/tiles/gen1.png' },
+                    { name: 'objectData', path: 'json/objectData.json' }
+                ];
+
+                assets.reloadAssets(assetsToReload, () => {
+                    console.log('Game data reloaded');
+                    
+                    game.objectData = assets.use('objectData');
+                });
+
                 // Update the game object data and item count
                 game.objectData[name] = game.objectData[name] || [];
                 game.objectData[name].push(newObject);

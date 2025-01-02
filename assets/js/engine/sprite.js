@@ -69,8 +69,8 @@ var sprite = {
 
         Object.setPrototypeOf(newSprite, this.SpritePrototype);
     
-        newSprite.x = options.x * 16;
-        newSprite.y = options.y * 16;
+        newSprite.x = options.x || 0;
+        newSprite.y = options.y || 0;
         newSprite.angle = (newSprite.directionIndex / 48) * Math.PI * 2;
     
         if (options.boundaryX !== undefined && options.boundaryY !== undefined) {

@@ -19,12 +19,13 @@ var assets = {
         document.getElementById('loadingBarContainer').classList.add('hidden');
     },
 
-    preload: function(assetsList, callback) {
+    preload: function(assetsList, callback, force = false) {
         const uniqueAssets = {};
+        // If `force` is true, we skip the "already loaded" check.
         const assetsToLoad = assetsList.filter(asset => {
-            if (!this.isAssetLoaded(asset.name) && !uniqueAssets[asset.name]) {
+            if (!uniqueAssets[asset.name]) {
                 uniqueAssets[asset.name] = true;
-                return true;
+                return force ? true : !this.isAssetLoaded(asset.name);
             }
             return false;
         });
@@ -48,6 +49,8 @@ var assets = {
                 return this.loadJSON(asset);
             } else if (fileType === 'audio') {
                 return this.loadAudio(asset);
+            } else {
+                return Promise.resolve(null);
             }
         });
 
@@ -57,9 +60,13 @@ var assets = {
         });
     },
 
+    reloadAssets: function(assetsList, callback) {
+        this.preload(assetsList, callback, true);
+    },
+
     getFileType: function(path) {
         const pathParts = path.split('?');
-        const extension = pathParts[0].split('.').pop();
+        const extension = pathParts[0].split('.').pop().toLowerCase();
 
         if (['png', 'jpg', 'jpeg', 'gif', 'php'].includes(extension)) {
             return 'image';
