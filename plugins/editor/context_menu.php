@@ -1,11 +1,51 @@
 <div data-window="editor_context_menu_window" data-close="false">
+  <!-- Main Context Menu Container -->
   <div
     id="editor_context_menu_window"
-    class="bg-black text-white rounded-lg shadow-lg absolute z-50 hidden"
-    style="max-height: 400px; min-width: 200px;"
-  >
-    <ul id="editor_menuItems" class="space-y-1"></ul>
+    class="absolute z-50 hidden flex flex-col items-start space-y-2">
+    
+    <!-- Toolbar Buttons Container -->
+    <div
+      id="editor_toolbar_buttons"
+      class="bg-black text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
+      style="margin-bottom: 10px;">
+      <button type="button" id="select_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('select')">
+        <div class="ui_icon ui_select"></div>
+      </button>
+      <button type="button" id="brush_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('brush')">
+        <div class="ui_icon ui_brush"></div>
+      </button>
+      <button type="button" id="zoom_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('zoom')">
+        <div class="ui_icon ui_magnify"></div>
+      </button>
+      <button type="button" id="pan_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('pan')">
+        <div class="ui_icon ui_pan"></div>
+      </button>
+      <button type="button" id="lasso_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('lasso')">
+        <div class="ui_icon ui_lasso"></div>
+      </button>
+      <button type="button" id="move_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('move')">
+        <div class="ui_icon ui_move"></div>
+      </button>
+      <button type="button" id="save_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.saveRoomData()">
+        <div class="ui_icon ui_save"></div>
+      </button>
+      <button type="button" id="close_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.unmount(); plugin.close('edit_mode_window')">
+        <div class="ui_icon ui_close"></div>
+      </button>
+    </div>
+
+    <!-- Context Menu Items Container -->
+    <div
+      id="editor_menu_container"
+      class="bg-black text-white rounded-lg shadow-lg p-2"
+      style="width: 220px; align-self: flex-start;">
+      <ul id="editor_menuItems" class="space-y-1"></ul>
+    </div>
   </div>
+</div>
+
+
 
   <script>
     var editor_context_menu_window = {

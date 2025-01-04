@@ -2,67 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='edit_mode_window' class='window window_bg fixed top-2 right-2 rounded-sm bg[#3a445b]/20' style='width: 51px;'>
-
-<!-- Handle that spans the whole left side -->
-<div data-part='handle' class='window_title rounded-none w-full mb-1' style='height: 15px; background-image: radial-gradient(#e5e5e58a 1px, transparent 0) !important; border-radius: 0;'>
-</div>
-
-<!-- Rest of the content -->
-<div class='relative flex-grow'>
-    <div class='container text-light window_body px-1 py-1'>
-
-    <button type="button" id="select_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_select"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">1</span>  <!-- Badge for shortcut number 1 -->
-</button>
-
-<button type="button" id="brush_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_brush"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">2</span>  <!-- Badge for shortcut number 2 -->
-</button>
-
-<button type="button" id="zoom_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_magnify"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">3</span>  <!-- Badge for shortcut number 3 -->
-</button>
-
-<button type="button" id="delete_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_delete"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">4</span>  <!-- Badge for shortcut number 4 -->
-</button>
-
-<button type="button" id="pan_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_pan"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">5</span>  <!-- Badge for shortcut number 5 -->
-</button>
-
-<button type="button" id="lasso_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_lasso"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">6</span>  <!-- Badge for shortcut number 6 -->
-</button>
-
-<button type="button" id="move_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;">
-    <div class="ui_icon ui_move"></div>
-    <span class="absolute top-0 right-0 transform translate-x-1 -translate-y-1 text-white text-xs px-1 py-0.5">7</span>  <!-- Badge for shortcut number 7 -->
-</button>
-        <button type="button" id="undo_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.undo()">
-            <div class="ui_icon ui_undo"></div>
-        </button>
-
-        <button type="button" id="redo_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline mb-1 relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.redo()">
-            <div class="ui_icon ui_redo"></div>
-        </button>
-
-        <button type="button" id="save_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.saveRoomData()">
-            <div class="ui_icon ui_save"></div>
-        </button>
-
-        <button type="button" id="close_button" class="mode-button shadow appearance-none border rounded py-1 px-2 text-white leading-tight focus:outline-none focus:shadow-outline relative" style="background: #4f618b; border: 1px rgba(0,0,0,0.5) solid;" onclick="edit_mode_window.revertToOriginalState(); edit_mode_window.unmount(); plugin.close('edit_mode_window')">
-            <div class="ui_icon ui_close"></div>
-        </button>
-    </div>
-</div>
+<div data-window='edit_mode_window'>
 
   <style>
     body.move-cursor {
@@ -121,14 +61,6 @@ var edit_mode_window = {
         move: document.getElementById('move_button')
     };
 
-    this.modeButtons.brush.addEventListener('click', () => this.changeMode('brush'));
-    this.modeButtons.select.addEventListener('click', () => this.changeMode('select'));
-    this.modeButtons.zoom.addEventListener('click', () => this.changeMode('zoom'));
-    this.modeButtons.delete.addEventListener('click', () => this.changeMode('delete'));
-    this.modeButtons.pan.addEventListener('click', () => this.changeMode('pan'));
-    this.modeButtons.lasso.addEventListener('click', () => this.changeMode('lasso'));
-    this.modeButtons.move.addEventListener('click', () => this.changeMode('move'));
-
     game.timeActive = false;
     game.isEditMode = true;
     game.pathfinding = false;
@@ -137,7 +69,6 @@ var edit_mode_window = {
     game.zoomLevel = 4;
     game.mainSprite.stopPathfinding();
 
-    this.changeMode('select');
     this.updateCurrentTimeAndDay();
     this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
     this.boundMouseDownHandler = this.handleMouseDown.bind(this);
@@ -166,6 +97,7 @@ var edit_mode_window = {
     ]);
 
     setTimeout(() => { camera.manual = true; }, 0);
+    this.changeMode('select');
 
 },
 
@@ -220,7 +152,13 @@ updateCurrentTimeAndDay: function () {
         this.currentDay = gameTime.daysOfWeek[gameTime.days % 7];
     },
 
-changeMode: function (newMode) {
+    changeMode: function (newMode) {
+    
+        const contextMenu = document.getElementById('editor_context_menu_window');
+    if (contextMenu) {
+        contextMenu.classList.add('hidden');
+    }
+
     if (this.isDragging) {
         console.log("Mode change prevented while dragging objects.");
         return;
@@ -230,16 +168,6 @@ changeMode: function (newMode) {
 
     document.body.style.cursor = 'default';
     game.editorMode = newMode;
-
-    Object.values(this.modeButtons).forEach(button => {
-        button.style.background = '#4f618b';
-        button.style.color = 'white';
-    });
-
-    if (this.modeButtons[newMode]) {
-        this.modeButtons[newMode].style.background = 'white';
-        this.modeButtons[newMode].style.color = '#276b49';
-    }
 
     switch (newMode) {
         case 'select':

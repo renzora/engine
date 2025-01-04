@@ -128,6 +128,7 @@ var game = {
             //plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: false });
 
             plugin.preload([
+                { priority: 1, options: { id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: false } },
                 { priority: 1, options: { id: 'context_window', url: 'menus/context/index.php', name: 'Context Menu', drag: true, reload: false } },
                 { priority: 1, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer Window', drag: false, reload: false } },
                 { priority: 2, options: { id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'Pie Menu', drag: false, reload: false, hidden: false } },
