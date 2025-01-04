@@ -9,7 +9,7 @@
       id="editor_toolbar_buttons"
       class="bg-black text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
       style="margin-bottom: 10px;">
-      <button type="button" id="select_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('select')">
+      <button type="button" id="select_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition hint--top" onclick="edit_mode_window.changeMode('select')" aria-label="Select">
         <div class="ui_icon ui_select"></div>
       </button>
       <button type="button" id="brush_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('brush')">
@@ -59,76 +59,42 @@
       clickHandler: null,
       initialClickX: null,
       initialClickY: null,
-      menuItemsConfig: [
-        {label:"Scene",subMenu:[
-          {label:"Change viewport size",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}},
-          {label:"Set Background",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}}
-        ]},
-        {label:"Sprite",subMenu:[
-          {label:"Set Starting Position",callback:function(x,y){editor_context_menu_window.spriteSetStartingPosition(x,y)}},
-          {label:"Allow Movement",type:"checkbox",id:"sprite_active_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.spriteActiveToggle(checked)}}
-        ]},
-        {label:"Camera",subMenu:[
-          {label:"Free Movement",type:"checkbox",id:"manual_camera_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.cameraManualToggle(checked)}}
-        ]},
-        {label:"Lighting",subMenu:[
-          {label:"Night Filter",type:"checkbox",id:"toggle_nightfilter_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleNightFilter(checked)}},
-          {label:"Lighting Sources",callback:function(x,y){editor_context_menu_window.spriteSetStartingPosition(x,y)}}
-        ]},
-        {label:"Effects",subMenu:[
-          {label:"Console Toggle",type:"checkbox",id:"console_toggle_checkbox",initialValue:false,callback:function(checked){editor_context_menu_window.effectsConsoleToggle(checked)}},
-          {label:"Brush Size",type:"number",id:"brush_amount",initialValue:1,callback:function(val){editor_context_menu_window.effectsBrushSize(val)}}
-        ]},
-        {label:"Tools",subMenu:[
-          {label:"Terrain Editor",callback:function(){editor_context_menu_window.openTerrainEditor()}},
-          {label:"Tileset Manager",callback:function(){editor_context_menu_window.openTilesetManager()}}
-        ]},
-        {label:"Utils",subMenu:[
-          {label:"Grid",type:"checkbox",id:"toggle_grid_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleGrid(checked)}},
-          {label:"Adjust Day/Time",callback:function(){editor_context_menu_window.openTerrainEditor()}}
-        ]},
-        {label:"Weather",subMenu:[
-          {label:"Grid",type:"checkbox",id:"toggle_grid_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleGrid(checked)}},
-          {label:"Adjust Day/Time",callback:function(){editor_context_menu_window.openTerrainEditor()}}
-        ]}
-      ],
+      menuItemsConfig: [],
 
       start: function () {
-        this.contextMenuElement = document.getElementById('editor_context_menu_window');
-        this.menuItemsElement = document.getElementById('editor_menuItems');
+    this.contextMenuElement = document.getElementById('editor_context_menu_window');
+    this.menuItemsElement = document.getElementById('editor_menuItems');
 
-        // Create references to bound handlers so we can remove them in unmount
-        this.contextmenuHandler = (e) => {
-    if (edit_mode_window.isAddingNewObject) {
-        // If an object is active, prevent the context menu
-        e.preventDefault();
-        console.log("Context menu disabled because an object is active.");
-        return;
-    }
+    this.contextmenuHandler = (event) => {
+    event.preventDefault(); // Always prevent default browser context menu
 
-        // Store the initial click position
-        this.initialClickX = e.clientX;
-        this.initialClickY = e.clientY;
+    this.initialClickX = event.clientX;
+    this.initialClickY = event.clientY;
 
-    ui.contextMenu.disableDefaultContextMenu(e, (x, y) => {
+    this.populateMenuItems(event.clientX, event.clientY);
+
+    if (this.menuItemsConfig.length > 0) {
+        // Show context menu only if there are valid menu items
         ui.contextMenu.showContextMenu(
             this.contextMenuElement,
             this.menuItemsElement,
             this.menuItemsConfig,
-            x,
-            y
+            event.clientX,
+            event.clientY
         );
-    });
+    } else {
+        // Hide menu if no valid options
+        this.contextMenuElement.classList.add('hidden');
+    }
 };
 
+    this.clickHandler = (e) => {
+      ui.contextMenu.hideMenus(e, this.contextMenuElement);
+    };
 
-        this.clickHandler = (e) => {
-          ui.contextMenu.hideMenus(e, this.contextMenuElement);
-        };
-
-        document.addEventListener('contextmenu', this.contextmenuHandler);
-        document.addEventListener('click', this.clickHandler);
-      },
+    document.addEventListener('contextmenu', this.contextmenuHandler);
+    document.addEventListener('click', this.clickHandler);
+  },
 
       unmount: function () {
         // remove event listeners
@@ -138,6 +104,133 @@
         // hide the menu if open
         this.contextMenuElement.classList.add('hidden');
         console.log("Editor context menu unmounted, all events removed.");
+      },
+
+      populateMenuItems: function (clientX, clientY) {
+  const clickedObject = this.getSelectedObject(clientX, clientY);
+
+  console.log('Clicked Object:', clickedObject); // Debug
+  if (clickedObject) {
+    console.log('Object ID:', clickedObject.id); // Debug
+  }
+
+  if (clickedObject && edit_mode_window.selectedObjects.includes(clickedObject)) {
+    const objectId = clickedObject.id;
+
+    // Fetch object details from game.objectData
+    console.log('Object ID in game.objectData:', objectId, game.objectData[objectId]); // Debug
+    const objectDetails = game.objectData[objectId];
+
+    // Use the name or fallback
+    const objectName = objectDetails && objectDetails[0]?.n
+      ? objectDetails[0].n
+      : 'Unnamed Object';
+
+    // Hide the buttons for the object menu
+    document.getElementById('editor_toolbar_buttons').classList.add('hidden');
+
+    this.menuItemsConfig = [
+      {
+        label: `Edit ${objectName}`,
+        subMenu: [
+          { label: "Properties", callback: () => this.editLighting(clickedObject) },
+          { label: "Lighting", callback: () => this.editLighting(clickedObject) },
+          { label: "Scripting", callback: () => this.editScripting(clickedObject) },
+          { label: "Collision", callback: () => this.editCollision(clickedObject) },
+          { label: "Stacking", callback: () => this.editCollision(clickedObject) },
+          { label: "Animation", callback: () => this.editLighting(clickedObject) },
+          { label: "Effects", callback: () => this.editLighting(clickedObject) },
+        ]
+      },
+      {
+        label: "Rotate",
+        callback: () => this.rotateObject(clickedObject)
+      },
+      {
+        label: "Delete",
+        callback: () => this.rotateObject(clickedObject)
+      }
+    ];
+  } else {
+    // Show the buttons for other menus
+    document.getElementById('editor_toolbar_buttons').classList.remove('hidden');
+
+    this.menuItemsConfig = [
+      { label: "Scene", subMenu: [
+          { label: "Change viewport size", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } },
+          { label: "Set Background", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } }
+        ]
+      },
+      { label: "Sprite", subMenu: [
+          { label: "Set Starting Position", callback: function (x, y) { editor_context_menu_window.spriteSetStartingPosition(x, y) } },
+          { label: "Allow Movement", type: "checkbox", id: "sprite_active_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.spriteActiveToggle(checked) } }
+        ]
+      },
+      { label: "Camera", subMenu: [
+          { label: "Free Movement", type: "checkbox", id: "manual_camera_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.cameraManualToggle(checked) } }
+        ]
+      },
+      { label: "Lighting", subMenu: [
+          { label: "Night Filter", type: "checkbox", id: "toggle_nightfilter_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.utilsToggleNightFilter(checked) } },
+          { label: "Lighting Sources", callback: function (x, y) { editor_context_menu_window.spriteSetStartingPosition(x, y) } }
+        ]
+      },
+      { label: "Effects", subMenu: [
+          { label: "Console Toggle", type: "checkbox", id: "console_toggle_checkbox", initialValue: false, callback: function (checked) { editor_context_menu_window.effectsConsoleToggle(checked) } },
+          { label: "Brush Size", type: "number", id: "brush_amount", initialValue: 1, callback: function (val) { editor_context_menu_window.effectsBrushSize(val) } }
+        ]
+      },
+      { label: "Tools", subMenu: [
+          { label: "Terrain Editor", callback: function () { editor_context_menu_window.openTerrainEditor() } },
+          { label: "Tileset Manager", callback: function () { editor_context_menu_window.openTilesetManager() } }
+        ]
+      },
+      { label: "Utils", subMenu: [
+          { label: "Grid", type: "checkbox", id: "toggle_grid_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.utilsToggleGrid(checked) } },
+          { label: "Adjust Day/Time", callback: function () { editor_context_menu_window.openTerrainEditor() } }
+        ]
+      },
+      { label: "Weather", subMenu: [
+          { label: "Weather Settings", callback: function () { editor_context_menu_window.weatherSettings() } }
+        ]
+      }
+    ];
+  }
+},
+
+  getSelectedObject: function (clientX, clientY) {
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+    return edit_mode_window.selectedObjects.find((item) => {
+        const minX = Math.min(...item.x) * 16;
+        const minY = Math.min(...item.y) * 16;
+        const maxX = Math.max(...item.x) * 16 + 16;
+        const maxY = Math.max(...item.y) * 16 + 16;
+
+        // Ensure object has a valid ID
+        if (!item.id) {
+            console.warn('Object missing ID:', item); // Debug
+            return false;
+        }
+
+        return mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY;
+    });
+},
+
+
+      editObject: function (selectedObject) {
+        if (!selectedObject) return;
+        const uniqueId = selectedObject.id;
+        plugin.load({
+          id: 'tileset_item_editor_window',
+          url: `renadmin/tileset/items.php?id=${uniqueId}`,
+          name: 'Item Editor',
+          drag: true,
+          reload: true,
+        });
+        this.contextMenuElement.classList.add('hidden');
       },
 
       // Custom editor callbacks:
