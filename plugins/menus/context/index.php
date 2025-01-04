@@ -72,6 +72,11 @@
             });
           }
         }
+
+        this.menuItemsConfig.push({
+            label: 'Scene Editor',
+            callback: () => this.sceneEditor(),
+          });
       },
 
       getMouseCoordinates: function (clientX, clientY) {
@@ -100,6 +105,18 @@
         });
         this.contextMenuElement.classList.add('hidden');
       },
+      sceneEditor: function() {
+        plugin.load({
+          id: 'console_window',
+          url: 'console/index.php',
+          name: 'console',
+          drag: false,
+          reload: true,
+          onAfterLoad: function (id) {
+              plugin.load({ id: 'edit_mode_window', url: 'editor/index.php', name: 'Editor', drag: true, reload: true });
+          }
+        });
+      }
     };
 
     context_menu_window.start();

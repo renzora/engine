@@ -134,7 +134,6 @@ var edit_mode_window = {
     game.pathfinding = false;
     game.allowControls = true;
     camera.lerpEnabled = false;
-    camera.manual = true;
     game.zoomLevel = 4;
     game.mainSprite.stopPathfinding();
 
@@ -165,6 +164,8 @@ var edit_mode_window = {
         { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true } },
         { priority: 2, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false } }
     ]);
+
+    setTimeout(() => { camera.manual = true; }, 0);
 
 },
 

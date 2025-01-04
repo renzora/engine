@@ -67,7 +67,7 @@ if ($auth) {
         });
       },
 
-toggleConsoleWindow: function(toggle = true, tabName = null) {
+toggleConsoleWindow: function(toggle = true, tabName = null) {  
     const consoleElement = document.getElementById('console_window');
     const tabsElement = document.getElementById('tabs');
 
