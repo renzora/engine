@@ -671,9 +671,14 @@ handleSelectionEnd: function (event) {
 finalizeObjectMovement: function () {
     this.isDragging = false;
     if (this.selectedObjects.length > 0) {
+        this.selectedObjects.forEach(obj => {
+            obj.x = obj.x.map(coord => Math.round(coord));
+            obj.y = obj.y.map(coord => Math.round(coord));
+        });
         this.pushToUndoStack();
     }
 },
+
 
 handlePanningEnd: function (event) {
     if (event.button === 1 || game.editorMode === 'pan') {
