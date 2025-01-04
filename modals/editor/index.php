@@ -72,6 +72,7 @@ if ($auth) {
 
   <script>
 var edit_mode_window = {
+    renderMode: 'isometric',
     originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},
     brushRadius: 16,
@@ -134,6 +135,7 @@ var edit_mode_window = {
     game.allowControls = true;
     camera.lerpEnabled = false;
     camera.manual = true;
+    game.zoomLevel = 4;
 
     game.mainSprite.stopPathfinding();
 
@@ -179,7 +181,7 @@ unmount: function () {
     game.displaySprite = true;
     camera.lerpEnabled = true;
     camera.manual = false;
-    game.zoomLevel = localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 4;
+    game.zoomLevel = 4;
 
     game.canvas.removeEventListener('mousemove', this.boundMouseMoveHandler);
     game.canvas.removeEventListener('mousedown', this.boundMouseDownHandler);
@@ -720,56 +722,76 @@ renderSelectedTiles: function () {
         // Save canvas state before rendering
         game.ctx.save();
 
-        if (this.isGroupObjectsEnabled) {
-            // Calculate bounding box for all selected objects (grouped)
-            const groupBoundingBox = this.selectedObjects.reduce(
-                (box, obj) => {
-                    const objMinX = Math.min(...obj.x) * 16;
-                    const objMinY = Math.min(...obj.y) * 16;
-                    const objMaxX = Math.max(...obj.x) * 16 + 16;
-                    const objMaxY = Math.max(...obj.y) * 16 + 16;
+        const animationSpeed = 300; // Slower animation for subtle effect
+        const markerLength = 5; // Length of the L shape
+        const lineWidth = 2; // Width of the lines
+        const shadowOffset = 1; // Offset for shadow effect
 
-                    return {
-                        minX: Math.min(box.minX, objMinX),
-                        minY: Math.min(box.minY, objMinY),
-                        maxX: Math.max(box.maxX, objMaxX),
-                        maxY: Math.max(box.maxY, objMaxY),
-                    };
-                },
-                { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
-            );
+        game.ctx.strokeStyle = 'rgba(0, 200, 255, 0.9)'; // New color (light blue)
+        game.ctx.lineWidth = lineWidth;
 
-            const width = groupBoundingBox.maxX - groupBoundingBox.minX;
-            const height = groupBoundingBox.maxY - groupBoundingBox.minY;
+        this.selectedObjects.forEach(obj => {
+            const minX = Math.min(...obj.x) * 16;
+            const minY = Math.min(...obj.y) * 16;
+            const maxX = Math.max(...obj.x) * 16 + 16;
+            const maxY = Math.max(...obj.y) * 16 + 16;
 
-            // Draw selection box for the entire group
-            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-            game.ctx.lineWidth = 1;
-            game.ctx.setLineDash([4, 2]);
-            game.ctx.strokeRect(groupBoundingBox.minX, groupBoundingBox.minY, width, height);
-        } else {
-            // Draw individual selection boxes around each object
-            this.selectedObjects.forEach(obj => {
-                const minX = Math.min(...obj.x) * 16;
-                const minY = Math.min(...obj.y) * 16;
-                const maxX = Math.max(...obj.x) * 16 + 16;
-                const maxY = Math.max(...obj.y) * 16 + 16;
+            // Define L-shape markers for each corner
+            const corners = [
+                { x1: minX, y1: minY, x2: minX + markerLength, y2: minY, x3: minX, y3: minY + markerLength, dx: 1, dy: 1 }, // Top-left (SE)
+                { x1: maxX, y1: minY, x2: maxX - markerLength, y2: minY, x3: maxX, y3: minY + markerLength, dx: -1, dy: 1 }, // Top-right (SW)
+                { x1: minX, y1: maxY, x2: minX + markerLength, y2: maxY, x3: minX, y3: maxY - markerLength, dx: 1, dy: -1 }, // Bottom-left (NE)
+                { x1: maxX, y1: maxY, x2: maxX - markerLength, y2: maxY, x3: maxX, y3: maxY - markerLength, dx: -1, dy: -1 }  // Bottom-right (NW)
+            ];
 
-                const width = maxX - minX;
-                const height = maxY - minY;
+            // Calculate animation offset (subtle movement)
+            const timeOffset = performance.now() / animationSpeed;
+            const offset = Math.sin(timeOffset) * 2; // Smaller amplitude for subtle animation
 
-                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-                game.ctx.lineWidth = 1;
-                game.ctx.setLineDash([4, 2]);
-                game.ctx.strokeRect(minX, minY, width, height);
+            corners.forEach(corner => {
+                // Apply diagonal animation offset based on direction (dx, dy)
+                const animatedX = corner.dx * offset;
+                const animatedY = corner.dy * offset;
+
+                // Add shadow effect
+                game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'; // Shadow color
+                game.ctx.beginPath();
+                // Horizontal shadow
+                game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset);
+                game.ctx.lineTo(corner.x2 + animatedX + shadowOffset, corner.y2 + animatedY + shadowOffset);
+                // Vertical shadow
+                game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset);
+                game.ctx.lineTo(corner.x3 + animatedX + shadowOffset, corner.y3 + animatedY + shadowOffset);
+                game.ctx.stroke();
+
+                // Draw main L-shape with detail
+                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; // Main color
+                game.ctx.beginPath();
+                // Horizontal part of the L
+                game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
+                game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY);
+                // Vertical part of the L
+                game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
+                game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY);
+                game.ctx.stroke();
+
+                // Add stroke detail (lighter inner stroke)
+                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; // Inner stroke color
+                game.ctx.beginPath();
+                // Horizontal part of the L
+                game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
+                game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY);
+                // Vertical part of the L
+                game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
+                game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY);
+                game.ctx.stroke();
             });
-        }
+        });
 
         // Restore canvas state
         game.ctx.restore();
     }
 },
-
 
 isTopmostObject: function (obj, selectedObjects) {
     const objIndex = game.roomData.items.indexOf(obj);

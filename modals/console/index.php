@@ -108,8 +108,8 @@ hideConsoleWindow: function(consoleElement, tabsElement) {
 
     activateCurrentTab: function() {
     const tabs = document.querySelectorAll('#console_window .console_tab');
-    tabs.forEach(t => t.classList.remove('bg-[#2b3b55]', 'text-white'));
-    tabs[this.currentTabIndex].classList.add('bg-[#2b3b55]', 'text-white');
+    tabs.forEach(t => t.classList.remove('bg-[#fff]', 'text-white'));
+    tabs[this.currentTabIndex].classList.add('bg-[#fff]', 'text-white');
     this.loadTabContent(tabs[this.currentTabIndex].getAttribute('data-tab'));
 },
 
@@ -134,7 +134,7 @@ handleTabClick: function(tab, index) {
     this.tab_name = newTabName;
     
     this.clearActiveTabs();
-    tab.classList.add('bg-[#2b3b55]', 'text-white');
+    tab.classList.add('bg-[#fff]', 'text-white');
     
     if (!this.isOpen) {
         this.toggleConsoleWindow();
@@ -179,7 +179,7 @@ handleTabClick: function(tab, index) {
 
     clearActiveTabs: function() {
     const tabs = document.querySelectorAll('#console_window .console_tab');
-    tabs.forEach(t => t.classList.remove('bg-[#2b3b55]', 'text-white'));
+    tabs.forEach(t => t.classList.remove('bg-[#fff]', 'text-white'));
 },
 
     navigateTabs: function(direction) {
@@ -194,7 +194,7 @@ handleTabClick: function(tab, index) {
 
     if (this.isOpen) {
         this.clearActiveTabs();
-        tabs[newIndex].classList.add('bg-[#2b3b55]', 'text-white');
+        tabs[newIndex].classList.add('bg-[#fff]', 'text-white');
         this.unmountCurrentTab();
         this.loadTabContent(tabs[newIndex].getAttribute('data-tab'));
         this.currentTabIndex = newIndex;

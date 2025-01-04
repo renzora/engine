@@ -5,7 +5,7 @@ if ($auth) {
 <div data-window="ui_overlay_window" data-close="false">
 
   <!-- Existing menu fixed at top right -->
-  <div class="fixed right-4 top-1/2 transform -translate-y-1/2 space-y-2 text-white z-50">
+  <div class="fixed right-4 top-4 space-y-2 text-white z-50">
 
 
    <!-- Avatar, Coins and Time in the same box with minimal padding -->

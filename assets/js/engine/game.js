@@ -141,7 +141,7 @@ var game = {
             camera.manual = false;
             camera.activeCamera = true;
             camera.cutsceneMode = false;
-            utils.gameTime.hours = 10;
+            utils.gameTime.hours = 22;
             weather.fogActive = true;
             game.timeActive = true;
             weather.snowActive = true;
@@ -321,9 +321,9 @@ render: function () {
     
     particles.render();
     effects.transitions.render();
-    //render.renderCarriedObjects();
-    //render.handleDebugUtilities();
-    //render.aimTool();
+    render.renderCarriedObjects();
+    render.handleDebugUtilities();
+    render.aimTool();
 
     if(utils.objExists('ui_footer_window.updateUi')) {
         ui_footer_window.updateUI();

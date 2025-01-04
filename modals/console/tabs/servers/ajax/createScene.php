@@ -51,8 +51,12 @@ try {
         'height' => 944,
         'startingX' => 0, // Add startingX with a value of 0
         'startingY' => 0,  // Add startingY with a value of 0
-        'bg' => 'grass',
-        'facing' => 'S'
+        'bg' => '',
+        'facing' => 'S',
+        'fireflys' => 0,
+        'clouds' => 0,
+        'rain' => 0,
+        'snow' => 0
     ]);
 
     // Get the inserted scene's ID
@@ -73,7 +77,11 @@ try {
             'startingX' => 0, // Include startingX in the response
             'startingY' => 0,  // Include startingY in the response
             'bg' => 'grass',
-            'facing' => 'S'
+            'facing' => 'S',
+            'fireflys' => 0,
+            'clouds' => 0,
+            'rain' => 0,
+            'snow' => 0
         ],
         'server_id' => $serverId,
         'error' => false // Ensure 'error' is false to indicate success

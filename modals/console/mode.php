@@ -3,43 +3,37 @@ $mode = isset($_GET['mode']) ? $_GET['mode'] : 'standard';
 
 if ($mode === 'editor') {
     ?>
-       <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="servers" aria-label="Online Servers">
+       <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="servers" aria-label="Online Servers">
       <div class="icon globe"></div>
     </button>
-        <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_inventory" aria-label="Inventory">
+        <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_inventory" aria-label="Inventory">
       <div class="ui_icon ui_backpack"></div>
     </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_info" aria-label="Info">
+    <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_info" aria-label="Info">
       <div class="ui_icon ui_info"></div>
     </button>
-   <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_weather" aria-label="Weather">
+   <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_weather" aria-label="Weather">
       <div class="ui_icon ui_cloud"></div>
     </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_lighting" aria-label="Lighting">
+    <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_lighting" aria-label="Lighting">
       <div class="ui_icon ui_lightbulb"></div>
     </button>
-    <button class="console_tab flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_music" aria-label="Music">
+    <button class="console_tab flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_music" aria-label="Music">
       <div class="ui_icon ui_music"></div>
     </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_scripting" aria-label="Scripting">
-      <div class="ui_icon ui_script"></div>
-    </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_permissions" aria-label="Permissions">
+    <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_permissions" aria-label="Permissions">
       <div class="ui_icon ui_team"></div>
     </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Eye">
-      <div class="ui_icon ui_eye"></div>
-    </button>
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Security">
+    <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="add" aria-label="Security">
       <div class="ui_icon ui_key"></div>
     </button>
 
-    <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="settings" aria-label="Settings & Controls">
+    <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="settings" aria-label="Settings & Controls">
       <div class="icon settings"></div>
     </button>
     <div class="flex-1"></div>
 
-    <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="console_window.toggleFullScreen();">
+    <button class="relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="console_window.toggleFullScreen();">
       <div class="icon full_screen"></div>
     </button>
     <?php

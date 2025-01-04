@@ -5,11 +5,11 @@ if ($auth) {
 
 <!-- Inventory Search and Grid -->
 <div class="tabs mb-4">
-  <input type="text" class="p-2 w-full rounded light_input text-base text-black" placeholder="search..."/>
+  <input id="inventory-search" type="text" class="p-2 w-full rounded light_input text-base text-black" placeholder="Search..."/>
 </div>
 
 <!-- Inventory Grid -->
-<div class="inventory-grid grid grid-cols-4 gap-1 overflow-x-hidden">
+<div id="inventory-grid" class="inventory-grid grid grid-cols-4 gap-1 overflow-x-hidden">
   <!-- Items will be appended here dynamically -->
 </div>
 
@@ -18,82 +18,112 @@ var ui_console_editor_inventory = {
     selectedInventoryItem: null,
     selectedInventoryItemPos: { x: 0, y: 0 },
     isDragging: false,
+    itemData: null, // Store item data for filtering
 
     start: function() {
+        this.itemData = assets.use('objectData');
         this.displayItems();
         this.addGlobalListeners();
+        this.addSearchListener();
     },
 
-    displayItems: function() {
-    var itemData = assets.use('objectData'); // Load object data from version 1
-    var gridContainer = document.querySelector('.inventory-grid');
-    var tileSize = 16;
-    var tilesPerRow = 150;
+    displayItems: function(filteredData = null) {
+        const itemData = filteredData || this.itemData;
+        const gridContainer = document.querySelector('#inventory-grid');
+        const tileSize = 16;
+        const tilesPerRow = 150;
 
-    gridContainer.innerHTML = '';
+        gridContainer.innerHTML = ''; // Clear existing items
 
-    for (var category in itemData) { // Loop from version 1 to ensure correct object iteration
-        if (itemData.hasOwnProperty(category)) {
-            var items = itemData[category];
-            if (items.length === 0) continue;
+        for (let category in itemData) {
+            if (itemData.hasOwnProperty(category)) {
+                const items = itemData[category];
+                if (items.length === 0) continue;
 
-            var itemGroupElement = document.createElement('div');
-            itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
+                const itemGroupElement = document.createElement('div');
+                itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
 
-            items.forEach(function(item) {
-                const tilesetImage = assets.use(item.t); // Load tileset image
-                const itemCanvas = document.createElement('canvas');
-                const ctx = itemCanvas.getContext('2d');
+                items.forEach(item => {
+                    const tilesetImage = assets.use(item.t); // Load tileset image
+                    const itemCanvas = document.createElement('canvas');
+                    const ctx = itemCanvas.getContext('2d');
 
-                const maxCol = item.a;
-                const maxRow = item.b;
-                itemCanvas.width = (maxCol + 1) * tileSize;
-                itemCanvas.height = (maxRow + 1) * tileSize;
+                    const maxCol = item.a;
+                    const maxRow = item.b;
+                    itemCanvas.width = (maxCol + 1) * tileSize;
+                    itemCanvas.height = (maxRow + 1) * tileSize;
 
-                let framesToRender = [];
+                    let framesToRender = [];
 
-                if (item.d && Array.isArray(item.i[0])) {
-                    framesToRender = item.i[0];
-                } else if (Array.isArray(item.i[0])) {
-                    framesToRender = item.i.flat();
-                } else {
-                    framesToRender = item.i.map(frame => {
-                        if (typeof frame === 'string' && frame.includes('-')) {
-                            return render.parseRange(frame);
-                        }
-                        return [frame];
-                    }).flat();
-                }
+                    if (item.d && Array.isArray(item.i[0])) {
+                        framesToRender = item.i[0];
+                    } else if (Array.isArray(item.i[0])) {
+                        framesToRender = item.i.flat();
+                    } else {
+                        framesToRender = item.i.map(frame => {
+                            if (typeof frame === 'string' && frame.includes('-')) {
+                                return render.parseRange(frame);
+                            }
+                            return [frame];
+                        }).flat();
+                    }
 
-                framesToRender.forEach((frame, index) => {
-                    const srcX = (frame % tilesPerRow) * tileSize;
-                    const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+                    framesToRender.forEach((frame, index) => {
+                        const srcX = (frame % tilesPerRow) * tileSize;
+                        const srcY = Math.floor(frame / tilesPerRow) * tileSize;
 
-                    const destX = (index % (maxCol + 1)) * tileSize;
-                    const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+                        const destX = (index % (maxCol + 1)) * tileSize;
+                        const destY = Math.floor(index / (maxCol + 1)) * tileSize;
 
-                    ctx.drawImage(
-                        tilesetImage, 
-                        srcX, srcY, tileSize, tileSize, 
-                        destX, destY, tileSize, tileSize 
-                    );
+                        ctx.drawImage(
+                            tilesetImage,
+                            srcX, srcY, tileSize, tileSize,
+                            destX, destY, tileSize, tileSize
+                        );
+                    });
+
+                    itemCanvas.setAttribute('data-item-id', category); // Using category
+
+                    const canvasContainer = document.createElement('div');
+                    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden rounded-lg shadow-md transition duration-300 transform hover:scale-105';
+                    itemCanvas.className += ' w-full h-full object-contain';
+
+                    itemCanvas.addEventListener('mousedown', ui_console_editor_inventory.handleMouseDown);
+
+                    canvasContainer.appendChild(itemCanvas);
+                    itemGroupElement.appendChild(canvasContainer);
                 });
 
-                itemCanvas.setAttribute('data-item-id', category); // Using category from version 1
+                gridContainer.appendChild(itemGroupElement);
+            }
+        }
+    },
 
-                const canvasContainer = document.createElement('div');
-                canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden rounded-lg shadow-md transition duration-300 transform hover:scale-105';
-                itemCanvas.className += ' w-full h-full object-contain';
+    addSearchListener: function() {
+        const searchInput = document.querySelector('#inventory-search');
+        searchInput.addEventListener('input', (event) => {
+            const searchTerm = event.target.value.toLowerCase();
+            this.filterItems(searchTerm);
+        });
+    },
 
-                itemCanvas.addEventListener('mousedown', ui_console_editor_inventory.handleMouseDown);
+    filterItems: function(searchTerm) {
+    if (!this.itemData) return;
 
-                canvasContainer.appendChild(itemCanvas);
-                itemGroupElement.appendChild(canvasContainer);
-            });
-
-            gridContainer.appendChild(itemGroupElement);
+    const filteredData = {};
+    for (let category in this.itemData) {
+        if (this.itemData.hasOwnProperty(category)) {
+            const items = this.itemData[category];
+            const matchingItems = items.filter(item =>
+                item.n && item.n.toLowerCase().includes(searchTerm) // Check the `n` property
+            );
+            if (matchingItems.length > 0) {
+                filteredData[category] = matchingItems;
+            }
         }
     }
+
+    this.displayItems(filteredData);
 },
 
     render: function() {

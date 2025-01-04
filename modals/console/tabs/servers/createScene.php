@@ -49,7 +49,7 @@ var scene_create_window = {
             },
             success: function(data) {
                 console.log('Response from createScene.php:', data);
-                if (data.message === 'success' && data.scene && data.scene.id) {
+                if (data.message === 'success') {
                     console.log('Scene created successfully.');
                     modal.close('scene_create_window');
                     ui_servers_tab_window.addSceneToList(data.scene, data.server_id); // Pass serverId from response
