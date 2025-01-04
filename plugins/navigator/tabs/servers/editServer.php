@@ -42,14 +42,14 @@ var server_edit_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/console/tabs/servers/ajax/editServer.php',
+            url: 'plugins/console/tabs/servers/ajax/editServer.php',
             data: JSON.stringify({ id: this.serverId, name: serverName }),
             headers: {
                 'Content-Type': 'application/json'
             },
             success: function(data) {
                 if (data.message === 'success' || data.error === 'No documents were modified.') {
-                    modal.close('server_edit_window');
+                    plugin.close('server_edit_window');
                     ui_servers_tab_window.loadServers(); // Refresh server list
                 } else {
                     alert('Error updating server: ' + data.message + ' (' + data.error + ')');
@@ -66,14 +66,14 @@ var server_edit_window = {
             ui.ajax({
                 outputType: 'json',
                 method: 'POST',
-                url: 'modals/console/tabs/servers/ajax/deleteServer.php',
+                url: 'plugins/console/tabs/servers/ajax/deleteServer.php',
                 data: JSON.stringify({ id: this.serverId }),
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 success: function(data) {
                     if (data.message === 'success') {
-                        modal.close('server_edit_window');
+                        plugin.close('server_edit_window');
                         ui_servers_tab_window.loadServers(); // Refresh server list
                     } else if (data.message === 'Unauthorized') {
                         alert('You are not authorized to delete this server.');

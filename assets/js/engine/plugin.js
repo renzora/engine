@@ -332,7 +332,7 @@ var plugin = {
         return highestZIndex;
     },
 
-    getactivePlugin: function() {
+    getActivePlugin: function() {
         return this.activePlugin;
     },
 

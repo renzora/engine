@@ -43,14 +43,14 @@ var scene_edit_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/console/tabs/servers/ajax/editScene.php',
+            url: 'plugins/console/tabs/servers/ajax/editScene.php',
             data: JSON.stringify({ id: this.sceneId, name: sceneName }),
             headers: {
                 'Content-Type': 'application/json'
             },
             success: function(data) {
                 if (data.message === 'success' || data.message === 'No documents were modified') {
-                    modal.close('scene_edit_window');
+                    plugin.close('scene_edit_window');
                     ui_servers_tab_window.loadScenes(data.server_id); // Refresh scene list
                 } else {
                     alert('Error updating scene: ' + data.message);
@@ -67,14 +67,14 @@ var scene_edit_window = {
             ui.ajax({
                 outputType: 'json',
                 method: 'POST',
-                url: 'modals/console/tabs/servers/ajax/deleteScene.php',
+                url: 'plugins/console/tabs/servers/ajax/deleteScene.php',
                 data: JSON.stringify({ id: this.sceneId }),
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 success: function(data) {
                     if (data.message === 'success') {
-                        modal.close('scene_edit_window');
+                        plugin.close('scene_edit_window');
                         ui_servers_tab_window.loadScenes(data.server_id); // Refresh scene list
                     } else if (data.message === 'Unauthorized') {
                         alert('You are not authorized to delete this scene.');

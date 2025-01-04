@@ -129,19 +129,17 @@ var edit_mode_window = {
     this.modeButtons.lasso.addEventListener('click', () => this.changeMode('lasso'));
     this.modeButtons.move.addEventListener('click', () => this.changeMode('move'));
 
-    game.timeActive = true;
+    game.timeActive = false;
     game.isEditMode = true;
     game.pathfinding = false;
     game.allowControls = true;
     camera.lerpEnabled = false;
     camera.manual = true;
     game.zoomLevel = 4;
-
     game.mainSprite.stopPathfinding();
 
     this.changeMode('select');
     this.updateCurrentTimeAndDay();
-
     this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
     this.boundMouseDownHandler = this.handleMouseDown.bind(this);
     this.boundMouseUpHandler = this.handleMouseUp.bind(this);
@@ -161,6 +159,7 @@ var edit_mode_window = {
     
     console_window.load_tab_buttons('editor');
     console_window.toggleConsoleWindow('editor_inventory');
+    console_window.allowToggle = false;
 
     plugin.preload([
         { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true } },

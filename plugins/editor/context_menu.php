@@ -19,26 +19,10 @@
       clickHandler: null,
       initialClickX: null,
       initialClickY: null,
-
-      // Only the array is compressed:
       menuItemsConfig: [
-        {label:"Edit",subMenu:[
-          {label:"Manual Camera",type:"checkbox",id:"snap_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.cameraSnapToggle(checked)}},
-          {label:"Adjust camera position",callback:function(){editor_context_menu_window.openTerrainEditor()}}
-        ]},
         {label:"Scene",subMenu:[
           {label:"Change viewport size",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}},
-          {label:"Set Background",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}},
-          {label:"Advanced Options",subMenu:[
-            {label:"Option 1",callback:function(){editor_context_menu_window.advancedOption1()}},
-            {label:"Option 2",subMenu:[
-              {label:"Nested Option 1",callback:function(){editor_context_menu_window.nestedOption1()}},
-              {label:"Nested Option 2",subMenu:[
-                {label:"Deep Nested Option 1",callback:function(){editor_context_menu_window.deepNestedOption1()}},
-                {label:"Deep Nested Option 2",callback:function(){editor_context_menu_window.deepNestedOption2()}}
-              ]}
-            ]}
-          ]}
+          {label:"Set Background",callback:function(x,y){editor_context_menu_window.openSceneProperties(x,y)}}
         ]},
         {label:"Sprite",subMenu:[
           {label:"Set Starting Position",callback:function(x,y){editor_context_menu_window.spriteSetStartingPosition(x,y)}},
@@ -63,9 +47,9 @@
           {label:"Grid",type:"checkbox",id:"toggle_grid_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleGrid(checked)}},
           {label:"Adjust Day/Time",callback:function(){editor_context_menu_window.openTerrainEditor()}}
         ]},
-        {label:"Scripting",subMenu:[
-          {label:"Manual Camera",type:"checkbox",id:"snap_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.cameraSnapToggle(checked)}},
-          {label:"Adjust camera position",callback:function(){editor_context_menu_window.openTerrainEditor()}}
+        {label:"Weather",subMenu:[
+          {label:"Grid",type:"checkbox",id:"toggle_grid_checkbox",initialValue:true,callback:function(checked){editor_context_menu_window.utilsToggleGrid(checked)}},
+          {label:"Adjust Day/Time",callback:function(){editor_context_menu_window.openTerrainEditor()}}
         ]}
       ],
 
