@@ -308,23 +308,89 @@ handleMouseMove: function (event) {
     this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
 
-    // Handle middle mouse dragging to move the canvas element
-    if (event.buttons === 4 && this.isMiddleClickPanning) { // Middle mouse button (button 4)
+    // Handle middle mouse dragging
+    if (event.buttons === 4 && this.isMiddleClickPanning) { // Middle mouse button
         const deltaX = event.clientX - this.lastMouseX;
         const deltaY = event.clientY - this.lastMouseY;
 
-        // Update canvas style to move it around the viewport
-        const currentLeft = parseInt(game.canvas.style.left || '0', 10);
-        const currentTop = parseInt(game.canvas.style.top || '0', 10);
+        // Current canvas position
+        const canvasLeft = parseInt(game.canvas.style.left || '0', 10);
+        const canvasTop = parseInt(game.canvas.style.top || '0', 10);
 
-        game.canvas.style.left = `${currentLeft + deltaX}px`;
-        game.canvas.style.top = `${currentTop + deltaY}px`;
+        // Check if any side of the camera is at the edge
+        const atLeftEdge = camera.cameraX <= 0;
+        const atRightEdge = camera.cameraX >= game.worldWidth - (window.innerWidth / game.zoomLevel);
+        const atTopEdge = camera.cameraY <= 0;
+        const atBottomEdge = camera.cameraY >= game.worldHeight - (window.innerHeight / game.zoomLevel);
+
+        const isAtHorizontalEdge = atLeftEdge || atRightEdge;
+        const isAtVerticalEdge = atTopEdge || atBottomEdge;
+
+        // If the scene is not at an edge, pan the scene
+        if (!isAtHorizontalEdge && !isAtVerticalEdge) {
+            const cameraDeltaX = deltaX / game.zoomLevel;
+            const cameraDeltaY = deltaY / game.zoomLevel;
+
+            camera.cameraX = Math.max(
+                0,
+                Math.min(camera.cameraX - cameraDeltaX, game.worldWidth - (window.innerWidth / game.zoomLevel))
+            );
+            camera.cameraY = Math.max(
+                0,
+                Math.min(camera.cameraY - cameraDeltaY, game.worldHeight - (window.innerHeight / game.zoomLevel))
+            );
+
+            this.lastMouseX = event.clientX;
+            this.lastMouseY = event.clientY;
+            return; // Exit early to prioritize scene panning
+        }
+
+        // Otherwise, drag the canvas element
+        game.canvas.style.left = `${canvasLeft + deltaX}px`;
+        game.canvas.style.top = `${canvasTop + deltaY}px`;
+
+        // If dragging back, check if the canvas is re-entering the viewport
+        const isCanvasOutsideLeft = canvasLeft + deltaX < 0;
+        const isCanvasOutsideTop = canvasTop + deltaY < 0;
+        const isCanvasOutsideRight = canvasLeft + deltaX + rect.width > window.innerWidth;
+        const isCanvasOutsideBottom = canvasTop + deltaY + rect.height > window.innerHeight;
+
+        if (
+            (isCanvasOutsideLeft && deltaX > 0) ||
+            (isCanvasOutsideTop && deltaY > 0) ||
+            (isCanvasOutsideRight && deltaX < 0) ||
+            (isCanvasOutsideBottom && deltaY < 0)
+        ) {
+            // Allow the canvas to move back into the viewport
+            this.lastMouseX = event.clientX;
+            this.lastMouseY = event.clientY;
+            return; // Do not resume scene panning yet
+        }
+
+        // Resume scene panning when the canvas is fully back in the viewport
+        if (
+            !isCanvasOutsideLeft &&
+            !isCanvasOutsideTop &&
+            !isCanvasOutsideRight &&
+            !isCanvasOutsideBottom
+        ) {
+            const cameraDeltaX = deltaX / game.zoomLevel;
+            const cameraDeltaY = deltaY / game.zoomLevel;
+
+            camera.cameraX = Math.max(
+                0,
+                Math.min(camera.cameraX - cameraDeltaX, game.worldWidth - (window.innerWidth / game.zoomLevel))
+            );
+            camera.cameraY = Math.max(
+                0,
+                Math.min(camera.cameraY - cameraDeltaY, game.worldHeight - (window.innerHeight / game.zoomLevel))
+            );
+        }
 
         // Update last mouse position for smooth dragging
         this.lastMouseX = event.clientX;
         this.lastMouseY = event.clientY;
-
-        return; // Exit early to prevent triggering other actions
+        return; // Exit after processing canvas dragging
     }
 
     // Handle pan mode (separate from middle mouse dragging)
@@ -367,6 +433,7 @@ handleMouseMove: function (event) {
 },
 
 
+
 handleMouseUp: function (event) {
     // Handle middle mouse button release to stop panning and restore mode
     if (event.button === 1 && this.isMiddleClickPanning) {  // Middle mouse button
@@ -392,28 +459,40 @@ handleMouseUp: function (event) {
     }
 },
 
-handleMouseScroll: function(event) {
-    const shiftKeyPressed = event.shiftKey;
-    const ctrlKeyPressed = event.ctrlKey;
-    const deltaY = event.deltaY;
+handleMouseScroll: function (event) {
+    if (!game.isEditMode) return;
 
-    // If Shift is held down, pan the camera left/right
-    if (shiftKeyPressed) {
-        this.panCameraHorizontally(deltaY);
-    } 
-    // Handle zooming and camera movement for specific modes
-    else if (this.isModeWithZoomOrMovement()) {
-        this.handleZoomOrMovement(deltaY, event);
-    } 
-    // Pan the camera vertically in pan mode
-    else if (game.editorMode === 'pan') {
-        this.panCameraVertically(deltaY);
-    } 
-    // Handle brush mode for changing brush size or zooming
-    else if (game.editorMode === 'brush') {
-        this.handleBrushModeScroll(deltaY, ctrlKeyPressed, event);
-    }
+    // Determine zoom direction and new zoom level
+    const zoomFactor = event.deltaY < 0 ? 1 : -1;
+    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10)); // Min 2, Max 10
+
+    // Get the canvas position and cursor location
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseXOnCanvas = event.clientX - rect.left;
+    const mouseYOnCanvas = event.clientY - rect.top;
+
+    // Calculate the world coordinates before zoom
+    const worldMouseX = mouseXOnCanvas / game.zoomLevel + camera.cameraX;
+    const worldMouseY = mouseYOnCanvas / game.zoomLevel + camera.cameraY;
+
+    // Apply the new zoom level
+    game.zoomLevel = newZoomLevel;
+
+    // Calculate the world coordinates after zoom
+    const newWorldMouseX = mouseXOnCanvas / game.zoomLevel + camera.cameraX;
+    const newWorldMouseY = mouseYOnCanvas / game.zoomLevel + camera.cameraY;
+
+    // Adjust the camera position to maintain focus on the cursor
+    camera.cameraX += worldMouseX - newWorldMouseX;
+    camera.cameraY += worldMouseY - newWorldMouseY;
+
+    // Ensure the camera stays within bounds
+    this.constrainCamera();
+
+    // Trigger a re-render
+    game.render();
 },
+
 
 handlePanning: function (event) {
     if (event.button === 1 || game.editorMode === 'pan') {

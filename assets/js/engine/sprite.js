@@ -86,6 +86,14 @@ var sprite = {
             }, 60000);
         }
 
+        if (options.isPlayer) {
+            console.log(`Adding light for player: ${newSprite.id}`);
+            const lightColor = { r: 255, g: 255, b: 255 }; // White light
+            const lightRadius = 30; // Adjust the radius as needed
+            const lightIntensity = 0.3; // Adjust the intensity as needed
+            lighting.addLight(newSprite.id + '_light', newSprite.x + 8, newSprite.y + 8, lightRadius, lightColor, lightIntensity, 'playerLight', true, 0, 0);
+        }
+
         game.sprites[options.id] = newSprite;
     
         return newSprite;

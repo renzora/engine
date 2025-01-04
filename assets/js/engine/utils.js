@@ -1,7 +1,7 @@
 const utils = {
     functionCalls: {},
     gameTime: {
-        hours: 22,
+        hours: 10,
         minutes: 0,
         seconds: 0,
         days: 0,

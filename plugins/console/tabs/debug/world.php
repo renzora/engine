@@ -363,7 +363,7 @@ var ui_console_tab_window = {
         utils.gameTime.days = parseInt(days);
         utils.gameTime.speedMultiplier = parseInt(speedMultiplier);
 
-        console.log('Game time set to: ', game.gameTime.display());
+        console.log('Game time set to: ', utils.gameTime.display());
     },
 
     setWeather: function() {
@@ -372,15 +372,15 @@ var ui_console_tab_window = {
         var fog = document.getElementById('toggle_fog').checked;
         var fireflys = document.getElementById('toggle_fireflys').checked;
 
-        weather.snowActive = snow;
-        weather.rainActive = rain;
-        weather.fogActive = fog;
-        weather.fireflysActive = fireflys;
+        weather.snow.active = snow;
+        weather.rain.active = rain;
+        weather.fog.active = fog;
+        weather.fireflys.active = fireflys;
 
-        if (snow) weather.createSnow(0.5); else weather.stopSnow();
-        if (rain) weather.createRain(0.7);
-        if (fog) weather.createFog(0.1);
-        if (fireflys) weather.createFireflys();
+        if (snow) weather.snow.create(0.5); else weather.snow.stop();
+        if (rain) weather.rain.create(0.7);
+        if (fog) weather.fog.create(0.1);
+        if (fireflys) weather.firewflys.create();
 
         console.log('Weather updated: Snow -', snow, ', Rain -', rain, ', Fog -', fog, ', FireFlys -', fireflys);
     },
