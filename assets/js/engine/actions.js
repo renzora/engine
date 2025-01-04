@@ -3,6 +3,7 @@ const actions = {
     lastPlayedTimesByType: {},
     throttleInterval: 2000,
     lastExecutionTime: 0,
+    tooltipActive: true,
 
         isThrottled: function () {
         const now = Date.now();
@@ -93,7 +94,7 @@ checkForNearbyItems: function () {
 
                 const objectType = objectData[0].type || item.id;
 
-                if (script.walk && script.walk.tooltip) {
+                if (script.walk && script.walk.tooltip && this.tooltipActive) {
                     const objectName = objectData[0].n || 'Unnamed Object';
                     const buttonName = script.walk.button || 'button';
                 
@@ -226,6 +227,7 @@ checkForNearbyItems: function () {
     },
 
     tooltip: function (htmlContent, context, item) {
+        if (!this.tooltipActive) return;
         const sprite = game.mainSprite;
         if (sprite) {
             const spriteScreenX = (sprite.x - camera.cameraX) * game.zoomLevel;
@@ -352,30 +354,6 @@ speech: function (config, context, item) {
             'b': 'BButton'
         };
         return input[`is${buttonMap[button]}Held`];
-    },
-
-    showTooltip: function (text, x, y) {
-        let tooltip = document.getElementById('game_tooltip');
-        if (!tooltip) {
-            tooltip = document.createElement('div');
-            tooltip.id = 'game_tooltip';
-            tooltip.style.position = 'absolute';
-            tooltip.style.padding = '5px';
-            tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-            tooltip.style.color = 'white';
-            tooltip.style.borderRadius = '5px';
-            tooltip.style.pointerEvents = 'none';
-            tooltip.style.zIndex = '10';
-            tooltip.style.whiteSpace = 'nowrap';
-            document.body.appendChild(tooltip);
-        }
-
-        tooltip.innerText = text;
-        tooltip.style.display = 'block';
-
-        const tooltipWidth = tooltip.offsetWidth;
-        tooltip.style.left = `${x - (tooltipWidth / 2)}px`;
-        tooltip.style.top = `${y - 20}px`;
     },
 
     hideTooltip: function () {

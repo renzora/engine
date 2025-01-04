@@ -67,7 +67,9 @@ var edit_mode_window = {
     game.allowControls = true;
     camera.lerpEnabled = false;
     game.zoomLevel = 4;
+    actions.tooltipActive = false;
     game.mainSprite.stopPathfinding();
+    actions.hideTooltip();
 
     this.updateCurrentTimeAndDay();
     this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
@@ -130,6 +132,7 @@ unmount: function () {
     this.selectionEnd = { x: 0, y: 0 };
     this.isMovingObjects = false;
     this.isMiddleClickPanning = false;
+    actions.tooltipActive = true;
 
     this.clearSelectionBox();
     this.clearLassoPath();
@@ -803,10 +806,31 @@ renderSelectedTiles: function () {
         const shadowOffset = 1; // Offset for shadow effect
         const paddingFactor = 0.15; // Padding as a percentage of object size (10%)
 
-        game.ctx.strokeStyle = 'rgba(0, 200, 255, 0.9)'; // New color (light blue)
         game.ctx.lineWidth = lineWidth;
 
-        this.selectedObjects.forEach(obj => {
+        // Define a fixed palette of vibrant colors
+        const vibrantColors = [
+            'rgb(255, 0, 0)',    // Red
+            'rgb(0, 255, 0)',    // Green
+            'rgb(0, 0, 255)',    // Blue
+            'rgb(255, 255, 0)',  // Yellow
+            'rgb(255, 0, 255)',  // Magenta
+            'rgb(0, 255, 255)',  // Cyan
+            'rgb(255, 165, 0)',  // Orange
+            'rgb(128, 0, 128)'   // Purple
+        ];
+
+        // Assign a color for each object
+        if (!this.objectColors || this.objectColors.length !== this.selectedObjects.length) {
+            this.objectColors = this.selectedObjects.map((_, index) => {
+                return vibrantColors[index % vibrantColors.length]; // Cycle through the palette
+            });
+        }
+
+        this.selectedObjects.forEach((obj, index) => {
+            // Assign color for the current object
+            const objectColor = this.objectColors[index];
+
             // Calculate object dimensions
             const objWidth = Math.max(...obj.x) - Math.min(...obj.x) + 1;
             const objHeight = Math.max(...obj.y) - Math.min(...obj.y) + 1;
@@ -823,10 +847,10 @@ renderSelectedTiles: function () {
 
             // Define L-shape markers for each corner
             const corners = [
-                { x1: minX, y1: minY, x2: minX + markerLength, y2: minY, x3: minX, y3: minY + markerLength, dx: 1, dy: 1 }, // Top-left (SE)
-                { x1: maxX, y1: minY, x2: maxX - markerLength, y2: minY, x3: maxX, y3: minY + markerLength, dx: -1, dy: 1 }, // Top-right (SW)
-                { x1: minX, y1: maxY, x2: minX + markerLength, y2: maxY, x3: minX, y3: maxY - markerLength, dx: 1, dy: -1 }, // Bottom-left (NE)
-                { x1: maxX, y1: maxY, x2: maxX - markerLength, y2: maxY, x3: maxX, y3: maxY - markerLength, dx: -1, dy: -1 }  // Bottom-right (NW)
+                { x1: minX, y1: minY, x2: minX + markerLength, y2: minY, x3: minX, y3: minY + markerLength, dx: 1, dy: 1 },
+                { x1: maxX, y1: minY, x2: maxX - markerLength, y2: minY, x3: maxX, y3: minY + markerLength, dx: -1, dy: 1 },
+                { x1: minX, y1: maxY, x2: minX + markerLength, y2: maxY, x3: minX, y3: maxY - markerLength, dx: 1, dy: -1 },
+                { x1: maxX, y1: maxY, x2: maxX - markerLength, y2: maxY, x3: maxX, y3: maxY - markerLength, dx: -1, dy: -1 }
             ];
 
             // Calculate animation offset (subtle movement)
@@ -849,8 +873,8 @@ renderSelectedTiles: function () {
                 game.ctx.lineTo(corner.x3 + animatedX + shadowOffset, corner.y3 + animatedY + shadowOffset);
                 game.ctx.stroke();
 
-                // Draw main L-shape with detail
-                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; // Main color
+                // Draw main L-shape with unique vibrant color
+                game.ctx.strokeStyle = objectColor; // Use vibrant object-specific color
                 game.ctx.beginPath();
                 // Horizontal part of the L
                 game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
@@ -866,6 +890,7 @@ renderSelectedTiles: function () {
         game.ctx.restore();
     }
 },
+
 
 
 
