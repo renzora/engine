@@ -73,16 +73,23 @@
 
         // Create references to bound handlers so we can remove them in unmount
         this.contextmenuHandler = (e) => {
-          ui.contextMenu.disableDefaultContextMenu(e, (x, y) => {
-            ui.contextMenu.showContextMenu(
-              this.contextMenuElement,
-              this.menuItemsElement,
-              this.menuItemsConfig,
-              x,
-              y
-            );
-          });
-        };
+    if (edit_mode_window.isAddingNewObject) {
+        // If an object is active, prevent the context menu
+        e.preventDefault();
+        console.log("Context menu disabled because an object is active.");
+        return;
+    }
+    ui.contextMenu.disableDefaultContextMenu(e, (x, y) => {
+        ui.contextMenu.showContextMenu(
+            this.contextMenuElement,
+            this.menuItemsElement,
+            this.menuItemsConfig,
+            x,
+            y
+        );
+    });
+};
+
 
         this.clickHandler = (e) => {
           ui.contextMenu.hideMenus(e, this.contextMenuElement);
