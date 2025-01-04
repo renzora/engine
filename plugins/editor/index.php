@@ -715,8 +715,17 @@ finalizeObjectMovement: function () {
     this.isDragging = false;
     if (this.selectedObjects.length > 0) {
         this.selectedObjects.forEach(obj => {
-            obj.x = obj.x.map(coord => Math.round(coord));
-            obj.y = obj.y.map(coord => Math.round(coord));
+            obj.x = obj.x.map(coord => {
+                // Convert to pixel space, round to nearest pixel, and back to object space
+                const pixelCoordX = coord * 16;
+                const snappedX = Math.round(pixelCoordX) / 16;
+                return snappedX;
+            });
+            obj.y = obj.y.map(coord => {
+                const pixelCoordY = coord * 16;
+                const snappedY = Math.round(pixelCoordY) / 16;
+                return snappedY;
+            });
         });
         this.pushToUndoStack();
     }
@@ -792,15 +801,25 @@ renderSelectedTiles: function () {
         const markerLength = 5; // Length of the L shape
         const lineWidth = 2; // Width of the lines
         const shadowOffset = 1; // Offset for shadow effect
+        const paddingFactor = 0.15; // Padding as a percentage of object size (10%)
 
         game.ctx.strokeStyle = 'rgba(0, 200, 255, 0.9)'; // New color (light blue)
         game.ctx.lineWidth = lineWidth;
 
         this.selectedObjects.forEach(obj => {
-            const minX = Math.min(...obj.x) * 16;
-            const minY = Math.min(...obj.y) * 16;
-            const maxX = Math.max(...obj.x) * 16 + 16;
-            const maxY = Math.max(...obj.y) * 16 + 16;
+            // Calculate object dimensions
+            const objWidth = Math.max(...obj.x) - Math.min(...obj.x) + 1;
+            const objHeight = Math.max(...obj.y) - Math.min(...obj.y) + 1;
+
+            // Calculate padding relative to object size
+            const paddingX = objWidth * 16 * paddingFactor;
+            const paddingY = objHeight * 16 * paddingFactor;
+
+            // Calculate padded boundaries
+            const minX = Math.min(...obj.x) * 16 + paddingX;
+            const minY = Math.min(...obj.y) * 16 + paddingY;
+            const maxX = Math.max(...obj.x) * 16 + 16 - paddingX;
+            const maxY = Math.max(...obj.y) * 16 + 16 - paddingY;
 
             // Define L-shape markers for each corner
             const corners = [
@@ -840,17 +859,6 @@ renderSelectedTiles: function () {
                 game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
                 game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY);
                 game.ctx.stroke();
-
-                // Add stroke detail (lighter inner stroke)
-                game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)'; // Inner stroke color
-                game.ctx.beginPath();
-                // Horizontal part of the L
-                game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
-                game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY);
-                // Vertical part of the L
-                game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
-                game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY);
-                game.ctx.stroke();
             });
         });
 
@@ -858,6 +866,8 @@ renderSelectedTiles: function () {
         game.ctx.restore();
     }
 },
+
+
 
 isTopmostObject: function (obj, selectedObjects) {
     const objIndex = game.roomData.items.indexOf(obj);
@@ -1462,7 +1472,7 @@ handleZoomOrMovement: function(deltaY, event) {
     const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
     const zoomFactor = deltaY < 0 ? 1 : -1;
-    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));  // Set minimum zoom level to 2
+    const newZoomLevel = Math.max(1, Math.min(game.zoomLevel + zoomFactor, 10));  // Set minimum zoom level to 2
 
     game.zoomLevel = newZoomLevel;
     const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
