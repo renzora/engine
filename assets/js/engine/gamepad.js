@@ -172,15 +172,15 @@ var gamepad = {
             const globalEvent = new CustomEvent(globalEventName, { detail: eventDetail });
             window.dispatchEvent(globalEvent);
     
-            const activeModalId = modal.getActiveModal();
-            if (activeModalId && window[activeModalId]) {
+            const activePluginId = plugin.getActivePlugin();
+            if (activePluginId && window[activePluginId]) {
                 const dynamicButtonName = buttonName + 'Button';
                 const dynamicReleasedName = buttonName + 'ButtonReleased';
     
-                if (state === 'down' && typeof window[activeModalId][dynamicButtonName] === 'function') {
-                    window[activeModalId][dynamicButtonName](pressure, state);
-                } else if (state === 'up' && typeof window[activeModalId][dynamicReleasedName] === 'function') {
-                    window[activeModalId][dynamicReleasedName](pressure, state);
+                if (state === 'down' && typeof window[activePluginId][dynamicButtonName] === 'function') {
+                    window[activePluginId][dynamicButtonName](pressure, state);
+                } else if (state === 'up' && typeof window[activePluginId][dynamicReleasedName] === 'function') {
+                    window[activePluginId][dynamicReleasedName](pressure, state);
                 }
             }
         }

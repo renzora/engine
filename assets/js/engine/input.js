@@ -103,7 +103,7 @@ var input = {
                 // Reset the rider ID on the vehicle
                 currentSprite.riderId = null;
 
-                modal.show('ui_inventory_window');
+                plugin.show('ui_inventory_window');
 
             }
 
@@ -127,8 +127,8 @@ var input = {
                 // Hide the player sprite
                 currentSprite.activeSprite = false;
 
-                modal.minimize('ui_inventory_window');
-                modal.front('ui_overlay_window');
+                plugin.minimize('ui_inventory_window');
+                plugin.front('ui_overlay_window');
             } else {
                 console.log("No nearby vehicle within radius to switch to.");
             }
@@ -582,14 +582,14 @@ var input = {
     
         if (e.key === 'Tab') {
             e.preventDefault();
-            modal.load({
+            plugin.load({
                 id: 'console_window',
                 url: 'console/index.php',
                 name: 'console',
                 drag: false,
                 reload: true,
                 onAfterLoad: function (id) {
-                    modal.load({ id: 'edit_mode_window', url: 'editor/index.php', name: 'Editor', drag: true, reload: true });
+                    plugin.load({ id: 'edit_mode_window', url: 'editor/index.php', name: 'Editor', drag: true, reload: true });
                 }
             });
 
@@ -705,8 +705,8 @@ var input = {
         console.log("left button clicked");
         if (e.target.matches('[data-close], [data-esc]')) {
             console.log("data close clicked");
-            var parent = modal.closest(e.target);
-            modal.close(parent);
+            var parent = plugin.closest(e.target);
+            plugin.close(parent);
         }
     },
     
@@ -791,6 +791,6 @@ var input = {
     },
 
     gamepadStart: function() {
-        modal.load({ id: 'overview_menu', url: 'menus/overview/index.php', name:'start menu', reload: true, drag: false, hidden: false })
+        plugin.load({ id: 'overview_menu', url: 'menus/overview/index.php', name:'start menu', reload: true, drag: false, hidden: false })
     }
 };

@@ -145,13 +145,13 @@ checkForNearbyItems: function () {
 
                 this.audio(script, item, objectType);
 
-                if (script.walk && script.walk.modal) {
-                    this.modal(script.walk.modal, item, objectType);
+                if (script.walk && script.walk.plugin) {
+                    this.plugin(script.walk.plugin, item, objectType);
                 }
 
                 if (!script.walk.button || this.isButtonPressed(script.walk.button)) {
                     for (let action in script.walk) {
-                        if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'modal' && action !== 'scene' && action !== 'speech' && this[action] && typeof this[action] === 'function') {
+                        if (action !== 'button' && action !== 'tooltip' && action !== 'audio' && action !== 'plugin' && action !== 'scene' && action !== 'speech' && this[action] && typeof this[action] === 'function') {
                             this.executeActionWithButton(action, script.walk[action], item, sprite);
                         }
                     }
@@ -170,15 +170,15 @@ checkForNearbyItems: function () {
     }
 },
 
-    modal: function (config, context, item) {
+    plugin: function (config, context, item) {
 
         const buttonToCheck = config.button || null;
         
         if (!buttonToCheck || this.isButtonPressed(buttonToCheck)) {
-            modal.load({
-                id: config.id || 'modal_window',
+            plugin.load({
+                id: config.id || 'plugin_window',
                 url: config.url || '',
-                name: config.name || 'Modal',
+                name: config.name || 'plugin',
                 drag: config.drag || false,
                 reload: config.reload || false,
             });

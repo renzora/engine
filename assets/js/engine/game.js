@@ -80,9 +80,9 @@ var game = {
 
             this.loadScene(this.sceneid);
 
-            modal.load({ id: 'main_title_window', url: 'menus/main_title/index.php', name: 'Main Tiles', drag: true,reload: true });
+            plugin.load({ id: 'main_title_window', url: 'menus/main_title/index.php', name: 'Main Tiles', drag: true,reload: true });
             
-            //modal.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
+            //plugin.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
 
             console.log("Connected to Main renzora server");
 
@@ -104,30 +104,30 @@ var game = {
         });
     },
 
-    modal_init: function() {
+    plugin_init: function() {
 
         if (utils.isMobileDevice()) {
-            //modal.load({ id: 'joypad_window', url: 'utils/joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: false });
+            //plugin.load({ id: 'joypad_window', url: 'utils/joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: false });
 
-            modal.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true });
+            plugin.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true });
 
-            modal.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
+            plugin.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
 
-            modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+            plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
 
-            modal.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true, hidden: true });
+            plugin.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true, hidden: true });
 
-            modal.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
+            plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
 
-            modal.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: true });
+            plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: true });
 
             utils.fullScreen();
 
         } else {
 
-            //modal.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: false });
+            //plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: false });
 
-            modal.preload([
+            plugin.preload([
                 { priority: 1, options: { id: 'context_window', url: 'menus/context/index.php', name: 'Context Menu', drag: true, reload: false } },
                 { priority: 1, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer Window', drag: false, reload: false } },
                 { priority: 2, options: { id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'Pie Menu', drag: false, reload: false, hidden: false } },
@@ -189,7 +189,7 @@ var game = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'modals/console/tabs/servers/ajax/getSceneData.php',
+            url: 'plugins/console/tabs/servers/ajax/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
@@ -226,13 +226,13 @@ var game = {
     
                 } else {
                     console.log('Error: ' + data.message);
-                    modal.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
+                    plugin.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
                 }
             },
             error: function(data) {
                 console.log(data);
 
-                modal.load({
+                plugin.load({
                     id: "scene_load_error_window",
                     url: "console/tabs/servers/ajax/error.php",
                     name: "Server Error",

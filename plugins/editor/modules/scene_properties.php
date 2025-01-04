@@ -1,0 +1,119 @@
+<?php
+include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+if ($auth) {
+?>
+  <div data-window='editor_scene_properties_window' class='window bg-yellow-700' style='width: 330px;'>
+
+    <div data-part='handle' class='window_title bg-yellow-600 text-yellow-100 p-2 rounded-t'>
+      <div class='float-right'>
+        <button class="icon close_dark mr-1 text-white" aria-label="Close (ESC)" data-close>&times;</button>
+      </div>
+      <div data-part='title' class='text-yellow-100'>Scene Properties</div>
+    </div>
+    
+    <div class='clearfix'></div>
+    
+    <div class='relative'>
+      <div class='container window_body text-white p-2'>
+        
+        <label for="sceneWidth" class="block text-sm mb-1">Width: <span id="sceneWidthValue"></span></label>
+        <input type="range" id="sceneWidth" min="96" max="5000" step="1" class="w-full mb-4">
+
+        <label for="sceneHeight" class="block text-sm mb-1">Height: <span id="sceneHeightValue"></span></label>
+        <input type="range" id="sceneHeight" min="96    " max="2000" step="1" class="w-full mb-4">
+            <!-- Save Button -->
+    <button id="saveSceneProperties" onclick="editor_scene_properties_window.save();" class="bg-yellow-500 text-white px-4 py-2 mt-4 rounded hover:bg-yellow-600">
+        Save
+    </button>
+      </div>
+    </div>
+
+    <script>
+var editor_scene_properties_window = {
+    start: function() {
+        const widthSlider = document.getElementById('sceneWidth');
+        const heightSlider = document.getElementById('sceneHeight');
+        const widthValue = document.getElementById('sceneWidthValue');
+        const heightValue = document.getElementById('sceneHeightValue');
+
+        // Function to round to the nearest multiple of 16
+        const roundToMultiple = (value, multiple) => {
+            return Math.round(value / multiple) * multiple;
+        };
+
+        // Initialize slider values from `game` object
+        if (typeof game !== 'undefined') {
+            widthSlider.value = roundToMultiple(game.worldWidth, 16);
+            heightSlider.value = roundToMultiple(game.worldHeight, 16);
+            widthValue.textContent = widthSlider.value;
+            heightValue.textContent = heightSlider.value;
+        }
+
+        // Update `game.worldWidth` and `game.worldHeight` dynamically
+        const updateDimensions = () => {
+            let newWidth = roundToMultiple(widthSlider.value, 16);
+            let newHeight = roundToMultiple(heightSlider.value, 16);
+
+            // Adjust the slider values to the nearest multiple of 16
+            widthSlider.value = newWidth;
+            heightSlider.value = newHeight;
+
+            if (typeof game !== 'undefined') {
+                game.worldWidth = newWidth;
+                game.worldHeight = newHeight;
+                game.resizeCanvas(); // Update the canvas immediately
+                widthValue.textContent = newWidth;
+                heightValue.textContent = newHeight;
+            } else {
+                console.error("Game object not found");
+            }
+        };
+
+        // Add event listeners to sliders for dynamic updates
+        widthSlider.addEventListener('input', updateDimensions);
+        heightSlider.addEventListener('input', updateDimensions);
+    },
+
+    save: function() {
+        const width = document.getElementById('sceneWidth').value;
+        const height = document.getElementById('sceneHeight').value;
+
+        const data = {
+            sceneId: game.sceneid,
+            width: parseInt(width, 10),
+            height: parseInt(height, 10)
+        };
+
+        // Send AJAX request to save the updated width and height
+        ui.ajax({
+            outputType: 'json',
+            method: 'POST',
+            url: '/plugins/editor/ajax/save_scene_properties.php',
+            data: JSON.stringify(data),
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            success: function(response) {
+                console.log('Scene properties saved successfully:', response);
+                plugin.close('editor_scene_properties_window');
+            },
+            error: function(error) {
+                console.error('Error saving scene properties:', error);
+            }
+        });
+    },
+
+    unmount: function() {
+        // Clean up code if necessary
+    }
+};
+
+// Start the scene properties window
+editor_scene_properties_window.start();
+
+    </script>
+
+  </div>
+<?php
+}
+?>
