@@ -243,38 +243,39 @@ var game = {
         });
     }, 
 
-resizeCanvas: function() {
-
-    utils.setZoomLevel();
-
-    const consoleElement = document.getElementById('console_window');
-    const adjacentMenu = document.getElementById('tabs');
-    let consoleWidth = 0;
-    let menuWidth = 0;
-
-    if (consoleElement && console_window.isOpen) {
-        consoleWidth = consoleElement.offsetWidth;
-    }
-    if (adjacentMenu && adjacentMenu.style.display !== 'none') {
-        menuWidth = adjacentMenu.offsetWidth;
-    }
-
-    const totalOffsetWidth = consoleWidth + menuWidth;
-    const availableWidth = window.innerWidth - totalOffsetWidth;
-    const availableHeight = window.innerHeight;
-    const canvasWidth = Math.min(this.worldWidth * this.zoomLevel, availableWidth);
-    const canvasHeight = Math.min(this.worldHeight * this.zoomLevel, availableHeight);
-    this.canvas.width = canvasWidth;
-    this.canvas.height = canvasHeight;
-    this.canvas.style.width = `${canvasWidth}px`;
-    this.canvas.style.height = `${canvasHeight}px`;
-    const horizontalOffset = (availableWidth - canvasWidth) / 2 + totalOffsetWidth;
-    const verticalOffset = (availableHeight - canvasHeight) / 2;
-    this.canvas.style.position = 'absolute';
-    this.canvas.style.left = `${horizontalOffset}px`;
-    this.canvas.style.top = `${verticalOffset}px`;
-},
-
+    resizeCanvas: function() {
+        utils.setZoomLevel();
+    
+        const consoleElement = document.getElementById('console_window');
+        const adjacentMenu = document.getElementById('tabs');
+        let consoleWidth = 0;
+        let menuWidth = 0;
+    
+        // Skip console window width calculation if in edit mode
+        if (!game.isEditMode && consoleElement && console_window.isOpen) {
+            consoleWidth = consoleElement.offsetWidth;
+        }
+        if (adjacentMenu && adjacentMenu.style.display !== 'none') {
+            menuWidth = adjacentMenu.offsetWidth;
+        }
+    
+        const totalOffsetWidth = consoleWidth + menuWidth;
+        const availableWidth = window.innerWidth - totalOffsetWidth;
+        const availableHeight = window.innerHeight;
+        const canvasWidth = Math.min(this.worldWidth * this.zoomLevel, availableWidth);
+        const canvasHeight = Math.min(this.worldHeight * this.zoomLevel, availableHeight);
+        this.canvas.width = canvasWidth;
+        this.canvas.height = canvasHeight;
+        this.canvas.style.width = `${canvasWidth}px`;
+        this.canvas.style.height = `${canvasHeight}px`;
+        const horizontalOffset = (availableWidth - canvasWidth) / 2 + totalOffsetWidth;
+        const verticalOffset = (availableHeight - canvasHeight) / 2;
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.left = `${horizontalOffset}px`;
+        this.canvas.style.top = `${verticalOffset}px`;
+    },
+    
+    
 
     
     handleMouseUp: function(event) {

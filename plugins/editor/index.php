@@ -153,8 +153,7 @@ updateCurrentTimeAndDay: function () {
     },
 
     changeMode: function (newMode) {
-    
-        const contextMenu = document.getElementById('editor_context_menu_window');
+    const contextMenu = document.getElementById('editor_context_menu_window');
     if (contextMenu) {
         contextMenu.classList.add('hidden');
     }
@@ -309,10 +308,40 @@ handleMouseMove: function (event) {
     this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
 
-    // Check if middle mouse button is being dragged to prevent selection
-    if ((event.buttons === 4 || event.buttons === 1) && this.isPanning) {
-        this.handleCameraPanning(event);
-        return; // Exit early to avoid triggering other actions
+    // Handle middle mouse dragging to move the canvas element
+    if (event.buttons === 4 && this.isMiddleClickPanning) { // Middle mouse button (button 4)
+        const deltaX = event.clientX - this.lastMouseX;
+        const deltaY = event.clientY - this.lastMouseY;
+
+        // Update canvas style to move it around the viewport
+        const currentLeft = parseInt(game.canvas.style.left || '0', 10);
+        const currentTop = parseInt(game.canvas.style.top || '0', 10);
+
+        game.canvas.style.left = `${currentLeft + deltaX}px`;
+        game.canvas.style.top = `${currentTop + deltaY}px`;
+
+        // Update last mouse position for smooth dragging
+        this.lastMouseX = event.clientX;
+        this.lastMouseY = event.clientY;
+
+        return; // Exit early to prevent triggering other actions
+    }
+
+    // Handle pan mode (separate from middle mouse dragging)
+    if (game.editorMode === 'pan' && this.isPanning && event.buttons === 1) {
+        const deltaX = event.clientX - this.lastMouseX;
+        const deltaY = event.clientY - this.lastMouseY;
+
+        // Update camera position for panning
+        camera.cameraX -= deltaX / game.zoomLevel;
+        camera.cameraY -= deltaY / game.zoomLevel;
+        this.constrainCamera(); // Ensure camera stays within bounds
+
+        // Update last mouse position for smooth panning
+        this.lastMouseX = event.clientX;
+        this.lastMouseY = event.clientY;
+
+        return; // Exit early to prevent triggering other actions
     }
 
     // Dynamically determine the cursor and mode
@@ -336,7 +365,6 @@ handleMouseMove: function (event) {
         }
     }
 },
-
 
 
 handleMouseUp: function (event) {
