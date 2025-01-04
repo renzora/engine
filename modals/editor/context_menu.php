@@ -17,6 +17,8 @@
       menuItemsElement: null,
       contextmenuHandler: null,
       clickHandler: null,
+      initialClickX: null,
+      initialClickY: null,
 
       // Only the array is compressed:
       menuItemsConfig: [
@@ -79,6 +81,11 @@
         console.log("Context menu disabled because an object is active.");
         return;
     }
+
+        // Store the initial click position
+        this.initialClickX = e.clientX;
+        this.initialClickY = e.clientY;
+
     ui.contextMenu.disableDefaultContextMenu(e, (x, y) => {
         ui.contextMenu.showContextMenu(
             this.contextMenuElement,
@@ -140,43 +147,58 @@
         }
       },
 
-      spriteSetStartingPosition: function (x, y) {
-        const rect = game.canvas.getBoundingClientRect();
-        const mouseX = (x - rect.left) / game.zoomLevel + camera.cameraX;
-        const mouseY = (y - rect.top) / game.zoomLevel + camera.cameraY;
-        const gridX = Math.floor(mouseX / 16);
-        const gridY = Math.floor(mouseY / 16);
+      spriteSetStartingPosition: function () {
+      if (this.initialClickX === null || this.initialClickY === null) {
+        console.error("Initial click position is not set.");
+        return;
+      }
 
-        this.updateStartingPosition(gridX, gridY);
-        this.contextMenuElement.classList.add('hidden');
-      },
+      const rect = game.canvas.getBoundingClientRect();
+      const mouseX = (this.initialClickX - rect.left) / game.zoomLevel + camera.cameraX;
+      const mouseY = (this.initialClickY - rect.top) / game.zoomLevel + camera.cameraY;
+      const gridX = Math.floor(mouseX / 16);
+      const gridY = Math.floor(mouseY / 16);
 
-      updateStartingPosition: function (gx, gy) {
-        const sceneId = game.sceneid;
-        if (!sceneId) {
-          alert('No scene loaded!');
-          return;
-        }
-        fetch('/modals/editor/ajax/setSpritePosition.php', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sceneId: sceneId, startingX: gx, startingY: gy }),
-        })
-          .then((response) => response.json())
-          .then((data) => {
-            if (data.error) {
-              alert("Error: " + data.message);
-            } else {
-              alert('Starting position updated successfully.');
-              game.roomData.startingX = gx;
-              game.roomData.startingY = gy;
+      this.updateStartingPosition(gridX, gridY);
+      this.contextMenuElement.classList.add('hidden');
+
+      // Reset initial click position
+      this.initialClickX = null;
+      this.initialClickY = null;
+    },
+
+    updateStartingPosition: function (gx, gy) {
+      const sceneId = game.sceneid;
+      if (!sceneId) {
+        alert('No scene loaded!');
+        return;
+      }
+      fetch('/modals/editor/ajax/setSpritePosition.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sceneId: sceneId, startingX: gx, startingY: gy }),
+      })
+        .then((response) => response.json())
+        .then((data) => {
+          if (data.error) {
+            alert("Error: " + data.message);
+          } else {
+            game.roomData.startingX = gx;
+            game.roomData.startingY = gy;
+            const playerSprite = game.sprites[game.playerid];
+            if (playerSprite) {
+              game.x = gx * 16;
+              game.y = gy * 16;
+              playerSprite.x = gx * 16;
+              playerSprite.y = gy * 16;
             }
-          })
-          .catch((error) => {
-            console.error(error);
-            alert('An error occurred.');
-          });
-      },
+          }
+        })
+        .catch((error) => {
+          console.error(error);
+          alert('An error occurred.');
+        });
+    },
 
       openSceneProperties: function (x, y) {
         modal.load({

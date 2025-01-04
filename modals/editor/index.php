@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='edit_mode_window' class='window window_bg fixed top-2 right-2 rounded-sm' style='width: 57px;background: #3a445b;'>
+<div data-window='edit_mode_window' class='window window_bg fixed top-2 right-2 rounded-sm bg[#3a445b]/20' style='width: 51px;'>
 
 <!-- Handle that spans the whole left side -->
 <div data-part='handle' class='window_title rounded-none w-full mb-1' style='height: 15px; background-image: radial-gradient(#e5e5e58a 1px, transparent 0) !important; border-radius: 0;'>
