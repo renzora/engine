@@ -1489,124 +1489,85 @@ areObjectsConnected: function(obj1, obj2) {
 handleKeyDown: function (event) {
     const key = event.key;
 
-    // Switch to zoom mode while holding down the Ctrl key
+    // Ignore key commands if focus is on a form input
+    const activeElement = document.activeElement;
+    if (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.tagName === 'SELECT' ||
+        activeElement.isContentEditable
+    ) {
+        return; // Exit early to prevent executing editor keyboard commands
+    }
+
+    // Rest of the keyboard commands...
     if (event.ctrlKey && game.editorMode !== 'zoom') {
-        this.previousMode = game.editorMode;  // Store the current mode
-        this.changeMode('zoom');  // Switch to zoom mode
+        this.previousMode = game.editorMode; // Store the current mode
+        this.changeMode('zoom'); // Switch to zoom mode
         return;
     }
 
-    // Handle shortcuts for 1 to 7 keys
     switch (key) {
         case '1':
-            this.changeMode('select');  // Select mode
+            this.changeMode('select');
             break;
         case '2':
-            this.changeMode('brush');  // Brush mode
+            this.changeMode('brush');
             break;
         case '3':
-            this.changeMode('zoom');  // Zoom mode
+            this.changeMode('zoom');
             break;
         case '4':
-            this.changeMode('delete');  // Delete mode
+            this.changeMode('delete');
             break;
         case '5':
-            this.changeMode('pan');  // Pan mode
+            this.changeMode('pan');
             break;
         case '6':
-            this.changeMode('lasso');  // Lasso mode
+            this.changeMode('lasso');
             break;
         case '7':
-            this.changeMode('move');  // Move mode
+            this.changeMode('move');
             break;
         default:
             break;
     }
 
-    // Arrow keys to move the camera in pan mode
-    if (game.editorMode === 'pan') {
-        const panStep = 10;  // Step size for panning
-
-        switch (key) {
-            case 'ArrowUp':
-                camera.cameraY -= panStep;
-                break;
-            case 'ArrowDown':
-                camera.cameraY += panStep;
-                break;
-            case 'ArrowLeft':
-                camera.cameraX -= panStep;
-                break;
-            case 'ArrowRight':
-                camera.cameraX += panStep;
-                break;
-        }
-
-        // Constrain camera movement to map boundaries
-        this.constrainCamera();
-
-        // Prevent default arrow key behavior (scrolling the page)
-        event.preventDefault();
-    }
-
+    // Other shortcuts...
     if (key === 'Escape') {
-        this.selectedObjects = []; // Clear all selected objects
-        this.clearSelectionBox(); // Clear selection box visuals
-        this.clearLassoPath(); // Clear any lasso selection
+        this.selectedObjects = [];
+        this.clearSelectionBox();
+        this.clearLassoPath();
         console.log('All selections cleared.');
-        this.changeMode('select'); // Return to select mode
+        this.changeMode('select');
     } else if (event.ctrlKey && key === 'a') {
         this.selectAllObjects();
         event.preventDefault();
-    }
-    // Ctrl + C to copy selected objects
-    else if (event.ctrlKey && key === 'c') {
+    } else if (event.ctrlKey && key === 'c') {
         this.copySelectedObjects();
-    }
-    // Ctrl + V to paste copied objects
-    else if (event.ctrlKey && key === 'v') {
+    } else if (event.ctrlKey && key === 'v') {
         this.pasteCopiedObjects();
-    }
-    // Ctrl + Z to undo
-    else if (event.ctrlKey && !event.shiftKey && key === 'z') {
+    } else if (event.ctrlKey && !event.shiftKey && key === 'z') {
         this.undo();
-    }
-    // Ctrl + Shift + Z to redo
-    else if (event.ctrlKey && event.shiftKey && key === 'Z') {
+    } else if (event.ctrlKey && event.shiftKey && key === 'Z') {
         this.redo();
-    }
-    // Ctrl + G to toggle grid
-    else if (event.ctrlKey && !event.shiftKey && key.toLowerCase() === 'g') {
-        //editor_utils_window.toggleGridCheckbox();
+    } else if (event.ctrlKey && !event.shiftKey && key.toLowerCase() === 'g') {
         event.preventDefault();
-    }
-    // Ctrl + Shift + G to toggle snap
-    else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 'g') {
-        //editor_utils_window.toggleSnapCheckbox();
+    } else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 'g') {
         event.preventDefault();
-    }
-    // Ctrl + Arrow Up to move selected objects to the top
-    else if (event.ctrlKey && key === 'ArrowUp') {
+    } else if (event.ctrlKey && key === 'ArrowUp') {
         this.pushSelectedObjectsToTop();
         event.preventDefault();
-    }
-    // Ctrl + Arrow Down to move selected objects to the bottom
-    else if (event.ctrlKey && key === 'ArrowDown') {
+    } else if (event.ctrlKey && key === 'ArrowDown') {
         this.pushSelectedObjectsToBottom();
         event.preventDefault();
-    }
-    // Arrow keys to move selected objects
-    else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+    } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
         this.moveSelectedObjectsWithArrowKeys(key);
         event.preventDefault();
-    }
-    // Ctrl + Shift + S to space out selected objects
-    else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 's') {
+    } else if (event.ctrlKey && event.shiftKey && key.toLowerCase() === 's') {
         this.spaceOutSelectedObjects();
         event.preventDefault();
-    }
-    // Delete or Backspace to delete selected objects
-    else if (key === 'Delete' || key === 'Backspace') {
+    } else if (key === 'Delete' || key === 'Backspace') {
         this.deleteSelectedObjects();
         event.preventDefault();
     }
@@ -1615,15 +1576,26 @@ handleKeyDown: function (event) {
 handleKeyUp: function (event) {
     const key = event.key;
 
+    // Ignore key commands if focus is on a form input
+    const activeElement = document.activeElement;
+    if (
+        activeElement.tagName === 'INPUT' ||
+        activeElement.tagName === 'TEXTAREA' ||
+        activeElement.tagName === 'SELECT' ||
+        activeElement.isContentEditable
+    ) {
+        return; // Exit early to prevent executing editor keyboard commands
+    }
+
     // Revert to the previous mode when releasing the Ctrl key
     if (key === 'Control' && game.editorMode === 'zoom') {
-        this.changeMode(this.previousMode);  // Restore the previous mode
+        this.changeMode(this.previousMode);
         return;
     }
 
     // Shift key up - return to 'move' mode only if the previous mode was 'move'
     if (key === 'Shift' && (game.editorMode === 'select' || game.editorMode === 'lasso')) {
-        this.changeMode('move');  // Return to move mode when Shift is released
+        this.changeMode('move');
     }
 }
 
