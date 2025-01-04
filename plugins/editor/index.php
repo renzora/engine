@@ -447,51 +447,35 @@ handleZoomDrag: function (event) {
 },
 
 handleObjectMovement: function () {
-    let totalDeltaX = this.mouseX - this.lastMouseX;
-    let totalDeltaY = this.mouseY - this.lastMouseY;
+    const totalDeltaX = this.mouseX - this.lastMouseX;
+    const totalDeltaY = this.mouseY - this.lastMouseY;
 
     if (this.selectedObjects.length > 0) {
-        // Calculate the bounding box of the selection
-        const selectionBox = this.selectedObjects.reduce(
-            (box, obj) => {
-                const objMinX = Math.min(...obj.x) * 16;
-                const objMinY = Math.min(...obj.y) * 16;
-                const objMaxX = Math.max(...obj.x) * 16 + 16;
-                const objMaxY = Math.max(...obj.y) * 16 + 16;
-
-                return {
-                    minX: Math.min(box.minX, objMinX),
-                    minY: Math.min(box.minY, objMinY),
-                    maxX: Math.max(box.maxX, objMaxX),
-                    maxY: Math.max(box.maxY, objMaxY),
-                };
-            },
-            { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity }
-        );
-
-        // Calculate the grid-snapped position for the selection box
-        const snappedX = Math.round((selectionBox.minX + totalDeltaX) / 16) * 16;
-        const snappedY = Math.round((selectionBox.minY + totalDeltaY) / 16) * 16;
-
-        // Calculate the deltas to keep the cursor inside the selection box
-        const deltaX = snappedX - selectionBox.minX;
-        const deltaY = snappedY - selectionBox.minY;
-
-        // Update object positions based on the grid-snapped deltas
         this.selectedObjects.forEach((obj) => {
-            obj.x = obj.x.map((coord) => coord + deltaX / 16);
-            obj.y = obj.y.map((coord) => coord + deltaY / 16);
+            // Log and remove associated lights
+            lighting.lights = lighting.lights.filter(light => {
+                const objectLightIdPrefix = `${obj.id}_`;
+                const isLightRelated = light.id.startsWith(objectLightIdPrefix);
+
+                if (isLightRelated) {
+                    console.log(`Removing light: ${light.id}`);
+                }
+
+                return !isLightRelated; // Keep only lights that are not related to this object
+            });
+
+            // Move the object positions
+            obj.x = obj.x.map(coord => coord + totalDeltaX / 16);
+            obj.y = obj.y.map(coord => coord + totalDeltaY / 16);
+
+            // Lights will be re-added by handleLights after movement
         });
 
-        // Update the last mouse position
-        this.lastMouseX += deltaX;
-        this.lastMouseY += deltaY;
-
-        // Constrain the camera to ensure smooth scrolling
-        this.constrainCamera();
+        // Update mouse position for continuous movement
+        this.lastMouseX = this.mouseX;
+        this.lastMouseY = this.mouseY;
     }
 },
-
 
 handleSelectionStart: function (event) {
     if (edit_mode_window.isAddingNewObject) return;  // Prevent selection when adding a new object
