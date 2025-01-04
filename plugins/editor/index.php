@@ -580,6 +580,49 @@ handleSelectionBox: function(event, rect) {
             y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
         };
         this.renderSelectionBox();
+
+        // New panning code starts here
+        const edgeThreshold = 50; // Distance from the edge of the viewport to trigger panning
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        const canvasStyle = game.canvas.style;
+        const canvasLeft = parseInt(canvasStyle.left || '0', 10);
+        const canvasTop = parseInt(canvasStyle.top || '0', 10);
+
+        // Check if the drag is near the edges of the window viewport
+        if (event.clientX < edgeThreshold) {
+            if (camera.cameraX > 0) {
+                camera.cameraX -= 5; // Pan left
+            } else {
+                game.canvas.style.left = `${Math.min(canvasLeft + 5, 0)}px`; // Move canvas left
+            }
+        } else if (event.clientX > viewportWidth - edgeThreshold) {
+            const maxCameraX = game.worldWidth - viewportWidth / game.zoomLevel;
+            if (camera.cameraX < maxCameraX) {
+                camera.cameraX += 5; // Pan right
+            } else {
+                game.canvas.style.left = `${Math.max(canvasLeft - 5, viewportWidth - rect.width)}px`; // Move canvas right
+            }
+        }
+
+        if (event.clientY < edgeThreshold) {
+            if (camera.cameraY > 0) {
+                camera.cameraY -= 5; // Pan up
+            } else {
+                game.canvas.style.top = `${Math.min(canvasTop + 5, 0)}px`; // Move canvas up
+            }
+        } else if (event.clientY > viewportHeight - edgeThreshold) {
+            const maxCameraY = game.worldHeight - viewportHeight / game.zoomLevel;
+            if (camera.cameraY < maxCameraY) {
+                camera.cameraY += 5; // Pan down
+            } else {
+                game.canvas.style.top = `${Math.max(canvasTop - 5, viewportHeight - rect.height)}px`; // Move canvas down
+            }
+        }
+
+        this.constrainCamera(); // Ensure the camera stays within bounds
+        // New panning code ends here
     }
 },
 
@@ -678,7 +721,6 @@ finalizeObjectMovement: function () {
         this.pushToUndoStack();
     }
 },
-
 
 handlePanningEnd: function (event) {
     if (event.button === 1 || game.editorMode === 'pan') {
