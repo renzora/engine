@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='colorflash_window' class='window arcade-machine' style='width: 350px;'>
+  <div class='window arcade-machine' style='width: 350px;'>
 
     <div data-part='handle' class='arcade-title'>
       <div class='float-right'>
@@ -25,9 +25,10 @@ if ($auth) {
         <button id="startGame" class="start-game-button mt-4">Start Game</button>
       </div>
     </div>
+</div>
 
     <script>
-      var colorflash_window = {
+colorflash_window = {
         gameSequence: [],
         playerSequence: [],
         level: 1,
@@ -215,7 +216,6 @@ if ($auth) {
       @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
     </style>
 
-  </div>
 <?php
 }
 ?>

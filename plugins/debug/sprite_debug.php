@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='sprite_debug_window' class='window window_bg' style='width: 400px; background: #bba229;'>
+  <div class='window window_bg' style='width: 400px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -91,9 +91,11 @@ if ($auth) {
         </div>
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-      var sprite_debug_window = {
+sprite_debug_window = {
         createNPCSprite: function() {
           var id = document.getElementById('sprite-id').value;
           var x = parseInt(document.getElementById('sprite-x').value) || 0;
@@ -146,8 +148,6 @@ if ($auth) {
       }
     </script>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='renadmin_lighting_window' class='window window_bg' style='width: 330px; background: #bba229;'>
+  <div class='window window_bg' style='width: 330px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -104,9 +104,11 @@ if ($auth) {
 
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-      var renadmin_lighting_window = {
+renadmin_lighting_window = {
         start: function() {
           console.log('Lighting window started');
           this.setInitialValues(); // Set initial values
@@ -276,11 +278,8 @@ if ($auth) {
           }
         }
       };
-      renadmin_lighting_window.start();
     </script>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

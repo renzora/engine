@@ -2,12 +2,13 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='dvd_window' class='fixed w-full h-full'>
+  <div class='fixed w-full h-full'>
 
     <div id="dvd_logo" class="bg-yellow-100 text-black p-16 rounded-lg text-6xl font-extrabold">Renzora</div>
+    </div>
 
     <script>
-      var dvd_window = {
+  dvd_window = {
         logo: null,
         container: null,
         speedX: 4, // Speed of movement
@@ -108,11 +109,7 @@ if ($auth) {
           // Clean up code
         }
       }
-
-      // Start the animation immediately
-      dvd_window.start();
     </script>
-  </div>
 <?php
 }
 ?>

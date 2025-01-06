@@ -1,4 +1,4 @@
-<div data-window='fps_monitor_window' class='window pixel-corners bg-gray-800 shadow-lg rounded-lg overflow-hidden fixed bottom-10 right-5' style='width: 400px;height: 300px;'>
+<div class='window pixel-corners bg-gray-800 shadow-lg rounded-lg overflow-hidden fixed bottom-10 right-5' style='width: 400px;height: 300px;'>
 
     <div data-part='handle' class='window_title bg-gray-800 text-gray-100 font-semibold'>
         <div class='float-right'>
@@ -12,9 +12,11 @@
             <canvas id="fpsChart" class="w-full" style="height: 280px;"></canvas>
         </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
 <script>
-var fps_monitor_window = {
+fps_monitor_window = {
     dpr: 1,  // Default value, will be updated in setupCanvas
     hiddenFunctions: {}, // Track hidden functions
 
@@ -219,7 +221,3 @@ renderChart: function () {
 
 fps_monitor_window.start();  // Start the FPS monitor when the plugin is loaded
 </script>
-
-
-    <div class='resize-handle'></div>
-</div>

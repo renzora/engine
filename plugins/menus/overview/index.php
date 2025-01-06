@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='overview_menu_window' class='window bg-yellow-700' style='width: 330px;'>
+  <div class='window bg-yellow-700' style='width: 330px;'>
 
     <div data-part='handle' class='window_title bg-yellow-600 text-yellow-100 p-2 rounded-t'>
       <div class='float-right'>
@@ -18,9 +18,10 @@ if ($auth) {
         <p>Basic content goes here</p>
       </div>
     </div>
+    </div>
 
     <script>
-      var overview_menu_window = {
+overview_menu_window = {
         start: function() {
           // Basic initialization code
         },
@@ -61,11 +62,7 @@ if ($auth) {
 
         }
       };
-
-      overview_menu_window.start();
     </script>
-
-  </div>
 <?php
 }
 ?>

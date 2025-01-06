@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='template_window' class='window bg-yellow-700' style='width: 330px;'>
+  <div class='window bg-yellow-700' style='width: 330px;'>
 
     <div data-part='handle' class='window_title bg-yellow-600 text-yellow-100 p-2 rounded-t'>
       <div class='float-right'>
@@ -18,9 +18,10 @@ if ($auth) {
         <p>Basic content goes here</p>
       </div>
     </div>
+    </div>
 
     <script>
-      var template_window = {
+ template_window = {
         start: function() {
           // Basic initialization code
         },
@@ -29,11 +30,8 @@ if ($auth) {
           // Clean up code
         }
       }
-
-      template_window.start();
     </script>
 
-  </div>
 <?php
 }
 ?>

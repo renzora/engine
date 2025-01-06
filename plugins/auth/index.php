@@ -3,7 +3,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 
 if(!$auth) {
 ?>
-<div data-window='auth_window' class='window login_window' style='width: 400px;background: #1d335b;'>
+<div class='window login_window' style='width: 400px;background: #1d335b;'>
 
   <!-- Content -->
   <div data-part='handle' class='window_title' style='background-image: radial-gradient(#384c6f 1px, transparent 0) !important;'>
@@ -68,13 +68,10 @@ if(!$auth) {
 
     </div>
   </div>
-
-  <style>
-    /* Add your gradient animation styles here */
-  </style>
+  </div>
 
 <script>
-    var auth_window = {
+ auth_window = {
       login: function() {
         var login_username = document.getElementById('login_username').value;
         var login_password = document.getElementById('login_password').value;
@@ -207,9 +204,6 @@ if(!$auth) {
 
     auth_window.initTabs(); // Initialize tabs
   </script>
-
-
-</div>
 
 <?php 
 }

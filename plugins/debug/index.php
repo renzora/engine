@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if($auth) {
 ?>
-  <div data-window='debug_window' class='window position-fixed bottom-0 right-2' style='width: 250px;background: #bba229; margin-bottom: 10px;'>
+  <div class='window position-fixed bottom-0 right-2' style='width: 250px;background: #bba229; margin-bottom: 10px;'>
   
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -41,9 +41,10 @@ if($auth) {
         </div>
       </div>
     </div>
+    </div>
 
     <script>
-      var debug_window = {
+debug_window = {
         start: function() {
           this.bindControls();
           this.initializeCheckboxes();
@@ -259,7 +260,6 @@ if($auth) {
       };
       debug_window.start();
     </script>
-  </div>
 <?php
 }
 ?>

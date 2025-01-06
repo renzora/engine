@@ -4,7 +4,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if($auth) {
 ?>
 
-  <div data-window='signout_window' class='window window_bg'>
+  <div class='window window_bg'>
 
     <div data-part='handle' class='window_title window_border'>
       <div class='float-right'>
@@ -30,9 +30,10 @@ if($auth) {
 
       </div>
     </div>
+    </div>
 
     <script>
-      var signout_window = {
+signout_window = {
         signout: function() {
 
           ui.ajax({
@@ -57,8 +58,6 @@ if($auth) {
         }
       }
     </script>
-
-  </div>
 
 <?php
 }

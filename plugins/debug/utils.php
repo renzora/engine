@@ -1,4 +1,4 @@
-<div data-window='debug_utils_window' class='window window_bg' style='width: 330px;background: #2e2e2e;'>
+<div class='window window_bg' style='width: 330px;background: #2e2e2e;'>
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#1a1a1a 1px, transparent 0) !important;'>
         <div class='float-right'>
             <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
@@ -156,8 +156,10 @@
             </div>
         </div>
     </div>
+    </div>
+
     <script>
- var debug_utils_window = {
+debug_utils_window = {
     interval: null,
     showCollisionBoundaries: true,
     showWalkableTiles: true,
@@ -489,4 +491,3 @@ renderCollisionBoundaries: function() {
 debug_utils_window.start();
 
     </script>
-</div>

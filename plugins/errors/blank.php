@@ -1,5 +1,5 @@
 
-  <div data-window='blank_error_window' class='window window_bg' style='width: 330px;'>
+  <div class='window window_bg' style='width: 330px;'>
     <div data-part='handle' class='window_title'>
       <div data-part='title' class='title_bg window_border'>Error</div>
     </div>

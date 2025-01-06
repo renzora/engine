@@ -4,7 +4,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if (!$auth) {
 ?>
 
-  <div data-window='auth_error_window' class='window window_bg'>
+  <div class='window window_bg'>
 
     <div data-part='handle' class='window_title window_border'>
       <div data-part='title' class='title_bg window_border'>ERROR SIGNING IN</div>

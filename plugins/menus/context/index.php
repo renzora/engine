@@ -1,4 +1,4 @@
-<div data-window="context_menu_window" data-close="false">
+<div data-close="false">
   <div
     id="context_menu_window"
     class="bg-black text-white rounded-lg shadow-lg absolute z-50 hidden"
@@ -6,9 +6,10 @@
   >
     <ul id="menuItems" class="space-y-1"></ul>
   </div>
+  </div>
 
   <script>
-    var context_menu_window = {
+context_menu_window = {
       contextMenuElement: null,
       menuItemsElement: null,
       contextmenuHandler: null,
@@ -119,6 +120,4 @@
       }
     };
 
-    context_menu_window.start();
   </script>
-</div>

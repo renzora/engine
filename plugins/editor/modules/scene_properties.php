@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='editor_scene_properties_window' class='window bg-yellow-700' style='width: 330px;'>
+  <div class='window bg-yellow-700' style='width: 330px;'>
 
     <div data-part='handle' class='window_title bg-yellow-600 text-yellow-100 p-2 rounded-t'>
       <div class='float-right'>
@@ -27,9 +27,10 @@ if ($auth) {
     </button>
       </div>
     </div>
+    </div>
 
     <script>
-var editor_scene_properties_window = {
+editor_scene_properties_window = {
     start: function() {
         const widthSlider = document.getElementById('sceneWidth');
         const heightSlider = document.getElementById('sceneHeight');
@@ -107,13 +108,7 @@ var editor_scene_properties_window = {
         // Clean up code if necessary
     }
 };
-
-// Start the scene properties window
-editor_scene_properties_window.start();
-
     </script>
-
-  </div>
 <?php
 }
 ?>

@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='yamltojson_window' class='window pixel-corners bg-yellow-700' style='width: 600px;'>
+  <div class='window pixel-corners bg-yellow-700' style='width: 600px;'>
 
     <div data-part='handle' class='window_title bg-yellow-600 text-yellow-100 p-2 rounded-t'>
       <div class='float-right'>
@@ -22,9 +22,10 @@ if ($auth) {
         <pre id="json_output" class="bg-gray-800 text-white p-2 mt-2" style="height: 300px; overflow-y: auto;"></pre>
       </div>
     </div>
+    </div>
 
     <script>
-var yamltojson_window = {
+yamltojson_window = {
     start: function() {
         // Event listener for conversion button
         document.getElementById('convert_button').addEventListener('click', function() {
@@ -118,13 +119,8 @@ var yamltojson_window = {
         alert('JSON copied to clipboard!');
     }
 }
-
-yamltojson_window.start();
-
-
     </script>
 
-  </div>
 <?php
 }
 ?>

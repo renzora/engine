@@ -1,4 +1,4 @@
-<div data-window='main_title_window' class='fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center'>
+<div class='fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center'>
   
 <div class="absolute inset-0 z-[-2]">
   <div class="glitch-overlay"></div>
@@ -394,6 +394,7 @@
     <p>Ping: <span class="text-green-400 font-bold">10ms</span></p>
   </div>
 </div>
+</div>
 
 
 <style>
@@ -629,7 +630,7 @@ svg circle:last-child {
 </style>
 
 <script>
-var main_title_window = {
+main_title_window = {
   currentTabIndex: 0,
   tabName: "renzora",
   tabs: [],
@@ -1166,9 +1167,4 @@ characterSelection: function() {
   }
 };
 
-// Start the main title window
-main_title_window.start();
-
 </script>
-
-</div>

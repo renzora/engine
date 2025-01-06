@@ -2,16 +2,15 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='edit_mode_window'>
 
-  <style>
+<style>
     body.move-cursor {
       cursor: move !important;
     }
   </style>
 
   <script>
-var edit_mode_window = {
+edit_mode_window = {
     renderMode: 'isometric',
     originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},
@@ -142,10 +141,10 @@ unmount: function () {
     plugin.close('editor_context_menu_window');
     plugin.show('ui_inventory_window');
     plugin.close('console_window');
-    game.resizeCanvas();
     plugin.show('ui_overlay_window');
     plugin.close('ui_footer_window');
     plugin.load({ id: 'context_menu_window', url: 'menus/context/index.php', name: 'Context Menu', drag: false,reload: true });
+    game.resizeCanvas();
 },
 
 updateCurrentTimeAndDay: function () {
@@ -1034,24 +1033,55 @@ updateSelectedObjects: function (shiftKeyHeld) {
     const isSingleClick = this.selectionStart.x === this.selectionEnd.x && this.selectionStart.y === this.selectionEnd.y;
 
     if (isSingleClick) {
-        // Handle single-click selection (topmost object under the click)
         const clickedX = this.selectionStart.x;
         const clickedY = this.selectionStart.y;
 
-        const affectedObjects = game.roomData.items.filter(item => {
-            const itemRect = {
-                x: Math.min(...item.x) * 16,
-                y: Math.min(...item.y) * 16,
-                width: (Math.max(...item.x) - Math.min(...item.x) + 1) * 16,
-                height: (Math.max(...item.y) - Math.min(...item.y) + 1) * 16,
+        const affectedObjects = game.roomData.items.filter(roomItem => {
+            const itemData = game.objectData[roomItem.id];
+            if (!itemData || itemData.length === 0) return false;
+
+            const tileData = itemData[0];
+            const xCoordinates = roomItem.x || [];
+            const yCoordinates = roomItem.y || [];
+
+            const itemBounds = {
+                x: Math.min(...xCoordinates) * 16,
+                y: Math.min(...yCoordinates) * 16,
+                width: (Math.max(...xCoordinates) - Math.min(...xCoordinates) + 1) * 16,
+                height: (Math.max(...yCoordinates) - Math.min(...yCoordinates) + 1) * 16,
             };
 
-            return (
-                clickedX >= itemRect.x &&
-                clickedX <= itemRect.x + itemRect.width &&
-                clickedY >= itemRect.y &&
-                clickedY <= itemRect.y + itemRect.height
-            );
+            // Check if the click is within the object bounds
+            if (
+                clickedX < itemBounds.x ||
+                clickedX >= itemBounds.x + itemBounds.width ||
+                clickedY < itemBounds.y ||
+                clickedY >= itemBounds.y + itemBounds.height
+            ) {
+                return false;
+            }
+
+            // Create an offscreen canvas
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = itemBounds.width;
+            offscreenCanvas.height = itemBounds.height;
+            const ctx = offscreenCanvas.getContext('2d');
+
+            // Render the object on the offscreen canvas
+            this.renderObjectToCanvas(ctx, roomItem, tileData, xCoordinates, yCoordinates);
+
+            // Log the rendered object as a Base64 URL for debugging
+            console.log('Rendered Object Base64 URL:', offscreenCanvas.toDataURL());
+
+            // Translate click position to local coordinates
+            const localX = clickedX - itemBounds.x;
+            const localY = clickedY - itemBounds.y;
+
+            // Get the pixel data at the clicked position
+            const pixelData = ctx.getImageData(localX, localY, 1, 1).data;
+
+            // Check if the clicked pixel is not transparent
+            return pixelData[3] > 0;
         });
 
         // Sort by rendering order (topmost last in the array)
@@ -1068,7 +1098,7 @@ updateSelectedObjects: function (shiftKeyHeld) {
             this.selectedObjects.push(topmostObject);
         }
     } else {
-        // Handle drag selection (topmost objects in overlapping areas)
+        // Handle drag selection (unchanged)
         const selectionRect = {
             x: Math.min(this.selectionStart.x, this.selectionEnd.x),
             y: Math.min(this.selectionStart.y, this.selectionEnd.y),
@@ -1076,7 +1106,7 @@ updateSelectedObjects: function (shiftKeyHeld) {
             height: Math.abs(this.selectionEnd.y - this.selectionStart.y),
         };
 
-        let overlappingObjects = game.roomData.items.filter(item => {
+        const overlappingObjects = game.roomData.items.filter(item => {
             const itemRect = {
                 x: Math.min(...item.x) * 16,
                 y: Math.min(...item.y) * 16,
@@ -1092,48 +1122,84 @@ updateSelectedObjects: function (shiftKeyHeld) {
             );
         });
 
-        // Sort by rendering order (topmost last in the array)
-        overlappingObjects = overlappingObjects.sort((a, b) => {
-            return game.roomData.items.indexOf(b) - game.roomData.items.indexOf(a);
-        });
-
-        // Select only the topmost object for each area
-        const selectedTopObjects = [];
-        const selectedAreas = new Set();
-
-        overlappingObjects.forEach(obj => {
-            const objRect = {
-                x: Math.min(...obj.x) * 16,
-                y: Math.min(...obj.y) * 16,
-                width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
-                height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16,
-            };
-
-            const areaKey = `${objRect.x},${objRect.y},${objRect.width},${objRect.height}`;
-            if (!selectedAreas.has(areaKey)) {
-                selectedTopObjects.push(obj);
-                selectedAreas.add(areaKey);
-            }
-        });
-
-        // Handle shift selection or replace selection
-        if (shiftKeyHeld) {
-            selectedTopObjects.forEach(obj => {
-                if (!this.selectedObjects.includes(obj)) {
-                    this.selectedObjects.push(obj);
-                }
-            });
-        } else {
-            this.selectedObjects = selectedTopObjects;
-        }
+        this.selectedObjects = shiftKeyHeld
+            ? [...new Set([...this.selectedObjects, ...overlappingObjects])]
+            : overlappingObjects;
     }
-
-    // Show or hide the bring buttons based on whether any objects are selected
-    //editor_utils_window.toggleBringButtons(this.selectedObjects.length > 0);
 
     if (this.selectedObjects.length > 0) {
         this.changeMode('move');
     }
+},
+
+renderObjectToCanvas: function (ctx, roomItem, tileData, xCoordinates, yCoordinates) {
+    const tileSize = 16;
+
+    // Parse the tile indices from the `i` field
+    let frameData = tileData.i;
+    const isAnimated = Array.isArray(frameData[0][0]); // Check if the object is animated
+    const currentFrame = tileData.currentFrame || 0;
+
+    // If animated, get the current frame's tile indices
+    if (isAnimated) {
+        frameData = frameData[currentFrame % frameData.length]; // Loop through frames
+    }
+
+    // Flatten the frame data to get all tile indices
+    const tileIndices = frameData.flatMap(entry => {
+        if (typeof entry === 'string' && entry.includes('-')) {
+            const [start, end] = entry.split('-').map(Number);
+            return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+        }
+        return entry;
+    });
+
+    // Correct the grid dimensions (add 1 to `a` and `b` to account for 0-based indexing)
+    const gridWidth = tileData.a + 1;
+    const gridHeight = tileData.b + 1;
+
+    // Calculate the top-left corner of the object
+    const topLeftX = Math.min(...xCoordinates) * tileSize;
+    const topLeftY = Math.min(...yCoordinates) * tileSize;
+
+    // Log debugging information
+    console.log("Object Data:", tileData);
+    console.log("Tile Indices:", tileIndices);
+    console.log("Corrected Grid Dimensions (Width x Height):", gridWidth, "x", gridHeight);
+    console.log("Object Coordinates (Top Left X, Y):", topLeftX, topLeftY);
+    console.log("Animation Frame Data:", isAnimated ? `Frame ${currentFrame}` : "Not animated");
+
+    // Track the current index in the tileIndices array
+    let currentIndex = 0;
+
+    for (let row = 0; row < gridHeight; row++) {
+        for (let col = 0; col < gridWidth; col++) {
+            // Get the tile index for the current grid position
+            const tileFrameIndex = tileIndices[currentIndex % tileIndices.length];
+            currentIndex++;
+
+            // Calculate source coordinates in the sprite sheet
+            const srcX = (tileFrameIndex % 150) * tileSize;
+            const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
+
+            // Calculate the position in the object's local grid
+            const posX = col * tileSize;
+            const posY = row * tileSize;
+
+            // Log detailed mapping for debugging
+            console.log(`Rendering Tile: Index ${tileFrameIndex}, Source (X: ${srcX}, Y: ${srcY}), Position (X: ${posX}, Y: ${posY})`);
+
+            // Draw the tile on the canvas
+            ctx.drawImage(
+                assets.use(tileData.t), // Ensure this is the correct sprite sheet
+                srcX, srcY, tileSize, tileSize,
+                posX, posY, tileSize, tileSize
+            );
+        }
+    }
+
+    // Log the Base64 output for debugging
+    console.log('Rendered Object Base64 URL:', ctx.canvas.toDataURL());
 },
 
 
@@ -1399,7 +1465,6 @@ saveRoomData: function () {
             console.log('Room data saved successfully:', data);
             
             // After a successful save, close the editor plugin
-            edit_mode_window.unmount(); // Call the unmount function to clean up
             plugin.close('edit_mode_window'); // Close the editor window
             collision.createWalkableGrid();
         },
@@ -1701,14 +1766,8 @@ handleKeyUp: function (event) {
 }
 
 };
+</script>
 
-// Start the map editor window
-edit_mode_window.start();
-
-
-  </script>
-
-</div>
 <?php
 }
 ?>

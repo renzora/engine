@@ -1,4 +1,4 @@
-<div data-window="gamepads_window" class="window bg-gray-900 w-full max-w-md rounded shadow-lg">
+<div class="window bg-gray-900 w-full max-w-md rounded shadow-lg">
     <div data-part="handle" class="window_title bg-gray-800 text-gray-100 p-4 rounded-t flex justify-between items-center">
         <span class="text-lg font-semibold">Controller Assignment</span>
         <button class="icon close_dark text-white text-xl" aria-label="Close (ESC)" data-close>&times;</button>
@@ -19,9 +19,10 @@
         </p>
     </div>
 </div>
+</div>
 
 <script>
-var gamepads_window = {
+gamepads_window = {
     currentIndex: 0, // Index of the currently highlighted controller in the filtered list
     throttleDuration: 200, // Throttle duration in milliseconds
     lastButtonPress: 0, // Timestamp of the last button press
@@ -153,8 +154,4 @@ var gamepads_window = {
     }
 };
 
-gamepads_window.start();
-
 </script>
-
-</div>

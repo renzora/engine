@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window="ui_overlay_window" data-close="false">
+<div data-close="false">
 
   <!-- Existing menu fixed at top right -->
   <div class="fixed right-4 top-4 space-y-2 text-white z-50">
@@ -153,6 +153,7 @@ if ($auth) {
     </div>
 
   </div>
+  </div>
 
   <style>
     .fog {
@@ -202,7 +203,7 @@ if ($auth) {
   </style>
 
   <script>
-    var ui_overlay_window = {
+ui_overlay_window = {
       bulletsPerRound: 80,
       remainingBullets: 80,
       remainingRounds: 13,
@@ -385,10 +386,7 @@ if ($auth) {
       speedometerDigital.textContent = Math.round(currentSpeed);
     }
     };
-
-    ui_overlay_window.start();
   </script>
-</div>
 
 <?php
 }

@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='tileset_window' class='window window_bg' style='width: 800px;height: 700px; background: #323e69;'>
+  <div class='window window_bg' style='width: 800px;height: 700px; background: #323e69;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#192037 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -68,7 +68,9 @@ if ($auth) {
     <!-- Added 'h-full' to ensure the container takes up available space -->
     <div class="grid grid-cols-10 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
   </div>
-      </div>
+</div>
+<div class='resize-handle'></div>
+</div>
 
     <style>
 #drop_zone {
@@ -106,7 +108,7 @@ if ($auth) {
   </style>
 
 <script>
-var tileset_window = {
+tileset_window = {
     selectedTiles: [],
     nightFilterEnabled: false,
     imageCanvas: document.getElementById('uploaded_canvas'),
@@ -676,14 +678,8 @@ function addToTileset() {
         }
     });
 }
-
-tileset_window.start();
 </script>
 
-
-
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

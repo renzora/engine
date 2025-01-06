@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='speech_window' class='window bg-gray-800/90 shadow-xl rounded-lg fixed inset-x-0 bottom-10 mx-auto text-center pixel-corners transition-all transform hover:scale-105' style='width: 500px; position: relative;'>
+  <div class='window bg-gray-800/90 shadow-xl rounded-lg fixed inset-x-0 bottom-10 mx-auto text-center pixel-corners transition-all transform hover:scale-105' style='width: 500px; position: relative;'>
     
     <div class='relative grid grid-cols-3 gap-2'>
       <!-- Left column for image -->
@@ -24,9 +24,10 @@ if ($auth) {
         Press A
       </button>
     </div>
+    </div>
 
     <script>
-var speech_window = {
+speech_window = {
     speechText: [],
     currentSpeechIndex: 0,
     typingInProgress: false,
@@ -217,12 +218,7 @@ var speech_window = {
         this.endSpeechCallback = null;
     }
 };
-
-      // Example of how you can trigger the speech box
-      speech_window.start();
     </script>
-
-  </div>
 <?php
 }
 ?>

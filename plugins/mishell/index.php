@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if($auth) {
 ?>
-  <div data-window='mishell_window' class='window window_bg' style='width: 330px; background: #000;'>
+  <div class='window window_bg' style='width: 330px; background: #000;'>
   
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#103515 1px, transparent 0) !important;'>
     <div class='float-right'>
@@ -16,9 +16,10 @@ if($auth) {
         <input id="mishell_prompt" type="text" autocomplete="off" placeholder="Type command or help and press enter" class="w-full bg-black text-white border-0 outline-0" onkeyup="if(event.key === 'Enter' || event.keyCode === 13) { mishell_window.enter(); }" />
       </div>
     </div>
+</div>
 
     <script>
-      var mishell_window = {
+mishell_window = {
         start: function() {
           document.getElementById('mishell_prompt').focus();
         },
@@ -51,9 +52,7 @@ if($auth) {
             
         }
       }
-      mishell_window.start();
     </script>
-  </div>
 <?php
 }
 ?>

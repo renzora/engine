@@ -1,4 +1,4 @@
-<div data-window='network_connect_window' class='window fade-in-scale pixel-corners shadow-lg' style='width: 500px; background: #122f5d;'>
+<div class='window fade-in-scale pixel-corners shadow-lg' style='width: 500px; background: #122f5d;'>
 
   <div data-part='handle' class='window_title text-yellow-100 p-2 rounded-t' style="background: #122f5d;">
     <div data-part='title' class='title_bg window_border' style="color: #a1b3cf; background: #122f5d;">Renzora Online</div>
@@ -22,9 +22,10 @@
       </div>
     </div>
   </div>
+  </div>
 
   <script>
-var network_connect_window = {
+network_connect_window = {
     keydownHandler: null,
 
     start: function() {
@@ -82,9 +83,6 @@ var network_connect_window = {
         }
     }
 };
-
-
-    network_connect_window.start();
   </script>
 
   <style>
@@ -127,5 +125,3 @@ var network_connect_window = {
       margin: 0; /* Prevent extra spacing */
     }
   </style>
-
-</div>

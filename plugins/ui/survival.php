@@ -2,10 +2,9 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='survival_window'>
 
     <script>
-var survival_window = {
+survival_window = {
     requiredClicks: 10, // Number of clicks required to chop down a tree
     currentClicks: 0,  // Counter for the current number of clicks
     currentTreeIndex: null, // Current tree being chopped
@@ -232,11 +231,7 @@ var survival_window = {
     }
 };
 
-survival_window.start();
-
     </script>
-
-</div>
 <?php
 }
 ?>

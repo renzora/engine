@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='navigator_window' class='window window_bg fixed bottom-2 left-1' style='width: 383px; height: 540px; background: #3d6a91; overflow: hidden;'>
+  <div class='window window_bg fixed bottom-2 left-1' style='width: 383px; height: 540px; background: #3d6a91; overflow: hidden;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#363657 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -62,9 +62,11 @@ if ($auth) {
 
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-      var navigator_window = {
+navigator_window = {
         start: function() {
           ui.initTabs('ui_window_chat', 'servers');
           const chatBox = document.getElementById('chat_box');
@@ -132,11 +134,8 @@ if ($auth) {
         }
       };
 
-      navigator_window.start();
     </script>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

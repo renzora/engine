@@ -1,4 +1,4 @@
-<div data-window="editor_context_menu_window" data-close="false">
+<div data-close="false">
   <!-- Main Context Menu Container -->
   <div
     id="editor_context_menu_window"
@@ -30,7 +30,7 @@
       <button type="button" id="save_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.saveRoomData()">
         <div class="ui_icon ui_save"></div>
       </button>
-      <button type="button" id="close_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.unmount(); plugin.close('edit_mode_window')">
+      <button type="button" id="close_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="plugin.close('edit_mode_window');">
         <div class="ui_icon ui_close"></div>
       </button>
     </div>
@@ -44,11 +44,12 @@
     </div>
   </div>
 </div>
+</div>
 
 
 
   <script>
-    var editor_context_menu_window = {
+editor_context_menu_window = {
       isGridEnabled: true,
       isSnapEnabled: true,
       isNightfilterEnabled: false,
@@ -131,7 +132,19 @@
 
     this.menuItemsConfig = [
       {
-        label: `Edit ${objectName}`,
+        label: `${objectName}`,
+        subMenu: [
+          { label: "Properties", callback: () => this.editLighting(clickedObject) },
+          { label: "Lighting", callback: () => this.editLighting(clickedObject) },
+          { label: "Scripting", callback: () => this.editScripting(clickedObject) },
+          { label: "Collision", callback: () => this.editCollision(clickedObject) },
+          { label: "Stacking", callback: () => this.editCollision(clickedObject) },
+          { label: "Animation", callback: () => this.editLighting(clickedObject) },
+          { label: "Effects", callback: () => this.editLighting(clickedObject) },
+        ]
+      },
+      {
+        label: `move to layer`,
         subMenu: [
           { label: "Properties", callback: () => this.editLighting(clickedObject) },
           { label: "Lighting", callback: () => this.editLighting(clickedObject) },
@@ -157,41 +170,29 @@
 
     this.menuItemsConfig = [
       { label: "Scene", subMenu: [
-          { label: "Change viewport size", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } },
-          { label: "Set Background", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } }
+        { label: "Properties", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } },
+          { label: "viewport size", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } },
+          { label: "Background", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } },
+          { label: "Weather settings", callback: function (x, y) { editor_context_menu_window.openSceneProperties(x, y) } }
         ]
       },
-      { label: "Sprite", subMenu: [
+      { label: "Sprites", subMenu: [
+          { label: "Add sprite", callback: function (x, y) { editor_context_menu_window.spriteSetStartingPosition(x, y) } },
           { label: "Set Starting Position", callback: function (x, y) { editor_context_menu_window.spriteSetStartingPosition(x, y) } },
           { label: "Allow Movement", type: "checkbox", id: "sprite_active_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.spriteActiveToggle(checked) } }
         ]
       },
-      { label: "Camera", subMenu: [
-          { label: "Free Movement", type: "checkbox", id: "manual_camera_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.cameraManualToggle(checked) } }
-        ]
-      },
-      { label: "Lighting", subMenu: [
-          { label: "Night Filter", type: "checkbox", id: "toggle_nightfilter_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.utilsToggleNightFilter(checked) } },
-          { label: "Lighting Sources", callback: function (x, y) { editor_context_menu_window.spriteSetStartingPosition(x, y) } }
-        ]
-      },
-      { label: "Effects", subMenu: [
-          { label: "Console Toggle", type: "checkbox", id: "console_toggle_checkbox", initialValue: false, callback: function (checked) { editor_context_menu_window.effectsConsoleToggle(checked) } },
-          { label: "Brush Size", type: "number", id: "brush_amount", initialValue: 1, callback: function (val) { editor_context_menu_window.effectsBrushSize(val) } }
-        ]
-      },
       { label: "Tools", subMenu: [
           { label: "Terrain Editor", callback: function () { editor_context_menu_window.openTerrainEditor() } },
-          { label: "Tileset Manager", callback: function () { editor_context_menu_window.openTilesetManager() } }
+          { label: "Tileset Manager", callback: function () { editor_context_menu_window.openTilesetManager() } },
+          { label: "Sprites Manager", callback: function () { editor_context_menu_window.openTerrainEditor() } },
+          { label: "Scene Debugging", callback: function () { editor_context_menu_window.openTerrainEditor() } }
         ]
       },
-      { label: "Utils", subMenu: [
+      { label: "Editor", subMenu: [
           { label: "Grid", type: "checkbox", id: "toggle_grid_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.utilsToggleGrid(checked) } },
-          { label: "Adjust Day/Time", callback: function () { editor_context_menu_window.openTerrainEditor() } }
-        ]
-      },
-      { label: "Weather", subMenu: [
-          { label: "Weather Settings", callback: function () { editor_context_menu_window.weatherSettings() } }
+          { label: "Day/Time", callback: function () { editor_context_menu_window.openTerrainEditor() } },
+          { label: "Manual Camera", type: "checkbox", id: "manual_camera_checkbox", initialValue: true, callback: function (checked) { editor_context_menu_window.cameraManualToggle(checked) } }
         ]
       }
     ];
@@ -466,6 +467,4 @@ renderIsometricGrid: function () {
       },
     };
 
-    editor_context_menu_window.start();
   </script>
-</div>

@@ -6,7 +6,7 @@ if ($auth) {
 
     // JavaScript will take care of retrieving the item details from the game object data
 ?>
-  <div data-window='tileset_item_editor_window' class='window window_bg' style='width: 700px; background: #60975c;'>
+  <div class='window window_bg' style='width: 700px; background: #60975c;'>
 
 <div data-part='handle' class='window_title' style='background-image: radial-gradient(#406d3d 1px, transparent 0) !important;'>
   <div class='float-right'>
@@ -93,9 +93,11 @@ if ($auth) {
       </div>
       <button id="save_button" class="mt-4 p-2 bg-green-500 text-white rounded">Save</button>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-      var tileset_item_editor_window = {
+tileset_item_editor_window = {
         walkableData: {},
     polygonPoints: [],
     isResizing: false,
@@ -694,9 +696,6 @@ unmount: function() {
 
       tileset_item_editor_window.start(<?php echo json_encode($itemId); ?>);
     </script>
-
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

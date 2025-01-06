@@ -1,5 +1,4 @@
 <div
-  data-window="keyboard_window"
   class="window_body bg-gray-900 fixed bottom-0 left-0 flex justify-center items-center"
   style="width: 100%;"
 >
@@ -7,6 +6,7 @@
     class="keyboard-container w-full max-w-7xl mx-auto lg:mx-0 lg:px-0" 
   >
     <div id="keyboard" class="keyboard flex flex-col gap-3 text-white p-4"></div>
+  </div>
   </div>
 
   <style>
@@ -27,7 +27,7 @@
   </style>
 
   <script>
-    const keyboard_window = {
+keyboard_window = {
       capsLock: false,
       recognition: null,
       isListening: false,
@@ -206,7 +206,4 @@
         }
       },
     };
-
-    keyboard_window.start();
   </script>
-</div>

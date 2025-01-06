@@ -157,7 +157,6 @@ var plugin = {
         element.addEventListener('mousedown', onStart);
         element.addEventListener('touchstart', onStart, { passive: false });
     },
-    
 
     initCloseButton: function(element) {
         const closeButton = element.querySelector('[data-close]');
@@ -199,34 +198,29 @@ var plugin = {
         });
     },
 
-    load: function(options) {
+    load: function (options) {
         const {
-            id,
-            url,
+            id = `plugin_${Date.now()}`, // Generate unique ID if not provided
+            url, // URL for the plugin content
             name = null,
-            showInList = true,
-            drag = true,
-            reload = false,
-            hidden = false,
             onBeforeLoad = null,
             onAfterLoad = null,
             onError = null,
+            drag = true,
+            reload = false,
+            hidden = false,
         } = options;
-
-        if (!url.includes('/')) {
-            options.url += '/index.php';
-        }
+    
+        const fullUrl = `/plugins/${url}`; // Ensure the URL is prefixed with /plugins/
 
         if (name) {
             this.pluginNames[id] = name;
         }
-
+    
         return new Promise((resolve, reject) => {
-            let existingplugin = document.querySelector("[data-window='" + id + "']");
+            console.log(`Attempting to load plugin with ID: '${id}' and URL: '${fullUrl}'`);
 
-            if (onBeforeLoad && typeof onBeforeLoad === 'function') {
-                onBeforeLoad(id);
-            }
+            let existingplugin = document.querySelector("[data-window='" + id + "']");
 
             if (existingplugin) {
                 if (reload) {
@@ -244,12 +238,76 @@ var plugin = {
                     return;
                 }
             }
-
+    
+            // Call onBeforeLoad if provided
+            if (onBeforeLoad) {
+                console.log(`Executing onBeforeLoad callback for plugin ID: '${id}'`);
+                onBeforeLoad(id);
+            }
+    
+            // Fetch the plugin HTML
+            console.log(`Fetching plugin content from URL: '${fullUrl}'`);
             ui.ajax({
-                url: 'plugins/' + url,
+                url: fullUrl,
                 method: 'GET',
                 success: (data) => {
-                    ui.html(document.body, data, 'append');
+                    console.log(`Successfully fetched plugin content for ID: '${id}'`);
+    
+                    // Create a temporary container for parsing the HTML
+                    const tempContainer = document.createElement('div');
+                    tempContainer.innerHTML = data;
+    
+                    // Find the top-level div (plugin HTML)
+                    const topDiv = tempContainer.querySelector('div');
+                    if (topDiv) {
+                        topDiv.setAttribute('data-window', id); // Add data-window attribute
+    
+                        // Find and process the style
+                        const style = tempContainer.querySelector('style');
+                        if (style) {
+                            topDiv.prepend(style); // Append style to the top of the plugin's HTML
+                            console.log(`Appended style to plugin HTML for ID: '${id}'`);
+                        }
+    
+                        const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
+                        if (lastPluginHtml) {
+                            lastPluginHtml.after(topDiv); // Append after the last plugin HTML
+                        } else {
+                            document.body.appendChild(topDiv); // Append to the body if none exist
+                        }
+                        console.log(`Appended plugin HTML for ID: '${id}'`);
+    
+                        // Set the active plugin
+                        this.activePlugin = id;
+                        console.log('Active plugin set:', this.activePlugin);
+                    } else {
+                        console.warn(`No top-level <div> found for plugin ID: '${id}'. Skipping HTML rendering.`);
+                    }
+    
+                    // Find and execute the script
+                    const script = tempContainer.querySelector('script');
+                    if (script) {
+                        const dynamicScript = document.createElement('script');
+                        dynamicScript.textContent = script.textContent; // Copy script content
+                        dynamicScript.setAttribute('id', `${id}_script`); // Append _script to the ID
+                        const lastScript = document.querySelector('script:last-of-type');
+                        if (lastScript) {
+                            lastScript.after(dynamicScript); // Append after the last <script>
+                        } else {
+                            document.body.appendChild(dynamicScript); // Append to the body if none exist
+                        }
+                        console.log(`Appended and executed script for plugin ID: '${id}_script'`);
+    
+                        // Automatically start the plugin only if start is not explicitly called in the script
+                        if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
+                            console.log(`Starting plugin: '${id}'`);
+                            window[id].start();
+                        } else if (script.textContent.includes(`${id}.start()`)) {
+                            console.log(`Plugin script for ID '${id}' explicitly calls start(). Skipping auto-start.`);
+                        }
+                    } else {
+                        console.warn(`No <script> found for plugin ID: '${id}'`);
+                    }
 
                     this.init(`[data-window='${id}']`, {
                         start: function () {
@@ -267,7 +325,7 @@ var plugin = {
                     } else {
                         this.front(id);
                     }
-
+    
                     window.pluginResolves[id] = resolve;
 
                     if (onAfterLoad && typeof onAfterLoad === 'function') {
@@ -277,16 +335,22 @@ var plugin = {
                     resolve();
                 },
                 error: (error) => {
-                    console.error('Error loading plugin:', id, error);
-                    if (onError && typeof onError === 'function') {
+                    console.error(`Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`, error);
+    
+                    // Call onError if provided
+                    if (onError) {
+                        console.log(`Executing onError callback for plugin ID: '${id}'`);
                         onError(error, id);
                     }
-                    reject(`Failed to load plugin from ${url}: ${error}`);
-                },
+    
+                    // Reject the promise
+                    reject(`Failed to load plugin '${id}' from URL: '${fullUrl}'`);
+                }
             });
         });
     },
-
+    
+    
     show: function(pluginId) {
         var plugin = document.querySelector("[data-window='" + pluginId + "']");
         if (plugin) {
@@ -295,33 +359,60 @@ var plugin = {
         }
     },
 
-    close: function(id, fromEscKey = false) {
-        var pluginElement = document.querySelector("[data-window='" + id + "']");
-        if (pluginElement) {
-            if (fromEscKey && pluginElement.getAttribute('data-close') === 'false') {
-                console.log(`Closing prevented for plugin: ${id}`);
-                return;
-            }
-
+    close: function (id, fromEscKey = false) {
+        console.log(`Attempting to close plugin with ID: '${id}'`);
+    
+        const pluginElement = document.querySelector(`[data-window='${id}']`);
+        if (!pluginElement) {
+            console.warn(`No plugin element found for ID: '${id}'`);
+        } else {
             pluginElement.remove();
-            audio.playAudio("closeplugin", assets.use('closeplugin'), 'sfx');
-            this.plugins = this.plugins.filter(plugin => plugin.getAttribute('data-window') !== id);
-            ui.unmount(id);
-
-            if (window.pluginResolves && window.pluginResolves[id]) {
-                console.log("resolving and removing", window.pluginResolves[id]);
-                window.pluginResolves[id]();
-                delete window.pluginResolves[id];
-            }
-
-            if (this.plugins.length > 0) {
-                const nextactivePlugin = this.plugins[this.plugins.length - 1];
-                this.front(nextactivePlugin.getAttribute('data-window'));
-            } else {
-                this.activePlugin = null;
+        }
+    
+        if (fromEscKey && pluginElement.getAttribute('data-close') === 'false') {
+            console.log(`Closing prevented for plugin: '${id}'`);
+            return;
+        }
+    
+        if (typeof window[id] !== 'undefined' && typeof window[id].unmount === 'function') {
+            console.log(`Executing unmount method for plugin ID: '${id}'`);
+            window[id].unmount();
+    
+            // Break internal references to facilitate garbage collection
+            for (let key in window[id]) {
+                if (Object.prototype.hasOwnProperty.call(window[id], key)) {
+                    window[id][key] = null;
+                }
             }
         }
+    
+        const styleElement = document.getElementById(id);
+        if (styleElement) {
+            styleElement.remove();
+        }
+    
+        const scriptElement = document.querySelector(`script[id='${id}_script']`);
+        if (scriptElement) {
+            scriptElement.remove();
+        }
+    
+        this.plugins = this.plugins.filter(plugin => plugin.getAttribute('data-window') !== id);
+    
+        if (typeof window[id] !== 'undefined') {
+            console.log(`Deleting global scope for plugin ID: '${id}'`);
+            delete window[id];
+        }
+    
+        if (this.plugins.length > 0) {
+            const nextActivePlugin = this.plugins[this.plugins.length - 1];
+            this.front(nextActivePlugin.getAttribute('data-window'));
+        } else {
+            this.activePlugin = null;
+        }
+    
+        console.log(`Plugin with ID: '${id}' successfully closed.`);
     },
+      
 
     topZIndex: function() {
         const highestZIndex = Array.from(document.querySelectorAll('*'))

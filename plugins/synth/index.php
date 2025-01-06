@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='synth_window' class='window bg-yellow-500 p-4 rounded-lg' style='width: 700px;'>
+  <div class='window bg-yellow-500 p-4 rounded-lg' style='width: 700px;'>
 
     <div data-part='handle' class='window_title bg-yellow-600 rounded-t-lg py-2 px-4 flex justify-between items-center'>
       <div data-part='title' class='text-lg font-semibold text-gray-800'>Synth Keyboard</div>
@@ -188,9 +188,11 @@ if ($auth) {
 
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-var synth_window = {
+synth_window = {
     octave: 4,
     instruments: [],
     selectedInstrumentIndex: null,
@@ -917,8 +919,6 @@ initPlayTimelineHighlight: function() {
     });
 }
 };
-
-synth_window.start();
 </script>
 
 <style>
@@ -945,8 +945,6 @@ synth_window.start();
 }
 </style>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='minimap_window' class='fixed bottom-0 right-0 window window_bg' style='width: 200px; height: 230px; background: #57476d; margin: 0 12px 30px 0;'>
+  <div class='fixed bottom-0 right-0 window window_bg' style='width: 200px; height: 230px; background: #57476d; margin: 0 12px 30px 0;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#272031 1px, transparent 0) !important;'>
       <div class='float-right mt-1'>
@@ -16,9 +16,11 @@ if ($auth) {
         <canvas id="minimap" width="200" height="200"></canvas>
       </div>
     </div>
+    <div class='resize-handle'></div>
+</div>
 
     <script>
-var minimap_window = {
+minimap_window = {
     start: function() {
         this.initMiniMap();
         this.updateMiniMapPosition(); // Start updating the mini-map position
@@ -209,12 +211,8 @@ var minimap_window = {
         requestAnimationFrame(this.updateMiniMapPosition.bind(this));
     }
 }
-
-minimap_window.start();
 </script>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

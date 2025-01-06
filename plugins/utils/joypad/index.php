@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='joypad_window' class='w-full fixed bottom-32'>
+<div class='w-full fixed bottom-32'>
 
 <div class='relative p-4 flex items-center justify-between w-full'>
   <!-- Joystick -->
@@ -32,10 +32,11 @@ if ($auth) {
   </div>
 </div>
 </div>
+</div>
 
 
   <script>
-var joypad_window = {
+joypad_window = {
     isDragging: false, // Track whether the joystick is being dragged
 
     start: function() {
@@ -176,11 +177,7 @@ var joypad_window = {
         console.log("Joypad unmounted");
     }
 };
-
-joypad_window.start();
 </script>
-
-</div>
 <?php
 }
 ?>

@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='editor_utils_window' class='window window_bg fixed top-2 left-1/2 transform -translate-x-1/2 flex flex-col items-start' style='background: #3a3a3a; border: 1px solid #222; border-radius: 5px !important;'>
+<div class='window window_bg fixed top-2 left-1/2 transform -translate-x-1/2 flex flex-col items-start' style='background: #3a3a3a; border: 1px solid #222; border-radius: 5px !important;'>
 
 
 
@@ -119,6 +119,7 @@ if ($auth) {
         </div>
 
     </div>
+    </div>
 
     <style>
         /* Style for custom checkboxes */
@@ -153,7 +154,7 @@ if ($auth) {
     </style>
 
 <script>
-var editor_utils_window = {
+editor_utils_window = {
     modeButtons: {},
     isGridEnabled: true,  // Set to true or false based on your desired default state
     isSnapEnabled: true,  // Set to true or false based on your desired default state
@@ -396,13 +397,7 @@ var editor_utils_window = {
             }
         }
 };
-
-// Start the utility window
-editor_utils_window.start();
 </script>
-
-
-</div>
 
 <?php
 }

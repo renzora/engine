@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='pc_window' class='window bg-gray-800' style='width: 800px; height: 600px;'>
+  <div class='window bg-gray-800' style='width: 800px; height: 600px;'>
 
     <div data-part='handle' class='window_title bg-gray-700 text-gray-100 p-2 rounded-t'>
       <div class='float-right'>
@@ -27,9 +27,10 @@ if ($auth) {
         </div>
       </div>
     </div>
+    </div>
 
     <script>
-      var pc_window = {
+pc_window = {
         start: function() {
           console.log('PC Window Initialized');
         },
@@ -48,11 +49,7 @@ if ($auth) {
           console.log('PC Window Unmounted');
         }
       }
-
-      pc_window.start();
     </script>
-
-  </div>
 <?php
 }
 ?>

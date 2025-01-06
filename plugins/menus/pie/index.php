@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-<div data-window='pie_menu_window' data-close="false">
+<div data-close="false">
 
 <div id="pieMenu" class="pie-menu">
     <div class="pie-menu-ring"></div>
@@ -24,6 +24,7 @@ if ($auth) {
     <div class="pie-item" data-action="action6" style="--item-index: 5;">
         <div class="pie-item-content">Toggle Aim</div>
     </div>
+</div>
 </div>
 
 <style>
@@ -136,7 +137,7 @@ if ($auth) {
 </style>
 
 <script>
-var pie_menu_window = {
+pie_menu_window = {
     currentHoveredAction: null,
     pieMenuVisible: false,
 
@@ -241,11 +242,8 @@ var pie_menu_window = {
         });
     }
 };
-
-pie_menu_window.start();
 </script>
 
-  </div>
 <?php
 }
 ?>

@@ -1,4 +1,4 @@
-<div data-window='online_menu_window' class='fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center'>
+<div class='fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center'>
   
 <div class="absolute inset-0 z-[-2]">
   <div class="glitch-overlay"></div>
@@ -149,7 +149,7 @@
       </div>
     </div>
 
-
+  </div>
   </div>
 
 <style>
@@ -372,7 +372,7 @@
 </style>
 
 <script>
-var online_menu_window = {
+online_menu_window = {
   currentTabIndex: 0,
   tabName: "explore",
   tabs: ["explore", "arena", "training", "store", "exit"],
@@ -786,10 +786,4 @@ aButton: function () {
     plugin.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true }); 
   }
 };
-
-// Start the main title window
-online_menu_window.start();
-
 </script>
-
-</div>

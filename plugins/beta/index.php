@@ -1,5 +1,4 @@
-
-  <div data-window='beta_window' class='fixed inset-0 flex items-center justify-center p-4 bg-black/50' style='pointer-events: auto;'>
+<div class='fixed inset-0 flex items-center justify-center p-4 bg-black/50' style='pointer-events: auto;'>
     <div data-window='network_connect_window' class='window fade-in-scale pixel-corners shadow-lg' style='width: 500px; background: #122f5d;'>
 
       <div data-part='handle' class='window_title text-yellow-100 p-2 rounded-t' style="background: #122f5d;cursor: default;">
@@ -31,15 +30,12 @@
   <div class="gamepad_button_x w-6 h-6 bg-gray-800/30 rounded-full mr-0"></div>
 </button>
 
-
-
-
       </div>
     </div>
   </div>
-
+  
   <script>
-    var beta_window = {
+beta_window = {
       start: function() {
         gamepad.updateButtonImages();
         plugin.front('beta_window');
@@ -51,10 +47,7 @@
       },
 
       aButton: function() {
-        
         plugin.close('beta_window');
       }
     };
-
-    beta_window.start();
   </script>

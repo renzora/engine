@@ -3,7 +3,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 
-<div data-window="console_window" id='console_window' class='window fixed top-0 left-0 h-screen w-screen bg-[#152032] transition-transform duration-300 ease-in-out -translate-x-full' style="border-radius: 0;" data-drag="false">
+<div id='console_window' class='window fixed top-0 left-0 h-screen w-screen bg-[#152032] transition-transform duration-300 ease-in-out -translate-x-full' style="border-radius: 0;" data-drag="false">
    <div id="tabs" class="console_window_tab_buttons fixed top-0 left-0 h-full bg-[#1c3660] flex flex-col w-[48px] space-y-2 py-4 transition-transform duration-300 ease-in-out border-r-2 border-r-[#151a23]" style="margin-top: -1px;"></div>
   
   <div class='relative flex-1 window_body' style="max-height: 99%;">
@@ -13,10 +13,11 @@ if ($auth) {
       </div>
     </div>
   </div>
+  </div>
 
 
   <script>
- var console_window = {
+console_window = {
     isOpen: false,
     currentTabIndex: 0,
     eventListeners: [],
@@ -91,6 +92,7 @@ toggleConsoleWindow: function(toggle = true, tabName = null) {
 
 
 showConsoleWindow: function(consoleElement, tabsElement) {
+    console.log(consoleElement);
     consoleElement.classList.remove('-translate-x-full');
     consoleElement.classList.add('translate-x-0');
     consoleElement.style.marginLeft = '46px';
@@ -241,7 +243,6 @@ handleTabClick: function(tab, index) {
 
 console_window.start();
   </script>
-</div>
 
 <?php
 }

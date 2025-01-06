@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='renadmin_world_editor_window' class='window window_bg' style='width: 350px; background: #bba229;'>
+  <div class='window window_bg' style='width: 350px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -233,9 +233,11 @@ if ($auth) {
 
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
- var renadmin_world_editor_window = {
+renadmin_world_editor_window = {
     start: function() {
         ui.initTabs('world_editor_tabs', 'tab1');
         this.initSliders();
@@ -628,13 +630,7 @@ if ($auth) {
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
     }
 };
-
-renadmin_world_editor_window.start();
-
     </script>
-
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

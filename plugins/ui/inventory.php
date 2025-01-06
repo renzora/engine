@@ -3,7 +3,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
 
-<div data-window='ui_inventory_window' data-close="false" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
+<div data-close="false" class="fixed bottom-5 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-start space-y-0">
 
 
 <!-- Container for L1, Tabs, and R1 -->
@@ -44,9 +44,10 @@ if ($auth) {
   <div id="ui_inventory_window" class="flex space-x-2 bg-[#0a0d14]/90 p-2 shadow-inner hover:shadow-lg rounded-tl-none pixel-corners">
     <div class="flex space-x-2" id="ui_quick_items_container"></div>
   </div>
+  </div>
 
   <script>
-var ui_inventory_window = {
+ui_inventory_window = {
     inventory: [
         { name: "sword", amount: 8, category: "pewpew", damage: 10 },
         { name: "wood", amount: 12, category: "pewpew", damage: 60 },
@@ -1176,10 +1177,7 @@ handleDragEnd: function(e) {
         return -1;
     },
 };
-
-ui_inventory_window.start();
   </script>
-</div>
 <?php 
 }
 ?>

@@ -1,4 +1,4 @@
-<div data-window='audio_window' class='window window_bg' style='width: 330px; background: #242d41;'>
+<div class='window window_bg' style='width: 330px; background: #242d41;'>
   <div data-part='handle' class='window_title' style='background-image: radial-gradient(#5c6271 1px, transparent 0) !important;'>
     <div class='float-right'>
       <button class="icon minimize_dark hint--left" aria-label="Minimise" data-minimize></button>
@@ -25,8 +25,11 @@
       </div>
     </div>
   </div>
+  <div class='resize-handle'></div>
+</div>
+
   <script>
-    var audio_window = {
+ audio_window = {
       start: function() {
         ui.initTabs('test_tab', 'tab2');
         if (!audio.audioContext) {
@@ -139,5 +142,3 @@
     };
     audio_window.start();
   </script>
-  <div class='resize-handle'></div>
-</div>

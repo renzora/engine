@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
 if ($auth) {
 ?>
-  <div data-window='debug_gamepad_window' class='window window_bg' style='width: 500px; background: #333;'>
+  <div class='window window_bg' style='width: 500px; background: #333;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#444 1px, transparent 0) !important;'>
     <div class='float-right'>
@@ -57,9 +57,11 @@ if ($auth) {
 
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-      var debug_gamepad_window = {
+debug_gamepad_window = {
         start: function() {
           this.updateButtonList();
           this.gamepadAxesListener = (e) => {
@@ -173,8 +175,6 @@ if ($auth) {
       debug_gamepad_window.start();
     </script>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

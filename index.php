@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <title>Renzora</title>
+  <meta meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <link rel="stylesheet" href="assets/css/output.css">
 
   <script src='assets/js/engine/network.js'></script>
@@ -26,8 +27,6 @@
   <script src='assets/js/engine/audio.js'></script>
   <script src='assets/js/engine/actions.js'></script>
   <script src='assets/js/engine/utils.js'></script>
-  <meta meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-
 </head>
 
 <div id="loadingBarContainer" class="fixed top-5 left-1/2 transform -translate-x-1/2 w-60 p-2 hidden z-50 bg-black bg-opacity-75 rounded">

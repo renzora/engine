@@ -1,4 +1,4 @@
-<div data-window='ui_footer_window' data-close="false">
+<div data-close="false">
   <div class='fixed bottom-0 right-2 z-10 text-sm mb-1 flex space-x-4 tracking-tight'>
     <a href="https://github.com/renzora/web/commit/c0f5327390e3ecc63e8cc67c77241caba4965611" 
        target="_blank" 
@@ -11,10 +11,10 @@
     <span id="effects_rendered" class="text-white rounded-md"></span>
     <span id="animations_rendered" class="text-white rounded-md"></span>
   </div>
-
+  </div>
 
 <script>
-  var ui_footer_window = {
+ui_footer_window = {
     updateUI: function () {
         var tilesRenderedDisplay = document.getElementById('tiles_rendered');
 
@@ -45,5 +45,3 @@
     }
   };
 </script>
-
-</div>

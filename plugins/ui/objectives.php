@@ -1,12 +1,14 @@
-<div data-window='ui_objectives_window' data-close="false">
+<div data-close="false">
   <div id="ui_objectives_window" class="w-72 fixed top-1/4 right-2 z-10 flex rounded flex-col tracking-tight">
     <div id="ui_objectives_container" class="flex flex-col space-y-1 p-2">
       <!-- Objectives will be dynamically inserted here by the displayObjectives method -->
     </div>
   </div>
+  </div>
+
 
   <script>
-  var ui_objectives_window = {
+ui_objectives_window = {
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },
@@ -16,7 +18,7 @@
         { name: "Defeat the dragon", status: true },
         { name: "Collect 100 coins from merchant", status: false }
     ],
-    displayObjectives: function() {
+    start: function() {
       const objectivesContainer = document.getElementById('ui_objectives_container');
       if (objectivesContainer) {
         objectivesContainer.innerHTML = '';
@@ -50,8 +52,6 @@
       }
     }
   };
-
-  ui_objectives_window.displayObjectives();
   </script>
 
   <style>
@@ -102,4 +102,3 @@
     border: 1px solid black;
   }
   </style>
-</div>

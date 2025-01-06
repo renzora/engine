@@ -1,4 +1,4 @@
-<div data-window='inventory_items_window' class='window window_bg' style='width: 500px; background: #232e43;'>
+<div class='window window_bg' style='width: 500px; background: #232e43;'>
   <div data-part='handle' class='window_title' style='background-image: radial-gradient(#3e5279 1px, transparent 0) !important;'>
     <div class='float-right'>
       <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
@@ -50,9 +50,11 @@
       </div>
     </div>
   </div>
+  <div class='resize-handle'></div>
+</div>
 
   <script>
-    var inventory_items_window = {
+inventory_items_window = {
       items: [
         { name: "potion", type: "item" },
         { name: "banana", type: "item" },
@@ -286,9 +288,4 @@
         ui.destroyTabs('inventory_items_window_tabs');
       }
     };
-
-    inventory_items_window.start();
   </script>
-
-  <div class='resize-handle'></div>
-</div>
