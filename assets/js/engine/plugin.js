@@ -1,6 +1,6 @@
 window.pluginResolves = window.pluginResolves || {};
 
-var plugin = {
+plugin = {
     plugins: [],
     baseZIndex: null,
     pluginNames: {},
@@ -252,23 +252,23 @@ var plugin = {
                 method: 'GET',
                 success: (data) => {
                     console.log(`Successfully fetched plugin content for ID: '${id}'`);
-    
+                
                     // Create a temporary container for parsing the HTML
                     const tempContainer = document.createElement('div');
                     tempContainer.innerHTML = data;
-    
+                
                     // Find the top-level div (plugin HTML)
                     const topDiv = tempContainer.querySelector('div');
                     if (topDiv) {
                         topDiv.setAttribute('data-window', id); // Add data-window attribute
-    
+                
                         // Find and process the style
                         const style = tempContainer.querySelector('style');
                         if (style) {
                             topDiv.prepend(style); // Append style to the top of the plugin's HTML
                             console.log(`Appended style to plugin HTML for ID: '${id}'`);
                         }
-    
+                
                         const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
                         if (lastPluginHtml) {
                             lastPluginHtml.after(topDiv); // Append after the last plugin HTML
@@ -276,15 +276,15 @@ var plugin = {
                             document.body.appendChild(topDiv); // Append to the body if none exist
                         }
                         console.log(`Appended plugin HTML for ID: '${id}'`);
-    
+                
                         // Set the active plugin
                         this.activePlugin = id;
                         console.log('Active plugin set:', this.activePlugin);
                     } else {
                         console.warn(`No top-level <div> found for plugin ID: '${id}'. Skipping HTML rendering.`);
                     }
-    
-                    // Find and execute the script
+                
+                    // Check and execute the script even if no HTML is rendered
                     const script = tempContainer.querySelector('script');
                     if (script) {
                         const dynamicScript = document.createElement('script');
@@ -297,7 +297,7 @@ var plugin = {
                             document.body.appendChild(dynamicScript); // Append to the body if none exist
                         }
                         console.log(`Appended and executed script for plugin ID: '${id}_script'`);
-    
+                
                         // Automatically start the plugin only if start is not explicitly called in the script
                         if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
                             console.log(`Starting plugin: '${id}'`);
@@ -306,9 +306,16 @@ var plugin = {
                             console.log(`Plugin script for ID '${id}' explicitly calls start(). Skipping auto-start.`);
                         }
                     } else {
-                        console.warn(`No <script> found for plugin ID: '${id}'`);
+                        console.warn(`No <script> found for plugin ID: '${id}'. Skipping script execution.`);
+                        // Attempt to auto-start even if there’s no script
+                        if (window[id]?.start && !window[id]._hasStarted) {
+                            console.log(`Starting plugin: '${id}' (no script found)`);
+                            window[id]._hasStarted = true; // Flag to prevent multiple starts
+                            window[id].start();
+                        }
                     }
-
+                
+                    // Initialize drag/drop and visibility
                     this.init(`[data-window='${id}']`, {
                         start: function () {
                             this.classList.add('dragging');
@@ -319,27 +326,22 @@ var plugin = {
                         },
                         drag,
                     });
-
+                
                     if (hidden) {
                         this.minimize(id);
                     } else {
                         this.front(id);
                     }
-
-                    if (window[id]?.start && !window[id]._hasStarted) {
-                        console.log(`Starting plugin: '${id}'`);
-                        window[id]._hasStarted = true; // Flag to prevent multiple starts
-                        window[id].start();
-                    }
-    
+                
                     window.pluginResolves[id] = resolve;
-
+                
                     if (onAfterLoad && typeof onAfterLoad === 'function') {
                         onAfterLoad(id);
                     }
-
+                
                     resolve();
                 },
+                
                 error: (error) => {
                     console.error(`Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`, error);
     
@@ -355,7 +357,6 @@ var plugin = {
             });
         });
     },
-    
     
     show: function(pluginId) {
         var plugin = document.querySelector("[data-window='" + pluginId + "']");

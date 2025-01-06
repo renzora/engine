@@ -1,4 +1,4 @@
-const effects = {
+effects = {
 
     shakeMap: function(duration, intensity) {
         const originalCameraX = camera.cameraX;

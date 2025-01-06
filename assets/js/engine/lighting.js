@@ -1,4 +1,4 @@
-const lighting = {
+lighting = {
     lights: [],
     lightsActive: true,
     nightFilterActive: true,
@@ -101,23 +101,39 @@ const lighting = {
 
         if (time >= dayStart && time < sunsetStart) {
             t = 0; // Day
-            weather.fireflies.fireflysActive = false;
-            weather.clouds.cloudsActive = true;
+            if(utils.pluginExists('weather_plugin')) {
+                if(!weather_plugin.fireflys.overrideActive) {
+                    weather_plugin.fireflys.fireflysActive = false;
+                }
+            }
         } else if (time >= sunsetStart && time < nightStart) {
             t = (time - sunsetStart) / (nightStart - sunsetStart);
-            weather.fireflies.fireflysActive = false;
+            if(utils.pluginExists('weather_plugin')) {
+                if(!weather_plugin.fireflys.overrideActive) {
+                    weather_plugin.fireflys.fireflysActive = false;
+                }
+            }
         } else if (time >= nightStart || time < nightEnd) {
             t = 1; // Night
-            weather.fireflies.fireflysActive = true;
-            weather.clouds.cloudsActive = false;
+            if(utils.pluginExists('weather_plugin')) {
+                if(!weather_plugin.fireflys.overrideActive) { 
+                    weather_plugin.fireflys.fireflysActive = true;
+                }
+            }
         } else if (time >= nightEnd && time < sunriseEnd) {
             t = 1 - ((time - nightEnd) / (sunriseEnd - nightEnd));
-            weather.fireflies.fireflysActive = t > 0.5;
-            weather.clouds.cloudsActive = false;
+            if(utils.pluginExists('weather_plugin')) {
+                if(!weather_plugin.fireflys.overrideActive) {
+                    weather_plugin.fireflys.fireflysActive = t > 0.5;
+                }
+            }
         } else {
             t = 0; // Default day
-            weather.fireflies.fireflysActive = false;
-            weather.clouds.cloudsActive = true;
+            if(utils.pluginExists('weather_plugin')) {
+                if(!weather_plugin.fireflys.overrideActive) {
+                    weather_plugin.fireflys.fireflysActive = false;
+                }
+            }
         }
 
         this.lightIntensityMultiplier = t;

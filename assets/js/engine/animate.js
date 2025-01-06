@@ -1,4 +1,4 @@
-var animate = {
+animate = {
     updateAnimatedTiles: function(deltaTime) {
         if (!game.roomData || !game.roomData.items) return;
     

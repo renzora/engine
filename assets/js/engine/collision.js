@@ -1,4 +1,4 @@
-var collision = {
+collision = {
     walkableGridCache: null,
     lastKnownPosition: null,
     cornerBuffer: 16,

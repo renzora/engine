@@ -1,4 +1,4 @@
-var assets = {
+assets = {
     loadedAssets: {},
     totalAssets: 0,
     loadedCount: 0,

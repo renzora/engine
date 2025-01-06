@@ -73,11 +73,6 @@ var game = {
                 }
             });
 
-            weather.fireflies.create();
-            weather.rain.create(0.7);
-            weather.snow.create(0.6);
-            weather.clouds.create();
-
             this.loadScene(this.sceneid);
 
             plugin.load({ id: 'main_title_window', url: 'menus/main_title/index.php', name: 'Main Tiles', drag: true,reload: true });
@@ -87,8 +82,6 @@ var game = {
             console.log("Connected to Main renzora server");
 
             this.loop();
-
-        window.reloadGameData = this.reloadGameData.bind(this);
 
         this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -121,6 +114,13 @@ var game = {
 
             plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: true });
 
+            plugin.load({
+                id: 'weather_plugin',
+                url: 'weather/index.php',
+                drag: false,
+                reload: true
+            });
+
             utils.fullScreen();
 
         } else {
@@ -135,7 +135,8 @@ var game = {
                 { priority: 3, options: { id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'Overlay', drag: false, reload: false } },
                 { priority: 4, options: { id: 'speech_window', url: 'speech/index.php', name: 'Speech', drag: false, reload: true, hidden: true } },
                 { priority: 5, options: { id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'Inventory', drag: false, reload: false } },
-                { priority: 0, options: { id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true } },
+                { priority: 6, options: { id: 'weather_plugin', url: 'weather/index.php', name: 'SignIn', drag: false, reload: true } },
+                { priority: 7, options: { id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true } }
             ]);
 
             camera.panning = false;
@@ -143,9 +144,7 @@ var game = {
             camera.activeCamera = true;
             camera.cutsceneMode = false;
             utils.gameTime.hours = 22;
-            weather.fogActive = true;
             game.timeActive = true;
-            weather.snowActive = true;
         
             const playerOptions = {
               id: this.playerid,  
@@ -312,7 +311,11 @@ render: function () {
     
     render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
 
-    weather.render();
+    if(utils.pluginExists('weather_plugin')) {
+        weather_plugin.rain.draw();
+        weather_plugin.snow.draw();
+        weather_plugin.fireflys.draw();
+    }
 
     this.ctx.save();
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -327,17 +330,17 @@ render: function () {
     render.handleDebugUtilities();
     render.aimTool();
 
-    if(utils.objExists('ui_footer_window.updateUi')) {
+    if(utils.pluginExists('ui_footer_window.updateUi')) {
         ui_footer_window.updateUI();
     }
 
     effects.letterbox.update();
 
-    if (utils.objExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
+    if (utils.pluginExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
         ui_console_editor_inventory.render();
     }
 
-    if (utils.objExists('edit_mode_window')) {
+    if (utils.pluginExists('edit_mode_window')) {
         if (typeof edit_mode_window.renderSelectionBox === 'function') {
             edit_mode_window.renderSelectionBox();
         }
@@ -353,19 +356,19 @@ render: function () {
     }
     
 
-    if(utils.objExists('ui_console_tab_window')) {
-        if (utils.objExists('ui_console_tab_window.renderCollisionBoundaries')) {
+    if(utils.pluginExists('ui_console_tab_window')) {
+        if (utils.pluginExists('ui_console_tab_window.renderCollisionBoundaries')) {
             ui_console_tab_window.renderCollisionBoundaries();
         }
-        if (utils.objExists('ui_console_tab_window.renderNearestWalkableTile')) {
+        if (utils.pluginExists('ui_console_tab_window.renderNearestWalkableTile')) {
             ui_console_tab_window.renderNearestWalkableTile();
         }
-        if (utils.objExists('ui_console_tab_window.renderObjectCollision')) {
+        if (utils.pluginExists('ui_console_tab_window.renderObjectCollision')) {
             ui_console_tab_window.renderObjectCollision();
         }
     }
 
-    if (utils.objExists("ui_overlay_window.update") && game.mainSprite.isVehicle) {
+    if (utils.pluginExists("ui_overlay_window.update") && game.mainSprite.isVehicle) {
         ui_overlay_window.update(game.mainSprite.currentSpeed, game.mainSprite.maxSpeed);
       }
 },

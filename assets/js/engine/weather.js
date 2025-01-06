@@ -1,85 +1,12 @@
-var weather = {
-    clouds: {
-        cloudShadows: [],
-        maxClouds: 30,
-        cloudShadowSize: 32,
-        cloudSpeed: 0.1,
-        cloudsActive: true,
-
-        create: function () {
-            this.cloudShadows = [];
-            for (let i = 0; i < this.maxClouds; i++) {
-                const cloudWidth = this.cloudShadowSize * (2 + Math.random() * 2);
-                const cloudHeight = this.cloudShadowSize * (1.5 + Math.random());
-                const segments = Math.floor(3 + Math.random() * 5);
-                const segmentsData = [];
-                for (let j = 0; j < segments; j++) {
-                    segmentsData.push({
-                        x: (Math.random() - 0.5) * cloudWidth * 0.6,
-                        y: (Math.random() - 0.5) * cloudHeight * 0.4,
-                        radius: Math.random() * this.cloudShadowSize * 0.5 + this.cloudShadowSize * 0.3,
-                    });
-                }
-
-                this.cloudShadows.push({
-                    x: Math.random() * game.worldWidth,
-                    y: Math.random() * game.worldHeight,
-                    width: cloudWidth,
-                    height: cloudHeight,
-                    speedX: Math.random() * this.cloudSpeed - this.cloudSpeed / 2,
-                    speedY: Math.random() * this.cloudSpeed,
-                    segments: segmentsData,
-                });
-            }
-        },
-
-        update: function (deltaTime) {
-            if (!this.cloudsActive) return;
-
-            for (let cloud of this.cloudShadows) {
-                cloud.x += (cloud.speedX * deltaTime) / 16;
-                cloud.y += (cloud.speedY * deltaTime) / 16;
-
-                if (cloud.x > game.worldWidth) cloud.x = -cloud.width;
-                if (cloud.x + cloud.width < 0) cloud.x = game.worldWidth;
-                if (cloud.y > game.worldHeight) cloud.y = -cloud.height;
-            }
-            utils.tracker('weather.clouds.update()');
-        },
-
-        draw: function () {
-            if (!this.cloudsActive) return;
-
-            game.ctx.save();
-            game.ctx.globalAlpha = 0.03;
-            game.ctx.fillStyle = '#000';
-
-            for (let cloud of this.cloudShadows) {
-                game.ctx.beginPath();
-                for (let segment of cloud.segments) {
-                    game.ctx.moveTo(cloud.x + segment.x, cloud.y + segment.y);
-                    game.ctx.arc(
-                        cloud.x + segment.x,
-                        cloud.y + segment.y,
-                        segment.radius,
-                        0,
-                        Math.PI * 2
-                    );
-                }
-                game.ctx.closePath();
-                game.ctx.fill();
-            }
-
-            game.ctx.restore();
-        },
-    },
+weather = {
 
     snow: {
         snowflakes: [],
         maxSnowflakes: 3000,
         snowflakeSize: 0.5,
         swayDirection: -1,
-        snowActive: false,
+        snowActive: true,
+        overrideActive: false,
 
         create: function (opacity) {
             if (!this.snowActive) return;
@@ -132,6 +59,7 @@ var weather = {
     rain: {
         rainDrops: [],
         rainActive: false,
+        overrideActive: false,
 
         create: function (opacity) {
             if (!this.rainActive) return;
@@ -175,10 +103,11 @@ var weather = {
         },
     },
 
-    fireflies: {
+    fireflys: {
         fireflys: [],
         fireflyLights: {},
         fireflysActive: false,
+        overrideActive: false,
 
         create: function () {
             this.fireflys = [];
@@ -210,6 +139,7 @@ var weather = {
         },
 
         update: function (deltaTime) {
+            if (!this.fireflysActive) return;
             const margin = 50;
     
             for (let i = 0; i < this.fireflys.length; i++) {
@@ -260,7 +190,7 @@ var weather = {
                     lighting.lights = lighting.lights.filter(l => l.id !== lightId);
                 }
             }
-            utils.tracker('weather.fireflies.update()');
+            utils.tracker('weather.fireflys.update()');
         },
 
         draw: function () {
@@ -285,9 +215,14 @@ var weather = {
     },
 
     render: function () {
-        this.snow.draw();
-        this.rain.draw();
-        this.fireflies.draw();
-        this.clouds.draw();
-    },
+        if (this.snow.overrideActive === true) {
+            this.snow.draw();
+        }
+        if (this.rain.overrideActive === true) {
+            this.rain.draw();
+        }
+        if (this.fireflys.overrideActive === true) {
+            this.fireflys.draw();
+        }
+    }
 };

@@ -1,4 +1,4 @@
-var input = {
+input = {
     keys: {
         'ArrowUp': "up",
         'ArrowLeft': "left",
@@ -538,7 +538,7 @@ var input = {
     },
 
     keyDown: function(e) {
-        if (game.isEditMode) return;
+        if (game.isEditMode || this.isFormInputFocused()) return;
         if (!game.allowControls) return;
         this.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
@@ -565,7 +565,7 @@ var input = {
     },
     
     keyUp: function(e) {
-        if (game.isEditMode) return;
+        if (game.isEditMode || this.isFormInputFocused()) return;
         this.updateInputMethod('keyboard');
         if (e.target.tagName !== 'INPUT' && e.target.tagName !== 'TEXTAREA') {
             e.preventDefault();
@@ -792,5 +792,18 @@ var input = {
 
     gamepadStart: function() {
         plugin.load({ id: 'overview_menu', url: 'menus/overview/index.php', name:'start menu', reload: true, drag: false, hidden: false })
-    }
+    },
+
+    isFormInputFocused: function() {
+        const activeElement = document.activeElement;
+        return (
+            activeElement &&
+            (
+                activeElement.tagName === 'INPUT' ||
+                activeElement.tagName === 'TEXTAREA' ||
+                activeElement.tagName === 'SELECT' ||
+                activeElement.isContentEditable
+            )
+        );
+    }    
 };

@@ -1,5 +1,4 @@
-
-var render = {
+render = {
     spriteCount: 0,
     animationCount: 0,
     backgroundTileCount: 0,
@@ -74,18 +73,21 @@ updateGameLogic: function(deltaTime) {
     lighting.updateDayNightCycle();
     lighting.updateLights();
     animate.updateAnimatedTiles(deltaTime);
-    weather.snow.update(deltaTime);
-    weather.rain.update(deltaTime);
-    weather.fireflies.update(deltaTime);
-    weather.clouds.update(deltaTime);
+
+    if(utils.pluginExists('weather_plugin')) {
+        weather_plugin.snow.update(deltaTime);
+        weather_plugin.rain.update(deltaTime);
+        weather_plugin.fireflys.update(deltaTime);
+
+        if (weather_plugin.rainActive) {
+            audio.playAudio("rain", assets.use('rain'), 'ambience', true);
+        } else {
+            audio.stopLoopingAudio('rain', 'ambience', 0.5);
+        }
+    }
+    
     particles.updateParticles(deltaTime);
     effects.transitions.update();
-
-    if (weather.rainActive) {
-        audio.playAudio("rain", assets.use('rain'), 'ambience', true);
-    } else {
-        audio.stopLoopingAudio('rain', 'ambience', 0.5);
-    }
 
     actions.checkForNearbyItems();
 },
@@ -283,7 +285,6 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                     // any special draws, shadows, etc.
                     render.renderPathfinderLine();
                     sprite.drawShadow();
-                    weather.clouds.draw();
                     effects.dirtCloudEffect.updateAndRender(game.deltaTime);
                     sprite.draw();
                     effects.bubbleEffect.updateAndRender(game.deltaTime);
@@ -300,7 +301,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
     renderQueue.forEach(item => item.draw());
 
     // 6) If the editor’s grid is active, render it last
-    if (utils.objExists("editor_context_menu_window.renderIsometricGrid")) {
+    if (utils.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
         editor_context_menu_window.renderIsometricGrid();
     }
 

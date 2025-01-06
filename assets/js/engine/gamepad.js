@@ -1,4 +1,4 @@
-var gamepad = {
+gamepad = {
     gamepadIndex: null,
     buttons: [],
     axes: [],

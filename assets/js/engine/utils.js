@@ -1,5 +1,6 @@
-const utils = {
+utils = {
     functionCalls: {},
+    functionQueue: [],
     gameTime: {
         hours: 10,
         minutes: 0,
@@ -163,7 +164,7 @@ const utils = {
         return highestZIndexObject;
     },
     
-    objExists: function(objName) {
+    pluginExists: function(objName) {
         try {
             return typeof eval(objName) !== 'undefined';
         } catch (e) {

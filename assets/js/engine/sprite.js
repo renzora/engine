@@ -1,4 +1,4 @@
-var sprite = {
+sprite = {
     margin: 0,
     create: function (options) {
         let newSprite = {

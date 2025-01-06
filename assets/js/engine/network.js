@@ -1,4 +1,4 @@
-var network = {
+network = {
     ws_uri: "wss://localhost:3000",
     socket: null,
 

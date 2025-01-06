@@ -138,12 +138,12 @@ unmount: function () {
 
     document.body.style.cursor = 'default';
 
-    plugin.close('editor_context_menu_window');
-    plugin.show('ui_inventory_window');
-    plugin.close('console_window');
-    plugin.show('ui_overlay_window');
-    plugin.close('ui_footer_window');
     plugin.load({ id: 'context_menu_window', url: 'menus/context/index.php', name: 'Context Menu', drag: false,reload: true });
+    plugin.close('editor_context_menu_window');
+    plugin.close('console_window');
+    plugin.close('ui_footer_window');
+    plugin.show('ui_inventory_window');
+    plugin.show('ui_overlay_window');
     game.resizeCanvas();
 },
 

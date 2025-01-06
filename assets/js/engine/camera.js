@@ -1,4 +1,4 @@
-var camera = {
+camera = {
     cameraX: 0,
     cameraY: 0,
     targetCameraX: 0,

@@ -663,7 +663,6 @@ main_title_window = {
   camera.panTo(null, null, 0.2, true);
   utils.gameTime.hours = 0;
   game.timeActive = false;
-  weather.snowActive = true;
   this.updateMenu('main');
   this.showTab(0);
   this.highlightCard();

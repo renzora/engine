@@ -6,27 +6,8 @@
   <title>Renzora</title>
   <meta meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <link rel="stylesheet" href="assets/css/output.css">
-
-  <script src='assets/js/engine/network.js'></script>
-  <script src='assets/js/engine/assets.js'></script>
-  <script src='assets/js/engine/effects.js'></script>
-  <script src='assets/js/engine/collision.js'></script>
-  <script src='assets/js/engine/lighting.js'></script>
-  <script src='assets/js/engine/particles.js'></script>
-  <script src='assets/js/engine/game.js'></script>
-  <script src='assets/js/engine/render.js'></script>
-  <script src='assets/js/engine/camera.js'></script>
-  <script src='assets/js/engine/sprite.js'></script>
-  <script src='assets/js/engine/astar.js'></script>
-  <script src='assets/js/engine/input.js'></script>
-  <script src='assets/js/engine/gamepad.js'></script>
-  <script src='assets/js/engine/ui.js'></script>
-  <script src='assets/js/engine/plugin.js'></script>
-  <script src='assets/js/engine/animate.js'></script>
-  <script src='assets/js/engine/weather.js'></script>
-  <script src='assets/js/engine/audio.js'></script>
-  <script src='assets/js/engine/actions.js'></script>
-  <script src='assets/js/engine/utils.js'></script>
+  <script src='assets/js/renzora.min.js'></script>
+  <script src='assets/js/game.js'></script>
 </head>
 
 <div id="loadingBarContainer" class="fixed top-5 left-1/2 transform -translate-x-1/2 w-60 p-2 hidden z-50 bg-black bg-opacity-75 rounded">

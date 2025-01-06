@@ -1,4 +1,4 @@
-const actions = {
+actions = {
     audioCooldown: 0.5,
     lastPlayedTimesByType: {},
     throttleInterval: 2000,

@@ -1,4 +1,4 @@
-var ui = {
+ui = {
   notificationCount: 0,
   activeNotifications: new Map(),
   tabs: {},

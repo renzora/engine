@@ -1,4 +1,4 @@
-const particles = {
+particles = {
     activeEffects: {},
     createParticles: function(x, y, options, effectId) {
         const particleCount = options.count || 20;

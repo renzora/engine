@@ -43,3 +43,15 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.toggleWebGL(false);">Turn off WebGL</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="plugin.load({ id: 'paint_window', url: 'utils/paint/index.php', name: 'paint', drag: true, reload: true });">paint app</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.snow.snowActive = false; console.log(weather_plugin.snow.snowActive);">snow off</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.snow.snowActive = true; console.log(weather_plugin.snow.snowActive);">snow on</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.rain.rainActive = false; console.log(weather_plugin.rain.rainActive);">rain off</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.rain.rainActive = true; console.log(weather_plugin.rain.rainActive);">rain on</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.fireflys.fireflysActive = false; console.log(weather_plugin.fireflys.fireflysActive);">fireflys off</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.fireflys.fireflysActive = true; console.log(weather_plugin.fireflys.fireflysActive);">fireflys on</button>

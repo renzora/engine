@@ -1,4 +1,4 @@
-var audio = {
+audio = {
     audioContext: null,
     masterGain: null,
     oscillatorTypes: ['sine', 'square', 'sawtooth', 'triangle', 'pulse', 'noise'],
