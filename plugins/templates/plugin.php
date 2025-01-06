@@ -6,7 +6,7 @@ if ($auth) {
 <div class="window bg-yellow-700" style="width: 330px;">
     <div class="window_title bg-yellow-600 text-yellow-100 p-2 rounded-t">
         <button data-close class="icon close_dark text-white" aria-label="Close">&times;</button>
-        <span>Template Window</span>
+        <span>Plugin Window</span>
     </div>
     <div class="container text-white p-2">
         <p>Basic content goes here</p>
@@ -21,6 +21,7 @@ if ($auth) {
 plugin_window = {
     start: function() {
         console.log(`Plugin started: ${this.id}`);
+        this.test_function();
     },
 
     test_function: function() {

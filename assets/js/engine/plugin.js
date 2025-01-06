@@ -325,6 +325,12 @@ var plugin = {
                     } else {
                         this.front(id);
                     }
+
+                    if (window[id]?.start && !window[id]._hasStarted) {
+                        console.log(`Starting plugin: '${id}'`);
+                        window[id]._hasStarted = true; // Flag to prevent multiple starts
+                        window[id].start();
+                    }
     
                     window.pluginResolves[id] = resolve;
 

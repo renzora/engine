@@ -41,3 +41,5 @@
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.toggleWebGL(true);">Turn on WebGL</button>
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.toggleWebGL(false);">Turn off WebGL</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="plugin.load({ id: 'paint_window', url: 'utils/paint/index.php', name: 'paint', drag: true, reload: true });">paint app</button>
