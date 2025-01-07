@@ -7,7 +7,7 @@ if ($auth) {
 <div id="pieMenu" class="pie-menu">
     <div class="pie-menu-ring"></div>
     <div class="pie-item" data-action="action1" style="--item-index: 0;">
-        <div class="pie-item-content">Console</div>
+        <div class="pie-item-content">Editor</div>
     </div>
     <div class="pie-item" data-action="action2" style="--item-index: 1;">
         <div class="pie-item-content">Mishell</div>

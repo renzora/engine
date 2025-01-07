@@ -729,6 +729,11 @@ main_title_window = {
       this.cursorTimeout = null;
     }
     console.log("Event listeners removed from main_title_window.");
+
+    assets.unload('menu_tab_switch');
+    assets.unload('menu_navigate');
+    assets.unload('menu_selection_confirm');
+
   },
 
 addEventListeners: function () {
@@ -1135,7 +1140,7 @@ characterSelection: function() {
 
   startNewStory: function () {
     console.log('starting new story');
-    plugin.load({ id: 'beta_window', url: 'beta/index.php', name: 'Beta Notice', drag: false, reload: true, hidden: false });
+    plugin.load({ id: 'beta_window', url: 'ui/menus/beta/index.php', name: 'Beta Notice', drag: false, reload: true, hidden: false });
     
   },
 
@@ -1153,7 +1158,7 @@ characterSelection: function() {
   },
 
   network_connect: function() {
-    plugin.load({ id: 'network_connect_window', url: 'network/connect.php', name: 'Network connect', drag: true,reload: true });
+    plugin.load({ id: 'network_connect_window', url: 'ui/menus/network/connect.php', name: 'Network connect', drag: true,reload: true });
   },
 
   // Sign-in button functionality placeholder

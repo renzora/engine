@@ -56,7 +56,7 @@ console_window = {
         ui.ajax({
           method: 'GET',
           data: 'mode='+id,
-          url: `plugins/console/mode.php`,
+          url: `plugins/editor/console/mode.php`,
           success: function (data) {
             ui.html('.console_window_tab_buttons', data, 'replace');
             console_window.setupTabListeners();
@@ -157,7 +157,7 @@ handleTabClick: function(tab, index) {
             contentDiv.innerHTML = ''; 
             ui.ajax({
                 method: 'POST',
-                url: `plugins/console/tabs/${target}/index.php`,
+                url: `plugins/editor/console/tabs/${target}/index.php`,
                 success: function(data) {
                     ui.html(contentDiv, data, 'replace');
                     console.log(target, "loaded successfully");

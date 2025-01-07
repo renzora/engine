@@ -102,7 +102,7 @@ var ui_console_tab_window = {
     openCreateServerplugin: function() {
         plugin.load({
             id: 'server_create_window',
-            url: 'console/tabs/servers/createServer.php',
+            url: 'editor/console/tabs/servers/createServer.php',
             name: 'Create Server',
             drag: true,
             reload: false
@@ -116,7 +116,7 @@ var ui_console_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/console/tabs/servers/ajax/getServers.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/getServers.php',
             data: JSON.stringify({ tabType: tabType }),
             headers: {
                 'Content-Type': 'application/json'
@@ -211,7 +211,7 @@ var ui_console_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/console/tabs/servers/ajax/getScenes.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/getScenes.php',
             data: JSON.stringify({ serverId: serverId }),
             headers: {
                 'Content-Type': 'application/json'
@@ -250,7 +250,7 @@ var ui_console_tab_window = {
     loadEditServerplugin: function(serverId, serverName) {
         plugin.load({
             id: 'server_edit_window',
-            url: `console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`,
+            url: `editor/console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`,
             name: 'Edit Server',
             drag: true,
             reload: false
@@ -260,7 +260,7 @@ var ui_console_tab_window = {
     loadEditSceneplugin: function(sceneId, sceneName, serverId) {
         plugin.load({
             id: 'scene_edit_window',
-            url: `console/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`,
+            url: `editor/console/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`,
             name: 'Edit Scene',
             drag: true,
             reload: false

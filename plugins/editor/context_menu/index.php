@@ -38,7 +38,7 @@
     <!-- Context Menu Items Container -->
     <div
       id="editor_menu_container"
-      class="bg-black text-white rounded-lg shadow-lg p-2"
+      class="bg-black text-white rounded-lg shadow-lg"
       style="width: 220px; align-self: flex-start;">
       <ul id="editor_menuItems" class="space-y-1"></ul>
     </div>

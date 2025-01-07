@@ -40,12 +40,6 @@ var game = {
 
         assets.preload([
             { name: 'gamepad_buttons', path: 'img/icons/gamepad.png' },
-            { name: 'green_truck', path: 'img/sprites/vehicles/green_truck.png' },
-            { name: 'horse', path: 'img/sprites/animals/horse/1.png' },
-            { name: 'cow', path: 'img/sprites/animals/cow/1.png' },
-            { name: 'chick', path: 'img/sprites/animals/chick/1.png' },
-            { name: 'chicken', path: 'img/sprites/animals/chicken/1.gif' },
-            { name: 'pig', path: 'img/sprites/animals/pig/1.png' },
             { name: 'female-01', path: 'img/sprites/character/female-01/1.png' },
             { name: 'gen1', path: 'img/tiles/gen1.png' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
@@ -75,7 +69,7 @@ var game = {
 
             this.loadScene(this.sceneid);
 
-            plugin.load({ id: 'main_title_window', url: 'menus/main_title/index.php', name: 'Main Tiles', drag: true,reload: true });
+            plugin.load({ id: 'main_title_window', url: 'ui/menus/main_menu/index.php', name: 'Main Tiles', drag: true,reload: true });
             
             //plugin.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
 
@@ -102,41 +96,26 @@ var game = {
         if (utils.isMobileDevice()) {
             //plugin.load({ id: 'joypad_window', url: 'utils/joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: false });
 
-            plugin.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true });
-
-            plugin.load({ id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'overlay', drag: false, reload: false });
-
-            plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
-
-            plugin.load({ id: 'speech_window', url: 'speech/index.php', name: 'speech', drag: false, reload: true, hidden: true });
-
-            plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'ui window',drag: false, reload: false });
-
-            plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: true });
-
-            plugin.load({
-                id: 'weather_plugin',
-                url: 'weather/index.php',
-                drag: false,
-                reload: true
-            });
+            plugin.load({ id: 'auth_window', url: 'auth/index.php', drag: true, reload: true });
+            plugin.load({ id: 'ui_overlay_window', url: 'ui/overlay/index.php', drag: false, reload: false });
+            plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false });
+            plugin.load({ id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true });
+            plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', drag: false, reload: true, hidden: true });
+            plugin.load({ id: 'weather_plugin', url: 'effects/weather/index.php', drag: false, reload: true });
 
             utils.fullScreen();
 
         } else {
 
-            //plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', name: 'onscreen keyboard', drag: false, reload: true, hidden: false });
-
             plugin.preload([
-                { priority: 1, options: { id: 'console_window', url: 'console/index.php', name: 'console', drag: false, reload: false } },
-                { priority: 1, options: { id: 'context_menu_window', url: 'menus/context/index.php', name: 'Context Menu', drag: true, reload: false } },
-                { priority: 1, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer Window', drag: false, reload: false } },
-                { priority: 2, options: { id: 'pie_menu_window', url: 'menus/pie/index.php', name: 'Pie Menu', drag: false, reload: false, hidden: false } },
-                { priority: 3, options: { id: 'ui_overlay_window', url: 'ui/overlay.php', name: 'Overlay', drag: false, reload: false } },
-                { priority: 4, options: { id: 'speech_window', url: 'speech/index.php', name: 'Speech', drag: false, reload: true, hidden: true } },
-                { priority: 5, options: { id: 'ui_inventory_window', url: 'ui/inventory.php', name: 'Inventory', drag: false, reload: false } },
-                { priority: 6, options: { id: 'weather_plugin', url: 'weather/index.php', name: 'SignIn', drag: false, reload: true } },
-                { priority: 7, options: { id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true, reload: true } }
+                { priority: 1, options: { id: 'console_window', url: 'editor/console/index.php', name: 'console', drag: false, reload: false } },
+                { priority: 2, options: { id: 'context_menu_window', url: 'ui/menus/context_menu/index.php', drag: true, reload: false } },
+                { priority: 4, options: { id: 'pie_menu_window', url: 'ui/menus/pie/index.php', drag: false, reload: false, hidden: false } },
+                { priority: 5, options: { id: 'ui_overlay_window', url: 'ui/hud/index.php', drag: false, reload: false } },
+                { priority: 6, options: { id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true } },
+                { priority: 7, options: { id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false } },
+                { priority: 8, options: { id: 'weather_plugin', url: 'effects/weather/index.php', drag: false, reload: true } },
+                { priority: 9, options: { id: 'auth_window', url: 'auth/index.php', drag: true, reload: true } }
             ]);
 
             camera.panning = false;
@@ -189,7 +168,7 @@ var game = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/console/tabs/servers/ajax/getSceneData.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {
@@ -226,7 +205,7 @@ var game = {
     
                 } else {
                     console.log('Error: ' + data.message);
-                    plugin.load('console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
+                    plugin.load('editor/console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
                 }
             },
             error: function(data) {
@@ -234,7 +213,7 @@ var game = {
 
                 plugin.load({
                     id: "scene_load_error_window",
-                    url: "console/tabs/servers/ajax/error.php",
+                    url: "editor/console/tabs/servers/ajax/error.php",
                     name: "Server Error",
                     showInList: true
                 });

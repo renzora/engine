@@ -42,7 +42,7 @@ var scene_create_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/console/tabs/servers/ajax/createScene.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/createScene.php',
             data: JSON.stringify({ serverId: this.serverId, name: sceneName }),
             headers: {
                 'Content-Type': 'application/json'

@@ -99,7 +99,7 @@ context_menu_window = {
         const uniqueId = selectedObject.id;
         plugin.load({
           id: 'tileset_item_editor_window',
-          url: `renadmin/tileset/items.php?id=${uniqueId}`,
+          url: `editor/tileset_manager/items.php?id=${uniqueId}`,
           name: 'Item Editor',
           drag: true,
           reload: true,
@@ -109,7 +109,7 @@ context_menu_window = {
       sceneEditor: function() {
         plugin.load({
           id: 'console_window',
-          url: 'console/index.php',
+          url: 'editor/console/index.php',
           name: 'console',
           drag: false,
           reload: true,

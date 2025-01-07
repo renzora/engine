@@ -93,8 +93,8 @@ edit_mode_window = {
     console_window.allowToggle = false;
 
     plugin.preload([
-        { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu.php', name: 'Editor Context Menu', drag: false, reload: true } },
-        { priority: 2, options: { id: 'ui_footer_window', url: 'ui/footer.php', name: 'Footer', drag: false, reload: false } }
+        { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu/index.php', drag: false, reload: true } },
+        { priority: 2, options: { id: 'ui_footer_window', url: 'ui/dev/index.php', drag: false, reload: false } }
     ]);
 
     setTimeout(() => { camera.manual = true; }, 0);
@@ -138,7 +138,7 @@ unmount: function () {
 
     document.body.style.cursor = 'default';
 
-    plugin.load({ id: 'context_menu_window', url: 'menus/context/index.php', name: 'Context Menu', drag: false,reload: true });
+    plugin.load({ id: 'context_menu_window', url: 'ui/menus/context_menu/index.php', name: 'Context Menu', drag: false,reload: true });
     plugin.close('editor_context_menu_window');
     plugin.close('console_window');
     plugin.close('ui_footer_window');

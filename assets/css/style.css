@@ -2,26 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
-@font-face {
-  font-family: 'dogica';
-  src: url('../fonts/better_vcr/vcr.ttf') format('truetype');
-  font-style: normal;
-}
 
 html, body {
   width: 100%;
   height: 100%;
-  margin: auto;
-  overflow: hidden;
-  background: #000;
-  font-family: 'dogica', tahoma, sans-serif;
-  font-size: 11px;
-  image-rendering: pixelated;
+  margin: 0; /* Reset margin */
+  overflow: hidden; /* Prevent scrolling */
+  background-color: #000; /* Use background-color for clarity */
+  font-family: Menlo, Monaco, Consolas, 'Courier New', 'DejaVu Sans Mono', monospace; /* Updated font stack for system fonts */
+  font-size: 14px; /* Maintain consistent font size */
+  image-rendering: pixelated; /* Optimize for pixelated images */
+
+    /* Disable font smoothing for a more pixelated appearance */
+    -webkit-font-smoothing: none; /* Disable anti-aliasing on WebKit browsers */
+    -moz-osx-font-smoothing: grayscale; /* Adjust font smoothing for Firefox on macOS */
+    text-rendering: geometricPrecision; /* Optimize text rendering for sharpness */
+
+  /* Disable user text selection */
   -webkit-user-select: none; /* Safari and Chrome */
   -moz-user-select: none;    /* Firefox */
   -ms-user-select: none;     /* Internet Explorer */
   user-select: none;         /* Standard syntax */
-  -webkit-touch-callout: none; /* iOS Safari */
+
+  /* Prevent context menu on long press (iOS Safari) */
+  -webkit-touch-callout: none;
 }
 
 
