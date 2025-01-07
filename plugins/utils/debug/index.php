@@ -1,5 +1,5 @@
 <?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if($auth) {
 ?>
   <div class='window position-fixed bottom-0 right-2' style='width: 250px;background: #bba229; margin-bottom: 10px;'>

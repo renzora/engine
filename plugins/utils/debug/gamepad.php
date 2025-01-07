@@ -1,5 +1,5 @@
 <?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
 ?>
   <div class='window window_bg' style='width: 500px; background: #333;'>

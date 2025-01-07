@@ -1,5 +1,5 @@
 <?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
     // Retrieve the item ID from the URL
     $itemId = $_GET['id'];

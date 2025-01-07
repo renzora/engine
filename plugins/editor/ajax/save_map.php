@@ -1,6 +1,6 @@
 <?php
 header('Content-Type: application/json'); // Ensure the response is JSON
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 
 if (!$auth) {
     echo json_encode([

@@ -1,8 +1,8 @@
 <?php
 
 header('Content-type: application/json');
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
-include $_SERVER['DOCUMENT_ROOT'] . '/helpers/inputCheck.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/helpers.php';
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;

@@ -1,5 +1,5 @@
 <?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
 ?>
   <div class='window bg-gray-800/90 shadow-xl rounded-lg fixed inset-x-0 bottom-10 mx-auto text-center pixel-corners transition-all transform hover:scale-105' style='width: 500px; position: relative;'>

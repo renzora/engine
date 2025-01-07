@@ -1,5 +1,5 @@
 <?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
     $sceneId = $_GET['id'] ?? null;
     $sceneName = $_GET['name'] ?? '';

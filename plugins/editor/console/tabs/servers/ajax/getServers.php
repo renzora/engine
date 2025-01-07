@@ -1,6 +1,6 @@
 <?php
 header('Content-type: application/json'); // Ensure JSON output
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php'; // Include configuration for DB and user authentication
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php'; // Include configuration for DB and user authentication
 
 // Enhanced error handling
 try {

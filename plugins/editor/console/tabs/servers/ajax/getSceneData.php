@@ -1,6 +1,6 @@
 <?php
 header('Content-type: application/json');
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 
 $scene_id = $_POST['scene_id'] ?? null;
 

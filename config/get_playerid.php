@@ -1,6 +1,6 @@
 <?php
 header('Content-Type: application/json');
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
