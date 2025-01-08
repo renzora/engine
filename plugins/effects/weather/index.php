@@ -1,5 +1,6 @@
 <script>
-weather_plugin = {
+window[id] = {
+    id: id,
 
 start: function() {
     this.rain.create(0.7);
@@ -235,5 +236,4 @@ fireflys: {
     }
 }
 };
-
 </script>

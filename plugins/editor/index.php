@@ -10,7 +10,8 @@ if ($auth) {
   </style>
 
   <script>
-edit_mode_window = {
+window[id] = {
+    id: id,
     renderMode: 'isometric',
     originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},

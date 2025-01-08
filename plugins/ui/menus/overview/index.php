@@ -21,7 +21,8 @@ if ($auth) {
     </div>
 
     <script>
-overview_menu_window = {
+window[id] = {
+  id: id,
         start: function() {
           // Basic initialization code
         },

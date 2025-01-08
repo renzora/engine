@@ -97,8 +97,9 @@ if ($auth) {
     </div>
 
     <script>
-tileset_item_editor_window = {
-        walkableData: {},
+window[id] = {
+    id: id,
+    walkableData: {},
     polygonPoints: [],
     isResizing: false,
     currentlyResizingPoint: null,

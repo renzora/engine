@@ -14,7 +14,8 @@
   </div>
 
 <script>
-ui_footer_window = {
+window[id] = {
+    id: id,
     updateUI: function () {
         var tilesRenderedDisplay = document.getElementById('tiles_rendered');
 

@@ -9,7 +9,8 @@
   </div>
 
   <script>
-context_menu_window = {
+window[id] = {
+  id: id,
       contextMenuElement: null,
       menuItemsElement: null,
       contextmenuHandler: null,
@@ -119,5 +120,4 @@ context_menu_window = {
         });
       }
     };
-
   </script>

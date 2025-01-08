@@ -71,7 +71,8 @@ if(!$auth) {
   </div>
 
 <script>
- auth_window = {
+window[id] = {
+  id: id,
       login: function() {
         var login_username = document.getElementById('login_username').value;
         var login_password = document.getElementById('login_password').value;
@@ -96,7 +97,7 @@ if(!$auth) {
                 ui.notif("You are now signed in as " + login_username, 'bottom-center');
 
                 game.plugin_init();
-                plugin.close("auth_window");
+                plugin.close(this.id);
 
 
               } else {
@@ -137,7 +138,7 @@ if(!$auth) {
               console.log(data);
               if (data == 'registration_complete') {
                 ui.notif("Welcome to Renzora, " + register_username + "!");
-                plugin.close("auth_window");
+                plugin.close(this.id);
                 plugin.load({
                   id: 'ui',
                   url: 'ui',
@@ -186,23 +187,21 @@ if(!$auth) {
         }
       },
       // Initialize with the Login tab active
-      initTabs: function() {
-        auth_window.toggleContent("loginTab");
+      start: function() {
+        this.toggleContent("loginTab");
 
         // Event listeners for tab clicks
         document.getElementById("loginTab").addEventListener("click", function() {
-          auth_window.toggleContent("loginTab");
+          this.toggleContent("loginTab");
         });
         document.getElementById("registerTab").addEventListener("click", function() {
-          auth_window.toggleContent("registerTab");
+          this.toggleContent("registerTab");
         });
         document.getElementById("forgotTab").addEventListener("click", function() {
-          auth_window.toggleContent("forgotTab");
+          this.toggleContent("forgotTab");
         });
       }
     };
-
-    auth_window.initTabs(); // Initialize tabs
   </script>
 
 <?php 

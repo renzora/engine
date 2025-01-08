@@ -47,7 +47,8 @@ if ($auth) {
   </div>
 
   <script>
-ui_inventory_window = {
+window[id] = {
+    id: id,
     inventory: [
         { name: "sword", amount: 8, category: "pewpew", damage: 10 },
         { name: "wood", amount: 12, category: "pewpew", damage: 60 },

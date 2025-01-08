@@ -1,4 +1,4 @@
-<div data-window='scene_load_error_window' class='window window_bg' style='width: 330px;background: #1d335b;'>
+<div class='window window_bg' style='width: 330px;background: #1d335b;'>
 <div data-part='handle' class='window_title' style='background-image: radial-gradient(#384c6f 1px, transparent 0) !important;'>
     <div data-part='title' class='title_bg' style='background: #1d335b; color: #ede8d6;'>Renzora Server</div>
   </div>

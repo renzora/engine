@@ -1,5 +1,5 @@
 <?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config.php';
+include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
 ?>
 
@@ -17,7 +17,8 @@ if ($auth) {
 
 
   <script>
-console_window = {
+window[id] = {
+    id: id,
     isOpen: false,
     currentTabIndex: 0,
     eventListeners: [],
@@ -240,8 +241,6 @@ handleTabClick: function(tab, index) {
         console.log("All event listeners have been removed.");
     }
 };
-
-console_window.start();
   </script>
 
 <?php

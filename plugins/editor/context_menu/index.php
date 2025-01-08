@@ -49,7 +49,8 @@
 
 
   <script>
-editor_context_menu_window = {
+window[id] = {
+      id: id,
       isGridEnabled: true,
       isSnapEnabled: true,
       isNightfilterEnabled: false,

@@ -137,7 +137,8 @@ if ($auth) {
 </style>
 
 <script>
-pie_menu_window = {
+window[id] = {
+    id: id,
     currentHoveredAction: null,
     pieMenuVisible: false,
 

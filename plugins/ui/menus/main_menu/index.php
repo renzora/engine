@@ -66,7 +66,7 @@
   </svg>
   <!-- Avatar Image -->
   <img
-    src="assets/img/sprites/portrait/lady_01.png" 
+    src="assets/img/sprites/portraits/lady_01.png" 
     alt="Player Avatar"
     class="rounded-full w-full h-full object-cover border-4 border-transparent"
   />
@@ -630,7 +630,7 @@ svg circle:last-child {
 </style>
 
 <script>
-main_title_window = {
+window[id] = {
   currentTabIndex: 0,
   tabName: "renzora",
   tabs: [],
@@ -728,7 +728,6 @@ main_title_window = {
       clearTimeout(this.cursorTimeout);
       this.cursorTimeout = null;
     }
-    console.log("Event listeners removed from main_title_window.");
 
     assets.unload('menu_tab_switch');
     assets.unload('menu_navigate');
@@ -1140,7 +1139,7 @@ characterSelection: function() {
 
   startNewStory: function () {
     console.log('starting new story');
-    plugin.load({ id: 'beta_window', url: 'ui/menus/beta/index.php', name: 'Beta Notice', drag: false, reload: true, hidden: false });
+    plugin.load({ id: 'beta_window', url: 'ui/menus/beta/index.php', drag: false, reload: true, hidden: false });
     
   },
 
@@ -1158,12 +1157,12 @@ characterSelection: function() {
   },
 
   network_connect: function() {
-    plugin.load({ id: 'network_connect_window', url: 'ui/menus/network/connect.php', name: 'Network connect', drag: true,reload: true });
+    plugin.load({ id: 'network_connect_window', url: 'ui/menus/network/connect.php', drag: true,reload: true });
   },
 
   // Sign-in button functionality placeholder
   signIn: function () {
-    plugin.load({ id: 'auth_window', url: 'auth/index.php', name: 'SignIn', drag: true,reload: true }); 
+    plugin.load({ id: 'auth_window', url: 'auth/index.php', drag: true,reload: true }); 
   },
 
   exit: function() {

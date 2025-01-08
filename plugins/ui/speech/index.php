@@ -27,7 +27,8 @@ if ($auth) {
     </div>
 
     <script>
-speech_window = {
+window[id] = {
+    id: id,
     speechText: [],
     currentSpeechIndex: 0,
     typingInProgress: false,

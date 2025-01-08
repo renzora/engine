@@ -36,7 +36,8 @@ if ($auth) {
 
 
   <script>
-joypad_window = {
+window[id] = {
+    id: id,
     isDragging: false, // Track whether the joystick is being dragged
 
     start: function() {

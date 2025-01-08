@@ -88,12 +88,12 @@ assets = {
                 resolve(img);
             };
             img.onerror = reject;
-            img.src = this.noCache('assets/' + asset.path);
+            img.src = 'assets/' + asset.path;
         });
     },
 
     loadJSON: function(asset) {
-        return fetch(this.noCache('assets/' + asset.path))
+        return fetch('assets/' + asset.path)
             .then(response => response.json())
             .then(data => {
                 this.assetLoaded(asset, data);
@@ -103,7 +103,7 @@ assets = {
     },
 
     loadAudio: function(asset) {
-        return fetch(this.noCache('assets/' + asset.path))
+        return fetch('assets/' + asset.path)
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => {
                 return audio.audioContext.decodeAudioData(arrayBuffer);
@@ -127,15 +127,6 @@ assets = {
 
     isAssetLoaded: function(name) {
         return !!this.loadedAssets[name];
-    },
-
-    noCache: function(url) {
-        const timestamp = new Date().getTime();
-        if (url.includes('?')) {
-            return `${url}&t=${timestamp}`;
-        } else {
-            return `${url}?t=${timestamp}`;
-        }
     },
 
     unload: function(assetName) {

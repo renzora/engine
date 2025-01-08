@@ -25,7 +25,8 @@
   </div>
 
   <script>
-network_connect_window = {
+window[id] = {
+  id: id,
     keydownHandler: null,
 
     start: function() {

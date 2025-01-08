@@ -30,7 +30,8 @@ if ($auth) {
     </div>
 
     <script>
-editor_scene_properties_window = {
+window[id] = {
+    id: id,
     start: function() {
         const widthSlider = document.getElementById('sceneWidth');
         const heightSlider = document.getElementById('sceneHeight');

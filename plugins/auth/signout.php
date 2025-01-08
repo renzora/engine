@@ -33,7 +33,8 @@ if($auth) {
     </div>
 
     <script>
-signout_window = {
+window[id] = {
+  id: id,
         signout: function() {
 
           ui.ajax({
@@ -43,18 +44,18 @@ signout_window = {
                 ui.notif("You are now signed out. Please come back again soon :)", 'bottom-center');
                 plugin.load('ui');
                 plugin.load('auth');
-                plugin.close('signout_window');
+                plugin.close(this.id);
               }
             });
 
         },
         confirm: function() {
-          signout_window.signout();
+          this.signout();
           plugin.closeAll();
         },
         cancel: function() {
-          plugin.close('signout_window');
           plugin.load('settings');
+          plugin.close(this.id);
         }
       }
     </script>

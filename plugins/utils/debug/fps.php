@@ -16,7 +16,8 @@
     </div>
 
 <script>
-fps_monitor_window = {
+window[id] = {
+    id: id,
     dpr: 1,  // Default value, will be updated in setupCanvas
     hiddenFunctions: {}, // Track hidden functions
 
@@ -215,9 +216,5 @@ renderChart: function () {
         }
     });
 }
-
-
 };
-
-fps_monitor_window.start();  // Start the FPS monitor when the plugin is loaded
 </script>

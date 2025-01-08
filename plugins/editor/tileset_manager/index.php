@@ -108,7 +108,8 @@ if ($auth) {
   </style>
 
 <script>
-tileset_window = {
+window[id] = {
+    id: id,
     selectedTiles: [],
     nightFilterEnabled: false,
     imageCanvas: document.getElementById('uploaded_canvas'),

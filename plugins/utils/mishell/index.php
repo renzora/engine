@@ -19,7 +19,8 @@ if($auth) {
 </div>
 
     <script>
-mishell_window = {
+window[id] = {
+  id: id,
         start: function() {
           document.getElementById('mishell_prompt').focus();
         },

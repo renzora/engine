@@ -16,7 +16,7 @@ if ($auth) {
         <div class="relative w-16 h-16">
           <!-- Avatar Image -->
           <img
-            src="assets/img/sprites/portrait/lady_01.png"
+            src="assets/img/sprites/portraits/lady_01.png"
             alt="Player Avatar"
             class="rounded-full w-full h-full object-cover border-4 border-transparent"
           />
@@ -203,7 +203,8 @@ if ($auth) {
   </style>
 
   <script>
-ui_overlay_window = {
+window[id] = {
+      id: id,
       bulletsPerRound: 80,
       remainingBullets: 80,
       remainingRounds: 13,

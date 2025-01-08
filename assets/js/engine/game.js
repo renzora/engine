@@ -1,4 +1,4 @@
-var game = {
+game = {
     needsFilterUpdate: true,
     canvas: undefined,
     ctx: undefined,
@@ -40,8 +40,8 @@ var game = {
 
         assets.preload([
             { name: 'gamepad_buttons', path: 'img/icons/gamepad.png' },
-            { name: 'female-01', path: 'img/sprites/character/female-01/1.png' },
-            { name: 'gen1', path: 'img/tiles/gen1.png' },
+            { name: 'female-01', path: 'img/sprites/characters/female-01.png' },
+            { name: 'gen1', path: 'img/sheets/gen1.png' },
             { name: 'itemsImg', path: 'img/icons/items.png' },
             { name: 'objectData', path: 'json/objectData.json' },
             { name: 'itemsData', path: 'json/itemsData.json' },
@@ -69,7 +69,7 @@ var game = {
 
             this.loadScene(this.sceneid);
 
-            plugin.load({ id: 'main_title_window', url: 'ui/menus/main_menu/index.php', name: 'Main Tiles', drag: true,reload: true });
+            plugin.load({ id: 'main_title_window', url: 'ui/menus/main_menu/index.php', drag: true,reload: true });
             
             //plugin.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
 
@@ -108,7 +108,7 @@ var game = {
         } else {
 
             plugin.preload([
-                { priority: 1, options: { id: 'console_window', url: 'editor/console/index.php', name: 'console', drag: false, reload: false } },
+                { priority: 1, options: { id: 'console_window', url: 'editor/console/index.php', drag: false, reload: false } },
                 { priority: 2, options: { id: 'context_menu_window', url: 'ui/menus/context_menu/index.php', drag: true, reload: false } },
                 { priority: 4, options: { id: 'pie_menu_window', url: 'ui/menus/pie/index.php', drag: false, reload: false, hidden: false } },
                 { priority: 5, options: { id: 'ui_overlay_window', url: 'ui/hud/index.php', drag: false, reload: false } },
@@ -205,7 +205,10 @@ var game = {
     
                 } else {
                     console.log('Error: ' + data.message);
-                    plugin.load('editor/console/tabs/servers/ajax/error.php', 'scene_load_error_window', null, "server error", true);
+                    plugin.load({
+                        id: "scene_load_error_window",
+                        url: "editor/console/tabs/servers/ajax/error.php",
+                    });
                 }
             },
             error: function(data) {
@@ -214,8 +217,6 @@ var game = {
                 plugin.load({
                     id: "scene_load_error_window",
                     url: "editor/console/tabs/servers/ajax/error.php",
-                    name: "Server Error",
-                    showInList: true
                 });
             }
         });

@@ -8,7 +8,8 @@
 
 
   <script>
-ui_objectives_window = {
+window[id] = {
+  id: id,
     objectives: [
         { name: "Find the hidden sword", status: false },
         { name: "Plant the apple seeds in renzora Garden", status: false },

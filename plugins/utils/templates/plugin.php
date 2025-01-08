@@ -1,15 +1,10 @@
-<?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
-if ($auth) {
-?>
-
-<div class="window bg-yellow-700" style="width: 330px;">
-    <div class="window_title bg-yellow-600 text-yellow-100 p-2 rounded-t">
-        <button data-close class="icon close_dark text-white" aria-label="Close">&times;</button>
+<div class="window window_bg text-white" style="width: 330px;">
+    <div class="window_title p-2">
         <span>Plugin Window</span>
     </div>
-    <div class="container window_body text-white p-2">
-        <p>Basic content goes here</p>
+    <div class="container window_body text-center p-2">
+        <p>Plugin content goes here</p>
+        <button data-close class="white_button p-2 rounded mt-2" aria-label="Close">Okay</button>
     </div>
 </div>
   
@@ -18,14 +13,10 @@ if ($auth) {
 </style>
   
 <script>
-plugin_window = {
+window[id] = {
+    id: id,
     start: function() {
         console.log(`Plugin started: ${this.id}`);
-        this.test_function();
-    },
-
-    test_function: function() {
-        console.log(`Test function executed for plugin: ${this.id}`);
     },
 
     unmount: function() {
@@ -33,7 +24,3 @@ plugin_window = {
     }
 };
 </script>
-
-<?php
-}
-?>

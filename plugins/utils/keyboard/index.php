@@ -27,7 +27,8 @@
   </style>
 
   <script>
-keyboard_window = {
+window[id] = {
+  id: id,
       capsLock: false,
       recognition: null,
       isListening: false,

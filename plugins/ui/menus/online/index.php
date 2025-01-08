@@ -372,7 +372,8 @@
 </style>
 
 <script>
-online_menu_window = {
+window[id] = {
+  id: id,
   currentTabIndex: 0,
   tabName: "explore",
   tabs: ["explore", "arena", "training", "store", "exit"],

@@ -22,7 +22,8 @@
 </div>
 
 <script>
-gamepads_window = {
+window[id] = {
+    id: id,
     currentIndex: 0, // Index of the currently highlighted controller in the filtered list
     throttleDuration: 200, // Throttle duration in milliseconds
     lastButtonPress: 0, // Timestamp of the last button press
@@ -153,5 +154,4 @@ gamepads_window = {
         console.log('Gamepads window unmounted.');
     }
 };
-
 </script>

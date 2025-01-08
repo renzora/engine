@@ -192,7 +192,8 @@ if ($auth) {
     </div>
 
     <script>
-synth_window = {
+window[id] = {
+    id: id,
     octave: 4,
     instruments: [],
     selectedInstrumentIndex: null,
@@ -207,8 +208,8 @@ synth_window = {
     tempos: [], // Store tempo changes
 
     start: function() {
-        audio.createChannel('synth');
-    audio.setVolume('synth', 0.5);
+        audio.createChannel(this.id);
+    audio.setVolume(this.id, 0.5);
 
     this.initKeyboard();
     this.initKnobs();
@@ -270,7 +271,7 @@ synth_window = {
     },
 
     unmount: function() {
-        audio.removeChannel('synth');
+        audio.removeChannel(this.id);
     },
 
     initKeyboard: function() {
@@ -407,9 +408,9 @@ updateOctaveRangeDisplay: function() {
                     if (newAngle > 135) newAngle = 135;
                     let newValue = min + ((newAngle + 135) / 270) * (max - min);
                     newValue = Math.round(newValue / step) * step;
-                    synth_window.updateKnobRotation(knob, newValue);
+                    this.updateKnobRotation(knob, newValue);
                     knob.dataset.value = newValue.toFixed(2);
-                    valueDisplay.textContent = knob.id === 'oscillator-knob' ? synth_window.oscillatorTypes[Math.round(newValue) - 1] : newValue.toFixed(2); // Update display with correct context
+                    valueDisplay.textContent = knob.id === 'oscillator-knob' ? this.oscillatorTypes[Math.round(newValue) - 1] : newValue.toFixed(2); // Update display with correct context
                     updateInstrumentConfig(knob.id.replace('-knob', ''), newValue);
                 };
 
@@ -426,7 +427,7 @@ updateOctaveRangeDisplay: function() {
                 knob.style.cursor = 'grabbing';
             });
 
-            synth_window.updateKnobRotation(knob, value);
+            this.updateKnobRotation(knob, value);
         });
     },
 
@@ -464,7 +465,7 @@ updateOctaveRangeDisplay: function() {
     createInstrumentChannel: function(index) {
         const channelName = `instr-${index}`;
         audio.createChannel(channelName); // Create a channel for the instrument
-        audio.routeChannel(channelName, 'synth'); // Route instrument channel to master synth channel
+        audio.routeChannel(channelName, this.id); // Route instrument channel to master synth channel
     },
 
     initAddBeatsButton: function() {
@@ -704,7 +705,7 @@ updateOctaveRangeDisplay: function() {
         };
 
         console.log('Sending JSON data to audio object:', JSON.stringify(jsonData));
-        audio.play(jsonData, 'synth');
+        audio.play(jsonData, this.id);
     };
 
     const scheduleNextBeat = () => {
@@ -732,7 +733,7 @@ updateOctaveRangeDisplay: function() {
             updateInstrumentSettings(); // Update settings before restarting the loop
             this.currentBeat = 0;
             this.resetScrollbarPosition();
-            audio.stopAllSounds('synth');
+            audio.stopAllSounds(this.id);
             playAudio(); // Restart playback with updated settings
             this.beatInterval = setTimeout(scheduleNextBeat, currentTickDuration);
         } else {

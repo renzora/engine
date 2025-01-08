@@ -16,7 +16,7 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="console_window.loadTabContent('debug');">Debugging Utilities</button>
 <br />
 
-<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="plugin.load({ id: 'synth_window', url: 'utils/synth/index.php', drag: true, reload: false });">Music Synth</button>
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="plugin.load({ id: 'synth_window', url: 'utils/synth/index.php', drag: true, reload: true });">Music Synth</button>
 <br />
 
 

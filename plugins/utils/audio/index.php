@@ -29,7 +29,8 @@
 </div>
 
   <script>
- audio_window = {
+window[id] = {
+  id: id,
       start: function() {
         ui.initTabs('test_tab', 'tab2');
         if (!audio.audioContext) {
@@ -140,5 +141,4 @@
         ui.destroyTabs('test_tab');
       }
     };
-    audio_window.start();
   </script>

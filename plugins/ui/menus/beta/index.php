@@ -35,7 +35,8 @@
   </div>
   
   <script>
-beta_window = {
+window[id] = {
+  id: id,
       start: function() {
         gamepad.updateButtonImages();
         plugin.front('beta_window');
