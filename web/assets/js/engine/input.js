@@ -40,7 +40,6 @@ input = {
         window.addEventListener('gamepadl2Pressed', (e) => this.gamepadLeftTrigger(e));
         window.addEventListener('gamepadr2Pressed', gamepad.throttle((e) => this.gamepadRightTrigger(e), 50));
         window.addEventListener('gamepadr2Released', gamepad.throttle((e) => this.gamepadRightTriggerReleased(),50));
-
         window.addEventListener('gamepadl2Released', (e) => this.gamepadLeftTrigger());
 
     window.addEventListener('gamepadrightStickPressed', gamepad.throttle(() => {

@@ -29,6 +29,12 @@ window[id] = {
         this.load_tab_buttons();
         this.toggleConsoleWindow(false);
         this.bindGamepadButtons();
+
+        game.canvas.addEventListener('click', function(event) {
+                if (this.isOpen) {
+                    this.toggleConsoleWindow();
+                }
+            });
     },
 
     bindGamepadButtons: function() {

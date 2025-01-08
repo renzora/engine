@@ -251,7 +251,7 @@ var ui_console_tab_window = {
                     <span class="text-lg text-gray-200">${scene.name}</span>
                     <div class="flex space-x-2">
                         <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_console_tab_window.loadEditSceneplugin('${scene._id}', '${scene.name}', '${scene.server_id}')">Edit</button>
-                        <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.loadScene('${scene._id}')">Go</button>
+                        <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.scene('${scene._id}')">Go</button>
                     </div>
                 </li>
             `).join('') + '</ul>';

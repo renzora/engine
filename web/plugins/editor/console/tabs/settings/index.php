@@ -31,3 +31,5 @@
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.fireflys.fireflysActive = false; console.log(weather_plugin.fireflys.fireflysActive);">fireflys off</button>
 
 <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="weather_plugin.fireflys.fireflysActive = true; console.log(weather_plugin.fireflys.fireflysActive);">fireflys on</button>
+
+<button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="plugin.close('weather_plugin');">destroy snow</button>

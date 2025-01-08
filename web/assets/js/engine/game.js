@@ -35,47 +35,15 @@ game = {
     fpsHistory: [],
     maxFpsHistory: 60,
 
-    init: function() {
-        network.getPlayerId();
-
-        assets.preload([
-            { name: 'gamepad_buttons', path: 'img/icons/gamepad.png' },
-            { name: 'female-01', path: 'img/sprites/characters/female-01.png' },
-            { name: 'gen1', path: 'img/sheets/gen1.png' },
-            { name: 'itemsImg', path: 'img/icons/items.png' },
-            { name: 'objectData', path: 'json/objectData.json' },
-            { name: 'itemsData', path: 'json/itemsData.json' },
-            { name: 'spritesData', path: 'json/spritesData.json' },
-            { name: 'fxData', path: 'json/fxData.json' },
-        ], () => {
-            console.log("All assets loaded");
-            this.canvas = document.createElement('canvas');
-            this.ctx = this.canvas.getContext('2d');
-            this.ctx.imageSmoothingEnabled = false;
-            document.body.appendChild(this.canvas);
-            
-            this.resizeCanvas();
-            this.itemsImg = assets.use('itemsImg');
-            this.itemsData = assets.use('itemsData');
-            this.objectData = assets.use('objectData');
-            this.fxData = assets.use('fxData');
-
-
-            game.canvas.addEventListener('click', function(event) {
-                if (console_window.isOpen) {
-                    console_window.toggleConsoleWindow();
-                }
-            });
-
-            this.loadScene(this.sceneid);
-
-            plugin.load({ id: 'main_title_window', url: 'ui/menus/main_menu/index.php', drag: true,reload: true });
-            
-            //plugin.load({ id: 'ui_objectives_window', url: 'ui/objectives.php', name: 'Objectives', drag: false, reload: false });
-
-            console.log("Connected to Main renzora server");
-
-            this.loop();
+    create: function(e) {
+        this.canvas = document.createElement('canvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.ctx.imageSmoothingEnabled = false;
+        document.body.appendChild(this.canvas);
+        this.resizeCanvas();
+        this.loop();
+        gamepad.init(e);
+        audio.start();
 
         this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
         this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -87,66 +55,6 @@ game = {
                 this.resume();
             }
         });
-
-        });
-    },
-
-    plugin_init: function() {
-
-        if (utils.isMobileDevice()) {
-            //plugin.load({ id: 'joypad_window', url: 'utils/joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: false });
-
-            plugin.load({ id: 'auth_window', url: 'auth/index.php', drag: true, reload: true });
-            plugin.load({ id: 'ui_overlay_window', url: 'ui/overlay/index.php', drag: false, reload: false });
-            plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false });
-            plugin.load({ id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true });
-            plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', drag: false, reload: true, hidden: true });
-            plugin.load({ id: 'weather_plugin', url: 'effects/weather/index.js', drag: false, reload: true });
-
-            utils.fullScreen();
-
-        } else {
-
-            plugin.preload([
-                { priority: 1, options: { id: 'console_window', url: 'editor/console/index.php', drag: false, reload: false } },
-                { priority: 2, options: { id: 'context_menu_window', url: 'ui/menus/context_menu/index.php', drag: true, reload: false } },
-                { priority: 4, options: { id: 'pie_menu_window', url: 'ui/menus/pie/index.php', drag: false, reload: false, hidden: false } },
-                { priority: 5, options: { id: 'ui_overlay_window', url: 'ui/hud/index.php', drag: false, reload: false } },
-                { priority: 6, options: { id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true } },
-                { priority: 7, options: { id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false } },
-                { priority: 8, options: { id: 'weather_plugin', url: 'effects/weather/index.js', drag: false, reload: true } },
-                { priority: 9, options: { id: 'auth_window', url: 'auth/index.php', drag: true, reload: true } }
-            ]);
-
-            camera.panning = false;
-            camera.manual = false;
-            camera.activeCamera = true;
-            camera.cutsceneMode = false;
-            utils.gameTime.hours = 22;
-            game.timeActive = true;
-        
-            const playerOptions = {
-              id: this.playerid,  
-              x: game.x,
-              y: game.y,
-              isPlayer: true,
-              topSpeed: 100,
-              canShoot: true,
-              animalType: 'female-01',
-              targetAim: false,
-              maxRange: 200,
-              health: 100,
-              energy: 100,
-              handOffsetX: 8,
-              handOffsetY: -5
-            };
-                      
-            sprite.create(playerOptions);
-        
-            game.mainSprite = game.sprites[game.playerid];
-
-        }
-
     },
 
     pause: function() {
@@ -162,65 +70,6 @@ game = {
         });
         audio.resumeAll();
     },
-
-    loadScene: function(sceneId) {
-        input.cancelPathfinding(game.sprites[game.playerid]);
-        ui.ajax({
-            outputType: 'json',
-            method: 'POST',
-            url: 'plugins/editor/console/tabs/servers/ajax/getSceneData.php',
-            data: 'scene_id=' + encodeURIComponent(sceneId),
-            success: function(data) {
-                if (data.message === 'success') {
-                    effects.lights = [];
-                    lighting.clearLightsAndEffects();
-                    game.roomData = data.roomData;
-                    game.sceneid = data.sceneid;
-                    game.serverid = data.server_id;
-                    game.worldWidth = data.width || 1280;
-                    game.worldHeight = data.height || 944;
-                    game.x = data.startingX || 0; // Actual top-left pixel X
-                    game.y = data.startingY || 0; // Actual top-left pixel Y
-    
-                    // Update sprite position if player exists
-                    const playerSprite = game.sprites[game.playerid];
-                    if (playerSprite) {
-                        playerSprite.x = game.x;
-                        playerSprite.y = game.y;
-                    }
-
-                    render.sceneBg = data.bg || null;
-                    game.resizeCanvas();
-                    collision.walkableGridCache = null;
-                    collision.createWalkableGrid();
-
-                    this.overlappingTiles = [];
-                    camera.update();
-                    localStorage.setItem('sceneid', game.sceneid);
-                    effects.transitions.start('fadeOut', 1000);
-                    effects.transitions.start('fadeIn', 1000);
-                    //ui.notif("scene_change_notif", data.name, true);
-                    audio.playAudio('gameplay_music_01', assets.use('gameplay_music_01'), 'music', true, '0.5');
-                    audio.stopLoopingAudio('gameplay_music_01', 0.5);
-    
-                } else {
-                    console.log('Error: ' + data.message);
-                    plugin.load({
-                        id: "scene_load_error_window",
-                        url: "editor/console/tabs/servers/ajax/error.php",
-                    });
-                }
-            },
-            error: function(data) {
-                console.log(data);
-
-                plugin.load({
-                    id: "scene_load_error_window",
-                    url: "editor/console/tabs/servers/ajax/error.php",
-                });
-            }
-        });
-    }, 
 
     resizeCanvas: function() {
         utils.setZoomLevel();
@@ -254,9 +103,6 @@ game = {
         this.canvas.style.top = `${verticalOffset}px`;
     },
     
-    
-
-    
     handleMouseUp: function(event) {
         if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return;
         
@@ -273,6 +119,65 @@ game = {
             this.mainSprite.walkToClickedTile(this.x, this.y);
             console.log('Tile is walkable, walking to clicked tile.');
         }
+    },
+
+    scene: function(sceneId) {
+        input.cancelPathfinding(game.sprites[game.playerid]);
+        ui.ajax({
+            outputType: 'json',
+            method: 'POST',
+            url: 'plugins/editor/console/tabs/servers/ajax/getSceneData.php',
+            data: 'scene_id=' + encodeURIComponent(sceneId),
+            success: function(data) {
+                if (data.message === 'success') {
+                    effects.lights = [];
+                    lighting.clearLightsAndEffects();
+                    game.roomData = data.roomData;
+                    game.sceneid = data.sceneid;
+                    game.serverid = data.server_id;
+                    game.worldWidth = data.width || 1280;
+                    game.worldHeight = data.height || 944;
+                    game.x = data.startingX || 0; // Actual top-left pixel X
+                    game.y = data.startingY || 0; // Actual top-left pixel Y
+    
+                    // Update sprite position if player exists
+                    const playerSprite = game.sprites[game.playerid];
+                    if (playerSprite) {
+                        playerSprite.x = game.x;
+                        playerSprite.y = game.y;
+                    }
+
+                    render.sceneBg = data.bg || null;
+                    game.resizeCanvas();
+                    collision.walkableGridCache = null;
+                    collision.createWalkableGrid();
+
+                    game.overlappingTiles = [];
+                    camera.update();
+                    localStorage.setItem('sceneid', game.sceneid);
+                    effects.transitions.start('fadeOut', 1000);
+                    effects.transitions.start('fadeIn', 1000);
+                    ui.notif("scene_change_notif", data.name, true);
+                    audio.playAudio('gameplay_music_01', assets.use('gameplay_music_01'), 'music', true, '0.5');
+                    audio.stopLoopingAudio('gameplay_music_01', 0.5);
+    
+                } else {
+                    console.log('Error: ' + data.message);
+                    plugin.load({
+                        id: "scene_load_error_window",
+                        url: "editor/console/tabs/servers/ajax/error.php",
+                    });
+                }
+            },
+            error: function(data) {
+                console.log(data);
+
+                plugin.load({
+                    id: "scene_load_error_window",
+                    url: "editor/console/tabs/servers/ajax/error.php",
+                });
+            }
+        });
     },
 
 render: function () {

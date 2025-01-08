@@ -78,10 +78,3 @@ network = {
         this.send({ command: 'reloadData' });
     }
 };
-
-document.addEventListener('DOMContentLoaded', (e) => {
-    input.init(e);
-    gamepad.init(e);
-    audio.start();
-    game.init();
-});
