@@ -5,7 +5,6 @@ if(!$auth) {
 ?>
 <div class='window login_window' style='width: 400px;background: #1d335b;'>
 
-  <!-- Content -->
   <div data-part='handle' class='window_title' style='background-image: radial-gradient(#384c6f 1px, transparent 0) !important;'>
     <div data-part='title' class='title_bg' style='background: #1d335b; color: #ede8d6;'>Renzora Server</div>
   </div>
@@ -14,7 +13,6 @@ if(!$auth) {
 
   <div class='window_body'>
 
-    <!-- Tabs -->
     <div class="flex space-x-2 m-3 mb-0">
       <button id="loginTab" class="py-2 px-4 text-lg text-white font-semibold rounded focus:outline-none">Login</button>
       <button id="registerTab" class="py-2 px-4 text-lg text-white font-semibold rounded focus:outline-none">Register</button>
@@ -22,7 +20,6 @@ if(!$auth) {
     </div>
     <div class='p-3' style='font-size: 13px;'>
 
-      <!-- Login Form -->
       <div id="loginContent">
         <input type="text" id='login_username' class='light_input shadow appearance-none text-2xl border rounded w-full p-3 mb-2 text-gray-700 leading-tight focus:outline-none focus:shadow-outline' placeholder="Username or Email" required="required" autocomplete="off" />
         <input type="password" id='login_password' class='light_input shadow appearance-none text-2xl border rounded w-full p-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline' placeholder="Password" required="required" autocomplete="off" />
@@ -30,7 +27,6 @@ if(!$auth) {
         <button id='login_connect' onclick="auth_window.login()" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;"><i class="fas fa-lock-open"></i> Connect to Server</button>
       </div>
 
-      <!-- Register Form -->
       <div id="registerContent" class="hidden">
       <input
         type="text"
@@ -61,10 +57,7 @@ if(!$auth) {
 
       </div>
 
-      <!-- Forgot Password Form -->
-      <div id="forgotContent" class="hidden">
-        <!-- Forgot password form fields go here -->
-      </div>
+      <div id="forgotContent" class="hidden"></div>
 
     </div>
   </div>
@@ -160,8 +153,9 @@ window[id] = {
         }
       },
       unmount: function() {
+
       },
-      // Function to toggle content based on tab clicked
+
       toggleContent: function(tabId) {
         const tabs = ["loginTab", "registerTab", "forgotTab"];
         tabs.forEach((tab) => {
@@ -171,7 +165,6 @@ window[id] = {
         document.getElementById(tabId).classList.remove("bg-none");
         document.getElementById(tabId).classList.add("bg-green-600");
 
-        // Hide/show content based on the selected tab
         if (tabId === "loginTab") {
           document.getElementById("loginContent").style.display = "block";
           document.getElementById("registerContent").style.display = "none";
@@ -186,11 +179,10 @@ window[id] = {
           document.getElementById("forgotContent").style.display = "block";
         }
       },
-      // Initialize with the Login tab active
+
       start: function() {
         this.toggleContent("loginTab");
 
-        // Event listeners for tab clicks
         document.getElementById("loginTab").addEventListener("click", function() {
           this.toggleContent("loginTab");
         });

@@ -54,11 +54,11 @@ window[id] = {
       plugin_init: function() {
 
 if (utils.isMobileDevice()) {
-    plugin.load({ id: 'joypad_window', url: 'utils/joypad/index.php', name: 'joypad', drag: false, reload: true, hidden: false });
+    plugin.load({ id: 'joypad_window', url: 'utils/joypad/index.html', name: 'joypad', drag: false, reload: true, hidden: false });
     plugin.load({ id: 'auth_window', url: 'auth/index.php', drag: true, reload: true });
     plugin.load({ id: 'ui_overlay_window', url: 'ui/overlay/index.php', drag: false, reload: false });
     plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false });
-    plugin.load({ id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true });
+    plugin.load({ id: 'speech_window', url: 'ui/speech/index.html', drag: false, reload: true, hidden: true });
     plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.html', drag: false, reload: true, hidden: true });
     plugin.load({ id: 'weather_plugin', url: 'effects/weather/index.js', drag: false, reload: true });
 
@@ -68,10 +68,10 @@ if (utils.isMobileDevice()) {
 
     plugin.preload([
         { priority: 1, options: { id: 'console_window', url: 'editor/console/index.php', drag: false, reload: false } },
-        { priority: 2, options: { id: 'context_menu_window', url: 'ui/menus/context_menu/index.php', drag: true, reload: false } },
-        { priority: 4, options: { id: 'pie_menu_window', url: 'ui/menus/pie/index.php', drag: false, reload: false, hidden: false } },
+        { priority: 2, options: { id: 'context_menu_window', url: 'ui/menus/context_menu/index.html', drag: true, reload: false } },
+        { priority: 4, options: { id: 'pie_menu_window', url: 'ui/menus/pie/index.html', drag: false, reload: false, hidden: false } },
         { priority: 5, options: { id: 'ui_overlay_window', url: 'ui/hud/index.php', drag: false, reload: false } },
-        { priority: 6, options: { id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true } },
+        { priority: 6, options: { id: 'speech_window', url: 'ui/speech/index.html', drag: false, reload: true, hidden: true } },
         { priority: 7, options: { id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false } },
         { priority: 8, options: { id: 'weather_plugin', url: 'effects/weather/index.js', drag: false, reload: true } },
         { priority: 9, options: { id: 'auth_window', url: 'auth/index.php', drag: true, reload: true } }

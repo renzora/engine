@@ -16,11 +16,9 @@ document.addEventListener('DOMContentLoaded', (e) => {
         game.objectData = assets.use('objectData');
         game.fxData = assets.use('fxData');
 
-        plugin.load({ id: 'main_title_window', url: 'ui/menus/main_menu/index.php', drag: true,reload: true });
+        plugin.load({ id: 'main_title_window', url: 'ui/menus/main_menu/index.html', drag: true,reload: true });
         input.init(e);
-        game.create({
-            
-        });
+        game.create();
         game.scene(game.sceneid);
 
     });
