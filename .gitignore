@@ -1,2 +1,7 @@
+assets/audio/
+assets/fonts/
+assets/img/
+assets/json/
+assets/txt/
 vendor/
 *.Identifier
