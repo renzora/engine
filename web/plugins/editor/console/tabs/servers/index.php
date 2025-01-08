@@ -103,7 +103,6 @@ var ui_console_tab_window = {
         plugin.load({
             id: 'server_create_window',
             url: 'editor/console/tabs/servers/createServer.php',
-            name: 'Create Server',
             drag: true,
             reload: false
         });
@@ -140,24 +139,36 @@ var ui_console_tab_window = {
     if (servers.length === 0) {
         serverListDiv.innerHTML = 'No servers found.';
     } else {
-        serverListDiv.innerHTML = '<ul>' + servers.map((server, index) => `
+        serverListDiv.innerHTML = `
+    <ul>
+        ${servers.map((server, index) => `
             <li class="server-item ${index === 0 ? 'rounded-t' : ''} ${index === servers.length - 1 ? 'rounded-b' : ''} ${index % 2 === 0 ? 'bg-gray-700' : 'bg-gray-800'} text-white shadow-md cursor-pointer" data-server-id="${server.id}">
                 <div class="flex justify-between items-center pl-4 pr-2 py-2">
                     <span class="text-lg font-semibold">${server.name}</span>
                     <div class="flex space-x-2">
-                        <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_console_tab_window.loadEditServerplugin('${server.id}', '${server.name}')">Edit</button>
-                        <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="plugin.load({
-                            id: 'scene_create_window',
-                            url: 'console/tabs/servers/createScene.php?id=${server.id}',
-                            name: 'Create New Scene',
-                            drag: true,
-                            reload: false
-                        })">New</button> <!-- Corrected New Scene button -->
+                        <button 
+                            class="white_button text-white font-bold py-1 px-2 rounded shadow-md" 
+                            onclick="ui_console_tab_window.loadEditServerplugin('${server.id}', '${server.name}')">
+                            Edit
+                        </button>
+                        <button 
+                            class="green_button text-white font-bold py-1 px-2 rounded shadow-md" 
+                            onclick="plugin.load({
+                                id: 'scene_create_window',
+                                url: 'editor/console/tabs/servers/createScene.php',
+                                drag: true,
+                                reload: false,
+                                onAfterLoad: function() { scene_create_window.server = '${server.id}'; }
+                            });">
+                            New
+                        </button>
                     </div>
                 </div>
                 <div id="scenes-${server.id}" class="scenes-list hidden transition-all ease-in-out duration-300 overflow-hidden max-h-0"></div>
             </li>
-        `).join('') + '</ul>';
+        `).join('')}
+    </ul>
+`;
 
         serverListDiv.querySelectorAll('.server-item').forEach((item, index) => {
             const listener = (event) => {

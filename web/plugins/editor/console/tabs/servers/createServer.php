@@ -2,7 +2,7 @@
 include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
 ?>
-  <div data-window='server_create_window' class='window window_bg' style='width: 330px; background: #bba229;'>
+  <div class='window window_bg' style='width: 330px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
     <div class='float-right'>
@@ -20,9 +20,12 @@ if ($auth) {
         </div>
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-var server_create_window = {
+window[id] = {
+    id: id,
     start: function() {
         document.getElementById('create_server_btn').addEventListener('click', function() {
             var serverName = document.getElementById('server_name').value.trim();
@@ -63,12 +66,8 @@ var server_create_window = {
         if (createBtn) createBtn.removeEventListener('click', this.createServer);
     }
 };
-server_create_window.start();
 
     </script>
-
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

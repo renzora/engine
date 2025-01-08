@@ -3,7 +3,7 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
     $serverId = $_GET['id'] ?? null;
 ?>
-  <div data-window='scene_create_window' class='window window_bg' style='width: 330px; background: #bba229;'>
+  <div class='window window_bg' style='width: 330px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
     <div class='float-right'>
@@ -21,17 +21,20 @@ if ($auth) {
         </div>
       </div>
     </div>
+    <div class='resize-handle'></div>
+    </div>
 
     <script>
-var scene_create_window = {
-    start: function(serverId) {
-        this.serverId = serverId;
+window[id] = {
+    id: id,
+    server: null,
+    start: function() {
         document.getElementById('create_scene_btn').addEventListener('click', this.createScene.bind(this));
     },
     createScene: function() {
         var sceneName = document.getElementById('scene_name').value.trim();
         console.log('Scene name entered:', sceneName);
-        console.log('Server ID for scene creation:', this.serverId); // Log server ID for debugging
+        console.log('Server ID for scene creation:', this.server); // Log server ID for debugging
 
         if (!sceneName) {
             sceneName = 'default scene';
@@ -43,7 +46,7 @@ var scene_create_window = {
             outputType: 'json',
             method: 'POST',
             url: 'plugins/editor/console/tabs/servers/ajax/createScene.php',
-            data: JSON.stringify({ serverId: this.serverId, name: sceneName }),
+            data: JSON.stringify({ serverId: this.server, name: sceneName }),
             headers: {
                 'Content-Type': 'application/json'
             },
@@ -71,13 +74,8 @@ var scene_create_window = {
         console.log('Unmounting scene create window.');
     }
 };
-// Pass serverId dynamically when opening the plugin
-scene_create_window.start('<?php echo $serverId; ?>');
 
     </script>
-
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

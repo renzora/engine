@@ -2,10 +2,10 @@ const path = require('path');
 const TerserPlugin = require('terser-webpack-plugin');
 
 module.exports = {
-  entry: path.resolve(__dirname, '../../engine/assets/js/engine/index.js'),
+  entry: path.resolve(__dirname, '../../web/assets/js/engine/index.js'),
   output: {
     filename: 'renzora.min.js',
-    path: path.resolve(__dirname, '../../engine/assets/js/'),
+    path: path.resolve(__dirname, '../../web/assets/js/'),
   },
   mode: 'production', // Automatically enables minification
   watch: true, // Watch for changes
