@@ -1,0 +1,18 @@
+{
+  "name": "main-server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "dev": "concurrently \"nodemon server.js\""
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.1.0",
+    "ws": "^8.16.0"
+  }
+}

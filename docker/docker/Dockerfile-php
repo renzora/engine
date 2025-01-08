@@ -1,0 +1,22 @@
+FROM php:8-fpm-alpine
+
+RUN apk update && \
+    apk add --no-cache \
+        openssl-dev \
+        autoconf \
+        g++ \
+        make \
+        libpng-dev \
+        libjpeg-turbo-dev \
+        freetype-dev && \
+    rm -rf /var/cache/apk/*
+
+RUN pecl install mongodb && \
+    docker-php-ext-enable mongodb
+
+RUN docker-php-ext-configure gd \
+        --with-jpeg=/usr/lib/ \
+        --with-freetype=/usr/include/freetype2/ && \
+    docker-php-ext-install -j$(nproc) gd
+
+CMD ["php-fpm"]

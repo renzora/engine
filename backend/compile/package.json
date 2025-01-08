@@ -1,0 +1,17 @@
+{
+  "devDependencies": {
+    "autoprefixer": "^10.4.20",
+    "css-loader": "^7.1.2",
+    "expose-loader": "^5.0.0",
+    "postcss": "^8.4.49",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^3.4.17",
+    "webpack": "^5.97.1",
+    "webpack-cli": "^6.0.1"
+  },
+  "scripts": {
+    "build:css": "npx tailwindcss -i ../../engine/assets/css/style.css -o ../../engine/assets/css/output.css --minify",
+    "watch:css": "npx tailwindcss -i ../../engine/assets/css/style.css -o ../../engine/assets/css/output.css --minify --watch"
+  }
+
+}
