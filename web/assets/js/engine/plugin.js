@@ -208,22 +208,21 @@ plugin = {
             hidden = false,
         } = options;
     
-        const fullUrl = `/plugins/${url}`; // Ensure the URL is prefixed with /plugins/
-
+        const fullUrl = `/plugins/${url}`; // Uniform prefix for all files
+    
         if (name) {
             this.pluginNames[id] = name;
         }
     
         return new Promise((resolve, reject) => {
-
-            let existingplugin = document.querySelector("[data-window='" + id + "']");
-
-            if (existingplugin) {
+            let existingPlugin = document.querySelector(`[data-window='${id}']`);
+    
+            if (existingPlugin) {
                 if (reload) {
                     this.close(id);
                 } else {
                     if (!hidden) {
-                        this.front(existingplugin);
+                        this.front(existingPlugin);
                     } else {
                         this.minimize(id);
                     }
@@ -240,107 +239,96 @@ plugin = {
                 onBeforeLoad(id);
             }
     
+            // Fetch and parse the content
             ui.ajax({
                 url: fullUrl,
                 method: 'GET',
                 success: (data) => {
                     console.log(`Successfully fetched plugin content for ID: '${id}'`);
-
+    
                     window.id = id;
-                
-                    // Create a temporary container for parsing the HTML
-                    const tempContainer = document.createElement('div');
-                    tempContainer.innerHTML = data;
-                
-                    // Find the top-level div (plugin HTML)
-                    const topDiv = tempContainer.querySelector('div');
-                    if (topDiv) {
+    
+                    if (url.endsWith('.js')) {
+                        // Handle JavaScript file
+                        const script = document.createElement('script');
+                        script.textContent = data; // Set script content
+                        script.setAttribute('id', `${id}_script`); // Add unique ID
+                        document.head.appendChild(script); // Append to head
+    
+                        if (window[id]?.start && !window[id]._hasStarted) {
+                            window[id]._hasStarted = true; // Prevent multiple starts
+                            window[id].start();
+                        }
+                    } else {
+                        // Handle HTML-based plugin
+                        const tempContainer = document.createElement('div');
+                        tempContainer.innerHTML = data;
+    
+                        const topDiv = tempContainer.querySelector('div') || document.createElement('div');
                         topDiv.setAttribute('data-window', id); // Add data-window attribute
-                
-                        // Find and process the style
+    
                         const style = tempContainer.querySelector('style');
                         if (style) {
-                            topDiv.prepend(style); // Append style to the top of the plugin's HTML
+                            topDiv.prepend(style); // Keep style within the top-level div
                         }
-                
+    
                         const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
                         if (lastPluginHtml) {
                             lastPluginHtml.after(topDiv); // Append after the last plugin HTML
                         } else {
                             document.body.appendChild(topDiv); // Append to the body if none exist
                         }
-                
-                        // Set the active plugin
-                        this.activePlugin = id;
-                    }
-                
-                    // Check and execute the script even if no HTML is rendered
-                    const script = tempContainer.querySelector('script');
-                    if (script) {
-                        const dynamicScript = document.createElement('script');
-                        dynamicScript.textContent = script.textContent; // Copy script content
-                        dynamicScript.setAttribute('id', `${id}_script`); // Append _script to the ID
-                        const lastScript = document.querySelector('script:last-of-type');
-                        if (lastScript) {
-                            lastScript.after(dynamicScript); // Append after the last <script>
+    
+                        const script = tempContainer.querySelector('script');
+                        if (script) {
+                            const dynamicScript = document.createElement('script');
+                            dynamicScript.textContent = script.textContent; // Copy script content
+                            dynamicScript.setAttribute('id', `${id}_script`); // Append _script to the ID
+                            document.head.appendChild(dynamicScript); // Append to head
+    
+                            if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
+                                window[id].start();
+                            }
+                        }
+    
+                        this.init(`[data-window='${id}']`, {
+                            start: function () {
+                                this.classList.add('dragging');
+                            },
+                            drag: function () {},
+                            stop: function () {
+                                this.classList.remove('dragging');
+                            },
+                            drag,
+                        });
+    
+                        if (hidden) {
+                            this.minimize(id);
                         } else {
-                            document.body.appendChild(dynamicScript); // Append to the body if none exist
-                        }
-                
-                        // Automatically start the plugin only if start is not explicitly called in the script
-                        if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
-                            window[id].start();
-                        }
-                    } else {
-                        // Attempt to auto-start even if there’s no script
-                        if (window[id]?.start && !window[id]._hasStarted) {
-                            window[id]._hasStarted = true; // Flag to prevent multiple starts
-                            window[id].start();
+                            this.front(id);
                         }
                     }
-                
-                    // Initialize drag/drop and visibility
-                    this.init(`[data-window='${id}']`, {
-                        start: function () {
-                            this.classList.add('dragging');
-                        },
-                        drag: function () {},
-                        stop: function () {
-                            this.classList.remove('dragging');
-                        },
-                        drag,
-                    });
-                
-                    if (hidden) {
-                        this.minimize(id);
-                    } else {
-                        this.front(id);
-                    }
-                
-                    window.pluginResolves[id] = resolve;
-                
+    
                     if (onAfterLoad && typeof onAfterLoad === 'function') {
                         onAfterLoad(id);
                     }
-                
+    
                     resolve();
                 },
-                
+    
                 error: (error) => {
                     console.error(`Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`, error);
     
-                    // Call onError if provided
                     if (onError) {
                         console.log(`Executing onError callback for plugin ID: '${id}'`);
                         onError(error, id);
                     }
     
-                    // Reject the promise
                     reject(`Failed to load plugin '${id}' from URL: '${fullUrl}'`);
-                }
+                },
             });
         });
-    },
+    },      
     
     show: function(pluginId) {
         var plugin = document.querySelector("[data-window='" + pluginId + "']");

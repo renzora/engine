@@ -101,7 +101,7 @@ game = {
             plugin.load({ id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false });
             plugin.load({ id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true });
             plugin.load({ id: 'keyboard_window', url: 'utils/keyboard/index.php', drag: false, reload: true, hidden: true });
-            plugin.load({ id: 'weather_plugin', url: 'effects/weather/index.php', drag: false, reload: true });
+            plugin.load({ id: 'weather_plugin', url: 'effects/weather/index.js', drag: false, reload: true });
 
             utils.fullScreen();
 
@@ -114,7 +114,7 @@ game = {
                 { priority: 5, options: { id: 'ui_overlay_window', url: 'ui/hud/index.php', drag: false, reload: false } },
                 { priority: 6, options: { id: 'speech_window', url: 'ui/speech/index.php', drag: false, reload: true, hidden: true } },
                 { priority: 7, options: { id: 'ui_inventory_window', url: 'ui/inventory/index.php', drag: false, reload: false } },
-                { priority: 8, options: { id: 'weather_plugin', url: 'effects/weather/index.php', drag: false, reload: true } },
+                { priority: 8, options: { id: 'weather_plugin', url: 'effects/weather/index.js', drag: false, reload: true } },
                 { priority: 9, options: { id: 'auth_window', url: 'auth/index.php', drag: true, reload: true } }
             ]);
 

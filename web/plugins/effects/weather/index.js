@@ -1,4 +1,3 @@
-<script>
 window[id] = {
     id: id,
 
@@ -152,12 +151,10 @@ fireflys: {
 
     update: function (deltaTime) {
     if (!this.fireflysActive) {
-        // Remove all firefly-related lights when fireflysActive is false
         lighting.lights = lighting.lights.filter(light => !light.id.startsWith("firefly_"));
         return;
     }
 
-        // Ensure fireflies and lights are created if they were previously cleared
         if (this.fireflys.length === 0) {
         this.create();
     }
@@ -236,4 +233,3 @@ fireflys: {
     }
 }
 };
-</script>
