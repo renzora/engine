@@ -157,9 +157,6 @@ game = {
                     localStorage.setItem('sceneid', game.sceneid);
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
-                    ui.notif("scene_change_notif", data.name, true);
-                    audio.playAudio('gameplay_music_01', assets.use('gameplay_music_01'), 'music', true, '0.5');
-                    audio.stopLoopingAudio('gameplay_music_01', 0.5);
     
                 } else {
                     console.log('Error: ' + data.message);

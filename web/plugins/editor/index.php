@@ -68,7 +68,7 @@ window[id] = {
     camera.lerpEnabled = false;
     game.zoomLevel = 4;
     actions.tooltipActive = false;
-    game.mainSprite.stopPathfinding();
+    //game.mainSprite.stopPathfinding();
     actions.hideTooltip();
 
     this.updateCurrentTimeAndDay();
