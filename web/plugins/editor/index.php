@@ -95,7 +95,7 @@ window[id] = {
 
     plugin.preload([
         { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu/index.php', drag: false, reload: true } },
-        { priority: 2, options: { id: 'ui_footer_window', url: 'ui/dev/index.php', drag: false, reload: false } }
+        { priority: 2, options: { id: 'ui_footer_window', url: 'ui/dev/index.html', drag: false, reload: false } }
     ]);
 
     setTimeout(() => { camera.manual = true; }, 0);

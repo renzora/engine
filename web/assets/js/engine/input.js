@@ -583,7 +583,7 @@ input = {
             e.preventDefault();
             plugin.load({
                 id: 'console_window',
-                url: 'console/index.php',
+                url: 'editor/console/index.php',
                 name: 'console',
                 drag: false,
                 reload: true,

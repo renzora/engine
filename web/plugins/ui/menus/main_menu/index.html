@@ -653,12 +653,10 @@ window[id] = {
   // Initialize the main title window
   start: function () {
     assets.preload([
-            { name: 'menu_tab_switch', path: 'audio/sfx/ui/menu_tab_switch.mp3' },
-            { name: 'menu_navigate', path: 'audio/sfx/ui/menu_navigate.mp3' },
-            { name: 'menu_selection_confirm', path: 'audio/sfx/ui/menu_selection_confirm.mp3' },
-        ], () => {
-          console.log("menu_tab_switch_loaded");
-        });
+      { name: 'menu_tab_switch', path: 'audio/sfx/ui/menu_tab_switch.mp3' },
+      { name: 'menu_navigate', path: 'audio/sfx/ui/menu_navigate.mp3' },
+      { name: 'menu_selection_confirm', path: 'audio/sfx/ui/menu_selection_confirm.mp3' },
+    ]);
 
   camera.panTo(null, null, 0.2, true);
   utils.gameTime.hours = 0;
@@ -1139,7 +1137,7 @@ characterSelection: function() {
 
   startNewStory: function () {
     console.log('starting new story');
-    plugin.load({ id: 'beta_window', url: 'ui/menus/beta/index.php', drag: false, reload: true, hidden: false });
+    plugin.load({ id: 'beta_window', url: 'ui/menus/beta/index.html', drag: false, reload: true, hidden: false });
     
   },
 
@@ -1157,7 +1155,7 @@ characterSelection: function() {
   },
 
   network_connect: function() {
-    plugin.load({ id: 'network_connect_window', url: 'ui/menus/network/connect.php', drag: true,reload: true });
+    plugin.load({ id: 'network_connect_window', url: 'ui/menus/network/connect.html', drag: true,reload: true });
   },
 
   // Sign-in button functionality placeholder
