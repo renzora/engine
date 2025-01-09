@@ -250,8 +250,7 @@ var ui_console_tab_window = {
                 <li class="flex justify-between items-center pl-4 pr-2 py-2 hover:bg-blue-600 transition-colors">
                     <span class="text-lg text-gray-200">${scene.name}</span>
                     <div class="flex space-x-2">
-                        <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="ui_console_tab_window.loadEditSceneplugin('${scene._id}', '${scene.name}', '${scene.server_id}')">Edit</button>
-                        <button class="green_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.scene('${scene._id}')">Go</button>
+                        <button class="white_button text-white font-bold py-1 px-2 rounded shadow-md" onclick="game.scene('${scene._id}')">Edit</button>
                     </div>
                 </li>
             `).join('') + '</ul>';
@@ -263,16 +262,6 @@ var ui_console_tab_window = {
             id: 'server_edit_window',
             url: `editor/console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`,
             name: 'Edit Server',
-            drag: true,
-            reload: false
-        });
-    },
-
-    loadEditSceneplugin: function(sceneId, sceneName, serverId) {
-        plugin.load({
-            id: 'scene_edit_window',
-            url: `editor/console/tabs/servers/editScene.php?id=${sceneId}&name=${encodeURIComponent(sceneName)}&serverId=${serverId}`,
-            name: 'Edit Scene',
             drag: true,
             reload: false
         });

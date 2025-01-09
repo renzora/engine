@@ -338,7 +338,7 @@ window[id] = {
       openTilesetManager: function () {
         plugin.load({
           id: 'tileset_window',
-          url: 'renadmin/tileset/index.php',
+          url: 'editor/tileset_manager/index.php',
           name: 'Tileset Manager',
           drag: true,
           reload: false,
