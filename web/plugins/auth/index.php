@@ -85,14 +85,9 @@ window[id] = {
             url: 'plugins/auth/ajax/login_ajax.php',
             data: 'login_username=' + login_username + '&login_password=' + login_password,
             success: function(data) {
-              console.log(data.message);
               if(data.message == 'login_complete') {
-                ui.notif("You are now signed in as " + login_username, 'bottom-center');
-
-                game.plugin_init();
-                plugin.close(this.id);
-
-
+                if(utils.pluginExists('notif')) notif.show("auth_window_success", "You are now signed in as " + login_username);
+                plugin.close(auth_window.id);
               } else {
                 plugin.load({
                   id: 'auth_error_window',
@@ -128,17 +123,9 @@ window[id] = {
             url: 'plugins/auth/ajax/register_ajax.php',
             data: 'register_username=' + register_username + '&register_password=' + register_password + '&register_email=' + register_email,
             success: function(data) {
-              console.log(data);
               if (data == 'registration_complete') {
-                ui.notif("Welcome to Renzora, " + register_username + "!");
+                if(utils.pluginExists('notif')) notif.show("Welcome to Renzora, " + register_username + "!");
                 plugin.close(this.id);
-                plugin.load({
-                  id: 'ui',
-                  url: 'ui',
-                  name: 'User Interface',
-                  drag: true,
-                  reload: true
-                });
               } else {
                 plugin.load({
                   id: 'auth_error_window',
@@ -181,16 +168,16 @@ window[id] = {
       },
 
       start: function() {
-        this.toggleContent("loginTab");
+        auth_window.toggleContent("loginTab");
 
         document.getElementById("loginTab").addEventListener("click", function() {
-          this.toggleContent("loginTab");
+          auth_window.toggleContent("loginTab");
         });
         document.getElementById("registerTab").addEventListener("click", function() {
-          this.toggleContent("registerTab");
+          auth_window.toggleContent("registerTab");
         });
         document.getElementById("forgotTab").addEventListener("click", function() {
-          this.toggleContent("forgotTab");
+          auth_window.toggleContent("forgotTab");
         });
       }
     };

@@ -21,6 +21,13 @@ assets.preload([
     game.mainSprite = game.sprites[game.playerid];
 
     plugin.load({
+        id: 'auth_window',
+        url: 'auth/index.php',
+        drag: true,
+        reload: true
+    });
+
+    plugin.load({
         id: 'console_window',
         url: 'editor/console/index.php',
         drag: false,
@@ -36,12 +43,9 @@ assets.preload([
     });
 
     plugin.load({
-        id: 'notifs_plugin',
+        id: 'notif',
         url: 'notifs/index.js',
         drag: false,
-        reload: true,
-        after: function() {
-            notifs_plugin.show('test_notification', 'if this is working you will be able to see it at the top');
-        }
+        reload: true
     });
 });
