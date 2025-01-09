@@ -1,6 +1,6 @@
 module.exports = {
   content: [
-    '../../engine/**/*.{html,js,css,php}',
+    '../web/**/*.{html,js,css,php}',
   ],
   theme: {
     extend: {},

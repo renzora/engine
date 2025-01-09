@@ -11,8 +11,21 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "autoprefixer": "^10.4.20",
     "concurrently": "^8.2.2",
+    "css-loader": "^7.1.2",
+    "css-minimizer-webpack-plugin": "^7.0.0",
+    "cssnano": "^7.0.6",
+    "mini-css-extract-plugin": "^2.9.2",
     "nodemon": "^3.1.0",
+    "postcss": "^8.4.49",
+    "postcss-loader": "^8.1.1",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^3.4.17",
+    "webpack": "^5.97.1",
     "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "webpack-cli": "^6.0.1"
   }
 }
