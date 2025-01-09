@@ -210,7 +210,8 @@ render: function () {
     effects.transitions.render();
     render.renderCarriedObjects();
     render.handleDebugUtilities();
-    render.aimTool();
+
+    if(utils.pluginExists('gamepad_plugin')) gamepad_plugin.aimTool();
 
     if(utils.pluginExists('ui_footer_window.updateUi')) {
         ui_footer_window.updateUI();
