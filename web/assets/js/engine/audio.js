@@ -21,10 +21,6 @@ audio = {
             this.sources = {};
     
             this.createChannel('master', localStorage.getItem('master-volume') || this.defaultVolume);
-            this.createChannel('music', localStorage.getItem('music-volume') || this.defaultVolume);
-            this.setVolume('music', localStorage.getItem('music-volume') || 0.05);
-            this.createChannel('sfx', localStorage.getItem('sfx-volume') || this.defaultVolume);
-            this.createChannel('ambience', localStorage.getItem('ambience-volume') || 0.5);
             
             console.log("Audio context initialized. Master, music, sfx channels created.");
         } else {

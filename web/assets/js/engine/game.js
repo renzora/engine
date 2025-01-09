@@ -42,6 +42,7 @@ game = {
         document.body.appendChild(this.canvas);
         this.resizeCanvas();
         this.loop();
+        input.init();
         gamepad.init(e);
         audio.start();
 

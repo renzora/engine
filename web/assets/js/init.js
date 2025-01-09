@@ -8,8 +8,13 @@ assets.preload([
 
     game.objectData = assets.use('objectData');
 
-    input.init();
     game.create();
+
+    audio.createChannel('music', localStorage.getItem('music-volume') || audio.defaultVolume);
+    audio.setVolume('music', localStorage.getItem('music-volume') || 0.05);
+    audio.createChannel('sfx', localStorage.getItem('sfx-volume') || audio.defaultVolume);
+    audio.createChannel('ambience', localStorage.getItem('ambience-volume') || 0.5);
+    
     game.scene(game.sceneid);
 
     sprite.create({
