@@ -562,19 +562,6 @@ html, body {
   color: #fff;
 }
 
-.tab.active {
-  background-color: #2d4c7d;
-  color: #fff;
-}
-
-.tab-content.active {
-  display: block;
-}
-
-.tab-content {
-  display: none;
-}
-
 .dark-menu {
   display: none;
   position: fixed;

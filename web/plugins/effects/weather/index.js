@@ -16,7 +16,7 @@ snow: {
     maxSnowflakes: 3000,
     snowflakeSize: 0.5,
     swayDirection: -1,
-    snowActive: null,
+    active: null,
     overrideActive: false,
 
     create: function (opacity) {
@@ -39,7 +39,7 @@ snow: {
     },
 
     update: function () {
-        if (!this.snowActive) return;
+        if (!this.active) return;
         this.snowflakes.forEach((snowflake) => {
             snowflake.y += snowflake.speed;
             snowflake.x += Math.sin(snowflake.y * 0.01) * snowflake.sway * this.swayDirection;
@@ -53,7 +53,7 @@ snow: {
     },
 
     draw: function () {
-        if (!this.snowActive) return;
+        if (!this.active) return;
         game.ctx.save();
         game.ctx.fillStyle = 'rgba(255, 255, 255, 1)';
         game.ctx.globalAlpha = 0.8;
@@ -70,7 +70,7 @@ snow: {
 
 rain: {
     rainDrops: [],
-    rainActive: null,
+    active: null,
     overrideActive: false,
 
     create: function (opacity) {
@@ -87,7 +87,7 @@ rain: {
     },
 
     update: function () {
-        if (!this.rainActive) return;
+        if (!this.active) return;
         for (let drop of this.rainDrops) {
             drop.y += drop.speed;
             if (drop.y > game.canvas.height) {
@@ -99,7 +99,7 @@ rain: {
     },
 
     draw: function () {
-        if (!this.rainActive) return;
+        if (!this.active) return;
         game.ctx.strokeStyle = 'rgba(174, 194, 224, 0.4)';
         game.ctx.lineWidth = 1;
         game.ctx.lineCap = 'round';
@@ -117,7 +117,7 @@ rain: {
 fireflys: {
     fireflys: [],
     fireflyLights: {},
-    fireflysActive: null,
+    active: null,
     overrideActive: false,
 
     create: function () {
@@ -150,7 +150,7 @@ fireflys: {
     },
 
     update: function (deltaTime) {
-    if (!this.fireflysActive) {
+    if (!this.active) {
         lighting.lights = lighting.lights.filter(light => !light.id.startsWith("firefly_"));
         return;
     }
@@ -213,7 +213,7 @@ fireflys: {
 },
 
     draw: function () {
-        if (!this.fireflysActive) return;
+        if (!this.active) return;
         game.ctx.save();
         this.fireflys.forEach((firefly) => {
             game.ctx.beginPath();

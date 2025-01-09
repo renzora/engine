@@ -15,14 +15,13 @@ if ($auth) {
   </div>
   </div>
 
-
-  <script>
+<script>
 window[id] = {
     id: id,
     isOpen: false,
     currentTabIndex: 0,
     eventListeners: [],
-    tab_name: null, // Store the currently active tab
+    tab_name: null,
     allowToggle: true,
 
     start: function() {
@@ -213,30 +212,6 @@ handleTabClick: function(tab, index) {
     isMenuActive: function() {
         return this.isOpen;
     },
-
-    toggleFullScreen: function() {
-    if (!document.fullscreenElement) {
-        if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen();
-        } else if (document.documentElement.mozRequestFullScreen) { 
-            document.documentElement.mozRequestFullScreen();
-        } else if (document.documentElement.webkitRequestFullscreen) { 
-            document.documentElement.webkitRequestFullscreen();
-        } else if (document.documentElement.msRequestFullscreen) { 
-            document.documentElement.msRequestFullscreen();
-        }
-    } else {
-        if (document.exitFullscreen) {
-            document.exitFullscreen();
-        } else if (document.mozCancelFullScreen) { 
-            document.mozCancelFullScreen();
-        } else if (document.webkitExitFullscreen) { 
-            document.webkitExitFullscreen();
-        } else if (document.msExitFullscreen) { 
-            document.msExitFullscreen();
-        }
-    }
-},
 
     unmount: function() {
         this.eventListeners.forEach(({ element, event, handler }) => {

@@ -33,5 +33,13 @@ assets.preload([
     plugin.load({ id: 'notif', url: 'notifs/index.js', drag: false, reload: true });
     plugin.load({ id: 'context_menu', url: 'ui/menus/context_menu/index.html', drag: false, reload: true });
     plugin.load({ id: 'ui_overlay_window', url: 'ui/hud/index.php', drag: false, reload: true });
+    plugin.load({
+        id: 'weather_plugin',
+        url: 'effects/weather/index.js',
+        reload: true,
+        after: function() {
+            weather_plugin.snow.active = true;
+        }
+    });
 
 });

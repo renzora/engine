@@ -6,7 +6,7 @@ if ($mode === 'editor') {
        <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="servers" aria-label="Online Servers">
       <div class="icon globe"></div>
     </button>
-        <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="editor_inventory" aria-label="Inventory">
+        <button class="console_tab relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" data-tab="inventory" aria-label="Inventory">
       <div class="ui_icon ui_backpack"></div>
     </button>
 
@@ -56,7 +56,7 @@ if ($mode === 'editor') {
     <button class="console_tab relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" data-tab="settings" aria-label="Settings & Controls">
       <div class="icon settings"></div>
     </button>
-    <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="console_window.toggleFullScreen();">
+    <button class="relative flex items-center justify-center w-full h-12 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="utils.toggleFullScreen();">
       <div class="icon full_screen"></div>
     </button>
     <?php
