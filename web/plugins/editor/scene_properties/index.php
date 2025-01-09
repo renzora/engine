@@ -90,7 +90,7 @@ window[id] = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: '/plugins/editor/ajax/save_scene_properties.php',
+            url: '/plugins/editor/scene_properties/ajax/save.php',
             data: JSON.stringify(data),
             headers: {
                 'Content-Type': 'application/json'

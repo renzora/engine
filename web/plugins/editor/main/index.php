@@ -1457,7 +1457,7 @@ saveRoomData: function () {
     ui.ajax({
         outputType: 'json',
         method: 'POST',
-        url: 'plugins/editor/ajax/save_map.php',
+        url: 'plugins/editor/main/ajax/save_scene.php',
         data: dataToSend,
         headers: {
             'Content-Type': 'application/json'

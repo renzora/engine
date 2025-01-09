@@ -227,7 +227,7 @@ window[id] = {
         const uniqueId = selectedObject.id;
         plugin.load({
           id: 'tileset_item_editor_window',
-          url: `renadmin/tileset/items.php?id=${uniqueId}`,
+          url: `editor/tileset_manager/items.php?id=${uniqueId}`,
           name: 'Item Editor',
           drag: true,
           reload: true,
@@ -292,7 +292,7 @@ window[id] = {
         alert('No scene loaded!');
         return;
       }
-      fetch('/plugins/editor/ajax/setSpritePosition.php', {
+      fetch('/plugins/editor/context_menu/ajax/setSpritePosition.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sceneId: sceneId, startingX: gx, startingY: gy }),
@@ -322,7 +322,7 @@ window[id] = {
       openSceneProperties: function (x, y) {
         plugin.load({
           id: 'editor_scene_properties_window',
-          url: 'editor/modules/scene_properties.php',
+          url: 'editor/scene_properties/index.php',
           name: 'Scene Properties',
           drag: true,
           reload: true,

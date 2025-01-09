@@ -42,4 +42,19 @@ assets.preload([
         }
     });
 
+    plugin.load({
+        id: 'console_window',
+        url: 'editor/console/index.php',
+        drag: false,
+        reload: true,
+        after: function () {
+          plugin.load({
+              id: 'edit_mode_window',
+              url: 'editor/main/index.php',
+              drag: false,
+              reload: true
+          });
+        }
+      });
+
 });

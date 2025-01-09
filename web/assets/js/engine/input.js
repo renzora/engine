@@ -123,7 +123,7 @@ input = {
                 drag: false,
                 reload: true,
                 after: function () {
-                    plugin.load({ id: 'edit_mode_window', url: 'editor/index.php', name: 'Editor', drag: true, reload: true });
+                    plugin.load({ id: 'edit_mode_window', url: 'editor/main/index.php', name: 'Editor', drag: true, reload: true });
                 }
             });
 
