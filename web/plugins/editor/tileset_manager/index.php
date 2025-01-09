@@ -4,73 +4,84 @@ if ($auth) {
 ?>
   <div class='window window_bg' style='width: 800px;height: 700px; background: #323e69;'>
 
-    <div data-part='handle' class='window_title' style='background-image: radial-gradient(#192037 1px, transparent 0) !important;'>
-      <div class='float-right'>
-        <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
-      </div>
-      <div data-part='title' class='title_bg window_border' style='background: #323e69; color: #ede8d6;'>Tileset Manager</div>
-    </div>
-    <div class='clearfix'></div>
-    <div class='relative'>
-      <div class='container text-light window_body p-2' style='height: 660px; overflow-y: hidden;'>
-
-        <div id="tileset_window_tabs" style="height: 100%;">
-        <div id="tabs" class="flex border-b border-gray-300">
-    <button class="tab text-gray-800 p-2" data-tab="tab1">Upload</button>
-    <button class="tab text-gray-800 p-2" data-tab="items">Items</button> <!-- New tab -->
+<div data-part='handle' class='window_title' style='background-image: radial-gradient(#192037 1px, transparent 0) !important;'>
+  <div class='float-right'>
+    <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
+  </div>
+  <div data-part='title' class='title_bg window_border' style='background: #323e69; color: #ede8d6;'>Tileset Manager</div>
 </div>
+<div class='clearfix'></div>
 
-          <div class="tab-content mt-2 hidden" data-tab-content="tab1" style="height: calc(100% - 35px);">
-            <div class="flex h-full">
-              <div class="w-8/12 p-2 pl-0 flex flex-col">
-                <!-- Left column content -->
-                <div id="drop_zone" class="flex-grow w-full border border-gray-300 rounded overflow-auto" style="position: relative;">
-                  <p id="drop_prompt">Drop an image here to upload</p>
-                  <canvas id="uploaded_canvas" style="display: none;"></canvas>
-                  <canvas id="gridCanvas" style="display: none; position: absolute; top: 0; left: 0;"></canvas>
-                  <canvas id="selectionCanvas" style="display: none; position: absolute; top: 0; left: 0;"></canvas>
+<div class='relative'> <!-- .relative opened -->
+  <div class='container text-light window_body p-2' style='height: 660px; overflow-y: hidden;'> <!-- .container opened -->
+
+    <div id="tileset_window_tabs" style="height: 100%;">
+      <div id="tabs" class="flex border-b border-gray-300">
+        <button class="tab text-gray-800 p-2" data-tab="tab1">Upload</button>
+        <button class="tab text-gray-800 p-2" data-tab="items">Items</button>
+      </div>
+
+      <div class="tab-content mt-2" data-tab-content="tab1" style="height: calc(100% - 35px);">
+        <div class="flex h-full">
+          <div class="w-8/12 p-2 pl-0 flex flex-col">
+            <!-- Left column content -->
+            <div id="drop_zone" class="flex-grow w-full border border-gray-300 rounded overflow-auto" style="position: relative;">
+              <p id="drop_prompt text-white">Drop an image here to upload</p>
+              <canvas id="uploaded_canvas" style="display: none;"></canvas>
+              <canvas id="gridCanvas" style="display: none; position: absolute; top: 0; left: 0;"></canvas>
+              <canvas id="selectionCanvas" style="display: none; position: absolute; top: 0; left: 0;"></canvas>
+            </div>
+          </div>
+          <div class="w-4/12 p-2" style="height: 100%; overflow-y: scroll;">
+            <!-- Right column content -->
+            <div id="right_tabs">
+              <div class="mb-4">
+                <div class="flex justify-center items-center py-3" style="background: #63A650; position: relative;">
+                  <canvas id="previewCanvas" class="max-w-full max-h-full"></canvas>
+                  <canvas id="nightFilterCanvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+                </div>
+
+                <div class="clearfix mt-2">
+                  <input type="checkbox" id="night_filter_toggle" class="toggle-night-filter">
+                  <label for="night_filter_toggle" class="inline-block text-gray-700">Night Filter:</label>
                 </div>
               </div>
-              <div class="w-4/12 p-2" style="height: 100%; overflow-y: scroll;">
-                <!-- Right column content -->
-                <div id="right_tabs">
+              <div id="tabs" class="flex border-b border-gray-300">
+                <button class="tab text-gray-800 p-2" data-tab="info">Info</button>
+              </div>
+
+              <div class="tab-content mt-2" data-tab-content="info">
                 <div class="mb-4">
-                  <div class="flex justify-center items-center py-3" style="background: #63A650; position: relative;">
-                    <canvas id="previewCanvas" class="max-w-full max-h-full"></canvas>
-                    <canvas id="nightFilterCanvas" class="absolute top-0 left-0 w-full h-full"></canvas>
-                  </div>
-
-                  <div class="clearfix mt-2">
-                  <input type="checkbox" id="night_filter_toggle" class="toggle-night-filter">
-                    <label for="night_filter_toggle" class="inline-block text-gray-700">Night Filter:</label>
+                  <label for="name" class="block text-gray-700">Name:</label>
+                  <input type="text" id="name" name="name" class="w-full p-2 border border-gray-300 rounded disabled:opacity-50">
                 </div>
+
+                <div class="mb-4">
+                  <button id='add_to_tileset' onclick="addToTileset()" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;">
+                    <i class="fas fa-lock-open"></i> add to tileset
+                  </button>
                 </div>
-                  <div id="tabs" class="flex border-b border-gray-300">
-                    <button class="tab text-gray-800 p-2" data-tab="info">Info</button>
-                  </div>
-
-                  <div class="tab-content mt-2 hidden" data-tab-content="info">
-                    <div class="mb-4">
-                      <label for="name" class="block text-gray-700">Name:</label>
-                      <input type="text" id="name" name="name" class="w-full p-2 border border-gray-300 rounded disabled:opacity-50">
-                    </div>
-
-                    <div class="mb-4">
-                    <button id='add_to_tileset' onclick="addToTileset()" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;"><i class="fas fa-lock-open"></i> add to tileset</button>
-                  </div>
-                  </div>
-
               </div>
             </div>
           </div>
         </div>
-        <div class="tab-content mt-2 hidden" data-tab-content="items" style="height: calc(100% - 35px);">
-    <!-- Added 'h-full' to ensure the container takes up available space -->
-    <div class="grid grid-cols-10 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
-  </div>
-</div>
-<div class='resize-handle'></div>
-</div>
+      </div> <!-- End of "Upload" tab -->
+
+    </div> <!-- End of #tileset_window_tabs -->
+
+    <!-- Second tab -->
+    <div class="tab-content mt-2" data-tab-content="items" style="height: calc(100% - 35px);">
+      <div class="grid grid-cols-10 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
+    </div> <!-- End of "Items" tab -->
+  
+  </div> <!-- End of .container text-light window_body p-2 -->
+
+  <div class='resize-handle'></div>
+</div> <!-- End of .relative -->
+
+</div> <!-- End of .window window_bg -->
+
+
 
     <style>
 #drop_zone {
@@ -114,8 +125,7 @@ window[id] = {
     nightFilterEnabled: false,
     imageCanvas: document.getElementById('uploaded_canvas'),
     start: function() {
-        ui.initTabs('tileset_window_tabs', 'tab1');
-        ui.initTabs('right_tabs', 'info');
+
         document.querySelector('button[data-tab="items"]').addEventListener('click', this.displayTilesetItems);
 
         var dropZone = document.getElementById('drop_zone');

@@ -339,7 +339,6 @@ window[id] = {
         plugin.load({
           id: 'tileset_window',
           url: 'editor/tileset_manager/index.php',
-          name: 'Tileset Manager',
           drag: true,
           reload: false,
         });
