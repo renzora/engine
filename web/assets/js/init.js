@@ -15,7 +15,10 @@ assets.preload([
     sprite.create({
         id: game.playerid,
         isPlayer: true,
-        animalType: 'female-01'
+        speed: 100,
+        animalType: 'female-01',
+        canShoot: true,
+        targetAim: true
     });
       
     game.mainSprite = game.sprites[game.playerid];

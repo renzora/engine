@@ -72,20 +72,31 @@ window[id] = {
     inTabSwitchingMode: false,
     currentTabButtonIndex: 0,
     isAButtonHeld: false,
-
     heldItem: null,
     heldCategory: null,
     heldIndex: null,
+    itemsData: null,
+    itemsImg: null,
 
     start: function() {
-    this.renderInventoryItems();
-    this.initializeDragAndDrop();
-    this.initializeQuickItems();
-    this.initializeTabDragOver();
-    this.displayInventoryItems();
-    this.setupGamepadEvents();
 
-    if (game.itemsData && game.itemsImg) {
+        assets.preload([
+            { name: 'itemsImg', path: 'img/icons/items.png' },
+            { name: 'itemsData', path: 'json/itemsData.json' }
+
+        ], () => {
+
+            this.itemsData = assets.use('itemsData');
+            this.itemsImg = assets.use('itemsImg');
+
+            this.renderInventoryItems();
+            this.initializeDragAndDrop();
+            this.initializeQuickItems();
+            this.initializeTabDragOver();
+            this.displayInventoryItems();
+            this.setupGamepadEvents();
+
+    if (this.itemsData && this.itemsImg) {
         this.displayInventoryItems();
     } else {
         console.error("itemsData or itemsImg is not loaded.");
@@ -111,6 +122,8 @@ window[id] = {
 
     this.clearTabHighlights();
     this.highlightSelectedTab();
+
+});
 },
 
     highlightSelectedTab: function() {
@@ -158,8 +171,7 @@ window[id] = {
         gamepad.throttle((e) => this.leftButton(e), this.throttleDuration);
         gamepad.throttle((e) => this.rightButton(e), this.throttleDuration);
         gamepad.throttle((e) => this.aButton(e), this.throttleDuration);  
-        gamepad.throttle(() => this.bButton(), this.throttleDuration);
-
+        gamepad.throttle((e) => this.bButton(), this.throttleDuration);
         gamepad.throttle((e) => this.upButton(e), this.throttleDuration);
         gamepad.throttle((e) => this.downButton(e), this.throttleDuration);
         gamepad.throttle((e) => this.enterTabButton(e), this.throttleDuration);
@@ -226,7 +238,6 @@ window[id] = {
             this.highlightSelectedTab();
             audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
 
-            // If we have a selected item, re-apply green highlight if in correct category
             if (this.isItemSelected) {
                 this.highlightOriginalSlotGreen();
             }
@@ -236,7 +247,6 @@ window[id] = {
     aButton: function(e) {
         this.throttle(() => {
             if (this.inTabSwitchingMode) {
-                // Not needed, since switching tabs is immediate
                 audio.playAudio("switchInventoryTab", assets.use('click'), 'sfx', false);
                 return;
             }
@@ -527,14 +537,14 @@ clearHighlights: function(clearBlueBackground = true) {
     },
 
     displayInventoryItems: function() {
-        if (!game.itemsData || !game.itemsData.items) {
+        if (!this.itemsData || !this.itemsData.items) {
             console.error("itemsData or items array is not defined.");
             return;
         }
 
         this.getFilteredInventory().forEach((item) => {
             if (!item) return;
-            const itemData = game.itemsData.items.find(data => data.name === item.name);
+            const itemData = this.itemsData.items.find(data => data.name === item.name);
             if (itemData) {
                 let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.name}"]`);
                 if (itemElement) {
@@ -557,9 +567,9 @@ clearHighlights: function(clearBlueBackground = true) {
             canvas.width = iconSize;
             canvas.height = iconSize;
 
-            if (game.itemsImg && game.itemsImg instanceof HTMLImageElement) {
+            if (this.itemsImg && this.itemsImg instanceof HTMLImageElement) {
                 ctx.drawImage(
-                    game.itemsImg, 
+                    this.itemsImg, 
                     itemData.x, itemData.y, 
                     iconSize, iconSize, 
                     0, 0, 

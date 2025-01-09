@@ -23,7 +23,7 @@ window[id] = {
         }, 500));
     },
 
-    unmount:function() {
+    unmount: function() {
 
     },
 
