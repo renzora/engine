@@ -112,7 +112,6 @@ plugin = {
             const windowHeight = window.innerHeight;
             const pluginRect = element.getBoundingClientRect();
     
-            // Constrain within viewport
             if (newLeft < 0) newLeft = 0;
             if (newTop < 0) newTop = 0;
             if (newLeft + pluginRect.width > windowWidth) newLeft = windowWidth - pluginRect.width;
@@ -126,7 +125,7 @@ plugin = {
             }
     
             if (isTouchEvent) {
-                e.preventDefault(); // Prevent scrolling while dragging
+                e.preventDefault();
             }
         };
     
@@ -181,7 +180,6 @@ plugin = {
     },
 
     preload: function(pluginList) {
-        // pluginList = [{ id, url, options, priority }, ...]
         this.preloadQueue = pluginList.sort((a, b) => a.priority - b.priority);
         this.loadNextPreload();
     },
@@ -197,8 +195,8 @@ plugin = {
 
     load: function (options) {
         const {
-            id = `plugin_${Date.now()}`, // Generate unique ID if not provided
-            url, // URL for the plugin content
+            id = `plugin_${Date.now()}`,
+            url,
             name = null,
             before = null,
             after = null,
@@ -208,7 +206,7 @@ plugin = {
             hidden = false,
         } = options;
     
-        const fullUrl = `/plugins/${url}`; // Uniform prefix for all files
+        const fullUrl = `/plugins/${url}`;
     
         if (name) {
             this.pluginNames[id] = name;
@@ -233,58 +231,52 @@ plugin = {
                     return;
                 }
             }
-    
-            // Call before if provided
+
             if (before) {
                 before(id);
             }
-    
-            // Fetch and parse the content
+
             ui.ajax({
                 url: fullUrl,
                 method: 'GET',
                 success: (data) => {
-                    console.log(`Successfully fetched plugin content for ID: '${id}'`);
-    
                     window.id = id;
     
                     if (url.endsWith('.js')) {
-                        // Handle JavaScript file
                         const script = document.createElement('script');
-                        script.textContent = data; // Set script content
-                        script.setAttribute('id', `${id}_script`); // Add unique ID
-                        document.head.appendChild(script); // Append to head
+                        script.textContent = data;
+                        script.setAttribute('id', `${id}_script`);
+                        document.head.appendChild(script);
     
                         if (window[id]?.start && !window[id]._hasStarted) {
-                            window[id]._hasStarted = true; // Prevent multiple starts
+                            window[id]._hasStarted = true;
                             window[id].start();
                         }
                     } else {
-                        // Handle HTML-based plugin
                         const tempContainer = document.createElement('div');
                         tempContainer.innerHTML = data;
     
                         const topDiv = tempContainer.querySelector('div') || document.createElement('div');
-                        topDiv.setAttribute('data-window', id); // Add data-window attribute
+                        topDiv.setAttribute('data-window', id);
     
                         const style = tempContainer.querySelector('style');
                         if (style) {
-                            topDiv.prepend(style); // Keep style within the top-level div
+                            topDiv.prepend(style);
                         }
     
                         const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
                         if (lastPluginHtml) {
-                            lastPluginHtml.after(topDiv); // Append after the last plugin HTML
+                            lastPluginHtml.after(topDiv);
                         } else {
-                            document.body.appendChild(topDiv); // Append to the body if none exist
+                            document.body.appendChild(topDiv);
                         }
     
                         const script = tempContainer.querySelector('script');
                         if (script) {
                             const dynamicScript = document.createElement('script');
-                            dynamicScript.textContent = script.textContent; // Copy script content
-                            dynamicScript.setAttribute('id', `${id}_script`); // Append _script to the ID
-                            document.head.appendChild(dynamicScript); // Append to head
+                            dynamicScript.textContent = script.textContent;
+                            dynamicScript.setAttribute('id', `${id}_script`);
+                            document.head.appendChild(dynamicScript);
     
                             if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
                                 window[id].start();
@@ -320,7 +312,6 @@ plugin = {
                     console.error(`Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`, error);
     
                     if (onError) {
-                        console.log(`Executing onError callback for plugin ID: '${id}'`);
                         onError(error, id);
                     }
     
@@ -339,7 +330,6 @@ plugin = {
     },
 
     close: function (id, fromEscKey = false) {
-        console.log(`Attempting to close plugin with ID: '${id}'`);
     
         const pluginElement = document.querySelector(`[data-window='${id}']`);
         if (pluginElement) {
@@ -351,10 +341,8 @@ plugin = {
         }
     
         if (typeof window[id] !== 'undefined' && typeof window[id].unmount === 'function') {
-            console.log(`Executing unmount method for plugin ID: '${id}'`);
             window[id].unmount();
     
-            // Break internal references to facilitate garbage collection
             for (let key in window[id]) {
                 if (Object.prototype.hasOwnProperty.call(window[id], key)) {
                     window[id][key] = null;
@@ -375,7 +363,6 @@ plugin = {
         this.plugins = this.plugins.filter(plugin => plugin.getAttribute('data-window') !== id);
     
         if (typeof window[id] !== 'undefined') {
-            console.log(`Deleting global scope for plugin ID: '${id}'`);
             delete window[id];
         }
     
@@ -385,10 +372,40 @@ plugin = {
         } else {
             this.activePlugin = null;
         }
-    
-        console.log(`Plugin with ID: '${id}' successfully closed.`);
     },
-      
+
+    unmount: function(id) {
+        console.log("attempting to unmount", id);
+        
+        if (window[id] && typeof window[id].unmount === 'function') {
+            window[id].unmount();
+        }
+    
+        var obj = window[id];
+    
+        if (obj) {
+            if (obj.eventListeners && Array.isArray(obj.eventListeners)) {
+                obj.eventListeners.length = 0;
+            }
+    
+            for (var prop in obj) {
+                if (obj.hasOwnProperty(prop)) {
+                    if (typeof obj[prop] === "function") {
+                        delete obj[prop];
+                    } else if (Array.isArray(obj[prop])) {
+                        obj[prop] = [];
+                    } else if (typeof obj[prop] === "object" && obj[prop] !== null) {
+                        obj[prop] = {};
+                    } else {
+                        obj[prop] = null;
+                    }
+                }
+            }
+    
+            delete window[id];
+            console.log(id, "has been completely unmounted and deleted.");
+        }
+    },
 
     topZIndex: function() {
         const highestZIndex = Array.from(document.querySelectorAll('*'))

@@ -44,42 +44,6 @@ ui = {
     });
 },
 
-unmount: function(id) {
-    console.log("attempting to unmount", id);
-    
-    if (window[id] && typeof window[id].unmount === 'function') {
-        window[id].unmount();  // Call the object's unmount function if it exists
-    }
-
-    var obj = window[id];
-
-    if (obj) {
-        // Clear any arrays or object references (e.g., event listeners)
-        if (obj.eventListeners && Array.isArray(obj.eventListeners)) {
-            obj.eventListeners.length = 0;  // Clear event listeners array
-        }
-
-        // Clear all properties of the object
-        for (var prop in obj) {
-            if (obj.hasOwnProperty(prop)) {
-                if (typeof obj[prop] === "function") {
-                    delete obj[prop];  // Delete functions
-                } else if (Array.isArray(obj[prop])) {
-                    obj[prop] = [];  // Clear arrays
-                } else if (typeof obj[prop] === "object" && obj[prop] !== null) {
-                    obj[prop] = {};  // Clear nested objects
-                } else {
-                    obj[prop] = null;  // Clear primitive types
-                }
-            }
-        }
-
-        // Delete the object reference from the window
-        delete window[id];
-        console.log(id, "has been completely unmounted and deleted.");
-    }
-},
-
 ajax: async function({ url, method = 'GET', data = null, outputType = 'text', success, error }) {
     try {
       let fetchUrl = url;

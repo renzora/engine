@@ -21,6 +21,13 @@ assets.preload([
     game.mainSprite = game.sprites[game.playerid];
 
     plugin.load({
+        id: 'gamepad_plugin',
+        url: 'gamepad/index.js',
+        drag: false,
+        reload: true
+    });
+
+    plugin.load({
         id: 'auth_window',
         url: 'auth/index.php',
         drag: true,

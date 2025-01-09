@@ -3,14 +3,6 @@ window[id] = {
     notificationCount: 0,
     activeNotifications: new Map(),
 
-    start:function() {
-
-    },
-
-    unmount: function() {
-
-    },
-
     show: function(id, message, replace = false) {
         return new Promise(resolve => {
           audio.playAudio("notification", assets.use('notification'), 'sfx', false);
@@ -27,7 +19,6 @@ window[id] = {
                 if (replace) {
                     existingNotification.innerText = message;
   
-                    // Clear the existing timer and reset it
                     clearTimeout(existingNotification.timer);
                     existingNotification.timer = setTimeout(() => {
                         existingNotification.classList.add('notification-exit');
@@ -51,21 +42,20 @@ window[id] = {
   
             const notification = document.createElement('div');
             notification.className = 'notif text-white text-lg px-4 py-2 rounded shadow-md m-2';
-            notification.innerText = message; // Use the message parameter
-            notification.dataset.id = id; // Assign id to notification element
+            notification.innerText = message;
+            notification.dataset.id = id;
             container.prepend(notification);
   
             this.notificationCount++;
-            this.activeNotifications.set(id, notification); // Add id to active notifications map
+            this.activeNotifications.set(id, notification);
   
-            // Set and store the timer
             notification.timer = setTimeout(() => {
                 notification.classList.add('notification-exit');
   
                 setTimeout(() => {
                     notification.remove();
                     this.notificationCount--;
-                    this.activeNotifications.delete(id); // Remove id from active notifications map
+                    this.activeNotifications.delete(id);
   
                     if (this.notificationCount === 0) {
                         container.remove();
