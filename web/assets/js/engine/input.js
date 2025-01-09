@@ -588,7 +588,7 @@ input = {
                 name: 'console',
                 drag: false,
                 reload: true,
-                onAfterLoad: function (id) {
+                after: function () {
                     plugin.load({ id: 'edit_mode_window', url: 'editor/index.php', name: 'Editor', drag: true, reload: true });
                 }
             });

@@ -25,13 +25,23 @@ assets.preload([
         url: 'editor/console/index.php',
         drag: false,
         reload: true,
-        onAfterLoad: function () {
+        after: function () {
             plugin.load({
                 id: 'edit_mode_window',
                 url: 'editor/index.php',
                 drag: false,
                 reload: true
             });
+        }
+    });
+
+    plugin.load({
+        id: 'notifs_plugin',
+        url: 'notifs/index.js',
+        drag: false,
+        reload: true,
+        after: function() {
+            notifs_plugin.show('test_notification', 'if this is working you will be able to see it at the top');
         }
     });
 });
