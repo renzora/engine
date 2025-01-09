@@ -53,8 +53,7 @@ window[id] = {
       populateMenuItems: function (clientX, clientY) {
         this.menuItemsConfig = [];
 
-        const { mouseX, mouseY, gridX, gridY } = this.getMouseCoordinates(clientX, clientY);
-        const selectedObject = utils.findObjectAt(mouseX, mouseY);
+        const { gridX, gridY } = this.getMouseCoordinates(clientX, clientY);
         const isTileWalkable = collision.isTileWalkable(gridX, gridY);
 
         if (isTileWalkable) {
@@ -62,17 +61,6 @@ window[id] = {
             label: 'Walk Here',
             callback: () => this.walkHere(gridX, gridY),
           });
-        }
-
-        if (selectedObject) {
-          const objectData = game.objectData[selectedObject.id];
-          if (objectData && objectData[0] && objectData[0].n) {
-            const tileName = objectData[0].n;
-            this.menuItemsConfig.push({
-              label: `Edit ${tileName}`,
-              callback: () => this.editTile(selectedObject),
-            });
-          }
         }
 
         this.menuItemsConfig.push({
@@ -95,18 +83,6 @@ window[id] = {
         this.contextMenuElement.classList.add('hidden');
       },
 
-      editTile: function (selectedObject) {
-        if (!selectedObject) return;
-        const uniqueId = selectedObject.id;
-        plugin.load({
-          id: 'tileset_item_editor_window',
-          url: `editor/tileset_manager/items.php?id=${uniqueId}`,
-          name: 'Item Editor',
-          drag: true,
-          reload: true,
-        });
-        this.contextMenuElement.classList.add('hidden');
-      },
       sceneEditor: function() {
         plugin.load({
           id: 'console_window',

@@ -48,4 +48,11 @@ assets.preload([
         drag: false,
         reload: true
     });
+
+    plugin.load({
+        id: 'context_menu',
+        url: 'ui/menus/context_menu/index.html',
+        drag: false,
+        reload: true
+    });
 });
