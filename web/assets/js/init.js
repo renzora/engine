@@ -38,7 +38,7 @@ assets.preload([
         url: 'effects/weather/index.js',
         reload: true,
         after: function() {
-            weather_plugin.tvStatic.active = true;
+            weather_plugin.snow.active = true;
         }
     });
 
