@@ -142,6 +142,8 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
         return acc;
     }, {});
 
+    const itemsToAdd = [];
+
     // Draw Room Items (Tiles/Objects)
     if (game.roomData && game.roomData.items) {
         game.roomData.items.forEach(roomItem => {
@@ -262,6 +264,16 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
             // Lights & Effects
             this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
             this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+
+            if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
+            const objectName = tileData.n || "Unnamed Object";
+            itemsToAdd.push({
+                name: objectName,
+                roomItemId: roomItem.id,
+                xCoordinates,
+                yCoordinates,
+            });
+        }
         });
     }
 
@@ -299,6 +311,16 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
 
     // 5) Render in sorted order
     renderQueue.forEach(item => item.draw());
+
+    if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
+
+        itemsToAdd.forEach(itemInfo => {
+            editor_layers.addItemToLayer({ n: itemInfo.name });
+        });
+
+        editor_layers.needsUpdate = false;
+    }
+
 
     // 6) If the editor’s grid is active, render it last
     if (utils.pluginExists("editor_context_menu_window.renderIsometricGrid")) {

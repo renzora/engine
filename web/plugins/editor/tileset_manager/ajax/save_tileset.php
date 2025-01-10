@@ -104,7 +104,7 @@ if ($auth) {
             }
 
             // Load existing tileset image
-            $tilesetImagePath = $_SERVER['DOCUMENT_ROOT'] . '/assets/img/tiles/gen1.png';
+            $tilesetImagePath = $_SERVER['DOCUMENT_ROOT'] . '/assets/img/sheets/gen1.png';
             if (!file_exists($tilesetImagePath)) {
                 throw new Exception('Tileset image file not found.');
             }

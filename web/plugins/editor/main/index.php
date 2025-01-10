@@ -94,6 +94,7 @@ window[id] = {
     console_window.allowToggle = false;
 
     plugin.preload([
+        { priority: 0, options: { id: 'editor_layers', url: 'editor/layers/index.html', drag: false, reload: false } },
         { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu/index.php', drag: false, reload: true } },
         { priority: 2, options: { id: 'ui_footer_window', url: 'ui/dev/index.html', drag: false, reload: false } }
     ]);
@@ -139,10 +140,11 @@ unmount: function () {
 
     document.body.style.cursor = 'default';
 
-    plugin.load({ id: 'context_menu_window', url: 'ui/menus/context_menu/index.php', name: 'Context Menu', drag: false,reload: true });
+    plugin.load({ id: 'context_menu_window', url: 'ui/menus/context_menu/index.html', name: 'Context Menu', drag: false,reload: true });
     plugin.close('editor_context_menu_window');
     plugin.close('console_window');
     plugin.close('ui_footer_window');
+    plugin.close('editor_layers');
     plugin.show('ui_inventory_window');
     plugin.show('ui_overlay_window');
     game.resizeCanvas();

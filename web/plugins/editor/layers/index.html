@@ -1,0 +1,805 @@
+<div class="fixed top-0 right-0 w-72 bg-gray-800 text-white rounded shadow-lg h-full flex flex-col">
+
+  <div id="layersTitleBar" class="p-2 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer">
+    <span class="font-semibold">Layers</span>
+    <svg
+      id="layersToggleIcon"
+      xmlns="http://www.w3.org/2000/svg"
+      class="h-4 w-4 transition-transform duration-300"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  </div>
+
+  <div id="layersBody" class="p-2 flex flex-col flex-grow overflow-y-auto transition-all duration-300">
+    <div id="layersList" class="flex flex-col mt-1 relative"></div>
+  </div>
+
+  <div class="p-2 bg-gray-700 border-t border-gray-600 flex justify-center gap-2">
+    <button id="addLayerBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Layer">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+      </svg>
+      Layer
+    </button>
+
+    <button id="addGroupBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Group">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 21V8a2 2 0 0 0-2-2H7v15a2 2 0 0 0 2 2h10" />
+        <path d="M3 21V3h13a2 2 0 0 1 2 2v2" />
+      </svg>
+      Group
+    </button>
+
+    <button id="addItemBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Item">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10" />
+        <circle cx="12" cy="12" r="3" />
+      </svg>
+      Item
+    </button>
+  </div>
+</div>
+
+<style>
+  .node-container {
+    display: flex;
+    flex-direction: column;
+  }
+  .layer-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem;
+    background-color: #374151;
+    border: 1px solid #4b5563;
+    transition: background-color 0.2s, color 0.2s;
+  }
+  .selected {
+    background-color: #3b82f6;
+    color: #ffffff;
+  }
+  .icon-btn {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.25rem;
+    height: 1.25rem;
+  }
+  .layer-name {
+    flex-grow: 1;
+    font-size: 0.875rem;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .edit-layer-name {
+    background: #ffffff !important;
+    border: none;
+    border-bottom: 1px solid #6b7280;
+    width: 100%;
+    font-size: 0.875rem;
+    outline: none;
+    color: #000000;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  .children-container {
+    margin-left: 1.25rem; 
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    transition: all 0.3s ease-in-out;
+  }
+  .collapsed {
+    display: none;
+  }
+  .hidden-panel {
+    max-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+  .drop-indicator {
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #60a5fa;
+    z-index: 9999;
+    pointer-events: none;
+    display: none;
+  }
+  .drag-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    pointer-events: none;
+    z-index: 9999;
+    overflow: hidden;
+  }
+  .dragging-clone {
+    position: absolute;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    cursor: grabbing;
+    background: #fff; 
+    color: #000;
+    padding: 0.25rem 0.5rem;
+    border: 1px dashed #ccc;
+    border-radius: 4px;
+    font-size: 0.875rem;
+  }
+  .pending-drag {
+    outline: 1px dashed #ccc;
+  }
+  .layer-item[data-type="layer"] {
+    border-left: 4px solid #3b82f6;
+  }
+  .layer-item[data-type="group"] {
+    border-left: 4px solid #10b981;
+  }
+  .layer-item[data-type="item"] {
+    border-left: 4px solid #f59e0b;
+  }
+</style>
+
+<script>
+window[id] = {
+  id: id,
+  needsUpdate: true,
+  layers: [{
+      id: "layer_default",
+      type: "layer", 
+      name: "Default Layer",
+      visible: true,
+      locked: false,
+      expanded: true,
+      children: []
+    }
+  ],
+  activeLayerId: "layer_default",
+  selectedLayers: new Set(),
+  lastClickedId: null,
+  panelOpen: true,
+  dragCandidate: false,
+  isDragging: false,
+  dragStartX: 0,
+  dragStartY: 0,
+  dragThreshold: 5,
+  draggedNodes: [],
+  draggedEl: null,
+  draggedClone: null,
+  offsetX: 0,
+  offsetY: 0,
+  dropPosition: null,
+  dropIndicator: null,
+  dragContainer: null,
+
+  initUI: function() {
+    const addLayerBtn = document.getElementById("addLayerBtn");
+    const addGroupBtn = document.getElementById("addGroupBtn");
+    const addItemBtn = document.getElementById("addItemBtn");
+    const layersTitleBar = document.getElementById("layersTitleBar");
+
+    addLayerBtn.addEventListener("click", () => this.addLayer());
+    addGroupBtn.addEventListener("click", () => this.addGroup());
+    addItemBtn.addEventListener("click", () => this.addItemToLayer("New Item"));
+
+    layersTitleBar.addEventListener("click", () => this.toggleLayersPanel());
+
+    this.dropIndicator = document.createElement("div");
+    this.dropIndicator.className = "drop-indicator";
+    const layersList = document.getElementById("layersList");
+    layersList.appendChild(this.dropIndicator);
+
+    this.dragContainer = document.createElement("div");
+    this.dragContainer.className = "drag-container";
+    layersList.appendChild(this.dragContainer);
+
+    document.addEventListener("mousemove", (e) => this.handleMouseMove(e));
+    document.addEventListener("mouseup",   (e) => this.handleMouseUp(e));
+  },
+
+  start: function() {
+    console.log("Starting Layers Panel");
+    this.initUI();
+
+    if (!this.layers || this.layers.length === 0) {
+      this.layers.push({
+        id: "layer_default",
+        type: "layer",
+        name: "Default Layer",
+        visible: true,
+        locked: false,
+        expanded: true,
+        children: []
+      });
+    }
+    this.activeLayerId = this.layers[0].id;
+    this.renderAllLayers();
+  },
+
+  addLayer: function() {
+    const newLayer = {
+      id: `layer_${Date.now()}`,
+      type: "layer",
+      name: "New Layer",
+      visible: true,
+      locked: false,
+      expanded: true,
+      children: []
+    };
+    this.layers.unshift(newLayer);
+    this.activeLayerId = newLayer.id;
+    this.renderAllLayers();
+  },
+
+  addGroup: function() {
+    const newGroup = {
+      id: `group_${Date.now()}`,
+      type: "group",
+      name: "New Group",
+      visible: true,
+      locked: false,
+      expanded: true,
+      children: []
+    };
+    this.layers.unshift(newGroup);
+    this.activeLayerId = newGroup.id;
+    this.renderAllLayers();
+  },
+
+  addItemToLayer: function(itemName) {
+    const found = this.findNodeById(this.activeLayerId);
+    if (!found) return;
+    const { node } = found;
+    if (node.type !== "layer") {
+      console.warn("Cannot add item to anything that's not a layer");
+      return;
+    }
+    const newItem = {
+      id: `item_${Date.now()}`,
+      type: "item",
+      name: itemName.n,
+      visible: true,
+      locked: false,
+      children: []
+    };
+    node.children.unshift(newItem);
+    this.renderAllLayers();
+  },
+
+  renderAllLayers: function() {
+    const list = document.getElementById("layersList");
+    list.innerHTML = "";
+    list.appendChild(this.dropIndicator);
+    list.appendChild(this.dragContainer);
+
+    this.layers.forEach(node => {
+      this.renderNode(node, list);
+    });
+  },
+
+  renderNode: function(node, parentEl) {
+    if ((node.type === "layer" || node.type === "group") && typeof node.expanded === "undefined") {
+      node.expanded = true;
+    }
+
+    const nodeContainer = document.createElement("div");
+    nodeContainer.className = "node-container";
+    nodeContainer.dataset.id = node.id;
+    nodeContainer.dataset.type = node.type;
+
+    const row = document.createElement("div");
+    row.className = "layer-item";
+    if (this.selectedLayers.has(node.id)) {
+      row.classList.add("selected");
+    }
+    row.dataset.id = node.id;
+    row.dataset.type = node.type;
+    const typeIcon = document.createElement("div");
+    typeIcon.className = "icon-btn";
+    let iconHTML = "";
+    if (node.type === "layer") {
+      iconHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" 
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" 
+                d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>`;
+    } else if (node.type === "group") {
+      iconHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" 
+                d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2
+                   2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+        </svg>`;
+    } else {
+      iconHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <!-- Example isometric shape -->
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 2l6 3v6l-6 3-6-3V5z" />
+        </svg>`;
+    }
+    typeIcon.innerHTML = iconHTML;
+
+    if (node.type === "layer" || node.type === "group") {
+      typeIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        node.expanded = !node.expanded;
+        this.renderAllLayers();
+      });
+    }
+
+    const eyeBtn = document.createElement("div");
+    eyeBtn.className = "icon-btn";
+    eyeBtn.innerHTML = node.visible
+      ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+          viewBox="0 0 24 24" stroke="currentColor" fill="none"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+         <circle cx="12" cy="12" r="3"></circle>
+       </svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+          viewBox="0 0 24 24" stroke="currentColor" fill="none"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+         <path d="M2 2l20 20" />
+         <path d="M1 12s4-8 11-8c3.31 0 5.99 1.39 8 3.27" />
+         <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
+                  c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
+       </svg>`;
+    eyeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      node.visible = !node.visible;
+      this.renderAllLayers();
+    });
+
+    const lockBtn = document.createElement("div");
+    lockBtn.className = "icon-btn";
+    lockBtn.innerHTML = node.locked
+      ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+         <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+       </svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
+          viewBox="0 0 24 24" fill="none" stroke="currentColor"
+          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+       </svg>`;
+    lockBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      node.locked = !node.locked;
+      this.renderAllLayers();
+    });
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "layer-name";
+    nameSpan.textContent = node.name;
+    nameSpan.ondblclick = (evt) => {
+      evt.stopPropagation();
+      this.editLayerName(node.id);
+    };
+
+    const trashBtn = document.createElement("div");
+    trashBtn.className = "icon-btn";
+    trashBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 
+                 2 0 0 1-2-2L5 6m3 0V4a2 
+                 2 0 0 1 2-2h4a2 2 0 0 
+                 1 2 2v2"/>
+      </svg>`;
+    trashBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.deleteLayer(node.id);
+    });
+
+    row.appendChild(typeIcon);
+    row.appendChild(eyeBtn);
+    row.appendChild(lockBtn);
+    row.appendChild(nameSpan);
+    row.appendChild(trashBtn);
+
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (e.shiftKey && this.lastClickedId) {
+        this.selectRange(this.lastClickedId, node.id);
+      } else {
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+      }
+      this.activeLayerId = node.id;
+      this.lastClickedId = node.id;
+      this.renderAllLayers();
+    });
+
+    row.addEventListener("mousedown", (e) => {
+      if (node.locked) return;
+      if (e.detail === 2) return;
+      if (e.target === typeIcon) return;
+
+      this.dragCandidate = true;
+      row.classList.add("pending-drag");
+      this.dragStartX = e.clientX;
+      this.dragStartY = e.clientY;
+      if (this.selectedLayers.has(node.id)) {
+        this.draggedNodes = this.getSelectedNodes();
+      } else {
+        this.draggedNodes = [node];
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+      }
+      this.draggedEl = nodeContainer;
+    });
+
+    nodeContainer.appendChild(row);
+
+    if ((node.type === "group" || node.type === "layer") && node.children.length) {
+      const childrenContainer = document.createElement("div");
+      childrenContainer.className = "children-container";
+      if (!node.expanded) {
+        childrenContainer.classList.add("collapsed");
+      }
+      node.children.forEach(child => {
+        this.renderNode(child, childrenContainer);
+      });
+      nodeContainer.appendChild(childrenContainer);
+    }
+
+    parentEl.appendChild(nodeContainer);
+  },
+
+  selectRange: function(idA, idB) {
+    const visibleIds = this.getFlattenedVisibleIds();
+    const idxA = visibleIds.indexOf(idA);
+    const idxB = visibleIds.indexOf(idB);
+    if (idxA === -1 || idxB === -1) {
+      return;
+    }
+    const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+    for (let i = start; i <= end; i++) {
+      this.selectedLayers.add(visibleIds[i]);
+    }
+  },
+
+  getFlattenedVisibleIds: function() {
+    const ids = [];
+    const traverse = (arr) => {
+      for (const node of arr) {
+        ids.push(node.id);
+        if ((node.type === 'layer' || node.type === 'group') && node.expanded) {
+          traverse(node.children);
+        }
+      }
+    };
+    traverse(this.layers);
+    return ids;
+  },
+
+  getSelectedNodes: function() {
+    const out = [];
+    for (const id of this.selectedLayers) {
+      const f = this.findNodeById(id);
+      if (f) out.push(f.node);
+    }
+    return out;
+  },
+
+  handleMouseMove: function(e) {
+    if (!this.dragCandidate && !this.isDragging) return;
+    if (!this.isDragging) {
+      const dx = e.clientX - this.dragStartX;
+      const dy = e.clientY - this.dragStartY;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist > this.dragThreshold) {
+        this.startDrag(e);
+      }
+    } else {
+      this.updateDragPosition(e);
+      this.checkCollision(e);
+    }
+  },
+
+  handleMouseUp: function(e) {
+    if (this.dragCandidate && !this.isDragging) {
+      this.dragCandidate = false;
+      if (this.draggedEl) {
+        this.draggedEl.querySelector(".layer-item")?.classList.remove("pending-drag");
+      }
+      this.draggedNodes = [];
+      this.draggedEl = null;
+      return;
+    }
+
+    if (this.isDragging) {
+      this.stopDrag();
+    }
+  },
+
+  startDrag: function(e) {
+    this.isDragging = true;
+    this.dragCandidate = false;
+
+    if (this.draggedEl) {
+      this.draggedEl.querySelector(".layer-item")?.classList.remove("pending-drag");
+    }
+
+    const clone = document.createElement("div");
+    clone.classList.add("dragging-clone");
+    if (this.draggedNodes.length === 1) {
+      clone.innerText = this.draggedNodes[0].name;
+    } else {
+      clone.innerText = `Dragging ${this.draggedNodes.length} items...`;
+    }
+    this.draggedClone = clone;
+
+    const rect = this.draggedEl?.getBoundingClientRect();
+    if (rect) {
+      this.offsetX = e.clientX - rect.left;
+      this.offsetY = e.clientY - rect.top;
+    }
+
+    this.dragContainer.appendChild(clone);
+    this.updateDragPosition(e);
+  },
+
+  updateDragPosition: function(e) {
+    if (!this.draggedClone) return;
+
+    const panelRect = document.getElementById("layersBody").getBoundingClientRect();
+    let x = e.clientX - this.offsetX;
+    let y = e.clientY - this.offsetY;
+
+    if (x < panelRect.left) x = panelRect.left;
+    if (y < panelRect.top)  y = panelRect.top;
+    if (x > panelRect.right - 30) x = panelRect.right - 30;
+    if (y > panelRect.bottom - 20) y = panelRect.bottom - 20;
+
+    x -= panelRect.left;
+    y -= panelRect.top;
+
+    this.draggedClone.style.transform = `translate(${x}px, ${y}px)`;
+  },
+
+  stopDrag: function() {
+    this.isDragging = false;
+
+    if (this.draggedClone && this.draggedClone.parentNode) {
+      this.draggedClone.parentNode.removeChild(this.draggedClone);
+    }
+    this.draggedClone = null;
+
+    if (this.dropPosition) {
+      const { targetId, mode } = this.dropPosition;
+      const found = this.findNodeById(targetId);
+      for (const dn of this.draggedNodes) {
+        this.removeNodeFromParent(dn.id);
+      }
+
+      if (!found) {
+        this.layers.push(...this.draggedNodes);
+      } else {
+        const { node: targetNode, parentArray } = found;
+        if (mode === "above" || mode === "below") {
+          const index = parentArray.indexOf(targetNode);
+          if (mode === "above") {
+            parentArray.splice(index, 0, ...this.draggedNodes);
+          } else {
+            parentArray.splice(index+1, 0, ...this.draggedNodes);
+          }
+        } else if (mode === "inside") {
+          if (targetNode.type === "group" || targetNode.type === "layer") {
+            targetNode.expanded = true;
+            targetNode.children.unshift(...this.draggedNodes);
+          } else {
+            const idx = parentArray.indexOf(targetNode);
+            parentArray.splice(idx+1, 0, ...this.draggedNodes);
+          }
+        }
+      }
+    } else {
+      for (const dn of this.draggedNodes) {
+        this.removeNodeFromParent(dn.id);
+      }
+      this.layers.push(...this.draggedNodes);
+    }
+
+    this.dragCandidate = false;
+    this.draggedNodes = [];
+    this.draggedEl = null;
+    this.dropPosition = null;
+    this.hideDropIndicator();
+    this.dragContainer.innerHTML = "";
+
+    this.renderAllLayers();
+  },
+
+  checkCollision: function(e) {
+    const container = document.getElementById("layersList");
+    const rowContainers = container.querySelectorAll(".layer-item");
+    const mouseY = e.clientY;
+
+    let hovered = null;
+    let hoveredRect = null;
+
+    for (let i = 0; i < rowContainers.length; i++) {
+      const c = rowContainers[i];
+      if (this.draggedNodes.find(dn => dn.id === c.dataset.id)) {
+        continue;
+      }
+      const r = c.getBoundingClientRect();
+      if (mouseY >= r.top && mouseY <= r.bottom) {
+        hovered = c;
+        hoveredRect = r;
+        break;
+      }
+    }
+
+    if (!hovered) {
+      this.dropPosition = null;
+      this.hideDropIndicator();
+      return;
+    }
+
+    const hoveredNodeId = hovered.dataset.id;
+    const hoveredData = this.findNodeById(hoveredNodeId);
+    if (!hoveredData) {
+      this.dropPosition = null;
+      this.hideDropIndicator();
+      return;
+    }
+
+    const offsetY = mouseY - hoveredRect.top;
+    const height = hoveredRect.height;
+
+    const topZone = height * 0.33;
+    const bottomZone = height * 0.66;
+
+    if (offsetY < topZone) {
+      this.dropPosition = { targetId: hoveredNodeId, mode: "above" };
+      this.showDropIndicator(hovered, "above");
+    } else if (offsetY > bottomZone) {
+      this.dropPosition = { targetId: hoveredNodeId, mode: "below" };
+      this.showDropIndicator(hovered, "below");
+    } else {
+      const nd = hoveredData.node;
+      if (nd.type === "group" || nd.type === "layer") {
+        this.dropPosition = { targetId: hoveredNodeId, mode: "inside" };
+        this.showDropIndicator(hovered, "inside");
+      } else {
+        this.dropPosition = { targetId: hoveredNodeId, mode: "below" };
+        this.showDropIndicator(hovered, "below");
+      }
+    }
+  },
+
+  showDropIndicator: function(elem, mode) {
+    const rect = elem.getBoundingClientRect();
+    const listRect = document.getElementById("layersList").getBoundingClientRect();
+
+    if (mode === "above") {
+      this.dropIndicator.style.top = (rect.top - listRect.top) + "px";
+      this.dropIndicator.style.display = "block";
+    } else if (mode === "below") {
+      this.dropIndicator.style.top = (rect.bottom - listRect.top - 2) + "px";
+      this.dropIndicator.style.display = "block";
+    } else {
+      const midY = (rect.top - listRect.top) + rect.height / 2;
+      this.dropIndicator.style.top = (midY - 1) + "px";
+      this.dropIndicator.style.display = "block";
+    }
+  },
+
+  hideDropIndicator: function() {
+    this.dropIndicator.style.display = "none";
+  },
+
+  findNodeById: function(id, arr = this.layers) {
+    for (let i = 0; i < arr.length; i++) {
+      const n = arr[i];
+      if (n.id === id) {
+        return { node: n, parentArray: arr };
+      }
+      if ((n.type === "group" || n.type === "layer") && n.children) {
+        const sub = this.findNodeById(id, n.children);
+        if (sub) return sub;
+      }
+    }
+    return null;
+  },
+
+  removeNodeFromParent: function(id) {
+    const found = this.findNodeById(id);
+    if (!found) return;
+    const { node, parentArray } = found;
+    const idx = parentArray.indexOf(node);
+    if (idx !== -1) {
+      parentArray.splice(idx, 1);
+    }
+  },
+
+  deleteLayer: function(id) {
+    this.removeNodeFromParent(id);
+    this.selectedLayers.delete(id);
+    if (this.activeLayerId === id) {
+      if (this.layers.length) {
+        this.activeLayerId = this.layers[0].id;
+      } else {
+        const def = {
+          id: `layer_default_${Date.now()}`,
+          type: "layer",
+          name: "Default Layer",
+          visible: true,
+          locked: false,
+          expanded: true,
+          children: []
+        };
+        this.layers.push(def);
+        this.activeLayerId = def.id;
+      }
+    }
+    this.renderAllLayers();
+  },
+
+  editLayerName: function(id) {
+    const f = this.findNodeById(id);
+    if (!f) return;
+    const { node } = f;
+    const span = document.querySelector(`.layer-item[data-id='${id}'] .layer-name`);
+    if (!span) return;
+    const container = span.closest(".layer-item");
+    const w = container.offsetWidth;
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = node.name;
+    input.className = "edit-layer-name";
+    input.style.width = w + "px";
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === "Escape") input.blur();
+    });
+    input.addEventListener("blur", () => {
+      node.name = input.value.trim() || "Unnamed";
+      this.renderAllLayers();
+    });
+
+    span.textContent = "";
+    span.appendChild(input);
+    input.focus();
+    input.setSelectionRange(0, input.value.length);
+  },
+
+  toggleLayersPanel: function() {
+    const bodyEl = document.getElementById("layersBody");
+    const toggleIcon = document.getElementById("layersToggleIcon");
+    this.panelOpen = !this.panelOpen;
+
+    if (this.panelOpen) {
+      bodyEl.classList.remove("hidden-panel");
+      toggleIcon.classList.remove("rotate-180");
+    } else {
+      bodyEl.classList.add("hidden-panel");
+      toggleIcon.classList.add("rotate-180");
+    }
+  }
+};
+</script>

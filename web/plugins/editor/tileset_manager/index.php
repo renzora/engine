@@ -503,7 +503,7 @@ window[id] = {
 
                 // Attach a click event to open the item in the plugin using plugin.load
                 itemDiv.addEventListener('click', function() {
-                    plugin.load({ id: 'tileset_item_editor_window', url: `renadmin/tileset/items.php?id=${uniqueId}`, name: 'Item Editor', drag: true, reload: true });
+                    plugin.load({ id: 'tileset_item_editor_window', url: `editor/tileset_manager/items.php?id=${uniqueId}`, name: 'Item Editor', drag: true, reload: true });
                     console.log(uniqueId); // Log the ID to ensure it's correct
                 });
 
@@ -655,7 +655,7 @@ function addToTileset() {
     ui.ajax({
         outputType: 'json',
         method: 'POST',
-        url: 'plugins/renadmin/tileset/ajax/save_tileset.php',
+        url: 'plugins/editor/tileset_manager/ajax/save_tileset.php',
         data: JSON.stringify(data),
         processData: false, // Not needed for JSON
         contentType: 'application/json', // Important for JSON
@@ -665,7 +665,7 @@ function addToTileset() {
                 alert('Tileset item added successfully.');
 
                 const assetsToReload = [
-                    { name: 'gen1', path: 'img/tiles/gen1.png' },
+                    { name: 'gen1', path: 'img/sheets/gen1.png' },
                     { name: 'objectData', path: 'json/objectData.json' }
                 ];
 

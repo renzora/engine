@@ -306,6 +306,7 @@ addItemToRoomData: function(itemId, mouseX, mouseY) {
     // Create a new object to add to the room
     const newItem = {
         id: itemId,
+        n: itemData.n,
         x: newX,
         y: newY,
         animationState: [{ currentFrame: 0, elapsedTime: 0 }],
@@ -319,6 +320,7 @@ addItemToRoomData: function(itemId, mouseX, mouseY) {
 
     // Add the new item to the room data
     game.roomData.items.push(newItem);
+    editor_layers.addItemToLayer(newItem);
 
     // Debugging: Log the new item added to ensure correct data is being sent
     console.log('New object added:', newItem, 'with', editor_utils_window.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect', 'placement.');
