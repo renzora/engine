@@ -266,14 +266,16 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
             this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
 
             if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
-            const objectName = tileData.n || "Unnamed Object";
-            itemsToAdd.push({
-                name: objectName,
-                roomItemId: roomItem.id,
-                xCoordinates,
-                yCoordinates,
-            });
-        }
+                const objectName = tileData.n || "Unnamed Object";
+                itemsToAdd.push({
+                    name: objectName,
+                    roomItemId: roomItem.id,
+                    layer_id: roomItem.layer_id, // Include layer_id here
+                    xCoordinates,
+                    yCoordinates,
+                });
+            }
+            
         });
     }
 
@@ -313,13 +315,16 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
     renderQueue.forEach(item => item.draw());
 
     if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
-
         itemsToAdd.forEach(itemInfo => {
-            editor_layers.addItemToLayer({ n: itemInfo.name });
+            editor_layers.addItemToLayer({
+                n: itemInfo.name,
+                layer_id: itemInfo.layer_id, // Pass the layer_id here
+            });
         });
-
+    
         editor_layers.needsUpdate = false;
     }
+    
 
 
     // 6) If the editor’s grid is active, render it last

@@ -564,6 +564,9 @@ handleObjectMovement: function () {
 handleSelectionStart: function (event) {
     if (edit_mode_window.isAddingNewObject) return;  // Prevent selection when adding a new object
 
+
+    console.log("selection start");
+
     // Continue with the usual selection logic
     this.isDragging = true;
     const rect = game.canvas.getBoundingClientRect();
@@ -1100,6 +1103,10 @@ updateSelectedObjects: function (shiftKeyHeld) {
         } else if (topmostObject && !this.selectedObjects.includes(topmostObject)) {
             this.selectedObjects.push(topmostObject);
         }
+
+        if (topmostObject && topmostObject.layer_id) {
+            editor_layers.selectLayersById("item_" + topmostObject.layer_id);
+        }
     } else {
         // Handle drag selection (unchanged)
         const selectionRect = {
@@ -1128,6 +1135,11 @@ updateSelectedObjects: function (shiftKeyHeld) {
         this.selectedObjects = shiftKeyHeld
             ? [...new Set([...this.selectedObjects, ...overlappingObjects])]
             : overlappingObjects;
+
+            const layerIds = [...new Set(this.selectedObjects.map(obj => obj.layer_id))];
+            const prefixedLayerIds = layerIds.map(layerId => "item_" + layerId);
+            editor_layers.selectLayersById(prefixedLayerIds);
+
     }
 
     if (this.selectedObjects.length > 0) {

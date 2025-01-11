@@ -280,6 +280,12 @@ utils = {
                 document.msExitFullscreen();
             }
         }
+    },
+
+    generateId: function () {
+        const timestamp = Date.now().toString(36).slice(-4);
+        const randomPart = Math.random().toString(36).substring(2, 5);
+        return `${timestamp}${randomPart}`;
     }
     
 }

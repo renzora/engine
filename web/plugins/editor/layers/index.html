@@ -258,7 +258,7 @@ window[id] = {
     this.renderAllLayers();
   },
 
-  addItemToLayer: function(itemName) {
+  addItemToLayer: function(itemInfo) {
     const found = this.findNodeById(this.activeLayerId);
     if (!found) return;
     const { node } = found;
@@ -267,9 +267,9 @@ window[id] = {
       return;
     }
     const newItem = {
-      id: `item_${Date.now()}`,
+      id: 'item_' + itemInfo.layer_id,
       type: "item",
-      name: itemName.n,
+      name: itemInfo.n,
       visible: true,
       locked: false,
       children: []
@@ -287,7 +287,43 @@ window[id] = {
     this.layers.forEach(node => {
       this.renderNode(node, list);
     });
+
+    console.log('rendering layers');
   },
+
+  selectLayersById: function (layerIds) {
+    // Ensure input is always an array for unified processing
+    if (!Array.isArray(layerIds)) {
+        layerIds = [layerIds];
+    }
+
+    // Clear the previous selections
+    this.selectedLayers.clear();
+
+    // Process each layer ID
+    layerIds.forEach(layerId => {
+        const foundLayer = this.findNodeById(layerId);
+        if (foundLayer) {
+            this.selectedLayers.add(layerId);
+        } else {
+            console.warn(`Layer with ID "${layerId}" not found.`);
+        }
+    });
+
+    // Set the first valid layer ID as the active layer
+    if (layerIds.length > 0) {
+        const firstValidLayer = layerIds.find(layerId => this.findNodeById(layerId));
+        this.activeLayerId = firstValidLayer || null;
+    } else {
+        this.activeLayerId = null;
+    }
+
+    // Re-render the UI to reflect changes
+    this.renderAllLayers();
+
+    console.log(`Selected layers: ${Array.from(this.selectedLayers).join(", ")}`);
+},
+
 
   renderNode: function(node, parentEl) {
     if ((node.type === "layer" || node.type === "group") && typeof node.expanded === "undefined") {

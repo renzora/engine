@@ -309,6 +309,7 @@ addItemToRoomData: function(itemId, mouseX, mouseY) {
         n: itemData.n,
         x: newX,
         y: newY,
+        layer_id: utils.generateId(),
         animationState: [{ currentFrame: 0, elapsedTime: 0 }],
         w: itemData.w || []  // Object width data, if any
     };
