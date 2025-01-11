@@ -191,7 +191,7 @@ var ui_console_tab_window = {
                                             url: 'editor/console/tabs/servers/createScene.php',
                                             drag: true,
                                             reload: false,
-                                            onAfterLoad: function() {
+                                            after: function() {
                                                 scene_create_window.server = '${server.id}';
                                             }
                                         });"
@@ -318,10 +318,14 @@ var ui_console_tab_window = {
     loadEditServerplugin: function(serverId, serverName) {
         plugin.load({
             id: 'server_edit_window',
-            url: `editor/console/tabs/servers/editServer.php?id=${serverId}&name=${encodeURIComponent(serverName)}`,
+            url: `editor/console/tabs/servers/editServer.php`,
             name: 'Edit Server',
             drag: true,
-            reload: false
+            reload: false,
+            beforeStart: function() {
+                server_edit_window.serverId = serverId;
+                server_edit_window.serverName = serverName;
+            }
         });
     },
 

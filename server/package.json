@@ -7,7 +7,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "dev": "concurrently \"nodemon server.js\"",
-    "tailwind": "npx tailwindcss -i ../web/assets/css/style.css -o ../web/assets/css/output.css --minify",
+    "tailwind": "npx tailwindcss -i ../web/assets/css/style.css -o ../web/assets/css/output.css --minify --watch",
     "webpack":  "npx webpack"
   },
   "author": "",

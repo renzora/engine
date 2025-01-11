@@ -1,10 +1,8 @@
 <?php
 include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
-    $serverId = $_GET['id'] ?? null;
-    $serverName = $_GET['name'] ?? '';
 ?>
-  <div data-window='server_edit_window' class='window window_bg' style='width: 356px; background: #bba229;'>
+  <div class='window window_bg' style='width: 356px; background: #bba229;'>
 
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#a18b21 1px, transparent 0) !important;'>
     <div class='float-right'>
@@ -17,18 +15,23 @@ if ($auth) {
       <div class='container text-light window_body p-2'>
         <div>
           <label for="server_name" class="text-white">Server Name:</label>
-          <input type="text" id="server_name" class="w-full light_input p-2 rounded my-2" value="<?php echo htmlspecialchars($serverName); ?>">
+          <input type="text" id="server_name" class="w-full light_input p-2 rounded my-2">
           <button id="save_server_btn" class="green_button text-white font-bold py-2 px-3 rounded w-48 mt-2 shadow-md">Save</button>
           <button id="delete_server_btn" class="red_button text-white font-bold py-2 px-3 rounded w-48 mt-2 shadow-md">Delete</button>
         </div>
       </div>
     </div>
+    <div class='resize-handle'></div>
+  </div>
 
     <script>
-var server_edit_window = {
-    start: function(serverId) {
-        this.serverId = serverId;
-
+window[id] = {
+    id: id,
+    serverId: null,
+    serverName: null,
+    start: function() {
+        console.log(this.serverId, this.serverName);
+        document.getElementById('server_name').value = this.serverName || '';
         document.getElementById('save_server_btn').addEventListener('click', this.saveServer.bind(this));
         document.getElementById('delete_server_btn').addEventListener('click', this.deleteServer.bind(this));
     },
@@ -74,7 +77,7 @@ var server_edit_window = {
                 success: function(data) {
                     if (data.message === 'success') {
                         plugin.close('server_edit_window');
-                        ui_servers_tab_window.loadServers(); // Refresh server list
+                        ui_console_tab_window.loadServers(); // Refresh server list
                     } else if (data.message === 'Unauthorized') {
                         alert('You are not authorized to delete this server.');
                     } else {
@@ -96,11 +99,8 @@ var server_edit_window = {
         if (deleteBtn) deleteBtn.removeEventListener('click', this.deleteServer.bind(this));
     }
 };
-server_edit_window.start('<?php echo $serverId; ?>');
-    </script>
+</script>
 
-    <div class='resize-handle'></div>
-  </div>
 <?php
 }
 ?>

@@ -199,6 +199,7 @@ plugin = {
             url,
             name = null,
             before = null,
+            beforeStart = null,
             after = null,
             onError = null,
             drag = true,
@@ -250,6 +251,9 @@ plugin = {
     
                         if (window[id]?.start && !window[id]._hasStarted) {
                             window[id]._hasStarted = true;
+                            if (beforeStart) {
+                                beforeStart(id);
+                            }
                             window[id].start();
                         }
                     } else {
@@ -279,6 +283,9 @@ plugin = {
                             document.head.appendChild(dynamicScript);
     
                             if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
+                                if (beforeStart) {
+                                    beforeStart(id);
+                                }
                                 window[id].start();
                             }
                         }

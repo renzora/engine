@@ -24,7 +24,7 @@ try {
         'name' => $name,
         'created_by' => $playerId,
         'created_at' => time(),
-        'public' => 0 // Set the default value to 0 for new servers
+        'public' => 1
     ];
     
     $insertResult = $collection->insertOne($newServer);

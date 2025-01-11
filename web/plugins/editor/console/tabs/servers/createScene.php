@@ -55,8 +55,8 @@ window[id] = {
                 if (data.message === 'success') {
                     console.log('Scene created successfully.');
                     plugin.close('scene_create_window');
-                    ui_servers_tab_window.addSceneToList(data.scene, data.server_id); // Pass serverId from response
-                    game.loadScene(data.scene.id); // Enter the newly created scene
+                    ui_console_tab_window.loadServers(); // Pass serverId from response
+                    game.scene(data.scene.id); // Enter the newly created scene
                 } else {
                     console.error('Error creating scene:', data.message, data.error);
                     alert('Error creating scene: ' + data.message + ' (' + data.error + ')');
