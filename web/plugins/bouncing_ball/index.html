@@ -1,0 +1,91 @@
+<div class="window window_bg text-white" style="width: 100%; height: 100%;">
+    <canvas id="bouncing-ball"></canvas>
+</div>
+
+<style id="bouncing-ball-styles">
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+#bouncing-ball {
+    background-color: #222;
+    display: block;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}
+</style>
+
+<script>
+window[id] = {
+    id: id,
+
+    start: function() {
+        console.log(`Plugin started: ${this.id}`);
+        this.initializeCanvas();
+    },
+
+    unmount: function() {
+        console.log(`Plugin unmounted: ${this.id}`);
+        cancelAnimationFrame(this.animationFrame);
+    },
+
+    initializeCanvas: function() {
+        const canvas = document.getElementById('bouncing-ball');
+        const ctx = canvas.getContext('2d');
+
+        // Adjust canvas size to fill the viewport
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        };
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 10,
+            dx: 2,
+            dy: 3
+        };
+
+        const drawBall = () => {
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = 'white';
+            ctx.fill();
+            ctx.closePath();
+        };
+
+        const updateBallPosition = () => {
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            // Bounce off left and right walls
+            if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
+                ball.dx *= -1;
+            }
+
+            // Bounce off top and bottom walls
+            if (ball.y + ball.radius > canvas.height || ball.y - ball.radius < 0) {
+                ball.dy *= -1;
+            }
+        };
+
+        const animate = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawBall();
+            updateBallPosition();
+            this.animationFrame = requestAnimationFrame(animate);
+        };
+
+        animate();
+    }
+};
+</script>
