@@ -42,7 +42,7 @@ var server_edit_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/editor/console/tabs/servers/ajax/editServer.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/servers/editServer.php',
             data: JSON.stringify({ id: this.serverId, name: serverName }),
             headers: {
                 'Content-Type': 'application/json'
@@ -66,7 +66,7 @@ var server_edit_window = {
             ui.ajax({
                 outputType: 'json',
                 method: 'POST',
-                url: 'plugins/editor/console/tabs/servers/ajax/deleteServer.php',
+                url: 'plugins/editor/console/tabs/servers/ajax/servers/deleteServer.php',
                 data: JSON.stringify({ id: this.serverId }),
                 headers: {
                     'Content-Type': 'application/json'

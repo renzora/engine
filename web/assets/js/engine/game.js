@@ -127,7 +127,7 @@ game = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/editor/console/tabs/servers/ajax/getSceneData.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/scenes/getSceneData.php',
             data: 'scene_id=' + encodeURIComponent(sceneId),
             success: function(data) {
                 if (data.message === 'success') {

@@ -144,7 +144,7 @@ var ui_console_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/editor/console/tabs/servers/ajax/getServers.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/servers/getServers.php',
             data: JSON.stringify({ tabType: tabType }),
             headers: {
                 'Content-Type': 'application/json'
@@ -271,7 +271,7 @@ var ui_console_tab_window = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/editor/console/tabs/servers/ajax/getScenes.php',
+            url: 'plugins/editor/console/tabs/servers/ajax/scenes/getScenes.php',
             data: JSON.stringify({ serverId: serverId }),
             headers: {
                 'Content-Type': 'application/json'
