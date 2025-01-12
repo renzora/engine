@@ -66,27 +66,37 @@ window[id] = {
     this.menuItemsElement = document.getElementById('editor_menuItems');
 
     this.contextmenuHandler = (event) => {
-      event.preventDefault(); // Always prevent default browser context menu
+    event.preventDefault(); // Always prevent default browser context menu
 
-      this.initialClickX = event.clientX;
-      this.initialClickY = event.clientY;
+    // If in the middle of adding or selecting an object, skip showing the context menu
+    if (edit_mode_window.isAddingNewObject || ui_console_editor_inventory.isDragging) {
+        ui_console_editor_inventory.cancelAddingObject();
+        return;
+    }
 
-      this.populateMenuItems(event.clientX, event.clientY);
+    this.initialClickX = event.clientX;
+    this.initialClickY = event.clientY;
 
-      if (this.menuItemsConfig.length > 0) {
+    this.populateMenuItems(event.clientX, event.clientY);
+
+    if (this.menuItemsConfig.length > 0) {
+        // Bring the context menu to the front
+        plugin.front('editor_context_menu_window');
+
         // Show context menu only if there are valid menu items
         ui.contextMenu.showContextMenu(
-          this.contextMenuElement,
-          this.menuItemsElement,
-          this.menuItemsConfig,
-          event.clientX,
-          event.clientY
+            this.contextMenuElement,
+            this.menuItemsElement,
+            this.menuItemsConfig,
+            event.clientX,
+            event.clientY
         );
-      } else {
+    } else {
         // Hide menu if no valid options
         this.contextMenuElement.classList.add('hidden');
-      }
-    };
+    }
+};
+
 
     this.clickHandler = (e) => {
       ui.contextMenu.hideMenus(e, this.contextMenuElement);

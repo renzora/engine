@@ -225,6 +225,7 @@ window[id] = {
       });
     }
     this.activeLayerId = this.layers[0].id;
+    this.selectLayersById('layer_default');
     this.renderAllLayers();
   },
 
@@ -238,45 +239,129 @@ window[id] = {
       expanded: true,
       children: []
     };
-    this.layers.unshift(newLayer);
+
+    // If there's a selected layer/group, add as child
+    if (this.activeLayerId) {
+      const activeNode = this.findNodeById(this.activeLayerId);
+      if (activeNode && (activeNode.node.type === "layer" || activeNode.node.type === "group")) {
+        activeNode.node.expanded = true;
+        activeNode.node.children.push(newLayer);
+        // Keep the parent selected
+        this.renderAllLayers();
+        return;
+      }
+    }
+
+    // Otherwise add as top level and select it
+    this.layers.push(newLayer);
+    this.selectedLayers.clear();
+    this.selectedLayers.add(newLayer.id);
     this.activeLayerId = newLayer.id;
+    this.lastClickedId = newLayer.id;
     this.renderAllLayers();
   },
 
   addGroup: function() {
     const newGroup = {
       id: `group_${Date.now()}`,
-      type: "group",
+      type: "group", 
       name: "New Group",
       visible: true,
       locked: false,
       expanded: true,
       children: []
     };
-    this.layers.unshift(newGroup);
+
+    // If there's a selected layer/group, add as child
+    if (this.activeLayerId) {
+      const activeNode = this.findNodeById(this.activeLayerId);
+      if (activeNode && (activeNode.node.type === "layer" || activeNode.node.type === "group")) {
+        activeNode.node.expanded = true;
+        activeNode.node.children.push(newGroup);
+        // Keep the parent selected
+        this.renderAllLayers();
+        return;
+      }
+    }
+
+    // Otherwise add as top level and select it
+    this.layers.push(newGroup);
+    this.selectedLayers.clear();
+    this.selectedLayers.add(newGroup.id);
     this.activeLayerId = newGroup.id;
+    this.lastClickedId = newGroup.id;
     this.renderAllLayers();
   },
 
-  addItemToLayer: function(itemInfo) {
-    const found = this.findNodeById(this.activeLayerId);
-    if (!found) return;
-    const { node } = found;
-    if (node.type !== "layer") {
-      console.warn("Cannot add item to anything that's not a layer");
-      return;
-    }
+  addItemToLayer: function(itemInfo = {}) {
+    console.log("Adding item, active layer ID:", this.activeLayerId);
+
     const newItem = {
-      id: 'item_' + itemInfo.layer_id,
+      id: `item_${itemInfo.layer_id || Date.now()}`,
       type: "item",
-      name: itemInfo.n,
+      name: itemInfo.n || "New Item",
       visible: true,
       locked: false,
       children: []
     };
-    node.children.unshift(newItem);
+
+    let targetParent = null;
+    let parentArray = this.layers;
+    
+    if (this.activeLayerId) {
+      const activeNode = this.findNodeById(this.activeLayerId);
+      console.log("Found active node:", activeNode);
+
+      if (activeNode) {
+        if (activeNode.node.type === "item") {
+          // If selected node is an item, use its parent array
+          const parentInfo = this.findParentNodeById(this.activeLayerId);
+          if (parentInfo) {
+            targetParent = parentInfo.node;
+            parentArray = parentInfo.node.children;
+          }
+        } else if (activeNode.node.type === "layer" || activeNode.node.type === "group") {
+          // If selected node is a layer or group, use it as parent
+          targetParent = activeNode.node;
+          parentArray = activeNode.node.children;
+        }
+      }
+    }
+
+    console.log("Target parent:", targetParent);
+
+    // Add the new item to appropriate location
+    if (targetParent) {
+      targetParent.expanded = true;
+      parentArray.push(newItem);
+    } else {
+      // No valid parent found, add to top level
+      this.layers.push(newItem);
+    }
+
+    // Always select the new item
+    this.selectedLayers.clear();
+    this.selectedLayers.add(newItem.id);
+    this.activeLayerId = newItem.id;
+    this.lastClickedId = newItem.id;
+
     this.renderAllLayers();
   },
+
+
+findParentNodeById: function(id, arr = this.layers) {
+  for (const node of arr) {
+    if (node.children && node.children.some(child => child.id === id)) {
+      return { node, parentArray: arr };
+    }
+    if (node.children) {
+      const found = this.findParentNodeById(id, node.children);
+      if (found) return found;
+    }
+  }
+  return null;
+},
+
 
   renderAllLayers: function() {
     const list = document.getElementById("layersList");
@@ -324,10 +409,80 @@ window[id] = {
     console.log(`Selected layers: ${Array.from(this.selectedLayers).join(", ")}`);
 },
 
+removeLayerById: function (layerId) {
+    const removeNodeRecursively = (id, arr) => {
+        for (let i = 0; i < arr.length; i++) {
+            if (arr[i].id === id) {
+                arr.splice(i, 1);
+                return true; // Layer removed
+            } else if (arr[i].children && arr[i].children.length) {
+                const removed = removeNodeRecursively(id, arr[i].children);
+                if (removed && arr[i].children.length === 0 && arr[i].type === 'group') {
+                    // Remove empty groups
+                    arr.splice(i, 1);
+                }
+                return removed;
+            }
+        }
+        return false; // Layer not found
+    };
 
-  renderNode: function(node, parentEl) {
+    if (removeNodeRecursively(layerId, this.layers)) {
+        console.log(`Layer with ID "${layerId}" removed.`);
+        this.renderAllLayers(); // Update UI
+    } else {
+        console.warn(`Layer with ID "${layerId}" not found.`);
+    }
+},
+
+// New utility functions
+getAllChildIds: function(node) {
+    let ids = [];
+    if (node.id.startsWith('item_')) {
+        ids.push(node.id);
+    }
+    if (node.children && node.children.length > 0) {
+        node.children.forEach(child => {
+            ids = ids.concat(this.getAllChildIds(child));
+        });
+    }
+    return ids;
+},
+
+selectInEditor: function(ids) {
+    // Get the editor instance
+    const editor = window.edit_mode_window;
+    if (!editor) return;
+
+    // Clear current selection if not shift-clicking
+    editor.selectedObjects = [];
+
+    // For each layer ID, find corresponding object in editor
+    ids.forEach(id => {
+        if (id.startsWith('item_')) {
+            const layerId = id.replace('item_', '');
+            const obj = game.roomData.items.find(item => item.layer_id === layerId);
+            if (obj) {
+                editor.selectedObjects.push(obj);
+            }
+        }
+    });
+
+    // Update editor mode if objects were selected
+    if (editor.selectedObjects.length > 0) {
+        editor.changeMode('move');
+    } else {
+        editor.changeMode('select');
+    }
+
+    // Force editor to render the selection
+    editor.renderSelectedTiles();
+},
+
+// Complete renderNode function with updated click handling
+renderNode: function(node, parentEl) {
     if ((node.type === "layer" || node.type === "group") && typeof node.expanded === "undefined") {
-      node.expanded = true;
+        node.expanded = true;
     }
 
     const nodeContainer = document.createElement("div");
@@ -338,114 +493,137 @@ window[id] = {
     const row = document.createElement("div");
     row.className = "layer-item";
     if (this.selectedLayers.has(node.id)) {
-      row.classList.add("selected");
+        row.classList.add("selected");
     }
     row.dataset.id = node.id;
     row.dataset.type = node.type;
+
     const typeIcon = document.createElement("div");
     typeIcon.className = "icon-btn";
     let iconHTML = "";
     if (node.type === "layer") {
-      iconHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" 
-             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" 
-                d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-        </svg>`;
+        iconHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" 
+                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" 
+                      d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+            </svg>`;
     } else if (node.type === "group") {
-      iconHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <path stroke-linecap="round" stroke-linejoin="round" 
-                d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2
-                   2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-        </svg>`;
+        iconHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" 
+                      d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2
+                         2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+            </svg>`;
     } else {
-      iconHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-          <!-- Example isometric shape -->
-          <path stroke-linecap="round" stroke-linejoin="round"
-                d="M12 2l6 3v6l-6 3-6-3V5z" />
-        </svg>`;
+        iconHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+                 viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M12 2l6 3v6l-6 3-6-3V5z" />
+            </svg>`;
     }
     typeIcon.innerHTML = iconHTML;
 
     if (node.type === "layer" || node.type === "group") {
-      typeIcon.addEventListener("click", (e) => {
-        e.stopPropagation();
-        node.expanded = !node.expanded;
-        this.renderAllLayers();
-      });
+        typeIcon.addEventListener("click", (e) => {
+            e.stopPropagation();
+            node.expanded = !node.expanded;
+            this.renderAllLayers();
+        });
     }
 
     const eyeBtn = document.createElement("div");
     eyeBtn.className = "icon-btn";
     eyeBtn.innerHTML = node.visible
-      ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-          viewBox="0 0 24 24" stroke="currentColor" fill="none"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-         <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-         <circle cx="12" cy="12" r="3"></circle>
-       </svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-          viewBox="0 0 24 24" stroke="currentColor" fill="none"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-         <path d="M2 2l20 20" />
-         <path d="M1 12s4-8 11-8c3.31 0 5.99 1.39 8 3.27" />
-         <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
-                  c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
-       </svg>`;
-    eyeBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      node.visible = !node.visible;
-      this.renderAllLayers();
-    });
+        ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+             viewBox="0 0 24 24" stroke="currentColor" fill="none"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3"></circle>
+          </svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+             viewBox="0 0 24 24" stroke="currentColor" fill="none"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 2l20 20" />
+            <path d="M1 12s4-8 11-8c3.31 0 5.99 1.39 8 3.27" />
+            <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
+                     c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
+          </svg>`;
+          
+          eyeBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    node.visible = !node.visible;
+    
+    // Recursively update visibility for all children
+    const updateVisibility = (node, visible) => {
+        if (node.id.startsWith('item_')) {
+            const itemId = node.id.replace('item_', '');
+            // Find the corresponding room item and update its visibility
+            if (game.roomData && game.roomData.items) {
+                const roomItem = game.roomData.items.find(item => item.layer_id === itemId);
+                if (roomItem) {
+                    roomItem.visible = visible;
+                }
+            }
+        }
+        if (node.children) {
+            node.children.forEach(child => updateVisibility(child, visible));
+        }
+    };
+    
+    // Update visibility starting from the clicked node
+    updateVisibility(node, node.visible);
+    
+    // Just render the layers
+    this.renderAllLayers();
+});
 
     const lockBtn = document.createElement("div");
     lockBtn.className = "icon-btn";
     lockBtn.innerHTML = node.locked
-      ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500"
-          viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-         <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-       </svg>`
-      : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
-          viewBox="0 0 24 24" fill="none" stroke="currentColor"
-          stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-         <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-         <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-       </svg>`;
+        ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+          </svg>`
+        : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>`;
     lockBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      node.locked = !node.locked;
-      this.renderAllLayers();
+        e.stopPropagation();
+        node.locked = !node.locked;
+        this.renderAllLayers();
     });
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "layer-name";
     nameSpan.textContent = node.name;
     nameSpan.ondblclick = (evt) => {
-      evt.stopPropagation();
-      this.editLayerName(node.id);
+        evt.stopPropagation();
+        this.editLayerName(node.id);
     };
 
     const trashBtn = document.createElement("div");
     trashBtn.className = "icon-btn";
     trashBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-           viewBox="0 0 24 24" fill="none" stroke="currentColor"
-           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="3 6 5 6 21 6"/>
-        <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 
-                 2 0 0 1-2-2L5 6m3 0V4a2 
-                 2 0 0 1 2-2h4a2 2 0 0 
-                 1 2 2v2"/>
-      </svg>`;
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 
+                     2 0 0 1-2-2L5 6m3 0V4a2 
+                     2 0 0 1 2-2h4a2 2 0 0 
+                     1 2 2v2"/>
+        </svg>`;
     trashBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      this.deleteLayer(node.id);
+        e.stopPropagation();
+        this.deleteLayer(node.id);
     });
 
     row.appendChild(typeIcon);
@@ -454,54 +632,90 @@ window[id] = {
     row.appendChild(nameSpan);
     row.appendChild(trashBtn);
 
+    // Updated click handler
     row.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (e.shiftKey && this.lastClickedId) {
-        this.selectRange(this.lastClickedId, node.id);
-      } else {
-        this.selectedLayers.clear();
-        this.selectedLayers.add(node.id);
-      }
-      this.activeLayerId = node.id;
-      this.lastClickedId = node.id;
-      this.renderAllLayers();
+        e.stopPropagation();
+
+        // Check if the node is locked
+        if (node.locked) {
+            // Only update UI selection but don't select in editor
+            this.selectedLayers.clear();
+            this.selectedLayers.add(node.id);
+            this.activeLayerId = node.id;
+            this.lastClickedId = node.id;
+            this.renderAllLayers();
+            return;
+        }
+        
+        // Get all selectable IDs based on the clicked node
+        let idsToSelect;
+        if (e.shiftKey && this.lastClickedId) {
+            // Handle shift-click range selection
+            this.selectRange(this.lastClickedId, node.id);
+            idsToSelect = Array.from(this.selectedLayers);
+        } else {
+            // Single click selection
+            this.selectedLayers.clear();
+            this.selectedLayers.add(node.id);
+            
+            // If clicking a layer or group, get all child item IDs
+            if (node.type === 'layer' || node.type === 'group') {
+                // Only get IDs from unlocked children
+                idsToSelect = this.getAllChildIds(node).filter(id => {
+                    const childNode = this.findNodeById(id);
+                    return childNode && !childNode.node.locked;
+                });
+            } else {
+                idsToSelect = [node.id];
+            }
+        }
+        
+        this.activeLayerId = node.id;
+        this.lastClickedId = node.id;
+        
+        // Update the layer panel UI
+        this.renderAllLayers();
+        
+        // Select corresponding objects in the editor only if not locked
+        this.selectInEditor(idsToSelect);
     });
 
+    // Drag handling remains the same
     row.addEventListener("mousedown", (e) => {
-      if (node.locked) return;
-      if (e.detail === 2) return;
-      if (e.target === typeIcon) return;
+        if (node.locked) return;
+        if (e.detail === 2) return;
+        if (e.target === typeIcon) return;
 
-      this.dragCandidate = true;
-      row.classList.add("pending-drag");
-      this.dragStartX = e.clientX;
-      this.dragStartY = e.clientY;
-      if (this.selectedLayers.has(node.id)) {
-        this.draggedNodes = this.getSelectedNodes();
-      } else {
-        this.draggedNodes = [node];
-        this.selectedLayers.clear();
-        this.selectedLayers.add(node.id);
-      }
-      this.draggedEl = nodeContainer;
+        this.dragCandidate = true;
+        row.classList.add("pending-drag");
+        this.dragStartX = e.clientX;
+        this.dragStartY = e.clientY;
+        if (this.selectedLayers.has(node.id)) {
+            this.draggedNodes = this.getSelectedNodes();
+        } else {
+            this.draggedNodes = [node];
+            this.selectedLayers.clear();
+            this.selectedLayers.add(node.id);
+        }
+        this.draggedEl = nodeContainer;
     });
 
     nodeContainer.appendChild(row);
 
     if ((node.type === "group" || node.type === "layer") && node.children.length) {
-      const childrenContainer = document.createElement("div");
-      childrenContainer.className = "children-container";
-      if (!node.expanded) {
-        childrenContainer.classList.add("collapsed");
-      }
-      node.children.forEach(child => {
-        this.renderNode(child, childrenContainer);
-      });
-      nodeContainer.appendChild(childrenContainer);
+        const childrenContainer = document.createElement("div");
+        childrenContainer.className = "children-container";
+        if (!node.expanded) {
+            childrenContainer.classList.add("collapsed");
+        }
+        node.children.forEach(child => {
+            this.renderNode(child, childrenContainer);
+        });
+        nodeContainer.appendChild(childrenContainer);
     }
 
     parentEl.appendChild(nodeContainer);
-  },
+},
 
   selectRange: function(idA, idB) {
     const visibleIds = this.getFlattenedVisibleIds();

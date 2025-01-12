@@ -231,6 +231,7 @@ handleMouseDown: function (event) {
         return;
     }
 
+    // Middle click panning shouldn't be affected by locks
     if (event.button === 1) {
         this.previousMode = game.editorMode;
         this.changeMode('pan');
@@ -243,7 +244,8 @@ handleMouseDown: function (event) {
     }
 
     if (event.button === 0) {
-        if (event.shiftKey && game.editorMode === 'move' && this.selectedObjects.length > 0) {
+        if (event.shiftKey && game.editorMode === 'move') {
+            // Check if clicking a locked object
             const clickedObject = this.selectedObjects.find(obj => {
                 const objRect = {
                     x: Math.min(...obj.x) * 16,
@@ -260,6 +262,11 @@ handleMouseDown: function (event) {
                 );
             });
 
+            if (clickedObject && this.isObjectLocked(clickedObject)) {
+                console.log('Cannot deselect locked object');
+                return;
+            }
+
             if (clickedObject) {
                 this.selectedObjects = this.selectedObjects.filter(obj => obj !== clickedObject);
                 console.log('Deselected object:', clickedObject);
@@ -273,18 +280,16 @@ handleMouseDown: function (event) {
             }
         }
 
-        if (game.editorMode === 'pan') {
-            this.isPanning = true;
-            this.lastMouseX = event.clientX;
-            this.lastMouseY = event.clientY;
-        } else if (game.editorMode === 'zoom') {
-            this.changeMode('select');
+        if (game.editorMode === 'move') {
+            // Check if any selected objects are locked before starting move
+            const hasLockedObjects = this.selectedObjects.some(obj => this.isObjectLocked(obj));
+            if (hasLockedObjects) {
+                console.log('Cannot move locked objects');
+                return;
+            }
+            this.handleMoveMode(event);
         } else if (game.editorMode === 'select') {
             this.handleSelectionStart(event);
-        } else if (game.editorMode === 'move') {
-            this.handleMoveMode(event);
-        } else if (game.editorMode === 'lasso') {
-            this.handleLassoStart(event);
         }
     }
 },
@@ -896,8 +901,12 @@ renderSelectedTiles: function () {
     }
 },
 
-
-
+isObjectLocked: function(obj) {
+    // Find the corresponding layer in editor_layers
+    const layerId = `item_${obj.layer_id}`;
+    const layerNode = editor_layers.findNodeById(layerId);
+    return layerNode && layerNode.node.locked;
+},
 
 isTopmostObject: function (obj, selectedObjects) {
     const objIndex = game.roomData.items.indexOf(obj);
@@ -1022,6 +1031,11 @@ deleteSelectedObjects: function () {
         return !this.selectedObjects.includes(item);
     });
 
+    this.selectedObjects.forEach(obj => {
+        const layerId = `item_${obj.layer_id}`;
+        editor_layers.removeLayerById(layerId);
+    });
+
     // Clear the selected objects array
     this.selectedObjects = [];
 
@@ -1035,18 +1049,21 @@ deleteSelectedObjects: function () {
     }
 },
 
-updateSelectedObjects: function (shiftKeyHeld) {
-    const isSingleClick = this.selectionStart.x === this.selectionEnd.x && this.selectionStart.y === this.selectionEnd.y;
+// Update updateSelectedObjects to filter out locked objects
+updateSelectedObjects: function (shiftKeyHeld, isClick = false, clickedCoords = null) {
+    const isSingleClick = isClick || (this.selectionStart.x === this.selectionEnd.x && this.selectionStart.y === this.selectionEnd.y);
 
     if (isSingleClick) {
-        const clickedX = this.selectionStart.x;
-        const clickedY = this.selectionStart.y;
+        const clickedX = clickedCoords ? clickedCoords.x : this.selectionStart.x;
+        const clickedY = clickedCoords ? clickedCoords.y : this.selectionStart.y;
 
+        // Filter out locked objects from potential selections
         const affectedObjects = game.roomData.items.filter(roomItem => {
+            if (this.isObjectLocked(roomItem)) return false;
+
             const itemData = game.objectData[roomItem.id];
             if (!itemData || itemData.length === 0) return false;
 
-            const tileData = itemData[0];
             const xCoordinates = roomItem.x || [];
             const yCoordinates = roomItem.y || [];
 
@@ -1057,58 +1074,30 @@ updateSelectedObjects: function (shiftKeyHeld) {
                 height: (Math.max(...yCoordinates) - Math.min(...yCoordinates) + 1) * 16,
             };
 
-            // Check if the click is within the object bounds
-            if (
-                clickedX < itemBounds.x ||
-                clickedX >= itemBounds.x + itemBounds.width ||
-                clickedY < itemBounds.y ||
-                clickedY >= itemBounds.y + itemBounds.height
-            ) {
-                return false;
-            }
-
-            // Create an offscreen canvas
-            const offscreenCanvas = document.createElement('canvas');
-            offscreenCanvas.width = itemBounds.width;
-            offscreenCanvas.height = itemBounds.height;
-            const ctx = offscreenCanvas.getContext('2d');
-
-            // Render the object on the offscreen canvas
-            this.renderObjectToCanvas(ctx, roomItem, tileData, xCoordinates, yCoordinates);
-
-            // Log the rendered object as a Base64 URL for debugging
-            console.log('Rendered Object Base64 URL:', offscreenCanvas.toDataURL());
-
-            // Translate click position to local coordinates
-            const localX = clickedX - itemBounds.x;
-            const localY = clickedY - itemBounds.y;
-
-            // Get the pixel data at the clicked position
-            const pixelData = ctx.getImageData(localX, localY, 1, 1).data;
-
-            // Check if the clicked pixel is not transparent
-            return pixelData[3] > 0;
+            return (
+                clickedX >= itemBounds.x &&
+                clickedX < itemBounds.x + itemBounds.width &&
+                clickedY >= itemBounds.y &&
+                clickedY < itemBounds.y + itemBounds.height
+            );
         });
 
-        // Sort by rendering order (topmost last in the array)
-        affectedObjects.sort((a, b) => {
-            return game.roomData.items.indexOf(b) - game.roomData.items.indexOf(a);
-        });
-
-        // Select the topmost object only (or add it with Shift key)
         const topmostObject = affectedObjects.length > 0 ? affectedObjects[0] : null;
 
-        if (!shiftKeyHeld) {
-            this.selectedObjects = topmostObject ? [topmostObject] : [];
-        } else if (topmostObject && !this.selectedObjects.includes(topmostObject)) {
-            this.selectedObjects.push(topmostObject);
-        }
-
-        if (topmostObject && topmostObject.layer_id) {
-            editor_layers.selectLayersById("item_" + topmostObject.layer_id);
+        if (topmostObject) {
+            if (shiftKeyHeld) {
+                const index = this.selectedObjects.indexOf(topmostObject);
+                if (index === -1) {
+                    this.selectedObjects.push(topmostObject);
+                } else {
+                    this.selectedObjects.splice(index, 1);
+                }
+            } else {
+                this.selectedObjects = [topmostObject];
+            }
         }
     } else {
-        // Handle drag selection (unchanged)
+        // Handle drag selection
         const selectionRect = {
             x: Math.min(this.selectionStart.x, this.selectionEnd.x),
             y: Math.min(this.selectionStart.y, this.selectionEnd.y),
@@ -1117,6 +1106,8 @@ updateSelectedObjects: function (shiftKeyHeld) {
         };
 
         const overlappingObjects = game.roomData.items.filter(item => {
+            if (this.isObjectLocked(item)) return false;
+
             const itemRect = {
                 x: Math.min(...item.x) * 16,
                 y: Math.min(...item.y) * 16,
@@ -1132,20 +1123,29 @@ updateSelectedObjects: function (shiftKeyHeld) {
             );
         });
 
-        this.selectedObjects = shiftKeyHeld
-            ? [...new Set([...this.selectedObjects, ...overlappingObjects])]
-            : overlappingObjects;
-
-            const layerIds = [...new Set(this.selectedObjects.map(obj => obj.layer_id))];
-            const prefixedLayerIds = layerIds.map(layerId => "item_" + layerId);
-            editor_layers.selectLayersById(prefixedLayerIds);
-
+        if (shiftKeyHeld) {
+            overlappingObjects.forEach(obj => {
+                const index = this.selectedObjects.indexOf(obj);
+                if (index === -1) {
+                    this.selectedObjects.push(obj);
+                } else {
+                    this.selectedObjects.splice(index, 1);
+                }
+            });
+        } else {
+            this.selectedObjects = overlappingObjects;
+        }
     }
 
     if (this.selectedObjects.length > 0) {
         this.changeMode('move');
     }
+
+    // Update the layers panel to reflect the current selection
+    const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id);
+    editor_layers.selectLayersById(layerIds);
 },
+
 
 renderObjectToCanvas: function (ctx, roomItem, tileData, xCoordinates, yCoordinates) {
     const tileSize = 16;
@@ -1377,7 +1377,7 @@ copySelectedObjects: function () {
         }
     },
 
-    pasteCopiedObjects: function () {
+pasteCopiedObjects: function () {
     if (this.clipboard.length > 0) {
         // Use the current mouse position for placing the pasted objects
         const mouseX = this.mouseX;
@@ -1399,18 +1399,28 @@ copySelectedObjects: function () {
         const pastedObjects = this.clipboard.map(obj => {
             const newObj = JSON.parse(JSON.stringify(obj));
 
+            // Generate a new `layer_id` for the object
+            const newLayerId = utils.generateId();
+            newObj.layer_id = newLayerId;
+
             // Adjust each object's x and y coordinates
             newObj.x = newObj.x.map(coord => {
                 const newCoordX = coord * 16 + offsetForX;
-                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
                 return this.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
             });
 
             newObj.y = newObj.y.map(coord => {
                 const newCoordY = coord * 16 + offsetForY;
-                // If snapping is enabled, snap to the nearest grid. If not, use exact positioning (no grid snapping).
                 return this.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
             });
+
+            // Add the new object to the active layer in the layers panel
+            editor_layers.addItemToLayer({
+                layer_id: newLayerId,
+                n: newObj.name || "Pasted Item"
+            });
+
+            console.log(`New layer ID added: item_${newLayerId}`); // Log the new layer ID
 
             return newObj;
         });
@@ -1419,9 +1429,16 @@ copySelectedObjects: function () {
         game.roomData.items.push(...pastedObjects);
         console.log("Objects pasted at", this.isSnapEnabled ? 'grid-snapped' : 'pixel-perfect (rounded)', "positions:", pastedObjects);
 
-        // Select the pasted objects
+        // Update `selectedObjects` with the pasted objects
         this.selectedObjects = pastedObjects;
-        console.log("Pasted objects are now selected:", this.selectedObjects);
+
+        // Select the pasted objects using their newly generated layer IDs
+        const pastedLayerIds = pastedObjects.map(obj => "item_" + obj.layer_id);
+        console.log("Pasted layer IDs selected:", pastedLayerIds);
+        editor_layers.selectLayersById(pastedLayerIds);
+
+        // Render the selected objects
+        this.renderSelectedTiles();
 
         // Switch to 'move' mode after pasting
         this.changeMode('move');

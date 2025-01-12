@@ -131,7 +131,8 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
 },
 
 renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-    const renderQueue = [];
+    // Clear the render queue at the start of each render
+    this.renderQueue = [];
     this.backgroundTileCount = 0;
     this.tileCount = 0;
     this.spriteCount = 0;
@@ -144,9 +145,13 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
 
     const itemsToAdd = [];
 
-    // Draw Room Items (Tiles/Objects)
     if (game.roomData && game.roomData.items) {
         game.roomData.items.forEach(roomItem => {
+            // Check if the layer is visible
+            if (roomItem.visible === false) {
+                return;
+            }
+
             const itemData = expandedObjectData[roomItem.id];
             if (!itemData || itemData.length === 0) return;
 
@@ -168,6 +173,40 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                 rotation += this.handleSway(roomItem);
             }
 
+            // Create object entry for render queue
+            const objectTiles = {
+                zIndex: 0,  // Will be updated based on highest tile
+                type: 'object',
+                id: roomItem.id,
+                visible: true,
+                layer_id: "item_" + roomItem.layer_id,  // Add layer_id from roomItem
+                data: {
+                    tileData,
+                    rotation,
+                    tiles: []
+                },
+                draw: () => {
+                    game.ctx.save();
+                    const centerX = (Math.min(...xCoordinates) + Math.max(...xCoordinates)) / 2;
+                    const maxY = Math.max(...yCoordinates);
+                    const centerXPixel = centerX * 16;
+                    const bottomYPixelVal = maxY * 16;
+                    game.ctx.translate(centerXPixel, bottomYPixelVal);
+                    game.ctx.rotate(rotation);
+
+                    // Draw all tiles for this object
+                    objectTiles.data.tiles.forEach(tile => {
+                        game.ctx.drawImage(
+                            assets.use(tileData.t),
+                            tile.srcX, tile.srcY, 16, 16,
+                            tile.posX, tile.posY, 16, 16
+                        );
+                    });
+
+                    game.ctx.restore();
+                }
+            };
+
             // Render each tile
             let index = 0;
             for (let i = 0; i < yCoordinates.length; i++) {
@@ -175,7 +214,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                 for (let j = 0; j < xCoordinates.length; j++) {
                     const tileX = xCoordinates[j];
 
-                    // Only render if within camera’s viewport
+                    // Only process if within camera's viewport
                     if (
                         (tileX * 16 + 16) >= (viewportXStart * 16) &&
                         (tileX * 16) < (viewportXEnd * 16) &&
@@ -205,53 +244,38 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                             let z = tileData.z;
                             let isZUndefined = false;
                             if (Array.isArray(tileData.z)) {
-                                // If 'z' is an array, pick correct index
                                 z = tileData.z[index % tileData.z.length];
                             }
                             if (z === undefined) {
                                 isZUndefined = true;
-                                // We'll do the standard foot calculation
                             }
 
                             // The final objectZIndex logic
                             let objectZIndex;
                             if (z === 0 && !isZUndefined) {
-                                // z=0 => behind everything else => zIndex=0
                                 objectZIndex = 0;
                             } else if (z === 1) {
-                                // z=1 => in front of z=0, but behind everything else => zIndex=1
                                 objectZIndex = 1;
                             } else if (isZUndefined) {
-                                // no z => standard foot calc => bottomYPixel
                                 objectZIndex = bottomYPixel;
                             } else {
-                                // If z is anything else (like 2, 5, etc.),
-                                // we just do bottomYPixel + z
                                 objectZIndex = bottomYPixel + z;
                             }
+
+                            // Update object's zIndex to highest tile zIndex
+                            objectTiles.zIndex = Math.max(objectTiles.zIndex, objectZIndex);
 
                             // Compute source coords in the sprite sheet
                             const srcX = (tileFrameIndex % 150) * 16;
                             const srcY = Math.floor(tileFrameIndex / 150) * 16;
 
-                            // Push to the renderQueue
-                            renderQueue.push({
-                                zIndex: objectZIndex,
-                                draw: () => {
-                                    game.ctx.save();
-                                    const centerXPixel = centerX * 16;
-                                    const bottomYPixelVal = maxY * 16;
-                                    game.ctx.translate(centerXPixel, bottomYPixelVal);
-                                    game.ctx.rotate(rotation);
-
-                                    game.ctx.drawImage(
-                                        assets.use(tileData.t),
-                                        srcX, srcY, 16, 16,
-                                        posX, posY, 16, 16
-                                    );
-
-                                    game.ctx.restore();
-                                }
+                            // Add tile to object's tiles array
+                            objectTiles.data.tiles.push({
+                                srcX,
+                                srcY,
+                                posX,
+                                posY,
+                                zIndex: objectZIndex
                             });
 
                             this.tileCount++;
@@ -259,6 +283,11 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                     }
                     index++;
                 }
+            }
+
+            // Only add object to render queue if it has tiles
+            if (objectTiles.data.tiles.length > 0) {
+                this.renderQueue.push(objectTiles);
             }
 
             // Lights & Effects
@@ -270,16 +299,15 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                 itemsToAdd.push({
                     name: objectName,
                     roomItemId: roomItem.id,
-                    layer_id: roomItem.layer_id, // Include layer_id here
+                    layer_id: roomItem.layer_id,
                     xCoordinates,
                     yCoordinates,
                 });
             }
-            
         });
     }
 
-    // 3) Draw Sprites
+    // Draw Sprites
     for (let id in game.sprites) {
         const sprite = game.sprites[id];
         const spriteRight = sprite.x + sprite.width;
@@ -290,13 +318,14 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
             spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
             spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16
         ) {
-            // Use sprite’s foot for layering
             const spriteZIndex = sprite.y + sprite.height;
 
-            renderQueue.push({
+            this.renderQueue.push({
                 zIndex: spriteZIndex,
+                type: 'sprite',
+                id: id,
+                data: { sprite },
                 draw: () => {
-                    // any special draws, shadows, etc.
                     render.renderPathfinderLine();
                     sprite.drawShadow();
                     effects.dirtCloudEffect.updateAndRender(game.deltaTime);
@@ -308,26 +337,23 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
         }
     }
 
-    // 4) Sort in ascending order => lower zIndex drawn *behind* higher zIndex
-    renderQueue.sort((a, b) => a.zIndex - b.zIndex);
+    // Sort in ascending order
+    this.renderQueue.sort((a, b) => a.zIndex - b.zIndex);
 
-    // 5) Render in sorted order
-    renderQueue.forEach(item => item.draw());
+    // Render in sorted order
+    this.renderQueue.forEach(item => item.draw());
 
     if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
         itemsToAdd.forEach(itemInfo => {
             editor_layers.addItemToLayer({
                 n: itemInfo.name,
-                layer_id: itemInfo.layer_id, // Pass the layer_id here
+                layer_id: itemInfo.layer_id,
             });
         });
-    
         editor_layers.needsUpdate = false;
-    }
-    
+    }    
 
-
-    // 6) If the editor’s grid is active, render it last
+    // If the editor's grid is active, render it last
     if (utils.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
         editor_context_menu_window.renderIsometricGrid();
     }
