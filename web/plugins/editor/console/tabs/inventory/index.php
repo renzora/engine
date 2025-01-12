@@ -9,7 +9,7 @@ if ($auth) {
 </div>
 
 <!-- Inventory Grid -->
-<div id="inventory-grid" class="inventory-grid grid grid-cols-4 gap-1 overflow-x-hidden">
+<div id="inventory-grid" class="inventory-grid grid grid-cols-5 gap-1">
   <!-- Items will be appended here dynamically -->
 </div>
 
@@ -41,7 +41,7 @@ var ui_console_editor_inventory = {
                 if (items.length === 0) continue;
 
                 const itemGroupElement = document.createElement('div');
-                itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'py-2', 'rounded', 'mb-4', 'shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
+                itemGroupElement.classList.add('inventory-item-group', 'bg-gray-700', 'rounded','shadow-lg', 'hover:bg-gray-600', 'transition', 'duration-300');
 
                 items.forEach(item => {
                     const tilesetImage = assets.use(item.t); // Load tileset image
@@ -85,7 +85,7 @@ var ui_console_editor_inventory = {
                     itemCanvas.setAttribute('data-item-id', category); // Using category
 
                     const canvasContainer = document.createElement('div');
-                    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden rounded-lg shadow-md transition duration-300 transform hover:scale-105';
+                    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg p-1 transition duration-300 transform hover:scale-125';
                     itemCanvas.className += ' w-full h-full object-contain';
 
                     itemCanvas.addEventListener('mousedown', ui_console_editor_inventory.handleMouseDown);

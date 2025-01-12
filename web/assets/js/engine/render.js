@@ -137,6 +137,11 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
     this.tileCount = 0;
     this.spriteCount = 0;
 
+        // If the editor's grid is active, render it last
+        if (utils.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
+            editor_context_menu_window.renderIsometricGrid();
+        }
+
     // Expand objectData for any ranged tile indices
     const expandedObjectData = Object.keys(game.objectData).reduce((acc, key) => {
         acc[key] = game.objectData[key].map(this.expandTileData.bind(this));
@@ -352,11 +357,6 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
         });
         editor_layers.needsUpdate = false;
     }    
-
-    // If the editor's grid is active, render it last
-    if (utils.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
-        editor_context_menu_window.renderIsometricGrid();
-    }
 
     utils.tracker("render.renderAll");
 },

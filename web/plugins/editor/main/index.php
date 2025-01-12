@@ -3,6 +3,36 @@ include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
 if ($auth) {
 ?>
 
+<div
+      id="editor_toolbar_buttons"
+      class="fixed top-2 bg-black/80 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
+      style="margin-bottom: 10px;">
+      <button type="button" id="select_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition hint--top" onclick="edit_mode_window.changeMode('select')" aria-label="Select">
+        <div class="ui_icon ui_select"></div>
+      </button>
+      <button type="button" id="brush_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('brush')">
+        <div class="ui_icon ui_brush"></div>
+      </button>
+      <button type="button" id="zoom_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('zoom')">
+        <div class="ui_icon ui_magnify"></div>
+      </button>
+      <button type="button" id="pan_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('pan')">
+        <div class="ui_icon ui_pan"></div>
+      </button>
+      <button type="button" id="lasso_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('lasso')">
+        <div class="ui_icon ui_lasso"></div>
+      </button>
+      <button type="button" id="move_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('move')">
+        <div class="ui_icon ui_move"></div>
+      </button>
+      <button type="button" id="save_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.saveRoomData()">
+        <div class="ui_icon ui_save"></div>
+      </button>
+      <button type="button" id="close_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="plugin.close('edit_mode_window');">
+        <div class="ui_icon ui_close"></div>
+      </button>
+    </div>
+
 <style>
     body.move-cursor {
       cursor: move !important;

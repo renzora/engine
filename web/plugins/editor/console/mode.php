@@ -16,7 +16,7 @@ if ($mode === 'editor') {
       <div class="icon settings"></div>
     </button>
 
-    <button class="relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="console_window.toggleFullScreen();">
+    <button class="relative flex items-center justify-center w-full h-16 text-gray-600 hover:text-white hint--right px-2" aria-label="Toggle Full Screen Mode" onclick="utils.toggleFullScreen();">
       <div class="icon full_screen"></div>
     </button>
     <?php
