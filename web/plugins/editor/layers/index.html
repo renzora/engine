@@ -2,7 +2,7 @@
   <div id="resizeHandle" class="resize-handle"></div>
 
   <!-- Properties Section -->
-  <div id="propertiesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer">
+  <div id="propertiesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Properties</span>
     <svg
       id="propertiesToggleIcon"
@@ -17,40 +17,202 @@
   </div>
 
   <div id="propertiesBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
-    <!-- Example property fields -->
+    <!-- Object Name -->
     <div class="mb-4">
-      <label for="propName" class="block text-sm font-medium text-gray-300">Name:</label>
+      <label for="objectName" class="block text-sm font-medium text-gray-300">Object Name</label>
       <input
-        id="propName"
+        id="objectName"
         type="text"
-        class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none"
-        placeholder="Layer/Group/Item Name"
+        class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        placeholder="Object name"
       />
     </div>
+
+    <!-- Position Controls -->
     <div class="mb-4">
-      <label for="propVisibility" class="block text-sm font-medium text-gray-300">Visibility:</label>
-      <select
-        id="propVisibility"
-        class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none"
-      >
-        <option value="visible">Visible</option>
-        <option value="hidden">Hidden</option>
-      </select>
-    </div>
-    <div class="mb-4">
-      <label for="propLocked" class="block text-sm font-medium text-gray-300">Locked:</label>
-      <select
-        id="propLocked"
-        class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none"
-      >
-        <option value="unlocked">Unlocked</option>
-        <option value="locked">Locked</option>
-      </select>
+      <div class="text-sm font-medium text-gray-300 mb-2">Position</div>
+      
+      <!-- X Position -->
+      <div class="mb-2">
+        <div class="flex items-center gap-2">
+          <label class="w-6 text-sm font-medium text-red-500">X</label>
+          <input
+            type="number"
+            class="w-24 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            step="0.1"
+            value="0"
+          />
+          <input
+            type="range"
+            class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-red-500"
+            min="-100"
+            max="100"
+            step="0.1"
+            value="0"
+          />
+          <div class="flex items-center gap-1">
+            <input
+              type="checkbox"
+              class="w-3 h-3 accent-red-500"
+              title="Snap X"
+            />
+            <span class="text-xs text-gray-400">Snap</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Y Position -->
+      <div class="mb-2">
+        <div class="flex items-center gap-2">
+          <label class="w-6 text-sm font-medium text-green-500">Y</label>
+          <input
+            type="number"
+            class="w-24 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            step="0.1"
+            value="0"
+          />
+          <input
+            type="range"
+            class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-green-500"
+            min="-100"
+            max="100"
+            step="0.1"
+            value="0"
+          />
+          <div class="flex items-center gap-1">
+            <input
+              type="checkbox"
+              class="w-3 h-3 accent-green-500"
+              title="Snap Y"
+            />
+            <span class="text-xs text-gray-400">Snap</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Z Position -->
+      <div class="mb-2">
+        <div class="flex items-center gap-2">
+          <label class="w-6 text-sm font-medium text-blue-500">Z</label>
+          <input
+            type="number"
+            class="w-24 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+            step="0.1"
+            value="0"
+          />
+          <input
+            type="range"
+            class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            min="-100"
+            max="100"
+            step="0.1"
+            value="0"
+          />
+          <div class="flex items-center gap-1">
+            <input
+              type="checkbox"
+              class="w-3 h-3 accent-blue-500"
+              title="Snap Z"
+            />
+            <span class="text-xs text-gray-400">Snap</span>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
+  <!-- Spectrum Section -->
+  <div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
+    <span class="font-semibold">Color Spectrum</span>
+    <svg
+      id="spectrumToggleIcon"
+      xmlns="http://www.w3.org/2000/svg"
+      class="h-4 w-4 transition-transform duration-300"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+    </svg>
+  </div>
+
+  <div id="spectrumBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
+    <div class="spectrum-container h-32 mb-4 relative">
+      <!-- Main color spectrum -->
+      <div class="absolute inset-0 rounded" style="background: linear-gradient(to right, 
+        hsl(0, 100%, 50%),
+        hsl(60, 100%, 50%),
+        hsl(120, 100%, 50%),
+        hsl(180, 100%, 50%),
+        hsl(240, 100%, 50%),
+        hsl(300, 100%, 50%),
+        hsl(360, 100%, 50%))">
+      </div>
+      <!-- Brightness/saturation overlay -->
+      <div class="absolute inset-0 rounded" style="background: linear-gradient(to bottom,
+        rgba(0,0,0,0),
+        rgba(0,0,0,1)),
+        linear-gradient(to right,
+        rgba(255,255,255,1),
+        rgba(255,255,255,0))">
+      </div>
+      <!-- Color picker handle -->
+      <div id="spectrumHandle" class="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg cursor-pointer" style="transform: translate(-50%, -50%)"></div>
+    </div>
+    
+    <!-- Selected color preview -->
+    <div class="flex gap-2 items-center">
+      <div id="selectedColorPreview" class="w-8 h-8 rounded border border-gray-600"></div>
+      <input type="text" id="colorHexInput" class="bg-gray-700 text-sm px-2 py-1 rounded border border-gray-600" value="#000000">
+    </div>
+  </div>
+
+    <!-- Node Library Section -->
+    <div id="nodesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
+      <span class="font-semibold">Object Addons</span>
+      <svg
+        id="nodesToggleIcon"
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 transition-transform duration-300"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  
+    <div id="nodesBody" class="flex flex-col bg-gray-800 transition-all duration-300">
+      <!-- Search box -->
+      <div class="border-b border-gray-600">
+        <div class="relative">
+          <input
+            type="text"
+            id="nodeSearch"
+            placeholder="Search nodes..."
+            class="w-full bg-gray-700 text-white text-sm px-3 py-2 pl-8 focus:outline-none"
+          />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-4 w-4 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+          </svg>
+        </div>
+      </div>
+  
+      <!-- Nodes list with smaller fixed height -->
+      <div id="nodesList" class="h-64 overflow-y-auto">
+        <div class="node-list-container">
+          <!-- Node categories will be rendered here -->
+        </div>
+      </div>
+    </div>
+
   <!-- Layers Section -->
-  <div id="layersTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer">
+  <div id="layersTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Layers</span>
     <svg
       id="layersToggleIcon"
@@ -73,7 +235,6 @@
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
         <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
       </svg>
-      Layer
     </button>
 
     <button id="addGroupBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Group">
@@ -82,7 +243,6 @@
         <path d="M21 21V8a2 2 0 0 0-2-2H7v15a2 2 0 0 0 2 2h10" />
         <path d="M3 21V3h13a2 2 0 0 1 2 2v2" />
       </svg>
-      Group
     </button>
 
     <button id="addItemBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Item">
@@ -91,7 +251,6 @@
         <circle cx="12" cy="12" r="10" />
         <circle cx="12" cy="12" r="3" />
       </svg>
-      Item
     </button>
   </div>
 </div>
@@ -220,16 +379,18 @@
 window[id] = {
   id: id,
   needsUpdate: true,
+  nodesPanelOpen: true,
+  spectrumPanelOpen: true,
+  propertiesPanelOpen: true,
   layers: [{
-      id: "layer_default",
-      type: "layer", 
-      name: "Default Layer",
-      visible: true,
-      locked: false,
-      expanded: true,
-      children: []
-    }
-  ],
+    id: "layer_default",
+    type: "layer",
+    name: "Default Layer",
+    visible: true,
+    locked: false,
+    expanded: true,
+    children: []
+  }],
   activeLayerId: "layer_default",
   selectedLayers: new Set(),
   lastClickedId: null,
@@ -247,12 +408,43 @@ window[id] = {
   dropPosition: null,
   dropIndicator: null,
   dragContainer: null,
+  nodeCategories: {
+    'Input': [
+      { id: 'number', name: 'Number', color: '#3B82F6', icon: 'hash' },
+      { id: 'string', name: 'String', color: '#3B82F6', icon: 'type' },
+      { id: 'boolean', name: 'Boolean', color: '#3B82F6', icon: 'toggle-left' },
+      { id: 'vector2', name: 'Vector2', color: '#3B82F6', icon: 'move' },
+      { id: 'color', name: 'Color', color: '#3B82F6', icon: 'droplet' }
+    ],
+    'Math': [
+      { id: 'add', name: 'Add', color: '#10B981', icon: 'plus' },
+      { id: 'subtract', name: 'Subtract', color: '#10B981', icon: 'minus' },
+      { id: 'multiply', name: 'Multiply', color: '#10B981', icon: 'x' },
+      { id: 'divide', name: 'Divide', color: '#10B981', icon: 'divide' },
+      { id: 'modulo', name: 'Modulo', color: '#10B981', icon: 'percent' },
+      { id: 'sin', name: 'Sine', color: '#10B981', icon: 'trending-up' },
+      { id: 'cos', name: 'Cosine', color: '#10B981', icon: 'trending-up' },
+      { id: 'pow', name: 'Power', color: '#10B981', icon: 'chevrons-up' }
+    ],
+  },
+  filteredNodes: null,
 
   initUI: function() {
     const addLayerBtn = document.getElementById("addLayerBtn");
     const addGroupBtn = document.getElementById("addGroupBtn");
     const addItemBtn = document.getElementById("addItemBtn");
     const layersTitleBar = document.getElementById("layersTitleBar");
+    const nodesTitleBar = document.getElementById("nodesTitleBar");
+    const spectrumTitleBar = document.getElementById("spectrumTitleBar");
+    const propertiesTitleBar = document.getElementById("propertiesTitleBar");
+    
+    nodesTitleBar.addEventListener("click", () => this.toggleNodesPanel());
+    spectrumTitleBar.addEventListener("click", () => this.toggleSpectrumPanel());
+    propertiesTitleBar.addEventListener("click", () => this.togglePropertiesPanel());
+
+    // Node search initialization
+    const searchInput = document.getElementById('nodeSearch');
+    searchInput.addEventListener('input', (e) => this.handleNodeSearch(e.target.value));
 
     addLayerBtn.addEventListener("click", () => this.addLayer());
     addGroupBtn.addEventListener("click", () => this.addGroup());
@@ -323,7 +515,11 @@ window[id] = {
   },
 
   addLayer: function() {
-    const newLayer = {
+  const selectedNodes = this.getSelectedNodes();
+  let newLayer; // Declare the variable at function scope
+  
+  if (selectedNodes.length === 0) {
+    newLayer = {
       id: `layer_${Date.now()}`,
       type: "layer",
       name: "New Layer",
@@ -332,59 +528,141 @@ window[id] = {
       expanded: true,
       children: []
     };
-
-    // If there's a selected layer/group, add as child
-    if (this.activeLayerId) {
-      const activeNode = this.findNodeById(this.activeLayerId);
-      if (activeNode && (activeNode.node.type === "layer" || activeNode.node.type === "group")) {
-        activeNode.node.expanded = true;
-        activeNode.node.children.push(newLayer);
-        // Keep the parent selected
-        this.renderAllLayers();
-        return;
-      }
-    }
-
-    // Otherwise add as top level and select it
-    this.layers.push(newLayer);
+    this.layers.unshift(newLayer);
     this.selectedLayers.clear();
     this.selectedLayers.add(newLayer.id);
     this.activeLayerId = newLayer.id;
     this.lastClickedId = newLayer.id;
     this.renderAllLayers();
-  },
+    
+    setTimeout(() => {
+      this.editLayerName(newLayer.id);
+    }, 0);
+    return;
+  }
 
-  addGroup: function() {
-    const newGroup = {
+  // Find the topmost selected node's parent and position
+  let topmostNode = selectedNodes[0];
+  let topmostParentInfo = this.findParentNodeById(topmostNode.id);
+  let insertIndex = 0;
+  
+  if (topmostParentInfo) {
+    insertIndex = topmostParentInfo.node.children.indexOf(topmostNode);
+  } else {
+    insertIndex = this.layers.indexOf(topmostNode);
+  }
+
+  // Create new layer
+  newLayer = {
+    id: `layer_${Date.now()}`,
+    type: "layer",
+    name: "New Layer",
+    visible: true,
+    locked: false,
+    expanded: true,
+    children: []
+  };
+
+  // Move all selected nodes to new layer
+  selectedNodes.forEach(node => {
+    this.removeNodeFromParent(node.id);
+    newLayer.children.push(node);
+  });
+
+  // Insert new layer at the topmost node's position
+  if (topmostParentInfo) {
+    topmostParentInfo.node.children.splice(insertIndex, 0, newLayer);
+  } else {
+    this.layers.splice(insertIndex, 0, newLayer);
+  }
+
+  // Update selection
+  this.selectedLayers.clear();
+  this.selectedLayers.add(newLayer.id);
+  this.activeLayerId = newLayer.id;
+  this.lastClickedId = newLayer.id;
+  
+  this.renderAllLayers();
+  
+  setTimeout(() => {
+    this.editLayerName(newLayer.id);
+  }, 0);
+},
+
+addGroup: function() {
+  const selectedNodes = this.getSelectedNodes();
+  let newGroup; // Declare the variable at function scope
+  
+  if (selectedNodes.length === 0) {
+    newGroup = {
       id: `group_${Date.now()}`,
-      type: "group", 
+      type: "group",
       name: "New Group",
       visible: true,
       locked: false,
       expanded: true,
       children: []
     };
-
-    // If there's a selected layer/group, add as child
-    if (this.activeLayerId) {
-      const activeNode = this.findNodeById(this.activeLayerId);
-      if (activeNode && (activeNode.node.type === "layer" || activeNode.node.type === "group")) {
-        activeNode.node.expanded = true;
-        activeNode.node.children.push(newGroup);
-        // Keep the parent selected
-        this.renderAllLayers();
-        return;
-      }
-    }
-
-    // Otherwise add as top level and select it
-    this.layers.push(newGroup);
+    this.layers.unshift(newGroup);
     this.selectedLayers.clear();
     this.selectedLayers.add(newGroup.id);
     this.activeLayerId = newGroup.id;
     this.lastClickedId = newGroup.id;
     this.renderAllLayers();
-  },
+    
+    setTimeout(() => {
+      this.editLayerName(newGroup.id);
+    }, 0);
+    return;
+  }
+
+  // Find the topmost selected node's parent and position
+  let topmostNode = selectedNodes[0];
+  let topmostParentInfo = this.findParentNodeById(topmostNode.id);
+  let insertIndex = 0;
+  
+  if (topmostParentInfo) {
+    insertIndex = topmostParentInfo.node.children.indexOf(topmostNode);
+  } else {
+    insertIndex = this.layers.indexOf(topmostNode);
+  }
+
+  // Create new group
+  newGroup = {
+    id: `group_${Date.now()}`,
+    type: "group",
+    name: "New Group",
+    visible: true,
+    locked: false,
+    expanded: true,
+    children: []
+  };
+
+  // Move all selected nodes to new group
+  selectedNodes.forEach(node => {
+    this.removeNodeFromParent(node.id);
+    newGroup.children.push(node);
+  });
+
+  // Insert new group at the topmost node's position
+  if (topmostParentInfo) {
+    topmostParentInfo.node.children.splice(insertIndex, 0, newGroup);
+  } else {
+    this.layers.splice(insertIndex, 0, newGroup);
+  }
+
+  // Update selection
+  this.selectedLayers.clear();
+  this.selectedLayers.add(newGroup.id);
+  this.activeLayerId = newGroup.id;
+  this.lastClickedId = newGroup.id;
+  
+  this.renderAllLayers();
+  
+  setTimeout(() => {
+    this.editLayerName(newGroup.id);
+  }, 0);
+},
 
   addItemToLayer: function(itemInfo = {}) {
     console.log("Adding item, active layer ID:", this.activeLayerId);
@@ -721,72 +999,100 @@ renderNode: function(node, parentEl) {
     row.appendChild(trashBtn);
 
     // Updated click handler
-    row.addEventListener("click", (e) => {
-        e.stopPropagation();
+// Inside the renderNode function, replace the existing click handler with this:
+row.addEventListener("click", (e) => {
+    e.stopPropagation();
 
-        // Check if the node is locked
-        if (node.locked) {
-            // Only update UI selection but don't select in editor
-            this.selectedLayers.clear();
-            this.selectedLayers.add(node.id);
-            this.activeLayerId = node.id;
-            this.lastClickedId = node.id;
-            this.renderAllLayers();
-            return;
-        }
-        
-        // Get all selectable IDs based on the clicked node
-        let idsToSelect;
-        if (e.shiftKey && this.lastClickedId) {
-            // Handle shift-click range selection
-            this.selectRange(this.lastClickedId, node.id);
-            idsToSelect = Array.from(this.selectedLayers);
-        } else {
-            // Single click selection
-            this.selectedLayers.clear();
-            this.selectedLayers.add(node.id);
-            
-            // If clicking a layer or group, get all child item IDs
-            if (node.type === 'layer' || node.type === 'group') {
-                // Only get IDs from unlocked children
-                idsToSelect = this.getAllChildIds(node).filter(id => {
-                    const childNode = this.findNodeById(id);
-                    return childNode && !childNode.node.locked;
-                });
-            } else {
-                idsToSelect = [node.id];
-            }
-        }
-        
+    // Check if the node is locked
+    if (node.locked) {
+        // Only update UI selection but don't select in editor
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
         this.activeLayerId = node.id;
         this.lastClickedId = node.id;
-        
-        // Update the layer panel UI
         this.renderAllLayers();
+        return;
+    }
+    
+    // Handle Ctrl/Cmd + click for toggling
+    if (e.ctrlKey || e.metaKey) {
+        // Toggle the clicked item's selection
+        if (this.selectedLayers.has(node.id)) {
+            this.selectedLayers.delete(node.id);
+            
+            // If we're unselecting the active layer, set active to the first remaining selected layer
+            if (this.activeLayerId === node.id) {
+                const remaining = Array.from(this.selectedLayers);
+                this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
+            }
+        } else {
+            this.selectedLayers.add(node.id);
+            this.activeLayerId = node.id;
+        }
         
-        // Select corresponding objects in the editor only if not locked
-        this.selectInEditor(idsToSelect);
-    });
+        this.lastClickedId = node.id;
+        
+        // Get all currently selected IDs (only unlocked ones)
+        const selectedIds = Array.from(this.selectedLayers).filter(id => {
+            const node = this.findNodeById(id);
+            return node && !node.node.locked;
+        });
+        
+        // Update the editor selection
+        this.selectInEditor(selectedIds);
+        this.renderAllLayers();
+        return;
+    }
+    
+    // Regular click handling remains the same...
+    let idsToSelect;
+    if (e.shiftKey && this.lastClickedId) {
+        this.selectRange(this.lastClickedId, node.id);
+        idsToSelect = Array.from(this.selectedLayers);
+    } else {
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+        
+        if (node.type === 'layer' || node.type === 'group') {
+            idsToSelect = this.getAllChildIds(node).filter(id => {
+                const childNode = this.findNodeById(id);
+                return childNode && !childNode.node.locked;
+            });
+        } else {
+            idsToSelect = [node.id];
+        }
+    }
+    
+    this.activeLayerId = node.id;
+    this.lastClickedId = node.id;
+    
+    this.renderAllLayers();
+    this.selectInEditor(idsToSelect);
+});
 
     // Drag handling remains the same
-    row.addEventListener("mousedown", (e) => {
-        if (node.locked) return;
-        if (e.detail === 2) return;
-        if (e.target === typeIcon) return;
+// Inside renderNode function, modify the mousedown handler:
+// Inside renderNode function, modify the mousedown handler:
+row.addEventListener("mousedown", (e) => {
+    if (node.locked) return;
+    if (e.detail === 2) return; // Double click check
+    if (e.target === typeIcon) return;
+    // Prevent drag when either Ctrl/Cmd or Shift is pressed
+    if (e.ctrlKey || e.metaKey || e.shiftKey) return;
 
-        this.dragCandidate = true;
-        row.classList.add("pending-drag");
-        this.dragStartX = e.clientX;
-        this.dragStartY = e.clientY;
-        if (this.selectedLayers.has(node.id)) {
-            this.draggedNodes = this.getSelectedNodes();
-        } else {
-            this.draggedNodes = [node];
-            this.selectedLayers.clear();
-            this.selectedLayers.add(node.id);
-        }
-        this.draggedEl = nodeContainer;
-    });
+    this.dragCandidate = true;
+    row.classList.add("pending-drag");
+    this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
+    if (this.selectedLayers.has(node.id)) {
+        this.draggedNodes = this.getSelectedNodes();
+    } else {
+        this.draggedNodes = [node];
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+    }
+    this.draggedEl = nodeContainer;
+});
 
     nodeContainer.appendChild(row);
 
@@ -804,6 +1110,118 @@ renderNode: function(node, parentEl) {
 
     parentEl.appendChild(nodeContainer);
 },
+
+renderNodes: function() {
+    const container = document.querySelector('.node-list-container');
+    container.innerHTML = '';
+
+    const nodesToRender = this.filteredNodes || this.nodeCategories;
+
+    for (const [category, nodes] of Object.entries(nodesToRender)) {
+      const categoryEl = document.createElement('div');
+      categoryEl.className = 'node-category';
+
+      // Category header
+      const header = document.createElement('div');
+      header.className = 'p-2 bg-gray-700 text-sm font-medium text-gray-300 border-b border-gray-600';
+      header.textContent = category;
+      categoryEl.appendChild(header);
+
+      // Render nodes in category
+      nodes.forEach(node => {
+        const nodeEl = document.createElement('div');
+        nodeEl.className = 'node-item p-2 pl-4 flex items-center gap-2 hover:bg-gray-700 cursor-grab';
+        nodeEl.draggable = true;
+        nodeEl.dataset.nodeId = node.id;
+
+        // Node icon/color indicator
+        const iconEl = document.createElement('div');
+        iconEl.className = 'w-3 h-3 rounded-full';
+        iconEl.style.backgroundColor = node.color;
+        nodeEl.appendChild(iconEl);
+
+        // Node name
+        const nameEl = document.createElement('span');
+        nameEl.className = 'text-sm text-gray-200';
+        nameEl.textContent = node.name;
+        nodeEl.appendChild(nameEl);
+
+        // Drag events
+        nodeEl.addEventListener('dragstart', (e) => this.handleNodeDragStart(e));
+        nodeEl.addEventListener('dragend', (e) => this.handleNodeDragEnd(e));
+
+        categoryEl.appendChild(nodeEl);
+      });
+
+      container.appendChild(categoryEl);
+    }
+  },
+
+  // Node drag handling
+  handleNodeDragStart: function(e) {
+    const nodeId = e.target.dataset.nodeId;
+    e.dataTransfer.setData('application/node', nodeId);
+    e.target.classList.add('dragging');
+    
+    // Create and set drag image
+    const dragImage = e.target.cloneNode(true);
+    dragImage.classList.add('node-drag-preview');
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 0, 0);
+    setTimeout(() => document.body.removeChild(dragImage), 0);
+  },
+
+  handleNodeDragEnd: function(e) {
+    e.target.classList.remove('dragging');
+  },
+
+  handleNodeSearch: function(searchTerm) {
+    // Clear node list and state if search is empty
+    if (!searchTerm || !searchTerm.trim()) {
+      this.filteredNodes = null;
+      const container = document.querySelector('.node-list-container');
+      if (container) {
+        container.innerHTML = '';
+      }
+      return;
+    }
+
+    const searchLower = searchTerm.toLowerCase();
+    this.filteredNodes = {};
+
+    // Search in nodes and their categories
+    for (const [category, nodes] of Object.entries(this.nodeCategories)) {
+      const matchedNodes = nodes.filter(node => 
+        node.name.toLowerCase().includes(searchLower) ||
+        node.id.toLowerCase().includes(searchLower) ||
+        category.toLowerCase().includes(searchLower)
+      );
+
+      if (matchedNodes.length > 0) {
+        this.filteredNodes[category] = matchedNodes;
+      }
+    }
+
+    this.renderNodes();
+  },
+
+  // Node drag handling
+  handleNodeDragStart: function(e) {
+    const nodeId = e.target.dataset.nodeId;
+    e.dataTransfer.setData('application/node', nodeId);
+    e.target.classList.add('dragging');
+    
+    // Create and set drag image
+    const dragImage = e.target.cloneNode(true);
+    dragImage.classList.add('node-drag-preview');
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 0, 0);
+    setTimeout(() => document.body.removeChild(dragImage), 0);
+  },
+
+  handleNodeDragEnd: function(e) {
+    e.target.classList.remove('dragging');
+  },
 
   selectRange: function(idA, idB) {
     const visibleIds = this.getFlattenedVisibleIds();
@@ -1146,12 +1564,56 @@ renderNode: function(node, parentEl) {
     input.setSelectionRange(0, input.value.length);
   },
 
+  // Layer panel toggle
   toggleLayersPanel: function() {
     const bodyEl = document.getElementById("layersBody");
     const toggleIcon = document.getElementById("layersToggleIcon");
     this.panelOpen = !this.panelOpen;
 
     if (this.panelOpen) {
+      bodyEl.classList.remove("hidden-panel");
+      toggleIcon.classList.remove("rotate-180");
+    } else {
+      bodyEl.classList.add("hidden-panel");
+      toggleIcon.classList.add("rotate-180");
+    }
+  },
+
+  // Nodes panel toggle
+  toggleNodesPanel: function() {
+    const bodyEl = document.getElementById("nodesBody");
+    const toggleIcon = document.getElementById("nodesToggleIcon");
+    this.nodesPanelOpen = !this.nodesPanelOpen;
+
+    if (this.nodesPanelOpen) {
+      bodyEl.classList.remove("hidden-panel");
+      toggleIcon.classList.remove("rotate-180");
+    } else {
+      bodyEl.classList.add("hidden-panel");
+      toggleIcon.classList.add("rotate-180");
+    }
+  },
+
+  togglePropertiesPanel: function() {
+    const bodyEl = document.getElementById("propertiesBody");
+    const toggleIcon = document.getElementById("propertiesToggleIcon");
+    this.propertiesPanelOpen = !this.propertiesPanelOpen;
+
+    if (this.propertiesPanelOpen) {
+      bodyEl.classList.remove("hidden-panel");
+      toggleIcon.classList.remove("rotate-180");
+    } else {
+      bodyEl.classList.add("hidden-panel");
+      toggleIcon.classList.add("rotate-180");
+    }
+  },
+
+  toggleSpectrumPanel: function() {
+    const bodyEl = document.getElementById("spectrumBody");
+    const toggleIcon = document.getElementById("spectrumToggleIcon");
+    this.spectrumPanelOpen = !this.spectrumPanelOpen;
+
+    if (this.spectrumPanelOpen) {
       bodyEl.classList.remove("hidden-panel");
       toggleIcon.classList.remove("rotate-180");
     } else {
