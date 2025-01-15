@@ -29,7 +29,7 @@ docker-compose up --build
 - Password: ```password```
 
 # Default MongoDB
-- URI: mongodb://admin:this_is_a_test_password@localhost:27017/
+- URI: ```mongodb://admin:this_is_a_test_password@localhost:27017/```
 - Host: ```localhost```
 - Port: ```27017```
 - Database Name: ```renzora```
