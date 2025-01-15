@@ -9,7 +9,7 @@ Open your terminal of choice (make sure docker desktop is running)
 git clone https://github.com/renzora/engine.git
 cd engine
 ```
-before starting the server make sure you edit .env to change the environment variables to suit your needs.
+before starting the server make sure you edit ```.env``` to change the environment variables to suit your needs.
 
 ```
 docker-compose up --build
