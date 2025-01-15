@@ -16,9 +16,9 @@ docker-compose up --build
 ```
 
 # Services
-- Server: Nginx (gzip compression)
+- Client: Nginx (port 80/443) 
 - Website: ```http://localhost```
-- Express endpoint: ```http://localhost:3000```
+- Nodejs Express endpoint: ```http://localhost:3000```
 
 # Default Login
 - Username: ```admin```
