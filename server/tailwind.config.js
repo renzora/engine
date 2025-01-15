@@ -1,6 +1,6 @@
 module.exports = {
   content: [
-    '../web/**/*.{html,js,css,php}',
+    '../client/**/*.{html,js,css,njk}',
   ],
   theme: {
     extend: {},

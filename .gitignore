@@ -1,9 +1,3 @@
 server/node_modules/
-backend/compile/node_modules/
-web/assets/audio/
-web/assets/fonts/
-web/assets/img/
-web/assets/json/
-web/assets/txt/
-web/vendor/
 *.Identifier
+*.env

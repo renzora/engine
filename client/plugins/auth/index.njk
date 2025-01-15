@@ -1,0 +1,228 @@
+{% if not auth %}
+<div class='window login_window' style='width: 400px;background: #1d335b;'>
+
+  <div data-part='handle' class='window_title' style='background-image: radial-gradient(#384c6f 1px, transparent 0) !important;'>
+    <div data-part='title' class='title_bg' style='background: #1d335b; color: #ede8d6;'>Renzora Server</div>
+  </div>
+
+  <div class='clearfix'></div>
+
+  <div class='window_body'>
+
+    <div class="flex space-x-2 m-3 mb-0">
+      <button id="loginTab" class="py-2 px-4 text-lg text-white font-semibold rounded focus:outline-none">Login</button>
+      <button id="registerTab" class="py-2 px-4 text-lg text-white font-semibold rounded focus:outline-none">Register</button>
+      <button id="forgotTab" class="py-2 px-4 text-lg text-white font-semibold rounded focus:outline-none">Forgot</button>
+    </div>
+    <div class='p-3' style='font-size: 13px;'>
+
+      <div id="loginContent">
+        <input type="text" id='login_username' class='light_input shadow appearance-none text-2xl border rounded w-full p-3 mb-2 text-gray-700 leading-tight focus:outline-none focus:shadow-outline' placeholder="Username or Email" required="required" autocomplete="off" />
+        <input type="password" id='login_password' class='light_input shadow appearance-none text-2xl border rounded w-full p-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline' placeholder="Password" required="required" autocomplete="off" />
+        <div class='clearfix'></div>
+        <button id='login_connect' onclick="auth_window.login()" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;"><i class="fas fa-lock-open"></i> Connect to Server</button>
+      </div>
+
+      <div id="registerContent" class="hidden">
+      <input
+        type="text"
+        id="register_username" class='light_input shadow appearance-none border rounded text-2xl w-full p-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2'
+        placeholder="Username"
+        required="required"
+        autocomplete="off"
+      />
+      <div class="clearfix"></div>
+      <input
+        type="password"
+        id="register_password" class='light_input shadow appearance-none border rounded text-2xl w-full p-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline mb-2'
+        placeholder="Choose a Password"
+        required="required"
+        autocomplete="off"
+      />
+      <div class="clearfix"></div>
+      <input
+        type="email"
+        id="register_email" class='light_input shadow appearance-none border rounded text-2xl w-full p-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline'
+        placeholder="Email Address"
+        required="required"
+        autocomplete="off"
+      />
+      <div class="clearfix"></div>
+
+      <button id='register_connect' onclick="auth_window.register();" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md">Create Character</button>
+
+      </div>
+
+      <div id="forgotContent" class="hidden"></div>
+
+    </div>
+  </div>
+  </div>
+
+<script>
+window[id] = {
+    handlers: {
+        loginTab: null,
+        registerTab: null,
+        forgotTab: null
+    },
+
+    start: function() {
+        const loginTab = document.getElementById('loginTab');
+        const registerTab = document.getElementById('registerTab');
+        const forgotTab = document.getElementById('forgotTab');
+        
+        const loginContent = document.getElementById('loginContent');
+        const registerContent = document.getElementById('registerContent');
+        const forgotContent = document.getElementById('forgotContent');
+        
+        loginTab.classList.add('bg-blue-700');
+        
+        this.handlers.loginTab = function() {
+            loginTab.classList.add('bg-blue-700');
+            registerTab.classList.remove('bg-blue-700');
+            forgotTab.classList.remove('bg-blue-700');
+            
+            loginContent.classList.remove('hidden');
+            registerContent.classList.add('hidden');
+            forgotContent.classList.add('hidden');
+        };
+        
+        this.handlers.registerTab = function() {
+            loginTab.classList.remove('bg-blue-700');
+            registerTab.classList.add('bg-blue-700');
+            forgotTab.classList.remove('bg-blue-700');
+            
+            loginContent.classList.add('hidden');
+            registerContent.classList.remove('hidden');
+            forgotContent.classList.add('hidden');
+        };
+        
+        this.handlers.forgotTab = function() {
+            loginTab.classList.remove('bg-blue-700');
+            registerTab.classList.remove('bg-blue-700');
+            forgotTab.classList.add('bg-blue-700');
+            
+            loginContent.classList.add('hidden');
+            registerContent.classList.add('hidden');
+            forgotContent.classList.remove('hidden');
+        };
+
+        loginTab.addEventListener('click', this.handlers.loginTab);
+        registerTab.addEventListener('click', this.handlers.registerTab);
+        forgotTab.addEventListener('click', this.handlers.forgotTab);
+    },
+
+    unmount: function() {
+        const loginTab = document.getElementById('loginTab');
+        const registerTab = document.getElementById('registerTab');
+        const forgotTab = document.getElementById('forgotTab');
+
+        if (this.handlers.loginTab) {
+            loginTab.removeEventListener('click', this.handlers.loginTab);
+        }
+        if (this.handlers.registerTab) {
+            registerTab.removeEventListener('click', this.handlers.registerTab);
+        }
+        if (this.handlers.forgotTab) {
+            forgotTab.removeEventListener('click', this.handlers.forgotTab);
+        }
+
+        this.handlers = {
+            loginTab: null,
+            registerTab: null,
+            forgotTab: null
+        };
+    },
+
+    login: function() {
+        const username = document.getElementById('login_username').value;
+        const password = document.getElementById('login_password').value;
+
+        ui.ajax({
+            outputType: 'json',
+            method: 'POST',
+            url: '/api/auth/login',
+            data: {
+                login_username: username,
+                login_password: password
+            },
+            success: function(response) {
+                if (response.message === 'login_complete') {
+                    window.location.reload();
+                } else {
+                    switch(response.message) {
+                        case 'error_1':
+                            alert('Please fill in all fields');
+                            break;
+                        case 'user_not_found':
+                            alert('User not found');
+                            break;
+                        case 'incorrect_info':
+                            alert('Incorrect username or password');
+                            break;
+                        default:
+                            alert('An error occurred');
+                    }
+                }
+            }
+        });
+    },
+
+    register: function() {
+        const username = document.getElementById('register_username').value;
+        const password = document.getElementById('register_password').value;
+        const email = document.getElementById('register_email').value;
+
+        ui.ajax({
+            outputType: 'json',
+            method: 'POST',
+            url: '/api/auth/register',
+            data: {
+                register_username: username,
+                register_password: password,
+                register_email: email
+            },
+            success: function(response) {
+                if (response.message === 'registration_complete') {
+                    window.location.reload();
+                } else {
+                    switch(response.message) {
+                        case 'error_1':
+                            alert('Please fill in all fields');
+                            break;
+                        case 'username_exists':
+                            alert('Username already exists');
+                            break;
+                        case 'username_invalid':
+                            alert('Username contains invalid characters');
+                            break;
+                        case 'username_too_long':
+                            alert('Username is too long');
+                            break;
+                        case 'username_too_short':
+                            alert('Username is too short');
+                            break;
+                        default:
+                            alert('An error occurred');
+                    }
+                }
+            }
+        });
+    },
+
+    signout: function() {
+        ui.ajax({
+            outputType: 'json',
+            method: 'POST',
+            url: '/api/auth/signout',
+            success: function(response) {
+                if (response.message === 'success') {
+                    window.location.reload();
+                }
+            }
+        });
+    }
+};
+</script>
+{% endif %}

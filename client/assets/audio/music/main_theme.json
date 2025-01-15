@@ -1,0 +1,48 @@
+{
+    "num_channels": 5,
+        "instruments": [
+            {"oscillator": 1, "envelope": { "attack_time": 0.005, "attack_gain": 1, "decay_time": 0.1, "sustain_gain": 0.1, "release_time": 1 }}
+        ],
+        "patterns": [{
+            "ticks_per_beat": 4,
+            "bpm": 90,
+            "ticks_per_pattern": 24,
+            "pattern_commands": [
+                { "tick": 0, "channel": 2, "inst": 0, "note": "E5" },
+                { "tick": 1, "channel": 2, "inst": 0, "note": "F5" },
+                { "tick": 2, "channel": 2, "inst": 0, "note": "G5" },
+                { "tick": 4, "channel": 2, "inst": 0, "note": "G5" },
+                { "tick": 6, "channel": 2, "inst": 0, "note": "C6" },
+                { "tick": 8, "channel": 2, "inst": 0, "note": "B5" },
+                { "tick": 10, "channel": 2, "inst": 0, "note": "A5" },
+                { "tick": 17, "channel": 2, "inst": 0, "note": "G5" }
+            ]},{
+            "ticks_per_beat": 4,
+            "bpm": 90,
+            "ticks_per_pattern": 24,
+            "pattern_commands": [
+                { "tick": 0, "channel": 2, "inst": 0, "note": "E5" },
+                { "tick": 1, "channel": 2, "inst": 0, "note": "F5" },
+                { "tick": 2, "channel": 2, "inst": 0, "note": "G5" },
+                { "tick": 4, "channel": 2, "inst": 0, "note": "G5" },
+                { "tick": 6, "channel": 2, "inst": 0, "note": "C6" },
+                { "tick": 8, "channel": 2, "inst": 0, "note": "B5" },
+                { "tick": 10, "channel": 2, "inst": 0, "note": "A5" },
+                { "tick": 17, "channel": 2, "inst": 0, "note": "G5" }
+            ]},{
+            "ticks_per_beat": 4,
+            "bpm": 90,
+            "ticks_per_pattern": 32,
+            "pattern_commands": [
+                { "tick": 0, "channel": 2, "inst": 0, "note": "E5" },
+                { "tick": 1, "channel": 2, "inst": 0, "note": "F5" },
+                { "tick": 2, "channel": 2, "inst": 0, "note": "G5" },
+                { "tick": 4, "channel": 2, "inst": 0, "note": "G5" },
+                { "tick": 6, "channel": 2, "inst": 0, "note": "C6" },
+                { "tick": 8, "channel": 2, "inst": 0, "note": "D6" },
+                { "tick": 10, "channel": 2, "inst": 0, "note": "D#6" },
+                { "tick": 16, "channel": 2, "inst": 0, "note": "D6" },
+                { "tick": 22, "channel": 2, "inst": 0, "note": "C6" }
+            ]}
+          ]
+    }

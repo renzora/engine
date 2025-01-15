@@ -1,0 +1,655 @@
+{% if auth %}
+<div class='window window_bg' style='width: 800px;height: 700px; background: #323e69;'>
+
+<div data-part='handle' class='window_title' style='background-image: radial-gradient(#192037 1px, transparent 0) !important;'>
+  <div class='float-right'>
+    <button class="icon close_dark mr-1 hint--left" aria-label="Close (ESC)" data-close></button>
+  </div>
+  <div data-part='title' class='title_bg window_border' style='background: #323e69; color: #ede8d6;'>Tileset Manager</div>
+</div>
+<div class='clearfix'></div>
+
+<div class='relative'> 
+  <div class='container text-light window_body p-2' style='height: 660px; overflow-y: hidden;'> 
+
+    <div id="tileset_window_tabs" style="height: 100%;">
+      <div class="flex border-b border-gray-300">
+        <button class="tab" data-tab="tab1">Upload</button>
+        <button class="tab" data-tab="items">Items</button>
+      </div>
+
+      <div class="tab-content" data-tab-content="tab1" style="height: calc(100% - 35px);">
+        <div class="flex h-full">
+          <div class="w-8/12 p-2 pl-0 flex flex-col">
+            <div id="drop_zone" class="flex-grow w-full border border-gray-300 rounded overflow-auto" style="position: relative;">
+              <p id="drop_prompt text-white">Drop an image here to upload</p>
+              <canvas id="uploaded_canvas" style="display: none;"></canvas>
+              <canvas id="gridCanvas" style="display: none; position: absolute; top: 0; left: 0;"></canvas>
+              <canvas id="selectionCanvas" style="display: none; position: absolute; top: 0; left: 0;"></canvas>
+            </div>
+          </div>
+          <div class="w-4/12 p-2" style="height: 100%; overflow-y: scroll;">
+            <div id="right_tabs">
+              <div class="mb-4">
+                <div class="flex justify-center items-center py-3" style="background: #63A650; position: relative;">
+                  <canvas id="previewCanvas" class="max-w-full max-h-full"></canvas>
+                  <canvas id="nightFilterCanvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+                </div>
+
+                <div class="clearfix mt-2">
+                  <input type="checkbox" id="night_filter_toggle" class="toggle-night-filter">
+                  <label for="night_filter_toggle" class="inline-block text-gray-700">Night Filter:</label>
+                </div>
+              </div>
+              <div class="flex border-b border-gray-300">
+                <button class="tab" data-tab="info">Info</button>
+              </div>
+
+              <div class="tab-content" data-tab-content="info">
+                <div class="mb-4">
+                  <label for="name" class="block text-gray-700">Name:</label>
+                  <input type="text" id="name" name="name" class="w-full p-2 border border-gray-300 rounded disabled:opacity-50">
+                </div>
+
+                <div class="mb-4">
+                  <button id='add_to_tileset' class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;">
+                    <i class="fas fa-lock-open"></i> add to tileset
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-content" data-tab-content="items" style="height: calc(100% - 35px);">
+        <div class="grid grid-cols-10 gap-2 p-2 h-full overflow-y-scroll" id="itemsGrid"></div>
+      </div>
+    </div>
+
+  </div>
+  <div class='resize-handle'></div>
+</div>
+
+</div>
+
+<style>
+#drop_zone {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+#drop_zone.dropped {
+  justify-content: flex-start;
+  align-items: flex-start;
+  overflow: auto;
+}
+#uploaded_canvas, #gridCanvas, #selectionCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+#uploaded_canvas {
+  z-index: 1;
+}
+#gridCanvas {
+  z-index: 2;
+}
+#selectionCanvas {
+  z-index: 3;
+}
+#nightFilterCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  display: none;
+}
+
+.tab {
+  background-color: #f0f0f0;
+  border: none;
+  cursor: pointer;
+  padding: 10px 20px;
+  transition: background-color 0.3s;
+}
+
+.tab.active {
+  background-color: #ffffff;
+  border-bottom: 2px solid #323e69;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+</style>
+
+<script>
+window[id] = {
+    id: id,
+    selectedTiles: [],
+    nightFilterEnabled: false,
+    imageCanvas: document.getElementById('uploaded_canvas'),
+
+    initTabs: function(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+
+        const tabs = container.querySelectorAll('.tab');
+        const contents = container.querySelectorAll('.tab-content');
+
+        contents.forEach(content => content.classList.remove('active'));
+
+        if (tabs.length > 0) {
+            tabs[0].classList.add('active');
+            const firstTabContent = container.querySelector(`.tab-content[data-tab-content="${tabs[0].dataset.tab}"]`);
+            if (firstTabContent) {
+                firstTabContent.classList.add('active');
+            }
+        }
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                contents.forEach(c => c.classList.remove('active'));
+
+                tab.classList.add('active');
+
+                const content = container.querySelector(`.tab-content[data-tab-content="${tab.dataset.tab}"]`);
+                if (content) {
+                    content.classList.add('active');
+                }
+
+                if (tab.dataset.tab === 'items') {
+                    this.displayTilesetItems();
+                }
+            });
+        });
+    },
+
+    start: function() {
+        const self = this;
+        self.initTabs('tileset_window_tabs');
+        self.initTabs('right_tabs');
+
+        document.getElementById('add_to_tileset').addEventListener('click', () => self.addToTileset());
+
+        const dropZone = document.getElementById('drop_zone');
+        const dropPrompt = document.getElementById('drop_prompt');
+        const gridCanvas = document.getElementById('gridCanvas');
+        const selectionCanvas = document.getElementById('selectionCanvas');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const nightFilterCanvas = document.getElementById('nightFilterCanvas');
+        const ctxImage = self.imageCanvas.getContext('2d');
+        const ctxGrid = gridCanvas.getContext('2d');
+        const ctxSelection = selectionCanvas.getContext('2d');
+        const ctxPreview = previewCanvas.getContext('2d');
+        const ctxNightFilter = nightFilterCanvas.getContext('2d');
+
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
+        let ctrlPressed = false;
+        let middleMousePressed = false;
+        let scale = 1;
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Control') ctrlPressed = true;
+        });
+
+        document.addEventListener('keyup', function(e) {
+            if (e.key === 'Control') ctrlPressed = false;
+        });
+
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            dropZone.style.borderColor = '#000';
+        });
+
+        dropZone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ccc';
+        });
+
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            dropZone.style.borderColor = '#ccc';
+            var files = e.dataTransfer.files;
+            if (files.length > 0) {
+                var reader = new FileReader();
+                reader.onload = function(event) {
+                    var img = new Image();
+                    img.onload = function() {
+                        self.imageCanvas.width = img.width;
+                        self.imageCanvas.height = img.height;
+                        gridCanvas.width = img.width;
+                        gridCanvas.height = img.height;
+                        selectionCanvas.width = img.width;
+                        selectionCanvas.height = img.height;
+                        ctxImage.drawImage(img, 0, 0, img.width, img.height);
+                        self.imageCanvas.style.display = 'block';
+                        gridCanvas.style.display = 'block';
+                        selectionCanvas.style.display = 'block';
+                        dropPrompt.style.display = 'none';
+                        dropZone.classList.add('dropped');
+                        self.drawGrid(ctxGrid, gridCanvas);
+                        self.disableFormFields();
+                    }
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(files[0]);
+            }
+        });
+
+        function getCanvasCoordinates(e, canvas) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (e.clientX - rect.left) / scale,
+                y: (e.clientY - rect.top) / scale
+            };
+        }
+
+        selectionCanvas.addEventListener('mousedown', function(e) {
+            if (e.button === 1) {
+                middleMousePressed = true;
+                const coords = getCanvasCoordinates(e, selectionCanvas);
+                startX = coords.x;
+                startY = coords.y;
+                scrollLeft = dropZone.scrollLeft;
+                scrollTop = dropZone.scrollTop;
+                e.preventDefault();
+            } else if (e.button === 0) {
+                isDragging = true;
+                const coords = getCanvasCoordinates(e, selectionCanvas);
+                startX = coords.x;
+                startY = coords.y;
+                self.selectedTiles = [];
+            }
+        });
+
+        selectionCanvas.addEventListener('mouseleave', function() {
+            isDragging = false;
+            middleMousePressed = false;
+        });
+
+        selectionCanvas.addEventListener('mouseup', function(e) {
+            if (e.button === 0) {
+                isDragging = false;
+                const coords = getCanvasCoordinates(e, selectionCanvas);
+                const endX = coords.x;
+                const endY = coords.y;
+
+                const tileSize = 16;
+                const startXTile = Math.floor(startX / tileSize) * tileSize;
+                const startYTile = Math.floor(startY / tileSize) * tileSize;
+                const endXTile = Math.floor(endX / tileSize) * tileSize;
+                const endYTile = Math.floor(endY / tileSize) * tileSize;
+
+                const x = Math.min(startXTile, endXTile);
+                const y = Math.min(startYTile, endYTile);
+                const width = Math.abs(endXTile - startXTile) + tileSize;
+                const height = Math.abs(endYTile - startYTile) + tileSize;
+
+                self.selectedTiles = [];
+
+                const numCols = width / tileSize;
+                const numRows = height / tileSize;
+
+                for (let row = 0; row < numRows; row++) {
+                    for (let col = 0; col < numCols; col++) {
+                        self.selectedTiles.push({
+                            x: x + col * tileSize,
+                            y: y + row * tileSize,
+                            width: tileSize,
+                            height: tileSize
+                        });
+                    }
+                }
+
+                self.drawSelection(ctxSelection, x, y, width, height);
+                self.enableFormFields();
+                self.updatePreviewCanvas();
+            }
+        });
+
+        selectionCanvas.addEventListener('mousemove', function(e) {
+            if (middleMousePressed) {
+                e.preventDefault();
+                const coords = getCanvasCoordinates(e, selectionCanvas);
+                const walkX = (coords.x - startX) * scale;
+                const walkY = (coords.y - startY) * scale;
+                dropZone.scrollLeft = scrollLeft - walkX;
+                dropZone.scrollTop = scrollTop - walkY;
+            } else if (isDragging) {
+                e.preventDefault();
+                const coords = getCanvasCoordinates(e, selectionCanvas);
+                const tileSize = 16;
+                const startXTile = Math.floor(startX / tileSize) * tileSize;
+                const startYTile = Math.floor(startY / tileSize) * tileSize;
+                const currentXTile = Math.floor(coords.x / tileSize) * tileSize;
+                const currentYTile = Math.floor(coords.y / tileSize) * tileSize;
+
+                const selectionX = Math.min(startXTile, currentXTile);
+                const selectionY = Math.min(startYTile, currentYTile);
+                const selectionWidth = Math.abs(currentXTile - startXTile) + tileSize;
+                const selectionHeight = Math.abs(currentYTile - startYTile) + tileSize;
+
+                self.drawSelection(ctxSelection, selectionX, selectionY, selectionWidth, selectionHeight);
+            }
+        });
+
+        dropZone.addEventListener('wheel', function(e) {
+            if (ctrlPressed) {
+                e.preventDefault();
+                const rect = self.imageCanvas.getBoundingClientRect();
+                const offsetX = e.clientX - rect.left;
+                const offsetY = e.clientY - rect.top;
+
+                const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                const previousScale = scale;
+                scale += delta;
+                scale = Math.max(0.5, Math.min(scale, 3));
+
+                self.imageCanvas.style.transform = 
+                gridCanvas.style.transform = 
+                selectionCanvas.style.transform = `scale(${scale})`;
+                
+                self.imageCanvas.style.transformOrigin = 
+                gridCanvas.style.transformOrigin = 
+                selectionCanvas.style.transformOrigin = 'top left';
+
+                const newScrollLeft = (offsetX * scale / previousScale) - offsetX;
+                const newScrollTop = (offsetY * scale / previousScale) - offsetY;
+
+                dropZone.scrollLeft += newScrollLeft;
+                dropZone.scrollTop += newScrollTop;
+            }
+        });
+
+        const nightFilterToggle = document.getElementById('night_filter_toggle');
+        nightFilterToggle.addEventListener('change', function() {
+            self.nightFilterEnabled = this.checked;
+            self.updatePreviewCanvas();
+        });
+
+        self.updatePreviewCanvas();
+    },
+
+    drawGrid: function(ctx, canvas) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 0.5;
+
+        for (let x = 0; x <= canvas.width; x += 16) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, canvas.height);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= canvas.height; y += 16) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(canvas.width, y);
+            ctx.stroke();
+        }
+    },
+
+    drawSelection: function(ctx, x, y, width, height) {
+        ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.5)';
+        ctx.fillRect(x, y, width, height);
+    },
+
+    enableFormFields: function() {
+        document.getElementById('name').disabled = false;
+        document.getElementById('add_to_tileset').disabled = false;
+    },
+
+    disableFormFields: function() {
+        document.getElementById('name').disabled = true;
+        document.getElementById('add_to_tileset').disabled = true;
+    },
+
+    drawNightFilter: function(ctx, width, height) {
+        const nightFilter = {
+            color: { r: 102, g: 39, b: 255 },
+            opacity: 0.5
+        };
+        ctx.fillStyle = `rgba(${nightFilter.color.r}, ${nightFilter.color.g}, ${nightFilter.color.b}, ${nightFilter.opacity})`;
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.fillRect(0, 0, width, height);
+    },
+
+    updatePreviewCanvas: function() {
+        const previewCanvas = document.getElementById('previewCanvas');
+        const nightFilterCanvas = document.getElementById('nightFilterCanvas');
+        const ctxPreview = previewCanvas.getContext('2d');
+        const ctxNightFilter = nightFilterCanvas.getContext('2d');
+
+        ctxPreview.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+        ctxNightFilter.clearRect(0, 0, nightFilterCanvas.width, nightFilterCanvas.height);
+
+        if (this.selectedTiles.length > 0) {
+            const tileSize = 16;
+            const minX = Math.min(...this.selectedTiles.map(tile => tile.x));
+            const minY = Math.min(...this.selectedTiles.map(tile => tile.y));
+            const maxX = Math.max(...this.selectedTiles.map(tile => tile.x));
+            const maxY = Math.max(...this.selectedTiles.map(tile => tile.y));
+            
+            const numCols = (maxX - minX) / tileSize + 1;
+            const numRows = (maxY - minY) / tileSize + 1;
+
+            const canvasWidth = numCols * tileSize * 2;
+            const canvasHeight = numRows * tileSize * 2;
+
+            previewCanvas.width = nightFilterCanvas.width = canvasWidth;
+            previewCanvas.height = nightFilterCanvas.height = canvasHeight;
+
+            ctxPreview.imageSmoothingEnabled = false;
+
+            this.selectedTiles.forEach((tile) => {
+                const col = (tile.x - minX) / tileSize;
+                const row = (tile.y - minY) / tileSize;
+                const x = col * tileSize * 2;
+                const y = row * tileSize * 2;
+
+                ctxPreview.drawImage(
+                    this.imageCanvas,
+                    tile.x, tile.y, tile.width, tile.height,
+                    x, y, tileSize * 2, tileSize * 2
+                );
+            });
+
+            if (this.nightFilterEnabled) {
+                nightFilterCanvas.style.display = 'block';
+                this.drawNightFilter(ctxNightFilter, nightFilterCanvas.width, nightFilterCanvas.height);
+            } else {
+                nightFilterCanvas.style.display = 'none';
+            }
+        }
+    },
+
+    addToTileset: function() {
+        const name = document.getElementById('name').value.trim();
+        if (!name) {
+            alert('Please enter a name for the tileset item.');
+            return;
+        }
+
+        const tileSize = 16;
+        const minX = Math.min(...this.selectedTiles.map(tile => tile.x));
+        const minY = Math.min(...this.selectedTiles.map(tile => tile.y));
+        
+        const newObject = {
+            "n": name,
+            "t": "gen1",
+            "i": [],
+            "a": [],
+            "b": [],
+            "w": 1,
+            "s": 1,
+            "z": 1
+        };
+
+        this.selectedTiles.forEach((tile, index) => {
+            const col = (tile.x - minX) / tileSize;
+            const row = (tile.y - minY) / tileSize;
+            newObject.i.push(index + game.objectData.item_count);
+            newObject.a.push(col);
+            newObject.b.push(row);
+        });
+
+        const originalCanvas = document.createElement('canvas');
+        const ctxOriginal = originalCanvas.getContext('2d');
+        const numCols = (Math.max(...this.selectedTiles.map(tile => tile.x)) - minX) / tileSize + 1;
+        const numRows = (Math.max(...this.selectedTiles.map(tile => tile.y)) - minY) / tileSize + 1;
+        originalCanvas.width = numCols * tileSize;
+        originalCanvas.height = numRows * tileSize;
+
+        this.selectedTiles.forEach((tile) => {
+            ctxOriginal.drawImage(
+                this.imageCanvas,
+                tile.x, tile.y, tile.width, tile.height,
+                (tile.x - minX) / tileSize * tileSize, 
+                (tile.y - minY) / tileSize * tileSize, 
+                tileSize, tileSize
+            );
+        });
+
+        const data = {
+            newObject: newObject,
+            selectedTiles: this.selectedTiles,
+            imageData: originalCanvas.toDataURL('image/png')
+        };
+
+        ui.ajax({
+            outputType: 'json',
+            method: 'POST',
+            url: 'plugins/editor/tileset_manager/ajax/save_tileset.php',
+            data: JSON.stringify(data),
+            processData: false,
+            contentType: 'application/json',
+            success: (response) => {
+                if (response.success) {
+                    alert('Tileset item added successfully.');
+                    const assetsToReload = [
+                        { name: 'gen1', path: 'img/sheets/gen1.png' },
+                        { name: 'objectData', path: 'json/objectData.json' }
+                    ];
+                    assets.reloadAssets(assetsToReload, () => {
+                        game.objectData = assets.use('objectData');
+                    });
+                } else {
+                    console.error('Error:', response.message);
+                    alert('Failed to add tileset item: ' + response.message);
+                }
+            },
+            error: (err) => {
+                console.error('Error occurred while adding tileset item:', err);
+                alert('Error occurred while adding tileset item. See console for details.');
+            }
+        });
+    },
+
+    displayTilesetItems: function() {
+        const itemsGrid = document.getElementById('itemsGrid');
+        itemsGrid.innerHTML = '';
+
+        for (const itemId in game.objectData) {
+            if (game.objectData.hasOwnProperty(itemId)) {
+                const itemArray = game.objectData[itemId];
+
+                itemArray.forEach((item) => {
+                    const itemDiv = document.createElement('div');
+                    itemDiv.className = 'item-preview bg-[#333] rounded shadow-md hover:bg-[#222] cursor-pointer transition duration-200 p-4 flex flex-col items-center justify-center';
+
+                    const itemTitle = document.createElement('h3');
+                    itemTitle.className = 'text-center font-bold text-white mb-2';
+                    itemTitle.innerText = item.n;
+
+                    const itemCanvasContainer = this.drawItemOnCanvas(item);
+                    itemDiv.appendChild(itemTitle);
+                    itemDiv.appendChild(itemCanvasContainer);
+
+                    const uniqueId = item.id || itemId;
+                    const pluginId = `tileset_item_editor_window_${uniqueId}`;
+
+                    itemDiv.addEventListener('click', function() {
+                        plugin.load({ 
+                            id: 'tileset_item_editor_window', 
+                            url: `editor/tileset_manager/items.php?id=${uniqueId}`, 
+                            name: 'Item Editor', 
+                            drag: true, 
+                            reload: true 
+                        });
+                    });
+
+                    itemsGrid.appendChild(itemDiv);
+                });
+            }
+        }
+    },
+
+    drawItemOnCanvas: function(item) {
+        const tilesetImage = assets.use(item.t);
+        const tileSize = 16;
+        const maxCol = item.a;
+        const maxRow = item.b;
+
+        const itemCanvas = document.createElement('canvas');
+        const ctx = itemCanvas.getContext('2d');
+
+        itemCanvas.width = (maxCol + 1) * tileSize;
+        itemCanvas.height = (maxRow + 1) * tileSize;
+
+        let framesToRender = [];
+
+        if (item.d && Array.isArray(item.i[0])) {
+            framesToRender = item.i[0];
+        } else if (Array.isArray(item.i[0])) {
+            framesToRender = item.i.flat();
+        } else {
+            framesToRender = item.i.map(frame => {
+                if (typeof frame === 'string' && frame.includes('-')) {
+                    return render.parseRange(frame);
+                }
+                return [frame];
+            }).flat();
+        }
+
+        framesToRender.forEach((frame, index) => {
+            const srcX = (frame % 150) * tileSize;
+            const srcY = Math.floor(frame / 150) * tileSize;
+
+            const destX = (index % (maxCol + 1)) * tileSize;
+            const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+
+            ctx.drawImage(
+                tilesetImage,
+                srcX, srcY, tileSize, tileSize,
+                destX, destY, tileSize, tileSize
+            );
+        });
+
+        itemCanvas.className = 'mx-auto block';
+
+        const canvasContainer = document.createElement('div');
+        canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 overflow-hidden';
+        itemCanvas.className += ' w-full h-full object-contain';
+        canvasContainer.appendChild(itemCanvas);
+
+        return canvasContainer;
+    },
+
+    unmount: function() {
+        // Cleanup code if needed
+    }
+};
+</script>
+
+{% endif %}

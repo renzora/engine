@@ -1,0 +1,60 @@
+services:
+  nodejs:
+      build:
+          context: .
+          dockerfile: docker/node/Dockerfile
+      container_name: renzora_nodejs
+      restart: unless-stopped 
+      env_file: .env
+      volumes:
+        - ./client:/usr/src/app/client
+        - ./server:/usr/src/app/server
+        - node_modules:/usr/src/app/server/node_modules
+      depends_on:
+          - mongodb
+      networks:
+          - renzora_network
+
+  nginx:
+      build:
+          context: ./docker/nginx
+          dockerfile: Dockerfile
+      container_name: renzora_nginx
+      restart: unless-stopped
+      ports:
+          - "80:80"
+          - "443:443"
+      volumes:
+          - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+          - ./client:/usr/share/nginx/html
+      depends_on:
+          - nodejs
+      networks:
+          - renzora_network
+
+  mongodb:
+      image: mongo:latest
+      container_name: renzora_mongodb
+      restart: unless-stopped
+      ports:
+          - "27017:27017"
+      environment:
+          - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME}
+          - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD}
+          - MONGO_INITDB_DATABASE=${MONGO_DATABASE}
+          - MONGO_HOST=${MONGO_HOST}
+          - MONGO_PORT=${MONGO_PORT}
+      env_file: .env
+      volumes:
+          - mongodb_data:/data/db
+          - ./docker/mongodb/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      networks:
+          - renzora_network
+
+networks:
+  renzora_network:
+      driver: bridge
+
+volumes:
+  mongodb_data:
+  node_modules:

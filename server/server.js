@@ -1,100 +1,112 @@
-const fs = require('fs');
-const https = require('https');
-const WebSocket = require('ws');
+const express = require('express');
+const path = require('path');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
+const nunjucks = require('nunjucks');
+const { connectDB } = require('./database');
+const authMiddleware = require('./middleware/auth');
+const http = require('http');
+const { initializeWebSocket } = require('./websocket');
 
-const serverOptions = {
-  cert: fs.readFileSync('./certs/cert.pem'),
-  key: fs.readFileSync('./certs/key.pem')
-};
+const app = express();
+const server = http.createServer(app);
 
-const server = https.createServer(serverOptions);
-const wss = new WebSocket.Server({ server });
+// Configure Nunjucks
+// In server.js
+const viewPaths = [
+    path.join(__dirname, '../client'),
+    path.join(__dirname, '../client/plugins')
+];
 
-console.log("WebSocket Server running on port 3000");
-
-let players = {}; // Store player states
-
-wss.on("connection", ws => {
-    console.log("Web Client connected to main websocket server");
-
-    ws.on("message", message => {
-        try {
-            const data = JSON.parse(message);
-            console.log("Received message:", data);
-
-            if (data.command === 'playerStateUpdate') {
-                // Ensure the player data has an ID
-                if (data.data.id) {
-                    players[data.data.id] = data.data;
-                    console.log("Updated player state:", players[data.data.id]);
-
-                    // Broadcast the player state update to all connected clients
-                    wss.clients.forEach(client => {
-                        if (client.readyState === WebSocket.OPEN) {
-                            client.send(JSON.stringify({ command: 'playerStateUpdate', data: data.data }));
-                        }
-                    });
-                } else {
-                    console.error("Received playerStateUpdate with no ID:", data.data);
-                }
-            } else if (data.command === 'reloadData') {
-                // Broadcast the reload command to all connected clients
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ command: 'reloadData' }));
-                    }
-                });
-            } else if (data.command === 'playerDisconnected') {
-                const playerId = data.data.id;
-                if (players[playerId]) {
-                    delete players[playerId];
-
-                    // Notify all connected clients about the player disconnection
-                    wss.clients.forEach(client => {
-                        if (client.readyState === WebSocket.OPEN) {
-                            client.send(JSON.stringify({ command: 'playerDisconnected', data: { id: playerId } }));
-                        }
-                    });
-                } else {
-                    console.error("Received playerDisconnected for unknown player ID:", playerId);
-                }
-            } if (data.command === 'chatMessage') {
-                // Broadcast chat message to all clients
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ command: 'chatMessage', data: data.data }));
-                    }
-                });
-            }
-        } catch (e) {
-            console.error("Error handling message:", e.message);
-        }
-    });
-
-    ws.on('close', () => {
-        console.log('Web Client disconnected');
-
-        // Find and remove the disconnected player
-        for (const id in players) {
-            if (players[id].socket === ws) {
-                const disconnectedPlayerId = id;
-                delete players[id];
-
-                // Notify all connected clients about the player disconnection
-                wss.clients.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({ command: 'playerDisconnected', data: { id: disconnectedPlayerId } }));
-                    }
-                });
-                break;
-            }
-        }
-    });
-
-    // Send the existing players to the newly connected client
-    ws.send(JSON.stringify({ command: 'existingPlayers', data: Object.values(players) }));
+nunjucks.configure(viewPaths, {
+    autoescape: true,
+    express: app,
+    watch: true,
+    noCache: process.env.NODE_ENV === 'development'
 });
 
-server.listen(3000, () => {
-  console.log('Server is listening on port 3000');
+// Middleware
+app.use(cors({
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost', 'http://localhost:80'],
+    credentials: true
+}));
+app.use(cookieParser());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Auth middleware
+app.use(authMiddleware);
+
+// Routes
+const authRoutes = require('./routes/auth');
+const pluginRoutes = require('./routes/plugin');
+const scenesRoutes = require('./routes/scenes');
+
+
+app.use((req, res, next) => {
+    console.log('Incoming request:', {
+        method: req.method,
+        url: req.url,
+        path: req.path
+    });
+    next();
+});
+
+app.use('/api/auth', authRoutes);
+app.use('/api/plugins', pluginRoutes);
+app.use('/api/scenes', scenesRoutes);
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok' });
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).json({
+        message: 'Something went wrong!',
+        error: process.env.NODE_ENV === 'development' ? err.message : {}
+    });
+});
+
+// Initialize WebSocket
+initializeWebSocket(server);
+
+// Connect to MongoDB and start server
+const PORT = process.env.PORT || 3000;
+
+async function startServer() {
+    try {
+        await connectDB();
+        server.listen(PORT, '0.0.0.0', () => {  // Added host binding
+            console.log(`Server running on port ${PORT}`);
+        });
+    } catch (error) {
+        console.error('Failed to start server:', error);
+        process.exit(1);
+    }
+}
+
+startServer();
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received. Shutting down gracefully...');
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    process.exit(1);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    process.exit(1);
 });

@@ -1,0 +1,23 @@
+{
+    "num_channels": 1,
+    "instruments": [{
+        "oscillator": 3,
+        "envelope": {
+            "attack_time": 0.01,
+            "attack_gain": 1,
+            "decay_time": 0.1,
+            "sustain_gain": 0.5,
+            "release_time": 0.1
+        }
+    }],
+    "patterns": [{
+            "ticks_per_beat": 4,
+            "bpm": 200,
+            "ticks_per_pattern": 8,
+            "pattern_commands": [
+                { "tick": 0, "channel": 1, "inst": 0, "note": "B7" },
+                { "tick": 1, "channel": 1, "inst": 0, "note": "E8" }
+            ]
+        }
+    ]
+}
