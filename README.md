@@ -16,7 +16,7 @@ docker-compose up --build
 ```
 
 # Services
-- Client: Nginx ```(port 80/443) ```
+- Client: Nginx ```(port 80/443)```
 - Website: ```http://localhost```
 - Nodejs Express endpoint: ```http://localhost:3000```
 
