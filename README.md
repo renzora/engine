@@ -1,4 +1,4 @@
-<h1 align="center">Web browser Game engine that renders to javascript canvas</h1>
+<h1 align="center">Web Game engine that renders to javascript canvas</h1>
 
 ![](https://i.imgur.com/V2j1yIL.png)
 
