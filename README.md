@@ -3,8 +3,7 @@
 - Github Desktop: https://desktop.github.com
 - MongoDB Software: https://www.mongodb.com/products/tools/compass
 
-
-# Installing on Windows WSL
+# Installing Renzora Engine
 
 Open your terminal of choice (make sure docker desktop is running)
 ```
