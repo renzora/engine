@@ -9,7 +9,7 @@ Open your terminal of choice (make sure docker desktop is running)
 git clone https://github.com/renzora/engine.git
 cd engine
 ```
-before starting the server make sure you edit ```.env``` to change the environment variables to suit your needs.
+Before starting the server make sure you edit ```.env``` to change the environment variables to suit your needs.
 
 ```
 docker-compose up --build
@@ -32,7 +32,7 @@ docker-compose up --build
 - Mongo Username: ```admin```
 - Mongo Password: ```this_is_a_test_password```
 
-# webpack (minifies tailwind css/js)
+# Webpack (minifies tailwind css/js)
 ```
 cd server
 npx webpack --minify --watch
