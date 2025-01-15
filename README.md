@@ -1,6 +1,5 @@
 # Requirements
 - Docker Desktop: https://www.docker.com/products/docker-desktop
-- Github Desktop: https://desktop.github.com
 - MongoDB Software: https://www.mongodb.com/products/tools/compass
 
 # Installing Renzora Engine
