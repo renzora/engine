@@ -8,6 +8,10 @@ Open your terminal of choice (make sure docker desktop is running)
 ```
 git clone https://github.com/renzora/engine.git
 cd engine
+```
+before starting the server make sure you edit .env to change the environment variables to suit your needs.
+
+```
 docker-compose up --build
 ```
 
@@ -20,18 +24,17 @@ docker-compose up --build
 - Website: ```http://localhost```
 - Express endpoint: ```http://localhost:3000```
 
-# Renzora Login
+# Default Renzora Login
 - Username: ```admin```
 - Password: ```password```
-- JWT key: ```key```
 
-# MongoDB
-- URI: mongodb://localhost:27017/
+# Default MongoDB
+- URI: mongodb://admin:this_is_a_test_password@localhost:27017/
 - Host: ```localhost```
 - Port: ```27017```
 - Database Name: ```renzora```
 - Mongo Username: ```admin```
-- Mongo Password: ```password```
+- Mongo Password: ```this_is_a_test_password```
 
 # webpack (minifies tailwind css/js)
 ```
