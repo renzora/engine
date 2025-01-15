@@ -18,7 +18,7 @@ docker-compose up --build
 # Services
 - Server: Nginx (gzip compression)
 - Website: ```http://localhost```
-- Websocket: ```wss://localhost:3000```
+- Express endpoint: ```http://localhost:3000```
 
 # Renzora Login
 - Username: ```admin```
@@ -33,8 +33,7 @@ docker-compose up --build
 - Mongo Username: ```admin```
 - Mongo Password: ```password```
 
-# webpack
-to compile tailwindcss and watch for new changes, open up a terminal
+# webpack (minifies tailwind css/js)
 ```
 cd server
 npx webpack --minify --watch
