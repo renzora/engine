@@ -1,4 +1,4 @@
-![Screen of Renzora Engine]([image_url](https://imgur.com/V2j1yIL))
+![](https://i.imgur.com/V2j1yIL.png)
 
 # Requirements
 - Docker Desktop: https://www.docker.com/products/docker-desktop
