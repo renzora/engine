@@ -39,10 +39,11 @@ docker-compose up --build
 - Mongo Username: ```admin```
 - Mongo Password: ```this_is_a_test_password```
 
-# Webpack (minifies tailwind css/js)
+# Build Tools (minifies & bundles css/js in client directory with tailwindcss/esbuild)
 ```
-cd server
-npx webpack --watch
+cd build
+npm install
+npm run build
 ```
 
 # Notes

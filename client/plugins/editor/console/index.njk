@@ -159,7 +159,7 @@ handleTabClick: function(tab, index) {
             contentDiv.innerHTML = ''; 
             ui.ajax({
                 method: 'POST',
-                url: `/api/editor/console/tabs/${target}/index.njk`,
+                url: `/api/ajax/plugins/editor/console/tabs/${target}/index.njk`,
                 success: function(data) {
                     ui.html(contentDiv, data, 'replace');
                     console.log(target, "loaded successfully");

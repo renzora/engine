@@ -1,0 +1,19 @@
+{
+  "name": "build",
+  "version": "1.0.0",
+  "scripts": {
+    "tailwind": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/output.css --watch --minify --postcss",
+    "build:esbuild": "node esbuild.config.js",
+    "build": "concurrently \"npm run tailwind\" \"npm run build:esbuild\""
+  },
+  "dependencies": {
+    "autoprefixer": "^10.4.20",
+    "chokidar": "^3.5.3",
+    "concurrently": "^8.2.2",
+    "cssnano": "^7.0.6",
+    "esbuild": "^0.20.0",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "terser": "^5.3.10"
+  }
+}

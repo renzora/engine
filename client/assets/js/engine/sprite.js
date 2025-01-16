@@ -42,7 +42,6 @@ sprite = {
             targetRadius: 10,
             maxRange: options.maxRange !== undefined ? options.maxRange : 30,
             currentItem: null,
-            directions: {},       // Note: directions is declared again here, so you might remove one of them.
             joystickDirections: {},
             isRunning: false,
             health: options.health !== undefined ? options.health : 100,

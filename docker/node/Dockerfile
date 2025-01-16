@@ -1,9 +1,7 @@
-FROM node:latest
-
+FROM node:alpine
 WORKDIR /usr/src/app/server
-
-COPY ./server/package*.json ./
-
+RUN ls -la
+COPY server/package*.json ./
 RUN npm install
-
-CMD ["npm", "start"]
+COPY server .
+CMD ["npm", "run", "dev"]

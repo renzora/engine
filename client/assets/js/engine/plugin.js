@@ -298,7 +298,6 @@ plugin = {
                             stop: function () {
                                 this.classList.remove('dragging');
                             },
-                            drag,
                         });
     
                         if (hidden) {

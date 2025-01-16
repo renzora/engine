@@ -6,41 +6,23 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "nodemon --watch . -e js,json,njk --legacy-watch server.js",
-    "tailwind": "npx tailwindcss -i ../web/assets/css/style.css -o ../web/assets/css/output.css --minify --watch",
-    "webpack": "npx webpack"
+    "dev": "nodemon --watch . -e js,json,njk --legacy-watch server.js"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "autoprefixer": "^10.4.20",
     "bcrypt": "^5.1.1",
     "chalk": "^4.1.2",
-    "concurrently": "^8.2.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "css-loader": "^7.1.2",
-    "css-minimizer-webpack-plugin": "^7.0.0",
-    "cssnano": "^7.0.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
-    "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "mini-css-extract-plugin": "^2.9.2",
     "mongodb": "^6.12.0",
     "mongoose": "^8.9.5",
-    "morgan": "^1.10.0",
     "nodemon": "^3.1.9",
     "nunjucks": "^3.2.4",
-    "postcss": "^8.5.1",
-    "postcss-loader": "^8.1.1",
-    "style-loader": "^4.0.0",
-    "tailwindcss": "^3.4.17",
-    "webpack": "^5.97.1",
     "ws": "^8.16.0"
-  },
-  "devDependencies": {
-    "webpack-cli": "^6.0.1"
   }
 }

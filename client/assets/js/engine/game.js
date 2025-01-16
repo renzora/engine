@@ -6,7 +6,6 @@ game = {
     x: null,
     y: null,
     timestamp: 0,
-    lastTime: 0,
     deltaTime: 0,
     worldWidth: 1280,
     worldHeight: 944,
