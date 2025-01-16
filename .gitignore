@@ -1,3 +1,4 @@
 server/node_modules/
+client/assets/img/
+client/assets/audio/
 *.Identifier
-*.env
