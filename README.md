@@ -1,5 +1,8 @@
 <h1 align="center">A game engine that renders to javascript canvas for web</h1>
 
+> ⚠️ **Warning**  
+> This is a very early development version and is extremely unstable and will most likely break or cause problems. Only use if you intend to help with development.
+
 ![](https://i.imgur.com/V2j1yIL.png)
 
 # Requirements
@@ -39,7 +42,7 @@ docker-compose up --build
 # Webpack (minifies tailwind css/js)
 ```
 cd server
-npx webpack --minify --watch
+npx webpack --watch
 ```
 
 # Notes
