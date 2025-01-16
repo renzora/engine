@@ -42,7 +42,7 @@ docker-compose up --build
 # Webpack (minifies tailwind css/js)
 ```
 cd server
-npx webpack --minify --watch
+npx webpack --watch
 ```
 
 # Notes
