@@ -34,13 +34,13 @@
                 });
 
 
-                plugin.load({ id: 'context_menu_window', url: 'plugins/context_menu/index.njk' });
-                plugin.load({ id: 'debug_window', url: 'plugins/dev/index.njk' });
+                plugin.load({ id: 'context_menu_window', url: 'plugins/context_menu/index.html' });
+                plugin.load({ id: 'debug_window', url: 'plugins/dev/index.html' });
                 plugin.load({ id: 'auth_window', url: 'plugins/auth/index.njk' });
 
                 plugin.load({
                     id: 'notif',
-                    url: 'plugins/notifs/index.njk',
+                    url: 'plugins/notifs/index.html',
                     after: function() {
                         notif.show("load_success_1", "Press Tab to open the editor", "info");
                         notif.show("load_success_2", "Edit client/init.js to change startup settings", "danger");

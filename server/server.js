@@ -1,13 +1,12 @@
 import path from 'path';
-import { fileURLToPath } from 'url';
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyCookie from '@fastify/cookie';
+import fastifyCompress from '@fastify/compress';
 import fastifyFormbody from '@fastify/formbody';
 import fastifyView from '@fastify/view';
 import nunjucks from 'nunjucks';
 import dotenv from 'dotenv';
-
 import { connectDB } from './database.js';
 import { initializeWebSocket } from './websocket.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -34,6 +33,12 @@ nunjucks.configure(viewPaths, {
     noCache: process.env.NODE_ENV === 'development',
 });
 
+await fastify.register(fastifyCompress, {
+    global: true,
+    encodings: ['gzip', 'deflate'],
+    threshold: 1024
+});
+
 await fastify.register(fastifyView, {
     engine: { nunjucks },
     root: viewPaths,
@@ -56,17 +61,6 @@ fastify.register(scenesRoutes, { prefix: '/api/scenes' });
 fastify.register(serversRoutes, { prefix: '/api/servers' });
 fastify.register(tilesetManagerRoutes, { prefix: '/api/tileset_manager' });
 fastify.register(editorRoutes, { prefix: '/api/editor' });
-fastify.get('/health', async (request, reply) => {
-    return { status: 'ok' };
-});
-
-fastify.setErrorHandler((error, request, reply) => {
-    console.error('Error:', error.stack);
-    reply.status(500).send({
-        message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? error.message : {},
-    });
-});
 
 async function startServer() {
     try {

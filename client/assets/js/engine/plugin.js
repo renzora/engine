@@ -213,17 +213,18 @@ plugin = {
             reload = false,
             hidden = false,
         } = options;
-
-        // If your route is '/api/ajax', you must prefix the file path accordingly:
-        const fullUrl = `/api/ajax/${url}`;
-
+    
+        // Determine if we need to use API route (for .njk files) or direct loading
+        const useApi = url.endsWith('.njk');
+        const fullUrl = useApi ? `/api/ajax/${url}` : url;
+    
         if (name) {
             this.pluginNames[id] = name;
         }
-
+    
         return new Promise((resolve, reject) => {
             let existingPlugin = document.querySelector(`[data-window='${id}']`);
-
+    
             if (existingPlugin) {
                 if (reload) {
                     this.close(id);
@@ -240,104 +241,127 @@ plugin = {
                     return;
                 }
             }
-
+    
             if (before) {
                 before(id);
             }
-
-            ui.ajax({
-                url: fullUrl,
-                method: 'GET',
-                success: (data) => {
-                    window.id = id;
-
-                    if (url.endsWith('.js')) {
-                        // JS Plugin
-                        const script = document.createElement('script');
-                        script.textContent = data;
-                        script.setAttribute('id', `${id}_script`);
-                        document.head.appendChild(script);
-
-                        if (window[id]?.start && !window[id]._hasStarted) {
-                            window[id]._hasStarted = true;
-                            if (beforeStart) {
-                                beforeStart(id);
-                            }
-                            window[id].start();
+    
+            if (useApi) {
+                // Use ui.ajax for .njk files
+                ui.ajax({
+                    url: fullUrl,
+                    method: 'GET',
+                    success: (data) => this.processLoadedContent(data, id, url, beforeStart, after, hidden, resolve),
+                    error: (error) => {
+                        console.error(
+                            `Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`,
+                            error
+                        );
+                        if (onError) {
+                            onError(error, id);
                         }
-                    } else {
-                        // Nunjucks or HTML Plugin
-                        const tempContainer = document.createElement('div');
-                        tempContainer.innerHTML = data;
-
-                        const topDiv = tempContainer.querySelector('div') || document.createElement('div');
-                        topDiv.setAttribute('data-window', id);
-
-                        const style = tempContainer.querySelector('style');
-                        if (style) {
-                            topDiv.prepend(style);
-                        }
-
-                        const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
-                        if (lastPluginHtml) {
-                            lastPluginHtml.after(topDiv);
-                        } else {
-                            document.body.appendChild(topDiv);
-                        }
-
-                        const script = tempContainer.querySelector('script');
-                        if (script) {
-                            const dynamicScript = document.createElement('script');
-                            dynamicScript.textContent = script.textContent;
-                            dynamicScript.setAttribute('id', `${id}_script`);
-                            document.head.appendChild(dynamicScript);
-
-                            if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
-                                if (beforeStart) {
-                                    beforeStart(id);
-                                }
-                                window[id].start();
-                            }
-                        }
-
-                        this.init(`[data-window='${id}']`, {
-                            start: function() {
-                                this.classList.add('dragging');
-                            },
-                            drag: function() {},
-                            stop: function() {
-                                this.classList.remove('dragging');
-                            },
-                        });
-
-                        if (hidden) {
-                            this.minimize(id);
-                        } else {
-                            this.front(id);
-                        }
+                        reject(`Failed to load plugin '${id}' from URL: '${fullUrl}'`);
                     }
-
-                    if (after && typeof after === 'function') {
-                        after(id);
+                });
+            } else {
+                // Use fetch for direct loading of .html and .js files
+                fetch(fullUrl)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP error! status: ${response.status}`);
+                        }
+                        return response.text();
+                    })
+                    .then(data => this.processLoadedContent(data, id, url, beforeStart, after, hidden, resolve))
+                    .catch(error => {
+                        console.error(
+                            `Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`,
+                            error
+                        );
+                        if (onError) {
+                            onError(error, id);
+                        }
+                        reject(`Failed to load plugin '${id}' from URL: '${fullUrl}'`);
+                    });
+            }
+        });
+    },
+    
+    // Helper method to process the loaded content
+    processLoadedContent: function(data, id, url, beforeStart, after, hidden, resolve) {
+        window.id = id;
+    
+        if (url.endsWith('.js')) {
+            // JS Plugin
+            const script = document.createElement('script');
+            script.textContent = data;
+            script.setAttribute('id', `${id}_script`);
+            document.head.appendChild(script);
+    
+            if (window[id]?.start && !window[id]._hasStarted) {
+                window[id]._hasStarted = true;
+                if (beforeStart) {
+                    beforeStart(id);
+                }
+                window[id].start();
+            }
+        } else {
+            // HTML or Nunjucks Plugin
+            const tempContainer = document.createElement('div');
+            tempContainer.innerHTML = data;
+    
+            const topDiv = tempContainer.querySelector('div') || document.createElement('div');
+            topDiv.setAttribute('data-window', id);
+    
+            const style = tempContainer.querySelector('style');
+            if (style) {
+                topDiv.prepend(style);
+            }
+    
+            const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
+            if (lastPluginHtml) {
+                lastPluginHtml.after(topDiv);
+            } else {
+                document.body.appendChild(topDiv);
+            }
+    
+            const script = tempContainer.querySelector('script');
+            if (script) {
+                const dynamicScript = document.createElement('script');
+                dynamicScript.textContent = script.textContent;
+                dynamicScript.setAttribute('id', `${id}_script`);
+                document.head.appendChild(dynamicScript);
+    
+                if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
+                    if (beforeStart) {
+                        beforeStart(id);
                     }
-
-                    resolve();
+                    window[id].start();
+                }
+            }
+    
+            this.init(`[data-window='${id}']`, {
+                start: function() {
+                    this.classList.add('dragging');
                 },
-
-                error: (error) => {
-                    console.error(
-                        `Failed to fetch plugin content for ID: '${id}' from URL: '${fullUrl}'`,
-                        error
-                    );
-
-                    if (onError) {
-                        onError(error, id);
-                    }
-
-                    reject(`Failed to load plugin '${id}' from URL: '${fullUrl}'`);
+                drag: function() {},
+                stop: function() {
+                    this.classList.remove('dragging');
                 },
             });
-        });
+    
+            if (hidden) {
+                this.minimize(id);
+            } else {
+                this.front(id);
+            }
+        }
+    
+        if (after && typeof after === 'function') {
+            after(id);
+        }
+    
+        resolve();
     },
 
     show: function(pluginId) {
