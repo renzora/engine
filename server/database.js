@@ -1,36 +1,28 @@
-const mongoose = require('mongoose');
-require('dotenv').config();
+import mongoose from 'mongoose';
 
-const mongoUrl = `mongodb://${encodeURIComponent(process.env.MONGO_USERNAME)}:${encodeURIComponent(process.env.MONGO_PASSWORD)}@${process.env.MONGO_HOST}:${process.env.MONGO_PORT || '27017'}/${process.env.MONGO_DATABASE}?authSource=admin`;
-
-/**
- * Connect to MongoDB using Mongoose
- * @returns {Promise<mongoose.Connection>}
- */
-async function connectDB() {
+const connectDB = async () => {
     try {
-        console.log(`Connecting to MongoDB at ${process.env.MONGO_HOST}:${process.env.MONGO_PORT}...`);
-        await mongoose.connect(mongoUrl, {
+        const { MONGO_HOST, MONGO_PORT, MONGO_DATABASE, MONGO_USERNAME, MONGO_PASSWORD } = process.env;
+
+        let mongoURI;
+        if (MONGO_USERNAME && MONGO_PASSWORD) {
+            mongoURI = `mongodb://${MONGO_USERNAME}:${encodeURIComponent(
+                MONGO_PASSWORD
+            )}@${MONGO_HOST}:${MONGO_PORT}/${MONGO_DATABASE}?authSource=admin`;
+        } else {
+            mongoURI = `mongodb://${MONGO_HOST}:${MONGO_PORT}/${MONGO_DATABASE}`;
+        }
+
+        const conn = await mongoose.connect(mongoURI, {
             useNewUrlParser: true,
             useUnifiedTopology: true,
-            serverSelectionTimeoutMS: 5000,
-            socketTimeoutMS: 45000,
         });
 
-        mongoose.connection.on('error', (err) => {
-            console.error('MongoDB connection error:', err);
-        });
-
-        mongoose.connection.on('disconnected', () => {
-            console.log('MongoDB connection disconnected');
-        });
-
-        console.log(`Connected to MongoDB database: ${process.env.MONGO_DATABASE}`);
-        return mongoose.connection;
-    } catch (error) {
-        console.error('MongoDB connection error:', error.message);
+        console.log(`MongoDB Connected: ${conn.connection.host}`);
+    } catch (err) {
+        console.error(`Error: ${err.message}`);
         process.exit(1);
     }
-}
+};
 
-module.exports = { connectDB };
+export { connectDB };

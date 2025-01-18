@@ -62,7 +62,7 @@ network = {
 
     getPlayerId: function() {
         ui.ajax({
-            url: 'config/get_playerid.php',
+            url: 'api/network/player',
             method: 'GET',
             outputType: 'json',
             success: (data) => {

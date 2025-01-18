@@ -1,7 +1,16 @@
 FROM node:alpine
-WORKDIR /usr/src/app/server
-RUN ls -la
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++ \
+    cairo-dev \
+    pango-dev \
+    jpeg-dev \
+    giflib-dev \
+  && ln -sf /usr/bin/python3 /usr/bin/python
+  
+WORKDIR /usr/src/app
 COPY server/package*.json ./
-RUN npm install
-COPY server .
+RUN --mount=type=cache,target=/root/.npm npm ci
+COPY server/ .
 CMD ["npm", "run", "dev"]

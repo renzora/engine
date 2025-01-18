@@ -1,0 +1,102 @@
+<div data-close="false">
+  <div
+    id="context_menu_window"
+    class="bg-black text-white rounded-lg shadow-lg absolute z-50 hidden"
+    style="max-height: 400px; min-width: 200px;"
+  >
+    <ul id="menuItems" class="space-y-1"></ul>
+  </div>
+  </div>
+
+  <script>
+window[id] = {
+  id: id,
+      contextMenuElement: null,
+      menuItemsElement: null,
+      contextmenuHandler: null,
+      clickHandler: null,
+      menuItemsConfig: [],
+
+      start: function () {
+        this.contextMenuElement = document.getElementById('context_menu_window');
+        this.menuItemsElement = document.getElementById('menuItems');
+
+        this.contextmenuHandler = (event) => {
+          ui.contextMenu.disableDefaultContextMenu(event, (x, y) => {
+            this.populateMenuItems(x, y);
+            ui.contextMenu.showContextMenu(
+              this.contextMenuElement,
+              this.menuItemsElement,
+              this.menuItemsConfig,
+              x,
+              y
+            );
+          });
+        };
+
+        this.clickHandler = (event) => {
+          ui.contextMenu.hideMenus(event, this.contextMenuElement);
+        };
+
+        document.addEventListener('contextmenu', this.contextmenuHandler);
+        document.addEventListener('click', this.clickHandler);
+      },
+
+      unmount: function () {
+        document.removeEventListener('contextmenu', this.contextmenuHandler);
+        document.removeEventListener('click', this.clickHandler);
+        this.contextMenuElement.classList.add('hidden');
+        console.log('First context menu unmounted, events removed.');
+      },
+
+      populateMenuItems: function (clientX, clientY) {
+        this.menuItemsConfig = [];
+
+        const { gridX, gridY } = this.getMouseCoordinates(clientX, clientY);
+        const isTileWalkable = collision.isTileWalkable(gridX, gridY);
+
+        if (isTileWalkable) {
+          this.menuItemsConfig.push({
+            label: 'Walk Here',
+            callback: () => this.walkHere(gridX, gridY),
+          });
+        }
+
+        this.menuItemsConfig.push({
+            label: 'Scene Editor',
+            callback: () => this.sceneEditor(),
+          });
+      },
+
+      getMouseCoordinates: function (clientX, clientY) {
+        const rect = game.canvas.getBoundingClientRect();
+        const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
+        const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
+        const gridX = Math.floor(mouseX / 16);
+        const gridY = Math.floor(mouseY / 16);
+        return { mouseX, mouseY, gridX, gridY };
+      },
+
+      walkHere: function (gridX, gridY) {
+        game.mainSprite.walkToClickedTile(gridX, gridY);
+        this.contextMenuElement.classList.add('hidden');
+      },
+
+      sceneEditor: function() {
+        plugin.load({
+          id: 'console_window',
+          url: 'plugins/editor/console/index.njk',
+          drag: false,
+          reload: true,
+          after: function () {
+            plugin.load({
+                id: 'edit_mode_window',
+                url: 'plugins/editor/main/index.njk',
+                drag: false,
+                reload: true
+            });
+          }
+        });
+      }
+    };
+  </script>

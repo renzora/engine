@@ -14,8 +14,10 @@ game = {
     targetY: 0,
     roomData: undefined,
     sprites: {},
+    objectData: null,
+    spriteData: null,
     playerid: null,
-    sceneid: localStorage.getItem('sceneid') || '6741ff4e81ea9fd1700704f3',
+    sceneid: null,
     desiredFPS: 60,
     fixedDeltaTime: 1000 / 60,
     accumulatedTime: 0,
@@ -34,15 +36,16 @@ game = {
     fpsHistory: [],
     maxFpsHistory: 60,
 
-    create: function(e) {
+    create: function(config = {}) {
         this.canvas = document.createElement('canvas');
         this.ctx = this.canvas.getContext('2d');
         this.ctx.imageSmoothingEnabled = false;
         document.body.appendChild(this.canvas);
+
         this.resizeCanvas();
         this.loop();
         input.init();
-        gamepad.init(e);
+        gamepad.init(config);
         audio.start();
 
         this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
@@ -55,6 +58,23 @@ game = {
                 this.resume();
             }
         });
+
+        if (config.objectData) {
+            this.objectData = config.objectData;
+        }
+        if (config.spriteData) {
+            this.spriteData = config.spriteData;
+        }
+
+        if (config.player) {
+            this.mainSprite = config.player;
+            this.playerid = this.mainSprite.id;
+            this.sprites[this.playerid] = this.mainSprite;
+        }
+
+        if (typeof config.after === 'function') {
+            config.after();
+        }
     },
 
     pause: function() {
@@ -79,8 +99,7 @@ game = {
         let consoleWidth = 0;
         let menuWidth = 0;
     
-        // Skip console window width calculation if in edit mode
-        if (!game.isEditMode && consoleElement && console_window.isOpen) {
+        if (!this.isEditMode && consoleElement && console_window.isOpen) {
             consoleWidth = consoleElement.offsetWidth;
         }
         if (adjacentMenu && adjacentMenu.style.display !== 'none') {
@@ -92,10 +111,12 @@ game = {
         const availableHeight = window.innerHeight;
         const canvasWidth = Math.min(this.worldWidth * this.zoomLevel, availableWidth);
         const canvasHeight = Math.min(this.worldHeight * this.zoomLevel, availableHeight);
+
         this.canvas.width = canvasWidth;
         this.canvas.height = canvasHeight;
         this.canvas.style.width = `${canvasWidth}px`;
         this.canvas.style.height = `${canvasHeight}px`;
+
         const horizontalOffset = (availableWidth - canvasWidth) / 2 + totalOffsetWidth;
         const verticalOffset = (availableHeight - canvasHeight) / 2;
         this.canvas.style.position = 'absolute';
@@ -122,28 +143,26 @@ game = {
     },
 
     scene: function(sceneId) {
-        input.cancelPathfinding(game.sprites[game.playerid]);
-        
+        input.cancelPathfinding(this.sprites[this.playerid]);
+    
         ui.ajax({
             outputType: 'json',
             method: 'GET',
-            url: '/api/scenes',  // Match your route
-            data: 'scene_id=' + encodeURIComponent(sceneId),  // Match query param expected by server
+            url: `/api/scenes/${encodeURIComponent(sceneId)}`,
             success: function(data) {
-                console.log('Scene response:', data);  // Debug log
-                
+                console.log('Scene response:', data);
+    
                 if (data.message === 'success') {
                     effects.lights = [];
                     lighting.clearLightsAndEffects();
                     game.roomData = data.roomData;
-                    game.sceneid = data.sceneid;
+                    game.sceneid = data._id;
                     game.serverid = data.server_id;
                     game.worldWidth = data.width || 1280;
                     game.worldHeight = data.height || 944;
                     game.x = data.startingX || 0;
                     game.y = data.startingY || 0;
     
-                    // Update sprite position if player exists
                     const playerSprite = game.sprites[game.playerid];
                     if (playerSprite) {
                         playerSprite.x = game.x;
@@ -157,7 +176,6 @@ game = {
     
                     game.overlappingTiles = [];
                     camera.update();
-                    localStorage.setItem('sceneid', game.sceneid);
                     effects.transitions.start('fadeOut', 1000);
                     effects.transitions.start('fadeIn', 1000);
     
@@ -165,7 +183,7 @@ game = {
                     console.log('Scene load error:', data.message);
                     plugin.load({
                         id: "scene_load_error_window",
-                        url: "editor/console/tabs/error/index.njk",
+                        url: "plugins/error/index.njk"
                     });
                 }
             },
@@ -173,137 +191,136 @@ game = {
                 console.error('Scene load error:', error);
                 plugin.load({
                     id: "scene_load_error_window",
-                    url: "editor/console/tabs/error/index.njk",
+                    url: "plugins/error/index.njk"
                 });
             }
         });
     },
 
-render: function () {
-    this.ctx.imageSmoothingEnabled = false;
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    
-    this.ctx.scale(this.zoomLevel, this.zoomLevel);
-    this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
+    render: function() {
+        this.ctx.imageSmoothingEnabled = false;
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        
+        this.ctx.scale(this.zoomLevel, this.zoomLevel);
+        this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
 
-    this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
-    this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
-    this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
-    this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
+        this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
+        this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
+        this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
+        this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
 
-    render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
-    
-    render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+        render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
+        render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
 
-    if(utils.pluginExists('weather_plugin')) {
-        weather_plugin.rain.draw();
-        weather_plugin.snow.draw();
-        weather_plugin.fireflys.draw();
-    }
-
-    this.ctx.save();
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-    const { maskCanvas, maskCtx } = lighting.createBaseNightFilter();
-    lighting.renderLightsOnFilter(maskCtx);
-    lighting.renderFinalOverlay(this.ctx, maskCanvas, maskCtx);
-    
-    particles.render();
-    effects.transitions.render();
-    render.renderCarriedObjects();
-    render.handleDebugUtilities();
-
-    if(utils.pluginExists('gamepad_plugin')) gamepad_plugin.aimTool();
-
-    if(utils.pluginExists('ui_footer_window.updateUi')) {
-        ui_footer_window.updateUI();
-    }
-
-    effects.letterbox.update();
-
-    if (utils.pluginExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
-        ui_console_editor_inventory.render();
-    }
-
-    if (utils.pluginExists('edit_mode_window')) {
-        if (typeof edit_mode_window.renderSelectionBox === 'function') {
-            edit_mode_window.renderSelectionBox();
+        if (ui.pluginExists('weather_plugin')) {
+            weather_plugin.rain.draw();
+            weather_plugin.snow.draw();
+            weather_plugin.fireflys.draw();
         }
-        if (typeof edit_mode_window.renderBrush === 'function') {
-            edit_mode_window.renderBrush();
-        }
-        if (typeof edit_mode_window.renderSelectedTiles === 'function') {
-            edit_mode_window.renderSelectedTiles();
-        }
-        if (typeof edit_mode_window.renderLasso === 'function') {
-            edit_mode_window.renderLasso();
-        }
-    }
-    
 
-    if(utils.pluginExists('ui_console_tab_window')) {
-        if (utils.pluginExists('ui_console_tab_window.renderCollisionBoundaries')) {
-            ui_console_tab_window.renderCollisionBoundaries();
-        }
-        if (utils.pluginExists('ui_console_tab_window.renderNearestWalkableTile')) {
-            ui_console_tab_window.renderNearestWalkableTile();
-        }
-        if (utils.pluginExists('ui_console_tab_window.renderObjectCollision')) {
-            ui_console_tab_window.renderObjectCollision();
-        }
-    }
+        this.ctx.save();
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    if (utils.pluginExists("ui_overlay_window.update") && game.mainSprite.isVehicle) {
-        ui_overlay_window.update(game.mainSprite.currentSpeed, game.mainSprite.maxSpeed);
-      }
-},
+        const { maskCanvas, maskCtx } = lighting.createBaseNightFilter();
+        lighting.renderLightsOnFilter(maskCtx);
+        lighting.renderFinalOverlay(this.ctx, maskCanvas, maskCtx);
+        
+        particles.render();
+        effects.transitions.render();
+        render.renderCarriedObjects();
+        render.handleDebugUtilities();
 
-    
+        if (ui.pluginExists('gamepad_plugin')) {
+            gamepad_plugin.aimTool();
+        }
+
+        if (ui.pluginExists('ui_footer_window.updateUi')) {
+            ui_footer_window.updateUI();
+        }
+
+        effects.letterbox.update();
+
+        if (ui.pluginExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
+            ui_console_editor_inventory.render();
+        }
+
+        if (ui.pluginExists('edit_mode_window')) {
+            if (typeof edit_mode_window.renderSelectionBox === 'function') {
+                edit_mode_window.renderSelectionBox();
+            }
+            if (typeof edit_mode_window.renderBrush === 'function') {
+                edit_mode_window.renderBrush();
+            }
+            if (typeof edit_mode_window.renderSelectedTiles === 'function') {
+                edit_mode_window.renderSelectedTiles();
+            }
+            if (typeof edit_mode_window.renderLasso === 'function') {
+                edit_mode_window.renderLasso();
+            }
+        }
+
+        if (ui.pluginExists('ui_console_tab_window')) {
+            if (ui.pluginExists('ui_console_tab_window.renderCollisionBoundaries')) {
+                ui_console_tab_window.renderCollisionBoundaries();
+            }
+            if (ui.pluginExists('ui_console_tab_window.renderNearestWalkableTile')) {
+                ui_console_tab_window.renderNearestWalkableTile();
+            }
+            if (ui.pluginExists('ui_console_tab_window.renderObjectCollision')) {
+                ui_console_tab_window.renderObjectCollision();
+            }
+        }
+
+        if (ui.pluginExists("ui_overlay_window.update") && this.mainSprite && this.mainSprite.isVehicle) {
+            ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed);
+        }
+    },
+
     loop: function(timestamp) {
-    if (!this.lastTime) {
+        if (!this.lastTime) {
+            this.lastTime = timestamp;
+            this.lastFpsUpdateTime = timestamp;
+            requestAnimationFrame(this.loop.bind(this));
+            return;
+        }
+
+        const timeElapsed = timestamp - this.lastTime;
+
+        if (timeElapsed > 1000) {
+            this.accumulatedTime = this.fixedDeltaTime;
+        } else {
+            this.accumulatedTime += timeElapsed;
+        }
+
+        this.deltaTime = this.fixedDeltaTime;
         this.lastTime = timestamp;
-        this.lastFpsUpdateTime = timestamp;
+
+        // Update logic in fixed steps
+        while (this.accumulatedTime >= this.fixedDeltaTime) {
+            render.updateGameLogic(this.fixedDeltaTime);
+            this.accumulatedTime -= this.fixedDeltaTime;
+        }
+
+        this.render();
+
+        const fps = 1000 / timeElapsed;
+        utils.tracker('fps', fps);
+      
+        if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
+            utils.finalizeFrame();
+            fps_monitor_window.renderChart();
+        }
+
+        const debugFPS = document.getElementById('gameFps');
+        if (debugFPS) {
+            debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
+        }
+
+        const gameTimeDisplay = document.getElementById('game_time');
+        if (gameTimeDisplay) {
+            gameTimeDisplay.innerHTML = utils.gameTime.display();
+        }
+
         requestAnimationFrame(this.loop.bind(this));
-        return;
     }
-
-    const timeElapsed = timestamp - this.lastTime;
-
-    if (timeElapsed > 1000) {
-        this.accumulatedTime = this.fixedDeltaTime;
-    } else {
-        this.accumulatedTime += timeElapsed;
-    }
-
-    this.deltaTime = this.fixedDeltaTime;
-    this.lastTime = timestamp;
-
-    while (this.accumulatedTime >= this.fixedDeltaTime) {
-        render.updateGameLogic(this.fixedDeltaTime);
-        this.accumulatedTime -= this.fixedDeltaTime;
-    }
-
-    this.render();
-
-    const fps = 1000 / timeElapsed;
-    utils.tracker('fps', fps);
-  
-    if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
-        utils.finalizeFrame();
-        fps_monitor_window.renderChart();
-    }
-
-    const debugFPS = document.getElementById('gameFps');
-    if (debugFPS) {
-        debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
-    }
-
-    const gameTimeDisplay = document.getElementById('game_time');
-    if (gameTimeDisplay) {
-        gameTimeDisplay.innerHTML = utils.gameTime.display();
-    }
-
-    requestAnimationFrame(this.loop.bind(this));
-    }
-    
 };

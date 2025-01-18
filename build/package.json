@@ -2,9 +2,10 @@
   "name": "build",
   "version": "1.0.0",
   "scripts": {
-    "tailwind": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/output.css --watch --minify --postcss",
-    "build:esbuild": "node esbuild.config.js",
-    "build": "concurrently \"npm run tailwind\" \"npm run build:esbuild\""
+    "css": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/core.min.css --minify --postcss",
+    "watch:css": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/core.min.css --watch --minify --postcss",
+    "js": "node esbuild.config.js",
+    "build": "concurrently \"npm run css\" \"npm run js\""
   },
   "dependencies": {
     "autoprefixer": "^10.4.20",

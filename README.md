@@ -39,13 +39,29 @@ docker-compose up --build
 - Mongo Username: ```admin```
 - Mongo Password: ```this_is_a_test_password```
 
-# Build Tools (minifies & bundles css/js in client directory with tailwindcss/esbuild)
+# Build Tools (minify & bundle css/js in client directory with tailwindcss/esbuild)
+- If you edit any of the core javascript in client/assets/js/engine you will need to rebuild the renzora.min.js file to see changes in the browser. Also make sure you have caching disabled in dev tools. you can click on 'disable cache' in the network tab. Or you can clear the browser cache. If you're using a cdn, you will need to clear the cache from the network.
+
 ```
 cd build
 npm install
-npm run build
 ```
+
+build js
+`npm run js`
+
+build css
+`npm run css`
+
+build css + watch for changes
+`npm run watch:css`
+
+build both
+`npm run build`
 
 # Notes
 "WebSocket connection to 'wss://localhost:3000/' failed"
-- because the local dev server is using a self-signed ssl certificate and not a domain specific CA certificate; browsers by default don't trust it. to get around this issue, visit ```https://localhost:3000``` You will be presented with a screen saying connection is not private. For the purposes of development you can click on Advanced and then proceed anyway. clicking the proceed link wont actually do anything. You can close the window immediately. Then refresh the website at ```http://localhost``` and the websocket should now connect. You shouldn't have this issue on a production server using full ssl.
+because the local dev server is using a self-signed ssl certificate and not a domain specific CA certificate; browsers by default don't trust it. to get around this issue, visit ```https://localhost:3000``` You will be presented with a screen saying connection is not private. For the purposes of development you can click on Advanced and then proceed anyway. clicking the proceed link wont actually do anything. You can close the window immediately. Then refresh the website at ```http://localhost``` and the websocket should now connect. You shouldn't have this issue on a production server using full ssl.
+
+# Installing node modules
+In the dev environment, the node modules are installed on the docker container with a mount to the local computer. Because of this, you don't install new modules locally. Instead, you would add package.json dependencies with the flag `npm install --package-lock-only <package>` then you would `docker-compose build` to rebuild the container. This doesn't apply to the build directory as build tools don't use docker.

@@ -21,7 +21,6 @@ assets = {
 
     preload: function(assetsList, callback, force = false) {
         const uniqueAssets = {};
-        // If `force` is true, we skip the "already loaded" check.
         const assetsToLoad = assetsList.filter(asset => {
             if (!uniqueAssets[asset.name]) {
                 uniqueAssets[asset.name] = true;
@@ -88,12 +87,12 @@ assets = {
                 resolve(img);
             };
             img.onerror = reject;
-            img.src = 'assets/' + asset.path;
+            img.src = asset.path;
         });
     },
 
     loadJSON: function(asset) {
-        return fetch('assets/' + asset.path)
+        return fetch(asset.path)
             .then(response => response.json())
             .then(data => {
                 this.assetLoaded(asset, data);
@@ -103,7 +102,7 @@ assets = {
     },
 
     loadAudio: function(asset) {
-        return fetch('assets/' + asset.path)
+        return fetch(asset.path)
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => {
                 return audio.audioContext.decodeAudioData(arrayBuffer);
@@ -133,7 +132,6 @@ assets = {
         if (this.loadedAssets[assetName]) {
             delete this.loadedAssets[assetName];
             this.loadedCount--;
-            console.log(`Unloaded asset: ${assetName}`);
         }
     }
 };

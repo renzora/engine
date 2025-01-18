@@ -101,35 +101,35 @@ lighting = {
 
         if (time >= dayStart && time < sunsetStart) {
             t = 0; // Day
-            if(utils.pluginExists('weather_plugin')) {
+            if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) {
                     weather_plugin.fireflys.active = false;
                 }
             }
         } else if (time >= sunsetStart && time < nightStart) {
             t = (time - sunsetStart) / (nightStart - sunsetStart);
-            if(utils.pluginExists('weather_plugin')) {
+            if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) {
                     weather_plugin.fireflys.active = false;
                 }
             }
         } else if (time >= nightStart || time < nightEnd) {
             t = 1; // Night
-            if(utils.pluginExists('weather_plugin')) {
+            if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) { 
                     weather_plugin.fireflys.active = true;
                 }
             }
         } else if (time >= nightEnd && time < sunriseEnd) {
             t = 1 - ((time - nightEnd) / (sunriseEnd - nightEnd));
-            if(utils.pluginExists('weather_plugin')) {
+            if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) {
                     weather_plugin.fireflys.active = t > 0.5;
                 }
             }
         } else {
             t = 0; // Default day
-            if(utils.pluginExists('weather_plugin')) {
+            if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) {
                     weather_plugin.fireflys.active = false;
                 }

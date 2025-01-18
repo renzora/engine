@@ -1,9 +1,4 @@
-<?php
-include $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
-if ($auth) {
-    // Retrieve the item ID from the URL
-    $itemId = $_GET['id'];
-?>
+{% if auth %}
   <div class='window window_bg' style='width: 700px; background: #60975c;'>
     <div data-part='handle' class='window_title' style='background-image: radial-gradient(#406d3d 1px, transparent 0) !important;'>
       <div class='float-right'>
@@ -414,7 +409,7 @@ if ($auth) {
 
         ui.ajax({
             method: 'POST',
-            url: 'plugins/renadmin/tileset/ajax/save_item.php',
+            url: '/api/tileset_manager/save_item',
             data: JSON.stringify(game.objectData),
             outputType: 'json',
             success: function(response) {
@@ -446,6 +441,4 @@ if ($auth) {
 
     tileset_item_editor_window.start(<?php echo json_encode($itemId); ?>);
   </script>
-<?php
-}
-?>
+{% end if %}

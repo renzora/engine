@@ -1,30 +1,59 @@
 {% if auth %}
 <div
-      id="editor_toolbar_buttons"
-      class="fixed top-2 bg-black/80 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
-      style="margin-bottom: 10px;">
-      <button type="button" id="select_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition hint--top" onclick="edit_mode_window.changeMode('select')" aria-label="Select">
-        <div class="ui_icon ui_select"></div>
-      </button>
-      <button type="button" id="brush_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('brush')">
-        <div class="ui_icon ui_brush"></div>
-      </button>
-      <button type="button" id="pan_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('pan')">
-        <div class="ui_icon ui_pan"></div>
-      </button>
-      <button type="button" id="lasso_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('lasso')">
-        <div class="ui_icon ui_lasso"></div>
-      </button>
-      <button type="button" id="move_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('move')">
-        <div class="ui_icon ui_move"></div>
-      </button>
-      <button type="button" id="save_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.saveRoomData()">
-        <div class="ui_icon ui_save"></div>
-      </button>
-      <button type="button" id="close_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="plugin.close('edit_mode_window');">
-        <div class="ui_icon ui_close"></div>
-      </button>
-    </div>
+  id="editor_toolbar_buttons"
+  class="fixed top-2 bg-black/80 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
+>
+  <button
+    type="button"
+    id="select_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="edit_mode_window.changeMode('select')"
+  >
+    <!-- We'll draw the icon onto a <canvas> later -->
+  </button>
+  <button
+    type="button"
+    id="brush_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="edit_mode_window.changeMode('brush')"
+  >
+  </button>
+  <button
+    type="button"
+    id="pan_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="edit_mode_window.changeMode('pan')"
+  >
+  </button>
+  <button
+    type="button"
+    id="lasso_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="edit_mode_window.changeMode('lasso')"
+  >
+  </button>
+  <button
+    type="button"
+    id="move_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="edit_mode_window.changeMode('move')"
+  >
+  </button>
+  <button
+    type="button"
+    id="save_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="edit_mode_window.saveRoomData()"
+  >
+  </button>
+  <button
+    type="button"
+    id="close_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="plugin.close('edit_mode_window')"
+  >
+  </button>
+</div>
 
 <style>
     body.move-cursor {
@@ -74,8 +103,34 @@ window[id] = {
     isGroupObjectsEnabled: false,
     dragStartAxis: null,
     hoveredAxis: null,
+    iconPositions: {
+        pencil: 0,
+        scissors: 1,
+        zoom: 2,
+        brush: 3,
+        save: 4,
+        trash: 5,
+        undo: 6,
+        redo: 7,
+        select: 8,
+        eye: 9,
+        move: 10,
+        pan: 11,
+        cancel: 12,
+    },
 
     start: function () {
+
+    assets.preload([{ name: 'edit_mode_window_icons', path: 'plugins/editor/main/icons.png' }], () => {
+        this.setButtonIcon('select_button', 'select');
+        this.setButtonIcon('brush_button', 'brush');
+        this.setButtonIcon('pan_button', 'pan');
+        this.setButtonIcon('lasso_button', 'pencil');
+        this.setButtonIcon('move_button', 'move');
+        this.setButtonIcon('save_button', 'save');
+        this.setButtonIcon('close_button', 'cancel');
+    });
+
     this.modeButtons = {
         brush: document.getElementById('brush_button'),
         select: document.getElementById('select_button'),
@@ -119,9 +174,8 @@ window[id] = {
     console_window.allowToggle = false;
 
     plugin.preload([
-        { priority: 0, options: { id: 'editor_layers', url: 'editor/layers/index.njk', drag: false, reload: false } },
-        { priority: 1, options: { id: 'editor_context_menu_window', url: 'editor/context_menu/index.njk', drag: false, reload: true } },
-        { priority: 2, options: { id: 'ui_footer_window', url: 'ui/dev/index.njk', drag: false, reload: false } }
+        { priority: 0, options: { id: 'editor_layers', url: 'plugins/editor/layers/index.njk', drag: false, reload: false } },
+        { priority: 1, options: { id: 'editor_context_menu_window', url: 'plugins/editor/context_menu/index.njk', drag: false, reload: true } }
     ]);
 
     setTimeout(() => { camera.manual = true; }, 0);
@@ -162,14 +216,31 @@ unmount: function () {
 
     document.body.style.cursor = 'default';
 
-    plugin.load({ id: 'context_menu_window', url: 'ui/menus/context_menu/index.html', name: 'Context Menu', drag: false,reload: true });
+    plugin.load({ id: 'context_menu_window', url: 'plugins/context_menu/index.html', drag: false, reload: true });
     plugin.close('editor_context_menu_window');
     plugin.close('console_window');
-    plugin.close('ui_footer_window');
     plugin.close('editor_layers');
     plugin.show('ui_inventory_window');
     plugin.show('ui_overlay_window');
+    assets.unload('edit_mode_window_icons');
     game.resizeCanvas();
+},
+
+setButtonIcon: function(buttonId, iconName) {
+  const buttonEl = document.getElementById(buttonId);
+  if (!buttonEl) return;
+
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  canvas.width = 32;
+  canvas.height = 32;
+
+  const iconIndex = this.iconPositions[iconName];
+  const iconSprite = assets.use('edit_mode_window_icons');
+  const offsetX = iconIndex * 32; 
+  ctx.drawImage(iconSprite,offsetX, 0,32,32,0,0,32,32);
+  buttonEl.appendChild(canvas);
 },
 
 updateCurrentTimeAndDay: function () {

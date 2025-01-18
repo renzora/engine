@@ -530,7 +530,7 @@ window[id] = {
         ui.ajax({
             outputType: 'json',
             method: 'POST',
-            url: 'plugins/editor/tileset_manager/ajax/save_tileset.php',
+            url: '/api/tileset_manager/save',
             data: JSON.stringify(data),
             processData: false,
             contentType: 'application/json',
@@ -582,7 +582,7 @@ window[id] = {
                     itemDiv.addEventListener('click', function() {
                         plugin.load({ 
                             id: 'tileset_item_editor_window', 
-                            url: `editor/tileset_manager/items.php?id=${uniqueId}`, 
+                            url: `editor/tileset_manager/items.njk?id=${uniqueId}`, 
                             name: 'Item Editor', 
                             drag: true, 
                             reload: true 

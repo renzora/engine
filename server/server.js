@@ -1,87 +1,78 @@
-const express = require('express');
-const path = require('path');
-const cors = require('cors');
-const cookieParser = require('cookie-parser');
-const nunjucks = require('nunjucks');
-const { connectDB } = require('./database');
-const authMiddleware = require('./middleware/auth');
-const http = require('http');
-const { initializeWebSocket } = require('./websocket');
+import path from 'path';
+import { fileURLToPath } from 'url';
+import Fastify from 'fastify';
+import fastifyCors from '@fastify/cors';
+import fastifyCookie from '@fastify/cookie';
+import fastifyFormbody from '@fastify/formbody';
+import fastifyView from '@fastify/view';
+import nunjucks from 'nunjucks';
+import dotenv from 'dotenv';
 
-const app = express();
-const server = http.createServer(app);
+import { connectDB } from './database.js';
+import { initializeWebSocket } from './websocket.js';
+import { authMiddleware } from './middleware/auth.js';
+import { authRoutes } from './routes/auth.js';
+import { ajaxRoutes } from './routes/ajax.js';
+import { scenesRoutes } from './routes/scenes.js';
+import { serversRoutes } from './routes/servers.js';
+import { tilesetManagerRoutes } from './routes/tileset_manager.js';
+import { editorRoutes } from './routes/editor.js';
 
-// Configure Nunjucks
-// In server.js
+dotenv.config();
+
+const fastify = Fastify({ logger: false });
+const PORT = process.env.PORT || 3000;
+
 const viewPaths = [
-    path.join(__dirname, '../client'),
-    path.join(__dirname, '../client/plugins')
+    path.join(process.cwd(), 'client'),
+    path.join(process.cwd(), 'client/plugins'),
 ];
 
 nunjucks.configure(viewPaths, {
     autoescape: true,
-    express: app,
-    watch: true,
-    noCache: process.env.NODE_ENV === 'development'
+    watch: process.env.NODE_ENV === 'development',
+    noCache: process.env.NODE_ENV === 'development',
 });
 
-// Middleware
-app.use(cors({
+await fastify.register(fastifyView, {
+    engine: { nunjucks },
+    root: viewPaths,
+    viewExt: 'njk',
+});
+
+await fastify.register(fastifyCors, {
     origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost', 'http://localhost:80'],
-    credentials: true
-}));
-app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Auth middleware
-app.use(authMiddleware);
-
-// Routes
-const authRoutes = require('./routes/auth');
-const pluginRoutes = require('./routes/plugin');
-const scenesRoutes = require('./routes/scenes');
-
-
-app.use((req, res, next) => {
-    console.log('Incoming request:', {
-        method: req.method,
-        url: req.url,
-        path: req.path
-    });
-    next();
+    credentials: true,
 });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/plugins', pluginRoutes);
-app.use('/api/scenes', scenesRoutes);
+await fastify.register(fastifyCookie);
+await fastify.register(fastifyFormbody);
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+fastify.addHook('onRequest', authMiddleware);
+
+fastify.register(authRoutes, { prefix: '/api/auth' });
+fastify.register(ajaxRoutes, { prefix: '/api/ajax' });
+fastify.register(scenesRoutes, { prefix: '/api/scenes' });
+fastify.register(serversRoutes, { prefix: '/api/servers' });
+fastify.register(tilesetManagerRoutes, { prefix: '/api/tileset_manager' });
+fastify.register(editorRoutes, { prefix: '/api/editor' });
+fastify.get('/health', async (request, reply) => {
+    return { status: 'ok' };
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-    console.error(err.stack);
-    res.status(500).json({
+fastify.setErrorHandler((error, request, reply) => {
+    console.error('Error:', error.stack);
+    reply.status(500).send({
         message: 'Something went wrong!',
-        error: process.env.NODE_ENV === 'development' ? err.message : {}
+        error: process.env.NODE_ENV === 'development' ? error.message : {},
     });
 });
-
-// Initialize WebSocket
-initializeWebSocket(server);
-
-// Connect to MongoDB and start server
-const PORT = process.env.PORT || 3000;
 
 async function startServer() {
     try {
         await connectDB();
-        server.listen(PORT, '0.0.0.0', () => {  // Added host binding
-            console.log(`Server running on port ${PORT}`);
-        });
+        const address = await fastify.listen({ port: PORT, host: '0.0.0.0' });
+        console.log(`Server running at ${address}`);
     } catch (error) {
         console.error('Failed to start server:', error);
         process.exit(1);
@@ -89,23 +80,21 @@ async function startServer() {
 }
 
 startServer();
+initializeWebSocket(fastify.server);
 
-// Handle graceful shutdown
 process.on('SIGTERM', () => {
     console.log('SIGTERM received. Shutting down gracefully...');
-    server.close(() => {
+    fastify.close(() => {
         console.log('Server closed');
         process.exit(0);
     });
 });
 
-// Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
     console.error('Uncaught Exception:', error);
     process.exit(1);
 });
 
-// Handle unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     process.exit(1);

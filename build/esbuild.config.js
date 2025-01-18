@@ -32,14 +32,10 @@ async function build() {
     platform: 'browser'
   });
 
-  // Initial build
   await ctx.rebuild();
-
-  // Watch for changes
   await ctx.watch();
   console.log('Watching for changes...');
 
-  // Additional Terser minification after each build
   const jsPath = path.resolve(__dirname, '../client/assets/js/renzora.min.js');
   
   async function performTerserMinification() {
@@ -67,16 +63,14 @@ async function build() {
       });
 
       await fs.writeFile(jsPath, minified.code);
-      console.log('Additional minification completed, waiting for tailwind...');
+      console.log('Esbuild task completed, yay!');
     } catch (err) {
       console.error('Terser minification failed:', err);
     }
   }
 
-  // Run initial minification
   await performTerserMinification();
 
-  // Set up file watcher for additional minification
   const chokidar = require('chokidar');
   chokidar.watch(jsPath).on('change', async () => {
     await performTerserMinification();

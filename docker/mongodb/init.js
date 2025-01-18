@@ -1,28 +1,24 @@
+const BCRYPT_HASHED_ADMIN_PASSWORD = '$2b$08$2i8woGGgvPL1FweRsCl.MOJKYsbpGCREJQjUnlEQOkhvTkjEdqkLa';
+
 const adminDb = db.getSiblingDB('admin');
 
-// Check if the admin user already exists
 if (!adminDb.system.users.find({ user: "admin" }).hasNext()) {
     adminDb.createUser({
         user: "admin",
         pwd: "password",
         roles: [{ role: "userAdminAnyDatabase", db: "admin" }, "readWriteAnyDatabase"]
     });
-    print("Admin user created.");
-} else {
-    print("Admin user already exists.");
 }
 
-// Switch to the renzora database
 const renzora = db.getSiblingDB('renzora');
 
-// Insert initial data if it doesn't already exist
 try {
     if (!renzora.users.findOne({ username: 'admin' })) {
         renzora.users.insertOne({
             _id: 1,
             username: 'admin',
-            password: '$2y$08$92FucCqO3x/x7oImSCLAWOMdmMCaQD/MB.6LZV0E3.TvTBH4GTz5W',
-            email: 'admin@test.com',
+            password: BCRYPT_HASHED_ADMIN_PASSWORD,
+            email: 'admin@admin.com',
             ugroup: 1,
             created: 1709851580,
             coins: 0,
@@ -37,9 +33,6 @@ try {
             staff: 1,
             site_mod: 1
         });
-        print("Default admin user inserted into renzora.users.");
-    } else {
-        print("Admin user already exists in renzora.users.");
     }
 
     if (!renzora.servers.findOne({ _id: ObjectId("677e225423f363310b0e9a82") })) {
@@ -50,9 +43,6 @@ try {
             created_at: 1736319572,
             public: 1
         }]);
-        print("Default server inserted into renzora.servers.");
-    } else {
-        print("Default server already exists in renzora.servers.");
     }
 
     if (!renzora.scenes.findOne({ _id: ObjectId("677e269fb2e1d04dd00e9cf2") })) {
@@ -63,41 +53,7 @@ try {
             created_by: 1,
             created_at: 1736320671,
             roomData: {
-                items: [{
-                    id: "6772e14939830",
-                    x: [10.125, 11.125, 12.125, 13.125, 14.125, 15.125, 16.125, 17.125, 18.125, 19.125, 20.125, 21.125, 22.125, 23.125, 24.125, 25.125, 26.125, 27.125, 28.125],
-                    y: [6.875, 7.875, 8.875, 9.875, 10.875, 11.875, 12.875, 13.875, 14.875, 15.875, 16.875, 17.875, 18.875],
-                    animationState: [{ currentFrame: 0, elapsedTime: 722649.9999997823 }],
-                    w: []
-                }, {
-                    id: "6772e419ccf5e",
-                    x: [13.25, 14.25, 15.25, 16.25],
-                    y: [11.3125, 12.3125, 13.3125, 14.3125, 15.3125],
-                    animationState: [{ currentFrame: 0, elapsedTime: 0 }],
-                    w: [
-                        { x: 1, y: 56 },
-                        { x: 28, y: 42 },
-                        { x: 57, y: 56 },
-                        { x: 29, y: 71 }
-                    ]
-                }, {
-                    id: "6776f796d8867",
-                    x: [16.75, 17.75],
-                    y: [7.875, 8.875, 9.875, 10.875],
-                    animationState: [{ currentFrame: 0, elapsedTime: 0 }],
-                    w: 1
-                }, {
-                    id: "6777afafbf17d",
-                    x: [23.4375, 24.4375],
-                    y: [11.5, 12.5, 13.5, 14.5],
-                    animationState: [{ currentFrame: 10, elapsedTime: 203.33333333330728 }],
-                    w: [
-                        { x: 12, y: 56 },
-                        { x: 26, y: 56 },
-                        { x: 26, y: 45 },
-                        { x: 12, y: 45 }
-                    ]
-                }],
+                items: [],
                 startingX: 18,
                 startingY: 13
             },
@@ -113,9 +69,6 @@ try {
             rain: 0,
             snow: 0
         }]);
-        print("Default scene inserted into renzora.scenes.");
-    } else {
-        print("Default scene already exists in renzora.scenes.");
     }
 } catch (e) {
     print("Error during initialization:", e);

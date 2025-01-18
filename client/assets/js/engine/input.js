@@ -118,12 +118,12 @@ input = {
             e.preventDefault();
             plugin.load({
                 id: 'console_window',
-                url: 'editor/console/index.php',
+                url: 'plugins/editor/console/index.njk',
                 name: 'console',
                 drag: false,
                 reload: true,
                 after: function () {
-                    plugin.load({ id: 'edit_mode_window', url: 'editor/main/index.php', name: 'Editor', drag: true, reload: true });
+                    plugin.load({ id: 'edit_mode_window', url: 'plugins/editor/main/index.njk', name: 'Editor', drag: true, reload: true });
                 }
             });
 

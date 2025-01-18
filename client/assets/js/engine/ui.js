@@ -40,66 +40,130 @@ ui = {
 },
 
 ajax: async function({ url, method = 'GET', data = null, outputType = 'text', success, error }) {
-    try {
-      let fetchUrl = url;
+  try {
+      let fetchUrl;
+
+      if (url.startsWith('/api/ajax')) {
+          fetchUrl = url;
+      } else if (url.startsWith('/api/') && !url.startsWith('/api/ajax')) {
+          fetchUrl = url;
+      } else {
+          fetchUrl = `/api/ajax/${url.replace(/^\/+/, '')}`;
+      }
+
       const init = {
-        method: method,
-        headers: {}
+          method: method,
+          headers: {},
       };
-  
+
       if (data) {
-        if (method === 'GET') {
-          const queryParams = new URLSearchParams(data).toString();
-          fetchUrl = `${url}?${queryParams}`;
-        } else {
-          if (typeof data === 'object') {
-            init.headers['Content-Type'] = 'application/json';
-            init.body = JSON.stringify(data);
+          if (method === 'GET') {
+              const queryParams = new URLSearchParams(data).toString();
+              fetchUrl = `${fetchUrl}?${queryParams}`;
           } else {
-            init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
-            init.body = data;
+              if (typeof data === 'object') {
+                  init.headers['Content-Type'] = 'application/json';
+                  init.body = JSON.stringify(data);
+              } else {
+                  init.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+                  init.body = data;
+              }
           }
-        }
       }
-  
+
       const response = await fetch(fetchUrl, init);
-  
+
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
+          const errorText = await response.text();
+          throw new Error(errorText);
       }
-  
+
       let responseData;
       switch (outputType) {
-        case 'json':
-          responseData = await response.json();
-          break;
-        case 'blob':
-          responseData = await response.blob();
-          break;
-        case 'formData':
-          responseData = await response.formData();
-          break;
-        case 'arrayBuffer':
-          responseData = await response.arrayBuffer();
-          break;
-        default:
-          responseData = await response.text();
+          case 'json':
+              responseData = await response.json();
+              break;
+          case 'blob':
+              responseData = await response.blob();
+              break;
+          case 'formData':
+              responseData = await response.formData();
+              break;
+          case 'arrayBuffer':
+              responseData = await response.arrayBuffer();
+              break;
+          default:
+              responseData = await response.text();
       }
-  
+
       if (success) success(responseData);
-  
-    } catch (err) {
-      console.error('Failed to save data:', err);
+
+  } catch (err) {
+      console.error('Failed to fetch data:', err);
       if (error) {
-        if (err instanceof Error) {
-          error(err.message);
-        } else {
-          error(err);
-        }
+          if (err instanceof Error) {
+              error(err.message);
+          } else {
+              error(err);
+          }
       }
-    }
-  },
+  }
+},
+
+isMobile: function() {
+  const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+
+  if (/android/i.test(userAgent)) {
+      return true;
+  }
+  if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
+      return true;
+  }
+
+  return window.innerWidth <= 768;
+},
+
+fullScreen: function() {
+  const element = document.documentElement;
+
+  if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
+      if (element.requestFullscreen) {
+          element.requestFullscreen().catch((err) => {
+              console.error(`Error attempting to enable fullscreen mode: ${err.message}`);
+          });
+      } else if (element.webkitRequestFullscreen) {
+          element.webkitRequestFullscreen();
+      } else if (element.msRequestFullscreen) {
+          element.msRequestFullscreen();
+      }
+
+      if (/android/i.test(navigator.userAgent)) {
+          document.addEventListener('fullscreenchange', () => {
+              if (document.fullscreenElement) {
+                  window.scrollTo(0, 1);
+              }
+          });
+      }
+  } else {
+      if (document.exitFullscreen) {
+          document.exitFullscreen().catch((err) => {
+              console.error(`Error attempting to exit fullscreen mode: ${err.message}`);
+          });
+      } else if (document.webkitExitFullscreen) {
+          document.webkitExitFullscreen();
+      } else if (document.msExitFullscreen) {
+          document.msExitFullscreen();
+      }
+  }
+},
+
+pluginExists: function(objName) {
+  try {
+      return typeof eval(objName) !== 'undefined';
+  } catch (e) {
+      return false;
+  }
+},
 
 contextMenu: {
   showContextMenu: function (menuElement, menuItemsElement, config, clientX, clientY) {

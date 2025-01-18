@@ -1,0 +1,101 @@
+<style>
+  @keyframes slideOutDown {
+    from {
+      transform: translateY(0);
+      opacity: 1;
+    }
+    to {
+      transform: translateY(100%);
+      opacity: 0;
+    }
+  }
+
+  .notification-exit {
+    animation: slideOutDown 1s ease forwards;
+  }
+</style>
+
+<script>
+  window[id] = {
+    id: id,
+    notificationCount: 0,
+    activeNotifications: new Map(),
+
+    show: function (id, message, type = "info", replace = false) {
+      return new Promise((resolve) => {
+        let container = document.getElementById("notification");
+        if (!container) {
+          container = document.createElement("div");
+          container.id = "notification";
+          container.className = "fixed z-10 top-0 left-1/2 transform -translate-x-1/2";
+          document.body.appendChild(container);
+        }
+
+        if (this.activeNotifications.has(id)) {
+          const existingNotification = this.activeNotifications.get(id);
+          if (replace) {
+            existingNotification.innerText = message;
+            existingNotification.className = this.getNotificationClass(type);
+
+            clearTimeout(existingNotification.timer);
+            existingNotification.timer = setTimeout(() => {
+              existingNotification.classList.add("notification-exit");
+              setTimeout(() => {
+                existingNotification.remove();
+                this.notificationCount--;
+                this.activeNotifications.delete(id);
+
+                if (this.notificationCount === 0) {
+                  container.remove();
+                }
+                resolve();
+              }, 1000);
+            }, 3000);
+            return;
+          } else {
+            resolve();
+            return;
+          }
+        }
+
+        const notification = document.createElement("div");
+        notification.className = this.getNotificationClass(type);
+        notification.innerText = message;
+        notification.dataset.id = id;
+        container.prepend(notification);
+
+        this.notificationCount++;
+        this.activeNotifications.set(id, notification);
+
+        notification.timer = setTimeout(() => {
+          notification.classList.add("notification-exit");
+
+          setTimeout(() => {
+            notification.remove();
+            this.notificationCount--;
+            this.activeNotifications.delete(id);
+
+            if (this.notificationCount === 0) {
+              container.remove();
+            }
+            resolve();
+          }, 1000);
+        }, 3000);
+      });
+    },
+
+    getNotificationClass: function (type) {
+      switch (type) {
+        case "success":
+          return "bg-green-500 text-white text-lg px-4 py-2 rounded shadow-md m-2";
+        case "warning":
+          return "bg-yellow-500 text-white text-lg px-4 py-2 rounded shadow-md m-2";
+        case "danger":
+          return "bg-red-500 text-white text-lg px-4 py-2 rounded shadow-md m-2";
+        case "info":
+        default:
+          return "bg-blue-500 text-white text-lg px-4 py-2 rounded shadow-md m-2";
+      }
+    },
+  };
+</script>

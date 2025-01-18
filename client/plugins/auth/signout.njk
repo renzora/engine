@@ -1,4 +1,4 @@
-{% if not auth %}
+{% if auth %}
   <div class='window window_bg'>
 
     <div data-part='handle' class='window_title window_border'>
@@ -31,14 +31,12 @@
 window[id] = {
   id: id,
         signout: function() {
-
           ui.ajax({
               method: 'POST',
-              url: 'plugins/auth/ajax/signout_ajax.php',
+              url: '/api/auth/signout',
               success: function(data) {
-                ui.notif("You are now signed out. Please come back again soon :)", 'bottom-center');
-                plugin.load('ui');
-                plugin.load('auth');
+                if(utils.pluginExists('notif')) notif.show("auth_signout_success", "You are now signed out. Please come back again soon :)");
+                plugin.load({ id: 'auth_window', url: 'plugins/auth/index.njk', drag: true, reload: true });
                 plugin.close(this.id);
               }
             });

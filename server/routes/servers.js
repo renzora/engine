@@ -1,197 +1,157 @@
-const Server = require('../models/Servers');
-const Scene = require('../models/Scenes');
+import { Servers } from '../models/Servers.js';
+import { Scene } from '../models/Scenes.js';
 
-async function routes(fastify, opts) {
-    // List servers
-    fastify.post('/list', async (request, reply) => {
-        try {
-            if (!request.user) {
-                return reply.status(401).send({
-                    message: 'Unauthorized',
-                    error: true
-                });
-            }
+export const serversRoutes = async (fastify, opts) => {
 
-            const userId = request.user.id;
-            const { tabType = 'public' } = request.body;
+  fastify.post('/create_server', async (request, reply) => {
+    try {
+      if (!request.auth || !request.user) {
+        return reply.code(401).send({ message: 'Unauthorized', error: true });
+      }
 
-            let filter = {};
-            switch (tabType) {
-                case 'public':
-                    filter = { public: true };
-                    break;
-                case 'private':
-                    filter = { public: false };
-                    break;
-                case 'events':
-                    filter = { events: true };
-                    break;
-                case 'me':
-                    filter = { created_by: userId };
-                    break;
-                default:
-                    throw new Error('Invalid tab type specified');
-            }
+      const { name = 'new server' } = request.body;
+      const userId = request.user._id;
 
-            const servers = await Server.find(filter)
-                .sort({ created_at: -1 })
-                .exec();
+      const newServer = new Servers({
+        name,
+        created_by: userId,
+        created_at: new Date(),
+        public: true
+      });
 
-            const serverList = servers.map(server => ({
-                id: server._id.toString(),
-                name: server.name,
-                created_at: server.created_at,
-                public: server.public
-            }));
+      await newServer.save();
 
-            return {
-                message: 'success',
-                servers: serverList
-            };
-
-        } catch (error) {
-            console.error('Error fetching servers:', error);
-            return reply.status(500).send({
-                message: 'Error fetching servers',
-                error: error.message
-            });
+      return reply.code(200).send({
+        message: 'success',
+        server: {
+          id: newServer._id,
+          name: newServer.name,
+          created_by: newServer.created_by,
+          created_at: newServer.created_at,
+          public: newServer.public
         }
-    });
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        message: 'Error creating server',
+        error: error.message
+      });
+    }
+  });
 
-    // Create server
-    fastify.post('/create', async (request, reply) => {
-        try {
-            if (!request.user) {
-                return reply.status(401).send({
-                    message: 'Unauthorized',
-                    error: true
-                });
-            }
+  fastify.get('/get_servers', async (request, reply) => {
+    try {
+      const servers = await Servers.find().sort({ created_at: -1 });
+      const serverList = servers.map((s) => ({
+        id: s._id,
+        name: s.name,
+        created_at: s.created_at,
+        public: s.public
+      }));
 
-            const { name = 'default server' } = request.body;
-            const playerId = request.user.id;
+      return reply.code(200).send({
+        message: 'success',
+        servers: serverList
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        message: 'Error fetching servers',
+        error: error.message
+      });
+    }
+  });
 
-            const newServer = new Server({
-                name,
-                created_by: playerId,
-                created_at: Date.now(),
-                public: true
-            });
+  fastify.post('/edit_server', async (request, reply) => {
+    try {
+      if (!request.auth || !request.user) {
+        return reply.code(401).send({ message: 'Unauthorized', error: true });
+      }
 
-            const savedServer = await newServer.save();
+      const { id: serverId, name } = request.body;
+      const userId = request.user._id;
 
-            return {
-                message: 'success',
-                server: {
-                    id: savedServer._id.toString(),
-                    name: savedServer.name,
-                    created_by: savedServer.created_by,
-                    created_at: savedServer.created_at,
-                    public: savedServer.public
-                }
-            };
-        } catch (error) {
-            console.error('Error creating server:', error);
-            return reply.status(500).send({
-                message: 'Error creating server',
-                error: error.message
-            });
+      if (!serverId || !name) {
+        return reply
+          .code(400)
+          .send({ message: 'Invalid input', error: true });
+      }
+
+      const server = await Servers.findById(serverId);
+      if (!server) {
+        return reply
+          .code(404)
+          .send({ message: 'Server not found', error: true });
+      }
+
+      if (String(server.created_by) !== String(userId)) {
+        return reply
+          .code(403)
+          .send({ message: 'Unauthorized', error: true });
+      }
+
+      server.name = name;
+      const savedServer = await server.save();
+
+      return reply.code(200).send({
+        message: 'success',
+        server: {
+          id: savedServer._id,
+          name: savedServer.name
         }
-    });
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        message: 'Error updating server',
+        error: error.message
+      });
+    }
+  });
 
-    // Delete server
-    fastify.post('/delete', async (request, reply) => {
-        try {
-            if (!request.user) {
-                return reply.status(401).send({
-                    message: 'Unauthorized',
-                    error: true
-                });
-            }
+  fastify.post('/delete_server', async (request, reply) => {
+    try {
+      if (!request.auth || !request.user) {
+        return reply.code(401).send({ message: 'Unauthorized', error: true });
+      }
 
-            const { id: serverId } = request.body;
-            const userId = request.user.id;
+      const { id: serverId } = request.body;
+      const userId = request.user._id;
 
-            if (!serverId) {
-                return reply.status(400).send({ message: 'Invalid input' });
-            }
+      if (!serverId) {
+        return reply
+          .code(400)
+          .send({ message: 'Invalid input', error: true });
+      }
 
-            const server = await Server.findById(serverId);
+      const server = await Servers.findById(serverId);
+      if (!server) {
+        return reply
+          .code(404)
+          .send({ message: 'Server not found', error: true });
+      }
 
-            if (!server || server.created_by.toString() !== userId.toString()) {
-                return reply.status(401).send({ message: 'Unauthorized' });
-            }
+      if (String(server.created_by) !== String(userId)) {
+        return reply
+          .code(403)
+          .send({ message: 'Unauthorized', error: true });
+      }
 
-            // Delete related scenes
-            await Scene.deleteMany({ server_id: serverId });
+      await Scene.deleteMany({ server_id: serverId });
 
-            // Delete the server
-            const deleteResult = await Server.deleteOne({ _id: serverId });
-
-            if (deleteResult.deletedCount > 0) {
-                return { message: 'success' };
-            } else {
-                return reply.status(500).send({ message: 'Error deleting server' });
-            }
-        } catch (error) {
-            console.error('Error deleting server:', error);
-            return reply.status(500).send({
-                message: 'Error deleting server',
-                error: error.message
-            });
-        }
-    });
-
-    // Update server
-    fastify.post('/update', async (request, reply) => {
-        try {
-            if (!request.user) {
-                return reply.status(401).send({
-                    message: 'Unauthorized',
-                    error: true
-                });
-            }
-
-            const { id: serverId, name } = request.body;
-            const userId = request.user.id;
-
-            if (!serverId || !name) {
-                return reply.status(400).send({
-                    message: 'Invalid input',
-                    error: 'Server ID or name is missing.'
-                });
-            }
-
-            const server = await Server.findById(serverId);
-
-            if (!server || server.created_by.toString() !== userId.toString()) {
-                return reply.status(401).send({
-                    message: 'Unauthorized',
-                    error: 'You do not have permission to update this server.'
-                });
-            }
-
-            const updateResult = await Server.updateOne(
-                { _id: serverId },
-                { $set: { name: name }}
-            );
-
-            if (updateResult.modifiedCount > 0) {
-                return { message: 'success' };
-            } else {
-                return {
-                    message: 'success',
-                    error: 'No documents were modified.'
-                };
-            }
-        } catch (error) {
-            console.error('Error updating server:', error);
-            return reply.status(500).send({
-                message: 'Error updating server',
-                error: error.message
-            });
-        }
-    });
-}
-
-module.exports = routes;
+      const result = await Servers.deleteOne({ _id: serverId });
+      if (result.deletedCount > 0) {
+        return reply.code(200).send({ message: 'success' });
+      } else {
+        return reply.code(500).send({ message: 'Error deleting server', error: true });
+      }
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.code(500).send({
+        message: 'Error deleting server',
+        error: error.message
+      });
+    }
+  });
+};

@@ -163,14 +163,6 @@ utils = {
 
         return highestZIndexObject;
     },
-    
-    pluginExists: function(objName) {
-        try {
-            return typeof eval(objName) !== 'undefined';
-        } catch (e) {
-            return false;
-        }
-    },
 
     setZoomLevel: function(newZoomLevel) {
         localStorage.setItem('zoomLevel', game.zoomLevel);
@@ -227,59 +219,6 @@ utils = {
         });
     
         return result;
-    },
-
-    isMobileDevice: function() {
-        const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    
-        // Check for common mobile device user agent strings
-        if (/android/i.test(userAgent)) {
-            return true;
-        }
-        if (/iPad|iPhone|iPod/.test(userAgent) && !window.MSStream) {
-            return true;
-        }
-    
-        // For other mobile devices, check screen width as a fallback
-        return window.innerWidth <= 768;
-    },    
-
-    fullScreen: function() {
-        const element = document.documentElement; // Fullscreen target
-    
-        if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
-            // Enter fullscreen
-            if (element.requestFullscreen) {
-                element.requestFullscreen().catch((err) => {
-                    console.error(`Error attempting to enable fullscreen mode: ${err.message}`);
-                });
-            } else if (element.webkitRequestFullscreen) { // Safari
-                element.webkitRequestFullscreen();
-            } else if (element.msRequestFullscreen) { // IE/Edge
-                element.msRequestFullscreen();
-            }
-    
-            // On Android, trigger immersive mode
-            if (/android/i.test(navigator.userAgent)) {
-                document.addEventListener('fullscreenchange', () => {
-                    if (document.fullscreenElement) {
-                        // Request immersive mode on fullscreen
-                        window.scrollTo(0, 1);
-                    }
-                });
-            }
-        } else {
-            // Exit fullscreen
-            if (document.exitFullscreen) {
-                document.exitFullscreen().catch((err) => {
-                    console.error(`Error attempting to exit fullscreen mode: ${err.message}`);
-                });
-            } else if (document.webkitExitFullscreen) { // Safari
-                document.webkitExitFullscreen();
-            } else if (document.msExitFullscreen) { // IE/Edge
-                document.msExitFullscreen();
-            }
-        }
     },
 
     generateId: function () {

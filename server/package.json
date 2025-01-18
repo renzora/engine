@@ -3,26 +3,41 @@
   "version": "1.0.0",
   "description": "",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
-    "dev": "nodemon --watch . -e js,json,njk --legacy-watch server.js"
+    "dev": "nodemon --watch . -e js,json,njk --legacy-watch server.js | pino-pretty"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/cors": "^10.0.2",
+    "@fastify/formbody": "^8.0.2",
+    "@fastify/jwt": "^9.0.3",
+    "@fastify/rate-limit": "^10.2.2",
+    "@fastify/static": "^8.0.4",
+    "@fastify/view": "^10.0.2",
+    "@fastify/websocket": "^11.0.2",
     "bcrypt": "^5.1.1",
+    "canvas": "^3.0.1",
     "chalk": "^4.1.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "fastify": "^5.2.1",
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.12.0",
     "mongoose": "^8.9.5",
     "nodemon": "^3.1.9",
     "nunjucks": "^3.2.4",
+    "pino": "^9.6.0",
+    "pino-pretty": "^13.0.0",
+    "uniqid": "^5.4.0",
+    "util": "^0.12.5",
     "ws": "^8.16.0"
   }
 }

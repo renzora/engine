@@ -74,7 +74,7 @@ updateGameLogic: function(deltaTime) {
     lighting.updateLights();
     this.updateAnimatedTiles(deltaTime);
 
-    if(utils.pluginExists('weather_plugin')) {
+    if(ui.pluginExists('weather_plugin')) {
         weather_plugin.snow.update(deltaTime);
         weather_plugin.rain.update(deltaTime);
         weather_plugin.fireflys.update(deltaTime);
@@ -138,7 +138,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
     this.spriteCount = 0;
 
         // If the editor's grid is active, render it last
-        if (utils.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
+        if (ui.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
             editor_context_menu_window.renderIsometricGrid();
         }
 
@@ -299,7 +299,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
             this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
             this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
 
-            if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
+            if (ui.pluginExists("editor_layers") && editor_layers.needsUpdate) {
                 const objectName = tileData.n || "Unnamed Object";
                 itemsToAdd.push({
                     name: objectName,
@@ -348,7 +348,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
     // Render in sorted order
     this.renderQueue.forEach(item => item.draw());
 
-    if (utils.pluginExists("editor_layers") && editor_layers.needsUpdate) {
+    if (ui.pluginExists("editor_layers") && editor_layers.needsUpdate) {
         itemsToAdd.forEach(itemInfo => {
             editor_layers.addItemToLayer({
                 n: itemInfo.name,

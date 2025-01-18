@@ -1,39 +1,45 @@
-// server/routes/ajax.js
-const express = require('express');
-const path = require('path');
-const fs = require('fs').promises;
-const router = express.Router();
+import path from 'path';
+import fs from 'fs';
 
-router.post('*', async (req, res) => {
-    try {
-        // Remove '/api/ajax' from the beginning of the path
-        const relativePath = req.path;
-        
-        // Construct the full path to the template in the client directory
-        const templatePath = path.join('client', relativePath);
-        
-        // Check if template exists
-        try {
-            await fs.access(path.join(process.cwd(), templatePath));
-        } catch (error) {
-            return res.status(404).send('Template not found');
+const clientRootDir = path.join(process.cwd(), 'client');
+
+export const ajaxRoutes = async (fastify, opts) => {
+    fastify.get('/*', async (request, reply) => {
+        const filePath = request.params['*'];
+        const ext = path.extname(filePath).toLowerCase();
+        const resolvedPath = path.join(clientRootDir, filePath);
+
+        if (!fs.existsSync(resolvedPath)) {
+            console.error(`File not found: ${resolvedPath}`);
+            reply.code(404).send({ message: `File not found: ${resolvedPath}` });
+            return;
         }
 
-        // Prevent directory traversal
-        const normalizedPath = path.normalize(templatePath);
-        if (!normalizedPath.startsWith('client/')) {
-            return res.status(403).send('Access denied');
+        if (ext === '.njk') {
+            try {
+                return reply.view(filePath, {
+                    auth: request.auth,
+                });
+            } catch (err) {
+                console.error('Template rendering failed:', err.message);
+                reply.code(500).send({ message: 'Template rendering failed', error: err.message });
+            }
+            return;
         }
 
-        // Render the template using nunjucks
-        res.render(templatePath, {
-            // Add any template data here if needed
-        });
+        const fileContents = fs.readFileSync(resolvedPath, 'utf8');
 
-    } catch (error) {
-        console.error('Template rendering error:', error);
-        res.status(500).send('Failed to render template');
-    }
-});
+        if (ext === '.html') {
+            reply.type('text/html').send(fileContents);
+            return;
+        }
 
-module.exports = router;
+        if (ext === '.js') {
+            reply.type('application/javascript').send(fileContents);
+            return;
+        }
+
+        console.warn(`Unsupported file type: ${ext}`);
+        reply.code(415).send({ message: 'Unsupported file type' });
+    });
+};

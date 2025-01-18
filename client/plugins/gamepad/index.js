@@ -3,6 +3,7 @@ window[id] = {
     directions: { up: false, down: false, left: false, right: false },
 
     start: function() {
+        assets.preload([{ name: 'gamepad_buttons', path: 'plugins/gamepad/icons.png' }]);
         input.assign('gamepada', (e) => this.gamepadAButton(e));
         input.assign('gamepadb', (e) => this.gamepadBButton(e));
         input.assign('gamepadyPressed', gamepad.throttle((e) => this.gamepadYButtonPressed(e), 1000));
@@ -25,12 +26,12 @@ window[id] = {
     },
 
     unmount: function() {
-
+        assets.unload('gamepad_buttons');
     },
 
     gamepadXButton: function(e) {
         console.log("X button held down");
-        if(!utils.pluginExists('ui_overlay_window')) return;
+        if(!ui.pluginExists('ui_overlay_window')) return;
 
         if (ui_overlay_window.remainingBullets < ui_overlay_window.bulletsPerRound && ui_overlay_window.remainingRounds > 0 && !ui_overlay_window.isReloading) {
             console.log("Starting manual reload");
@@ -43,11 +44,10 @@ window[id] = {
 
     gamepadAButton: function(e) {
         console.log("X button held down");
-        game.mainSprite.jump();
     },
     
     gamepadXButtonReleased: function(e) {
-        if(!utils.pluginExists('ui_overlay_window')) return;
+        if(!ui.pluginExists('ui_overlay_window')) return;
         if (ui_overlay_window.isReloading) {
             console.log("X button released - Stopping reload");
             ui_overlay_window.stopReloading();
@@ -56,42 +56,29 @@ window[id] = {
     },
 
     gamepadYButtonPressed: function () {
-        if (!game.mainSprite || !game.sprites[game.playerid] || !utils.pluginExists('ui_overlay_window')) return;
+        if (!game.mainSprite || !game.sprites[game.playerid] || !ui.pluginExists('ui_overlay_window')) return;
 
         this.isYButtonHeld = true;
     
         const currentSprite = game.mainSprite;
         const currentPlayerId = game.playerid;
     
-        const radius = 32; // Define the radius in pixels (2 tiles for 16x16 tiles)
+        const radius = 32;
     
         if (currentSprite.isVehicle) {
-            // Switch back to the player
             const playerSprite = game.sprites[currentSprite.riderId || currentPlayerId];
             if (playerSprite) {
-                // Update player's position to match the vehicle's position
                 playerSprite.x = currentSprite.x;
                 playerSprite.y = currentSprite.y;
-    
-                // Restore visibility of the player sprite
                 playerSprite.activeSprite = true;
-    
-                // Update the player ID
                 game.playerid = playerSprite.id;
-    
-                // Reset the rider ID on the vehicle
                 currentSprite.riderId = null;
-
                 plugin.show('ui_inventory_window');
-
             }
 
         } else {
-            // Find a nearby vehicle within the specified radius
             const nearbyVehicle = Object.values(game.sprites).find(sprite => {
                 if (!sprite.isVehicle) return false;
-    
-                // Calculate distance between player and vehicle
                 const dx = sprite.x - currentSprite.x;
                 const dy = sprite.y - currentSprite.y;
                 const distance = Math.sqrt(dx * dx + dy * dy);
@@ -99,13 +86,9 @@ window[id] = {
             });
     
             if (nearbyVehicle) {
-                // Update playerid to the vehicle's id and store the player's id in the vehicle
                 game.playerid = nearbyVehicle.id;
                 nearbyVehicle.riderId = currentPlayerId;
-    
-                // Hide the player sprite
                 currentSprite.activeSprite = false;
-
                 plugin.minimize('ui_inventory_window');
                 plugin.front('ui_overlay_window');
             } else {
@@ -114,9 +97,7 @@ window[id] = {
 
         }
     
-        // Update the mainSprite to reflect the new active sprite
         game.mainSprite = game.sprites[game.playerid];
-    
         console.log(`Switched control to sprite with ID: ${game.playerid}`);
     },
     
@@ -134,11 +115,10 @@ window[id] = {
             return;
         }
     
-        const pressure = event?.detail?.pressure || 0; // pressure from the trigger
+        const pressure = event?.detail?.pressure || 0;
     
         if (sprite.isVehicle) {
             if (pressure > 0) {
-                // If vehicle is moving forward, brake
                 if (sprite.currentSpeed > 0) {
                     sprite.currentSpeed = Math.max(
                         0,
@@ -146,7 +126,6 @@ window[id] = {
                     );
                     console.log("Braking Vehicle, Current Speed:", sprite.currentSpeed);
                 } else {
-                    // Go full reverse speed
                     sprite.currentSpeed = Math.max(
                         -sprite.maxSpeed,
                         sprite.currentSpeed - (sprite.acceleration * 10) * pressure * (game.deltaTime / 16.67)
@@ -154,11 +133,9 @@ window[id] = {
                     console.log("Reversing Vehicle at higher speed, Current Speed:", sprite.currentSpeed);
                 }
     
-                // Update vehicle movement
                 sprite.moveVehicle();
             }
         } else {
-            // Non-vehicle logic remains unchanged
             if (gamepad.buttons.includes('l2')) {
                 if (sprite) {
                     sprite.targetAim = true;
@@ -185,26 +162,21 @@ window[id] = {
         console.log("R2 Pressure (from event):", pressure);
     
         if (sprite.isVehicle) {
-            // Acceleration logic for vehicles
             if (pressure > 0) {
                 sprite.currentSpeed = Math.min(
                     sprite.maxSpeed,
-                    sprite.currentSpeed + sprite.acceleration * pressure * (game.deltaTime / 16.67) // Scale with deltaTime
+                    sprite.currentSpeed + sprite.acceleration * pressure * (game.deltaTime / 16.67)
                 );
                 console.log("Accelerating Vehicle, Current Speed:", sprite.currentSpeed);
             } else {
-                sprite.currentSpeed = Math.max(
-                    0,
-                    sprite.currentSpeed - sprite.braking * (game.deltaTime / 16.67) // Smooth deceleration
+                sprite.currentSpeed = Math.max(0, sprite.currentSpeed - sprite.braking * (game.deltaTime / 16.67)
                 );
                 console.log("Decelerating Vehicle, Current Speed:", sprite.currentSpeed);
             }
     
-            // Move the vehicle
             sprite.moveVehicle();
         } else if (sprite.canShoot) {
-            // Shooting logic
-            if(utils.pluginExists('ui_overlay_window')) {
+            if(ui.pluginExists('ui_overlay_window')) {
             if (sprite.targetAim && sprite.canShoot) {
                 if (ui_overlay_window.remainingBullets > 0) {
                     sprite.dealDamage();
@@ -217,12 +189,12 @@ window[id] = {
                     if (ui_overlay_window.remainingRounds > 0) {
                         console.log("Out of bullets! Reload needed.");
                         audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
-                        if(utils.pluginExists('notif')) notif.show("no_bullets_notif", `Out of bullets! Press 'X' to reload.`, true);
+                        if(ui.pluginExists('notif')) notif.show("no_bullets_notif", `Out of bullets! Press 'X' to reload.`, true);
                         sprite.overrideAnimation = null;
                     } else {
                         console.log("No bullets and no rounds left");
                         audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
-                        if(utils.pluginExists('ui_overlay_window')) ui_overlay_window.noBulletsLeft();
+                        if(ui.pluginExists('ui_overlay_window')) ui_overlay_window.noBulletsLeft();
                     }
                 }
             }
@@ -284,7 +256,7 @@ window[id] = {
     },
 
     handleLeftAxes: function(axes) {
-        const threshold = 0.1; // Deadzone threshold
+        const threshold = 0.1;
         const leftStickX = axes[0];
         const leftStickY = axes[1];
     
@@ -295,21 +267,15 @@ window[id] = {
         const sprite = game.mainSprite;
     
         if (sprite.isVehicle) {
-            // Adjust steering gradually via angle updates
             if (Math.abs(leftStickX) > threshold) {
                 sprite.updateVehicleDirection(leftStickX, game.deltaTime);
             } else {
-                // If no steering input, angle remains unchanged
                 sprite.updateVehicleDirection(0, game.deltaTime); 
             }
     
-            // Handle acceleration/braking with triggers (already done in gamepad triggers)
-            // If neither R2 nor L2 are pressed significantly, apply gentle deceleration
             const r2Pressure = gamepad.axesPressures.rightTrigger || 0;
             const l2Pressure = gamepad.axesPressures.leftTrigger || 0;
     
-            // Acceleration handled in gamepadRightTrigger, braking in gamepadLeftTrigger.
-            // If no input on R2:
             if (r2Pressure < threshold && l2Pressure < threshold) {
                 sprite.currentSpeed = Math.max(
                     0,
@@ -317,10 +283,8 @@ window[id] = {
                 );
             }
     
-            // Move the vehicle after updates
             sprite.moveVehicle();
         } else {
-            // Non-vehicle logic remains the same
             gamepad.directions = { left: false, right: false, up: false, down: false };
     
             if (Math.abs(leftStickX) > threshold || Math.abs(leftStickY) > threshold) {
@@ -559,7 +523,7 @@ window[id] = {
     },
 
     gamepadStart: function() {
-        plugin.load({ id: 'overview_menu', url: 'menus/overview/index.php', reload: true, drag: false, hidden: false })
+        plugin.load({ id: 'overview_menu', url: 'overview/index.php', reload: true, drag: false, hidden: false })
     },
 
     aimTool: function() {

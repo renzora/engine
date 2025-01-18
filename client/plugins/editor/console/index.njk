@@ -19,6 +19,18 @@ window[id] = {
     eventListeners: [],
     tab_name: null,
     allowToggle: true,
+    iconPositions: {
+        globe: 0,
+        inventory: 1,
+        cloud: 2,
+        lightbulb: 3,
+        music: 4,
+        script: 5,
+        key: 6,
+        info: 7,
+        settings: 10,
+        full_screen: 11
+    },
 
     start: function() {
         this.load_tab_buttons();
@@ -32,10 +44,51 @@ window[id] = {
             });
     },
 
+    unmount: function() {
+        this.eventListeners.forEach(({ element, event, handler }) => {
+            element.removeEventListener(event, handler);
+        });
+        this.eventListeners = [];
+        this.unmountCurrentTab();
+        assets.unload('console_window_icons');
+        console.log("All event listeners have been removed.");
+    },
+
     bindGamepadButtons: function() {
         this.bButton = gamepad.throttle(this.bButton.bind(this), 200);
         this.upButton = gamepad.throttle(this.upButton.bind(this), 200);
         this.downButton = gamepad.throttle(this.downButton.bind(this), 200);
+    },
+
+  setupTabIcons: function() {
+    const buttons = document.querySelectorAll('#console_window .console_tab');
+    buttons.forEach(button => {
+      const iconDiv = button.querySelector('div');
+      if (!iconDiv) return;
+
+      const iconName = iconDiv.classList[0];
+      if (!iconName) return;
+
+      this.setTabIcon(button, iconDiv, iconName);
+    });
+  },
+
+    setTabIcon: function(button, iconDiv, iconName) {
+        const iconSprite = assets.use('console_window_icons');
+        if (!iconSprite) return;
+        const iconIndex = this.iconPositions[iconName];
+        if (typeof iconIndex === 'undefined') {
+            console.warn(`No icon mapping found for: ${iconName}`);
+            return;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = 32;
+        canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        const offsetX = iconIndex * 32;
+        ctx.drawImage(iconSprite, offsetX, 0, 32, 32, 0, 0, 32, 32);
+        button.removeChild(iconDiv);
+        button.appendChild(canvas);
     },
 
     bButton: function() {
@@ -54,14 +107,16 @@ window[id] = {
     },
 
     load_tab_buttons: function(id) {
+        assets.preload([{ name: 'console_window_icons', path: 'plugins/editor/console/icons.png' }]);
         console.log(id);
         ui.ajax({
           method: 'GET',
           data: 'mode='+id,
-          url: `plugins/editor/console/mode.njk`,
+          url: `plugins/editor/console/tabs.njk`,
           success: function (data) {
             ui.html('.console_window_tab_buttons', data, 'replace');
             console_window.setupTabListeners();
+            console_window.setupTabIcons();
           },
           error: function (err) {
             console.error("Failed to load content for tab:", target, err);
@@ -158,8 +213,8 @@ handleTabClick: function(tab, index) {
         if (contentDiv) {
             contentDiv.innerHTML = ''; 
             ui.ajax({
-                method: 'POST',
-                url: `/api/ajax/plugins/editor/console/tabs/${target}/index.njk`,
+                method: 'GET',
+                url: `plugins/editor/console/tabs/${target}/index.njk`,
                 success: function(data) {
                     ui.html(contentDiv, data, 'replace');
                     console.log(target, "loaded successfully");
@@ -207,15 +262,6 @@ handleTabClick: function(tab, index) {
 
     isMenuActive: function() {
         return this.isOpen;
-    },
-
-    unmount: function() {
-        this.eventListeners.forEach(({ element, event, handler }) => {
-            element.removeEventListener(event, handler);
-        });
-        this.eventListeners = [];
-        this.unmountCurrentTab(); 
-        console.log("All event listeners have been removed.");
     }
 };
   </script>

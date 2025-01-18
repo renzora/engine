@@ -1,6 +1,7 @@
 sprite = {
     margin: 0,
-    create: function (options) {
+
+    create: function(options) {
         let newSprite = {
             id: options.id,
             width: options.isVehicle ? options.width || 44 : options.isAnimal ? options.width || 48 : 16,
@@ -67,17 +68,16 @@ sprite = {
         };
 
         Object.setPrototypeOf(newSprite, this.SpritePrototype);
-    
+
         newSprite.x = options.x || 0;
         newSprite.y = options.y || 0;
         newSprite.angle = (newSprite.directionIndex / 48) * Math.PI * 2;
-    
+
         if (options.boundaryX !== undefined && options.boundaryY !== undefined) {
             newSprite.boundary = {
                 x: options.boundaryX,
                 y: options.boundaryY
             };
-
             setInterval(() => {
                 const targetTileX = Math.floor(Math.random() * (newSprite.boundary.x + 1));
                 const targetTileY = Math.floor(Math.random() * (newSprite.boundary.y + 1));
@@ -87,31 +87,43 @@ sprite = {
 
         if (options.isPlayer) {
             console.log(`Adding light for player: ${newSprite.id}`);
-            const lightColor = { r: 255, g: 255, b: 255 }; // White light
-            const lightRadius = 30; // Adjust the radius as needed
-            const lightIntensity = 0.3; // Adjust the intensity as needed
-            lighting.addLight(newSprite.id + '_light', newSprite.x + 8, newSprite.y + 8, lightRadius, lightColor, lightIntensity, 'playerLight', true, 0, 0);
+            const lightColor = { r: 255, g: 255, b: 255 }; 
+            const lightRadius = 30; 
+            const lightIntensity = 0.3; 
+            lighting.addLight(
+                newSprite.id + '_light',
+                newSprite.x + 8,
+                newSprite.y + 8,
+                lightRadius,
+                lightColor,
+                lightIntensity,
+                'playerLight',
+                true,
+                0,
+                0
+            );
         }
 
         game.sprites[options.id] = newSprite;
-    
         return newSprite;
     },
 
     SpritePrototype: {
         draw: function() {
             if (!this.activeSprite) return;
-            
-            const spriteKey = this.animalType || this.id;
-            const spriteData = assets.use('spritesData')[spriteKey];
-        
+
+            const spriteData = assets.use('spriteData')[this.animalType || 'character'];
             if (!spriteData) {
-                console.error(`Sprite data not found for key: ${spriteKey}`);
+                console.error(`Sprite data not found for key: ${this.animalType || 'character'}`);
                 return;
             }
-        
+
             const image = assets.use(spriteData.image);
-            let row = this.isVehicle ? this.directionIndex : (this.direction || 'S');
+
+            let row = this.isVehicle 
+                ? this.directionIndex 
+                : (this.direction || 'S');
+
             let flip = false;
 
             if (!this.isVehicle) {
@@ -121,27 +133,27 @@ sprite = {
                     flip = true;
                 }
             }
-        
+
             if (row === undefined) {
-                console.error(`Invalid direction for sprite key: ${spriteKey}`);
+                console.error(`Invalid direction for sprite key: ${this.animalType || 'character'}`);
                 return;
             }
-        
+
             const animation = spriteData.animations[this.currentAnimation];
             if (!animation) {
-                console.error(`Animation '${this.currentAnimation}' not found for key: ${spriteKey}`);
+                console.error(`Animation '${this.currentAnimation}' not found for key: ${this.animalType || 'character'}`);
                 return;
             }
-        
+
             const frameIndex = animation.frames[this.currentFrame];
             const sx = (frameIndex - 1) * spriteData.width;
             const sy = row * spriteData.height;
-        
+
             game.ctx.save();
-        
+
             const offsetX = -spriteData.width / 2;
             const offsetY = -spriteData.height / 2;
-        
+
             if (flip) {
                 game.ctx.translate(
                     Math.floor(this.x + this.width / 2), 
@@ -154,7 +166,7 @@ sprite = {
                     Math.floor(this.y + this.height / 2)
                 );
             }
-        
+
             game.ctx.drawImage(
                 image,
                 sx,
@@ -166,7 +178,7 @@ sprite = {
                 spriteData.width * this.scale,
                 spriteData.height * this.scale
             );
-        
+
             game.ctx.restore();
             utils.tracker('sprite.draw');
         },
@@ -174,107 +186,78 @@ sprite = {
         drawShadow: function() {
             if (!this.activeSprite) return;
             game.ctx.save();
-        
+
             if (this.isVehicle) {
-                // -------------------------------------------------
-                // VEHICLE SHADOW
-                // -------------------------------------------------
-                // Move context to the vehicle's center
                 const centerX = this.x + (this.width * this.scale / 2);
                 const centerY = this.y + (this.height * this.scale / 2);
                 game.ctx.translate(centerX, centerY);
-        
-                // Rotate the shadow by vehicle's angle so it "points" the same way
+
                 game.ctx.rotate(this.angle);
-        
-                // Larger, more "vehicle-like" ellipse
+
                 const shadowWidth = this.width * this.scale * 0.5;
                 const shadowHeight = this.height * this.scale * 0.3;
-        
-                // Slightly opaque fill
+
                 game.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
                 game.ctx.beginPath();
                 game.ctx.ellipse(0, 0, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
                 game.ctx.fill();
             } else {
-                // -------------------------------------------------
-                // REGULAR SPRITE (HUMAN / ANIMAL) SHADOW
-                // -------------------------------------------------
                 game.ctx.translate(this.x, this.y + (this.height * this.scale / 2) - 14);
-        
+                
                 const shadowBaseWidth = this.width * this.scale * 0.4;
                 const shadowBaseHeight = this.height * this.scale * 0.1;
                 const shadowScaleFactor = 0.1;
                 const shadowOpacityFactor = 0.03;
-        
-                // This "frameFactor" produces the little bobbing effect
+
                 const frameFactor = Math.abs(Math.sin((this.currentFrame % 8) * (Math.PI / 4)));
                 const shadowWidth = shadowBaseWidth + (shadowScaleFactor * frameFactor * shadowBaseWidth);
                 const shadowHeight = shadowBaseHeight + (shadowScaleFactor * frameFactor * shadowBaseHeight);
                 const shadowOpacity = 0.05 + (shadowOpacityFactor * frameFactor);
-        
+
                 const shadowX = (this.width / 2) * this.scale;
                 const shadowY = (this.height - 1) * this.scale - 7;
-        
+
                 game.ctx.shadowBlur = 15;
                 game.ctx.fillStyle = `rgba(0, 0, 0, ${shadowOpacity})`;
                 game.ctx.beginPath();
                 game.ctx.ellipse(shadowX, shadowY, shadowWidth, shadowHeight, 0, 0, 2 * Math.PI);
                 game.ctx.fill();
             }
-        
+
             game.ctx.restore();
         },
 
         updateVehicleDirection: function(turnStrength, deltaTime) {
-            // turnStrength is from leftStickX input, range approx. [-1, 1]
-            
-            // Gradually adjust angle based on turnStrength, speed, and steeringSensitivity
             const turnRate = this.steeringSensitivity * (this.currentSpeed / this.maxSpeed);
             this.angle += turnStrength * turnRate * (deltaTime / 1000);
 
-            // NEW: Apply a bit of speed reduction whenever turning
-            //      The stronger the turn (|turnStrength|), the greater the deceleration
             if (Math.abs(turnStrength) > 0.01) {
-                // Deceleration factor can be tweaked
-                const turnDeceleration = 10; // Decrease speed by up to ~10 units/sec
+                const turnDeceleration = 10;
                 this.currentSpeed = Math.max(
                     0,
                     this.currentSpeed - turnDeceleration * Math.abs(turnStrength) * (deltaTime / 1000)
                 );
             }
 
-            // Normalize angle between 0 and 2*PI
             this.angle %= (2 * Math.PI);
             if (this.angle < 0) {
                 this.angle += 2 * Math.PI;
             }
-    
-            // Convert angle back to directionIndex (0 to 47, for 48 frames)
+
             this.directionIndex = Math.round((this.angle / (2 * Math.PI)) * 48) % 48;
         },
 
-        /**
-         * -----------------
-         * MOVE VEHICLE
-         * -----------------
-         * Updated to include collision and boundary checking,
-         * just like the human sprites do.
-         */
         moveVehicle: function() {
             if (this.currentSpeed !== 0) {
-                // 1) Calculate new position based on speed and angle
                 let newX = this.x + Math.cos(this.angle) * this.currentSpeed * (game.deltaTime / 1000);
                 let newY = this.y + Math.sin(this.angle) * this.currentSpeed * (game.deltaTime / 1000);
 
-                // 2) Check collisions on each axis (just like in update())
                 let collisionResultX = collision.check(newX, this.y, this);
                 let moveX = !collisionResultX.collisionDetected;
 
                 let collisionResultY = collision.check(this.x, newY, this);
                 let moveY = !collisionResultY.collisionDetected;
 
-                // 3) Apply valid movement
                 if (moveX && moveY) {
                     this.x = newX;
                     this.y = newY;
@@ -284,14 +267,13 @@ sprite = {
                     this.y = newY;
                 }
 
-                // 4) Clamp to viewport boundaries
                 const margin = 0;
                 this.x = Math.max(
-                    margin,
+                    margin, 
                     Math.min(this.x, game.worldWidth - this.width * this.scale - margin)
                 );
                 this.y = Math.max(
-                    margin,
+                    margin, 
                     Math.min(this.y, game.worldHeight - this.height * this.scale - margin)
                 );
             }
@@ -302,14 +284,13 @@ sprite = {
             if (this.overrideAnimation && this.overrideAnimation !== newAnimation) {
                 return;
             }
-        
-            const spriteData = assets.use('spritesData')[this.animalType || 'character'];
-        
+
+            const spriteData = assets.use('spriteData')[this.animalType || 'character'];
             if (!spriteData || !spriteData.animations[newAnimation]) {
                 console.error(`Animation '${newAnimation}' not found for type: ${this.animalType || 'character'}`);
                 return;
             }
-        
+
             if (this.currentAnimation !== newAnimation) {
                 this.currentAnimation = newAnimation;
                 utils.tracker('sprite.changeAnimation');
@@ -374,8 +355,8 @@ sprite = {
                 healthBar.style.width = healthPercentage + '%';
                 healthBar.nextElementSibling.innerText = `${Math.round(healthPercentage)}%`;
             }
-        },    
-    
+        },
+
         updateEnergy: function(amount) {
             if (typeof amount === "string") {
                 amount = parseInt(amount);
@@ -390,9 +371,8 @@ sprite = {
             }
         },
 
-        animate: function () {
-            const spriteData = assets.use('spritesData')[this.animalType || 'character'];
-        
+        animate: function() {
+            const spriteData = assets.use('spriteData')[this.animalType || 'character'];
             if (!spriteData || !spriteData.animations) {
                 console.error(`Animation data not found for sprite type: ${this.animalType || 'character'}`);
                 return;
@@ -421,8 +401,8 @@ sprite = {
                 return;
             }
         
-            var currentX = Math.floor(this.x / 16);
-            var currentY = Math.floor(this.y / 16);
+            const currentX = Math.floor(this.x / 16);
+            const currentY = Math.floor(this.y / 16);
             this.path = this.calculatePath(currentX, currentY, tileX, tileY);
             this.pathIndex = 0;
             this.isMovingToTarget = true;
@@ -450,11 +430,9 @@ sprite = {
                 return [];
             }
         
-            const path = result.map(function(node) {
+            return result.map(function(node) {
                 return { x: node.x, y: node.y, alpha: 1 };
             });
-        
-            return path;
         },
 
         moveAlongPath: function() {
@@ -481,18 +459,14 @@ sprite = {
                 this.x = targetX;
                 this.y = targetY;
                 this.pathIndex++;
-        
                 if (this.pathIndex > 1) {
                     this.path.shift();
                     this.pathIndex--;
                 }
             } else {
                 const angle = Math.atan2(deltaY, deltaX);
-                const newX = this.x + Math.cos(angle) * this.speed * (game.deltaTime / 1000);
-                const newY = this.y + Math.sin(angle) * this.speed * (game.deltaTime / 1000);
-        
-                this.x = newX;
-                this.y = newY;
+                this.x += Math.cos(angle) * this.speed * (game.deltaTime / 1000);
+                this.y += Math.sin(angle) * this.speed * (game.deltaTime / 1000);
         
                 if (Math.abs(deltaX) > Math.abs(deltaY)) {
                     this.direction = deltaX > 0 ? 'E' : 'W';
@@ -531,9 +505,9 @@ sprite = {
                 let dy = 0;
 
                 if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
-                if (this.directions['left']) dx -= this.speed * (deltaTime / 1000);
-                if (this.directions['down']) dy += this.speed * (deltaTime / 1000);
-                if (this.directions['up']) dy -= this.speed * (deltaTime / 1000);
+                if (this.directions['left'])  dx -= this.speed * (deltaTime / 1000);
+                if (this.directions['down'])  dy += this.speed * (deltaTime / 1000);
+                if (this.directions['up'])    dy -= this.speed * (deltaTime / 1000);
 
                 if (dx !== 0 && dy !== 0) {
                     const norm = Math.sqrt(dx * dx + dy * dy);
@@ -554,13 +528,10 @@ sprite = {
                     newX = isNaN(newX) ? this.x : newX;
                     newY = isNaN(newY) ? this.y : newY;
 
-                    let moveX = true;
-                    let moveY = true;
-
-                    const collisionResultX = collision.check(newX, this.y, this);
-                    moveX = !collisionResultX.collisionDetected;
-                    const collisionResultY = collision.check(this.x, newY, this);
-                    moveY = !collisionResultY.collisionDetected;
+                    let collisionResultX = collision.check(newX, this.y, this);
+                    let moveX = !collisionResultX.collisionDetected;
+                    let collisionResultY = collision.check(this.x, newY, this);
+                    let moveY = !collisionResultY.collisionDetected;
 
                     if (moveX && moveY) {
                         this.x = newX;
@@ -619,16 +590,16 @@ sprite = {
             const maxRadius = this.targetRadius;
         
             for (let id in game.sprites) {
-                const sprite = game.sprites[id];
+                const targetSprite = game.sprites[id];
         
-                if (sprite.isEnemy) {
-                    const spriteCenterX = sprite.x + sprite.width / 2;
-                    const spriteCenterY = sprite.y + sprite.height / 2;
+                if (targetSprite.isEnemy) {
+                    const spriteCenterX = targetSprite.x + targetSprite.width / 2;
+                    const spriteCenterY = targetSprite.y + targetSprite.height / 2;
                     const distance = Math.sqrt((aimX - spriteCenterX) ** 2 + (aimY - spriteCenterY) ** 2);
         
                     if (distance <= maxRadius) {
                         const damage = Math.max(0, 10 - (distance / maxRadius) * 10);
-                        sprite.updateHealth(-damage);
+                        targetSprite.updateHealth(-damage);
                         console.log(`Enemy ${id} took ${damage.toFixed(2)} damage`);
                         effects.shakeMap(300, 2);
                     }

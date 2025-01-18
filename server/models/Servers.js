@@ -1,27 +1,29 @@
-const mongoose = require('mongoose');
+import mongoose from 'mongoose';
 
 const serverSchema = new mongoose.Schema({
     name: {
         type: String,
-        required: true
+        required: true,
     },
     public: {
         type: Boolean,
-        default: true
+        default: true,
     },
     events: {
         type: Boolean,
-        default: false
+        default: false,
     },
     created_by: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
-        required: true
+        required: true,
     },
     created_at: {
         type: Date,
-        default: Date.now
-    }
+        default: Date.now,
+    },
 });
 
-module.exports = mongoose.model('Server', serverSchema);
+const Servers = mongoose.models.Server || mongoose.model('Servers', serverSchema);
+
+export { Servers };
