@@ -20,14 +20,22 @@ async function build() {
     assetNames: 'img/[name]-[hash]',
     publicPath: '../',
     target: ['es2020'],
-    drop: ['console', 'debugger'],
+    
+    // COMMENTED OUT to keep console logs and debugger statements
+    // drop: ['console', 'debugger'],
+
     minifyIdentifiers: true,
     minifySyntax: true,
     minifyWhitespace: true,
     treeShaking: true,
     charset: 'utf8',
-    mangleProps: /^_/,
-    pure: ['console.log'],
+
+    // COMMENTED OUT to avoid mangling properties that start with "_"
+    // mangleProps: /^_/,
+
+    // COMMENTED OUT so console.log calls remain intact
+    // pure: ['console.log'],
+
     format: 'esm',
     platform: 'browser'
   });
@@ -44,18 +52,25 @@ async function build() {
       const minified = await minify(code, {
         compress: {
           dead_code: true,
-          drop_console: true,
+
+          // COMMENTED OUT to keep console.* calls
+          // drop_console: true,
+
           drop_debugger: true,
           keep_fargs: false,
           passes: 3,
-          pure_funcs: ['console.log'],
+
+          // COMMENTED OUT so console.log calls remain intact
+          // pure_funcs: ['console.log'],
+
           unsafe: true,
           unsafe_math: true
         },
         mangle: {
-          properties: {
-            regex: /^_/
-          }
+          // COMMENTED OUT to avoid mangling properties starting with "_"
+          // properties: {
+          //   regex: /^_/
+          // }
         },
         format: {
           comments: false

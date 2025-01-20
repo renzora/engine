@@ -21,26 +21,28 @@ export interface IScene extends Document {
 }
 
 const sceneSchema = new Schema<IScene>({
-  server_id: Schema.Types.ObjectId,
-  name: String,
-  created_by: {
-    type: Schema.Types.ObjectId,
-    ref: 'User',
+  server_id: { type: mongoose.Types.ObjectId, required: true },
+  name: { type: String, default: 'new scene' },
+  created_by: { type: mongoose.Types.ObjectId, ref: 'User' },
+  created_at: { type: Number, default: () => Date.now() },
+  roomData: {
+    type: Object,
+    default: {
+      items: [],
+    },
   },
-  created_at: Number,
-  roomData: Object,
-  public: Number,
-  width: Number,
-  height: Number,
-  startingX: Number,
-  startingY: Number,
-  bg: String,
-  facing: String,
-  fireflys: Number,
-  clouds: Number,
-  rain: Number,
-  snow: Number,
-  order: Number,
+  public: { type: Number, default: 0 },
+  width: { type: Number, default: 640 },
+  height: { type: Number, default: 640 },
+  startingX: { type: Number, default: 288 },
+  startingY: { type: Number, default: 208 },
+  bg: { type: String, default: '' },
+  facing: { type: String, default: 's' },
+  fireflys: { type: Number, default: 0 },
+  clouds: { type: Number, default: 0 },
+  rain: { type: Number, default: 0 },
+  snow: { type: Number, default: 0 },
+  order: { type: Number, default: 0 },
 });
 
 export const Scene =

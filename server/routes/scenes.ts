@@ -31,40 +31,75 @@ export async function scenesRoutes(fastify: FastifyInstance) {
       if (!request.auth || !request.user) {
         return reply.code(401).send({ message: 'Unauthorized', error: true });
       }
-
-      const { serverId, name = 'new scene' } = request.body as {
+  
+      const {
+        serverId,
+        name = 'new scene',
+        roomData,
+        public: isPublic,
+        width,
+        height,
+        startingX,
+        startingY,
+        bg,
+        facing,
+        fireflys,
+        clouds,
+        rain,
+        snow,
+      } = request.body as {
         serverId: string;
         name?: string;
+        roomData?: any;
+        public?: number;
+        width?: number;
+        height?: number;
+        startingX?: number;
+        startingY?: number;
+        bg?: string;
+        facing?: string;
+        fireflys?: number;
+        clouds?: number;
+        rain?: number;
+        snow?: number;
       };
-
+  
       if (!serverId) {
         return reply.code(400).send({ message: 'Missing serverId', error: true });
       }
-
+  
       const sceneCount = await Scene.countDocuments({ server_id: serverId });
-
+  
       const newScene = await Scene.create({
         server_id: serverId,
         name,
         created_by: request.user._id,
         created_at: Date.now(),
+        roomData,
+        public: isPublic,
+        width,
+        height,
+        startingX,
+        startingY,
+        bg,
+        facing,
+        fireflys,
+        clouds,
+        rain,
+        snow,
         order: sceneCount,
       });
-
+  
       return reply.code(200).send({
         message: 'success',
-        scene: {
-          id: newScene._id,
-          name: newScene.name,
-          order: newScene.order,
-          server_id: newScene.server_id,
-        },
+        scene: newScene.toObject(), 
       });
     } catch (err: any) {
       fastify.log.error('Error creating scene:', err);
       return reply.code(500).send({ message: 'server_error', error: err });
     }
   });
+  
 
   fastify.post('/edit_scene', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
@@ -126,7 +161,7 @@ export async function scenesRoutes(fastify: FastifyInstance) {
       const updates = orderedSceneIds.map((sceneId, index) => {
         return Scene.findOneAndUpdate(
           { _id: sceneId, server_id: serverId },
-          { $set: { order: index } },
+          { $set: { order: index } }
         );
       });
 

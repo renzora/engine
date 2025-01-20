@@ -1,8 +1,8 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { Scene } from '../models/Scenes.js';
-import { IScene } from '../models/Scenes.js';
+import { IScene, Scene } from '../models/Scenes';
 
 export async function editorRoutes(fastify: FastifyInstance) {
+
   fastify.post('/scene/save', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.user) {
@@ -13,13 +13,14 @@ export async function editorRoutes(fastify: FastifyInstance) {
         sceneid: string;
         roomData: object;
       };
+
       if (!sceneid || !roomData) {
         return reply
           .status(400)
           .send({ message: 'sceneid or roomData not provided', error: true });
       }
 
-      const updatedScene = await Scene.findOneAndUpdate(
+      const updatedScene: IScene | null = await Scene.findOneAndUpdate(
         { _id: sceneid },
         { $set: { roomData } },
         { new: true },
@@ -53,7 +54,7 @@ export async function editorRoutes(fastify: FastifyInstance) {
         return reply.status(400).send({ message: 'Invalid input data', error: true });
       }
 
-      const updatedScene = await Scene.findOneAndUpdate(
+      const updatedScene: IScene | null = await Scene.findOneAndUpdate(
         { _id: sceneId },
         {
           $set: {
@@ -97,7 +98,7 @@ export async function editorRoutes(fastify: FastifyInstance) {
       startingX = Math.round((startingX * 16) / 16) * 16;
       startingY = Math.round((startingY * 16) / 16) * 16;
 
-      const updatedScene = await Scene.findOneAndUpdate(
+      const updatedScene: IScene | null = await Scene.findOneAndUpdate(
         { _id: sceneId },
         { $set: { startingX, startingY } },
         { new: true },
@@ -120,4 +121,5 @@ export async function editorRoutes(fastify: FastifyInstance) {
       });
     }
   });
+
 }

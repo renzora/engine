@@ -23,7 +23,7 @@
 
                 utils.gameTime.hours = 10;
 
-                game.scene(localStorage.getItem('sceneid') || '677e269fb2e1d04dd00e9cf2');
+                game.scene(localStorage.getItem('sceneid') || '678ec2d7433aae2deee168ee');
                 audio.createChannel('music', localStorage.getItem('music-volume') || audio.defaultVolume);
                 audio.setVolume('music', localStorage.getItem('music-volume') || 0.05);
                 audio.createChannel('sfx', localStorage.getItem('sfx-volume') || audio.defaultVolume);

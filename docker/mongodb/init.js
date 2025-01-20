@@ -1,5 +1,4 @@
-const BCRYPT_HASHED_ADMIN_PASSWORD = '$2b$08$2i8woGGgvPL1FweRsCl.MOJKYsbpGCREJQjUnlEQOkhvTkjEdqkLa';
-
+const HASHED_ADMIN_PASSWORD = '100000$fef8950db4d167a031d0d9ceb615745c$279e06111f639fa82bbcd984938603070f6e822c9793001ac6b0ea8de962de6a';
 const adminDb = db.getSiblingDB('admin');
 const MONGO_PASSWORD = 'this_is_a_test_password';
 
@@ -14,28 +13,6 @@ if (!adminDb.system.users.find({ user: "admin" }).hasNext()) {
 const renzora = db.getSiblingDB('renzora');
 
 try {
-    if (!renzora.users.findOne({ username: 'admin' })) {
-        renzora.users.insertOne({
-            _id: 1,
-            username: 'admin',
-            password: BCRYPT_HASHED_ADMIN_PASSWORD,
-            email: 'admin@admin.com',
-            ugroup: 1,
-            created: 1709851580,
-            coins: 0,
-            perms: '',
-            avatar: '',
-            active: 1,
-            shadow_ban: 0,
-            ban_expire: 0,
-            two_fa: '',
-            premium: 0,
-            partner: 0,
-            staff: 1,
-            site_mod: 1
-        });
-    }
-
     if (!renzora.servers.findOne({ _id: ObjectId("677e225423f363310b0e9a82") })) {
         renzora.servers.insertMany([{
             _id: ObjectId("677e225423f363310b0e9a82"),
@@ -46,21 +23,28 @@ try {
         }]);
     }
 
-    if (!renzora.scenes.findOne({ _id: ObjectId("677e269fb2e1d04dd00e9cf2") })) {
+    if (!renzora.scenes.findOne({ _id: ObjectId("678ec2d7433aae2deee168ee") })) {
         renzora.scenes.insertMany([{
-            _id: ObjectId("677e269fb2e1d04dd00e9cf2"),
+            _id: ObjectId("678ec2d7433aae2deee168ee"),
             server_id: ObjectId("677e225423f363310b0e9a82"),
             name: "Default Scene",
             created_by: 1,
             created_at: 1736320671,
             roomData: {
-                items: [],
-                startingX: 18,
-                startingY: 13
+                items: [{
+                    id: "405gzo1m64neik4",
+                    n: "Room Layout",
+                    x: [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26],
+                    y: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+                    layer_id: "pga0nwe",
+                    animationState: [],
+                    w: [],
+                    public: 1
+                }]
             },
             public: 1,
             width: 640,
-            height: 464,
+            height: 640,
             startingX: 288,
             startingY: 208,
             bg: "",

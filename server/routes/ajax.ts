@@ -25,7 +25,7 @@ export async function ajaxRoutes(fastify: FastifyInstance) {
           console.log(`✅ [REDIS] Fetched template "${filePath}" from cache`);
         } else {
           templateContent = fs.readFileSync(resolvedPath, 'utf8');
-          await redis.set(`njk:${filePath}`, templateContent);
+          //await redis.set(`njk:${filePath}`, templateContent);
           console.log(`🔵 [DISK] Loaded template "${filePath}" from disk, stored in Redis cache`);
         }
 

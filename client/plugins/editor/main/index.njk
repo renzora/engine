@@ -1650,27 +1650,40 @@ redo: function () {
     this.restoreRoomData(lastState);
 },
 
-saveRoomData: function () {
-    const data = {
-        sceneid: game.sceneid,
-        roomData: game.roomData
-    };
-    const dataToSend = JSON.stringify(data);
-    console.log('Data being sent to server:', dataToSend);
+saveRoomData: function() {
 
-    ui.ajax({
-        outputType: 'json',
-        method: 'POST',
-        url: '/api/editor/scene/save',
-        data: dataToSend,
-        headers: { 'Content-Type': 'application/json' },
-        success: function (data) {
-            plugin.close('edit_mode_window');
-            collision.createWalkableGrid();
-        },
-        error: function (data) {
-            console.error('Error saving room data:', data);
+  fetch('/api/editor/scene/save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+        sceneid: game.sceneid,
+        roomData: game.roomData,
+  }),
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        // Attempt to parse any returned JSON error message:
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { message: await response.text() };
         }
+        throw new Error(errorData.message || 'Unknown error');
+      }
+      return response.json();
+    })
+    .then((result) => {
+      // Successful response
+      plugin.close('edit_mode_window');
+      collision.createWalkableGrid();
+      console.log('Save successful:', result);
+    })
+    .catch((error) => {
+      // Handle fetch or server error
+      console.error('Error saving room data:', error);
     });
 },
 

@@ -236,43 +236,67 @@ var serverConsole = {
       });
   },
 
-  displayScenes: function(scenes, container) {
-    scenes.sort((a, b) => a.order - b.order);
+displayScenes: function(scenes, container) {
+  // Sort scenes by their 'order' property before displaying
+  scenes.sort((a, b) => a.order - b.order);
 
-    container.innerHTML = "";
-    if (!scenes.length) {
-      container.innerHTML = "<p>No scenes found.</p>";
-      return;
-    }
+  container.innerHTML = "";
+  if (!scenes.length) {
+    container.innerHTML = "<p>No scenes found.</p>";
+    return;
+  }
 
-    const list = document.createElement("ul");
-    list.className = "space-y-1";
-    list.setAttribute("data-draggable-list", "true");
+  // Create a list container (ul)
+  const list = document.createElement("ul");
+  list.className = "space-y-1";
+  list.setAttribute("data-draggable-list", "true");
 
-    scenes.forEach(scene => {
-      const li = document.createElement("li");
-      li.className =
-        "px-4 py-2 bg-gray-800 rounded flex justify-between items-center cursor-move";
-      li.setAttribute("data-scene-id", scene._id);
+  // For each scene, create a list item with nameSpan and a "Go" button
+  scenes.forEach(scene => {
+    const li = document.createElement("li");
+    li.className =
+      "px-4 py-2 bg-gray-800 rounded flex justify-between items-center cursor-move";
+    li.setAttribute("data-scene-id", scene._id);
 
-      const nameSpan = document.createElement("span");
-      nameSpan.textContent = scene.name;
-      nameSpan.style.cursor = "text";
-      nameSpan.addEventListener("dblclick", e => {
-        this.handleSceneRename(e, scene);
-      });
+    // Scene name text
+    const nameSpan = document.createElement("span");
+    nameSpan.textContent = scene.name;
+    nameSpan.style.cursor = "text";
 
-      nameSpan.addEventListener("click", () => {
-        game.scene(scene._id);
-      });
-
-      li.appendChild(nameSpan);
-      list.appendChild(li);
+    // Double-click to rename the scene
+    nameSpan.addEventListener("dblclick", e => {
+      this.handleSceneRename(e, scene);
     });
 
-    container.appendChild(list);
-    this.makeScenesDraggable(list);
-  },
+    // Append nameSpan to the list item
+    li.appendChild(nameSpan);
+
+    // "Go" button that explicitly triggers game.scene(scene._id)
+    const goBtn = document.createElement("button");
+    goBtn.className =
+      "bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded shadow-md ml-2";
+    goBtn.textContent = "Go";
+
+    // Stop the drag event from interfering and call game.scene
+    goBtn.addEventListener("click", e => {
+      e.stopPropagation();
+      game.scene(scene._id);
+    });
+
+    // Append "Go" button to the list item
+    li.appendChild(goBtn);
+
+    // Add the list item to the list container
+    list.appendChild(li);
+  });
+
+  // Append the list of scenes
+  container.appendChild(list);
+
+  // Make the scenes draggable
+  this.makeScenesDraggable(list);
+},
+
 
   createScene: function(serverId) {
     fetch("/api/scenes/create_scene", {

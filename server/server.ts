@@ -2,7 +2,6 @@ import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyCookie from '@fastify/cookie';
 import fastifyCompress from '@fastify/compress';
-import fastifyFormbody from '@fastify/formbody';
 import fastifyView from '@fastify/view';
 import path from 'path';
 import nunjucks from 'nunjucks';
@@ -53,7 +52,6 @@ await fastify.register(fastifyCors, {
 });
 
 await fastify.register(fastifyCookie);
-await fastify.register(fastifyFormbody);
 
 fastify.addHook('onRequest', authMiddleware);
 

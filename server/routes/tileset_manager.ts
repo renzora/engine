@@ -208,7 +208,6 @@ export async function tilesetManagerRoutes(fastify: FastifyInstance) {
           const maxB = Math.max(...bCoords);
           newObject.a = maxA - minA;
           newObject.b = maxB - minB;
-          newObject.z = 0;
 
           const uid = uniqid();
           objectData[uid] = [newObject];

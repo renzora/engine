@@ -6,7 +6,7 @@ render = {
     overlappingTiles: [],
     renderQueue: [],
     sceneBg: null,
-    parseRange: function(rangeString) {
+    parseRange: function(rangeString) { 
         const [start, end] = rangeString.split('-').map(Number);
         const rangeArray = [];
 
