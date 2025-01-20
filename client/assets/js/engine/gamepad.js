@@ -13,8 +13,8 @@ gamepad = {
         aButton: null,
         bButton: null
     },
-    playerLimit: 2, // Maximum number of players that can connect
-    assignedControllers: {}, // Stores the mapping of player to controller
+    playerLimit: 2,
+    assignedControllers: {},
 
     spritesheetButtonMap: {
         ps5: ['up', 'left', 'down', 'right', 'leftstick', 'leftstickpressed', 'rightstick', 'rightstickpressed', 'x', 'square', 'circle', 'triangle', 'l1', 'l2', 'r1', 'r2'],
@@ -23,8 +23,8 @@ gamepad = {
     },
 
     defaultPlatform: 'ps5',
-    button_size: 16, // Original button size in the spritesheet
-    display_size: 32, // Updated display size in pixels
+    button_size: 16,
+    display_size: 32,
 
     init: function() {
         window.addEventListener("gamepadconnected", (e) => this.connectGamepad(e));
@@ -112,7 +112,6 @@ gamepad = {
     
         const id = gamepad.id;
     
-        // Extract Vendor ID and Product ID from the id string
         const match = id.match(/Vendor:\s*([0-9a-fA-F]{4})\s*Product:\s*([0-9a-fA-F]{4})/);
         if (match) {
             const vendorProduct = `${match[1].toLowerCase()}:${match[2].toLowerCase()}`;
@@ -121,7 +120,6 @@ gamepad = {
             }
         }
     
-        // Fallback to generic matching if no direct Vendor ID/Product ID match is found
         if (id.toLowerCase().includes('xbox')) {
             return 'Xbox';
         } else if (id.toLowerCase().includes('nintendo') || id.toLowerCase().includes('switch')) {
@@ -214,7 +212,6 @@ gamepad = {
         const spritesheet = assets.use('gamepad_buttons');
         let platform = this.name || this.defaultPlatform;
     
-        // Fallback to 'ps5' if platform is not in the map
         if (!this.spritesheetButtonMap[platform]) {
             platform = this.defaultPlatform;
         }
@@ -230,8 +227,8 @@ gamepad = {
     
         platformButtons.forEach((buttonName, index) => {
             const buttonElements = document.querySelectorAll(`.gamepad_button_${buttonName}`);
-            const x = index * this.button_size; // X position (column)
-            const y = platformRow * this.button_size; // Y position (row)
+            const x = index * this.button_size;
+            const y = platformRow * this.button_size;
     
             buttonElements.forEach(element => {
                 element.style.width = `${this.display_size}px`;

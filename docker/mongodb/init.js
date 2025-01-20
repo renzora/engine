@@ -1,11 +1,12 @@
 const BCRYPT_HASHED_ADMIN_PASSWORD = '$2b$08$2i8woGGgvPL1FweRsCl.MOJKYsbpGCREJQjUnlEQOkhvTkjEdqkLa';
 
 const adminDb = db.getSiblingDB('admin');
+const MONGO_PASSWORD = 'this_is_a_test_password';
 
 if (!adminDb.system.users.find({ user: "admin" }).hasNext()) {
     adminDb.createUser({
         user: "admin",
-        pwd: "password",
+        pwd: MONGO_PASSWORD,
         roles: [{ role: "userAdminAnyDatabase", db: "admin" }, "readWriteAnyDatabase"]
     });
 }

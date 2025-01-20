@@ -36,45 +36,75 @@ game = {
     fpsHistory: [],
     maxFpsHistory: 60,
 
+    loadGameAssets: function(onLoaded) {
+        fetch('/api/tileset_manager/list_sheets')
+            .then(response => response.json())
+            .then(data => {
+                if (!data.success || !Array.isArray(data.sheets)) {
+                    throw new Error('Failed to load sheets list from server');
+                }
+
+                const sheetPreloadArray = data.sheets.map(sheetName => ({
+                    name: sheetName,
+                    path: `assets/img/sheets/${sheetName}.png`
+                }));
+
+                assets.preload(sheetPreloadArray, () => {
+                    console.log('All sheets have been preloaded.');
+                    if (typeof onLoaded === 'function') {
+                        onLoaded();
+                    }
+                });
+            })
+            .catch(err => {
+                console.error('Error loading sheets:', err);
+                if (typeof onLoaded === 'function') {
+                    onLoaded(err);
+                }
+            });
+    },
+
     create: function(config = {}) {
-        this.canvas = document.createElement('canvas');
-        this.ctx = this.canvas.getContext('2d');
-        this.ctx.imageSmoothingEnabled = false;
-        document.body.appendChild(this.canvas);
+        this.loadGameAssets(() => {
+            this.canvas = document.createElement('canvas');
+            this.ctx = this.canvas.getContext('2d');
+            this.ctx.imageSmoothingEnabled = false;
+            document.body.appendChild(this.canvas);
 
-        this.resizeCanvas();
-        this.loop();
-        input.init();
-        gamepad.init(config);
-        audio.start();
+            this.resizeCanvas();
+            this.loop();
+            input.init();
+            gamepad.init(config);
+            audio.start();
 
-        this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
-        this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+            this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+            this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-        document.addEventListener('visibilitychange', () => {   
-            if (document.hidden) {
-                this.pause();
-            } else {
-                this.resume();
+            document.addEventListener('visibilitychange', () => {   
+                if (document.hidden) {
+                    this.pause();
+                } else {
+                    this.resume();
+                }
+            });
+
+            if (config.objectData) {
+                this.objectData = config.objectData;
+            }
+            if (config.spriteData) {
+                this.spriteData = config.spriteData;
+            }
+
+            if (config.player) {
+                this.mainSprite = config.player;
+                this.playerid = this.mainSprite.id;
+                this.sprites[this.playerid] = this.mainSprite;
+            }
+
+            if (typeof config.after === 'function') {
+                config.after();
             }
         });
-
-        if (config.objectData) {
-            this.objectData = config.objectData;
-        }
-        if (config.spriteData) {
-            this.spriteData = config.spriteData;
-        }
-
-        if (config.player) {
-            this.mainSprite = config.player;
-            this.playerid = this.mainSprite.id;
-            this.sprites[this.playerid] = this.mainSprite;
-        }
-
-        if (typeof config.after === 'function') {
-            config.after();
-        }
     },
 
     pause: function() {
@@ -143,18 +173,25 @@ game = {
     },
 
     scene: function(sceneId) {
+        // Cancel any existing pathfinding for the player.
         input.cancelPathfinding(this.sprites[this.playerid]);
     
-        ui.ajax({
-            outputType: 'json',
-            method: 'GET',
-            url: `/api/scenes/${encodeURIComponent(sceneId)}`,
-            success: function(data) {
+        // Use fetch to request the scene data.
+        fetch(`/api/scenes/${encodeURIComponent(sceneId)}`)
+            .then(response => {
+                if (!response.ok) {
+                    // If the response isn't OK, throw an error so it goes to the catch block.
+                    throw new Error(`Network response was not ok: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
                 console.log('Scene response:', data);
     
                 if (data.message === 'success') {
                     effects.lights = [];
                     lighting.clearLightsAndEffects();
+    
                     game.roomData = data.roomData;
                     game.sceneid = data._id;
                     game.serverid = data.server_id;
@@ -171,6 +208,7 @@ game = {
     
                     render.sceneBg = data.bg || null;
                     game.resizeCanvas();
+    
                     collision.walkableGridCache = null;
                     collision.createWalkableGrid();
     
@@ -186,16 +224,15 @@ game = {
                         url: "plugins/error/index.njk"
                     });
                 }
-            },
-            error: function(error) {
+            })
+            .catch(error => {
                 console.error('Scene load error:', error);
                 plugin.load({
                     id: "scene_load_error_window",
                     url: "plugins/error/index.njk"
                 });
-            }
-        });
-    },
+            });
+    },    
 
     render: function() {
         this.ctx.imageSmoothingEnabled = false;

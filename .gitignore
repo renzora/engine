@@ -1,6 +1,4 @@
 server/node_modules/
-client/assets/img/
-client/assets/audio/
 *.Identifier
 node_modules
 npm-debug.log

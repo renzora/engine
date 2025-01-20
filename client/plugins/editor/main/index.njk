@@ -1661,7 +1661,7 @@ saveRoomData: function () {
     ui.ajax({
         outputType: 'json',
         method: 'POST',
-        url: 'plugins/editor/main/ajax/save_scene.php',
+        url: '/api/editor/scene/save',
         data: dataToSend,
         headers: { 'Content-Type': 'application/json' },
         success: function (data) {

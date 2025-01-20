@@ -1,0 +1,11 @@
+# .dockerignore
+node_modules
+.bun
+.git
+.gitignore
+docker-compose.yml
+docker/bun/Dockerfile
+docker/nginx/Dockerfile
+*.lock
+*.log
+dist/

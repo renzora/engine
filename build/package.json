@@ -2,12 +2,14 @@
   "name": "build",
   "version": "1.0.0",
   "scripts": {
-    "css": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/core.min.css --minify --postcss",
+    "build:css": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/core.min.css --minify --postcss",
     "watch:css": "tailwindcss -i ../client/assets/css/style.css -o ../client/assets/css/core.min.css --watch --minify --postcss",
-    "js": "node esbuild.config.js",
-    "build": "concurrently \"npm run css\" \"npm run js\""
+    "build:js": "node esbuild.config.js",
+    "watch:js": "node esbuild.config.js --watch", 
+    "build": "npm run build:css && npm run build:js",
+    "dev": "concurrently \"npm run watch:css\" \"npm run watch:js\""
   },
-  "dependencies": {
+  "devDependencies": {
     "autoprefixer": "^10.4.20",
     "chokidar": "^3.5.3",
     "concurrently": "^8.2.2",

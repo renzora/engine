@@ -30,7 +30,6 @@ collision = {
         const numPoints = 8;
         const pointsToCheck = [];
     
-        // Generate points around the ellipse for collision checking
         for (let i = 0; i < numPoints; i++) {
             const angle = (i / numPoints) * 2 * Math.PI;
             const px = centerX + a * Math.cos(angle);
@@ -50,11 +49,9 @@ collision = {
                     y: point.y + item.y[0] * 16
                 }));
 
-                // Check if we're currently inside the polygon
                 const isCurrentlyInside = this.pointInPolygon(centerX, centerY, polygon);
                 const wasInsidePreviously = this.lastKnownPosition?.insidePolygon;
                 
-                // Update last known position
                 this.lastKnownPosition = {
                     x: centerX,
                     y: centerY,
@@ -62,7 +59,6 @@ collision = {
                     polygonId: isCurrentlyInside ? item.id : null
                 };
 
-                // If we're moving from inside to outside the polygon
                 if (wasInsidePreviously && !isCurrentlyInside && 
                     this.lastKnownPosition.polygonId === item.id) {
                     return { 
@@ -71,9 +67,7 @@ collision = {
                     };
                 }
 
-                // If we're outside and trying to enter the polygon
                 if (!wasInsidePreviously && !isCurrentlyInside) {
-                    // Check if any points would enter the polygon
                     for (const point of pointsToCheck) {
                         if (this.pointInPolygon(point.px, point.py, polygon)) {
                             return { 
@@ -98,27 +92,21 @@ collision = {
             y: endY - startY
         };
         
-        // Normalize direction
         const length = Math.hypot(direction.x, direction.y);
         if (length === 0) return null;
         
         direction.x /= length;
         direction.y /= length;
         
-        // Calculate perpendicular vector
         const perpendicular = {
             x: -direction.y,
             y: direction.x
         };
         
-        // Try both perpendicular directions
         const leftPath = this.checkPath(startX, startY, perpendicular.x, perpendicular.y, polygon);
         const rightPath = this.checkPath(startX, startY, -perpendicular.x, -perpendicular.y, polygon);
-        
-        // Choose the better path
-        const path = leftPath.distance < rightPath.distance ? leftPath : rightPath;
-        
-        // Scale the slide vector to match original movement magnitude
+        const path = leftPath.distance < rightPath.distance ? leftPath : rightPath; 
+
         return {
             x: path.vector.x * length,
             y: path.vector.y * length
@@ -127,8 +115,8 @@ collision = {
 
     checkPath: function(startX, startY, dirX, dirY, polygon) {
         let clear = false;
-        let distance = 16; // Start with minimum distance
-        let maxDistance = 64; // Maximum distance to check
+        let distance = 16;
+        let maxDistance = 64;
         
         while (!clear && distance <= maxDistance) {
             const testX = startX + dirX * distance;
@@ -152,8 +140,6 @@ collision = {
         if (this.walkableGridCache) {
             return this.walkableGridCache;
         }
-
-        console.log("Creating walkable grid.");
 
         const width = game.worldWidth / 16;
         const height = game.worldHeight / 16;

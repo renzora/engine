@@ -57,10 +57,7 @@ lighting = {
     },
 
     clearLightsAndEffects: function() {
-        console.log('Clearing lights and effects, preserving player light.');
-
         const playerLight = lighting.lights.find(light => light.id === game.playerid + '_light');
-
         this.lights = [];
         particles.activeEffects = {};
         game.particles = [];
@@ -100,7 +97,7 @@ lighting = {
         let t = 0;
 
         if (time >= dayStart && time < sunsetStart) {
-            t = 0; // Day
+            t = 0;
             if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) {
                     weather_plugin.fireflys.active = false;
@@ -114,7 +111,7 @@ lighting = {
                 }
             }
         } else if (time >= nightStart || time < nightEnd) {
-            t = 1; // Night
+            t = 1;
             if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) { 
                     weather_plugin.fireflys.active = true;
@@ -128,7 +125,7 @@ lighting = {
                 }
             }
         } else {
-            t = 0; // Default day
+            t = 0;
             if(ui.pluginExists('weather_plugin')) {
                 if(!weather_plugin.fireflys.overrideActive) {
                     weather_plugin.fireflys.active = false;
@@ -140,10 +137,7 @@ lighting = {
     },
 
     createBaseNightFilter: function() {
-        // If time-based updates are enabled and we are at full day (t=0),
-        // skip filter entirely: do not apply brightness/saturation or color.
         if (this.timeBasedUpdatesEnabled && this.lightIntensityMultiplier === 0) {
-            // Return a transparent canvas
             const maskCanvas = document.createElement('canvas');
             maskCanvas.width = game.canvas.width;
             maskCanvas.height = game.canvas.height;
@@ -166,7 +160,6 @@ lighting = {
             }
         }
 
-        // Check if the base RGB is different from last time
         let finalColor;
         if (
             this.lastBaseNightFilterColor &&
@@ -174,10 +167,8 @@ lighting = {
             this.lastBaseNightFilterColor.g === newColor.g &&
             this.lastBaseNightFilterColor.b === newColor.b
         ) {
-            // The base color hasn't changed, reuse the last processed color
             finalColor = this.lastProcessedNightFilterColor;
         } else {
-            // The base color changed, re-run brightness/saturation
             finalColor = this.applyBrightnessSaturation(newColor, brightness, saturation);
             this.lastBaseNightFilterColor = { ...newColor };
             this.lastProcessedNightFilterColor = { ...finalColor };
@@ -195,7 +186,6 @@ lighting = {
     },
 
     applyBrightnessSaturation: function(color, brightness, saturation) {
-        console.log("apply brightness saturation");
         let r = color.r / 255;
         let g = color.g / 255;
         let b = color.b / 255;
@@ -281,7 +271,6 @@ lighting = {
 
     renderNightFilter: function() {
         if (!this.nightFilterActive) return;
-        // If it's full day (and time-based updates are enabled), skip rendering entirely
         if (this.timeBasedUpdatesEnabled && this.lightIntensityMultiplier === 0) {
             return;
         }

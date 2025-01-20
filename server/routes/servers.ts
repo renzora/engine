@@ -1,22 +1,22 @@
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Servers } from '../models/Servers.js';
 import { Scene } from '../models/Scenes.js';
 
-export const serversRoutes = async (fastify, opts) => {
-
-  fastify.post('/create_server', async (request, reply) => {
+export async function serversRoutes(fastify: FastifyInstance) {
+  fastify.post('/create_server', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.auth || !request.user) {
         return reply.code(401).send({ message: 'Unauthorized', error: true });
       }
 
-      const { name = 'new server' } = request.body;
+      const { name = 'new server' } = request.body as { name?: string };
       const userId = request.user._id;
 
       const newServer = new Servers({
         name,
         created_by: userId,
         created_at: new Date(),
-        public: true
+        public: true,
       });
 
       await newServer.save();
@@ -28,67 +28,61 @@ export const serversRoutes = async (fastify, opts) => {
           name: newServer.name,
           created_by: newServer.created_by,
           created_at: newServer.created_at,
-          public: newServer.public
-        }
+          public: newServer.public,
+        },
       });
-    } catch (error) {
+    } catch (error: any) {
       fastify.log.error(error);
       return reply.code(500).send({
         message: 'Error creating server',
-        error: error.message
+        error: error.message,
       });
     }
   });
 
-  fastify.get('/get_servers', async (request, reply) => {
+  fastify.get('/get_servers', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const servers = await Servers.find().sort({ created_at: -1 });
       const serverList = servers.map((s) => ({
         id: s._id,
         name: s.name,
         created_at: s.created_at,
-        public: s.public
+        public: s.public,
       }));
 
       return reply.code(200).send({
         message: 'success',
-        servers: serverList
+        servers: serverList,
       });
-    } catch (error) {
+    } catch (error: any) {
       fastify.log.error(error);
       return reply.code(500).send({
         message: 'Error fetching servers',
-        error: error.message
+        error: error.message,
       });
     }
   });
 
-  fastify.post('/edit_server', async (request, reply) => {
+  fastify.post('/edit_server', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.auth || !request.user) {
         return reply.code(401).send({ message: 'Unauthorized', error: true });
       }
 
-      const { id: serverId, name } = request.body;
+      const { id: serverId, name } = request.body as { id: string; name: string };
       const userId = request.user._id;
 
       if (!serverId || !name) {
-        return reply
-          .code(400)
-          .send({ message: 'Invalid input', error: true });
+        return reply.code(400).send({ message: 'Invalid input', error: true });
       }
 
       const server = await Servers.findById(serverId);
       if (!server) {
-        return reply
-          .code(404)
-          .send({ message: 'Server not found', error: true });
+        return reply.code(404).send({ message: 'Server not found', error: true });
       }
 
       if (String(server.created_by) !== String(userId)) {
-        return reply
-          .code(403)
-          .send({ message: 'Unauthorized', error: true });
+        return reply.code(403).send({ message: 'Unauthorized', error: true });
       }
 
       server.name = name;
@@ -98,44 +92,38 @@ export const serversRoutes = async (fastify, opts) => {
         message: 'success',
         server: {
           id: savedServer._id,
-          name: savedServer.name
-        }
+          name: savedServer.name,
+        },
       });
-    } catch (error) {
+    } catch (error: any) {
       fastify.log.error(error);
       return reply.code(500).send({
         message: 'Error updating server',
-        error: error.message
+        error: error.message,
       });
     }
   });
 
-  fastify.post('/delete_server', async (request, reply) => {
+  fastify.post('/delete_server', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.auth || !request.user) {
         return reply.code(401).send({ message: 'Unauthorized', error: true });
       }
 
-      const { id: serverId } = request.body;
+      const { id: serverId } = request.body as { id: string };
       const userId = request.user._id;
 
       if (!serverId) {
-        return reply
-          .code(400)
-          .send({ message: 'Invalid input', error: true });
+        return reply.code(400).send({ message: 'Invalid input', error: true });
       }
 
       const server = await Servers.findById(serverId);
       if (!server) {
-        return reply
-          .code(404)
-          .send({ message: 'Server not found', error: true });
+        return reply.code(404).send({ message: 'Server not found', error: true });
       }
 
       if (String(server.created_by) !== String(userId)) {
-        return reply
-          .code(403)
-          .send({ message: 'Unauthorized', error: true });
+        return reply.code(403).send({ message: 'Unauthorized', error: true });
       }
 
       await Scene.deleteMany({ server_id: serverId });
@@ -146,12 +134,12 @@ export const serversRoutes = async (fastify, opts) => {
       } else {
         return reply.code(500).send({ message: 'Error deleting server', error: true });
       }
-    } catch (error) {
+    } catch (error: any) {
       fastify.log.error(error);
       return reply.code(500).send({
         message: 'Error deleting server',
-        error: error.message
+        error: error.message,
       });
     }
   });
-};
+}

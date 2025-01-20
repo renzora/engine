@@ -270,7 +270,7 @@ window[id] = {
     const uniqueId = selectedObject.id;
     plugin.load({
       id: 'tileset_item_editor_window',
-      url: `editor/tileset_manager/items.njk?id=${uniqueId}`,
+      url: `plugins/editor/tileset_manager/items.njk?id=${uniqueId}`,
       name: 'Item Editor',
       drag: true,
       reload: true,
@@ -334,7 +334,7 @@ window[id] = {
       alert('No scene loaded!');
       return;
     }
-    fetch('/plugins/editor/context_menu/ajax/setSpritePosition.php', {
+    fetch('/api/editor/scene/position', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sceneId: sceneId, startingX: gx, startingY: gy }),
@@ -364,7 +364,7 @@ window[id] = {
   openSceneProperties: function (x, y) {
     plugin.load({
       id: 'editor_scene_properties_window',
-      url: 'editor/scene_properties/index.njk',
+      url: 'plugins/editor/scene_properties/index.njk',
       name: 'Scene Properties',
       drag: true,
       reload: true,
@@ -380,7 +380,7 @@ window[id] = {
   openTilesetManager: function () {
     plugin.load({
       id: 'tileset_window',
-      url: 'editor/tileset_manager/index.njk',
+      url: 'plugins/editor/tileset_manager/index.njk',
       drag: true,
       reload: false,
     });

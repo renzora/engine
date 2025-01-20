@@ -111,7 +111,6 @@ window[id] = {
         console.log(id);
         ui.ajax({
           method: 'GET',
-          data: 'mode='+id,
           url: `plugins/editor/console/tabs.njk`,
           success: function (data) {
             ui.html('.console_window_tab_buttons', data, 'replace');

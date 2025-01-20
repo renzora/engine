@@ -2,7 +2,6 @@
 
     assets.preload([
         { name: 'female-01', path: 'assets/img/sprites/characters/female-01.png' },
-        { name: 'gen1', path: 'assets/img/sheets/gen1.png' },
         { name: 'objectData', path: 'assets/json/objectData.json' },
         { name: 'spriteData', path: 'assets/json/spritesData.json' }
     ],() => {
@@ -21,6 +20,8 @@
             spriteData: assets.use('spriteData'),
             player: playerSprite,
             after: function() {
+
+                utils.gameTime.hours = 10;
 
                 game.scene(localStorage.getItem('sceneid') || '677e269fb2e1d04dd00e9cf2');
                 audio.createChannel('music', localStorage.getItem('music-volume') || audio.defaultVolume);
@@ -52,7 +53,7 @@
                     url: 'plugins/weather/index.js',
                     reload: true,
                     after: function() {
-                        weather_plugin.snow.active = true;
+                        weather_plugin.snow.active = false;
                     }
                 });
             }
