@@ -52,19 +52,19 @@ particles = {
         }
     },    
 
-    updateParticles: function(deltaTime) {
+    updateParticles: function() {
         game.particles = game.particles.filter(particle => particle.life > 0);
 
         game.particles.forEach(particle => {
             if (particle.type === 'ripple') {
                 particle.size += 0.1;
-                particle.life -= deltaTime / 16;
+                particle.life -= game.deltaTime / 16;
                 particle.color = `rgba(0, 0, 255, ${particle.life / 50})`;
             } else {
-                particle.x += particle.vx * deltaTime / 16;
-                particle.y += particle.vy * deltaTime / 16 + particle.gravity;
+                particle.x += particle.vx * game.deltaTime / 16;
+                particle.y += particle.vy * game.deltaTime / 16 + particle.gravity;
                 particle.vx += Math.sin(particle.y * 0.01) * particle.sway;
-                particle.life -= deltaTime / 16;
+                particle.life -= game.deltaTime / 16;
 
                 const fadeStart = 0.2;
                 const lifeFraction = particle.life / particle.maxLife;
@@ -129,6 +129,9 @@ particles = {
                 ctx.restore();
             });
         });
+
+        game.ctx.save();
+        game.ctx.setTransform(1, 0, 0, 1, 0, 0);
     },
 
     removeItemEffects: function(item) {

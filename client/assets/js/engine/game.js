@@ -166,7 +166,6 @@ game = {
         if (collision.isTileWalkable(this.x, this.y)) {
             this.selectedObjects = [];
             this.selectedCache = [];
-            this.render();
             this.mainSprite.walkToClickedTile(this.x, this.y);
             console.log('Tile is walkable, walking to clicked tile.');
         }
@@ -190,8 +189,7 @@ game = {
     
                 if (data.message === 'success') {
                     effects.lights = [];
-                    lighting.clearLightsAndEffects();
-    
+                    if(ui.pluginExists('lighting')) lighting.clearLightsAndEffects();
                     game.roomData = data.roomData;
                     game.sceneid = data._id;
                     game.serverid = data.server_id;
@@ -234,105 +232,131 @@ game = {
             });
     },    
 
-    render: function() {
+    loop: function(timestamp) {
+        if (!this.lastTime) {
+          this.lastTime = timestamp;
+          this.lastFpsUpdateTime = timestamp;
+          requestAnimationFrame(this.loop.bind(this));
+          return;
+        }
+    
+        const timeElapsed = timestamp - this.lastTime;
+    
+        if (timeElapsed > 1000) {
+          this.accumulatedTime = this.fixedDeltaTime;
+        } else {
+          this.accumulatedTime += timeElapsed;
+        }
+    
+        this.deltaTime = this.fixedDeltaTime;
+        this.lastTime = timestamp;
+    
+        // Update logic in fixed steps
+        while (this.accumulatedTime >= this.fixedDeltaTime) {
+          gamepad.updateGamepadState();
+    
+          const viewportXStart = Math.floor(camera.cameraX / 16);
+          const viewportXEnd = Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16);
+          const viewportYStart = Math.floor(camera.cameraY / 16);
+          const viewportYEnd = Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16);
+    
+          for (let id in this.sprites) {
+            const sprite = this.sprites[id];
+            const spriteRight = sprite.x + sprite.width;
+            const spriteBottom = sprite.y + sprite.height;
+    
+            // Only update sprites within viewport
+            if (
+              spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
+              spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16
+            ) {
+              if (sprite.update) {
+                sprite.update();
+              }
+            }
+          }
+    
+          camera.update();
+          utils.gameTime.update();
+          render.updateAnimatedTiles();
+          particles.updateParticles();
+          effects.transitions.update();
+          actions.checkForNearbyItems();
+    
+          this.accumulatedTime -= this.fixedDeltaTime;
+        }
+    
+        // Prepare the canvas for rendering
         this.ctx.imageSmoothingEnabled = false;
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        
+    
         this.ctx.scale(this.zoomLevel, this.zoomLevel);
         this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
-
+    
         this.viewportXStart = Math.max(0, Math.floor(camera.cameraX / 16));
-        this.viewportXEnd = Math.min(this.worldWidth / 16, Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16));
+        this.viewportXEnd = Math.min(
+          this.worldWidth / 16,
+          Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16)
+        );
         this.viewportYStart = Math.max(0, Math.floor(camera.cameraY / 16));
-        this.viewportYEnd = Math.min(this.worldHeight / 16, Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16));
-
+        this.viewportYEnd = Math.min(
+          this.worldHeight / 16,
+          Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16)
+        );
+    
         render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
         render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
-
+    
+        // This calls onRender() for every loaded plugin, including the new lighting plugin
         plugin.hook('onRender');
-
-        this.ctx.save();
-        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-
-        const { maskCanvas, maskCtx } = lighting.createBaseNightFilter();
-        lighting.renderLightsOnFilter(maskCtx);
-        lighting.renderFinalOverlay(this.ctx, maskCanvas, maskCtx);
-        
+    
+        // -- REMOVED: direct calls to lighting.createBaseNightFilter(), renderLightsOnFilter(), etc. --
+    
+        // Other post-render effects
         particles.render();
         effects.transitions.render();
         render.renderCarriedObjects();
         render.handleDebugUtilities();
-
         effects.letterbox.update();
-
+    
         if (ui.pluginExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
-            ui_console_editor_inventory.render();
+          ui_console_editor_inventory.render();
         }
-
+    
         if (ui.pluginExists('ui_console_tab_window')) {
-            if (ui.pluginExists('ui_console_tab_window.renderCollisionBoundaries')) {
-                ui_console_tab_window.renderCollisionBoundaries();
-            }
-            if (ui.pluginExists('ui_console_tab_window.renderNearestWalkableTile')) {
-                ui_console_tab_window.renderNearestWalkableTile();
-            }
-            if (ui.pluginExists('ui_console_tab_window.renderObjectCollision')) {
-                ui_console_tab_window.renderObjectCollision();
-            }
+          if (ui.pluginExists('ui_console_tab_window.renderCollisionBoundaries')) {
+            ui_console_tab_window.renderCollisionBoundaries();
+          }
+          if (ui.pluginExists('ui_console_tab_window.renderNearestWalkableTile')) {
+            ui_console_tab_window.renderNearestWalkableTile();
+          }
+          if (ui.pluginExists('ui_console_tab_window.renderObjectCollision')) {
+            ui_console_tab_window.renderObjectCollision();
+          }
         }
-
+    
         if (ui.pluginExists("ui_overlay_window.update") && this.mainSprite && this.mainSprite.isVehicle) {
-            ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed);
+          ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed);
         }
-    },
-
-    loop: function(timestamp) {
-        if (!this.lastTime) {
-            this.lastTime = timestamp;
-            this.lastFpsUpdateTime = timestamp;
-            requestAnimationFrame(this.loop.bind(this));
-            return;
-        }
-
-        const timeElapsed = timestamp - this.lastTime;
-
-        if (timeElapsed > 1000) {
-            this.accumulatedTime = this.fixedDeltaTime;
-        } else {
-            this.accumulatedTime += timeElapsed;
-        }
-
-        this.deltaTime = this.fixedDeltaTime;
-        this.lastTime = timestamp;
-
-        // Update logic in fixed steps
-        while (this.accumulatedTime >= this.fixedDeltaTime) {
-            render.updateGameLogic(this.fixedDeltaTime);
-            this.accumulatedTime -= this.fixedDeltaTime;
-        }
-
-        this.render();
-
+    
         const fps = 1000 / timeElapsed;
         utils.tracker('fps', fps);
-      
+    
         if (window.fps_monitor_window && typeof fps_monitor_window.renderChart === 'function') {
-            utils.finalizeFrame();
-            fps_monitor_window.renderChart();
+          utils.finalizeFrame();
+          fps_monitor_window.renderChart();
         }
-
+    
         const debugFPS = document.getElementById('gameFps');
         if (debugFPS) {
-            debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
+          debugFPS.innerHTML = "FPS: " + fps.toFixed(2);
         }
-
+    
         const gameTimeDisplay = document.getElementById('game_time');
         if (gameTimeDisplay) {
-            gameTimeDisplay.innerHTML = utils.gameTime.display();
+          gameTimeDisplay.innerHTML = utils.gameTime.display();
         }
-
-        plugin.hook('onLoop');
-
+    
         requestAnimationFrame(this.loop.bind(this));
-    }
+      }
 };

@@ -8,10 +8,10 @@ utils = {
         days: 0,
         speedMultiplier: 100,
         daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
-        update: function(deltaTime) {
+        update: function() {
             if (!game.timeActive) return;
             
-            const gameSeconds = (deltaTime / 1000) * this.speedMultiplier;
+            const gameSeconds = (game.deltaTime / 1000) * this.speedMultiplier;
             this.seconds += gameSeconds;
     
             if (this.seconds >= 60) {

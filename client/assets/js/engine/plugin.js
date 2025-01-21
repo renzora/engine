@@ -1,13 +1,11 @@
 window.pluginResolves = window.pluginResolves || {};
 
 plugin = {
-    plugins: [],        // existing array of DOM elements for each window
+    plugins: [],
     baseZIndex: null,
     pluginNames: {},
     activePlugin: null,
     preloadQueue: [],
-
-    // NEW: Keep references to the actual JS objects (window[id]) that define lifecycle hooks, etc.
     loadedPlugins: {},
 
     init: function(selector, options) {
@@ -74,7 +72,6 @@ plugin = {
             const clientX = isTouchEvent ? e.touches[0].clientX : e.clientX;
             const clientY = isTouchEvent ? e.touches[0].clientY : e.clientY;
 
-            // Prevent drag if clicked inside .window_body or .resize-handle
             if (e.target.closest('.window_body') || e.target.closest('.resize-handle')) {
                 return;
             }
@@ -250,7 +247,6 @@ plugin = {
             }
 
             if (useApi) {
-                // Use ui.ajax for .njk files
                 ui.ajax({
                     url: fullUrl,
                     method: 'GET',
@@ -267,7 +263,6 @@ plugin = {
                     }
                 });
             } else {
-                // Use fetch for direct loading of .html and .js files
                 fetch(fullUrl)
                     .then(response => {
                         if (!response.ok) {
@@ -290,18 +285,15 @@ plugin = {
         });
     },
 
-    // Helper method to process the loaded content
     processLoadedContent: function(data, id, url, beforeStart, after, hidden, resolve) {
         window.id = id;
 
         if (url.endsWith('.js')) {
-            // JS Plugin
             const script = document.createElement('script');
             script.textContent = data;
             script.setAttribute('id', `${id}_script`);
             document.head.appendChild(script);
 
-            // If the plugin object has a .start and hasn't started yet, call it
             if (window[id]?.start && !window[id]._hasStarted) {
                 window[id]._hasStarted = true;
                 if (beforeStart) {
@@ -310,7 +302,6 @@ plugin = {
                 window[id].start();
             }
         } else {
-            // HTML or Nunjucks Plugin
             const tempContainer = document.createElement('div');
             tempContainer.innerHTML = data;
 
@@ -344,14 +335,12 @@ plugin = {
                 }
             }
 
-            // Initialize draggable, zIndex, etc.
             this.init(`[data-window='${id}']`, {
                 start: function() { this.classList.add('dragging'); },
                 drag: function() {},
                 stop: function() { this.classList.remove('dragging'); },
             });
 
-            // Minimize or bring to front
             if (hidden) {
                 this.minimize(id);
             } else {
@@ -359,8 +348,6 @@ plugin = {
             }
         }
 
-        // NEW: Register the plugin object into plugin.loadedPlugins
-        // (assuming the user sets `window[id] = { ... }` in the plugin .js or <script>.)
         if (window[id]) {
             this.loadedPlugins[id] = window[id];
         }
@@ -377,7 +364,7 @@ plugin = {
             const pluginObj = this.loadedPlugins[pluginId];
             if (pluginObj && typeof pluginObj[hookName] === 'function') {
                 try {
-                    pluginObj[hookName](); // no parameters here
+                    pluginObj[hookName]();
                 } catch (err) {
                     console.error(`Error running hook '${hookName}' for plugin '${pluginId}':`, err);
                 }
@@ -403,7 +390,6 @@ plugin = {
             return;
         }
 
-        // If the plugin defines its own unmount, call it
         if (typeof window[id] !== 'undefined' && typeof window[id].unmount === 'function') {
             window[id].unmount();
             for (let key in window[id]) {
@@ -425,7 +411,6 @@ plugin = {
 
         this.plugins = this.plugins.filter(plugin => plugin.getAttribute('data-window') !== id);
 
-        // NEW: Remove from loadedPlugins as well
         if (this.loadedPlugins[id]) {
             delete this.loadedPlugins[id];
         }

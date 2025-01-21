@@ -85,25 +85,6 @@ sprite = {
             }, 60000);
         }
 
-        if (options.isPlayer) {
-            console.log(`Adding light for player: ${newSprite.id}`);
-            const lightColor = { r: 255, g: 255, b: 255 }; 
-            const lightRadius = 30; 
-            const lightIntensity = 0.3; 
-            lighting.addLight(
-                newSprite.id + '_light',
-                newSprite.x + 8,
-                newSprite.y + 8,
-                lightRadius,
-                lightColor,
-                lightIntensity,
-                'playerLight',
-                true,
-                0,
-                0
-            );
-        }
-
         game.sprites[options.id] = newSprite;
         return newSprite;
     },
@@ -495,7 +476,7 @@ sprite = {
             console.log(`Pathfinding and movement stopped for sprite: ${this.id}`);
         },
 
-        update: function(deltaTime) {
+        update: function() {
             const margin = 0;
 
             if (this.isMovingToTarget) {
@@ -504,15 +485,15 @@ sprite = {
                 let dx = 0;
                 let dy = 0;
 
-                if (this.directions['right']) dx += this.speed * (deltaTime / 1000);
-                if (this.directions['left'])  dx -= this.speed * (deltaTime / 1000);
-                if (this.directions['down'])  dy += this.speed * (deltaTime / 1000);
-                if (this.directions['up'])    dy -= this.speed * (deltaTime / 1000);
+                if (this.directions['right']) dx += this.speed * (game.deltaTime / 1000);
+                if (this.directions['left'])  dx -= this.speed * (game.deltaTime / 1000);
+                if (this.directions['down'])  dy += this.speed * (game.deltaTime / 1000);
+                if (this.directions['up'])    dy -= this.speed * (game.deltaTime / 1000);
 
                 if (dx !== 0 && dy !== 0) {
                     const norm = Math.sqrt(dx * dx + dy * dy);
-                    dx = (dx / norm) * this.speed * (deltaTime / 1000);
-                    dy = (dy / norm) * this.speed * (deltaTime / 1000);
+                    dx = (dx / norm) * this.speed * (game.deltaTime / 1000);
+                    dy = (dy / norm) * this.speed * (game.deltaTime / 1000);
                 }
 
                 dx = isNaN(dx) ? 0 : dx;
@@ -573,7 +554,7 @@ sprite = {
 
             this.animate();
 
-            if (this.id === game.playerid) {
+            if (this.id === game.playerid && ui.pluginExists('lighting')) {
                 const playerLight = lighting.lights.find(light => light.id === this.id + '_light');
                 if (playerLight) {
                     playerLight.x = this.x + 8;

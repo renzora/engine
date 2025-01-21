@@ -3,7 +3,6 @@ import './assets.js';
 import './game.js';
 import './effects.js';
 import './collision.js';
-import './lighting.js';
 import './particles.js';
 import './render.js';
 import './camera.js';

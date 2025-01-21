@@ -45,41 +45,6 @@ render = {
         return expandedTileData;
     },
 
-updateGameLogic: function(deltaTime) {
-    gamepad.updateGamepadState();
-
-    const viewportXStart = Math.floor(camera.cameraX / 16);
-    const viewportXEnd = Math.ceil((camera.cameraX + window.innerWidth / game.zoomLevel) / 16);
-    const viewportYStart = Math.floor(camera.cameraY / 16);
-    const viewportYEnd = Math.ceil((camera.cameraY + window.innerHeight / game.zoomLevel) / 16);
-
-    for (let id in game.sprites) {
-        const sprite = game.sprites[id];
-        const spriteRight = sprite.x + sprite.width;
-        const spriteBottom = sprite.y + sprite.height;
-
-        if (
-            spriteRight >= viewportXStart * 16 && sprite.x < viewportXEnd * 16 &&
-            spriteBottom >= viewportYStart * 16 && sprite.y < viewportYEnd * 16
-        ) {
-            if (sprite.update) {
-                sprite.update(deltaTime);
-            }
-        }
-    }
-
-    camera.update();
-    utils.gameTime.update(deltaTime);
-    lighting.updateDayNightCycle();
-    lighting.updateLights();
-    this.updateAnimatedTiles(deltaTime);
-
-    particles.updateParticles(deltaTime);
-    effects.transitions.update();
-
-    actions.checkForNearbyItems();
-},
-
 renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
     this.backgroundTileCount = 0;
 
@@ -119,16 +84,12 @@ renderBackground: function(viewportXStart, viewportXEnd, viewportYStart, viewpor
 },
 
 renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-    // Clear the render queue at the start of each render
     this.renderQueue = [];
     this.backgroundTileCount = 0;
     this.tileCount = 0;
     this.spriteCount = 0;
 
-        // If the editor's grid is active, render it last
-        if (ui.pluginExists("editor_context_menu_window.renderIsometricGrid")) {
-            editor_context_menu_window.renderIsometricGrid();
-        }
+    plugin.hook('onRenderAll');
 
     // Expand objectData for any ranged tile indices
     const expandedObjectData = Object.keys(game.objectData).reduce((acc, key) => {
@@ -284,7 +245,10 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
             }
 
             // Lights & Effects
-            this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+            if(ui.pluginExists('lighting')) {
+                this.handleLights(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
+            }
+            
             this.handleEffects(tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd);
 
             if (ui.pluginExists("editor_layers") && editor_layers.needsUpdate) {
@@ -597,7 +561,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
         });
     },
 
-    updateAnimatedTiles: function(deltaTime) {
+    updateAnimatedTiles: function() {
         if (!game.roomData || !game.roomData.items) return;
     
         game.roomData.items.forEach(roomItem => {
@@ -615,7 +579,7 @@ renderAll: function(viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) 
                         const animationData = tileData.i;
                         const animationState = roomItem.animationState[index];
     
-                        animationState.elapsedTime += deltaTime;
+                        animationState.elapsedTime += game.deltaTime;
     
                         if (animationState.elapsedTime >= tileData.d) {
                             animationState.elapsedTime -= tileData.d;

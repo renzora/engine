@@ -1744,12 +1744,10 @@ restoreRoomData: function (state) {
     clearSelectionBox: function () {
     this.selectionStart = { x: 0, y: 0 };
     this.selectionEnd = { x: 0, y: 0 };
-    game.render();
 },
 
 clearLassoPath: function () {
     this.lassoPath = [];
-    game.render();
 },
 
 panCameraHorizontally: function(deltaY) {

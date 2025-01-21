@@ -147,7 +147,7 @@ input = {
                 console.error('Main sprite not found.');
             }
         } else if (e.key === ' ') {
-            utils.fullScreen();
+            ui.fullScreen();
         }
     },
 

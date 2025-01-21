@@ -7,7 +7,7 @@
     ],() => {
 
         const playerSprite = sprite.create({
-            id: game.playerid,
+            id: 'player1',
             isPlayer: true,
             speed: 100,
             animalType: 'female-01',
@@ -21,7 +21,8 @@
             player: playerSprite,
             after: function() {
 
-                utils.gameTime.hours = 10;
+                utils.gameTime.hours = 21;
+                utils.gameTime.minutes = 29;
 
                 game.scene(localStorage.getItem('sceneid') || '678ec2d7433aae2deee168ee');
                 audio.createChannel('music', localStorage.getItem('music-volume') || audio.defaultVolume);
@@ -33,7 +34,6 @@
                     id: 'gamepad_plugin',
                     url: 'plugins/gamepad/index.js'
                 });
-
 
                 plugin.load({ id: 'context_menu_window', url: 'plugins/context_menu/index.html' });
                 plugin.load({ id: 'debug_window', url: 'plugins/dev/index.html' });
@@ -48,18 +48,13 @@
                     } 
                 });
 
-                plugin.load({
-                    id: 'weather_plugin',
-                    url: 'plugins/weather/index.js',
-                    reload: true,
-                    after: function() {
-                        weather_plugin.snow.active = true;
-                    }
-                });
+                plugin.load({ id: 'snow', url: 'plugins/snow/index.js', after: function() { snow.active = false; } });
+                plugin.load({ id: 'rain', url: 'plugins/rain/index.js', after: function() { rain.active = true; } });
+                plugin.load({ id: 'fireflies', url: 'plugins/fireflies/index.js', after: function() { fireflies.active = true }});
 
-                //plugin.load({ id: 'lifecyclea', url: 'plugins/lifecycle/index.js' });
-                //plugin.load({ id: 'lifecycleb', url: 'plugins/lifecycleb/index.js' });
             }
         });
+
+        plugin.load({ id: 'lighting', url: 'plugins/lighting/index.js'});
 
     });

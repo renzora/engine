@@ -116,6 +116,10 @@ window[id] = {
     console.log("Editor context menu unmounted, all events removed.");
   },
 
+  onRenderAll: function() {
+    this.renderIsometricGrid();
+  },
+
   populateMenuItems: function (clientX, clientY) {
     const clickedObject = this.getSelectedObject(clientX, clientY);
     console.log('Clicked Object:', clickedObject); // Debug
