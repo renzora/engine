@@ -1,11 +1,14 @@
 window.pluginResolves = window.pluginResolves || {};
 
 plugin = {
-    plugins: [],
+    plugins: [],        // existing array of DOM elements for each window
     baseZIndex: null,
     pluginNames: {},
     activePlugin: null,
     preloadQueue: [],
+
+    // NEW: Keep references to the actual JS objects (window[id]) that define lifecycle hooks, etc.
+    loadedPlugins: {},
 
     init: function(selector, options) {
         const element = document.querySelector(selector);
@@ -71,6 +74,7 @@ plugin = {
             const clientX = isTouchEvent ? e.touches[0].clientX : e.clientX;
             const clientY = isTouchEvent ? e.touches[0].clientY : e.clientY;
 
+            // Prevent drag if clicked inside .window_body or .resize-handle
             if (e.target.closest('.window_body') || e.target.closest('.resize-handle')) {
                 return;
             }
@@ -173,13 +177,13 @@ plugin = {
     },
 
     minimize: function(id) {
-        var pluginElement = document.querySelector("[data-window='" + id + "']");
+        const pluginElement = document.querySelector("[data-window='" + id + "']");
         if (pluginElement) {
             pluginElement.style.display = 'none';
 
             if (this.plugins.length > 0) {
-                const nextactivePlugin = this.plugins[this.plugins.length - 1];
-                this.front(nextactivePlugin.getAttribute('data-window'));
+                const nextActivePlugin = this.plugins[this.plugins.length - 1];
+                this.front(nextActivePlugin.getAttribute('data-window'));
             } else {
                 this.activePlugin = null;
             }
@@ -213,18 +217,17 @@ plugin = {
             reload = false,
             hidden = false,
         } = options;
-    
-        // Determine if we need to use API route (for .njk files) or direct loading
+
         const useApi = url.endsWith('.njk');
         const fullUrl = useApi ? `/api/ajax/${url}` : url;
-    
+
         if (name) {
             this.pluginNames[id] = name;
         }
-    
+
         return new Promise((resolve, reject) => {
             let existingPlugin = document.querySelector(`[data-window='${id}']`);
-    
+
             if (existingPlugin) {
                 if (reload) {
                     this.close(id);
@@ -241,11 +244,11 @@ plugin = {
                     return;
                 }
             }
-    
+
             if (before) {
                 before(id);
             }
-    
+
             if (useApi) {
                 // Use ui.ajax for .njk files
                 ui.ajax({
@@ -286,18 +289,19 @@ plugin = {
             }
         });
     },
-    
+
     // Helper method to process the loaded content
     processLoadedContent: function(data, id, url, beforeStart, after, hidden, resolve) {
         window.id = id;
-    
+
         if (url.endsWith('.js')) {
             // JS Plugin
             const script = document.createElement('script');
             script.textContent = data;
             script.setAttribute('id', `${id}_script`);
             document.head.appendChild(script);
-    
+
+            // If the plugin object has a .start and hasn't started yet, call it
             if (window[id]?.start && !window[id]._hasStarted) {
                 window[id]._hasStarted = true;
                 if (beforeStart) {
@@ -309,29 +313,29 @@ plugin = {
             // HTML or Nunjucks Plugin
             const tempContainer = document.createElement('div');
             tempContainer.innerHTML = data;
-    
+
             const topDiv = tempContainer.querySelector('div') || document.createElement('div');
             topDiv.setAttribute('data-window', id);
-    
+
             const style = tempContainer.querySelector('style');
             if (style) {
                 topDiv.prepend(style);
             }
-    
+
             const lastPluginHtml = document.querySelector('div[data-window]:last-of-type');
             if (lastPluginHtml) {
                 lastPluginHtml.after(topDiv);
             } else {
                 document.body.appendChild(topDiv);
             }
-    
+
             const script = tempContainer.querySelector('script');
             if (script) {
                 const dynamicScript = document.createElement('script');
                 dynamicScript.textContent = script.textContent;
                 dynamicScript.setAttribute('id', `${id}_script`);
                 document.head.appendChild(dynamicScript);
-    
+
                 if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
                     if (beforeStart) {
                         beforeStart(id);
@@ -339,35 +343,52 @@ plugin = {
                     window[id].start();
                 }
             }
-    
+
+            // Initialize draggable, zIndex, etc.
             this.init(`[data-window='${id}']`, {
-                start: function() {
-                    this.classList.add('dragging');
-                },
+                start: function() { this.classList.add('dragging'); },
                 drag: function() {},
-                stop: function() {
-                    this.classList.remove('dragging');
-                },
+                stop: function() { this.classList.remove('dragging'); },
             });
-    
+
+            // Minimize or bring to front
             if (hidden) {
                 this.minimize(id);
             } else {
                 this.front(id);
             }
         }
-    
+
+        // NEW: Register the plugin object into plugin.loadedPlugins
+        // (assuming the user sets `window[id] = { ... }` in the plugin .js or <script>.)
+        if (window[id]) {
+            this.loadedPlugins[id] = window[id];
+        }
+
         if (after && typeof after === 'function') {
             after(id);
         }
-    
+
         resolve();
     },
 
+    hook: function(hookName) {
+        for (const pluginId in this.loadedPlugins) {
+            const pluginObj = this.loadedPlugins[pluginId];
+            if (pluginObj && typeof pluginObj[hookName] === 'function') {
+                try {
+                    pluginObj[hookName](); // no parameters here
+                } catch (err) {
+                    console.error(`Error running hook '${hookName}' for plugin '${pluginId}':`, err);
+                }
+            }
+        }
+    },
+
     show: function(pluginId) {
-        var plugin = document.querySelector("[data-window='" + pluginId + "']");
-        if (plugin) {
-            plugin.style.display = 'block';
+        const p = document.querySelector("[data-window='" + pluginId + "']");
+        if (p) {
+            p.style.display = 'block';
             this.front(pluginId);
         }
     },
@@ -382,9 +403,9 @@ plugin = {
             return;
         }
 
+        // If the plugin defines its own unmount, call it
         if (typeof window[id] !== 'undefined' && typeof window[id].unmount === 'function') {
             window[id].unmount();
-
             for (let key in window[id]) {
                 if (Object.prototype.hasOwnProperty.call(window[id], key)) {
                     window[id][key] = null;
@@ -403,6 +424,11 @@ plugin = {
         }
 
         this.plugins = this.plugins.filter(plugin => plugin.getAttribute('data-window') !== id);
+
+        // NEW: Remove from loadedPlugins as well
+        if (this.loadedPlugins[id]) {
+            delete this.loadedPlugins[id];
+        }
 
         if (typeof window[id] !== 'undefined') {
             delete window[id];
@@ -423,14 +449,13 @@ plugin = {
             window[id].unmount();
         }
 
-        var obj = window[id];
-
+        let obj = window[id];
         if (obj) {
             if (obj.eventListeners && Array.isArray(obj.eventListeners)) {
                 obj.eventListeners.length = 0;
             }
 
-            for (var prop in obj) {
+            for (let prop in obj) {
                 if (obj.hasOwnProperty(prop)) {
                     if (typeof obj[prop] === "function") {
                         delete obj[prop];
@@ -443,8 +468,10 @@ plugin = {
                     }
                 }
             }
-
             delete window[id];
+            if (this.loadedPlugins[id]) {
+                delete this.loadedPlugins[id];
+            }
             console.log(id, "has been completely unmounted and deleted.");
         }
     },
@@ -463,7 +490,7 @@ plugin = {
     },
 
     showAll: function() {
-        var plugins = document.querySelectorAll("[data-window]");
+        const plugins = document.querySelectorAll("[data-window]");
         plugins.forEach(function(plugin) {
             plugin.style.display = 'block';
         });
@@ -475,7 +502,7 @@ plugin = {
     },
 
     hideAll: function() {
-        var plugins = document.querySelectorAll("[data-window]");
+        const plugins = document.querySelectorAll("[data-window]");
         plugins.forEach(function(plugin) {
             plugin.style.display = 'none';
         });
@@ -484,9 +511,9 @@ plugin = {
     },
 
     closeAll: function() {
-        var windows = document.querySelectorAll('[data-window]');
+        const windows = document.querySelectorAll('[data-window]');
         windows.forEach((windowElement) => {
-            var id = windowElement.getAttribute('data-window');
+            const id = windowElement.getAttribute('data-window');
             windowElement.remove();
             ui.unmount(id);
         });
@@ -500,7 +527,7 @@ plugin = {
     },
 
     isVisible: function(id) {
-        var pluginElement = document.querySelector("[data-window='" + id + "']");
+        const pluginElement = document.querySelector("[data-window='" + id + "']");
         return pluginElement && pluginElement.style.display !== 'none';
     },
 

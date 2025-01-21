@@ -226,6 +226,13 @@ unmount: function () {
     game.resizeCanvas();
 },
 
+onRender: function() {
+    this.renderSelectionBox();
+    this.renderBrush();
+    this.renderSelectedTiles();
+    this.renderLasso();
+},
+
 setButtonIcon: function(buttonId, iconName) {
   const buttonEl = document.getElementById(buttonId);
   if (!buttonEl) return;

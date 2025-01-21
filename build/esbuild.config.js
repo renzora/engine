@@ -41,7 +41,7 @@ async function build() {
   });
 
   await ctx.rebuild();
-  await ctx.watch();
+  //await ctx.watch();
   console.log('Watching for changes...');
 
   const jsPath = path.resolve(__dirname, '../client/assets/js/renzora.min.js');

@@ -6,7 +6,6 @@ game = {
     x: null,
     y: null,
     timestamp: 0,
-    deltaTime: 0,
     worldWidth: 1280,
     worldHeight: 944,
     zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 5,
@@ -20,6 +19,7 @@ game = {
     sceneid: null,
     desiredFPS: 60,
     fixedDeltaTime: 1000 / 60,
+    deltaTime: null,
     accumulatedTime: 0,
     lastTime: null,
     maxAccumulatedTime: 1000,
@@ -80,7 +80,7 @@ game = {
             this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
             this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
-            document.addEventListener('visibilitychange', () => {   
+            document.addEventListener('visibilitychange', () => {
                 if (document.hidden) {
                     this.pause();
                 } else {
@@ -249,11 +249,7 @@ game = {
         render.renderBackground(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
         render.renderAll(this.viewportXStart, this.viewportXEnd, this.viewportYStart, this.viewportYEnd);
 
-        if (ui.pluginExists('weather_plugin')) {
-            weather_plugin.rain.draw();
-            weather_plugin.snow.draw();
-            weather_plugin.fireflys.draw();
-        }
+        plugin.hook('onRender');
 
         this.ctx.save();
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -267,33 +263,10 @@ game = {
         render.renderCarriedObjects();
         render.handleDebugUtilities();
 
-        if (ui.pluginExists('gamepad_plugin')) {
-            gamepad_plugin.aimTool();
-        }
-
-        if (ui.pluginExists('ui_footer_window.updateUi')) {
-            ui_footer_window.updateUI();
-        }
-
         effects.letterbox.update();
 
         if (ui.pluginExists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
             ui_console_editor_inventory.render();
-        }
-
-        if (ui.pluginExists('edit_mode_window')) {
-            if (typeof edit_mode_window.renderSelectionBox === 'function') {
-                edit_mode_window.renderSelectionBox();
-            }
-            if (typeof edit_mode_window.renderBrush === 'function') {
-                edit_mode_window.renderBrush();
-            }
-            if (typeof edit_mode_window.renderSelectedTiles === 'function') {
-                edit_mode_window.renderSelectedTiles();
-            }
-            if (typeof edit_mode_window.renderLasso === 'function') {
-                edit_mode_window.renderLasso();
-            }
         }
 
         if (ui.pluginExists('ui_console_tab_window')) {
@@ -357,6 +330,8 @@ game = {
         if (gameTimeDisplay) {
             gameTimeDisplay.innerHTML = utils.gameTime.display();
         }
+
+        plugin.hook('onLoop');
 
         requestAnimationFrame(this.loop.bind(this));
     }

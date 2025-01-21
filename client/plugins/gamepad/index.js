@@ -29,6 +29,10 @@ window[id] = {
         assets.unload('gamepad_buttons');
     },
 
+    onRender: function() {
+        this.aimTool();
+    },
+
     gamepadXButton: function(e) {
         console.log("X button held down");
         if(!ui.pluginExists('ui_overlay_window')) return;

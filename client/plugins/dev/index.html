@@ -39,6 +39,9 @@ window[id] = {
         if (animationsRenderedDisplay) {
             animationsRenderedDisplay.innerHTML = `Animations: ${render.animationCount}`;
         }
+    },
+    onRender: function() {
+        this.updateUI();
     }
   };
 </script>

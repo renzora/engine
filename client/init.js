@@ -53,9 +53,12 @@
                     url: 'plugins/weather/index.js',
                     reload: true,
                     after: function() {
-                        weather_plugin.snow.active = false;
+                        weather_plugin.snow.active = true;
                     }
                 });
+
+                //plugin.load({ id: 'lifecyclea', url: 'plugins/lifecycle/index.js' });
+                //plugin.load({ id: 'lifecycleb', url: 'plugins/lifecycleb/index.js' });
             }
         });
 

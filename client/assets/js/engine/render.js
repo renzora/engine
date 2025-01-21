@@ -74,18 +74,6 @@ updateGameLogic: function(deltaTime) {
     lighting.updateLights();
     this.updateAnimatedTiles(deltaTime);
 
-    if(ui.pluginExists('weather_plugin')) {
-        weather_plugin.snow.update(deltaTime);
-        weather_plugin.rain.update(deltaTime);
-        weather_plugin.fireflys.update(deltaTime);
-
-        if (weather_plugin.rainActive) {
-            audio.playAudio("rain", assets.use('rain'), 'ambience', true);
-        } else {
-            audio.stopLoopingAudio('rain', 'ambience', 0.5);
-        }
-    }
-    
     particles.updateParticles(deltaTime);
     effects.transitions.update();
 

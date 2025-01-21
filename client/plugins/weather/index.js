@@ -11,6 +11,22 @@ unmount: function() {
     console.log(`Weather Plugin unmounted: ${this.id}`);
 },
 
+onRender: function() {
+    this.rain.draw();
+    this.snow.draw();
+    this.fireflys.draw();
+
+    this.snow.update(game.deltaTime);
+    this.rain.update(game.deltaTime);
+    this.fireflys.update(game.deltaTime);
+
+    if (this.rainActive) {
+        audio.playAudio("rain", assets.use('rain'), 'ambience', true);
+    } else {
+        audio.stopLoopingAudio('rain', 'ambience', 0.5);
+    }
+},
+
 snow: {
     snowflakes: [],
     maxSnowflakes: 3000,
