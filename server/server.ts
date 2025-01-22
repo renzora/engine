@@ -28,7 +28,6 @@ const viewPaths = [
 
 nunjucks.configure(viewPaths, {
   autoescape: true,
-  watch: true,
   noCache: false,
 });
 

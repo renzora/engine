@@ -9,7 +9,7 @@ services:
     volumes:
       - ./client:/app/client
       - ./server:/app/server
-      - node_modules:/usr/src/app/server/node_modules
+      - node_modules:/app/server/node_modules
     depends_on:
       - renzora_mongodb
       - renzora_redis
