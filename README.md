@@ -26,8 +26,6 @@ docker-compose up --build
 - Client: Nginx ```(port 80/443)```
 - Website: ```http://localhost```
 - Nodejs Express endpoint: ```http://localhost:3000```
-
-# Default Login
 - Username: ```admin```
 - Password: ```password```
 
@@ -48,13 +46,10 @@ npm install
 ```
 
 build js
-`npm run js`
+`npm run build:js`
 
 build css
-`npm run css`
-
-build css + watch for changes
-`npm run watch:css`
+`npm run build:css`
 
 build both
 `npm run build`
@@ -63,5 +58,5 @@ build both
 "WebSocket connection to 'wss://localhost:3000/' failed"
 because the local dev server is using a self-signed ssl certificate and not a domain specific CA certificate; browsers by default don't trust it. to get around this issue, visit ```https://localhost:3000``` You will be presented with a screen saying connection is not private. For the purposes of development you can click on Advanced and then proceed anyway. clicking the proceed link wont actually do anything. You can close the window immediately. Then refresh the website at ```http://localhost``` and the websocket should now connect. You shouldn't have this issue on a production server using full ssl.
 
-# Installing node modules
-In the dev environment, the node modules are installed on the docker container with a mount to the local computer. Because of this, you don't install new modules locally. Instead, you would add package.json dependencies with the flag `npm install --package-lock-only <package>` then you would `docker-compose build` to rebuild the container. This doesn't apply to the build directory as build tools don't use docker.
+# adding bun/node modules
+In the dev environment, the node modules are installed on the docker container. Because of this, you don't install new modules locally. Instead, use `npm install --package-lock-only <package>` then `docker-compose build` to rebuild the container. This doesn't apply to the build directory as build tools don't use docker.
