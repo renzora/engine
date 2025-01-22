@@ -1,5 +1,16 @@
 particles = {
     activeEffects: {},
+    particles: [],
+    start: function() {
+
+    },
+    unmount: function() {
+
+    },
+    onRender: function() {
+        this.render();
+        this.updateParticles();
+    },
     createParticles: function(x, y, options, effectId) {
         const particleCount = options.count || 20;
         const baseSpeed = options.speed || 2;
@@ -53,9 +64,9 @@ particles = {
     },    
 
     updateParticles: function() {
-        game.particles = game.particles.filter(particle => particle.life > 0);
+        game.particles = this.particles.filter(particle => particle.life > 0);
 
-        game.particles.forEach(particle => {
+        this.particles.forEach(particle => {
             if (particle.type === 'ripple') {
                 particle.size += 0.1;
                 particle.life -= game.deltaTime / 16;
@@ -146,7 +157,7 @@ particles = {
     removeParticles: function(effectId) {
         if (this.activeEffects[effectId]) {
             delete this.activeEffects[effectId];
-            game.particles = game.particles.filter(particle => particle.effectId !== effectId);
+            this.particles = this.particles.filter(particle => particle.effectId !== effectId);
         } else {
             console.warn(`Effect with ID '${effectId}' not found.`);
         }

@@ -122,7 +122,7 @@ var ui_console_editor_inventory = {
           // flatten ranges, if any
           framesToRender = item.i.map(frame => {
             if (typeof frame === 'string' && frame.includes('-')) {
-              return render.parseRange(frame);
+              return game.parseRange(frame);
             }
             return [frame];
           }).flat();

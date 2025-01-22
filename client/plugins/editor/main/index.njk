@@ -141,7 +141,7 @@ window[id] = {
         move: document.getElementById('move_button')
     };
 
-    game.timeActive = true;
+    if(plugin.exists('time')) time.active = true;
     game.isEditMode = true;
     game.pathfinding = false;
     game.allowControls = true;
@@ -186,9 +186,12 @@ unmount: function () {
     game.isEditMode = false;
     game.pathfinding = true;
     game.allowControls = true;
-    game.timeActive = true;
-    utils.gameTime.hours = this.currentHour;
-    utils.gameTime.minutes = this.currentMinute;
+
+    if(plugin.exists('time')) {
+        time.active = true;
+        time.hours = this.currentHour;
+        time.minutes = this.currentMinute;
+    }
     game.displaySprite = true;
     camera.lerpEnabled = true;
     camera.manual = false;
@@ -251,11 +254,11 @@ setButtonIcon: function(buttonId, iconName) {
 },
 
 updateCurrentTimeAndDay: function () {
-        const gameTime = utils.gameTime;
-        this.currentHour = Math.floor(gameTime.hours);
-        this.currentMinute = Math.floor(gameTime.minutes);
-        this.currentDay = gameTime.daysOfWeek[gameTime.days % 7];
-    },
+    if(!plugin.exists('time')) return;
+        this.currentHour = Math.floor(time.hours);
+        this.currentMinute = Math.floor(time.minutes);
+        this.currentDay = time.daysOfWeek[time.days % 7];
+},
 
     changeMode: function (newMode) {
     const contextMenu = document.getElementById('editor_context_menu_window');

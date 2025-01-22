@@ -1,4 +1,19 @@
-effects = {
+window[id] = {
+    id: id,
+
+    start: function() {
+
+    },
+
+    unmount: function() {
+
+    },
+
+    onRender: function() {
+        this.transitions.render();
+        this.transitions.update();
+        this.letterbox.update();
+    },
 
     shakeMap: function(duration, intensity) {
         const originalCameraX = camera.cameraX;
@@ -272,9 +287,5 @@ effects = {
                 }
             }
         },
-    },
-    
-    
-    
-
-};
+    }
+}

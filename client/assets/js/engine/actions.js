@@ -63,7 +63,7 @@ checkForNearbyItems: function () {
 
             let script;
             if (typeof scriptData === 'string') {
-                script = utils.parseYaml(scriptData);
+                script = this.parseYaml(scriptData);
             } else if (typeof scriptData === 'object' && scriptData !== null) {
                 script = scriptData;
             } else {
@@ -105,8 +105,7 @@ checkForNearbyItems: function () {
                             `<div class="gamepad_button_${buttonName.toLowerCase()}"></div>`
                         );
                 
-                    this.tooltip(tooltipText, item, sprite); // Pass HTML content to the tooltip method
-                    gamepad.updateButtonImages();
+                    this.tooltip(tooltipText, item, sprite);
                 }                         
 
                 if (script.walk && script.walk.scene) {
@@ -164,6 +163,8 @@ checkForNearbyItems: function () {
                 }
                 item.swayTriggered = false;
             }
+
+            
         });
 
     if (!closestItem) {
@@ -195,8 +196,9 @@ checkForNearbyItems: function () {
     },
 
     isWithinActiveTime: function(activeTime) {
-        const currentHour = utils.gameTime.hours + (utils.gameTime.minutes / 60);
-        console.log(`Current game time (hours): ${utils.gameTime.hours}:${utils.gameTime.minutes}, as decimal: ${currentHour}`);
+        if(!plugin.exists('time')) return;
+        const currentHour = time.hours + (time.minutes / 60);
+        console.log(`Current game time (hours): ${time.hours}:${time.minutes}, as decimal: ${currentHour}`);
     
         const [startTime, endTime] = activeTime.split('-').map(time => {
             if (time.includes(':')) {
@@ -246,7 +248,7 @@ checkForNearbyItems: function () {
                 document.body.appendChild(tooltip);
             }
     
-            tooltip.innerHTML = htmlContent; // Render HTML content
+            tooltip.innerHTML = htmlContent;
             tooltip.style.display = 'flex';
     
             const tooltipWidth = tooltip.offsetWidth;
@@ -440,6 +442,59 @@ speech: function (config, context, item) {
         game.sprites[playerId].visible = true;
     
         console.log(`${playerId} has dismounted from ${horseId}`);
+    },
+
+    parseYaml: function(yaml) {
+        const lines = yaml.split('\n');
+        const result = {};
+        let currentObject = result;
+        let objectStack = [result];
+        let indentStack = [0];
+        let previousIndent = 0;
+        let lastKey = '';
+    
+        lines.forEach(line => {
+            const cleanLine = line.split('#')[0].trim();
+    
+            if (cleanLine === '') return;
+    
+            const indent = line.search(/\S/);
+    
+            if (indent < previousIndent && objectStack.length > 1) {
+                while (indent <= indentStack[indentStack.length - 1]) {
+                    objectStack.pop();
+                    indentStack.pop();
+                }
+                currentObject = objectStack[objectStack.length - 1];
+            }
+    
+            if (cleanLine.startsWith('- ')) {
+                const listItem = cleanLine.slice(2).trim().replace(/^["']|["']$/g, '');
+                if (Array.isArray(currentObject[lastKey])) {
+                    currentObject[lastKey].push(listItem);
+                } else {
+                    currentObject[lastKey] = [listItem];
+                }
+            } else if (cleanLine.includes(':')) {
+                const [rawKey, ...rawValue] = cleanLine.split(':');
+                const key = rawKey.trim();
+                let value = rawValue.join(':').trim().replace(/^["']|["']$/g, '');
+    
+                if (value === '') {
+                    currentObject[key] = {};
+                    objectStack.push(currentObject[key]);
+                    currentObject = currentObject[key];
+                    indentStack.push(indent);
+                } else {
+                    currentObject[key] = value;
+                }
+                lastKey = key;
+            }
+    
+            previousIndent = indent;
+        });
+    
+        return result;
     }
     
 };

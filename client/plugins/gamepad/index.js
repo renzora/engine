@@ -33,40 +33,33 @@ window[id] = {
         this.aimTool();
     },
 
-    gamepadXButton: function(e) {
-        console.log("X button held down");
-        if(!ui.pluginExists('ui_overlay_window')) return;
-
+    gamepadXButton: function(e) {     
+        if(!plugin.exists('ui_overlay_window')) return;
         if (ui_overlay_window.remainingBullets < ui_overlay_window.bulletsPerRound && ui_overlay_window.remainingRounds > 0 && !ui_overlay_window.isReloading) {
-            console.log("Starting manual reload");
             ui_overlay_window.startReloading();
         } else if (ui_overlay_window.remainingRounds <= 0) {
-            console.log("X button held - No rounds left");
-            audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
+            if (plugin.exists('audio')) audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
         }
     },
 
     gamepadAButton: function(e) {
-        console.log("X button held down");
+
     },
     
     gamepadXButtonReleased: function(e) {
-        if(!ui.pluginExists('ui_overlay_window')) return;
+        if(!plugin.exists('ui_overlay_window')) return;
         if (ui_overlay_window.isReloading) {
-            console.log("X button released - Stopping reload");
             ui_overlay_window.stopReloading();
         }
         ui_overlay_window.justReloaded = false;
     },
 
     gamepadYButtonPressed: function () {
-        if (!game.mainSprite || !game.sprites[game.playerid] || !ui.pluginExists('ui_overlay_window')) return;
+        if (!game.mainSprite || !game.sprites[game.playerid] || !plugin.exists('ui_overlay_window')) return;
 
         this.isYButtonHeld = true;
-    
         const currentSprite = game.mainSprite;
         const currentPlayerId = game.playerid;
-    
         const radius = 32;
     
         if (currentSprite.isVehicle) {
@@ -95,14 +88,11 @@ window[id] = {
                 currentSprite.activeSprite = false;
                 plugin.minimize('ui_inventory_window');
                 plugin.front('ui_overlay_window');
-            } else {
-                console.log("No nearby vehicle within radius to switch to.");
             }
 
         }
     
         game.mainSprite = game.sprites[game.playerid];
-        console.log(`Switched control to sprite with ID: ${game.playerid}`);
     },
     
     
@@ -115,7 +105,6 @@ window[id] = {
         const sprite = game.mainSprite;
     
         if (!sprite) {
-            console.error("No sprite detected for L2 action.");
             return;
         }
     
@@ -128,13 +117,11 @@ window[id] = {
                         0,
                         sprite.currentSpeed - sprite.braking * pressure * (game.deltaTime / 16.67)
                     );
-                    console.log("Braking Vehicle, Current Speed:", sprite.currentSpeed);
                 } else {
                     sprite.currentSpeed = Math.max(
                         -sprite.maxSpeed,
                         sprite.currentSpeed - (sprite.acceleration * 10) * pressure * (game.deltaTime / 16.67)
                     );
-                    console.log("Reversing Vehicle at higher speed, Current Speed:", sprite.currentSpeed);
                 }
     
                 sprite.moveVehicle();
@@ -158,12 +145,10 @@ window[id] = {
         const sprite = game.mainSprite;
     
         if (!sprite) {
-            console.error("No sprite detected for R2 action.");
             return;
         }
     
         const pressure = event.detail.pressure || 0;
-        console.log("R2 Pressure (from event):", pressure);
     
         if (sprite.isVehicle) {
             if (pressure > 0) {
@@ -171,34 +156,30 @@ window[id] = {
                     sprite.maxSpeed,
                     sprite.currentSpeed + sprite.acceleration * pressure * (game.deltaTime / 16.67)
                 );
-                console.log("Accelerating Vehicle, Current Speed:", sprite.currentSpeed);
             } else {
                 sprite.currentSpeed = Math.max(0, sprite.currentSpeed - sprite.braking * (game.deltaTime / 16.67)
                 );
-                console.log("Decelerating Vehicle, Current Speed:", sprite.currentSpeed);
             }
     
             sprite.moveVehicle();
         } else if (sprite.canShoot) {
-            if(ui.pluginExists('ui_overlay_window')) {
+            if(plugin.exists('ui_overlay_window')) {
             if (sprite.targetAim && sprite.canShoot) {
                 if (ui_overlay_window.remainingBullets > 0) {
                     sprite.dealDamage();
                     ui_overlay_window.updateBullets(ui_overlay_window.remainingBullets - 1);
-                    audio.playAudio("machinegun1", assets.use('machinegun1'), 'sfx', true);
-                    effects.shakeMap(200, 2);
+                    if (plugin.exists('audio')) audio.playAudio("machinegun1", assets.use('machinegun1'), 'sfx', true);
+                    if (plugin.exists('effects')) effects.shakeMap(200, 2);
                     sprite.overrideAnimation = 'shooting_gun';
                 } else {
                     audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
                     if (ui_overlay_window.remainingRounds > 0) {
-                        console.log("Out of bullets! Reload needed.");
-                        audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
-                        if(ui.pluginExists('notif')) notif.show("no_bullets_notif", `Out of bullets! Press 'X' to reload.`, true);
+                        if (plugin.exists('audio')) audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
+                        if (plugin.exists('notif')) notif.show("no_bullets_notif", `Out of bullets! Press 'X' to reload.`, true);
                         sprite.overrideAnimation = null;
                     } else {
-                        console.log("No bullets and no rounds left");
-                        audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
-                        if(ui.pluginExists('ui_overlay_window')) ui_overlay_window.noBulletsLeft();
+                        if (plugin.exists('audio')) audio.playAudio("empty_gun", assets.use('empty_gun'), 'sfx', false);
+                        if (plugin.exists('ui_overlay_window')) ui_overlay_window.noBulletsLeft();
                     }
                 }
             }
@@ -211,7 +192,7 @@ window[id] = {
             return;
         }
         this.changeSpeed();
-        audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
+        if (plugin.exists('audio')) audio.stopLoopingAudio('machinegun1', 'sfx', 1.0);
         const player = game.mainSprite;
         player.changeAnimation('shooting_gun');
     },    
@@ -297,14 +278,11 @@ window[id] = {
                 const topSpeed = sprite.topSpeed;
                 const r2Boost = gamepad.buttons.includes('r2') ? 1.0 : 0.6;
                 const relativeSpeed = minSpeed + (pressure * (topSpeed - minSpeed) * r2Boost);
-    
                 sprite.speed = Math.min(relativeSpeed, topSpeed);
                 const angle = Math.atan2(leftStickY, leftStickX);
-    
                 this.updateGamepadDirections(angle);
                 this.updateSpriteDirections();
-    
-                effects.dirtCloudEffect.create(sprite, '#DAF7A6');
+                if (plugin.exists('effects')) effects.dirtCloudEffect.create(sprite, '#DAF7A6');
             } else {
                 gamepad.axesPressures.leftStickX = 0;
                 gamepad.axesPressures.leftStickY = 0;
@@ -522,12 +500,12 @@ window[id] = {
         });
     
         if (game.mainSprite && !combinedDirections.up && !combinedDirections.down && !combinedDirections.left && !combinedDirections.right) {
-            audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
+            if (plugin.exists('audio')) audio.stopLoopingAudio('footsteps1', 'sfx', 0.5);
         }
     },
 
     gamepadStart: function() {
-        plugin.load({ id: 'overview_menu', url: 'overview/index.php', reload: true, drag: false, hidden: false })
+        plugin.load({ id: 'overview_menu', url: 'plugins/overview/index.html', reload: true, drag: false, hidden: false })
     },
 
     aimTool: function() {

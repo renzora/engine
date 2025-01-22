@@ -1,0 +1,412 @@
+<div id="terminal_plugin" class="hidden fixed bottom-0 left-0 bg-black text-green-500 rounded shadow p-2 font-mono flex flex-col w-96 h-80">
+  <div id="terminal_output" class="flex-1 overflow-auto mb-2"></div>
+  <input id="terminal_input" class="bg-black text-green-500 placeholder-green-600 rounded p-1 outline-none" type="text" placeholder="Enter command..." autocomplete="off" />
+</div>
+
+<script>
+window[id] = {
+  id: id,
+  logs: [],
+  currentUser: null,
+  loginFlow: { active: false, step: null, username: null },
+
+  start: function() {
+    document.getElementById(this.id).style.display = "flex";
+    var inputEl = document.getElementById("terminal_input");
+    inputEl.addEventListener("keyup", (e) => {
+      if (e.key === "Enter") {
+        var commandText = e.target.value.trim();
+        e.target.value = "";
+        this.handleCommand(commandText);
+      }
+    });
+    this.log("Terminal started, type help for commands");
+  },
+
+  unmount: function() {
+    document.getElementById(this.id).style.display = "none";
+    this.log("Terminal unmounted");
+  },
+
+  log: function(message, type = "info") {
+    this.logs.push(message);
+
+    let colorClass = "";
+    switch (type) {
+      case "command":
+        colorClass = "text-blue-300"; 
+        break;
+      case "error":
+        colorClass = "text-red-400"; 
+        break;
+      case "success":
+        colorClass = "text-green-300"; 
+        break;
+      case "prompt":
+        colorClass = "text-yellow-300"; 
+        break;
+      default:
+        colorClass = ""; 
+        break;
+    }
+
+    var outputEl = document.getElementById("terminal_output");
+    if (outputEl) {
+      var line = document.createElement("div");
+      line.className = colorClass;
+      line.textContent = message;
+      outputEl.appendChild(line);
+      outputEl.scrollTop = outputEl.scrollHeight;
+    }
+  },
+
+  clearLogs: function() {
+    this.logs = [];
+    var outputEl = document.getElementById("terminal_output");
+    if (outputEl) outputEl.innerHTML = "";
+  },
+
+  getNestedProp: function(path) {
+    var parts = path.split(".");
+    var obj = window;
+    for (var i = 0; i < parts.length; i++) {
+      if (!obj || typeof obj[parts[i]] === "undefined") return undefined;
+      obj = obj[parts[i]];
+    }
+    return obj;
+  },
+
+  setNestedProp: function(path, value) {
+    var parts = path.split(".");
+    var obj = window;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (typeof obj[parts[i]] === "undefined") obj[parts[i]] = {};
+      obj = obj[parts[i]];
+    }
+    obj[parts[parts.length - 1]] = value;
+  },
+
+  handleCommand: function(cmdString) {
+    if (!cmdString) return;
+
+    if (this.loginFlow.active) {
+      this.handleLoginFlow(cmdString);
+      return;
+    }
+
+    var parts = cmdString.split(" ");
+    var command = parts[0].toLowerCase();
+    var args = parts.slice(1);
+
+    this.log("> " + cmdString, "command");
+
+    if (!this.isKnownCommand(command)) {
+      var val = this.getNestedProp(cmdString);
+      if (val !== undefined) {
+        this.log(JSON.stringify(val));
+      } else {
+        this.log("Unknown command or variable: " + command, "error");
+      }
+      return;
+    }
+
+    switch (command) {
+      case "help": this.command_help(); break;
+      case "clear": this.command_clear(); break;
+      case "stop": this.command_stop(args); break;
+      case "load": this.command_load(args); break;
+      case "close":
+      case "destroy": this.command_destroy(args); break;
+      case "time": this.command_time(args); break;
+      case "logout": this.command_logout(); break;
+      case "login":
+      case "signin": this.command_startLogin(); break;
+      case "shake": this.command_shake(); break;
+      case "letterbox": this.command_letterbox(args); break;
+      case "fullscreen": this.command_fullscreen(); break;
+      case "zoom": this.command_zoom(args); break;
+      case "pan": this.command_pan(args); break;
+      case "camera": this.command_camera(args); break;
+      case "audio": this.command_audio(args); break;
+      case "exit": this.command_exit(); break;
+      case "set": this.command_set(args); break;
+      case "fs": this.command_fullscreen(); break;
+    }
+  },
+
+  isKnownCommand: function(cmd) {
+    return [
+      "help","clear","stop","load","close","destroy","time","logout","login","signin",
+      "shake","letterbox","fullscreen","zoom","pan","camera","audio","exit","set","fs"
+    ].includes(cmd);
+  },
+
+  handleLoginFlow: function(cmdString) {
+    if (this.loginFlow.step === "username") {
+      this.loginFlow.username = cmdString;
+      this.log("> " + cmdString, "command");
+
+      this.loginFlow.step = "password";
+      document.getElementById("terminal_input").type = "password";
+      this.log("Enter your password:", "prompt");
+      return;
+    }
+
+    if (this.loginFlow.step === "password") {
+      var typedPassword = cmdString;
+      var hiddenPass = "*".repeat(typedPassword.length);
+      this.log("> " + hiddenPass, "command");
+
+      var username = this.loginFlow.username;
+      var password = typedPassword;
+
+      fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      })
+      .then(r => r.json())
+      .then(d => {
+        if (d && d.success) {
+          this.currentUser = username;
+          this.log("Welcome, " + username + "! You are now logged in.", "success");
+        } else {
+          this.log("Invalid credentials. Login failed.", "error");
+        }
+      })
+      .catch(e => this.log("Login error: " + e, "error"))
+      .finally(() => {
+        this.loginFlow.active = false;
+        this.loginFlow.step = null;
+        this.loginFlow.username = null;
+        document.getElementById("terminal_input").type = "text";
+      });
+    }
+  },
+
+  command_startLogin: function() {
+    if (this.loginFlow.active) {
+      this.log("Login flow is already in progress.", "prompt");
+      return;
+    }
+    this.loginFlow.active = true;
+    this.loginFlow.step = "username";
+    this.log("Enter your username:", "prompt");
+  },
+
+  command_help: function() {
+    this.log("Commands:");
+    this.log("help, clear, stop pan, load <plugin>, load <plugin>/<index.ext>, close <plugin>,");
+    this.log("time [hh] [mm], login|signin, logout, shake, letterbox <on|off>, fullscreen, fs,");
+    this.log("zoom <n>, pan <x> <y>, camera <x> <y>, audio channel|remove, set <path> <value> or set !<path>, exit");
+  },
+
+  command_clear: function() {
+    this.clearLogs();
+    this.log("Terminal output cleared.");
+  },
+
+  command_stop: function(args) {
+    if (args[0] && args[0].toLowerCase() === "pan") {
+      this.log("Camera panning stopped.");
+      camera.stopPan();
+    } else {
+      this.log("Unknown stop command. Try: stop pan", "prompt");
+    }
+  },
+
+  command_load: function(args) {
+    if (!args[0]) {
+      this.log("Usage: load <pluginName> or load <pluginName>/<index.ext>");
+      return;
+    }
+    var path = args[0];
+    if (path.includes("/")) {
+      var url = "/client/plugins/" + path;
+      plugin.load({ id: path.split("/")[0], url: url });
+      this.log("Loaded plugin: " + path, "success");
+      return;
+    }
+    var pluginName = path;
+    var exts = ["html","njk","js"];
+    var base = "/client/plugins/" + pluginName + "/index.";
+    var self = this;
+
+    (function tryNext(i) {
+      if (i >= exts.length) {
+        self.log("Could not find plugin: " + pluginName, "error");
+        return;
+      }
+      var url = base + exts[i];
+      fetch(url, { method: "HEAD" })
+        .then(r => {
+          if (r.ok) {
+            plugin.load({ id: pluginName, url: url });
+            self.log("Loaded plugin: " + pluginName + " (index." + exts[i] + ")", "success");
+          } else {
+            tryNext(i+1);
+          }
+        })
+        .catch(() => tryNext(i+1));
+    })(0);
+  },
+
+  command_destroy: function(args) {
+    if (!args[0]) {
+      this.log("Usage: close <pluginName>");
+      return;
+    }
+    var pluginName = args[0];
+    plugin.close(pluginName);
+    this.log("Closed plugin: " + pluginName, "success");
+  },
+
+  command_time: function(args) {
+    if (args.length === 0) {
+      var hh = time.hours || 0;
+      var mm = time.minutes || 0;
+      this.log("Current game time is " + hh + ":" + String(mm).padStart(2, "0"));
+      return;
+    }
+    var hh = parseInt(args[0], 10);
+    var mm = 0;
+    if (args[1]) mm = parseInt(args[1], 10);
+    time.hours = hh;
+    time.minutes = mm;
+    this.log("Game time set to " + hh + ":" + String(mm).padStart(2, "0"), "success");
+  },
+
+  command_logout: function() {
+    if (!this.currentUser) {
+      this.log("No user is currently logged in.", "prompt");
+      return;
+    }
+    fetch("/api/auth/signout", { method: "POST" })
+    .then(() => {
+      this.log("You have been logged out.", "success");
+      this.currentUser = null;
+    })
+    .catch(e => this.log("Logout error: " + e, "error"));
+  },
+
+  command_shake: function() {
+    this.log("Shaking the map...");
+    effects.shakeMap(1000, 3);
+  },
+
+  command_letterbox: function(args) {
+    if (!args[0]) {
+      this.log("Usage: letterbox <on|off>");
+      return;
+    }
+    var mode = args[0].toLowerCase();
+    effects.letterbox.active = mode === "on";
+    this.log("Letterbox is now: " + mode, "success");
+  },
+
+  command_fullscreen: function() {
+    this.log("Attempting fullscreen...");
+    ui.fullScreen();
+  },
+
+  command_zoom: function(args) {
+    if (!args[0]) {
+      this.log("Usage: zoom <amount>");
+      return;
+    }
+    var amount = Number(args[0]);
+    ui.setZoomLevel(amount);
+    this.log("Zoom level set to " + amount, "success");
+  },
+
+  command_pan: function(args) {
+    if (args.length < 2) {
+      this.log("Usage: pan <x> <y>");
+      return;
+    }
+    var x = Number(args[0]);
+    var y = Number(args[1]);
+    camera.panTo(x, y, 1, false);
+    this.log("Panning camera to (" + x + ", " + y + ")");
+  },
+
+  command_camera: function(args) {
+    if (args.length < 2) {
+      this.log("Usage: camera <x> <y>");
+      return;
+    }
+    var x = Number(args[0]);
+    var y = Number(args[1]);
+    camera.setCameraPosition(x, y);
+    this.log("Camera position set to (" + x + ", " + y + ")");
+  },
+
+  command_audio: function(args) {
+    if (!args[0]) {
+      this.log("Usage: audio channel|remove");
+      return;
+    }
+    var subCommand = args[0].toLowerCase();
+    if (subCommand === "channel") {
+      if (args.length < 3) {
+        this.log("Usage: audio channel <name> <volume>");
+        return;
+      }
+      var name = args[1];
+      var volume = parseFloat(args[2]);
+      audio.createChannel(name, volume);
+      this.log("Created audio channel: " + name + " (volume: " + volume + ")", "success");
+    } else if (subCommand === "remove") {
+      if (!args[1]) {
+        this.log("Usage: audio remove <name>");
+        return;
+      }
+      audio.removeChannel(args[1]);
+      this.log("Removed audio channel: " + args[1], "success");
+    } else {
+      this.log("Invalid audio command. Use: audio channel|remove", "prompt");
+    }
+  },
+
+  command_exit: function() {
+    this.log("Exiting terminal plugin...");
+    this.unmount();
+  },
+
+  command_set: function(args) {
+    if (!args[0]) {
+      this.log("Usage: set <path> <value> or set !<path>");
+      return;
+    }
+
+    if (args[0].startsWith("!")) {
+      var path = args[0].substring(1);
+      this.setNestedProp(path, false);
+      this.log(path + " set to false", "success");
+      return;
+    }
+
+    if (!args[1]) {
+      this.log("Usage: set <path> <value> or set !<path>");
+      return;
+    }
+
+    var path = args[0];
+    var val = args[1];
+
+    if (val.toLowerCase() === "true") {
+      this.setNestedProp(path, true);
+      this.log(path + " set to true", "success");
+    } else if (val.toLowerCase() === "false") {
+      this.setNestedProp(path, false);
+      this.log(path + " set to false", "success");
+    } else if (!isNaN(val)) {
+      this.setNestedProp(path, parseFloat(val));
+      this.log(path + " set to " + val, "success");
+    } else {
+      this.setNestedProp(path, val);
+      this.log(path + " set to " + val, "success");
+    }
+  }
+};
+</script>

@@ -14,9 +14,9 @@ window[id] = {
     },
 
     onRender: function() {
+        game.ctx.restore();
         this.draw();
         this.update();
-        game.ctx.save();
     },
 
     create: function () {
@@ -33,7 +33,7 @@ window[id] = {
             };
             this.fireflies.push(firefly);
 
-            if(ui.pluginExists('lighting')) {
+            if(plugin.exists('lighting') && plugin.exists('time')) {
 
             const lightId = `firefly_${i}`;
             this.fireflyLights[lightId] = {
@@ -52,7 +52,7 @@ window[id] = {
     },
 
     update: function () {
-    if (!this.active && ui.pluginExists('lighting')) {
+    if (!this.active && plugin.exists('lighting')) {
         lighting.lights = lighting.lights.filter(light => !light.id.startsWith("firefly_"));
         return;
     }
@@ -81,7 +81,7 @@ window[id] = {
         if (firefly.y < -firefly.radius) firefly.y = game.canvas.height + firefly.radius;
         if (firefly.y > game.canvas.height + firefly.radius) firefly.y = -firefly.radius;
 
-        if(ui.pluginExists('lighting')) {
+        if(plugin.exists('lighting')) {
         let light = lighting.lights.find(l => l.id === lightId);
 
         if (!light) {
@@ -113,7 +113,7 @@ window[id] = {
         }
     }
     }
-    utils.tracker('fireflies.update()');
+    if(plugin.exists('debug')) debug.tracker('fireflies.update()');
 },
 
     draw: function () {

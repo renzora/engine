@@ -16,32 +16,31 @@ audio = {
             this.masterGain = this.audioContext.createGain();
             this.masterGain.connect(this.audioContext.destination);
             this.masterGain.gain.value = 1;
-            
             this.channels = {};
             this.sources = {};
-    
             this.createChannel('master', localStorage.getItem('master-volume') || this.defaultVolume);
-            
-            console.log("Audio context initialized. Master, music, sfx channels created.");
-        } else {
-            console.log("Audio context already started.");
         }
     },
-    
+
+    unmount: function() {
+        if (this.audioContext) {
+            this.audioContext.close();
+        }
+    },
+
+    onGameCreate: function() {
+
+    },
 
     pauseAll: function() {
         if (this.audioContext && this.audioContext.state === 'running') {
-            this.audioContext.suspend().then(() => {
-                console.log('Audio context suspended.');
-            });
+            this.audioContext.suspend();
         }
     },
 
     resumeAll: function() {
         if (this.audioContext && this.audioContext.state === 'suspended') {
-            this.audioContext.resume().then(() => {
-                console.log('Audio context resumed.');
-            });
+            this.audioContext.resume();
         }
     },
 
@@ -61,8 +60,6 @@ audio = {
         let currentBpm = bpm;
         let startTime = this.audioContext.currentTime;
 
-        console.log('Playing with BPM:', bpm, 'Ticks per beat:', ticks_per_beat, 'Tempos:', tempos, 'Channel:', channel);
-
         patterns.forEach(pattern => {
             pattern.pattern_commands.forEach(command => {
                 const instrument = instruments[command.inst];
@@ -70,14 +67,11 @@ audio = {
 
                 if (tempos && tempos[command.tick] !== undefined) {
                     currentBpm = tempos[command.tick];
-                    console.log(`Tempo changed to ${currentBpm} BPM at tick ${command.tick}`);
                 }
 
                 const beatDuration = 60 / currentBpm;
                 const tickDuration = beatDuration / ticks_per_beat;
                 const commandStartTime = startTime + (command.tick * tickDuration);
-
-                console.log(`Scheduling note ${command.note} for instrument ${command.inst} at time ${commandStartTime}`);
 
                 this.playNote(
                     `note-${command.inst}-${command.tick}-${commandStartTime}`,
@@ -93,14 +87,11 @@ audio = {
     },
 
     playNote: function(id, instrument, combinedNote, startTime, channel = 'master') {
-        console.log(`playNote called with id: ${id}, combinedNote: ${combinedNote}, startTime: ${startTime}`);
         const [pitch, octave] = this.parseNote(combinedNote);
         if (pitch === null || octave === null) {
-            console.error(`Invalid note: ${combinedNote}`);
             return;
         }
         const noteNumber = this.noteToNumber(pitch, octave);
-        console.log(`Playing note: ${combinedNote}, Pitch: ${pitch}, Octave: ${octave}, Note Number: ${noteNumber}`);
         this._playNote(
             id, 
             instrument, 
@@ -111,7 +102,6 @@ audio = {
     },
 
     _playNote: function(id, instrument, noteNumber, startTime, channel) {
-        console.log(`Playing note number: ${noteNumber} on channel ${channel} at time ${startTime}`);
         let oscillator = null;
         let gainNode = this.audioContext.createGain();
     
@@ -122,7 +112,6 @@ audio = {
         oscillator = this.audioContext.createOscillator();
         oscillator.type = this.oscillatorTypes[instrument.oscillator - 1] || 'sine';
         oscillator.frequency.value = this.calculateFrequency(noteNumber);
-        console.log(`Oscillator frequency: ${oscillator.frequency.value} Hz`);
     
         if (instrument.filter) {
             const filter = this.audioContext.createBiquadFilter();
@@ -151,11 +140,8 @@ audio = {
     },
 
     playAudio: function(id, audioBuffer, channel = 'sfx', loop = false) {
-        
         if (this.audioContext.state !== 'running') {
-            console.log('Audio context not running, attempting to resume.');
             this.audioContext.resume().then(() => {
-                console.log('Audio context resumed.');
                 this.playAudio(id, audioBuffer, channel, loop);
             });
             return;
@@ -247,7 +233,6 @@ audio = {
     },
 
     setVolume: function(channel, volume) {
-        console.log(`setVolume called for channel: ${channel} with volume: ${volume}`);
 
         if (isNaN(volume) || volume === null || volume === undefined) {
             volume = this.defaultVolume;
@@ -255,19 +240,11 @@ audio = {
 
         if (channel === 'master') {
             if (this.masterGain) {
-                console.log("Previous master gain value:", this.masterGain.gain.value);
                 this.masterGain.gain.value = volume;
-                console.log("New master gain value:", this.masterGain.gain.value);
-            } else {
-                console.error("Master gain not initialized");
             }
         } else {
             if (this.channels[channel]) {
-                console.log(`Previous gain value for ${channel}:`, this.channels[channel].gain.value);
                 this.channels[channel].gain.value = volume;
-                console.log(`New gain value for ${channel}:`, this.channels[channel].gain.value);
-            } else {
-                console.error(`Channel ${channel} not initialized`);
             }
         }
     },
@@ -285,30 +262,25 @@ audio = {
 
     removeChannel: function(channel) {
         if (!this.channels[channel]) {
-            console.error(`Channel ${channel} does not exist`);
             return;
         }
         this.channels[channel].disconnect();
         delete this.channels[channel];
-        console.log(`Channel ${channel} removed`);
         document.dispatchEvent(new CustomEvent('channelRemoved', { detail: { channel } }));
     },
 
     routeChannel: function(sourceChannel, destinationChannel) {
         if (!this.channels[sourceChannel] || !this.channels[destinationChannel]) {
-            console.error(`Either source channel ${sourceChannel} or destination channel ${destinationChannel} does not exist`);
             return;
         }
 
         this.channels[sourceChannel].disconnect();
         this.channels[sourceChannel].connect(this.channels[destinationChannel]);
-        console.log(`Channel ${sourceChannel} routed to ${destinationChannel}`);
     },
 
     parseNote: function(combinedNote) {
         const match = combinedNote.match(/([A-G]#?)(\d)/);
         if (match) {
-            console.log(`Parsed note: ${match[1]}${match[2]}`);
             return [match[1], parseInt(match[2])];
         }
         return [null, null];
@@ -334,7 +306,6 @@ audio = {
     },
 
     applyEnvelope: function(gainNode, envelope, startTime) {
-        console.log("applyEnvelope called with gainNode, envelope:", envelope, "startTime:", startTime);
         const { attack_time, attack_gain, decay_time, sustain_gain, release_time } = envelope;
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(attack_gain, startTime + attack_time);
@@ -419,11 +390,5 @@ audio = {
         };
 
         detect();
-    },
-
-    unmount: function() {
-        if (this.audioContext) {
-            this.audioContext.close();
-        }
     }
-};
+}

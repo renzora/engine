@@ -157,14 +157,6 @@ fullScreen: function() {
   }
 },
 
-pluginExists: function(objName) {
-  try {
-      return typeof eval(objName) !== 'undefined';
-  } catch (e) {
-      return false;
-  }
-},
-
 contextMenu: {
   showContextMenu: function (menuElement, menuItemsElement, config, clientX, clientY) {
     menuItemsElement.innerHTML = '';

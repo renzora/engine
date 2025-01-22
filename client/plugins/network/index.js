@@ -1,8 +1,9 @@
-network = {
+window[id] = {
+    id: id,
     ws_uri: "wss://localhost:3000",
     socket: null,
 
-    init: function() {
+    start: function() {
         this.socket = new WebSocket(this.ws_uri);
 
         this.socket.onopen = (e) => {
@@ -24,12 +25,6 @@ network = {
 
     open: function(e) {
         console.log("Connected to the WebSocket server.");
-        const playerData = {
-            id: this.getPlayerId(),
-            name: "PlayerName",
-            position: { x: 0, y: 0 },
-        };
-        this.send({ command: 'playerConnect', data: playerData });
     },
 
     send: function(message) {
@@ -60,21 +55,7 @@ network = {
         console.error("Disconnected from the server.");
     },
 
-    getPlayerId: function() {
-        ui.ajax({
-            url: 'api/network/player',
-            method: 'GET',
-            outputType: 'json',
-            success: (data) => {
-                game.playerid = data.playerid;
-            },
-            error: (err) => {
-                console.error('AJAX error:', err);
-            },
-        });
-    },
-
     sendReloadRequest: function() {
         this.send({ command: 'reloadData' });
     }
-};
+}

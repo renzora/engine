@@ -1,0 +1,121 @@
+<div class='window window_bg' style='width: 330px; background: #242d41;'>
+    <div data-part='handle' class='window_title' style='background-image: radial-gradient(#5c6271 1px, transparent 0) !important;'>
+      <div class='float-right'>
+        <button class="icon close_dark mr-1 mt-1 hint--left" aria-label="Close (ESC)" data-close></button>
+      </div>
+      <div data-part='title' class='title_bg window_border' style='background: #242d41; color: #ede8d6;'>Audio Channels</div>
+    </div>
+    <div class='clearfix'></div>
+    <div class='relative'>
+      <div class='container text-light window_body p-2'>
+        <div id="meters-container"></div>
+      </div>
+    </div>
+    <div class='resize-handle'></div>
+  </div>
+  
+  <script>
+    window[id] = {
+      id: id,
+      start: function() {
+        Object.keys(audio.channels).forEach(channel => {
+          this.addChannelUI(channel);
+        });
+        document.addEventListener('channelCreated', (event) => {
+          this.addChannelUI(event.detail.channel);
+        });
+        document.addEventListener('channelRemoved', (event) => {
+          this.removeChannelUI(event.detail.channel);
+        });
+        Object.keys(audio.channels).forEach(channel => {
+          this.startVolumeMeterUpdates(channel);
+        });
+      },
+      unmount: function() {
+        document.getElementById('meters-container').innerHTML = '';
+      },
+      updateVolumeMeter: function(channel, volume) {
+        var meter = document.getElementById(channel + '-volume-meter');
+        var fill = meter.querySelector('.volume-meter-fill');
+        fill.style.width = (volume * 100) + '%';
+      },
+      startVolumeMeterUpdates: function(channel) {
+        if (!audio.channels[channel] && channel !== 'master') {
+          return;
+        }
+        var analyser = audio.audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        if (channel === 'master') {
+          audio.masterGain.connect(analyser);
+        } else {
+          audio.channels[channel].connect(analyser);
+        }
+        var dataArray = new Uint8Array(analyser.fftSize);
+        const update = () => {
+          analyser.getByteTimeDomainData(dataArray);
+          var sum = 0;
+          for (var i = 0; i < dataArray.length; i++) {
+            var value = dataArray[i] / 128 - 1;
+            sum += value * value;
+          }
+          var rms = Math.sqrt(sum / dataArray.length);
+          var volume = Math.max(-100, 20 * Math.log10(rms));
+          volume = (volume + 100) / 100;
+          this.updateVolumeMeter(channel, volume);
+          requestAnimationFrame(update);
+        };
+        update();
+      },
+      addChannelUI: function(channel) {
+    if (document.getElementById(`${channel}-container`)) {
+      return;
+    }
+    const container = document.createElement('div');
+    container.id = `${channel}-container`;
+    container.className = 'p-2 rounded-md shadow-md mb-3';
+    container.style.background = '#1e2533';
+  
+    const label = document.createElement('label');
+    label.htmlFor = `${channel}-volume`;
+    label.className = 'block text-sm font-medium text-gray-100';
+    label.textContent = `${channel.charAt(0).toUpperCase() + channel.slice(1)} Volume`;
+  
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.id = `${channel}-volume`;
+    input.min = '0';
+    input.max = '1';
+    input.step = '0.01';
+    input.value = localStorage.getItem(`${channel}-volume`) || '0.7';
+    input.className = 'w-full mt-1';
+  
+    const meterContainer = document.createElement('div');
+    meterContainer.id = `${channel}-volume-meter`;
+    meterContainer.className = 'w-full h-2 mt-2 bg-gray-900 rounded relative';
+  
+    const meterFill = document.createElement('div');
+    meterFill.className = 'volume-meter-fill absolute left-0 top-0 h-full rounded bg-gradient-to-r from-green-400 via-yellow-400 via-orange-400 to-red-500';
+  
+    meterContainer.appendChild(meterFill);
+    container.appendChild(label);
+    container.appendChild(input);
+    container.appendChild(meterContainer);
+  
+    document.getElementById('meters-container').appendChild(container);
+  
+    input.addEventListener('input', function() {
+      audio.setVolume(channel, this.value);
+      localStorage.setItem(`${channel}-volume`, this.value);
+    });
+  
+    this.startVolumeMeterUpdates(channel);
+  },
+  
+      removeChannelUI: function(channel) {
+        const container = document.getElementById(`${channel}-container`);
+        if (container) {
+          container.remove();
+        }
+      }
+    };
+  </script>  

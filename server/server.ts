@@ -5,15 +5,17 @@ import fastifyCompress from '@fastify/compress';
 import fastifyView from '@fastify/view';
 import path from 'path';
 import nunjucks from 'nunjucks';
-import { connectDB } from './database.js';
-import { initializeWebSocket } from './websocket.js';
-import { authMiddleware } from './middleware/auth.js';
-import { authRoutes } from './routes/auth.js';
-import { ajaxRoutes } from './routes/ajax.js';
-import { scenesRoutes } from './routes/scenes.js';
-import { serversRoutes } from './routes/servers.js';
-import { tilesetManagerRoutes } from './routes/tileset_manager.js';
-import { editorRoutes } from './routes/editor.js';
+import { connectDB } from './database.ts';
+import { initializeWebSocket } from './websocket.ts';
+import { authMiddleware } from './middleware/auth.ts';
+import { authRoutes } from './routes/auth.ts';
+import { ajaxRoutes } from './routes/ajax.ts';
+import { scenesRoutes } from './routes/scenes.ts';
+import { serversRoutes } from './routes/servers.ts';
+import { tilesetManagerRoutes } from './routes/tileset_manager.ts';
+import { pluginRoutes } from './routes/plugins.ts';
+import { editorRoutes } from './routes/editor.ts';
+import { terminalRoutes } from './routes/terminal.ts';
 import { redis } from './redis.js';
 
 const fastify = Fastify({ logger: false });
@@ -60,7 +62,9 @@ fastify.register(ajaxRoutes, { prefix: '/api/ajax' });
 fastify.register(scenesRoutes, { prefix: '/api/scenes' });
 fastify.register(serversRoutes, { prefix: '/api/servers' });
 fastify.register(tilesetManagerRoutes, { prefix: '/api/tileset_manager' });
+fastify.register(pluginRoutes, { prefix: '/api/plugins' });
 fastify.register(editorRoutes, { prefix: '/api/editor' });
+fastify.register(terminalRoutes, { prefix: '/api/terminal' });
 
 async function startServer() {
   try {

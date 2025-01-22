@@ -1,0 +1,118 @@
+
+<div class="fixed bottom-0 left-1/2 -translate-x-1/2 z-10 text-sm mb-1 tracking-tight" data-close="false">
+  <a class="text-white rounded-md">Renzora v0.3.7+dev-build-204</a>
+
+  <span class="text-white" id="input_method" onclick="plugin.load({ id: 'gamepads_window', url: 'plugins/gamepads/index.njk' });">
+    Input:keyboard
+  </span>
+
+  <span class="text-white rounded-md cursor-pointer" id="gameFps" onclick="plugin.load({ id: 'fps_monitor_window', url: 'plugins/activity_monitor/index.njk' });"></span>
+
+  <span id="tiles_rendered" class="text-white rounded-md"></span>
+  <span id="background_rendered" class="text-white rounded-md"></span>
+  <span id="lights_rendered" class="text-white rounded-md"></span>
+  <span id="effects_rendered" class="text-white rounded-md"></span>
+  <span id="animations_rendered" class="text-white rounded-md"></span>
+  <span id="game_time" class="text-white rounded-md ml-2"></span>
+</div>
+
+<script>
+window[id] = {
+  id: id,
+  functionCalls: {},
+  lastRenderTime: null,
+
+  onRender: function() {
+    const now = performance.now();
+    if (this.lastRenderTime === null) {
+      this.lastRenderTime = now;
+    } else {
+      const timeElapsed = now - this.lastRenderTime;
+      this.lastRenderTime = now;
+      const fps = 1000 / timeElapsed;
+
+      this.tracker('fps', fps);
+
+      const debugFPS = document.getElementById('gameFps');
+      if (debugFPS) {
+        debugFPS.innerHTML = 'FPS:' + fps.toFixed(2);
+      }
+    }
+
+    if (plugin.exists('time')) {
+      const gameTimeDisplay = document.getElementById('game_time');
+      if (gameTimeDisplay && typeof time !== 'undefined' && time.display) {
+        gameTimeDisplay.innerHTML = time.display();
+      }
+    }
+
+    this.updateUI();
+    this.finalizeFrame();
+  },
+
+  updateUI: function() {
+  const tilesRenderedEl = document.getElementById('tiles_rendered');
+  const backgroundRenderedEl = document.getElementById('background_rendered');
+  const lightsRenderedEl = document.getElementById('lights_rendered');
+  const effectsRenderedEl = document.getElementById('effects_rendered');
+  const animationsRenderedEl = document.getElementById('animations_rendered');
+
+  if (tilesRenderedEl && typeof game !== 'undefined') {
+    tilesRenderedEl.innerHTML = `Tiles:${game.tileCount || 0}`;
+  }
+
+  if (backgroundRenderedEl && typeof game !== 'undefined') {
+    backgroundRenderedEl.innerHTML = `Background:${game.backgroundTileCount || 0}`;
+  }
+
+  if (lightsRenderedEl && plugin.exists('lighting') && typeof lighting !== 'undefined') {
+    lightsRenderedEl.innerHTML = `Lights:${lighting.lights.length}`;
+  }
+
+  if (effectsRenderedEl && plugin.exists('effects') && typeof effects !== 'undefined') {
+    effectsRenderedEl.innerHTML = `Effects:${effects.activeEffects ? Object.keys(effects.activeEffects).length : 0}`;
+  }
+
+  if (animationsRenderedEl && typeof game !== 'undefined') {
+    animationsRenderedEl.innerHTML = `Animations:${game.animationCount || 0}`;
+  }
+},
+
+  tracker: function(functionName, value = null) {
+    if (!this.functionCalls[functionName]) {
+      this.functionCalls[functionName] = {
+        frameCount: 0,
+        lastValue: null,
+        timestamps: [],
+        countHistory: [],
+        valueHistory: []
+      };
+    }
+
+    const trackedFunction = this.functionCalls[functionName];
+    trackedFunction.frameCount++;
+    if (value !== null) {
+      trackedFunction.lastValue = value;
+    }
+  },
+
+  finalizeFrame: function() {
+    const now = Date.now();
+    const FIVE_SECONDS = 5000;
+
+    for (const fnName in this.functionCalls) {
+      const tracked = this.functionCalls[fnName];
+      tracked.timestamps.push(now);
+      tracked.countHistory.push(tracked.frameCount);
+      tracked.valueHistory.push(tracked.lastValue);
+      tracked.frameCount = 0;
+
+      while (tracked.timestamps.length && tracked.timestamps[0] < now - FIVE_SECONDS) {
+        tracked.timestamps.shift();
+        tracked.countHistory.shift();
+        tracked.valueHistory.shift();
+      }
+    }
+  }
+};
+</script>

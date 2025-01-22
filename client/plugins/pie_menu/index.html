@@ -1,0 +1,231 @@
+<div data-close="false">
+
+    <div id="pieMenu" class="pie-menu">
+        <div class="pie-menu-ring"></div>
+        <div class="pie-item" data-action="action1" style="--item-index: 0;">
+            <div class="pie-item-content">Item 1</div>
+        </div>
+        <div class="pie-item" data-action="action2" style="--item-index: 1;">
+            <div class="pie-item-content">Item 2</div>
+        </div>
+        <div class="pie-item" data-action="action3" style="--item-index: 2;">
+            <div class="pie-item-content">Item 3</div>
+        </div>
+        <div class="pie-item" data-action="action4" style="--item-index: 3;">
+            <div class="pie-item-content">Item 4</div>
+        </div>
+        <div class="pie-item" data-action="action5" style="--item-index: 4;">
+            <div class="pie-item-content">Item 5</div>
+        </div>
+        <div class="pie-item" data-action="action6" style="--item-index: 5;">
+            <div class="pie-item-content">Item 6</div>
+        </div>
+    </div>
+    </div>
+    
+    <style>
+    @keyframes zoomIn {
+      from {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+      }
+      to {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+    }
+    
+    @keyframes zoomOut {
+      from {
+        transform: translate(-50%, -50%) scale(1);
+        opacity: 1;
+      }
+      to {
+        transform: translate(-50%, -50%) scale(0);
+        opacity: 0;
+      }
+    }
+    
+    .pie-menu {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 660px;
+      height: 660px;
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0);
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.9);
+      clip-path: circle(50% at 50% 50%);
+      cursor: pointer;
+      border: 3px solid rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+      transition: transform 0.5s ease, opacity 0.5s ease;
+    }
+    
+    .pie-menu.show {
+      animation: zoomIn 0.5s forwards;
+    }
+    
+    .pie-menu-ring {
+      position: absolute;
+      width: 40%;
+      height: 40%;
+      background: none;
+      border-radius: 50%;
+      border: 3px solid rgba(0, 0, 0, 0.6);
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+    
+    .pie-item {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: absolute;
+      color: #FFF;
+      font-size: 28px;
+      width: 50%;
+      height: 50%;
+      bottom: 50%;
+      transform-origin: 100% 100%;
+      transform: rotate(calc(var(--item-index) * 60deg)) translateX(0%);
+    }
+    
+    .pie-item-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transform: rotate(calc(-1 * var(--item-index) * 60deg));
+      width: 100%;
+      height: 100%;
+      text-align: center;
+    }
+    
+    .pie-item:hover {
+      background: rgba(47, 124, 224, 0.7);
+    }
+    
+    .pie-item::before {
+      content: '';
+      display: block;
+      width: 24px;
+      height: 24px;
+      margin-right: 10px;
+      background: no-repeat center center;
+      background-size: cover;
+    }
+    
+    .pie-menu::after {
+      content: "";
+      position: absolute;
+      width: 40%;
+      height: 40%;
+      background: #131d21;
+      border-radius: 50%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 10;
+    }
+    </style>
+    
+    <script>
+    window[id] = {
+        id: id,
+        currentHoveredAction: null,
+        pieMenuVisible: false,
+    
+        start: function() {
+            this.initPieMenu();
+        },
+    
+        unmount: function() {
+            this.removePieMenuListeners();
+        },
+    
+        showPieMenu: function(x, y) {
+            const pieMenu = document.getElementById('pieMenu');
+            pieMenu.style.left = `${x}px`;
+            pieMenu.style.top = `${y}px`;
+            pieMenu.style.display = 'flex';
+            setTimeout(() => {
+                plugin.front('pie_menu_window');
+                pieMenu.classList.add('show');
+                this.pieMenuVisible = true;
+            }, 20);
+        },
+    
+        hidePieMenu: function() {
+            const pieMenu = document.getElementById('pieMenu');
+            pieMenu.classList.remove('show');
+            setTimeout(() => {
+                pieMenu.style.display = 'none';
+                this.pieMenuVisible = false;
+            }, 500);
+        },
+    
+        initPieMenu: function() {
+            this.pieMenuKeyDownListener = e => {
+                if (e.key === 'Alt' && !e.repeat) {
+                    e.preventDefault();
+                    this.showPieMenu(e.clientX, e.clientY);
+                }
+            };
+    
+            this.pieMenuKeyUpListener = e => {
+                if (e.key === 'Alt') {
+                    e.preventDefault();
+                    if (this.pieMenuVisible && this.currentHoveredAction) {
+                        console.log(`Executing action: ${this.currentHoveredAction}`);
+                        if (this.currentHoveredAction === 'action1') {
+                            console.log('item 1 triggered');
+                        } else if (this.currentHoveredAction === 'action2') {
+                            console.log('item 2 triggered');
+                        } else if (this.currentHoveredAction === 'action3') {
+                            console.log('item 3 triggered');
+                        } else if (this.currentHoveredAction === 'action4') {
+                            console.log('item 4 triggered');
+                        } else if (this.currentHoveredAction === 'action5') {
+                            console.log('item 5 triggered');
+                        } else if (this.currentHoveredAction === 'action6') {
+                            console.log('item 6 triggered');
+                        } else {
+                            console.log('No action selected');
+                        }
+                    }
+                    this.hidePieMenu();
+                }
+            };
+    
+            this.pieItemHoverListener = e => {
+                this.currentHoveredAction = e.currentTarget.dataset.action;
+                console.log(`Hovered over action: ${this.currentHoveredAction}`);
+            };
+    
+            document.addEventListener('keydown', this.pieMenuKeyDownListener);
+            document.addEventListener('keyup', this.pieMenuKeyUpListener);
+            
+            document.querySelectorAll('.pie-item').forEach(item => {
+                item.addEventListener('mouseover', this.pieItemHoverListener);
+                item.addEventListener('mouseout', () => {
+                    this.currentHoveredAction = null;
+                });
+            });
+        },
+    
+        removePieMenuListeners: function() {
+            document.removeEventListener('keydown', this.pieMenuKeyDownListener);
+            document.removeEventListener('keyup', this.pieMenuKeyUpListener);
+    
+            document.querySelectorAll('.pie-item').forEach(item => {
+                item.removeEventListener('mouseover', this.pieItemHoverListener);
+                item.removeEventListener('mouseout', () => {
+                    this.currentHoveredAction = null;
+                });
+            });
+        }
+    };
+    </script>

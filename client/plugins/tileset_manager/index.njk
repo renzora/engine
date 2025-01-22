@@ -1,10 +1,10 @@
 {% if auth %}
-<!-- Main plugin container (flex column) -->
+
 <div
   class="window window_bg flex flex-col"
   style="width: 1200px; max-height: 90vh; background-color: #323e69;"
 >
-  <!-- Title Bar -->
+
   <div
     data-part="handle"
     class="window_title flex-shrink-0"
@@ -23,22 +23,22 @@
   </div>
   <div class="clearfix"></div>
 
-  <!-- Main Body -->
+
   <div class="relative flex-1" style="overflow: hidden;">
-    <!-- Window Body -->
+
     <div
       class="text-light window_body flex flex-col p-4 h-full"
       style="box-sizing: border-box; overflow: hidden;"
     >
-      <!-- Main Content: LEFT (Drop/Zoom), RIGHT (Preview/Fields/Queue) -->
+
       <div class="flex flex-grow overflow-hidden" style="min-height: 0;">
-        <!-- LEFT COLUMN -->
+
         <div
           id="left_column"
           class="flex flex-col pr-2"
           style="width: 100%; min-width: 0; transition: width 0.2s ease;"
         >
-          <!-- Drop zone (increased default height) -->
+
           <div
             id="drop_zone"
             class="relative rounded overflow-auto flex-grow
@@ -66,7 +66,6 @@
               class="hidden"
             />
 
-            <!-- Canvas stack -->
             <canvas
               id="uploaded_canvas"
               style="display: none; position: absolute; top: 0; left: 0;"
@@ -81,7 +80,6 @@
             ></canvas>
           </div>
 
-          <!-- Zoom Controls -->
           <div
             id="zoom_controls"
             class="mt-2 flex items-center space-x-2 flex-shrink-0 hidden"
@@ -113,18 +111,15 @@
           </div>
         </div>
 
-        <!-- RIGHT COLUMN (hidden by default until image loads) -->
         <div
           id="right_column"
           class="flex flex-col pl-2"
           style="width: 0%; min-width: 0; overflow: hidden; transition: width 0.2s ease;"
         >
-          <!-- Preview Wrapper (Hidden if no selected tiles) -->
           <div id="preview_wrapper" class="flex-shrink-0 hidden">
             <div class="mb-1">
               <span id="preview_label" class="text-white font-semibold">Preview</span>
             </div>
-            <!-- Preview container with height limit -->
             <div
               id="preview_container"
               class="relative w-full rounded mb-2 bg-[#63A650]"
@@ -137,7 +132,6 @@
             </div>
           </div>
 
-          <!-- Tileset & Item name & Add to queue -->
           <div class="mb-4 flex-shrink-0">
             <label
               for="tileset_select"
@@ -151,7 +145,6 @@
                 name="tileset_select"
                 class="form-select w-full p-2 border border-gray-300 rounded"
               >
-                <!-- Populated by JS -->
               </select>
               <button
                 id="btn_new_tileset"
@@ -184,7 +177,6 @@
             </button>
           </div>
 
-          <!-- Queued items (scrollable area). Hidden if queue is empty. -->
           <div
             id="queued_items_wrapper"
             class="flex-shrink-0 overflow-hidden mb-2 hidden"
@@ -201,11 +193,9 @@
               class="space-y-2 overflow-y-auto"
               style="max-height: 200px;"
             >
-              <!-- Filled by JS -->
             </div>
           </div>
 
-          <!-- Save All (sticky at bottom, hidden if no queue) -->
           <div
             id="save_container"
             class="mt-auto flex-shrink-0 bg-gray-800 p-2 sticky bottom-0 hidden"
@@ -226,7 +216,6 @@
 </div>
 
 <style>
-  /* Red selection style remains. No grab/pan modes anymore, so just remove them. */
   #selectionCanvas {
     cursor: crosshair;
   }
@@ -248,11 +237,9 @@ window[id] = {
   selectedTiles: [],
   batchQueue: [],
   scale: 2.0,
-
   imageCanvas: null,
   isDragging: false,
 
-  // Start
   start: function() {
     this.imageCanvas       = document.getElementById('uploaded_canvas');
     this.browseButton      = document.getElementById('browse_button');
@@ -267,7 +254,6 @@ window[id] = {
     this.zoomSlider        = document.getElementById('zoom_slider');
     this.zoomValue         = document.getElementById('zoom_value');
 
-    // Zoom controls
     this.addListener(this.zoomSlider, 'input', (e) => {
       const newScale = parseFloat(e.target.value);
       this.setScale(newScale);
@@ -275,13 +261,11 @@ window[id] = {
     this.addListener(this.zoomValue, 'change', (e) => {
       const val = parseFloat(e.target.value);
       if (!isNaN(val)) {
-        // enforce [1..6]
         const clamped = Math.max(1, Math.min(6, val));
         this.setScale(clamped);
       }
     });
 
-    // "New" Tileset
     this.addListener(this.newTilesetBtn, 'click', (e) => {
       e.preventDefault();
       const newName = prompt('Enter a new tileset name (no extension):');
@@ -293,11 +277,8 @@ window[id] = {
       this.tilesetSelect.value = newName;
     });
 
-    // Add to queue / Save all
     this.addListener(this.addToQueueBtn, 'click', () => this.addItemToQueue());
     this.addListener(this.saveAllQueuedBtn, 'click', () => this.saveQueuedItems());
-
-    // Browse for image
     this.addListener(this.browseButton, 'click', () => {
       if (this.browseButton.style.display !== 'none') {
         this.fileInput.click();
@@ -309,30 +290,22 @@ window[id] = {
       }
     });
 
-    // Populate tileset list
+
     this.fetchTilesetList(this.tilesetSelect);
-
-    // Drag-drop & selection
     this.initDragDropAndSelection();
-
-    // Initialize scale
     this.zoomSlider.value = this.scale;
     this.zoomValue.value  = this.scale.toFixed(1);
-
-    // Hide zoom controls, right column initially
     this.showZoomControls(false);
     this.showRightColumn(false);
   },
 
   unmount: function() {
-    // Remove all event listeners
     this.listeners.forEach(({ element, event, handler }) => {
       element.removeEventListener(event, handler);
     });
     this.listeners = [];
   },
 
-  // Keep track of listeners to remove on unmount
   listeners: [],
   addListener: function(element, event, handler) {
     if (!element) return;
@@ -361,7 +334,6 @@ window[id] = {
       rightCol.style.overflow = 'hidden';
     }
   },
-  // Hide/Show preview
   showPreview: function(show) {
     const previewWrapper = document.getElementById('preview_wrapper');
     if (show) {
@@ -370,7 +342,6 @@ window[id] = {
       previewWrapper.classList.add('hidden');
     }
   },
-  // Hide/Show queued items
   showQueuedItems: function(show) {
     const qiWrapper = document.getElementById('queued_items_wrapper');
     if (show) {
@@ -424,35 +395,26 @@ window[id] = {
     gridCanvas.height       = img.height;
     this.selectionCanvas.width  = img.width;
     this.selectionCanvas.height = img.height;
-
     ctxImage.drawImage(img, 0, 0);
 
-    // Hide the Browse prompt
     this.browseButton.style.display = 'none';
     this.dropPrompt.style.display   = 'none';
     this.dropZone.classList.remove('dragover');
     this.dropZone.style.borderColor = '';
 
-    // Force zoom = 2.0
     this.setScale(2.0);
 
     this.imageCanvas.style.display     = 'block';
     gridCanvas.style.display           = 'block';
     this.selectionCanvas.style.display = 'block';
 
-    // Draw grid
     this.drawGrid(ctxGrid, gridCanvas);
-
-    // Show zoom controls + right column
     this.showZoomControls(true);
     this.showRightColumn(true);
-
-    // Disable queue fields until selection is made
     this.disableQueueFields();
   },
 
   initDragDropAndSelection: function() {
-    // DRAG OVER logic
     const onDragOver = (e) => {
       e.preventDefault();
       this.dropZone.classList.add('dragover');
@@ -475,8 +437,6 @@ window[id] = {
     this.addListener(this.dropZone, 'dragenter', onDragOver);
     this.addListener(this.dropZone, 'dragleave', onDragLeave);
     this.addListener(this.dropZone, 'drop', onDrop);
-
-    // Track ctrl key for wheel zoom
     let ctrlPressed = false;
     this.addListener(document, 'keydown', (e) => {
       if (e.key === 'Control') ctrlPressed = true;
@@ -485,12 +445,10 @@ window[id] = {
       if (e.key === 'Control') ctrlPressed = false;
     });
 
-    // Mouse for selection
     const ctxSelection = this.selectionCanvas.getContext('2d');
     let startX = 0, startY = 0;
 
     this.addListener(this.selectionCanvas, 'mousedown', (e) => {
-      // Only respond to left button
       if (e.button !== 0) return;
       this.isDragging = true;
       const coords = this.getCanvasCoordinates(e, this.selectionCanvas);
@@ -503,20 +461,16 @@ window[id] = {
       if (e.button !== 0) return;
       this.isDragging = false;
 
-      // Finalize selection
       const coords = this.getCanvasCoordinates(e, this.selectionCanvas);
       const tileSize = 16;
       const startXTile = Math.floor(startX / tileSize) * tileSize;
       const startYTile = Math.floor(startY / tileSize) * tileSize;
       const endXTile   = Math.floor(coords.x / tileSize) * tileSize;
       const endYTile   = Math.floor(coords.y / tileSize) * tileSize;
-
       const x      = Math.min(startXTile, endXTile);
       const y      = Math.min(startYTile, endYTile);
       const width  = Math.abs(endXTile - startXTile) + tileSize;
       const height = Math.abs(endYTile - startYTile) + tileSize;
-
-      // Collect tiles
       this.selectedTiles = [];
       const numCols = width / tileSize;
       const numRows = height / tileSize;
@@ -534,7 +488,6 @@ window[id] = {
       this.drawSelection(ctxSelection, x, y, width, height);
       this.updatePreviewCanvas();
 
-      // If user selected something, show the preview + enable queue
       if (this.selectedTiles.length > 0) {
         this.showPreview(true);
         this.enableQueueFields();
@@ -546,39 +499,30 @@ window[id] = {
     this.addListener(this.selectionCanvas, 'mousemove', (e) => {
       if (!this.isDragging) return;
       const coords = this.getCanvasCoordinates(e, this.selectionCanvas);
-
-      // Red selection box as user drags
       const tileSize = 16;
       const startXTile = Math.floor(startX / tileSize) * tileSize;
       const startYTile = Math.floor(startY / tileSize) * tileSize;
       const currentXTile = Math.floor(coords.x / tileSize) * tileSize;
       const currentYTile = Math.floor(coords.y / tileSize) * tileSize;
-
       const selectionX = Math.min(startXTile, currentXTile);
       const selectionY = Math.min(startYTile, currentYTile);
       const selectionWidth  = Math.abs(currentXTile - startXTile) + tileSize;
       const selectionHeight = Math.abs(currentYTile - startYTile) + tileSize;
 
       this.drawSelection(ctxSelection, selectionX, selectionY, selectionWidth, selectionHeight);
-
-      // If dragging near edges, scroll the drop zone
       this.autoScrollIfNearEdge(e);
     });
 
-    // Wheel for ctrl+zoom
     this.addListener(this.dropZone, 'wheel', (e) => {
       if (ctrlPressed) {
         e.preventDefault();
         const rect = this.imageCanvas.getBoundingClientRect();
         const offsetX = e.clientX - rect.left;
         const offsetY = e.clientY - rect.top;
-
         const delta = e.deltaY > 0 ? -0.1 : 0.1;
         const newScale = Math.max(1, Math.min(6, this.scale + delta));
         const prevScale = this.scale;
         this.setScale(newScale);
-
-        // Re-center scroll
         const newScrollLeft = (offsetX * this.scale / prevScale) - offsetX;
         const newScrollTop  = (offsetY * this.scale / prevScale) - offsetY;
         this.dropZone.scrollLeft += newScrollLeft;
@@ -587,7 +531,6 @@ window[id] = {
     });
   },
 
-  // Scroll if the mouse is within ~20px of the dropZone edge
   autoScrollIfNearEdge: function(e) {
     const zoneRect = this.dropZone.getBoundingClientRect();
     const edgeThreshold = 20;
@@ -596,7 +539,7 @@ window[id] = {
     const distTop    = e.clientY - zoneRect.top;
     const distBottom = zoneRect.bottom - e.clientY;
 
-    const scrollSpeed = 20; // px per move event
+    const scrollSpeed = 20;
     if (distLeft < edgeThreshold) {
       this.dropZone.scrollLeft -= scrollSpeed;
     }
@@ -635,10 +578,8 @@ window[id] = {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.beginPath();
     ctx.rect(x, y, width, height);
-    // Semi-transparent red fill
     ctx.fillStyle   = 'rgba(255,0,0,0.2)';
     ctx.fill();
-    // Solid red stroke
     ctx.strokeStyle = 'rgba(255,0,0,1)';
     ctx.lineWidth   = 1;
     ctx.stroke();
@@ -648,7 +589,6 @@ window[id] = {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 0.5;
-
     ctx.save();
     ctx.translate(0.5, 0.5);
     for (let x = 0; x <= canvas.width; x += 16) {
@@ -685,7 +625,6 @@ window[id] = {
     previewCanvas.height = 0;
   },
 
-  // -- UPDATED to ensure small selections appear properly in preview --
   updatePreviewCanvas: function() {
     const previewCanvas = document.getElementById('previewCanvas');
     const ctxPreview    = previewCanvas.getContext('2d');
@@ -702,16 +641,10 @@ window[id] = {
     const minY = Math.min(...this.selectedTiles.map(t => t.y));
     const maxX = Math.max(...this.selectedTiles.map(t => t.x));
     const maxY = Math.max(...this.selectedTiles.map(t => t.y));
-
-    // Number of tiles horizontally & vertically
     const numCols = (maxX - minX) / tileSize + 1;
     const numRows = (maxY - minY) / tileSize + 1;
-
-    // The raw bounding box (unscaled)
     const boxWidthUnscaled  = numCols * tileSize * 2;
     const boxHeightUnscaled = numRows * tileSize * 2;
-
-    // Desired preview dimension (at least 200x200, up to 300x300)
     let previewWidth  = Math.max(boxWidthUnscaled,  200);
     let previewHeight = Math.max(boxHeightUnscaled, 200);
     const MAX_DIM = 300;
@@ -721,7 +654,6 @@ window[id] = {
       previewHeight = Math.floor(previewHeight * ratio);
     }
 
-    // Compute scaling factor(s)
     const scaleX = previewWidth  / boxWidthUnscaled;
     const scaleY = previewHeight / boxHeightUnscaled;
 
@@ -729,28 +661,20 @@ window[id] = {
     previewCanvas.height = previewHeight;
     ctxPreview.imageSmoothingEnabled = false;
 
-    // The final scaled box dimension
     const scaledBoxWidth  = boxWidthUnscaled  * scaleX;
     const scaledBoxHeight = boxHeightUnscaled * scaleY;
-    // Center the scaled box in the preview
     const offsetX = (previewWidth  - scaledBoxWidth ) / 2;
     const offsetY = (previewHeight - scaledBoxHeight) / 2;
 
-    // Draw each tile
     this.selectedTiles.forEach(tile => {
-      // Position in the bounding box
       const col = (tile.x - minX) / tileSize;
       const row = (tile.y - minY) / tileSize;
-
-      // Unscaled position in the bounding box (16*2 = 32 per tile)
       const unscaledX = col * tileSize * 2;
       const unscaledY = row * tileSize * 2;
-
-      // Scale them
       const destX = offsetX + (unscaledX * scaleX);
       const destY = offsetY + (unscaledY * scaleY);
-      const destW = tile.width * 2 * scaleX;   // tile.width=16
-      const destH = tile.height * 2 * scaleY;  // tile.height=16
+      const destW = tile.width * 2 * scaleX;
+      const destH = tile.height * 2 * scaleY;
 
       ctxPreview.drawImage(
         this.imageCanvas,
@@ -780,7 +704,6 @@ window[id] = {
       selectedTiles: JSON.parse(JSON.stringify(this.selectedTiles))
     });
 
-    // Reset selection
     nameInput.value = '';
     this.selectedTiles = [];
     this.selectionCanvas.getContext('2d')
@@ -827,7 +750,6 @@ window[id] = {
       listContainer.appendChild(rowDiv);
     });
 
-    // Toggle "Save All" visibility
     const saveContainer = document.getElementById('save_container');
     if (this.batchQueue.length > 0) {
       saveContainer.classList.remove('hidden');

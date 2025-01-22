@@ -516,7 +516,16 @@ plugin = {
         return pluginElement && pluginElement.style.display !== 'none';
     },
 
-    exists: function(id) {
-        return document.querySelector("[data-window='" + id + "']") !== null;
-    }
+    exists: function(...objNames) {
+        for (let objName of objNames) {
+            try {
+                if (typeof eval(objName) === 'undefined') {
+                    return false;
+                }
+            } catch (e) {
+                return false;
+            }
+        }
+        return true;
+    }    
 };

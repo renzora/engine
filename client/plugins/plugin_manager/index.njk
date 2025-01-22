@@ -1,0 +1,116 @@
+{% if auth %}
+<div class="window bg-gray-800 text-white p-4 rounded w-full max-w-md mx-auto">
+  <div class="window_title font-bold text-lg mb-3">Plugin Manager</div>
+
+  <input
+    id="searchInput"
+    type="text"
+    placeholder="Search plugins..."
+    class="w-full mb-3 px-3 py-2 rounded outline-none text-black"
+    oninput="plugin_manager.filterPlugins(this.value)"
+  />
+
+  <div
+    id="pluginList"
+    class="window_body space-y-2 max-h-64 overflow-y-auto p-2 rounded"
+  ></div>
+
+  <button
+    data-close
+    class="mt-5 bg-white text-black px-4 py-2 rounded hover:bg-gray-100"
+    aria-label="Close"
+  >
+    Close
+  </button>
+</div>
+
+<script>
+window[id] = {
+  id: id,
+  plugins: [],
+  filteredPlugins: [],
+
+  start: function() {
+    console.log(`Plugin started: ${this.id}`);
+    this.fetchAvailablePlugins();
+  },
+
+  unmount: function() {
+    console.log(`Plugin unmounted: ${this.id}`);
+  },
+
+  fetchAvailablePlugins: function() {
+    fetch('/api/plugins/list')
+      .then(response => response.json())
+      .then(data => {
+        this.plugins = data;
+        this.filteredPlugins = data;
+        this.renderPluginList(this.filteredPlugins);
+      })
+      .catch(err => console.error('Error fetching plugin list:', err));
+  },
+
+  filterPlugins: function(searchTerm) {
+    const lowerSearch = searchTerm.toLowerCase();
+    this.filteredPlugins = this.plugins.filter(plugin =>
+      plugin.name.toLowerCase().includes(lowerSearch)
+    );
+    this.renderPluginList(this.filteredPlugins);
+  },
+
+  renderPluginList: function(pluginArray) {
+    const pluginListEl = document.getElementById('pluginList');
+    pluginListEl.innerHTML = '';
+
+    pluginArray.forEach(plugin => {
+      const div = document.createElement('div');
+      div.className = 'flex items-center justify-between bg-gray-700 p-2 rounded';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = plugin.name;
+
+      const actionBtn = document.createElement('button');
+      if (plugin.installed) {
+        actionBtn.textContent = 'Uninstall';
+        actionBtn.className = 'bg-red-500 hover:bg-red-400 text-white px-3 py-1 rounded';
+        actionBtn.onclick = () => this.uninstallPlugin(plugin.name);
+      } else {
+        actionBtn.textContent = 'Install';
+        actionBtn.className = 'bg-blue-500 hover:bg-blue-400 text-white px-3 py-1 rounded';
+        actionBtn.onclick = () => this.downloadPlugin(plugin.name);
+      }
+
+      div.appendChild(nameSpan);
+      div.appendChild(actionBtn);
+      pluginListEl.appendChild(div);
+    });
+  },
+
+  downloadPlugin: function(pluginName) {
+    fetch(`/api/plugins/download/${encodeURIComponent(pluginName)}`)
+      .then(response => response.json())
+      .then(result => {
+        alert(result.message);
+        this.fetchAvailablePlugins();
+      })
+      .catch(err => {
+        console.error('Error downloading plugin:', err);
+        alert('Failed to download plugin.');
+      });
+  },
+
+  uninstallPlugin: function(pluginName) {
+    fetch(`/api/plugins/uninstall/${encodeURIComponent(pluginName)}`, { method: 'DELETE' })
+      .then(response => response.json())
+      .then(result => {
+        alert(result.message);
+        this.fetchAvailablePlugins();
+      })
+      .catch(err => {
+        console.error('Error uninstalling plugin:', err);
+        alert('Failed to uninstall plugin.');
+      });
+  },
+};
+</script>
+{% endif %}

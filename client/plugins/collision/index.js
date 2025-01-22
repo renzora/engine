@@ -1,7 +1,16 @@
-collision = {
+window[id] = {
+    id: id,
     walkableGridCache: null,
     lastKnownPosition: null,
     cornerBuffer: 16,
+
+    start: function() {
+
+    },
+
+    unmount: function() {
+
+    },
 
     pointInPolygon: function(px, py, polygon) {
         let isInside = false;
@@ -82,7 +91,7 @@ collision = {
             }
         }
     
-        utils.tracker('collision.check');
+        if(plugin.exists('debug')) debug.tracker('collision.check');
         return { collisionDetected: false };
     },
 
@@ -198,7 +207,7 @@ collision = {
         }
 
         this.walkableGridCache = grid;
-        utils.tracker('collision.createWalkableGrid');
+        if(plugin.exists('debug')) debug.tracker('collision.createWalkableGrid');
 
         return grid;
     },
@@ -212,4 +221,4 @@ collision = {
         this.lastKnownPosition = null;
         this.walkableGridCache = null;
     }
-};
+}
