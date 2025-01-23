@@ -333,6 +333,12 @@ var ui_console_editor_inventory = {
     console.log("Object selection cancelled");
   },
 
+      generateId: function () {
+        const timestamp = Date.now().toString(36).slice(-4);
+        const randomPart = Math.random().toString(36).substring(2, 5);
+        return `${timestamp}${randomPart}`;
+    },
+
   addItemToRoomData: function(itemId, mouseX, mouseY) {
     // Retrieve item data from the game object
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
@@ -381,7 +387,7 @@ var ui_console_editor_inventory = {
       n: itemData.n,
       x: newX,
       y: newY,
-      layer_id: utils.generateId(),
+      layer_id: this.generateId(),
       animationState: [{ currentFrame: 0, elapsedTime: 0 }],
       w: itemData.w || []  // Possibly store width data
     };
