@@ -29,7 +29,7 @@ async function build() {
     minifyWhitespace: true,
     treeShaking: true,
     charset: 'utf8',
-    pure: ['console.log'],
+    //pure: ['console.log'],
     format: 'esm',
     platform: 'browser'
   });
@@ -48,13 +48,13 @@ async function build() {
           dead_code: true,
 
           // COMMENTED OUT to keep console.* calls
-          drop_console: true,
-          drop_debugger: true,
+          //drop_console: true,
+          //drop_debugger: true,
           keep_fargs: false,
           passes: 3,
 
           // COMMENTED OUT so console.log calls remain intact
-          pure_funcs: ['console.log'],
+          //pure_funcs: ['console.log'],
           unsafe: true,
           unsafe_math: true
         },

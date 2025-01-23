@@ -7,50 +7,42 @@
     type="button"
     id="select_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="edit_mode_window.changeMode('select')"
-  >
-    <!-- We'll draw the icon onto a <canvas> later -->
-  </button>
-  <button
-    type="button"
-    id="brush_button"
-    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="edit_mode_window.changeMode('brush')"
+    onclick="editor_window.changeMode('select')"
   >
   </button>
   <button
     type="button"
     id="pan_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="edit_mode_window.changeMode('pan')"
+    onclick="editor_window.changeMode('pan')"
   >
   </button>
   <button
     type="button"
     id="lasso_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="edit_mode_window.changeMode('lasso')"
+    onclick="editor_window.changeMode('lasso')"
   >
   </button>
   <button
     type="button"
     id="move_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="edit_mode_window.changeMode('move')"
+    onclick="editor_window.changeMode('move')"
   >
   </button>
   <button
     type="button"
     id="save_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="edit_mode_window.saveRoomData()"
+    onclick="editor_window.saveRoomData()"
   >
   </button>
   <button
     type="button"
     id="close_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="plugin.close('edit_mode_window')"
+    onclick="plugin.close('editor_window')"
   >
   </button>
 </div>
@@ -62,8 +54,7 @@
   </style>
 
   <script>
-window[id] = {
-    id: id,
+editor_window = {
     renderMode: '2d',
     originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
     modeButtons: {},
@@ -77,7 +68,7 @@ window[id] = {
     lastMouseY: 0,
     defaultCursor: 'default',
     previousMode: null,
-    modes: ['select', 'brush', 'zoom', 'delete', 'pan', 'lasso', 'move'],
+    modes: ['select', 'zoom', 'delete', 'pan', 'lasso', 'move'],
     lassoPath: [],
     isLassoActive: false,
     boundMouseMoveHandler: null,
@@ -107,7 +98,6 @@ window[id] = {
         pencil: 0,
         scissors: 1,
         zoom: 2,
-        brush: 3,
         save: 4,
         trash: 5,
         undo: 6,
@@ -121,9 +111,8 @@ window[id] = {
 
     start: function () {
 
-    assets.preload([{ name: 'edit_mode_window_icons', path: 'plugins/editor/main/icons.png' }], () => {
+    assets.preload([{ name: 'edit_mode_window_icons', path: 'plugins/editor/editor_window/icons.png' }], () => {
         this.setButtonIcon('select_button', 'select');
-        this.setButtonIcon('brush_button', 'brush');
         this.setButtonIcon('pan_button', 'pan');
         this.setButtonIcon('lasso_button', 'pencil');
         this.setButtonIcon('move_button', 'move');
@@ -132,7 +121,6 @@ window[id] = {
     });
 
     this.modeButtons = {
-        brush: document.getElementById('brush_button'),
         select: document.getElementById('select_button'),
         zoom: document.getElementById('zoom_button'),
         delete: document.getElementById('delete_button'),
@@ -141,15 +129,15 @@ window[id] = {
         move: document.getElementById('move_button')
     };
 
-    if(plugin.exists('time')) time.active = true;
+    plugin.time.active = true;
     game.isEditMode = true;
     game.pathfinding = false;
     game.allowControls = true;
     camera.lerpEnabled = false;
     game.zoomLevel = 4;
-    actions.tooltipActive = false;
-    //game.mainSprite.stopPathfinding();
-    actions.hideTooltip();
+    plugin.actions.tooltipActive = false;
+    plugin.pathfinding.stopPathfinding();
+    plugin.actions.hideTooltip();
 
     this.updateCurrentTimeAndDay();
     this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
@@ -167,16 +155,16 @@ window[id] = {
 
     plugin.minimize('ui_inventory_window');
     plugin.minimize('ui_overlay_window');
-    plugin.close('context_menu_window');
+    //plugin.close('context_menu');
     
-    console_window.load_tab_buttons('editor');
-    console_window.toggleConsoleWindow('editor_inventory');
-    console_window.allowToggle = false;
+    plugin.console_window.load_tab_buttons('editor');
+    plugin.console_window.toggleConsoleWindow('editor_inventory');
+    plugin.console_window.allowToggle = false;
 
-    plugin.preload([
-        { priority: 0, options: { id: 'editor_layers', url: 'plugins/editor/layers/index.njk', drag: false, reload: false } },
-        { priority: 1, options: { id: 'editor_context_menu_window', url: 'plugins/editor/context_menu/index.njk', drag: false, reload: true } }
-    ]);
+plugin.preload([
+    { priority: 0, id: 'editor_layers', path: 'editor', ext: 'njk', drag: false, reload: false },
+    { priority: 1, id: 'editor_context_menu', path: 'editor', ext: 'njk', drag: false, reload: true }
+]);
 
     setTimeout(() => { camera.manual = true; }, 0);
     this.changeMode('select');
@@ -186,17 +174,13 @@ unmount: function () {
     game.isEditMode = false;
     game.pathfinding = true;
     game.allowControls = true;
-
-    if(plugin.exists('time')) {
-        time.active = true;
-        time.hours = this.currentHour;
-        time.minutes = this.currentMinute;
-    }
+    plugin.time.active = true;
+    plugin.time.hours = this.currentHour;
+    plugin.time.minutes = this.currentMinute;
     game.displaySprite = true;
     camera.lerpEnabled = true;
     camera.manual = false;
     game.zoomLevel = 4;
-
     game.canvas.removeEventListener('mousemove', this.boundMouseMoveHandler);
     game.canvas.removeEventListener('mousedown', this.boundMouseDownHandler);
     game.canvas.removeEventListener('mouseup', this.boundMouseUpHandler);
@@ -212,15 +196,15 @@ unmount: function () {
     this.selectionEnd = { x: 0, y: 0 };
     this.isMovingObjects = false;
     this.isMiddleClickPanning = false;
-    actions.tooltipActive = true;
+    plugin.actions.tooltipActive = true;
 
     this.clearSelectionBox();
     this.clearLassoPath();
 
     document.body.style.cursor = 'default';
 
-    plugin.load({ id: 'context_menu_window', url: 'plugins/context_menu/index.html', drag: false, reload: true });
-    plugin.close('editor_context_menu_window');
+    //plugin.load('context_menu', { drag: false });
+    plugin.close('editor_context_menu');
     plugin.close('console_window');
     plugin.close('editor_layers');
     plugin.show('ui_inventory_window');
@@ -231,7 +215,6 @@ unmount: function () {
 
 onRender: function() {
     this.renderSelectionBox();
-    this.renderBrush();
     this.renderSelectedTiles();
     this.renderLasso();
 },
@@ -254,14 +237,14 @@ setButtonIcon: function(buttonId, iconName) {
 },
 
 updateCurrentTimeAndDay: function () {
-    if(!plugin.exists('time')) return;
+    if(!plugin.time) return;
         this.currentHour = Math.floor(time.hours);
         this.currentMinute = Math.floor(time.minutes);
         this.currentDay = time.daysOfWeek[time.days % 7];
 },
 
     changeMode: function (newMode) {
-    const contextMenu = document.getElementById('editor_context_menu_window');
+    const contextMenu = document.getElementById('editor_context_menu');
     if (contextMenu) {
         contextMenu.classList.add('hidden');
     }
@@ -281,10 +264,6 @@ updateCurrentTimeAndDay: function () {
     switch (newMode) {
         case 'select':
             this.defaultCursor = 'pointer';
-            break;
-        case 'brush':
-            this.defaultCursor = 'crosshair';
-            this.isBrushModeActive = true;
             break;
         case 'pan':
             this.defaultCursor = 'grab';
@@ -358,7 +337,7 @@ handleMouseMove: function (event) {
             return;
         }
         
-        if (game.editorMode === 'brush' || game.editorMode === 'lasso') {
+        if (game.editorMode === 'lasso') {
             this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
             this.renderLasso();
             return;
@@ -457,7 +436,7 @@ handleMouseMove: function (event) {
 },
 
 handleMouseDown: function (event) {
-    if (edit_mode_window.isAddingNewObject) return;
+    if (plugin.editor_window.isAddingNewObject) return;
     if (game.editorMode === 'pan') {
         this.isPanning = true;
         this.lastMouseX = event.clientX;
@@ -575,7 +554,7 @@ handleMouseDown: function (event) {
     }
 
     if (event.button === 0) {
-        if (game.editorMode === 'brush' || game.editorMode === 'lasso') {
+        if (game.editorMode === 'lasso') {
             this.isDragging = true;
             this.lassoPath = [{ x: this.mouseX, y: this.mouseY }];
             return;
@@ -756,7 +735,7 @@ handleObjectMovement: function () {
 },
 
 handleSelectionStart: function (event) {
-    if (edit_mode_window.isAddingNewObject) return;
+    if (plugin.editor_window.isAddingNewObject) return;
     this.isDragging = true;
     const rect = game.canvas.getBoundingClientRect();
     this.selectionStart = {
@@ -971,14 +950,6 @@ updateMousePosition: function (event) {
     const rect = game.canvas.getBoundingClientRect();
     this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-},
-
-handleBrushModeScroll: function(deltaY, ctrlKeyPressed, event) {
-    if (ctrlKeyPressed) {
-        this.zoomInBrushMode(deltaY, event);
-    } else {
-        this.adjustBrushSize(deltaY);
-    }
 },
 
 renderSelectedTiles: function () {
@@ -1281,16 +1252,6 @@ renderLasso: function () {
         game.ctx.stroke();
         game.ctx.setLineDash([]);
         game.ctx.lineDashOffset = 0;
-    }
-},
-
-renderBrush: function() {
-    if (this.isBrushModeActive) {
-        const halfBrushSize = this.brushRadius / 2;
-        const topLeftX = this.mouseX - halfBrushSize;
-        const topLeftY = this.mouseY - halfBrushSize;
-        game.ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
-        game.ctx.fillRect(topLeftX, topLeftY, this.brushRadius, this.brushRadius); 
     }
 },
 
@@ -1687,8 +1648,8 @@ saveRoomData: function() {
     })
     .then((result) => {
       // Successful response
-      plugin.close('edit_mode_window');
-      collision.createWalkableGrid();
+      plugin.close('editor_window');
+      plugin.collision.createWalkableGrid();
       console.log('Save successful:', result);
     })
     .catch((error) => {
@@ -1700,7 +1661,7 @@ saveRoomData: function() {
 revertToOriginalState: function () {
     if (this.originalRoomData) {
         game.roomData = JSON.parse(JSON.stringify(this.originalRoomData));
-        collision.createWalkableGrid();
+        plugin.collision.createWalkableGrid();
     } else {
         console.error("Original room data not found.");
     }
@@ -1738,7 +1699,7 @@ restoreRoomData: function (state) {
 
     try {
         game.roomData = JSON.parse(JSON.stringify(state));
-        collision.createWalkableGrid();
+        plugin.collision.createWalkableGrid();
     } catch (error) {
         console.error("Error restoring room data:", error);
     }
@@ -1808,11 +1769,6 @@ zoomInBrushMode: function(deltaY, event) {
     this.constrainCamera();
 },
 
-adjustBrushSize: function(deltaY) {
-    const scrollDirection = deltaY < 0 ? 5 : -5;
-    this.brushRadius = Math.max(16, Math.min(this.brushRadius + scrollDirection, 500));
-},
-
 findConnectedClusters: function() {
     const clusters = [];
     const visited = new Set();
@@ -1867,9 +1823,6 @@ handleKeyDown: function (event) {
     switch (key) {
         case '1':
             this.changeMode('select');
-            break;
-        case '2':
-            this.changeMode('brush');
             break;
         case '3':
             this.changeMode('zoom');

@@ -265,7 +265,7 @@ var ui_console_editor_inventory = {
     ui_console_editor_inventory.stopDragging();
 
     // Set the selected inventory item and allow continuous placement
-    edit_mode_window.isAddingNewObject = true;
+    editor_window.isAddingNewObject = true;
     ui_console_editor_inventory.selectedInventoryItem = itemId;
     
     document.addEventListener('mousemove', ui_console_editor_inventory.trackMouseForItem);
@@ -285,7 +285,7 @@ var ui_console_editor_inventory = {
 
   handleMapClick: function(event) {
     if (event.button === 2) return;  // Prevent right-click from triggering
-    if (edit_mode_window.isAddingNewObject) {
+    if (editor_window.isAddingNewObject) {
       const clonedObjectX = ui_console_editor_inventory.selectedInventoryItemPos.x;
       const clonedObjectY = ui_console_editor_inventory.selectedInventoryItemPos.y;
 
@@ -323,7 +323,7 @@ var ui_console_editor_inventory = {
   deselectInventoryItem: function() {
     ui_console_editor_inventory.selectedInventoryItem = null;
     // Re-enable normal selection behavior
-    edit_mode_window.isAddingNewObject = false;
+    editor_window.isAddingNewObject = false;
   },
 
   cancelAddingObject: function() {
@@ -348,11 +348,11 @@ var ui_console_editor_inventory = {
     }
 
     // Determine base position (snap to grid or pixel-perfect)
-    let baseX = editor_context_menu_window.isSnapEnabled
+    let baseX = editor_context_menu.isSnapEnabled
       ? Math.floor(mouseX / 16) * 16
       : Math.round(mouseX);
 
-    let baseY = editor_context_menu_window.isSnapEnabled
+    let baseY = editor_context_menu.isSnapEnabled
       ? Math.floor(mouseY / 16) * 16
       : Math.round(mouseY);
 
@@ -365,7 +365,7 @@ var ui_console_editor_inventory = {
 
     // Loop through columns to calculate the X positions
     for (let col = 0; col <= maxColumns; col++) {
-      if (editor_context_menu_window.isSnapEnabled) {
+      if (editor_context_menu.isSnapEnabled) {
         newX.push(Math.floor(baseX / 16) + col);
       } else {
         newX.push((baseX + col * 16) / 16);
@@ -374,7 +374,7 @@ var ui_console_editor_inventory = {
 
     // Loop through rows to calculate the Y positions
     for (let row = 0; row <= maxRows; row++) {
-      if (editor_context_menu_window.isSnapEnabled) {
+      if (editor_context_menu.isSnapEnabled) {
         newY.push(Math.floor(baseY / 16) + row);
       } else {
         newY.push((baseY + row * 16) / 16);

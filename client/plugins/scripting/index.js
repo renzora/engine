@@ -1,4 +1,4 @@
-window[id] = {
+scripting = {
     audioCooldown: 0.5,
     lastPlayedTimesByType: {},
     throttleInterval: 2000,
@@ -208,7 +208,7 @@ checkForNearbyItems: function () {
     },
 
     isWithinActiveTime: function(activeTime) {
-        if(!plugin.exists('time')) return;
+        if(!plugin.time) return;
         const currentHour = time.hours + (time.minutes / 60);
         console.log(`Current game time (hours): ${time.hours}:${time.minutes}, as decimal: ${currentHour}`);
     

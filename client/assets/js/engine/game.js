@@ -77,9 +77,9 @@ game = {
             this.ctx.imageSmoothingEnabled = false;
             document.body.appendChild(this.canvas);
 
+            input.assign('resize', (e) => this.resizeCanvas(e));
             this.resizeCanvas();
             this.loop();
-            input.init();
             gamepad.init(config);
             plugin.hook('onGameCreate');
 
@@ -179,64 +179,63 @@ game = {
     },
 
     scene: function(sceneId) {
-        input.cancelPathfinding(this.sprites[this.playerid]);
+        plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
     
-        fetch(`/api/scenes/${encodeURIComponent(sceneId)}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Network response was not ok: ${response.statusText}`);
+        fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Scene response:', data);
+    
+            if (data.message === 'success') {
+                plugin.lighting.clearLightsAndEffects();
+                game.roomData = data.roomData;
+                game.sceneid = data._id;
+                game.serverid = data.server_id;
+                game.worldWidth = data.width || 1280;
+                game.worldHeight = data.height || 944;
+                game.x = data.startingX || 0;
+                game.y = data.startingY || 0;
+    
+                const playerSprite = game.sprites[game.playerid];
+                if (playerSprite) {
+                    playerSprite.x = game.x;
+                    playerSprite.y = game.y;
                 }
-                return response.json();
-            })
-            .then(data => {
-                console.log('Scene response:', data);
     
-                if (data.message === 'success') {
-                    plugin.lighting.clearLightsAndEffects();
-                    game.roomData = data.roomData;
-                    game.sceneid = data._id;
-                    game.serverid = data.server_id;
-                    game.worldWidth = data.width || 1280;
-                    game.worldHeight = data.height || 944;
-                    game.x = data.startingX || 0;
-                    game.y = data.startingY || 0;
+                this.sceneBg = data.bg || null;
+                game.resizeCanvas();
     
-                    const playerSprite = game.sprites[game.playerid];
-                    if (playerSprite) {
-                        playerSprite.x = game.x;
-                        playerSprite.y = game.y;
-                    }
+                plugin.collision.walkableGridCache = null;
+                plugin.collision.createWalkableGrid();
     
-                    this.sceneBg = data.bg || null;
-                    game.resizeCanvas();
+                game.overlappingTiles = [];
+                camera.update();
     
-                    
-                      plugin.collision.walkableGridCache = null;
-                      plugin.collision.createWalkableGrid();
-                    
+                plugin.effects.start('fadeOut', 1000);
+                plugin.effects.start('fadeIn', 1000);
     
-                    game.overlappingTiles = [];
-                    camera.update();
-
-                      plugin.effects.transitions.start('fadeOut', 1000);
-                      plugin.effects.transitions.start('fadeIn', 1000);
-    
-                } else {
-                    console.log('Scene load error:', data.message);
-                    plugin.load({
-                        id: "scene_load_error_window",
-                        url: "plugins/errors/index.njk"
-                    });
-                }
-            })
-            .catch(error => {
-                console.error('Scene load error:', error);
-                plugin.load({
-                    id: "scene_load_error_window",
-                    url: "plugins/errors/index.njk"
-                });
-            });
+                console.log('scene loaded successfully');
+            } else {
+                console.log('Scene load error:', data.message);
+                plugin.load('errors', { ext: 'html' });
+            }
+        })
+        .catch(error => {
+            console.error('Scene load error:', error);
+            plugin.load('errors', { ext: 'html' });
+        });
     },
+    
 
     loop: function(timestamp) {
         if (!this.lastTime) {

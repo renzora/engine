@@ -20,7 +20,7 @@
         <input type="text" id='login_username' class='light_input shadow appearance-none text-2xl border rounded w-full p-3 mb-2 text-gray-700 leading-tight focus:outline-none focus:shadow-outline' placeholder="Username or Email" required="required" autocomplete="off" />
         <input type="password" id='login_password' class='light_input shadow appearance-none text-2xl border rounded w-full p-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline' placeholder="Password" required="required" autocomplete="off" />
         <div class='clearfix'></div>
-        <button id='login_connect' onclick="auth_window.login()" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;"><i class="fas fa-lock-open"></i> Connect to Server</button>
+        <button id='login_connect' onclick="auth.login()" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md" style="font-size: 16px;"><i class="fas fa-lock-open"></i> Connect to Server</button>
       </div>
 
       <div id="registerContent" class="hidden">
@@ -49,7 +49,7 @@
       />
       <div class="clearfix"></div>
 
-      <button id='register_connect' onclick="auth_window.register();" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md">Create Character</button>
+      <button id='register_connect' onclick="auth.register();" class="green_button text-white font-bold py-3 px-4 rounded w-full mt-2 shadow-md">Create Character</button>
 
       </div>
 
@@ -60,7 +60,7 @@
   </div>
 
 <script>
-window[id] = {
+auth = {
     handlers: {
         loginTab: null,
         registerTab: null,
@@ -149,8 +149,8 @@ window[id] = {
             },
             success: function(response) {
                 if (response.message === 'login_complete') {
-                    if(utils.pluginExists('notif')) notif.show("auth_login_success", "Hey " + username + "! You are now signed in. Press Tab to open the editor!");
-                    plugin.close(this.id);
+                    plugin.notif.show("auth_login_success", "Hey " + username + "! You are now signed in!");
+                    plugin.close('auth');
                 } else {
                     switch(response.message) {
                         case 'error_1':
@@ -186,7 +186,8 @@ window[id] = {
             },
             success: function(response) {
                 if (response.message === 'registration_complete') {
-                    window.location.reload();
+                    plugin.notif.show("auth_register_success", "Hey " + username + "! You are now registered!");
+                    plugin.close('auth');
                 } else {
                     switch(response.message) {
                         case 'error_1':
@@ -213,17 +214,23 @@ window[id] = {
     },
 
     signout: function() {
-        ui.ajax({
-            outputType: 'json',
+        fetch('/api/auth/signout', {
             method: 'POST',
-            url: '/api/auth/signout',
-            success: function(response) {
-                if (response.message === 'success') {
-                    window.location.reload();
-                }
+            headers: {
+                'Content-Type': 'application/json'
             }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.message === 'success') {
+                window.location.reload();
+            }
+        })
+        .catch(error => {
+            console.error('Signout failed:', error);
         });
     }
+
 };
 </script>
 {% endif %}

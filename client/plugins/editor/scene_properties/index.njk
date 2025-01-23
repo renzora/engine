@@ -19,7 +19,7 @@
         <label for="sceneHeight" class="block text-sm mb-1">Height: <span id="sceneHeightValue"></span></label>
         <input type="range" id="sceneHeight" min="96    " max="2000" step="1" class="w-full mb-4">
             <!-- Save Button -->
-    <button id="saveSceneProperties" onclick="editor_scene_properties_window.save();" class="bg-yellow-500 text-white px-4 py-2 mt-4 rounded hover:bg-yellow-600">
+    <button id="saveSceneProperties" onclick="editor_scene_properties.save();" class="bg-yellow-500 text-white px-4 py-2 mt-4 rounded hover:bg-yellow-600">
         Save
     </button>
       </div>
@@ -27,7 +27,7 @@
     </div>
 
     <script>
-window[id] = {
+editor_scene_properties = {
     id: id,
     start: function() {
         const widthSlider = document.getElementById('sceneWidth');
@@ -94,7 +94,7 @@ window[id] = {
             },
             success: function(response) {
                 console.log('Scene properties saved successfully:', response);
-                plugin.close('editor_scene_properties_window');
+                plugin.close('editor_scene_properties');
             },
             error: function(error) {
                 console.error('Error saving scene properties:', error);

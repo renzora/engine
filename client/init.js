@@ -6,17 +6,29 @@
         { name: 'spriteData', path: 'assets/json/spritesData.json' }
     ],() => {
 
-        plugin.load({ id: 'time', url: 'plugins/time/index.js'});
-        plugin.load({ id: 'scripting', url: 'plugins/scripting/index.js' });
+        input.assign('keydown.tab', () => {
 
-        plugin.load({
-            id: 'audio',
-            url: 'plugins/audio/index.js',
+            plugin.load('console_window', {
+                path: 'editor',
+                ext: 'njk',
+                drag: false,
+                reload: true,
+                after: function () {
+                    plugin.load('editor_window', { path: 'editor', ext: 'njk', drag: true, reload: true });
+                }
+            });
+          });
+
+        plugin.load('time');
+        plugin.load('scripting');
+        plugin.load('audio', {
             after: function() {
                 audio.createChannel('music', localStorage.getItem('music-volume') || audio.defaultVolume);
                 audio.setVolume('music', localStorage.getItem('music-volume') || 0.05);
             }
         });
+        plugin.load('notif', { ext: 'html' });
+        plugin.load('pathfinding');
 
         const playerSprite = sprite.create({
             id: 'player1',
@@ -32,19 +44,10 @@
             spriteData: assets.use('spriteData'),
             player: playerSprite,
             after: function() {
-
                 game.scene(localStorage.getItem('sceneid') || '678ec2d7433aae2deee168ee');
-                plugin.load({ id: 'auth_window', url: 'plugins/auth/index.njk' });
-
-                plugin.load({
-                    id: 'notif',
-                    url: 'plugins/notifs/index.html',
-                    after: function() {
-                        notif.show("load_success_1", "Press Tab to open the editor", "info");
-                        notif.show("load_success_2", "Edit client/init.js to change startup settings", "danger");
-                    } 
-                });
-
+                plugin.load('auth', { ext: 'njk' });
+                plugin.notif.show("load_success_1", "Press Tab to open the editor", "info");
+                plugin.notif.show("load_success_2", "Edit client/init.js to change startup settings", "danger");
             }
         });
 

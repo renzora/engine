@@ -1,41 +1,8 @@
 <div data-close="false">
-  <!-- Main Context Menu Container -->
   <div
-    id="editor_context_menu_window"
+    id="editor_context_menu"
     class="absolute z-50 hidden flex flex-col items-start space-y-2">
 
-    <!-- Toolbar Buttons Container -->
-    <div
-      id="editor_toolbar_buttons"
-      class="bg-black text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
-      style="margin-bottom: 10px;">
-      <button type="button" id="select_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition hint--top" onclick="edit_mode_window.changeMode('select')" aria-label="Select">
-        <div class="ui_icon ui_select"></div>
-      </button>
-      <button type="button" id="brush_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('brush')">
-        <div class="ui_icon ui_brush"></div>
-      </button>
-      <button type="button" id="zoom_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('zoom')">
-        <div class="ui_icon ui_magnify"></div>
-      </button>
-      <button type="button" id="pan_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('pan')">
-        <div class="ui_icon ui_pan"></div>
-      </button>
-      <button type="button" id="lasso_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('lasso')">
-        <div class="ui_icon ui_lasso"></div>
-      </button>
-      <button type="button" id="move_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.changeMode('move')">
-        <div class="ui_icon ui_move"></div>
-      </button>
-      <button type="button" id="save_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="edit_mode_window.saveRoomData()">
-        <div class="ui_icon ui_save"></div>
-      </button>
-      <button type="button" id="close_button" class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition" onclick="plugin.close('edit_mode_window');">
-        <div class="ui_icon ui_close"></div>
-      </button>
-    </div>
-
-    <!-- Context Menu Items Container -->
     <div
       id="editor_menu_container"
       class="bg-black text-white rounded-lg shadow-lg"
@@ -47,12 +14,10 @@
 </div>
 
 <script>
-window[id] = {
-  id: id,
+editor_context_menu = {
   isGridEnabled: true,
   isSnapEnabled: false,
   isNightfilterEnabled: false,
-
   contextMenuElement: null,
   menuItemsElement: null,
   contextmenuHandler: null,
@@ -62,40 +27,36 @@ window[id] = {
   menuItemsConfig: [],
 
   start: function () {
-    this.contextMenuElement = document.getElementById('editor_context_menu_window');
+    this.contextMenuElement = document.getElementById('editor_context_menu');
     this.menuItemsElement = document.getElementById('editor_menuItems');
 
-    this.contextmenuHandler = (event) => {
-    event.preventDefault(); // Always prevent default browser context menu
+this.contextmenuHandler = (event) => {
+  event.preventDefault();
 
-    // If in the middle of adding or selecting an object, skip showing the context menu
-    if (edit_mode_window.isAddingNewObject || ui_console_editor_inventory.isDragging) {
-        ui_console_editor_inventory.cancelAddingObject();
-        return;
-    }
+  if ( editor_window.isAddingNewObject || (plugin?.ui_console_editor_inventory?.isDragging === true)) {
+    plugin?.ui_console_editor_inventory?.cancelAddingObject();
+    return;
+  }
 
-    this.initialClickX = event.clientX;
-    this.initialClickY = event.clientY;
+  this.initialClickX = event.clientX;
+  this.initialClickY = event.clientY;
 
-    this.populateMenuItems(event.clientX, event.clientY);
+  this.populateMenuItems(event.clientX, event.clientY);
 
-    if (this.menuItemsConfig.length > 0) {
-        // Bring the context menu to the front
-        plugin.front('editor_context_menu_window');
-
-        // Show context menu only if there are valid menu items
-        ui.contextMenu.showContextMenu(
-            this.contextMenuElement,
-            this.menuItemsElement,
-            this.menuItemsConfig,
-            event.clientX,
-            event.clientY
-        );
-    } else {
-        // Hide menu if no valid options
-        this.contextMenuElement.classList.add('hidden');
-    }
+  if (this.menuItemsConfig.length > 0) {
+    plugin.front('editor_context_menu');
+    ui.contextMenu.showContextMenu(
+      this.contextMenuElement,
+      this.menuItemsElement,
+      this.menuItemsConfig,
+      event.clientX,
+      event.clientY
+    );
+  } else {
+    this.contextMenuElement.classList.add('hidden');
+  }
 };
+
 
 
     this.clickHandler = (e) => {
@@ -107,11 +68,8 @@ window[id] = {
   },
 
   unmount: function () {
-    // remove event listeners
     document.removeEventListener('contextmenu', this.contextmenuHandler);
     document.removeEventListener('click', this.clickHandler);
-
-    // hide the menu if open
     this.contextMenuElement.classList.add('hidden');
     console.log("Editor context menu unmounted, all events removed.");
   },
@@ -124,22 +82,15 @@ window[id] = {
     const clickedObject = this.getSelectedObject(clientX, clientY);
     console.log('Clicked Object:', clickedObject); // Debug
 
-    if (clickedObject && edit_mode_window.selectedObjects.includes(clickedObject)) {
+    if (clickedObject && editor_window.selectedObjects.includes(clickedObject)) {
       const objectId = clickedObject.id;
       console.log('Object ID:', objectId);
 
-      // Hide the toolbar for an object context menu
       document.getElementById('editor_toolbar_buttons').classList.add('hidden');
 
-      // If your code references game.objectData:
       const objectDetails = game.objectData[objectId];
       const objectName = (objectDetails && objectDetails[0]?.n) ? objectDetails[0].n : 'Unnamed Object';
 
-      // -----------------------------------------------------
-      // BUILD LAYERS SUBMENU DYNAMICALLY:
-      // We map over the layers from editor_layers (must be global).
-      // Clicking a layer calls moveObjectToLayer(clickedObject, layer.id).
-      // -----------------------------------------------------
       let layersSubMenu = [];
       if (window.editor_layers && Array.isArray(window.editor_layers.layers)) {
         layersSubMenu = window.editor_layers.layers.map(layer => ({
@@ -175,7 +126,7 @@ window[id] = {
         }
       ];
     } else {
-      // Show the toolbar if not an object context
+
       document.getElementById('editor_toolbar_buttons').classList.remove('hidden');
 
       this.menuItemsConfig = [
@@ -235,16 +186,11 @@ window[id] = {
     }
   },
 
-  // Called by "move to layer" submenu items
   moveObjectToLayer: function (obj, layerId) {
     console.log("Moving object", obj.id, "to layer", layerId);
-    // EXAMPLE: If your object data or the object itself tracks layer:
     if (obj) {
-      // e.g., store the new layer ID on the object
       obj.layerId = layerId;
-      // Possibly re-render or refresh as needed
     }
-    // Hide the context menu
     this.contextMenuElement.classList.add('hidden');
   },
 
@@ -253,15 +199,14 @@ window[id] = {
     const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
     const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
 
-    return edit_mode_window.selectedObjects.find((item) => {
+    return editor_window.selectedObjects.find((item) => {
       const minX = Math.min(...item.x) * 16;
       const minY = Math.min(...item.y) * 16;
       const maxX = Math.max(...item.x) * 16 + 16;
       const maxY = Math.max(...item.y) * 16 + 16;
 
-      // Ensure object has a valid ID
       if (!item.id) {
-        console.warn('Object missing ID:', item); // Debug
+        console.warn('Object missing ID:', item);
         return false;
       }
 
@@ -272,9 +217,8 @@ window[id] = {
   editObject: function (selectedObject) {
     if (!selectedObject) return;
     const uniqueId = selectedObject.id;
-    plugin.load({
-      id: 'tileset_item_editor_window',
-      url: `plugins/editor/tileset_manager/items.njk?id=${uniqueId}`,
+    plugin.load('tileset_item_editor_window', {
+      ext: 'njk',
       name: 'Item Editor',
       drag: true,
       reload: true,
@@ -326,8 +270,6 @@ window[id] = {
 
     this.updateStartingPosition(gridX, gridY);
     this.contextMenuElement.classList.add('hidden');
-
-    // Reset initial click position
     this.initialClickX = null;
     this.initialClickY = null;
   },
@@ -366,9 +308,9 @@ window[id] = {
   },
 
   openSceneProperties: function (x, y) {
-    plugin.load({
-      id: 'editor_scene_properties_window',
-      url: 'plugins/editor/scene_properties/index.njk',
+    plugin.load('editor_scene_properties', {
+      path: 'editor',
+      ext: 'njk',
       name: 'Scene Properties',
       drag: true,
       reload: true,
@@ -382,9 +324,8 @@ window[id] = {
   },
 
   openTilesetManager: function () {
-    plugin.load({
-      id: 'tileset_window',
-      url: 'plugins/editor/tileset_manager/index.njk',
+    plugin.load('tileset_manager', {
+      ext: 'njk',
       drag: true,
       reload: false,
     });
@@ -431,11 +372,9 @@ window[id] = {
   render2dGrid: function () {
     if (!this.isGridEnabled) return;
 
-    // Set grid line style to be dark and subtle
     game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
     game.ctx.lineWidth = 1;
 
-    // Draw vertical lines
     for (let x = 0; x < game.worldWidth; x += 16) {
       game.ctx.beginPath();
       game.ctx.moveTo(x, 0);
@@ -443,7 +382,6 @@ window[id] = {
       game.ctx.stroke();
     }
 
-    // Draw horizontal lines
     for (let y = 0; y < game.worldHeight; y += 16) {
       game.ctx.beginPath();
       game.ctx.moveTo(0, y);
@@ -451,7 +389,6 @@ window[id] = {
       game.ctx.stroke();
     }
 
-    // Draw a border around the outer edge of the grid
     game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
@@ -462,37 +399,26 @@ window[id] = {
 
     const tileWidth = 32;
     const tileHeight = 16;
-
-    // Instead of halfWorldWidth / halfWorldHeight, use the full game.worldWidth / game.worldHeight
-    // so we can overshoot and ensure the diagonal lines fill the entire canvas
     const maxY = game.worldHeight;
     const minY = -game.worldHeight;
 
-    // Light grid lines
     game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     game.ctx.lineWidth = 1;
 
-    // Draw lines slanted to the right
     for (let y = minY; y <= maxY; y += tileHeight) {
       game.ctx.beginPath();
-      // Move from left edge down
       game.ctx.moveTo(0, game.worldHeight / 2 + y);
-      // Draw to right edge
       game.ctx.lineTo(game.worldWidth, game.worldHeight / 2 + y - game.worldWidth / 2);
       game.ctx.stroke();
     }
 
-    // Draw lines slanted to the left
     for (let y = minY; y <= maxY; y += tileHeight) {
       game.ctx.beginPath();
-      // Move from right edge down
       game.ctx.moveTo(game.worldWidth, game.worldHeight / 2 + y);
-      // Draw to left edge
       game.ctx.lineTo(0, game.worldHeight / 2 + y - game.worldWidth / 2);
       game.ctx.stroke();
     }
 
-    // Border (optional)
     game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);

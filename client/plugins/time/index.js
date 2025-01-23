@@ -1,5 +1,4 @@
-window[id] = {
-    id: id,
+time = {
     hours: 22,
     minutes: 0,
     seconds: 0,
