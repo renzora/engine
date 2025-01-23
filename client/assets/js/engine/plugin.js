@@ -1,6 +1,6 @@
 window.pluginResolves = window.pluginResolves || {};
 
-plugin = {
+const rawPlugin = {
     plugins: [],
     baseZIndex: null,
     pluginNames: {},
@@ -527,5 +527,23 @@ plugin = {
             }
         }
         return true;
-    }    
+    }
 };
+
+plugin = new Proxy(rawPlugin, {
+    get(target, propKey, receiver) {
+        if (Reflect.has(target, propKey)) {
+            return Reflect.get(target, propKey, receiver);
+        }
+
+        if (target.exists(propKey)) {
+            return window[propKey];
+        }
+
+        return new Proxy({}, {
+            get() {
+                return () => { };
+            }
+        });
+    }
+});

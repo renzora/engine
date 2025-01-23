@@ -115,19 +115,17 @@ game = {
 
     pause: function() {
         cancelAnimationFrame(this.animationFrameId);
-        if(plugin.exists('audio')) audio.pauseAll();
+        plugin.audio.pauseAll();
         this.isPaused = true;
     },
     
     resume: function() {
-        if(plugin.exists('network')) {
-        network.send({
+        plugin.network.send({
             command: 'requestGameState',
             playerId: this.playerid
         });
-        }
 
-        if(plugin.exists('audio')) audio.resumeAll();
+        plugin.audio.resumeAll();
     },
 
     resizeCanvas: function() {
@@ -172,7 +170,7 @@ game = {
         this.x = Math.floor(mouseX / 16);
         this.y = Math.floor(mouseY / 16);
         
-        if (plugin.exists('collision') && collision.isTileWalkable(this.x, this.y)) {
+        if (plugin.collision.isTileWalkable(this.x, this.y)) {
             this.selectedObjects = [];
             this.selectedCache = [];
             this.mainSprite.walkToClickedTile(this.x, this.y);
@@ -194,7 +192,7 @@ game = {
                 console.log('Scene response:', data);
     
                 if (data.message === 'success') {
-                    if(plugin.exists('lighting')) lighting.clearLightsAndEffects();
+                    plugin.lighting.clearLightsAndEffects();
                     game.roomData = data.roomData;
                     game.sceneid = data._id;
                     game.serverid = data.server_id;
@@ -212,18 +210,16 @@ game = {
                     this.sceneBg = data.bg || null;
                     game.resizeCanvas();
     
-                    if(plugin.exists('collision')) {
-                      collision.walkableGridCache = null;
-                      collision.createWalkableGrid();
-                    }
+                    
+                      plugin.collision.walkableGridCache = null;
+                      plugin.collision.createWalkableGrid();
+                    
     
                     game.overlappingTiles = [];
                     camera.update();
 
-                    if(plugin.exists('effects')) {
-                      effects.transitions.start('fadeOut', 1000);
-                      effects.transitions.start('fadeIn', 1000);
-                    }
+                      plugin.effects.transitions.start('fadeOut', 1000);
+                      plugin.effects.transitions.start('fadeIn', 1000);
     
                 } else {
                     console.log('Scene load error:', data.message);
@@ -307,27 +303,20 @@ game = {
         this.renderCarriedObjects();
         this.handleDebugUtilities();
     
-        if (plugin.exists('ui_console_editor_inventory') && ui_console_editor_inventory.selectedInventoryItem) {
-            ui_console_editor_inventory.render();
+        if (plugin.ui_console_editor_inventory.selectedInventoryItem) {
+            plugin.ui_console_editor_inventory.render();
         }
     
-        if (plugin.exists('ui_console_tab_window')) {
-            if (plugin.exists('ui_console_tab_window.renderCollisionBoundaries')) {
-                ui_console_tab_window.renderCollisionBoundaries();
-            }
-            if (plugin.exists('ui_console_tab_window.renderNearestWalkableTile')) {
-                ui_console_tab_window.renderNearestWalkableTile();
-            }
-            if (plugin.exists('ui_console_tab_window.renderObjectCollision')) {
-                ui_console_tab_window.renderObjectCollision();
-            }
+        
+                plugin.ui_console_tab_window.renderCollisionBoundaries();
+                plugin.ui_console_tab_window.renderNearestWalkableTile();
+                plugin.ui_console_tab_window.renderObjectCollision();
+    
+        if (this.mainSprite && this.mainSprite.isVehicle) {
+            plugin.ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed);
         }
     
-        if (plugin.exists("ui_overlay_window.update") && this.mainSprite && this.mainSprite.isVehicle) {
-            ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed);
-        }
-    
-        if (plugin.exists('debug')) debug.tracker('game.loop');
+        plugin.debug.tracker('game.loop');
     
         requestAnimationFrame(this.loop.bind(this));
     },
@@ -405,7 +394,7 @@ game = {
                 this.tileCount++;
             }
         }
-        if(plugin.exists('debug')) debug.tracker('render.renderBackground');
+        plugin.debug.tracker('render.renderBackground');
     },
 
     render: function() {
@@ -569,8 +558,6 @@ game = {
                     this.renderQueue.push(objectTiles);
                 }
     
-                // Lights & Effects
-                if(plugin.exists('lighting', 'time')) {
                     this.handleLights(
                         tileData, 
                         roomItem, 
@@ -579,7 +566,6 @@ game = {
                         this.viewportYStart, 
                         this.viewportYEnd
                     );
-                }
                 
                 this.handleEffects(
                     tileData, 
@@ -590,7 +576,7 @@ game = {
                     this.viewportYEnd
                 );
     
-                if (plugin.exists("editor_layers") && editor_layers.needsUpdate) {
+                if (plugin.editor_layers.needsUpdate) {
                     const objectName = tileData.n || "Unnamed Object";
                     itemsToAdd.push({
                         name: objectName,
@@ -626,9 +612,9 @@ game = {
                     draw: () => {
                         this.renderPathfinderLine();
                         sprite.drawShadow();
-                        if(plugin.exists('effects')) effects.dirtCloudEffect.updateAndRender(this.deltaTime);
+                        //plugin.effects.dirtCloudEffect.updateAndRender(this.deltaTime);
                         sprite.draw();
-                        if(plugin.exists('effects')) effects.bubbleEffect.updateAndRender(this.deltaTime);
+                        //plugin.effects.bubbleEffect.updateAndRender(this.deltaTime);
                     }
                 });
                 this.spriteCount++;
@@ -641,17 +627,17 @@ game = {
         // Render in sorted order
         this.renderQueue.forEach(item => item.draw());
     
-        if (plugin.exists("editor_layers") && editor_layers.needsUpdate) {
+        if (plugin.editor_layers.needsUpdate) {
             itemsToAdd.forEach(itemInfo => {
-                editor_layers.addItemToLayer({
+                plugin.editor_layers.addItemToLayer({
                     n: itemInfo.name,
                     layer_id: itemInfo.layer_id,
                 });
             });
-            editor_layers.needsUpdate = false;
+            plugin.editor_layers.needsUpdate = false;
         }    
     
-        if(plugin.exists('debug')) debug.tracker("render.renderAll");
+        plugin.debug.tracker("render.renderAll");
     },
 
     handleSway: function(roomItem) {
@@ -666,7 +652,7 @@ game = {
             const sway = Math.sin((roomItem.swayElapsed / roomItem.swaySpeed) * Math.PI * 2) * roomItem.swayAngle;
             return sway;
         }
-        if(plugin.exists('debug')) debug.tracker('render.handleSway');
+        plugin.debug.tracker('render.handleSway');
         return 0;
     },
 
@@ -752,7 +738,7 @@ game = {
     },
 
     handleLights: function (tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        if (!plugin.exists('time')) return;
+        if (!plugin.time) return;
         // Only run if tileData.l exists and is an array
         if (tileData.l && Array.isArray(tileData.l)) {
             tileData.l.forEach((light) => {
