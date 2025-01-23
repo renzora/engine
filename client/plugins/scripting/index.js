@@ -1,9 +1,21 @@
-actions = {
+window[id] = {
     audioCooldown: 0.5,
     lastPlayedTimesByType: {},
     throttleInterval: 2000,
     lastExecutionTime: 0,
     tooltipActive: true,
+
+    start: function() {
+
+    },
+
+    unmount: function() {
+
+    },
+
+    onRender: function() {
+        this.checkForNearbyItems();
+    },
 
         isThrottled: function () {
         const now = Date.now();
@@ -63,7 +75,7 @@ checkForNearbyItems: function () {
 
             let script;
             if (typeof scriptData === 'string') {
-                script = this.parseYaml(scriptData);
+                script = this.parseScript(scriptData);
             } else if (typeof scriptData === 'object' && scriptData !== null) {
                 script = scriptData;
             } else {
@@ -400,51 +412,8 @@ speech: function (config, context, item) {
             }
         }
     },
-    
-    mountHorse: function (playerId, horseId) {
-        const playerSprite = game.sprites[playerId];
-        const horseSprite = game.sprites[horseId];
-    
-        if (!playerSprite || !horseSprite) {
-            console.log('Player or horse not found');
-            return;
-        }
-    
-        horseSprite.riderId = playerId;
-        game.mainSprite = horseSprite;
-        game.setActiveSprite(horseId);
-        playerSprite.onHorse = true;
-    
-        console.log(`${playerId} is now riding ${horseId}`);
-    },
-    
 
-    dismountHorse: function (horseId) {
-        const horseSprite = game.sprites[horseId];
-    
-        if (!horseSprite) {
-            console.log('Horse not found');
-            return;
-        }
-    
-        const riderId = horseSprite.riderId;
-        if (!riderId) {
-            console.log('No rider on this horse');
-            return;
-        }
-    
-        horseSprite.riderId = null;
-        const playerId = riderId.replace('_riding', '');
-        game.sprites[playerId] = game.sprites[riderId];
-        delete game.sprites[riderId];
-        game.mainSprite = game.sprites[playerId];
-        game.setActiveSprite(playerId);
-        game.sprites[playerId].visible = true;
-    
-        console.log(`${playerId} has dismounted from ${horseId}`);
-    },
-
-    parseYaml: function(yaml) {
+    parseScript: function(yaml) {
         const lines = yaml.split('\n');
         const result = {};
         let currentObject = result;

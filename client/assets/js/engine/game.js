@@ -115,16 +115,19 @@ game = {
 
     pause: function() {
         cancelAnimationFrame(this.animationFrameId);
-        audio.pauseAll();
+        if(plugin.exists('audio')) audio.pauseAll();
         this.isPaused = true;
     },
     
     resume: function() {
+        if(plugin.exists('network')) {
         network.send({
             command: 'requestGameState',
             playerId: this.playerid
         });
-        audio.resumeAll();
+        }
+
+        if(plugin.exists('audio')) audio.resumeAll();
     },
 
     resizeCanvas: function() {
@@ -287,7 +290,6 @@ game = {
     
             camera.update();
             this.updateAnimatedTiles();
-            actions.checkForNearbyItems();
     
             this.accumulatedTime -= this.fixedDeltaTime;
         }

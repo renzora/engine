@@ -7,6 +7,7 @@
     ],() => {
 
         plugin.load({ id: 'time', url: 'plugins/time/index.js'});
+        plugin.load({ id: 'scripting', url: 'plugins/scripting/index.js' });
 
         plugin.load({
             id: 'audio',

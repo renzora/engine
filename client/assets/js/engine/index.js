@@ -6,4 +6,3 @@ import './input.js';
 import './gamepad.js';
 import './ui.js';
 import './plugin.js';
-import './actions.js';
