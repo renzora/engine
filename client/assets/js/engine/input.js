@@ -1,23 +1,27 @@
 input = {
   eventListeners: {},
-
+  listenerMap: {},
   assign: function(type, callback, options = {}) {
     if (type.includes('+')) {
       const parts = type.split('+');
       const mainType = parts[0];
-      const modifiers = parts.slice(1, -1);
-      const mainKey = parts[parts.length - 1].toLowerCase();
+      const subParts = parts.slice(1);
+      const autoId = subParts.join('').replace(/\+/g, '');
+      const mainKey = subParts[subParts.length - 1].toLowerCase();
+      const modifiers = subParts.slice(0, -1);
 
       const comboListener = (e) => {
+        // Check each modifier
         for (let mod of modifiers) {
           mod = mod.toLowerCase();
           if (mod === 'shift' && !e.shiftKey) return;
-          if (mod === 'ctrl'  && !e.ctrlKey)  return;
-          if (mod === 'alt'   && !e.altKey)   return;
-          if (mod === 'meta'  && !e.metaKey)  return;
+          if (mod === 'ctrl' && !e.ctrlKey)   return;
+          if (mod === 'alt' && !e.altKey)     return;
+          if (mod === 'meta' && !e.metaKey)   return;
         }
+
         if (e.key.toLowerCase() === mainKey) {
-          console.log(`input.assign -> Handling ${type}`);
+          console.log(`input.assign -> Handling "${type}" (id=${autoId})`);
           callback(e);
         }
       };
@@ -28,66 +32,100 @@ input = {
       if (!this.eventListeners[mainType].has(comboListener)) {
         this.eventListeners[mainType].add(comboListener);
         window.addEventListener(mainType, comboListener, options);
-        console.log(`input.assign -> Added combo listener for "${type}"`);
+        console.log(`input.assign -> Added combo listener for "${type}" (id=${autoId})`);
+
+        this.listenerMap[autoId] = {
+          domEvent: mainType,
+          actualCallback: comboListener
+        };
       }
+      return autoId;
+
+    } else if (type.includes('.')) {
+
+      const [mainType, subKey] = type.split('.');
+      if (!subKey) return;
+
+      const keyName = subKey.toLowerCase();
+      const subId = mainType + keyName;
+
+      const keyListener = (e) => {
+        if (e.key.toLowerCase() === keyName) {
+          if (["tab", " "].includes(keyName)) {
+            e.preventDefault();
+          }
+          console.log(`input.assign -> Handling ${mainType}.${keyName} (id=${subId})`);
+          callback(e);
+        }
+      };
+
+      if (!this.eventListeners[mainType]) {
+        this.eventListeners[mainType] = new Set();
+      }
+      if (!this.eventListeners[mainType].has(keyListener)) {
+        this.eventListeners[mainType].add(keyListener);
+        window.addEventListener(mainType, keyListener, options);
+        console.log(`input.assign -> Added event listener for ${type} (id=${subId})`);
+
+        this.listenerMap[subId] = {
+          domEvent: mainType,
+          actualCallback: keyListener
+        };
+      }
+      return subId;
 
     } else {
-      let [mainType, subKey] = type.split(".");
-
-      if (subKey) {
-        const keyName = subKey.toLowerCase();
-        const keyListener = (e) => {
-          if (e.key.toLowerCase() === keyName) {
-            if (["tab", " "].includes(keyName)) {
-              e.preventDefault();
-            }
-            console.log(`input.assign -> Handling ${mainType}.${keyName}`);
-            callback(e);
-          }
+      if (!this.eventListeners[type]) {
+        this.eventListeners[type] = new Set();
+      }
+      if (!this.eventListeners[type].has(callback)) {
+        this.eventListeners[type].add(callback);
+        window.addEventListener(type, callback, options);
+        console.log(`input.assign -> Added event listener for ${type}`);
+        
+        const autoId = type.replace(/[^\w]/g, '') + '_gen';
+        this.listenerMap[autoId] = {
+          domEvent: type,
+          actualCallback: callback
         };
-
-        if (!this.eventListeners[mainType]) {
-          this.eventListeners[mainType] = new Set();
-        }
-        if (!this.eventListeners[mainType].has(keyListener)) {
-          this.eventListeners[mainType].add(keyListener);
-          window.addEventListener(mainType, keyListener, options);
-          console.log(`input.assign -> Added event listener for ${mainType}.${keyName}`);
-        }
-      } else {
-        if (!this.eventListeners[type]) {
-          this.eventListeners[type] = new Set();
-        }
-        if (!this.eventListeners[type].has(callback)) {
-          this.eventListeners[type].add(callback);
-          window.addEventListener(type, callback, options);
-          console.log(`input.assign -> Added event listener for ${type}`);
-        }
+        return autoId;
       }
     }
   },
 
-  unassign: function(type, callback) {
-    if (this.eventListeners[type] && this.eventListeners[type].has(callback)) {
-      this.eventListeners[type].delete(callback);
-      window.removeEventListener(type, callback);
-      console.log(`input.unassign -> Removed event listener for ${type}`);
-    }
-  },
-
-  destroy: function() {
-    for (const [type, callbacks] of Object.entries(this.eventListeners)) {
-      for (const callback of callbacks) {
-        window.removeEventListener(type, callback);
+  destroy: function(id) {
+    if (!id) {
+      for (const [eventType, callbacks] of Object.entries(this.eventListeners)) {
+        for (const cb of callbacks) {
+          window.removeEventListener(eventType, cb);
+        }
       }
+      this.eventListeners = {};
+      this.listenerMap = {};
+      console.log('input.destroy -> Removed all event listeners');
+      return;
     }
-    this.eventListeners = {};
-    console.log(`input.destroy -> Removed all event listeners`);
+
+    const record = this.listenerMap[id];
+    if (!record) {
+      console.warn(`input.destroy -> No listener found for id="${id}"`);
+      return;
+    }
+
+    const { domEvent, actualCallback } = record;
+    if (this.eventListeners[domEvent] && this.eventListeners[domEvent].has(actualCallback)) {
+      this.eventListeners[domEvent].delete(actualCallback);
+      window.removeEventListener(domEvent, actualCallback);
+      console.log(`input.destroy -> Removed event listener for id="${id}" (${domEvent})`);
+    }
+    delete this.listenerMap[id];
   },
 
   reassign: function() {
     this.destroy();
-    this.init?.();
+    if (typeof this.init === 'function') {
+      this.init();
+    }
     console.log(`input.reassign -> Reinitialized all input listeners`);
   },
 
