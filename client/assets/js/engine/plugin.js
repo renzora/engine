@@ -68,7 +68,6 @@ const rawPlugin = {
       const clientX = isTouch ? e.touches[0].clientX : e.clientX;
       const clientY = isTouch ? e.touches[0].clientY : e.clientY;
 
-      // Prevent dragging from body or resize handles
       if (e.target.closest('.window_body') || e.target.closest('.resize-handle')) {
         return;
       }
@@ -183,7 +182,7 @@ const rawPlugin = {
   },
 
   preload: function(pluginList) {
-    this.preloadQueue = pluginList.sort((a, b) => a.priority - b.priority);
+    this.preloadQueue = pluginList;
     this.loadNextPreload();
   },
 
@@ -225,7 +224,6 @@ const rawPlugin = {
 
       if (before) before(id);
 
-      // The important fix: path is now placed before the id.
       const finalDir = path ? `${path}/${id}` : id;
 
       let url;
@@ -269,13 +267,8 @@ const rawPlugin = {
     window[id].id = id;
 
     if (ext === 'js') {
-      const codeWithId = `
-        window['${id}'] = window['${id}'] || {};
-        window['${id}'].id = '${id}';
-        ${data}
-      `;
       const script = document.createElement('script');
-      script.textContent = codeWithId;
+      script.textContent = data;
       script.setAttribute('id', `${id}_script`);
       document.head.appendChild(script);
 
@@ -309,17 +302,15 @@ const rawPlugin = {
 
       const inlineScript = tempContainer.querySelector('script');
       if (inlineScript) {
-        const codeWithId = `
-          window['${id}'] = window['${id}'] || {};
-          window['${id}'].id = '${id}';
-          ${inlineScript.textContent}
-        `;
         const dynamicScript = document.createElement('script');
-        dynamicScript.textContent = codeWithId;
+        dynamicScript.textContent = inlineScript.textContent;
         dynamicScript.setAttribute('id', `${id}_script`);
         document.head.appendChild(dynamicScript);
 
-        if (!inlineScript.textContent.includes(`${id}.start()`) && window[id]?.start) {
+        if (
+          !inlineScript.textContent.includes(`${id}.start()`) &&
+          window[id]?.start
+        ) {
           if (beforeStart) beforeStart(id);
           window[id].start();
         }
@@ -409,7 +400,7 @@ const rawPlugin = {
   },
 
   unmount: function(id) {
-    console.log("attempting to unmount", id);
+    console.log('attempting to unmount', id);
 
     if (window[id]?.unmount) {
       window[id].unmount();
@@ -423,11 +414,11 @@ const rawPlugin = {
 
       for (let prop in obj) {
         if (obj.hasOwnProperty(prop)) {
-          if (typeof obj[prop] === "function") {
+          if (typeof obj[prop] === 'function') {
             delete obj[prop];
           } else if (Array.isArray(obj[prop])) {
             obj[prop] = [];
-          } else if (typeof obj[prop] === "object" && obj[prop] !== null) {
+          } else if (typeof obj[prop] === 'object' && obj[prop] !== null) {
             obj[prop] = {};
           } else {
             obj[prop] = null;
@@ -436,7 +427,7 @@ const rawPlugin = {
       }
       delete window[id];
       delete this.loadedPlugins[id];
-      console.log(id, "has been completely unmounted and deleted.");
+      console.log(id, 'has been completely unmounted and deleted.');
     }
   },
 
@@ -453,7 +444,7 @@ const rawPlugin = {
   },
 
   showAll: function() {
-    const all = document.querySelectorAll("[data-window]");
+    const all = document.querySelectorAll('[data-window]');
     all.forEach(el => el.style.display = 'block');
 
     if (this.plugins.length > 0) {
@@ -463,7 +454,7 @@ const rawPlugin = {
   },
 
   hideAll: function() {
-    const all = document.querySelectorAll("[data-window]");
+    const all = document.querySelectorAll('[data-window]');
     all.forEach(el => el.style.display = 'none');
     this.activePlugin = null;
   },

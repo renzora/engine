@@ -43,6 +43,8 @@ game = {
     viewportXEnd: 0,
     viewportYStart: 0,
     viewportYEnd: 0,
+    currentTileData: null,
+    currentRoomItem: null,
 
     loadGameAssets: function(onLoaded) {
         fetch('/api/tileset_manager/list_sheets')
@@ -163,21 +165,30 @@ game = {
     
     handleMouseUp: function(event) {
         if (this.isEditMode || (this.mainSprite && this.mainSprite.targetAim)) return;
-        
+    
         const rect = this.canvas.getBoundingClientRect();
         const mouseX = (event.clientX - rect.left) / this.zoomLevel + camera.cameraX;
         const mouseY = (event.clientY - rect.top) / this.zoomLevel + camera.cameraY;
         this.x = Math.floor(mouseX / 16);
         this.y = Math.floor(mouseY / 16);
         
-        if (plugin.collision.isTileWalkable(this.x, this.y)) {
-            this.selectedObjects = [];
-            this.selectedCache = [];
-            this.mainSprite.walkToClickedTile(this.x, this.y);
-            console.log('Tile is walkable, walking to clicked tile.');
+        if (plugin.exists('collision')) {
+            if (!plugin.collision.isTileWalkable(this.x, this.y)) {
+                console.log(`[handleMouseUp] => Tile (${this.x}, ${this.y}) is NOT walkable.`);
+                return;
+            }
+        } else {
+            console.log("[handleMouseUp] => No collision plugin; skipping walkable check...");
+        }
+    
+        if (plugin.exists('pathfinding')) {
+            console.log(`[handleMouseUp] => Telling pathfinding to move sprite to (${this.x}, ${this.y}).`);
+            plugin.pathfinding.walkToClickedTile(this.mainSprite, this.x, this.y);
+        } else {
+            console.log("[handleMouseUp] => No pathfinding plugin found. Unable to path.");
         }
     },
-
+       
     scene: function(sceneId) {
         plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
     
@@ -306,10 +317,9 @@ game = {
             plugin.ui_console_editor_inventory.render();
         }
     
-        
-                plugin.ui_console_tab_window.renderCollisionBoundaries();
-                plugin.ui_console_tab_window.renderNearestWalkableTile();
-                plugin.ui_console_tab_window.renderObjectCollision();
+        plugin.ui_console_tab_window.renderCollisionBoundaries();
+        plugin.ui_console_tab_window.renderNearestWalkableTile();
+        plugin.ui_console_tab_window.renderObjectCollision();
     
         if (this.mainSprite && this.mainSprite.isVehicle) {
             plugin.ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed);
@@ -360,7 +370,6 @@ game = {
         this.backgroundTileCount = 0;
         const tileSize = 16;
     
-        // Fill the entire viewport with black
         this.ctx.fillStyle = 'black';
         this.ctx.fillRect(
             this.viewportXStart * tileSize, 
@@ -404,7 +413,6 @@ game = {
     
         plugin.hook('onRenderAll');
     
-        // Expand objectData for any ranged tile indices
         const expandedObjectData = Object.keys(this.objectData).reduce((acc, key) => {
             acc[key] = this.objectData[key].map(this.expandTileData.bind(this));
             return acc;
@@ -414,7 +422,6 @@ game = {
     
         if (this.roomData && this.roomData.items) {
             this.roomData.items.forEach(roomItem => {
-                // Check if the layer is visible
                 if (roomItem.visible === false) {
                     return;
                 }
@@ -425,12 +432,9 @@ game = {
                 const tileData = itemData[0];
                 const xCoordinates = roomItem.x || [];
                 const yCoordinates = roomItem.y || [];
-    
-                // Compute the "bottom" (max Y) in tile-space
                 const bottomYTile = Math.max(...yCoordinates);
                 const bottomYPixel = bottomYTile * 16;
     
-                // Handle rotation
                 let rotation = tileData.rotation || 0;
                 if (roomItem.isRotating) {
                     actions.handleRotation(roomItem);
@@ -440,13 +444,12 @@ game = {
                     rotation += this.handleSway(roomItem);
                 }
     
-                // Create object entry for render queue
                 const objectTiles = {
-                    zIndex: 0,  // will be updated based on highest tile
+                    zIndex: 0,
                     type: 'object',
                     id: roomItem.id,
                     visible: true,
-                    layer_id: "item_" + roomItem.layer_id,  // add layer_id from roomItem
+                    layer_id: "item_" + roomItem.layer_id,
                     data: {
                         tileData,
                         rotation,
@@ -461,7 +464,6 @@ game = {
                         this.ctx.translate(centerXPixel, bottomYPixelVal);
                         this.ctx.rotate(rotation);
     
-                        // Draw all tiles for this object
                         objectTiles.data.tiles.forEach(tile => {
                             this.ctx.drawImage(
                                 assets.use(tileData.t),
@@ -474,40 +476,33 @@ game = {
                     }
                 };
     
-                // Render each tile
                 let index = 0;
                 for (let i = 0; i < yCoordinates.length; i++) {
                     const tileY = yCoordinates[i];
                     for (let j = 0; j < xCoordinates.length; j++) {
                         const tileX = xCoordinates[j];
     
-                        // Only process if within camera's viewport
                         if (
                             (tileX * 16 + 16) >= (this.viewportXStart * 16) &&
                             (tileX * 16)       <  (this.viewportXEnd   * 16) &&
                             (tileY * 16 + 16) >= (this.viewportYStart * 16) &&
                             (tileY * 16)       <  (this.viewportYEnd   * 16)
                         ) {
-                            // Position relative to center/bottom for rotation
                             const centerX = (Math.min(...xCoordinates) + Math.max(...xCoordinates)) / 2;
                             const maxY = Math.max(...yCoordinates);
                             const posX = (tileX - centerX) * 16;
                             const posY = (tileY - maxY) * 16;
     
-                            // Animated frames or single frame
                             let tileFrameIndex;
                             if (Array.isArray(tileData.i[0])) {
-                                // Multiple animation frames
                                 const animationData = tileData.i;
                                 const currentFrame = tileData.currentFrame || 0;
                                 tileFrameIndex = animationData[currentFrame][ index % animationData[currentFrame].length ];
                             } else {
-                                // Single set of frames
                                 tileFrameIndex = tileData.i[index];
                             }
     
                             if (tileFrameIndex !== undefined) {
-                                // Figure out the z layering
                                 let z = tileData.z;
                                 let isZUndefined = false;
                                 if (Array.isArray(tileData.z)) {
@@ -517,7 +512,6 @@ game = {
                                     isZUndefined = true;
                                 }
     
-                                // The final objectZIndex logic
                                 let objectZIndex;
                                 if (z === 0 && !isZUndefined) {
                                     objectZIndex = 0;
@@ -529,14 +523,11 @@ game = {
                                     objectZIndex = bottomYPixel + z;
                                 }
     
-                                // Update object's zIndex to highest tile zIndex
                                 objectTiles.zIndex = Math.max(objectTiles.zIndex, objectZIndex);
     
-                                // Compute source coords in the sprite sheet
                                 const srcX = (tileFrameIndex % 150) * 16;
                                 const srcY = Math.floor(tileFrameIndex / 150) * 16;
     
-                                // Add tile to object's tiles array
                                 objectTiles.data.tiles.push({
                                     srcX,
                                     srcY,
@@ -544,7 +535,6 @@ game = {
                                     posY,
                                     zIndex: objectZIndex
                                 });
-    
                                 this.tileCount++;
                             }
                         }
@@ -552,28 +542,14 @@ game = {
                     }
                 }
     
-                // Only add object to render queue if it has tiles
                 if (objectTiles.data.tiles.length > 0) {
                     this.renderQueue.push(objectTiles);
                 }
-    
-                    this.handleLights(
-                        tileData, 
-                        roomItem, 
-                        this.viewportXStart, 
-                        this.viewportXEnd, 
-                        this.viewportYStart, 
-                        this.viewportYEnd
-                    );
-                
-                this.handleEffects(
-                    tileData, 
-                    roomItem, 
-                    this.viewportXStart, 
-                    this.viewportXEnd, 
-                    this.viewportYStart, 
-                    this.viewportYEnd
-                );
+
+                this.currentTileData = tileData;
+                this.currentRoomItem = roomItem;
+                this.handleLights();
+                this.handleEffects();
     
                 if (plugin.editor_layers.needsUpdate) {
                     const objectName = tileData.n || "Unnamed Object";
@@ -588,13 +564,11 @@ game = {
             });
         }
     
-        // Draw Sprites
         for (let id in this.sprites) {
             const sprite = this.sprites[id];
             const spriteRight = sprite.x + sprite.width;
             const spriteBottom = sprite.y + sprite.height;
     
-            // Only render if in the viewport
             if (
                 spriteRight >= this.viewportXStart * 16 &&
                 sprite.x    <  this.viewportXEnd   * 16 &&
@@ -620,10 +594,7 @@ game = {
             }
         }
     
-        // Sort in ascending order
         this.renderQueue.sort((a, b) => a.zIndex - b.zIndex);
-    
-        // Render in sorted order
         this.renderQueue.forEach(item => item.draw());
     
         if (plugin.editor_layers.needsUpdate) {
@@ -639,7 +610,7 @@ game = {
         plugin.debug.tracker("render.renderAll");
     },
 
-    handleSway: function(roomItem) {
+    handleSway: function(roomItem) { 
         if (!roomItem.swayInitialized) {
             roomItem.swayAngle = Math.PI / (160 + Math.random() * 40);
             roomItem.swaySpeed = 5000 + Math.random() * 2000;
@@ -669,14 +640,10 @@ game = {
             const elapsed = Date.now() % 1000;
             const progress1 = (elapsed % 1000) / 1000; 
             const progress2 = ((elapsed + 500) % 1000) / 1000; 
-    
             const ring1Radius = 3 + progress1 * 10; 
             const ring2Radius = 3 + progress2 * 12; 
-    
             const ringOpacity1 = 0.4 - progress1 * 0.4; 
             const ringOpacity2 = 0.4 - progress2 * 0.4; 
-    
-            // First ring
             const pixelSize = 2;
             const pixelatedRing1Radius = Math.floor(ring1Radius / pixelSize) * pixelSize;
             for (let y = -pixelatedRing1Radius; y <= pixelatedRing1Radius; y += pixelSize) {
@@ -694,7 +661,7 @@ game = {
                 }
             }
     
-            // Second ring
+            // Second ring (pixelated)
             const pixelatedRing2Radius = Math.floor(ring2Radius / pixelSize) * pixelSize;
             for (let y = -pixelatedRing2Radius; y <= pixelatedRing2Radius; y += pixelSize) {
                 for (let x = -pixelatedRing2Radius; x <= pixelatedRing2Radius; x += pixelSize) {
@@ -736,9 +703,18 @@ game = {
         }
     },
 
-    handleLights: function (tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        if (!plugin.time) return;
-        // Only run if tileData.l exists and is an array
+    handleLights: function () {
+        if (!plugin.exists('time', 'lighting')) return;
+        const tileData = this.currentTileData;
+        const roomItem = this.currentRoomItem;
+
+        if (!tileData || !roomItem) return;
+
+        const viewportXStart = this.viewportXStart;
+        const viewportXEnd   = this.viewportXEnd;
+        const viewportYStart = this.viewportYStart;
+        const viewportYEnd   = this.viewportYEnd;
+
         if (tileData.l && Array.isArray(tileData.l)) {
             tileData.l.forEach((light) => {
                 if (light.x !== undefined && light.y !== undefined) {
@@ -782,54 +758,64 @@ game = {
         }
     },
 
-    handleEffects: function (tileData, roomItem, viewportXStart, viewportXEnd, viewportYStart, viewportYEnd) {
-        if (tileData.fx && this.fxData[tileData.fx]) {
-            const fxData = this.fxData[tileData.fx];
-            tileData.fxp.forEach((fxPosition) => {
-                const fxXIndex = fxPosition[0];
-                const fxYIndex = fxPosition[1];
-                if (fxXIndex >= 0 && fxXIndex < roomItem.x.length &&
-                    fxYIndex >= 0 && fxYIndex < roomItem.y.length) {
-                    const tileX = roomItem.x[fxXIndex];
-                    const tileY = roomItem.y[fxYIndex];
-                    const posX = tileX * 16 + 8;
-                    const posY = tileY * 16 + 8;
-                    const isInView = (
-                        posX >= (viewportXStart * 16) && 
-                        posX <  (viewportXEnd   * 16) &&
-                        posY >= (viewportYStart * 16) && 
-                        posY <  (viewportYEnd   * 16)
-                    );
-                    const fxId = `${roomItem.id}_${tileX}_${tileY}`;
-                    if (isInView) {
-                        if (!particles.activeEffects[fxId]) {
-                            const options = {
-                                count: fxData.count,
-                                speed: fxData.speed,
-                                angle: fxData.baseAngle,
-                                spread: fxData.spread,
-                                colors: fxData.color.map(color => `rgba(${color.join(',')}, ${fxData.Opacity})`),
-                                life: fxData.frames,
-                                size: fxData.size,
-                                type: 'default',
-                                repeat: fxData.repeat,
-                                glow: fxData.Glow,
-                                opacity: fxData.Opacity,
-                                blur: fxData.Blur,
-                                shape: fxData.Shape.toLowerCase()
-                            };
-                            particles.createParticles(posX, posY, options, fxId);
-                            console.log(`Effect added: ${fxId}`);
-                        }
-                    } else {
-                        if (particles.activeEffects[fxId]) {
-                            delete particles.activeEffects[fxId];
-                            console.log(`Effect removed: ${fxId}`);
-                        }
+    handleEffects: function () {
+        const tileData = this.currentTileData;
+        const roomItem = this.currentRoomItem;
+
+        if (!tileData || !roomItem || !this.fxData || !tileData.fx) return;
+
+        const fxData = this.fxData[tileData.fx];
+        if (!fxData || !tileData.fxp) return;
+
+        const viewportXStart = this.viewportXStart;
+        const viewportXEnd   = this.viewportXEnd;
+        const viewportYStart = this.viewportYStart;
+        const viewportYEnd   = this.viewportYEnd;
+
+        tileData.fxp.forEach((fxPosition) => {
+            const fxXIndex = fxPosition[0];
+            const fxYIndex = fxPosition[1];
+            if (fxXIndex >= 0 && fxXIndex < roomItem.x.length &&
+                fxYIndex >= 0 && fxYIndex < roomItem.y.length) {
+                const tileX = roomItem.x[fxXIndex];
+                const tileY = roomItem.y[fxYIndex];
+                const posX = tileX * 16 + 8;
+                const posY = tileY * 16 + 8;
+                const isInView = (
+                    posX >= (viewportXStart * 16) && 
+                    posX <  (viewportXEnd   * 16) &&
+                    posY >= (viewportYStart * 16) && 
+                    posY <  (viewportYEnd   * 16)
+                );
+                const fxId = `${roomItem.id}_${tileX}_${tileY}`;
+                if (isInView) {
+                    if (!particles.activeEffects[fxId]) {
+                        const options = {
+                            count: fxData.count,
+                            speed: fxData.speed,
+                            angle: fxData.baseAngle,
+                            spread: fxData.spread,
+                            colors: fxData.color.map(color => `rgba(${color.join(',')}, ${fxData.Opacity})`),
+                            life: fxData.frames,
+                            size: fxData.size,
+                            type: 'default',
+                            repeat: fxData.repeat,
+                            glow: fxData.Glow,
+                            opacity: fxData.Opacity,
+                            blur: fxData.Blur,
+                            shape: fxData.Shape.toLowerCase()
+                        };
+                        particles.createParticles(posX, posY, options, fxId);
+                        console.log(`Effect added: ${fxId}`);
+                    }
+                } else {
+                    if (particles.activeEffects[fxId]) {
+                        delete particles.activeEffects[fxId];
+                        console.log(`Effect removed: ${fxId}`);
                     }
                 }
-            });
-        }
+            }
+        });
     },
 
     renderBubbles: function(sprite, colorHex) {
@@ -884,7 +870,7 @@ game = {
                     }));
                 }
                 itemData.forEach((tileData, index) => {
-                    if (tileData.i && Array.isArray(tileData.i[0])) {
+                    if (tileData.i && Array.isArray(tileData.i[0]) && tileData.d) {
                         const animationData = tileData.i;
                         const animationState = roomItem.animationState[index];
                         animationState.elapsedTime += this.deltaTime;
@@ -938,7 +924,9 @@ game = {
                         let tileFrameIndex;
                         if (tileData.d) {
                             const currentFrame = tileData.currentFrame || 0;
-                            tileFrameIndex = Array.isArray(tileData.i) ? tileData.i[(currentFrame + index) % tileData.i.length] : tileData.i;
+                            tileFrameIndex = Array.isArray(tileData.i)
+                                ? tileData.i[(currentFrame + index) % tileData.i.length]
+                                : tileData.i;
                         } else {
                             tileFrameIndex = tileData.i[index];
                         }
@@ -958,7 +946,7 @@ game = {
             }
         });
 
-        renderQueue.sort((a, b) => a.z - b.z || a.renderOrder - b.renderOrder);
+        renderQueue.sort((a, b) => a.z - b.z);
 
         let highestZIndexObject = null;
 
@@ -984,6 +972,6 @@ game = {
     },
 
     setZoomLevel: function(newZoomLevel) {
-        localStorage.setItem('zoomLevel', game.zoomLevel);
+        localStorage.setItem('zoomLevel', this.zoomLevel);
     }
 };
