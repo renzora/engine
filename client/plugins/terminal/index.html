@@ -1,4 +1,4 @@
-<div id="terminal_plugin" class="hidden fixed bottom-0 left-0 bg-black text-green-500 rounded shadow p-2 font-mono flex flex-col w-96 h-80">
+<div id="terminal_plugin" class="window hidden fixed bottom-0 left-0 bg-black text-green-500 shadow p-2 font-mono flex flex-col w-96 h-80">
   <div id="terminal_output" class="flex-1 overflow-auto mb-2"></div>
   <input id="terminal_input" class="bg-black text-green-500 placeholder-green-600 rounded p-1 outline-none" type="text" placeholder="Enter command..." autocomplete="off" />
 </div>
@@ -13,7 +13,7 @@ terminal = {
   currentUser: null,
   loginFlow: { active: false, step: null, username: null },
 
-  start: function() {
+  start() {
     document.getElementById(this.id).style.display = "flex";
 
     var inputEl = document.getElementById(this.inputId);
@@ -28,12 +28,12 @@ terminal = {
     this.log("Terminal started, type help for commands");
   },
 
-  unmount: function() {
+  unmount() {
     document.getElementById(this.id).style.display = "none";
     this.log("Terminal unmounted");
   },
 
-  log: function(message, type = "info") {
+  log(message, type = "info") {
     this.logs.push(message);
 
     let colorClass = "";
@@ -65,13 +65,13 @@ terminal = {
     }
   },
 
-  clearLogs: function() {
+  clearLogs() {
     this.logs = [];
     var outputEl = document.getElementById(this.outputId);
     if (outputEl) outputEl.innerHTML = "";
   },
 
-  getNestedProp: function(path) {
+  getNestedProp(path) {
     var parts = path.split(".");
     var obj = this;
     for (var i = 0; i < parts.length; i++) {
@@ -81,7 +81,7 @@ terminal = {
     return obj;
   },
 
-  setNestedProp: function(path, value) {
+  setNestedProp(path, value) {
     var parts = path.split(".");
     var obj = this;
     for (var i = 0; i < parts.length - 1; i++) {
@@ -93,7 +93,7 @@ terminal = {
     obj[parts[parts.length - 1]] = value;
   },
 
-  handleCommand: function(cmdString) {
+  handleCommand(cmdString) {
     if (!cmdString) return;
 
     if (this.loginFlow.active) {
@@ -141,14 +141,14 @@ terminal = {
     }
   },
 
-  isKnownCommand: function(cmd) {
+  isKnownCommand(cmd) {
     return [
       "help","clear","stop","load","close","destroy","time","logout","login","signin",
       "shake","letterbox","fullscreen","zoom","pan","camera","audio","exit","set","fs"
     ].includes(cmd);
   },
 
-  handleLoginFlow: function(cmdString) {
+  handleLoginFlow(cmdString) {
     if (this.loginFlow.step === "username") {
       this.loginFlow.username = cmdString;
       this.log("> " + cmdString, "command");
@@ -191,7 +191,7 @@ terminal = {
     }
   },
 
-  command_startLogin: function() {
+  command_startLogin() {
     if (this.loginFlow.active) {
       this.log("Login flow is already in progress.", "prompt");
       return;
@@ -201,19 +201,19 @@ terminal = {
     this.log("Enter your username:", "prompt");
   },
 
-  command_help: function() {
+  command_help() {
     this.log("Commands:");
     this.log("help, clear, stop pan, load <plugin>, load <plugin>/<index.ext>, close <plugin>,");
     this.log("time [hh] [mm], login|signin, logout, shake, letterbox <on|off>, fullscreen, fs,");
     this.log("zoom <n>, pan <x> <y>, camera <x> <y>, audio channel|remove, set <path> <value> or set !<path>, exit");
   },
 
-  command_clear: function() {
+  command_clear() {
     this.clearLogs();
     this.log("Terminal output cleared.");
   },
 
-  command_stop: function(args) {
+  command_stop(args) {
     if (args[0] && args[0].toLowerCase() === "pan") {
       this.log("Camera panning stopped.");
       camera.stopPan();
@@ -222,7 +222,7 @@ terminal = {
     }
   },
 
-  command_load: function(args) {
+  command_load(args) {
     if (!args[0]) {
       this.log("Usage: load <pluginName> or load <pluginName>/<index.ext>");
       return;
@@ -258,7 +258,7 @@ terminal = {
     })(0);
   },
 
-  command_destroy: function(args) {
+  command_destroy(args) {
     if (!args[0]) {
       this.log("Usage: close <pluginName>");
       return;
@@ -268,7 +268,7 @@ terminal = {
     this.log("Closed plugin: " + pluginName, "success");
   },
 
-  command_time: function(args) {
+  command_time(args) {
     if (args.length === 0) {
       var hh = time.hours || 0;
       var mm = time.minutes || 0;
@@ -283,7 +283,7 @@ terminal = {
     this.log("Game time set to " + hh + ":" + String(mm).padStart(2, "0"), "success");
   },
 
-  command_logout: function() {
+  command_logout() {
     if (!this.currentUser) {
       this.log("No user is currently logged in.", "prompt");
       return;
@@ -296,12 +296,12 @@ terminal = {
     .catch(e => this.log("Logout error: " + e, "error"));
   },
 
-  command_shake: function() {
+  command_shake() {
     this.log("Shaking the map...");
     effects.shakeMap(1000, 3);
   },
 
-  command_letterbox: function(args) {
+  command_letterbox(args) {
     if (!args[0]) {
       this.log("Usage: letterbox <on|off>");
       return;
@@ -311,22 +311,22 @@ terminal = {
     this.log("Letterbox is now: " + mode, "success");
   },
 
-  command_fullscreen: function() {
+  command_fullscreen() {
     this.log("Attempting fullscreen...");
     ui.fullScreen();
   },
 
-  command_zoom: function(args) {
+  command_zoom(args) {
     if (!args[0]) {
       this.log("Usage: zoom <amount>");
       return;
     }
     var amount = Number(args[0]);
-    ui.setZoomLevel(amount);
+    game.setZoomLevel(amount);
     this.log("Zoom level set to " + amount, "success");
   },
 
-  command_pan: function(args) {
+  command_pan(args) {
     if (args.length < 2) {
       this.log("Usage: pan <x> <y>");
       return;
@@ -337,7 +337,7 @@ terminal = {
     this.log("Panning camera to (" + x + ", " + y + ")");
   },
 
-  command_camera: function(args) {
+  command_camera(args) {
     if (args.length < 2) {
       this.log("Usage: camera <x> <y>");
       return;
@@ -348,7 +348,7 @@ terminal = {
     this.log("Camera position set to (" + x + ", " + y + ")");
   },
 
-  command_audio: function(args) {
+  command_audio(args) {
     if (!args[0]) {
       this.log("Usage: audio channel|remove");
       return;
@@ -375,12 +375,12 @@ terminal = {
     }
   },
 
-  command_exit: function() {
+  command_exit() {
     this.log("Exiting terminal plugin...");
     this.unmount();
   },
 
-  command_set: function(args) {
+  command_set(args) {
     if (!args[0]) {
       this.log("Usage: set <path> <value> or set !<path>");
       return;

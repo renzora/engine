@@ -24,17 +24,17 @@ html, body {
 <script>
 bouncing_ball = {
 
-    start: function() {
+    start() {
         console.log(`Plugin started: ${this.id}`);
         this.initializeCanvas();
     },
 
-    unmount: function() {
+    unmount() {
         console.log(`Plugin unmounted: ${this.id}`);
         cancelAnimationFrame(this.animationFrame);
     },
 
-    initializeCanvas: function() {
+    initializeCanvas() {
         const canvas = document.getElementById('bouncing-ball');
         const ctx = canvas.getContext('2d');
 

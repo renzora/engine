@@ -1,13 +1,13 @@
 gun = {
-    start: function() {
+    start() {
 
     },
 
-    unmount: function() {
+    unmount() {
 
     },
 
-    aimTool: function() {
+    aimTool() {
         if (game.mainSprite && game.mainSprite.targetAim) {
             const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;
             const handY = game.mainSprite.y + game.mainSprite.height / 2 + game.mainSprite.handOffsetY;

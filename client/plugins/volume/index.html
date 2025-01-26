@@ -16,7 +16,7 @@
   
   <script>
 volume = {
-      start: function() {
+      start() {
         Object.keys(audio.channels).forEach(channel => {
           this.addChannelUI(channel);
         });
@@ -30,15 +30,15 @@ volume = {
           this.startVolumeMeterUpdates(channel);
         });
       },
-      unmount: function() {
+      unmount() {
         document.getElementById('meters-container').innerHTML = '';
       },
-      updateVolumeMeter: function(channel, volume) {
+      updateVolumeMeter(channel, volume) {
         var meter = document.getElementById(channel + '-volume-meter');
         var fill = meter.querySelector('.volume-meter-fill');
         fill.style.width = (volume * 100) + '%';
       },
-      startVolumeMeterUpdates: function(channel) {
+      startVolumeMeterUpdates(channel) {
         if (!audio.channels[channel] && channel !== 'master') {
           return;
         }
@@ -65,7 +65,7 @@ volume = {
         };
         update();
       },
-      addChannelUI: function(channel) {
+      addChannelUI(channel) {
     if (document.getElementById(`${channel}-container`)) {
       return;
     }
@@ -110,7 +110,7 @@ volume = {
     this.startVolumeMeterUpdates(channel);
   },
   
-      removeChannelUI: function(channel) {
+      removeChannelUI(channel) {
         const container = document.getElementById(`${channel}-container`);
         if (container) {
           container.remove();

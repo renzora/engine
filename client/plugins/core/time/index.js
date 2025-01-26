@@ -7,19 +7,19 @@ time = {
     active: true,
     daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
 
-    start: function() {
+    start() {
 
     },
 
-    unmount: function() {
+    unmount() {
 
     },
 
-    onRender: function() {
+    onRender() {
         this.update();
     },
 
-    update: function() {
+    update() {
         if (!this.active) return;
         
         const gameSeconds = (game.deltaTime / 1000) * this.speedMultiplier;
@@ -39,7 +39,7 @@ time = {
         }
     },
 
-    display: function() {
+    display() {
         const pad = (num) => String(num).padStart(2, '0');
         const dayOfWeek = this.daysOfWeek[this.days % 7];
         return `${dayOfWeek} ${pad(this.hours)}:${pad(this.minutes)}`;

@@ -3,11 +3,11 @@ assets = {
     totalAssets: 0,
     loadedCount: 0,
 
-    showLoadingBar: function() {
+    showLoadingBar() {
         document.getElementById('loadingBarContainer').classList.remove('hidden');
     },
 
-    updateLoadingBar: function(assetName) {
+    updateLoadingBar(assetName) {
         const percentage = Math.floor((this.loadedCount / this.totalAssets) * 100);
         const loadingBar = document.getElementById('loadingBar');
         const loadingPercentage = document.getElementById('loadingPercentage');
@@ -15,11 +15,11 @@ assets = {
         loadingPercentage.innerHTML = `Loading ${assetName}... ${percentage}%`;
     },
 
-    hideLoadingBar: function() {
+    hideLoadingBar() {
         document.getElementById('loadingBarContainer').classList.add('hidden');
     },
 
-    preload: function(assetsList, callback, force = false) {
+    preload(assetsList, callback, force = false) {
         const uniqueAssets = {};
         const assetsToLoad = assetsList.filter(asset => {
             if (!uniqueAssets[asset.name]) {
@@ -59,11 +59,11 @@ assets = {
         });
     },
 
-    reloadAssets: function(assetsList, callback) {
+    reloadAssets(assetsList, callback) {
         this.preload(assetsList, callback, true);
     },
 
-    getFileType: function(path) {
+    getFileType(path) {
         const pathParts = path.split('?');
         const extension = pathParts[0].split('.').pop().toLowerCase();
 
@@ -79,7 +79,7 @@ assets = {
         return null;
     },
 
-    loadImage: function(asset) {
+    loadImage(asset) {
         return new Promise((resolve, reject) => {
             const img = new Image();
             img.onload = () => {
@@ -91,7 +91,7 @@ assets = {
         });
     },
 
-    loadJSON: function(asset) {
+    loadJSON(asset) {
         return fetch(asset.path)
             .then(response => response.json())
             .then(data => {
@@ -101,7 +101,7 @@ assets = {
             .catch(error => console.error(`Error loading JSON:`, error));
     },
 
-    loadAudio: function(asset) {
+    loadAudio(asset) {
         return fetch(asset.path)
             .then(response => response.arrayBuffer())
             .then(arrayBuffer => {
@@ -114,21 +114,21 @@ assets = {
             .catch(error => console.error(`Error loading audio:`, error));
     },
 
-    assetLoaded: function(asset, data) {
+    assetLoaded(asset, data) {
         this.loadedCount++;
         this.loadedAssets[asset.name] = data;
         this.updateLoadingBar(asset.name);
     },
 
-    use: function(name) {
+    use(name) {
         return this.loadedAssets[name];
     },
 
-    isAssetLoaded: function(name) {
+    isAssetLoaded(name) {
         return !!this.loadedAssets[name];
     },
 
-    unload: function(assetName) {
+    unload(assetName) {
         if (this.loadedAssets[assetName]) {
             delete this.loadedAssets[assetName];
             this.loadedCount--;

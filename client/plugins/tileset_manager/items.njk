@@ -37,7 +37,7 @@
         isResizing: false,
         currentlyResizingPoint: null,
 
-        start: function(itemId) {
+        start(itemId) {
             this.itemId = itemId;
             console.log("Item Editor plugin Opened for item ID:", itemId);
             if (!game.objectData.hasOwnProperty(itemId)) {
@@ -64,7 +64,7 @@
             }
         },
 
-        initializeOtherData: function(itemId, item) {
+        initializeOtherData(itemId, item) {
             this.walkableData = this.initializeWalkableData(item);
             this.polygonPoints = [...this.walkableData.polygon];
 
@@ -76,7 +76,7 @@
             document.getElementById('clear_polygon_button').addEventListener('click', this.clearPolygon.bind(this));
         },
 
-        setupLineDrawingHandlers: function(canvasId) {
+        setupLineDrawingHandlers(canvasId) {
     var canvas = document.getElementById(canvasId);
     var ctx = canvas.getContext('2d');
     const tileSize = 16;
@@ -121,7 +121,7 @@
     });
 },
 
-        addPoint: function(event, canvas, ctx, scaleFactor) {
+        addPoint(event, canvas, ctx, scaleFactor) {
             const padding = 10;
             let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
             let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
@@ -153,7 +153,7 @@
             this.updateGameObjectData();
         },
 
-        removePoint: function(event, canvas, scaleFactor) {
+        removePoint(event, canvas, scaleFactor) {
             const padding = 10;
             let rawX = (event.clientX - canvas.getBoundingClientRect().left) / scaleFactor;
             let rawY = (event.clientY - canvas.getBoundingClientRect().top) / scaleFactor;
@@ -181,7 +181,7 @@
             }
         },
 
-        renderPolygonOnLoad: function(item) {
+        renderPolygonOnLoad(item) {
             const canvas = document.getElementById('item_grid_canvas_walkable');
             const ctx = canvas.getContext('2d');
             const padding = 10;
@@ -192,7 +192,7 @@
             }
         },
 
-        clearPolygon: function() {
+        clearPolygon() {
         this.walkableData.polygon = [];
         this.polygonPoints = [];
 
@@ -205,7 +205,7 @@
         console.log('Polygon data cleared');
     },
 
-        addResizeHandles: function(ctx, padding = 0) {
+        addResizeHandles(ctx, padding = 0) {
             ctx.fillStyle = 'blue';
             const handleRadius = 4;
 
@@ -216,13 +216,13 @@
             });
         },
 
-        stopResizing: function() {
+        stopResizing() {
         this.isResizing = false;
         this.currentlyResizingPoint = null;
         game.objectData[this.itemId][0].w = [...this.walkableData.polygon, ...this.polygonPoints]; // Use this.itemId here
     },
 
-        resizePoint: function(canvas, event) {
+        resizePoint(canvas, event) {
             if (!this.isResizing || !this.currentlyResizingPoint) return;
 
             const scaleFactor = this.getScaleFactor(canvas);
@@ -241,13 +241,13 @@
             this.updateGameObjectData();
         },
 
-        stopResizing: function() {
+        stopResizing() {
             this.isResizing = false;
             this.currentlyResizingPoint = null;
             game.objectData[<?php echo json_encode($itemId); ?>][0].w = [...this.walkableData.polygon, ...this.polygonPoints];
         },
 
-        updatePolygon: function() {
+        updatePolygon() {
             const canvas = document.getElementById('item_grid_canvas_walkable');
             const ctx = canvas.getContext('2d');
             const padding = 10;
@@ -257,7 +257,7 @@
             this.updateGameObjectData();
         },
 
-        renderPolygon: function(ctx, polygons, padding = 0) {
+        renderPolygon(ctx, polygons, padding = 0) {
             ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
             polygons.forEach(path => {
@@ -277,13 +277,13 @@
             this.addResizeHandles(ctx, padding);
         },
 
-        getScaleFactor: function(canvas) {
+        getScaleFactor(canvas) {
             const pluginWidth = document.querySelector('[data-window="tileset_item_editor_window"]').clientWidth;
             const maxCanvasWidth = pluginWidth - 40;
             return Math.min(5, maxCanvasWidth / canvas.width);
         },
 
-        renderItemPreview: function(item, canvasId, padding = 10) {
+        renderItemPreview(item, canvasId, padding = 10) {
             var canvas = document.getElementById(canvasId);
             var ctx = canvas.getContext('2d');
             const tileSize = 16;
@@ -332,7 +332,7 @@
             canvas.style.height = (canvas.height * scaleFactor) + 'px';
         },
 
-        drawGrid: function(canvasId, item, skipGridLines = false, padding = 10) {
+        drawGrid(canvasId, item, skipGridLines = false, padding = 10) {
             var canvas = document.getElementById(canvasId);
             var ctx = canvas.getContext('2d');
             const tileSize = 16;
@@ -377,7 +377,7 @@
             canvas.style.height = (canvas.height * scaleFactor) + 'px';
         },
 
-        initializeWalkableData: function(item) {
+        initializeWalkableData(item) {
             let walkableData = {};
 
             if (Array.isArray(item.walkablePolygon)) {
@@ -391,7 +391,7 @@
             return walkableData;
         },
 
-        updateGameObjectData: function() {
+        updateGameObjectData() {
     // Add check to ensure game.objectData[this.itemId] exists
     if (game.objectData[this.itemId] && game.objectData[this.itemId][0]) {
         const item = game.objectData[this.itemId][0];
@@ -401,7 +401,7 @@
     }
 },
 
-    saveData: function() { // Remove itemId parameter since we store it in the object
+    saveData() { // Remove itemId parameter since we store it in the object
         var item = game.objectData[this.itemId][0]; // Use this.itemId here
         item.w = this.walkableData.polygon.concat(this.polygonPoints);
         
@@ -412,7 +412,7 @@
             url: '/api/tileset_manager/save_item',
             data: JSON.stringify(game.objectData),
             outputType: 'json',
-            success: function(response) {
+            success(response) {
                 if (response.success) {
                     ui.notif("Data saved successfully!");
                 } else {
@@ -420,7 +420,7 @@
                     console.error('Server returned an error:', response.message);
                 }
             },
-            error: function(err) {
+            error(err) {
                 console.error('Failed to save data:', err);
                 err.text().then(text => {
                     console.error('Response from server:', text);
@@ -430,7 +430,7 @@
         });
     },
 
-        unmount: function() {
+        unmount() {
             console.log("Unmounting Item Editor plugin");
             var pluginElement = document.querySelector('[data-window="tileset_item_editor_window"]');
             if (pluginElement) {

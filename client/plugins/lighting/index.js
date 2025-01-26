@@ -16,31 +16,58 @@ lighting = {
   lastBaseNightFilterColor: null,
   lastProcessedNightFilterColor: null,
 
-  start: function() {
-    if (game.mainSprite) {
-      const lightColor = { r: 255, g: 255, b: 255 }; 
-      const lightRadius = 30; 
-      const lightIntensity = 0.3; 
-      this.addLight(
-        game.mainSprite.id + '_light',
-        game.mainSprite.x + 8,
-        game.mainSprite.y + 8,
-        lightRadius,
-        lightColor,
-        lightIntensity,
-        'playerLight',
-        true,
-        0,
-        0
-      );
+  addLight(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05, shape = null) {
+    if (!this.lightsActive) return;
+
+    const existingLight = this.lights.find(light => light.id === id);
+    if (!existingLight) {
+      const clampedMaxIntensity = Math.min(Math.max(maxIntensity, 0), 1);
+      const newLight = {
+        id,
+        x,
+        y,
+        baseRadius: radius,
+        color,
+        maxIntensity: clampedMaxIntensity,
+        initialMaxIntensity: clampedMaxIntensity,
+        type,
+        currentIntensity: clampedMaxIntensity,
+        flicker,
+        flickerSpeed,
+        flickerAmount,
+        flickerOffset: Math.random() * 1000,
+        shape
+      };
+
+      this.lights.push(newLight);
     }
   },
 
-  unmount: function() {
-    
+  clearLightsAndEffects() {
+    const playerLight = this.lights.find(light => light.id === game.playerid + '_light');
+    this.lights = [];
+
+    if (plugin.exists('particles')) {
+      particles.activeEffects = {};
+      particles.particles = [];
+    }
+
+    if (playerLight) {
+      this.lights.push(playerLight);
+      console.log('Preserved player light:', playerLight);
+    }
   },
 
-  onRender: function() {
+  start() {
+    if (game.mainSprite) {
+      this.addLight(game.mainSprite.id + '_light', game.mainSprite.x + 8, game.mainSprite.y + 8, 30, { r: 255, g: 255, b: 255 }, 0.3, 'playerLight', true, 0, 0);
+    }
+  },
+
+  unmount() {
+  },
+
+  onRender() {
     this.updateDayNightCycle();
     this.updateLights();
 
@@ -54,36 +81,7 @@ lighting = {
     this.renderFinalOverlay(game.ctx, maskCanvas);
   },
 
-  LightSource: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
-    this.id = id;
-    this.x = x;
-    this.y = y;
-    this.baseRadius = radius;
-    this.color = color;
-    this.maxIntensity = maxIntensity;
-    this.initialMaxIntensity = maxIntensity;
-    this.type = type;
-    this.currentIntensity = maxIntensity;
-    this.flicker = flicker;
-    this.flickerSpeed = flickerSpeed;
-    this.flickerAmount = flickerAmount;
-    this.flickerOffset = Math.random() * 1000;
-  },
-
-  addLight: function(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05) {
-    if (!this.lightsActive) return;
-    const existingLight = this.lights.find(light => light.id === id);
-    if (!existingLight) {
-      const clampedMaxIntensity = Math.min(Math.max(maxIntensity, 0), 1);
-      const newLight = new this.LightSource(
-        id, x, y, radius, color, clampedMaxIntensity, type, flicker, flickerSpeed, flickerAmount
-      );
-      newLight.currentIntensity = clampedMaxIntensity;
-      this.lights.push(newLight);
-    }
-  },
-
-  updateLights: function() {
+  updateLights() {
     if (!this.lightsActive) return;
     const applyFlicker = this.timeBasedUpdatesEnabled || !this.useManualRGB;
 
@@ -95,100 +93,36 @@ lighting = {
     });
   },
 
-  clearLightsAndEffects: function() {
-    const playerLight = this.lights.find(light => light.id === game.playerid + '_light');
-    this.lights = [];
-
-    if(plugin.exists('particles')) {
-      particles.activeEffects = {};
-      particles.particles = [];
-    }
-
-    if (playerLight) {
-      this.lights.push(playerLight);
-      console.log('Preserved player light:', playerLight);
-    }
-  },
-
-  lerp: function(a, b, t) {
-    return a + (b - a) * t;
-  },
-
-  lerpColor: function(colorA, colorB, t) {
-    return {
-      r: Math.round(this.lerp(colorA.r, colorB.r, t)),
-      g: Math.round(this.lerp(colorA.g, colorB.g, t)),
-      b: Math.round(this.lerp(colorA.b, colorB.b, t)),
-    };
-  },
-
-  updateDayNightCycle: function() {
+  updateDayNightCycle() {
     if (!plugin.exists('time') || !this.timeBasedUpdatesEnabled) return;
 
     const hours = time.hours;
     const minutes = time.minutes;
     let currentTime = hours + minutes / 60;
     if (currentTime >= 24) currentTime -= 24;
-
     const dayStart = 7;
     const sunsetStart = 19.5;
     const nightStart = 22;
     const nightEnd = 5;
     const sunriseEnd = 7;
-
     let t = 0;
 
     if (currentTime >= dayStart && currentTime < sunsetStart) {
       t = 0;
-
-      if (plugin.exists('fireflies')) {
-        if (!fireflies.overrideActive) {
-          fireflies.active = false;
-        }
-      }
-
     } else if (currentTime >= sunsetStart && currentTime < nightStart) {
       t = (currentTime - sunsetStart) / (nightStart - sunsetStart);
-
-      if (plugin.exists('fireflies')) {
-        if (!fireflies.overrideActive) {
-          fireflies.active = false;
-        }
-      }
-
     } else if ((currentTime >= nightStart && currentTime < 24) || currentTime < nightEnd) {
       t = 1;
-
-      if (plugin.exists('fireflies')) {
-        if (!fireflies.overrideActive) {
-          fireflies.active = true;
-        }
-      }
-
     } else if (currentTime >= nightEnd && currentTime < sunriseEnd) {
       t = 1 - ((currentTime - nightEnd) / (sunriseEnd - nightEnd));
-
-      if (plugin.exists('fireflies')) {
-        if (!fireflies.overrideActive) {
-          fireflies.active = t > 0.5;
-        }
-      }
-
     } else {
       t = 0;
-      if (plugin.exists('fireflies')) {
-        if (!fireflies.overrideActive) {
-          fireflies.active = false;
-        }
-      }
     }
 
     this.lightIntensityMultiplier = t;
-
-    plugin.debug.tracker('lighting.updateDayNightCycle');
   },
 
-  createBaseNightFilter: function() {
+  createBaseNightFilter() {
     if (this.timeBasedUpdatesEnabled && this.lightIntensityMultiplier === 0) {
       const maskCanvas = document.createElement('canvas');
       maskCanvas.width = game.canvas.width;
@@ -200,6 +134,7 @@ lighting = {
 
     const { dayColor, nightColor, brightness, saturation, manualColor } = this.nightFilter;
     let newColor;
+
     if (this.timeBasedUpdatesEnabled) {
       const t = this.lightIntensityMultiplier;
       newColor = this.lerpColor(dayColor, nightColor, t);
@@ -230,14 +165,13 @@ lighting = {
     maskCanvas.width = game.canvas.width;
     maskCanvas.height = game.canvas.height;
     const maskCtx = maskCanvas.getContext('2d');
-
     maskCtx.fillStyle = `rgb(${finalColor.r}, ${finalColor.g}, ${finalColor.b})`;
     maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
 
     return { maskCanvas, maskCtx };
   },
 
-  applyBrightnessSaturation: function(color, brightness, saturation) {
+  applyBrightnessSaturation(color, brightness, saturation) {
     let r = color.r / 255;
     let g = color.g / 255;
     let b = color.b / 255;
@@ -284,7 +218,7 @@ lighting = {
     };
   },
 
-  renderLightsOnFilter: function(maskCtx) {
+  renderLightsOnFilter(maskCtx) {
     this.lights.forEach(light => {
       if (light.currentIntensity > 0) {
         const screenX = (light.x - camera.cameraX) * game.zoomLevel;
@@ -301,7 +235,6 @@ lighting = {
 
         gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${intensity})`);
         gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
-
         maskCtx.globalCompositeOperation = 'lighter';
         maskCtx.beginPath();
         maskCtx.arc(screenX, screenY, screenRadius, 0, Math.PI * 2);
@@ -311,11 +244,23 @@ lighting = {
     });
   },
 
-  renderFinalOverlay: function(ctx, maskCanvas) {
+  renderFinalOverlay(ctx, maskCanvas) {
     game.ctx.save();
     game.ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = this.nightFilter.compositeOperation;
     ctx.drawImage(maskCanvas, 0, 0);
     game.ctx.restore();
+  },
+
+  lerp(a, b, t) {
+    return a + (b - a) * t;
+  },
+
+  lerpColor(colorA, colorB, t) {
+    return {
+      r: Math.round(this.lerp(colorA.r, colorB.r, t)),
+      g: Math.round(this.lerp(colorA.g, colorB.g, t)),
+      b: Math.round(this.lerp(colorA.b, colorB.b, t))
+    };
   }
 };

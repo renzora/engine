@@ -17,7 +17,7 @@
 
 <button id="btn-new-server"
         class="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded shadow-md"
-        onclick="plugin.load({ id: 'tileset_manager_window', url: 'plugins/tileset_manager/index.njk'});">
+        onclick="plugin.load('tileset_manager', { ext: 'njk'});">
   Tileset Manager
 </button>
 
@@ -37,7 +37,7 @@ var ui_console_editor_inventory = {
   currentSearchTerm: '',
   currentTilesetFilter: '',
 
-  start: function() {
+  start() {
     this.itemData = assets.use('objectData');
     this.displayItems();            // Display all items initially
     this.addGlobalListeners();      // Right-click + ESC logic
@@ -47,7 +47,7 @@ var ui_console_editor_inventory = {
 
   // 1. Fetch the list of tilesets from your backend (just like Tileset Manager).
   // 2. Populate the #tileset_filter dropdown.
-  fetchTilesetList: function() {
+  fetchTilesetList() {
     const tilesetSelect = document.getElementById('tileset_filter');
     fetch('/api/tileset_manager/list_sheets')
       .then(res => res.json())
@@ -75,7 +75,7 @@ var ui_console_editor_inventory = {
   },
 
   // The original display logic, with optional filtered data
-  displayItems: function(filteredData = null) {
+  displayItems(filteredData = null) {
     const itemData = filteredData || this.itemData;
     const gridContainer = document.querySelector('#inventory-grid');
     const tileSize = 16;
@@ -160,7 +160,7 @@ var ui_console_editor_inventory = {
   },
 
   // Listen for text changes in the search input
-  addSearchListener: function() {
+  addSearchListener() {
     const searchInput = document.querySelector('#inventory-search');
     searchInput.addEventListener('input', (event) => {
       this.currentSearchTerm = event.target.value.toLowerCase();
@@ -169,7 +169,7 @@ var ui_console_editor_inventory = {
   },
 
   // Combine search + tileset filters
-  filterItems: function(searchTerm, tilesetFilter) {
+  filterItems(searchTerm, tilesetFilter) {
     // If we have no data yet, bail out
     if (!this.itemData) return;
 
@@ -203,7 +203,7 @@ var ui_console_editor_inventory = {
     this.displayItems(filteredData);
   },
 
-  render: function() {
+  render() {
     const itemData = game.objectData[this.selectedInventoryItem][0];
     if (!itemData) return;
 
@@ -253,7 +253,7 @@ var ui_console_editor_inventory = {
     }
   },
 
-  handleMouseDown: function(event) {
+  handleMouseDown(event) {
     const clickedCanvas = event.currentTarget;
     const itemId = clickedCanvas.getAttribute('data-item-id');
 
@@ -272,7 +272,7 @@ var ui_console_editor_inventory = {
     ui_console_editor_inventory.isDragging = true;
   },
 
-  trackMouseForItem: function(event) {
+  trackMouseForItem(event) {
     const rect = game.canvas.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     const mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
@@ -283,7 +283,7 @@ var ui_console_editor_inventory = {
     document.addEventListener('mouseup', ui_console_editor_inventory.handleMapClick);
   },
 
-  handleMapClick: function(event) {
+  handleMapClick(event) {
     if (event.button === 2) return;  // Prevent right-click from triggering
     if (editor_window.isAddingNewObject) {
       const clonedObjectX = ui_console_editor_inventory.selectedInventoryItemPos.x;
@@ -311,7 +311,7 @@ var ui_console_editor_inventory = {
     this.handleSelectionStart(event);
   },
 
-  stopDragging: function() {
+  stopDragging() {
     if (ui_console_editor_inventory.selectedInventoryItem) {
       ui_console_editor_inventory.deselectInventoryItem();
       document.removeEventListener('mousemove', ui_console_editor_inventory.trackMouseForItem);
@@ -320,26 +320,26 @@ var ui_console_editor_inventory = {
     }
   },
 
-  deselectInventoryItem: function() {
+  deselectInventoryItem() {
     ui_console_editor_inventory.selectedInventoryItem = null;
     // Re-enable normal selection behavior
     editor_window.isAddingNewObject = false;
   },
 
-  cancelAddingObject: function() {
+  cancelAddingObject() {
     // Cancel continuous placement and reset the object
     ui_console_editor_inventory.stopDragging();
     ui_console_editor_inventory.deselectInventoryItem();
     console.log("Object selection cancelled");
   },
 
-      generateId: function () {
+      generateId () {
         const timestamp = Date.now().toString(36).slice(-4);
         const randomPart = Math.random().toString(36).substring(2, 5);
         return `${timestamp}${randomPart}`;
     },
 
-  addItemToRoomData: function(itemId, mouseX, mouseY) {
+  addItemToRoomData(itemId, mouseX, mouseY) {
     // Retrieve item data from the game object
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
     if (!itemData) {
@@ -408,11 +408,11 @@ var ui_console_editor_inventory = {
     );
   },
 
-  unmount: function() {
+  unmount() {
     ui_console_editor_inventory.stopDragging();
   },
 
-  addGlobalListeners: function() {
+  addGlobalListeners() {
     // Right-click to cancel
     document.addEventListener('contextmenu', function(event) {
       event.preventDefault();

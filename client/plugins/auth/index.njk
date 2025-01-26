@@ -67,7 +67,7 @@ auth = {
         forgotTab: null
     },
 
-    start: function() {
+    start() {
         const loginTab = document.getElementById('loginTab');
         const registerTab = document.getElementById('registerTab');
         const forgotTab = document.getElementById('forgotTab');
@@ -113,7 +113,7 @@ auth = {
         forgotTab.addEventListener('click', this.handlers.forgotTab);
     },
 
-    unmount: function() {
+    unmount() {
         const loginTab = document.getElementById('loginTab');
         const registerTab = document.getElementById('registerTab');
         const forgotTab = document.getElementById('forgotTab');
@@ -135,7 +135,7 @@ auth = {
         };
     },
 
-    login: function() {
+    login() {
         const username = document.getElementById('login_username').value;
         const password = document.getElementById('login_password').value;
 
@@ -147,7 +147,7 @@ auth = {
                 login_username: username,
                 login_password: password
             },
-            success: function(response) {
+            success(response) {
                 if (response.message === 'login_complete') {
                     plugin.notif.show("auth_login_success", "Hey " + username + "! You are now signed in!");
                     plugin.close('auth');
@@ -170,7 +170,7 @@ auth = {
         });
     },
 
-    register: function() {
+    register() {
         const username = document.getElementById('register_username').value;
         const password = document.getElementById('register_password').value;
         const email = document.getElementById('register_email').value;
@@ -184,7 +184,7 @@ auth = {
                 register_password: password,
                 register_email: email
             },
-            success: function(response) {
+            success(response) {
                 if (response.message === 'registration_complete') {
                     plugin.notif.show("auth_register_success", "Hey " + username + "! You are now registered!");
                     plugin.close('auth');
@@ -213,7 +213,7 @@ auth = {
         });
     },
 
-    signout: function() {
+    signout() {
         fetch('/api/auth/signout', {
             method: 'POST',
             headers: {

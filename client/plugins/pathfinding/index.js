@@ -1,13 +1,13 @@
 pathfinding = {
-    start: function() {
+    start() {
         console.log("[pathfinding] => start");
     },
 
-    unmount: function() {
+    unmount() {
         console.log("[pathfinding] => unmount");
     },
 
-    calculatePath: function(sprite, startX, startY, endX, endY) {
+    calculatePath(sprite, startX, startY, endX, endY) {
         console.log(`[pathfinding.calculatePath] => sprite=${sprite.id}, start=(${startX}, ${startY}), end=(${endX}, ${endY})`);
 
         if (!plugin.exists('collision')) {
@@ -60,7 +60,13 @@ pathfinding = {
         return finalPath;
     },
 
-    walkToClickedTile: function(sprite, tileX, tileY) {
+    walkToClickedTile(sprite, e, tileX, tileY) {
+        // 1) Check if the click target is inside an element with class="window"
+        if (e.target.closest('.window')) {
+            console.log("[pathfinding.walkToClickedTile] => Clicked on a .window; ignoring walk.");
+            return;
+        }
+
         console.log(`[pathfinding.walkToClickedTile] => sprite=${sprite.id}, tileX=${tileX}, tileY=${tileY}`);
 
         const boundary = sprite.boundary;
@@ -83,14 +89,14 @@ pathfinding = {
             sprite.isMovingToTarget = true;
             sprite.moving = true;
             sprite.stopping = false;
-            //plugin.audio.playAudio("footsteps1", assets.use('footsteps1'), 'sfx', true);
+            // plugin.audio.playAudio("footsteps1", assets.use('footsteps1'), 'sfx', true);
             sprite.changeAnimation('speed_1');
         } else {
             console.log("[pathfinding.walkToClickedTile] => No valid path found, not moving sprite.");
         }
     },
 
-    moveAlongPath: function(sprite) {
+    moveAlongPath(sprite) {
         if (!sprite.path || sprite.pathIndex >= sprite.path.length) {
             sprite.isMovingToTarget = false;
             sprite.moving = false;
@@ -138,7 +144,7 @@ pathfinding = {
         }
     },
 
-    cancelPathfinding: function(sprite) {
+    cancelPathfinding(sprite) {
         if (sprite && sprite.isMovingToTarget) {
             console.log(`[pathfinding.cancelPathfinding] => Canceling path for sprite=${sprite.id}`);
             sprite.isMovingToTarget = false;

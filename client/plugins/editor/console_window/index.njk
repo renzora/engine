@@ -31,7 +31,7 @@ console_window = {
         full_screen: 11
     },
 
-    start: function() {
+    start() {
         this.load_tab_buttons();
         this.toggleConsoleWindow(false);
         this.bindGamepadButtons();
@@ -43,7 +43,7 @@ console_window = {
         });
     },
 
-    unmount: function() {
+    unmount() {
         this.eventListeners.forEach(({ element, event, handler }) => {
             element.removeEventListener(event, handler);
         });
@@ -53,13 +53,13 @@ console_window = {
         console.log("All event listeners have been removed.");
     },
 
-    bindGamepadButtons: function() {
+    bindGamepadButtons() {
         this.bButton = gamepad.throttle(this.bButton.bind(this), 200);
         this.upButton = gamepad.throttle(this.upButton.bind(this), 200);
         this.downButton = gamepad.throttle(this.downButton.bind(this), 200);
     },
 
-    setupTabIcons: function() {
+    setupTabIcons() {
         const buttons = document.querySelectorAll('#console_window .console_tab');
         buttons.forEach(button => {
             const iconDiv = button.querySelector('div');
@@ -72,7 +72,7 @@ console_window = {
         });
     },
 
-    setTabIcon: function(button, iconDiv, iconName) {
+    setTabIcon(button, iconDiv, iconName) {
         const iconSprite = assets.use('console_window_icons');
         if (!iconSprite) return;
         const iconIndex = this.iconPositions[iconName];
@@ -90,22 +90,22 @@ console_window = {
         button.appendChild(canvas);
     },
 
-    bButton: function() {
+    bButton() {
         console.log("b button pressed from console_window");
         this.toggleConsoleWindow();
     },
 
-    upButton: function() {
+    upButton() {
         console.log("up button pressed from console_window");
         this.navigateTabs('up');
     },
 
-    downButton: function() {
+    downButton() {
         console.log("down button pressed from console_window");
         this.navigateTabs('down');
     },
 
-    load_tab_buttons: function(id) {
+    load_tab_buttons(id) {
         assets.preload([{ name: 'console_window_icons', path: 'plugins/editor/console_window/icons.png' }]);
         console.log(id);
 
@@ -130,7 +130,7 @@ console_window = {
             });
     },
 
-    toggleConsoleWindow: function(toggle = true, tabName = null) {  
+    toggleConsoleWindow(toggle = true, tabName = null) {  
         const consoleElement = document.getElementById('console_window');
         const tabsElement = document.getElementById('tabs');
 
@@ -152,7 +152,7 @@ console_window = {
         game.resizeCanvas();
     },
 
-    showConsoleWindow: function(consoleElement, tabsElement) {
+    showConsoleWindow(consoleElement, tabsElement) {
         console.log(consoleElement);
         consoleElement.classList.remove('-translate-x-full');
         consoleElement.classList.add('translate-x-0');
@@ -161,7 +161,7 @@ console_window = {
         plugin.front('console_window');
     },
 
-    hideConsoleWindow: function(consoleElement, tabsElement) {
+    hideConsoleWindow(consoleElement, tabsElement) {
         consoleElement.classList.remove('translate-x-0');
         consoleElement.classList.add('-translate-x-full');
         consoleElement.style.marginLeft = '0px';
@@ -169,14 +169,14 @@ console_window = {
         plugin.front('ui_inventory_window');
     },
 
-    activateCurrentTab: function() {
+    activateCurrentTab() {
         const tabs = document.querySelectorAll('#console_window .console_tab');
         tabs.forEach(t => t.classList.remove('bg-[#fff]', 'text-white'));
         tabs[this.currentTabIndex].classList.add('bg-[#fff]', 'text-white');
         this.loadTabContent(tabs[this.currentTabIndex].getAttribute('data-tab'));
     },
 
-    setupTabListeners: function() {
+    setupTabListeners() {
         const tabs = document.querySelectorAll('#console_window .console_tab');
         tabs.forEach((tab, index) => {
             const listener = () => this.handleTabClick(tab, index);
@@ -185,7 +185,7 @@ console_window = {
         });
     },
 
-    handleTabClick: function(tab, index) {
+    handleTabClick(tab, index) {
         const newTabName = tab.getAttribute('data-tab');
         
         if (this.tab_name && this.tab_name !== newTabName) {
@@ -206,7 +206,7 @@ console_window = {
         }
     },
 
-    loadTabContent: function(target) {
+    loadTabContent(target) {
         if (this.tab_name) {
             ui.unmount('ui_console_' + this.tab_name);
             console.log(`Unmounting ui_console_${this.tab_name}`);
@@ -235,7 +235,7 @@ console_window = {
         }
     },
 
-    unmountCurrentTab: function() {
+    unmountCurrentTab() {
         ui.unmount('ui_console_tab_window');
         console.log("unmounting ui_console_tab_window");
         const contentDiv = document.getElementById('console_window_content');
@@ -244,12 +244,12 @@ console_window = {
         }
     },
 
-    clearActiveTabs: function() {
+    clearActiveTabs() {
         const tabs = document.querySelectorAll('#console_window .console_tab');
         tabs.forEach(t => t.classList.remove('bg-[#fff]', 'text-white'));
     },
 
-    navigateTabs: function(direction) {
+    navigateTabs(direction) {
         const tabs = document.querySelectorAll('#console_window .console_tab');
         let newIndex = this.currentTabIndex;
 
@@ -268,7 +268,7 @@ console_window = {
         }
     },
 
-    isMenuActive: function() {
+    isMenuActive() {
         return this.isOpen;
     }
 };

@@ -26,13 +26,13 @@ gamepad = {
     button_size: 16,
     display_size: 32,
 
-    init: function() {
+    init() {
         window.addEventListener("gamepadconnected", (e) => this.connectGamepad(e));
         window.addEventListener("gamepaddisconnected", (e) => this.disconnectGamepad(e));
         this.updateGamepadState();
     },
 
-    throttle: function(func, delay) {
+    throttle(func, delay) {
         return (...args) => {
             const now = Date.now();
             const lastCall = this.throttledEvents[func] || 0;
@@ -43,7 +43,7 @@ gamepad = {
         };
     },
 
-    connectGamepad: function(e) {
+    connectGamepad(e) {
         this.gamepadIndex = e.gamepad.index;
         this.isConnected = true;
         this.name = this.getGamepadName(e.gamepad);
@@ -52,7 +52,7 @@ gamepad = {
         window.dispatchEvent(event);
     },
 
-    disconnectGamepad: function(e) {
+    disconnectGamepad(e) {
         if (e.gamepad.index === this.gamepadIndex) {
             this.isConnected = false;
             this.gamepadIndex = null;
@@ -63,7 +63,7 @@ gamepad = {
         }
     },
 
-    assignController: function(player, gamepadIndex) {
+    assignController(player, gamepadIndex) {
         if (Object.keys(this.assignedControllers).length < this.playerLimit) {
             this.assignedControllers[player] = gamepadIndex;
         } else {
@@ -71,13 +71,13 @@ gamepad = {
         }
     },
 
-    unassignController: function(player) {
+    unassignController(player) {
         if (this.assignedControllers[player]) {
             delete this.assignedControllers[player];
         }
     },
 
-    updateGamepadState: function() {
+    updateGamepadState() {
         if (this.isConnected && this.gamepadIndex !== null) {
             const gamepad = navigator.getGamepads()[this.gamepadIndex];
             if (gamepad) {
@@ -91,14 +91,14 @@ gamepad = {
         }
     },
 
-    hasActiveInput: function(gamepad) {
+    hasActiveInput(gamepad) {
         const threshold = 0.2;
         const buttonsPressed = gamepad.buttons.some(button => button.pressed);
         const axesMoved = gamepad.axes.some(axis => Math.abs(axis) > threshold);
         return buttonsPressed || axesMoved;
     },
 
-    getGamepadName: function(gamepad) {
+    getGamepadName(gamepad) {
         console.log(gamepad);
         const vendorProductMapping = {
             '045e:02e0': 'Xbox 360',
@@ -133,7 +133,7 @@ gamepad = {
         }
     },    
 
-    handleButtons: function(buttons) {
+    handleButtons(buttons) {
         const buttonNames = this.getButtonNames();
 
         buttons.forEach((button, index) => {
@@ -159,7 +159,7 @@ gamepad = {
         });
     },
 
-    emitButtonEvent: function(buttonIndex, state, pressure) {
+    emitButtonEvent(buttonIndex, state, pressure) {
         const buttonNames = this.getButtonNames();
     
         if (typeof buttonIndex === 'number' && buttonNames[buttonIndex] !== undefined) {
@@ -184,7 +184,7 @@ gamepad = {
         }
     },    
 
-    getButtonNames: function() {
+    getButtonNames() {
         return [
             'a', 'b', 'x', 'y',
             'l1', 'r1',
@@ -195,7 +195,7 @@ gamepad = {
         ];
     },
 
-    vibrate: function(duration, strongMagnitude = 1.0, weakMagnitude = 1.0) {
+    vibrate(duration, strongMagnitude = 1.0, weakMagnitude = 1.0) {
         if (this.isConnected && this.gamepad && this.gamepad.vibrationActuator) {
             this.gamepad.vibrationActuator.playEffect("dual-rumble", {
                 duration: duration,
@@ -208,7 +208,7 @@ gamepad = {
         }
     },
 
-    updateButtonImages: function() {
+    updateButtonImages() {
         const spritesheet = assets.use('gamepad_buttons');
         let platform = this.name || this.defaultPlatform;
     
@@ -242,7 +242,7 @@ gamepad = {
         });
     },    
 
-    clearButtonImages: function() {
+    clearButtonImages() {
         const buttonNames = this.spritesheetButtonMap.ps5;
         buttonNames.forEach(buttonName => {
             const buttonElements = document.querySelectorAll(`.gamepad_button_${buttonName}`);
@@ -252,7 +252,7 @@ gamepad = {
         });
     },
 
-    getPlatformRow: function(platform) {
+    getPlatformRow(platform) {
         const rowMap = { ps5: 0, xbox: 1, switch: 2 };
         return rowMap[platform] !== undefined ? rowMap[platform] : 0;
     }

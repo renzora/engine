@@ -1,7 +1,6 @@
 <div id="layersPanel" class="fixed top-0 right-0 w-72 bg-gray-800 text-white rounded shadow-lg h-full flex flex-col">
   <div id="resizeHandle" class="resize-handle"></div>
 
-  <!-- Properties Section -->
   <div id="propertiesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Properties</span>
     <svg
@@ -17,7 +16,6 @@
   </div>
 
   <div id="propertiesBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
-    <!-- Object Name -->
     <div class="mb-4">
       <label for="objectName" class="block text-sm font-medium text-gray-300">Object Name</label>
       <input
@@ -28,11 +26,9 @@
       />
     </div>
 
-    <!-- Position Controls -->
     <div class="mb-4">
       <div class="text-sm font-medium text-gray-300 mb-2">Position</div>
       
-      <!-- X Position -->
       <div class="mb-2">
         <div class="flex items-center gap-2">
           <label class="w-6 text-sm font-medium text-red-500">X</label>
@@ -61,7 +57,6 @@
         </div>
       </div>
 
-      <!-- Y Position -->
       <div class="mb-2">
         <div class="flex items-center gap-2">
           <label class="w-6 text-sm font-medium text-green-500">Y</label>
@@ -90,7 +85,6 @@
         </div>
       </div>
 
-      <!-- Z Position -->
       <div class="mb-2">
         <div class="flex items-center gap-2">
           <label class="w-6 text-sm font-medium text-blue-500">Z</label>
@@ -121,7 +115,6 @@
     </div>
   </div>
 
-  <!-- Spectrum Section -->
   <div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Color Spectrum</span>
     <svg
@@ -138,7 +131,6 @@
 
   <div id="spectrumBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
     <div class="spectrum-container h-32 mb-4 relative">
-      <!-- Main color spectrum -->
       <div class="absolute inset-0 rounded" style="background: linear-gradient(to right, 
         hsl(0, 100%, 50%),
         hsl(60, 100%, 50%),
@@ -148,7 +140,6 @@
         hsl(300, 100%, 50%),
         hsl(360, 100%, 50%))">
       </div>
-      <!-- Brightness/saturation overlay -->
       <div class="absolute inset-0 rounded" style="background: linear-gradient(to bottom,
         rgba(0,0,0,0),
         rgba(0,0,0,1)),
@@ -156,18 +147,15 @@
         rgba(255,255,255,1),
         rgba(255,255,255,0))">
       </div>
-      <!-- Color picker handle -->
       <div id="spectrumHandle" class="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg cursor-pointer" style="transform: translate(-50%, -50%)"></div>
     </div>
     
-    <!-- Selected color preview -->
     <div class="flex gap-2 items-center">
       <div id="selectedColorPreview" class="w-8 h-8 rounded border border-gray-600"></div>
       <input type="text" id="colorHexInput" class="bg-gray-700 text-sm px-2 py-1 rounded border border-gray-600" value="#000000">
     </div>
   </div>
 
-    <!-- Node Library Section -->
     <div id="nodesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
       <span class="font-semibold">Object Addons</span>
       <svg
@@ -183,7 +171,6 @@
     </div>
   
     <div id="nodesBody" class="flex flex-col bg-gray-800 transition-all duration-300">
-      <!-- Search box -->
       <div class="border-b border-gray-600">
         <div class="relative">
           <input
@@ -203,15 +190,12 @@
         </div>
       </div>
   
-      <!-- Nodes list with smaller fixed height -->
       <div id="nodesList" class="h-64 overflow-y-auto">
         <div class="node-list-container">
-          <!-- Node categories will be rendered here -->
         </div>
       </div>
     </div>
 
-  <!-- Layers Section -->
   <div id="layersTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Layers</span>
     <svg
@@ -381,15 +365,7 @@ editor_layers = {
   nodesPanelOpen: true,
   spectrumPanelOpen: true,
   propertiesPanelOpen: true,
-  layers: [{
-    id: "layer_default",
-    type: "layer",
-    name: "Default Layer",
-    visible: true,
-    locked: false,
-    expanded: true,
-    children: []
-  }],
+  layers: [],
   activeLayerId: "layer_default",
   selectedLayers: new Set(),
   lastClickedId: null,
@@ -428,7 +404,7 @@ editor_layers = {
   },
   filteredNodes: null,
 
-  initUI: function() {
+  initUI() {
     const addLayerBtn = document.getElementById("addLayerBtn");
     const addGroupBtn = document.getElementById("addGroupBtn");
     const addItemBtn = document.getElementById("addItemBtn");
@@ -441,7 +417,6 @@ editor_layers = {
     spectrumTitleBar.addEventListener("click", () => this.toggleSpectrumPanel());
     propertiesTitleBar.addEventListener("click", () => this.togglePropertiesPanel());
 
-    // Node search initialization
     const searchInput = document.getElementById('nodeSearch');
     searchInput.addEventListener('input', (e) => this.handleNodeSearch(e.target.value));
 
@@ -463,7 +438,6 @@ editor_layers = {
     document.addEventListener("mousemove", (e) => this.handleMouseMove(e));
     document.addEventListener("mouseup",   (e) => this.handleMouseUp(e));
 
-    // Resizing logic
     const layersPanel = document.getElementById("layersPanel");
     const resizeHandle = document.getElementById("resizeHandle");
 
@@ -480,7 +454,7 @@ editor_layers = {
         const panelRect = layersPanel.getBoundingClientRect();
         const newWidth = window.innerWidth - e.clientX;
 
-        if (newWidth >= 200 && newWidth <= 600) { // Set min and max width
+        if (newWidth >= 200 && newWidth <= 600) {
             layersPanel.style.width = `${newWidth}px`;
         }
     });
@@ -493,12 +467,126 @@ editor_layers = {
     });
 },
 
-  start: function() {
-    console.log("Starting Layers Panel");
-    this.initUI();
+  initColorPicker: function() {
+    const spectrumContainer = document.querySelector(".spectrum-container");
+    const spectrumHandle = document.getElementById("spectrumHandle");
+    const colorHexInput = document.getElementById("colorHexInput");
+    const selectedColorPreview = document.getElementById("selectedColorPreview");
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
 
-    if (!this.layers || this.layers.length === 0) {
-      this.layers.push({
+    let isDragging = false;
+    let containerRect;
+
+    const buildSpectrumCanvas = () => {
+      containerRect = spectrumContainer.getBoundingClientRect();
+      canvas.width = containerRect.width;
+      canvas.height = containerRect.height;
+      const rainbow = ctx.createLinearGradient(0, 0, canvas.width, 0);
+      rainbow.addColorStop(0,   "hsl(0, 100%, 50%)");
+      rainbow.addColorStop(0.2, "hsl(60, 100%, 50%)");
+      rainbow.addColorStop(0.4, "hsl(120, 100%, 50%)");
+      rainbow.addColorStop(0.6, "hsl(180, 100%, 50%)");
+      rainbow.addColorStop(0.8, "hsl(240, 100%, 50%)");
+      rainbow.addColorStop(1,   "hsl(360,100%, 50%)");
+      ctx.fillStyle = rainbow;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const blackGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      blackGradient.addColorStop(0, "rgba(0,0,0,0)");
+      blackGradient.addColorStop(1, "rgba(0,0,0,1)");
+      ctx.fillStyle = blackGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      const whiteGradient = ctx.createLinearGradient(0, 0, canvas.width, 0);
+      whiteGradient.addColorStop(0, "rgba(255,255,255,1)");
+      whiteGradient.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = whiteGradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    };
+
+    const rgbToHex = (r, g, b) => {
+      return "#" + [r, g, b]
+        .map(x => {
+          const hex = x.toString(16);
+          return hex.length === 1 ? "0" + hex : hex;
+        })
+        .join("");
+    };
+
+    const updateColorFromPosition = (clientX, clientY) => {
+      let x = clientX - containerRect.left;
+      let y = clientY - containerRect.top;
+
+      if (x < 0) x = 0;
+      if (x > containerRect.width) x = containerRect.width;
+      if (y < 0) y = 0;
+      if (y > containerRect.height) y = containerRect.height;
+
+      spectrumHandle.style.left = x + "px";
+      spectrumHandle.style.top = y + "px";
+
+      const pixel = ctx.getImageData(x, y, 1, 1).data;
+      const [r, g, b] = pixel;
+      const hex = rgbToHex(r, g, b);
+
+      colorHexInput.value = hex;
+      selectedColorPreview.style.backgroundColor = hex;
+    };
+
+    const pointerDown = (e) => {
+      isDragging = true;
+      buildSpectrumCanvas();
+      updateColorFromPosition(e.clientX, e.clientY);
+    };
+
+    const pointerMove = (e) => {
+      if (!isDragging) return;
+      updateColorFromPosition(e.clientX, e.clientY);
+    };
+
+    const pointerUp = () => {
+      isDragging = false;
+    };
+
+    spectrumContainer.addEventListener("mousedown", pointerDown);
+
+    spectrumHandle.addEventListener("mousedown", (e) => {
+      e.stopPropagation();
+      pointerDown(e);
+    });
+
+    document.addEventListener("mousemove", pointerMove);
+    document.addEventListener("mouseup", pointerUp);
+
+    colorHexInput.addEventListener("change", (e) => {
+      const val = e.target.value.trim();
+      selectedColorPreview.style.backgroundColor = val;
+    });
+  },
+
+  fetchSceneLayers: async function(sceneId) {
+    try {
+      const response = await fetch(`/api/editor/scene/${sceneId}`);
+      if (!response.ok) {
+        throw new Error('Failed to load scene data.');
+      }
+      const sceneData = await response.json();
+
+      if (sceneData && sceneData.editorLayers) {
+        this.layers = sceneData.editorLayers;
+      } else {
+        this.layers = [{
+          id: "layer_default",
+          type: "layer",
+          name: "Default Layer",
+          visible: true,
+          locked: false,
+          expanded: true,
+          children: []
+        }];
+      }
+    } catch (err) {
+      console.error('Unable to fetch scene data for layers:', err);
+      this.layers = [{
         id: "layer_default",
         type: "layer",
         name: "Default Layer",
@@ -506,16 +594,38 @@ editor_layers = {
         locked: false,
         expanded: true,
         children: []
-      });
+      }];
     }
-    this.activeLayerId = this.layers[0].id;
-    this.selectLayersById('layer_default');
-    this.renderAllLayers();
   },
 
-  addLayer: function() {
+  start() {
+    console.log("Starting Layers Panel");
+
+    this.fetchSceneLayers(game.sceneid).then(() => {
+      this.initUI();
+
+      if (!this.layers || this.layers.length === 0) {
+        this.layers = [{
+          id: "layer_default",
+          type: "layer",
+          name: "Default Layer",
+          visible: true,
+          locked: false,
+          expanded: true,
+          children: []
+        }];
+      }
+
+      this.activeLayerId = this.layers[0].id;
+      this.selectLayersById(this.activeLayerId);
+      this.renderAllLayers();
+      this.initColorPicker();
+    });
+  },
+
+  addLayer() {
   const selectedNodes = this.getSelectedNodes();
-  let newLayer; // Declare the variable at function scope
+  let newLayer;
   
   if (selectedNodes.length === 0) {
     newLayer = {
@@ -540,7 +650,6 @@ editor_layers = {
     return;
   }
 
-  // Find the topmost selected node's parent and position
   let topmostNode = selectedNodes[0];
   let topmostParentInfo = this.findParentNodeById(topmostNode.id);
   let insertIndex = 0;
@@ -551,7 +660,6 @@ editor_layers = {
     insertIndex = this.layers.indexOf(topmostNode);
   }
 
-  // Create new layer
   newLayer = {
     id: `layer_${Date.now()}`,
     type: "layer",
@@ -562,20 +670,17 @@ editor_layers = {
     children: []
   };
 
-  // Move all selected nodes to new layer
   selectedNodes.forEach(node => {
     this.removeNodeFromParent(node.id);
     newLayer.children.push(node);
   });
 
-  // Insert new layer at the topmost node's position
   if (topmostParentInfo) {
     topmostParentInfo.node.children.splice(insertIndex, 0, newLayer);
   } else {
     this.layers.splice(insertIndex, 0, newLayer);
   }
 
-  // Update selection
   this.selectedLayers.clear();
   this.selectedLayers.add(newLayer.id);
   this.activeLayerId = newLayer.id;
@@ -588,9 +693,9 @@ editor_layers = {
   }, 0);
 },
 
-addGroup: function() {
+addGroup() {
   const selectedNodes = this.getSelectedNodes();
-  let newGroup; // Declare the variable at function scope
+  let newGroup;
   
   if (selectedNodes.length === 0) {
     newGroup = {
@@ -615,7 +720,6 @@ addGroup: function() {
     return;
   }
 
-  // Find the topmost selected node's parent and position
   let topmostNode = selectedNodes[0];
   let topmostParentInfo = this.findParentNodeById(topmostNode.id);
   let insertIndex = 0;
@@ -626,7 +730,6 @@ addGroup: function() {
     insertIndex = this.layers.indexOf(topmostNode);
   }
 
-  // Create new group
   newGroup = {
     id: `group_${Date.now()}`,
     type: "group",
@@ -637,20 +740,17 @@ addGroup: function() {
     children: []
   };
 
-  // Move all selected nodes to new group
   selectedNodes.forEach(node => {
     this.removeNodeFromParent(node.id);
     newGroup.children.push(node);
   });
 
-  // Insert new group at the topmost node's position
   if (topmostParentInfo) {
     topmostParentInfo.node.children.splice(insertIndex, 0, newGroup);
   } else {
     this.layers.splice(insertIndex, 0, newGroup);
   }
 
-  // Update selection
   this.selectedLayers.clear();
   this.selectedLayers.add(newGroup.id);
   this.activeLayerId = newGroup.id;
@@ -663,7 +763,7 @@ addGroup: function() {
   }, 0);
 },
 
-  addItemToLayer: function(itemInfo = {}) {
+  addItemToLayer(itemInfo = {}) {
     console.log("Adding item, active layer ID:", this.activeLayerId);
 
     const newItem = {
@@ -684,14 +784,12 @@ addGroup: function() {
 
       if (activeNode) {
         if (activeNode.node.type === "item") {
-          // If selected node is an item, use its parent array
           const parentInfo = this.findParentNodeById(this.activeLayerId);
           if (parentInfo) {
             targetParent = parentInfo.node;
             parentArray = parentInfo.node.children;
           }
         } else if (activeNode.node.type === "layer" || activeNode.node.type === "group") {
-          // If selected node is a layer or group, use it as parent
           targetParent = activeNode.node;
           parentArray = activeNode.node.children;
         }
@@ -700,16 +798,13 @@ addGroup: function() {
 
     console.log("Target parent:", targetParent);
 
-    // Add the new item to appropriate location
     if (targetParent) {
       targetParent.expanded = true;
       parentArray.push(newItem);
     } else {
-      // No valid parent found, add to top level
       this.layers.push(newItem);
     }
 
-    // Always select the new item
     this.selectedLayers.clear();
     this.selectedLayers.add(newItem.id);
     this.activeLayerId = newItem.id;
@@ -719,7 +814,7 @@ addGroup: function() {
   },
 
 
-findParentNodeById: function(id, arr = this.layers) {
+findParentNodeById(id, arr = this.layers) {
   for (const node of arr) {
     if (node.children && node.children.some(child => child.id === id)) {
       return { node, parentArray: arr };
@@ -733,7 +828,7 @@ findParentNodeById: function(id, arr = this.layers) {
 },
 
 
-  renderAllLayers: function() {
+  renderAllLayers() {
     const list = document.getElementById("layersList");
     list.innerHTML = "";
     list.appendChild(this.dropIndicator);
@@ -746,16 +841,13 @@ findParentNodeById: function(id, arr = this.layers) {
     console.log('rendering layers');
   },
 
-  selectLayersById: function (layerIds) {
-    // Ensure input is always an array for unified processing
+  selectLayersById(layerIds) {
     if (!Array.isArray(layerIds)) {
         layerIds = [layerIds];
     }
 
-    // Clear the previous selections
     this.selectedLayers.clear();
 
-    // Process each layer ID
     layerIds.forEach(layerId => {
         const foundLayer = this.findNodeById(layerId);
         if (foundLayer) {
@@ -765,7 +857,6 @@ findParentNodeById: function(id, arr = this.layers) {
         }
     });
 
-    // Set the first valid layer ID as the active layer
     if (layerIds.length > 0) {
         const firstValidLayer = layerIds.find(layerId => this.findNodeById(layerId));
         this.activeLayerId = firstValidLayer || null;
@@ -773,28 +864,25 @@ findParentNodeById: function(id, arr = this.layers) {
         this.activeLayerId = null;
     }
 
-    // Re-render the UI to reflect changes
     this.renderAllLayers();
-
     console.log(`Selected layers: ${Array.from(this.selectedLayers).join(", ")}`);
 },
 
-removeLayerById: function (layerId) {
+removeLayerById(layerId) {
     const removeNodeRecursively = (id, arr) => {
         for (let i = 0; i < arr.length; i++) {
             if (arr[i].id === id) {
                 arr.splice(i, 1);
-                return true; // Layer removed
+                return true;
             } else if (arr[i].children && arr[i].children.length) {
                 const removed = removeNodeRecursively(id, arr[i].children);
                 if (removed && arr[i].children.length === 0 && arr[i].type === 'group') {
-                    // Remove empty groups
                     arr.splice(i, 1);
                 }
                 return removed;
             }
         }
-        return false; // Layer not found
+        return false;
     };
 
     if (removeNodeRecursively(layerId, this.layers)) {
@@ -805,8 +893,7 @@ removeLayerById: function (layerId) {
     }
 },
 
-// New utility functions
-getAllChildIds: function(node) {
+getAllChildIds(node) {
     let ids = [];
     if (node.id.startsWith('item_')) {
         ids.push(node.id);
@@ -819,15 +906,12 @@ getAllChildIds: function(node) {
     return ids;
 },
 
-selectInEditor: function(ids) {
-    // Get the editor instance
+selectInEditor(ids) {
     const editor = window.edit_mode_window;
     if (!editor) return;
 
-    // Clear current selection if not shift-clicking
     editor.selectedObjects = [];
 
-    // For each layer ID, find corresponding object in editor
     ids.forEach(id => {
         if (id.startsWith('item_')) {
             const layerId = id.replace('item_', '');
@@ -838,19 +922,40 @@ selectInEditor: function(ids) {
         }
     });
 
-    // Update editor mode if objects were selected
     if (editor.selectedObjects.length > 0) {
         editor.changeMode('move');
     } else {
         editor.changeMode('select');
     }
 
-    // Force editor to render the selection
     editor.renderSelectedTiles();
 },
 
-// Complete renderNode function with updated click handling
-renderNode: function(node, parentEl) {
+updateLockState: function(node, isLocked) {
+  if (!node.visible) {
+    isLocked = true;
+  }
+  node.locked = isLocked;
+
+  if (node.children && node.children.length > 0) {
+    node.children.forEach(child => {
+      this.updateLockState(child, isLocked);
+    });
+  }
+},
+
+removeLockedOrInvisible: function(node) {
+  if (node.locked || !node.visible) {
+    this.selectedLayers.delete(node.id);
+  }
+  if (node.children && node.children.length) {
+    node.children.forEach(child => {
+      this.removeLockedOrInvisible(child);
+    });
+  }
+},
+
+renderNode(node, parentEl) {
     if ((node.type === "layer" || node.type === "group") && typeof node.expanded === "undefined") {
         node.expanded = true;
     }
@@ -917,32 +1022,26 @@ renderNode: function(node, parentEl) {
                      c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
           </svg>`;
           
-          eyeBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    node.visible = !node.visible;
-    
-    // Recursively update visibility for all children
-    const updateVisibility = (node, visible) => {
-        if (node.id.startsWith('item_')) {
-            const itemId = node.id.replace('item_', '');
-            // Find the corresponding room item and update its visibility
-            if (game.roomData && game.roomData.items) {
-                const roomItem = game.roomData.items.find(item => item.layer_id === itemId);
-                if (roomItem) {
-                    roomItem.visible = visible;
-                }
-            }
-        }
-        if (node.children) {
-            node.children.forEach(child => updateVisibility(child, visible));
-        }
-    };
-    
-    // Update visibility starting from the clicked node
-    updateVisibility(node, node.visible);
-    
-    // Just render the layers
-    this.renderAllLayers();
+eyeBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+
+  node.visible = !node.visible;
+
+  const updateVisibility = (node, visible) => {
+    if (node.id.startsWith("item_")) {
+      const layerId = node.id.replace("item_", "");
+      const roomItem = game.roomData.items.find(it => it.layer_id === layerId);
+      if (roomItem) {
+        roomItem.visible = visible;
+      }
+    }
+    if (node.children && node.children.length) {
+      node.children.forEach(child => updateVisibility(child, visible));
+    }
+  };
+
+  updateVisibility(node, node.visible);
+  this.renderAllLayers();
 });
 
     const lockBtn = document.createElement("div");
@@ -960,11 +1059,18 @@ renderNode: function(node, parentEl) {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>`;
-    lockBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        node.locked = !node.locked;
-        this.renderAllLayers();
-    });
+
+
+lockBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  
+  node.locked = !node.locked;
+  this.updateLockState(node, node.locked);
+  this.removeLockedOrInvisible(node);
+  this.renderAllLayers();
+});
+
+
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "layer-name";
@@ -997,14 +1103,10 @@ renderNode: function(node, parentEl) {
     row.appendChild(nameSpan);
     row.appendChild(trashBtn);
 
-    // Updated click handler
-// Inside the renderNode function, replace the existing click handler with this:
 row.addEventListener("click", (e) => {
     e.stopPropagation();
 
-    // Check if the node is locked
     if (node.locked) {
-        // Only update UI selection but don't select in editor
         this.selectedLayers.clear();
         this.selectedLayers.add(node.id);
         this.activeLayerId = node.id;
@@ -1013,13 +1115,10 @@ row.addEventListener("click", (e) => {
         return;
     }
     
-    // Handle Ctrl/Cmd + click for toggling
     if (e.ctrlKey || e.metaKey) {
-        // Toggle the clicked item's selection
         if (this.selectedLayers.has(node.id)) {
             this.selectedLayers.delete(node.id);
             
-            // If we're unselecting the active layer, set active to the first remaining selected layer
             if (this.activeLayerId === node.id) {
                 const remaining = Array.from(this.selectedLayers);
                 this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
@@ -1031,19 +1130,16 @@ row.addEventListener("click", (e) => {
         
         this.lastClickedId = node.id;
         
-        // Get all currently selected IDs (only unlocked ones)
         const selectedIds = Array.from(this.selectedLayers).filter(id => {
             const node = this.findNodeById(id);
             return node && !node.node.locked;
         });
         
-        // Update the editor selection
         this.selectInEditor(selectedIds);
         this.renderAllLayers();
         return;
     }
     
-    // Regular click handling remains the same...
     let idsToSelect;
     if (e.shiftKey && this.lastClickedId) {
         this.selectRange(this.lastClickedId, node.id);
@@ -1069,14 +1165,10 @@ row.addEventListener("click", (e) => {
     this.selectInEditor(idsToSelect);
 });
 
-    // Drag handling remains the same
-// Inside renderNode function, modify the mousedown handler:
-// Inside renderNode function, modify the mousedown handler:
 row.addEventListener("mousedown", (e) => {
     if (node.locked) return;
-    if (e.detail === 2) return; // Double click check
+    if (e.detail === 2) return;
     if (e.target === typeIcon) return;
-    // Prevent drag when either Ctrl/Cmd or Shift is pressed
     if (e.ctrlKey || e.metaKey || e.shiftKey) return;
 
     this.dragCandidate = true;
@@ -1110,7 +1202,7 @@ row.addEventListener("mousedown", (e) => {
     parentEl.appendChild(nodeContainer);
 },
 
-renderNodes: function() {
+renderNodes() {
     const container = document.querySelector('.node-list-container');
     container.innerHTML = '';
 
@@ -1120,32 +1212,26 @@ renderNodes: function() {
       const categoryEl = document.createElement('div');
       categoryEl.className = 'node-category';
 
-      // Category header
       const header = document.createElement('div');
       header.className = 'p-2 bg-gray-700 text-sm font-medium text-gray-300 border-b border-gray-600';
       header.textContent = category;
       categoryEl.appendChild(header);
 
-      // Render nodes in category
       nodes.forEach(node => {
         const nodeEl = document.createElement('div');
         nodeEl.className = 'node-item p-2 pl-4 flex items-center gap-2 hover:bg-gray-700 cursor-grab';
         nodeEl.draggable = true;
         nodeEl.dataset.nodeId = node.id;
 
-        // Node icon/color indicator
         const iconEl = document.createElement('div');
         iconEl.className = 'w-3 h-3 rounded-full';
         iconEl.style.backgroundColor = node.color;
         nodeEl.appendChild(iconEl);
 
-        // Node name
         const nameEl = document.createElement('span');
         nameEl.className = 'text-sm text-gray-200';
         nameEl.textContent = node.name;
         nodeEl.appendChild(nameEl);
-
-        // Drag events
         nodeEl.addEventListener('dragstart', (e) => this.handleNodeDragStart(e));
         nodeEl.addEventListener('dragend', (e) => this.handleNodeDragEnd(e));
 
@@ -1156,8 +1242,7 @@ renderNodes: function() {
     }
   },
 
-  // Node drag handling
-  handleNodeDragStart: function(e) {
+  handleNodeDragStart(e) {
     const nodeId = e.target.dataset.nodeId;
     e.dataTransfer.setData('application/node', nodeId);
     e.target.classList.add('dragging');
@@ -1170,12 +1255,11 @@ renderNodes: function() {
     setTimeout(() => document.body.removeChild(dragImage), 0);
   },
 
-  handleNodeDragEnd: function(e) {
+  handleNodeDragEnd(e) {
     e.target.classList.remove('dragging');
   },
 
-  handleNodeSearch: function(searchTerm) {
-    // Clear node list and state if search is empty
+  handleNodeSearch(searchTerm) {
     if (!searchTerm || !searchTerm.trim()) {
       this.filteredNodes = null;
       const container = document.querySelector('.node-list-container');
@@ -1188,7 +1272,6 @@ renderNodes: function() {
     const searchLower = searchTerm.toLowerCase();
     this.filteredNodes = {};
 
-    // Search in nodes and their categories
     for (const [category, nodes] of Object.entries(this.nodeCategories)) {
       const matchedNodes = nodes.filter(node => 
         node.name.toLowerCase().includes(searchLower) ||
@@ -1204,13 +1287,11 @@ renderNodes: function() {
     this.renderNodes();
   },
 
-  // Node drag handling
-  handleNodeDragStart: function(e) {
+  handleNodeDragStart(e) {
     const nodeId = e.target.dataset.nodeId;
     e.dataTransfer.setData('application/node', nodeId);
     e.target.classList.add('dragging');
     
-    // Create and set drag image
     const dragImage = e.target.cloneNode(true);
     dragImage.classList.add('node-drag-preview');
     document.body.appendChild(dragImage);
@@ -1218,11 +1299,11 @@ renderNodes: function() {
     setTimeout(() => document.body.removeChild(dragImage), 0);
   },
 
-  handleNodeDragEnd: function(e) {
+  handleNodeDragEnd(e) {
     e.target.classList.remove('dragging');
   },
 
-  selectRange: function(idA, idB) {
+  selectRange(idA, idB) {
     const visibleIds = this.getFlattenedVisibleIds();
     const idxA = visibleIds.indexOf(idA);
     const idxB = visibleIds.indexOf(idB);
@@ -1235,7 +1316,7 @@ renderNodes: function() {
     }
   },
 
-  getFlattenedVisibleIds: function() {
+  getFlattenedVisibleIds() {
     const ids = [];
     const traverse = (arr) => {
       for (const node of arr) {
@@ -1249,7 +1330,7 @@ renderNodes: function() {
     return ids;
   },
 
-  getSelectedNodes: function() {
+  getSelectedNodes() {
     const out = [];
     for (const id of this.selectedLayers) {
       const f = this.findNodeById(id);
@@ -1258,7 +1339,7 @@ renderNodes: function() {
     return out;
   },
 
-  handleMouseMove: function(e) {
+  handleMouseMove(e) {
     if (!this.dragCandidate && !this.isDragging) return;
     if (!this.isDragging) {
       const dx = e.clientX - this.dragStartX;
@@ -1273,7 +1354,7 @@ renderNodes: function() {
     }
   },
 
-  handleMouseUp: function(e) {
+  handleMouseUp(e) {
     if (this.dragCandidate && !this.isDragging) {
       this.dragCandidate = false;
       if (this.draggedEl) {
@@ -1289,7 +1370,7 @@ renderNodes: function() {
     }
   },
 
-  startDrag: function(e) {
+  startDrag(e) {
     this.isDragging = true;
     this.dragCandidate = false;
 
@@ -1316,7 +1397,7 @@ renderNodes: function() {
     this.updateDragPosition(e);
   },
 
-  updateDragPosition: function(e) {
+  updateDragPosition(e) {
     if (!this.draggedClone) return;
 
     const panelRect = document.getElementById("layersBody").getBoundingClientRect();
@@ -1334,7 +1415,7 @@ renderNodes: function() {
     this.draggedClone.style.transform = `translate(${x}px, ${y}px)`;
   },
 
-  stopDrag: function() {
+  stopDrag() {
     this.isDragging = false;
 
     if (this.draggedClone && this.draggedClone.parentNode) {
@@ -1387,7 +1468,7 @@ renderNodes: function() {
     this.renderAllLayers();
   },
 
-  checkCollision: function(e) {
+  checkCollision(e) {
     const container = document.getElementById("layersList");
     const rowContainers = container.querySelectorAll(".layer-item");
     const mouseY = e.clientY;
@@ -1446,11 +1527,10 @@ renderNodes: function() {
     }
   },
 
-  showDropIndicator: function(elem, mode) {
+  showDropIndicator(elem, mode) {
     const rect = elem.getBoundingClientRect();
     const listRect = document.getElementById("layersList").getBoundingClientRect();
     
-    // Calculate the nesting level by counting parent .children-container elements
     let nestingLevel = 0;
     let parent = elem.parentElement;
     while (parent && !parent.id?.includes('layersList')) {
@@ -1460,10 +1540,7 @@ renderNodes: function() {
       parent = parent.parentElement;
     }
 
-    // Base indent is 1.25rem per level (matches the CSS)
-    const baseIndent = nestingLevel * 20; // 1.25rem ≈ 20px
-    
-    // If dropping inside, add one more level of indentation
+    const baseIndent = nestingLevel * 20;
     const indentOffset = mode === 'inside' ? 20 : 0;
     const totalIndent = baseIndent + indentOffset;
 
@@ -1483,11 +1560,11 @@ renderNodes: function() {
     }
   },
 
-  hideDropIndicator: function() {
+  hideDropIndicator() {
     this.dropIndicator.style.display = "none";
   },
 
-  findNodeById: function(id, arr = this.layers) {
+  findNodeById(id, arr = this.layers) {
     for (let i = 0; i < arr.length; i++) {
       const n = arr[i];
       if (n.id === id) {
@@ -1501,7 +1578,7 @@ renderNodes: function() {
     return null;
   },
 
-  removeNodeFromParent: function(id) {
+  removeNodeFromParent(id) {
     const found = this.findNodeById(id);
     if (!found) return;
     const { node, parentArray } = found;
@@ -1511,7 +1588,7 @@ renderNodes: function() {
     }
   },
 
-  deleteLayer: function(id) {
+  deleteLayer(id) {
     this.removeNodeFromParent(id);
     this.selectedLayers.delete(id);
     if (this.activeLayerId === id) {
@@ -1534,7 +1611,7 @@ renderNodes: function() {
     this.renderAllLayers();
   },
 
-  editLayerName: function(id) {
+  editLayerName(id) {
     const f = this.findNodeById(id);
     if (!f) return;
     const { node } = f;
@@ -1563,8 +1640,7 @@ renderNodes: function() {
     input.setSelectionRange(0, input.value.length);
   },
 
-  // Layer panel toggle
-  toggleLayersPanel: function() {
+  toggleLayersPanel() {
     const bodyEl = document.getElementById("layersBody");
     const toggleIcon = document.getElementById("layersToggleIcon");
     this.panelOpen = !this.panelOpen;
@@ -1578,8 +1654,7 @@ renderNodes: function() {
     }
   },
 
-  // Nodes panel toggle
-  toggleNodesPanel: function() {
+  toggleNodesPanel() {
     const bodyEl = document.getElementById("nodesBody");
     const toggleIcon = document.getElementById("nodesToggleIcon");
     this.nodesPanelOpen = !this.nodesPanelOpen;
@@ -1593,7 +1668,7 @@ renderNodes: function() {
     }
   },
 
-  togglePropertiesPanel: function() {
+  togglePropertiesPanel() {
     const bodyEl = document.getElementById("propertiesBody");
     const toggleIcon = document.getElementById("propertiesToggleIcon");
     this.propertiesPanelOpen = !this.propertiesPanelOpen;
@@ -1607,7 +1682,7 @@ renderNodes: function() {
     }
   },
 
-  toggleSpectrumPanel: function() {
+  toggleSpectrumPanel() {
     const bodyEl = document.getElementById("spectrumBody");
     const toggleIcon = document.getElementById("spectrumToggleIcon");
     this.spectrumPanelOpen = !this.spectrumPanelOpen;

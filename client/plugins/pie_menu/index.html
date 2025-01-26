@@ -137,15 +137,15 @@
         currentHoveredAction: null,
         pieMenuVisible: false,
     
-        start: function() {
+        start() {
             this.initPieMenu();
         },
     
-        unmount: function() {
+        unmount() {
             this.removePieMenuListeners();
         },
     
-        showPieMenu: function(x, y) {
+        showPieMenu(x, y) {
             const pieMenu = document.getElementById('pieMenu');
             pieMenu.style.left = `${x}px`;
             pieMenu.style.top = `${y}px`;
@@ -157,7 +157,7 @@
             }, 20);
         },
     
-        hidePieMenu: function() {
+        hidePieMenu() {
             const pieMenu = document.getElementById('pieMenu');
             pieMenu.classList.remove('show');
             setTimeout(() => {
@@ -166,7 +166,7 @@
             }, 500);
         },
     
-        initPieMenu: function() {
+        initPieMenu() {
             this.pieMenuKeyDownListener = e => {
                 if (e.key === 'Alt' && !e.repeat) {
                     e.preventDefault();
@@ -215,7 +215,7 @@
             });
         },
     
-        removePieMenuListeners: function() {
+        removePieMenuListeners() {
             document.removeEventListener('keydown', this.pieMenuKeyDownListener);
             document.removeEventListener('keyup', this.pieMenuKeyUpListener);
     

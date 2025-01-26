@@ -18,6 +18,7 @@ export interface IScene extends Document {
   rain?: number;
   snow?: number;
   order?: number;
+  editorLayers?: any;
 }
 
 const sceneSchema = new Schema<IScene>({
@@ -43,6 +44,10 @@ const sceneSchema = new Schema<IScene>({
   rain: { type: Number, default: 0 },
   snow: { type: Number, default: 0 },
   order: { type: Number, default: 0 },
+  editorLayers: {
+    type: Array,
+    default: [], 
+  },
 });
 
 export const Scene =

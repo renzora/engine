@@ -1,0 +1,86 @@
+<script>
+  scripting_parser = {
+    debugEnabled: true,
+
+    start() {
+      const closeBtn = document.getElementById("scripting_parse_close");
+      if (closeBtn) {
+        closeBtn.addEventListener("click", () => {
+          document.getElementById("scripting_parse_overlay").classList.add("hidden");
+        });
+      }
+      this.debugLog("scriptingParser.start -> ready");
+    },
+  
+    parseScript(scriptText) {
+      const lines = scriptText.split("\n");
+      const root = { type: "root", indent: -1, children: [] };
+      const stack = [root];
+  
+      function currentBlock() {
+        return stack[stack.length - 1];
+      }
+  
+      for (let rawLine of lines) {
+        rawLine = rawLine.replace(/#.*/, "");
+        if (!rawLine.trim()) continue;
+  
+        const indent = rawLine.search(/\S|$/);
+        const text = rawLine.trim();
+  
+        while (indent <= currentBlock().indent) {
+          stack.pop();
+        }
+  
+        if (text.startsWith("if ")) {
+          const block = {
+            type: "if",
+            indent: indent,
+            arg: text.slice(3).trim(),
+            children: []
+          };
+          currentBlock().children.push(block);
+          stack.push(block);
+          continue;
+        }
+  
+        if (text.startsWith("onButtonPress ")) {
+          const block = {
+            type: "onButtonPress",
+            indent: indent,
+            arg: text.slice("onButtonPress".length).trim(),
+            children: []
+          };
+          currentBlock().children.push(block);
+          stack.push(block);
+          continue;
+        }
+  
+        currentBlock().children.push({
+          type: "line",
+          indent: indent,
+          text: text
+        });
+      }
+  
+      return root;
+    },
+  
+    debugLog(msg) {
+      console.log("[scriptingParser] " + msg);
+      if (!this.debugEnabled) return;
+      const overlay = document.getElementById("scripting_parse_overlay");
+      if (overlay && overlay.classList.contains("hidden")) {
+        overlay.classList.remove("hidden");
+      }
+      const logEl = document.getElementById("scripting_parse_log");
+      if (logEl) {
+        const p = document.createElement("p");
+        p.classList.add("text-gray-300");
+        p.textContent = msg;
+        logEl.appendChild(p);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    }
+  };
+  </script>

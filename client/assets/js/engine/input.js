@@ -1,7 +1,7 @@
 input = {
   eventListeners: {},
   listenerMap: {},
-  assign: function(type, callback, options = {}) {
+  assign(type, callback, options = {}) {
     if (type.includes('+')) {
       const parts = type.split('+');
       const mainType = parts[0];
@@ -93,7 +93,7 @@ input = {
     }
   },
 
-  destroy: function(id) {
+  destroy(id) {
     if (!id) {
       for (const [eventType, callbacks] of Object.entries(this.eventListeners)) {
         for (const cb of callbacks) {
@@ -121,7 +121,7 @@ input = {
     delete this.listenerMap[id];
   },
 
-  reassign: function() {
+  reassign() {
     this.destroy();
     if (typeof this.init === 'function') {
       this.init();
@@ -129,7 +129,7 @@ input = {
     console.log(`input.reassign -> Reinitialized all input listeners`);
   },
 
-  updateInputMethod: function(method, name = '') {
+  updateInputMethod(method, name = '') {
     const inputMethodDisplay = document.getElementById('input_method');
     if (inputMethodDisplay) {
       inputMethodDisplay.innerText = `Input: ${method}${name ? ' (' + name + ')' : ''}`;

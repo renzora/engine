@@ -1,6 +1,25 @@
 <div class="window pixel-corners bg-gray-800 shadow-lg rounded-lg overflow-hidden fixed bottom-8 right-5"
      style="width: 400px; height: 300px;">
-  <div data-part="handle" class="window_title bg-gray-800 text-gray-100 font-semibold">
+  <div data-part="handle" class="window_title bg-gray-800 text-gray-100 font-semibold flex justify-between items-center px-2 py-1">
+    <div class="flex items-center space-x-2">
+      <div data-part="title" class="title_bg">
+        Activity Monitor
+      </div>
+
+      <select id="refreshRateSelect" class="bg-gray-700 text-gray-100 rounded px-2 py-1 text-sm">
+        <option value="0">Real Time</option>
+        <option value="50">50ms</option>
+        <option value="100">100ms</option>
+        <option value="200" selected>200ms</option>
+        <option value="250">250ms</option>
+        <option value="500">500ms</option>
+        <option value="1000">1s</option>
+        <option value="2000">2s</option>
+        <option value="5000">5s</option>
+        <option value="10000">10s</option>
+      </select>
+    </div>
+
     <div class="float-right">
       <button
         class="icon close_dark mr-1 hint--left text-gray-100"
@@ -8,7 +27,6 @@
         data-close
       >&times;</button>
     </div>
-    <div data-part="title" class="title_bg">Activity Monitor</div>
   </div>
 
   <div class="p-2 bg-gray-800">
@@ -25,21 +43,34 @@ activity_monitor = {
   dpr: 1,
   hiddenFunctions: {},
   lastRenderTime: 0,
+  refreshRate: 200,
 
-  start: function() {
+  start() {
     this.setupCanvas();
+    this.initRefreshRateSelect();
     window.addEventListener('resize', this.onResize.bind(this));
   },
 
-  onRender: function() {
+  initRefreshRateSelect() {
+    const selectEl = document.getElementById('refreshRateSelect');
+    if (!selectEl) return;
+
+    selectEl.addEventListener('change', (e) => {
+      this.refreshRate = parseInt(e.target.value);
+    });
+  },
+
+  onRender() {
     const now = performance.now();
-    if (now - this.lastRenderTime >= 250) {
+    if (this.refreshRate === 0) {
+      this.renderChart();
+    } else if (now - this.lastRenderTime >= this.refreshRate) {
       this.lastRenderTime = now;
       this.renderChart();
     }
   },
 
-  setupCanvas: function() {
+  setupCanvas() {
     const canvas = document.getElementById('fpsChart');
     if (!canvas) return;
 
@@ -53,11 +84,11 @@ activity_monitor = {
     this.renderChart();
   },
 
-  onResize: function() {
+  onResize() {
     this.setupCanvas();
   },
 
-  handleCanvasClick: function(event) {
+  handleCanvasClick(event) {
     const canvas = event.target;
     const rect = canvas.getBoundingClientRect();
     const x = (event.clientX - rect.left) * this.dpr;
@@ -80,7 +111,7 @@ activity_monitor = {
     });
   },
 
-  renderChart: function() {
+  renderChart() {
     const canvas = document.getElementById('fpsChart');
     if (!canvas) return;
 
@@ -107,17 +138,15 @@ activity_monitor = {
       if (localMax > globalMaxValue) globalMaxValue = localMax;
     });
     const maxValue = Math.ceil(globalMaxValue * 1.1);
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.font = '12px Arial';
 
     const padding = 30;
     const chartHeight = canvas.height / dpr - 2 * padding;
     const chartWidth = canvas.width / dpr - 2 * padding;
-
-    const formatMetric = (num) => (Number.isInteger(num) ? num : num.toFixed(2));
     const numberOfLabels = 5;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-    ctx.font = '12px Arial';
+    const formatMetric = (num) => (Number.isInteger(num) ? num : num.toFixed(2));
 
     for (let i = 0; i <= numberOfLabels; i++) {
       const value = Math.round((i / numberOfLabels) * maxValue);
@@ -135,10 +164,11 @@ activity_monitor = {
 
     trackedFunctions.forEach((fnName, index) => {
       const { countHistory, valueHistory } = functionCalls[fnName];
-      const length = countHistory.length;
       if (this.hiddenFunctions[fnName]) return;
 
+      const length = countHistory.length;
       const baseColor = `hsl(${(index / trackedFunctions.length) * 360}, 70%, 60%)`;
+
       ctx.strokeStyle = baseColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -167,7 +197,6 @@ activity_monitor = {
       const labelX = padding + 5;
       const labelY = 20 + index * 15;
       const labelText = `${fnName}: ${formatMetric(displayMetric)}`;
-
       ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
       ctx.textAlign = 'left';
       const textWidth = ctx.measureText(labelText).width;

@@ -239,7 +239,7 @@ tileset_manager = {
   imageCanvas: null,
   isDragging: false,
 
-  start: function() {
+  start() {
     this.imageCanvas       = document.getElementById('uploaded_canvas');
     this.browseButton      = document.getElementById('browse_button');
     this.fileInput         = document.getElementById('file_input');
@@ -298,7 +298,7 @@ tileset_manager = {
     this.showRightColumn(false);
   },
 
-  unmount: function() {
+  unmount() {
     this.listeners.forEach(({ element, event, handler }) => {
       element.removeEventListener(event, handler);
     });
@@ -306,13 +306,13 @@ tileset_manager = {
   },
 
   listeners: [],
-  addListener: function(element, event, handler) {
+  addListener(element, event, handler) {
     if (!element) return;
     element.addEventListener(event, handler);
     this.listeners.push({ element, event, handler });
   },
 
-  showZoomControls: function(show) {
+  showZoomControls(show) {
     const zoomControls = document.getElementById('zoom_controls');
     if (show) {
       zoomControls.classList.remove('hidden');
@@ -320,7 +320,7 @@ tileset_manager = {
       zoomControls.classList.add('hidden');
     }
   },
-  showRightColumn: function(show) {
+  showRightColumn(show) {
     const rightCol = document.getElementById('right_column');
     const leftCol  = document.getElementById('left_column');
     if (show) {
@@ -333,7 +333,7 @@ tileset_manager = {
       rightCol.style.overflow = 'hidden';
     }
   },
-  showPreview: function(show) {
+  showPreview(show) {
     const previewWrapper = document.getElementById('preview_wrapper');
     if (show) {
       previewWrapper.classList.remove('hidden');
@@ -341,7 +341,7 @@ tileset_manager = {
       previewWrapper.classList.add('hidden');
     }
   },
-  showQueuedItems: function(show) {
+  showQueuedItems(show) {
     const qiWrapper = document.getElementById('queued_items_wrapper');
     if (show) {
       qiWrapper.classList.remove('hidden');
@@ -350,7 +350,7 @@ tileset_manager = {
     }
   },
 
-  fetchTilesetList: function(selectEl) {
+  fetchTilesetList(selectEl) {
     fetch('/api/tileset_manager/list_sheets')
       .then(res => res.json())
       .then(json => {
@@ -371,7 +371,7 @@ tileset_manager = {
       });
   },
 
-  loadImageFile: function(file) {
+  loadImageFile(file) {
     const reader = new FileReader();
     reader.onload = (event) => {
       const img = new Image();
@@ -383,7 +383,7 @@ tileset_manager = {
     reader.readAsDataURL(file);
   },
 
-  displayDroppedImage: function(img) {
+  displayDroppedImage(img) {
     const gridCanvas = document.getElementById('gridCanvas');
     const ctxImage   = this.imageCanvas.getContext('2d');
     const ctxGrid    = gridCanvas.getContext('2d');
@@ -413,7 +413,7 @@ tileset_manager = {
     this.disableQueueFields();
   },
 
-  initDragDropAndSelection: function() {
+  initDragDropAndSelection() {
     const onDragOver = (e) => {
       e.preventDefault();
       this.dropZone.classList.add('dragover');
@@ -530,7 +530,7 @@ tileset_manager = {
     });
   },
 
-  autoScrollIfNearEdge: function(e) {
+  autoScrollIfNearEdge(e) {
     const zoneRect = this.dropZone.getBoundingClientRect();
     const edgeThreshold = 20;
     const distLeft   = e.clientX - zoneRect.left;
@@ -553,7 +553,7 @@ tileset_manager = {
     }
   },
 
-  setScale: function(newScale) {
+  setScale(newScale) {
     this.scale = newScale;
     this.zoomSlider.value = this.scale;
     this.zoomValue.value  = this.scale.toFixed(1);
@@ -565,7 +565,7 @@ tileset_manager = {
     });
   },
 
-  getCanvasCoordinates: function(e, canvas) {
+  getCanvasCoordinates(e, canvas) {
     const rect = canvas.getBoundingClientRect();
     return {
       x: (e.clientX - rect.left) / this.scale,
@@ -573,7 +573,7 @@ tileset_manager = {
     };
   },
 
-  drawSelection: function(ctx, x, y, width, height) {
+  drawSelection(ctx, x, y, width, height) {
     ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
     ctx.beginPath();
     ctx.rect(x, y, width, height);
@@ -584,7 +584,7 @@ tileset_manager = {
     ctx.stroke();
   },
 
-  drawGrid: function(ctx, canvas) {
+  drawGrid(ctx, canvas) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.strokeStyle = '#000000';
     ctx.lineWidth = 0.5;
@@ -605,18 +605,18 @@ tileset_manager = {
     ctx.restore();
   },
 
-  enableQueueFields: function() {
+  enableQueueFields() {
     this.tilesetSelect.disabled = false;
     document.getElementById('item_name').disabled = false;
     this.addToQueueBtn.disabled = false;
   },
-  disableQueueFields: function() {
+  disableQueueFields() {
     this.tilesetSelect.disabled = true;
     document.getElementById('item_name').disabled = true;
     this.addToQueueBtn.disabled = true;
   },
 
-  resetPreview: function() {
+  resetPreview() {
     const previewCanvas = document.getElementById('previewCanvas');
     const ctxPreview = previewCanvas.getContext('2d');
     ctxPreview.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -624,7 +624,7 @@ tileset_manager = {
     previewCanvas.height = 0;
   },
 
-  updatePreviewCanvas: function() {
+  updatePreviewCanvas() {
     const previewCanvas = document.getElementById('previewCanvas');
     const ctxPreview    = previewCanvas.getContext('2d');
     ctxPreview.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
@@ -683,7 +683,7 @@ tileset_manager = {
     });
   },
 
-  addItemToQueue: function() {
+  addItemToQueue() {
     const nameInput = document.getElementById('item_name');
     const category  = this.tilesetSelect.value.trim() || 'gen1';
     const name      = nameInput.value.trim();
@@ -714,12 +714,12 @@ tileset_manager = {
     this.disableQueueFields();
   },
 
-  removeItemFromQueue: function(index) {
+  removeItemFromQueue(index) {
     this.batchQueue.splice(index, 1);
     this.renderQueueList();
   },
 
-  renderQueueList: function() {
+  renderQueueList() {
     const listContainer = document.getElementById('queued_items_list');
     listContainer.innerHTML = '';
 
@@ -757,7 +757,7 @@ tileset_manager = {
     }
   },
 
-  saveQueuedItems: function() {
+  saveQueuedItems() {
     if (!this.batchQueue.length) {
       alert('No items in queue to save.');
       return;
@@ -814,7 +814,7 @@ tileset_manager = {
       });
   },
 
-  createCroppedCanvas: function(tiles) {
+  createCroppedCanvas(tiles) {
     const tileSize = 16;
     const minX = Math.min(...tiles.map(t => t.x));
     const minY = Math.min(...tiles.map(t => t.y));

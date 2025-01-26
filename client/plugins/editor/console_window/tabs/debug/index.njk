@@ -163,42 +163,42 @@
     showAttackRadius: false,
     selectedSprite: null,
     showObjectCollision: false,
-    start: function() {
+    start() {
         ui.initTabs('ui_console_tab_window_tabs', 'debug-tools-tab'); // Initialize the first tab as active
         this.updateDebugInfo();
         this.populateSpriteSelect(); // Populate the sprite select box
         this.interval = setInterval(this.updateDebugInfo.bind(this), 1000); // Update every second
     },
-    unmount: function() {
+    unmount() {
         clearInterval(this.interval);
     },
-    toggleCollisionBoundaries: function() {
+    toggleCollisionBoundaries() {
         this.showCollisionBoundaries = !this.showCollisionBoundaries;
         this.updateDebugInfo(); // Refresh debug info to reflect the change
     },
-    toggleObjectCollision: function() {
+    toggleObjectCollision() {
         this.showObjectCollision = !this.showObjectCollision;
         this.updateDebugInfo(); // Refresh debug info to reflect the change
     },
-    toggleWalkableTiles: function() {
+    toggleWalkableTiles() {
         this.showWalkableTiles = !this.showWalkableTiles;
         this.updateDebugInfo(); // Refresh debug info to reflect the change
     },
-    toggleAttackRadius: function() {
+    toggleAttackRadius() {
         this.showAttackRadius = !this.showAttackRadius;
         this.renderAttackRadius();
     },
-    truncate: function(str, maxLength) {
+    truncate(str, maxLength) {
         return str.length > maxLength ? str.substring(0, maxLength - 3) + '...' : str;
     },
-    updateAttribute: function(attribute, value) {
+    updateAttribute(attribute, value) {
         const sprite = game.mainSprite;
         if (sprite) {
             sprite[attribute] = parseInt(value);
             document.getElementById(attribute + '_value').innerText = value;
         }
     },
-    updateSpriteAttribute: function(attribute, value) {
+    updateSpriteAttribute(attribute, value) {
         if (this.selectedSprite) {
             if (attribute === 'isEnemy') {
                 this.selectedSprite[attribute] = value;
@@ -208,7 +208,7 @@
             }
         }
     },
-    updateSpriteHealth: function(value) {
+    updateSpriteHealth(value) {
     if (this.selectedSprite) {
         const newValue = parseInt(value);
         if (!isNaN(newValue)) {
@@ -228,7 +228,7 @@
     }
 },
 
-updateSpriteEnergy: function(value) {
+updateSpriteEnergy(value) {
     if (this.selectedSprite) {
         const newValue = parseInt(value);
         if (!isNaN(newValue)) {
@@ -247,7 +247,7 @@ updateSpriteEnergy: function(value) {
         }
     }
 },
-    updateSelectedSprite: function(spriteId) {
+    updateSelectedSprite(spriteId) {
         this.selectedSprite = game.sprites[spriteId];
         if (this.selectedSprite) {
             document.getElementById('is_sprite_enemy').checked = this.selectedSprite.isEnemy;
@@ -271,7 +271,7 @@ updateSpriteEnergy: function(value) {
             document.getElementById('sprite_y_value').innerText = this.selectedSprite.y || 0;
         }
     },
-    populateSpriteSelect: function() {
+    populateSpriteSelect() {
         const spriteSelect = document.getElementById('sprite_select');
         const selectedSpriteId = spriteSelect.value; // Store the currently selected sprite ID
         spriteSelect.innerHTML = '<option value="">Select a sprite</option>';
@@ -284,7 +284,7 @@ updateSpriteEnergy: function(value) {
         }
         spriteSelect.value = selectedSpriteId; // Set the selected value again
     },
-    applyToAllSprites: function() {
+    applyToAllSprites() {
         const attackValue = parseInt(document.getElementById('sprite_attack_slider').value);
         const maxRangeValue = parseInt(document.getElementById('sprite_maxRadius_slider').value);
         const defenseValue = parseInt(document.getElementById('sprite_defense_slider').value);
@@ -306,14 +306,14 @@ updateSpriteEnergy: function(value) {
             }
         }
     },
-    updateDebugInfo: function() {
+    updateDebugInfo() {
         const cameraPosition = this.getCameraPosition();
         document.getElementById('camera_position').innerText = cameraPosition;
 
         // Update sprite select box
         this.populateSpriteSelect();
     },
-    renderObjectCollision: function() {
+    renderObjectCollision() {
 
         if (!game.roomData || !game.roomData.items) return;
 
@@ -340,7 +340,7 @@ updateSpriteEnergy: function(value) {
         });
     },
 
-    drawPolygon: function(points, offsetX, offsetY, fillColor = 'rgba(255, 0, 0, 0.5)', borderColor = 'rgba(255, 0, 0, 1)') {
+    drawPolygon(points, offsetX, offsetY, fillColor = 'rgba(255, 0, 0, 0.5)', borderColor = 'rgba(255, 0, 0, 1)') {
         if (!points || points.length < 3) return; // A valid polygon needs at least 3 points
 
         if (game.ctx) {
@@ -368,10 +368,10 @@ updateSpriteEnergy: function(value) {
         }
     },
 
-    getCameraPosition: function() {
+    getCameraPosition() {
         return `X: ${camera.cameraX}, Y: ${camera.cameraY}`;
     },
-renderCollisionBoundaries: function() {
+renderCollisionBoundaries() {
     for (const id in game.sprites) {
         const sprite = game.sprites[id];
         const rectX = sprite.x;
@@ -386,7 +386,7 @@ renderCollisionBoundaries: function() {
         game.ctx.restore();
     }
 },
-renderNearestWalkableTile: function() {
+renderNearestWalkableTile() {
     for (const id in game.sprites) {
         const sprite = game.sprites[id];
         const gridX = Math.round(sprite.x / 16);
@@ -429,7 +429,7 @@ renderNearestWalkableTile: function() {
         });
     }
 },
-    renderAttackRadius: function() {
+    renderAttackRadius() {
         if (!this.showAttackRadius) return; // Check if the showAttackRadius is enabled
         for (const id in game.sprites) {
             const sprite = game.sprites[id];
@@ -454,12 +454,12 @@ renderNearestWalkableTile: function() {
             }
         }
     },
-    changeCameraToSelectedSprite: function() {
+    changeCameraToSelectedSprite() {
         if (this.selectedSprite) {
             game.setActiveSprite(this.selectedSprite.id);
         }
     },
-    generateNewSprite: function() {
+    generateNewSprite() {
     const newSpriteId = `sprite_${Date.now()}`; // Unique ID based on the current timestamp
     const options = {
         id: newSpriteId,
@@ -485,7 +485,7 @@ renderNearestWalkableTile: function() {
     this.updateSelectedSprite(newSpriteId);
     this.populateSpriteSelect(); // Update the sprite select dropdown with the new sprite
 },
-removeSelectedSprite: function() {
+removeSelectedSprite() {
     if (this.selectedSprite) {
         const spriteId = this.selectedSprite.id;
         delete game.sprites[spriteId];  // Remove the sprite from the game

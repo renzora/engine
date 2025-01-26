@@ -12,7 +12,7 @@ sprite = {
     },
   
     // 1) We add an `init` function so we can register key events via input.assign()
-    init: function() {
+    init() {
       // Assign global keydown -> calls sprite.handleKeyDownGlobal
       input.assign('keydown', (e) => {
         this.handleKeyDownGlobal(e);
@@ -30,7 +30,7 @@ sprite = {
     },
   
     // 2) Called whenever keydown happens anywhere.
-    handleKeyDownGlobal: function(e) {
+    handleKeyDownGlobal(e) {
       const playerSprite = game.sprites[game.playerid];
       if (!playerSprite) return;
   
@@ -41,7 +41,7 @@ sprite = {
     },
   
     // 3) Same for keyup
-    handleKeyUpGlobal: function(e) {
+    handleKeyUpGlobal(e) {
       const playerSprite = game.sprites[game.playerid];
       if (!playerSprite) return;
   
@@ -51,7 +51,7 @@ sprite = {
       }
     },
   
-    create: function(options) {
+    create(options) {
       let newSprite = {
         id: options.id,
         width: options.isVehicle ? options.width || 44 : options.isAnimal ? options.width || 48 : 16,
@@ -136,7 +136,7 @@ sprite = {
     },
   
     SpritePrototype: {
-      draw: function() {
+      draw() {
         if (!this.activeSprite) return;
   
         const spriteData = assets.use('spriteData')[this.animalType || 'character'];
@@ -207,7 +207,7 @@ sprite = {
         if (plugin.exists('debug')) debug.tracker('sprite.draw');
       },
   
-      drawShadow: function() {
+      drawShadow() {
         if (!this.activeSprite) return;
         game.ctx.save();
   
@@ -250,7 +250,7 @@ sprite = {
         game.ctx.restore();
       },
   
-      updateVehicleDirection: function(turnStrength, deltaTime) {
+      updateVehicleDirection(turnStrength, deltaTime) {
         const turnRate = this.steeringSensitivity * (this.currentSpeed / this.maxSpeed);
         this.angle += turnStrength * turnRate * (deltaTime / 1000);
   
@@ -270,7 +270,7 @@ sprite = {
         this.directionIndex = Math.round((this.angle / (2 * Math.PI)) * 48) % 48;
       },
   
-      moveVehicle: function() {
+      moveVehicle() {
         if (this.currentSpeed !== 0) {
           let newX = this.x + Math.cos(this.angle) * this.currentSpeed * (game.deltaTime / 1000);
           let newY = this.y + Math.sin(this.angle) * this.currentSpeed * (game.deltaTime / 1000);
@@ -309,7 +309,7 @@ sprite = {
         if (plugin.exists('debug')) debug.tracker('vehicle.move');
       },
   
-      changeAnimation: function(newAnimation) {
+      changeAnimation(newAnimation) {
         if (this.overrideAnimation && this.overrideAnimation !== newAnimation) {
           return;
         }
@@ -327,14 +327,14 @@ sprite = {
       },
   
       // Direction methods for keyboard movement:
-      addDirection: function(direction) {
+      addDirection(direction) {
         this.directions[direction] = true;
         this.updateDirection();
         this.moving = true;
         this.stopping = false;
       },
   
-      removeDirection: function(direction) {
+      removeDirection(direction) {
         delete this.directions[direction];
         this.updateDirection();
         if (Object.keys(this.directions).length === 0) {
@@ -343,7 +343,7 @@ sprite = {
         }
       },
   
-      updateDirection: function() {
+      updateDirection() {
         if (this.directions['up'] && this.directions['right']) this.direction = 'NE';
         else if (this.directions['down'] && this.directions['right']) this.direction = 'SE';
         else if (this.directions['down'] && this.directions['left']) this.direction = 'SW';
@@ -354,17 +354,17 @@ sprite = {
         else if (this.directions['right']) this.direction = 'E';
       },
   
-      startRunning: function() {
+      startRunning() {
         this.isRunning = true;
         this.speed = this.runningSpeed;
       },
   
-      stopRunning: function() {
+      stopRunning() {
         this.isRunning = false;
         this.speed = 80;
       },
   
-      updateHealth: function(amount) {
+      updateHealth(amount) {
         if (typeof amount === "string") {
           amount = parseInt(amount);
         }
@@ -383,7 +383,7 @@ sprite = {
         }
       },
   
-      updateEnergy: function(amount) {
+      updateEnergy(amount) {
         if (typeof amount === "string") {
           amount = parseInt(amount);
         }
@@ -397,7 +397,7 @@ sprite = {
         }
       },
   
-      animate: function() {
+      animate() {
         const spriteData = assets.use('spriteData')[this.animalType || 'character'];
         if (!spriteData || !spriteData.animations) {
           console.error(`Animation data not found for sprite type: ${this.animalType || 'character'}`);
@@ -422,7 +422,7 @@ sprite = {
       },
   
       // No direct pathfinding methods here, but if we detect isMovingToTarget:
-      update: function() {
+      update() {
         // If the pathfinding plugin is controlling movement:
         if (this.isMovingToTarget && plugin.exists('pathfinding')) {
           // Let the plugin move this sprite's position
@@ -540,7 +540,7 @@ sprite = {
         if (plugin.exists('debug')) debug.tracker('sprite.update');
       },
   
-      dealDamage: function() {
+      dealDamage() {
         const aimX = this.targetX;
         const aimY = this.targetY;
         const maxRadius = this.targetRadius;

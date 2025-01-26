@@ -20,7 +20,7 @@
     notificationCount: 0,
     activeNotifications: new Map(),
 
-    show: function (id, message, type = "info", replace = false) {
+    show(id, message, type = "info", replace = false) {
       return new Promise((resolve) => {
         let container = document.getElementById("notification");
         if (!container) {
@@ -83,7 +83,7 @@
       });
     },
 
-    getNotificationClass: function (type) {
+    getNotificationClass(type) {
       switch (type) {
         case "success":
           return "bg-green-500 text-white text-lg px-4 py-2 rounded shadow-md m-2";

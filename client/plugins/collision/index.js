@@ -3,15 +3,15 @@ collision = {
     lastKnownPosition: null,
     cornerBuffer: 16,
 
-    start: function() {
+    start() {
 
     },
 
-    unmount: function() {
+    unmount() {
 
     },
 
-    pointInPolygon: function(px, py, polygon) {
+    pointInPolygon(px, py, polygon) {
         let isInside = false;
         for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
             const xi = polygon[i].x, yi = polygon[i].y;
@@ -24,7 +24,7 @@ collision = {
         return isInside;
     },
 
-    check: function(x, y, sprite, previousX, previousY) {
+    check(x, y, sprite, previousX, previousY) {
         if (!game.roomData?.items) {
             this.lastKnownPosition = null;
             return { collisionDetected: false };
@@ -94,7 +94,7 @@ collision = {
         return { collisionDetected: false };
     },
 
-    calculateSlideVector: function(startX, startY, endX, endY, polygon) {
+    calculateSlideVector(startX, startY, endX, endY, polygon) {
         const direction = {
             x: endX - startX,
             y: endY - startY
@@ -121,7 +121,7 @@ collision = {
         };
     },
 
-    checkPath: function(startX, startY, dirX, dirY, polygon) {
+    checkPath(startX, startY, dirX, dirY, polygon) {
         let clear = false;
         let distance = 16;
         let maxDistance = 64;
@@ -144,7 +144,7 @@ collision = {
         };
     },
 
-    createWalkableGrid: function() {
+    createWalkableGrid() {
         if (this.walkableGridCache) {
             return this.walkableGridCache;
         }
@@ -211,12 +211,12 @@ collision = {
         return grid;
     },
 
-    isTileWalkable: function(gridX, gridY) {
+    isTileWalkable(gridX, gridY) {
         const grid = this.createWalkableGrid();
         return grid[gridX]?.[gridY] === 1;
     },
 
-    reset: function() {
+    reset() {
         this.lastKnownPosition = null;
         this.walkableGridCache = null;
     }

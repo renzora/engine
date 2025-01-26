@@ -3,15 +3,32 @@ import { IScene, Scene } from '../models/Scenes';
 
 export async function editorRoutes(fastify: FastifyInstance) {
 
+  fastify.get('/scene/:id', async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const scene: IScene | null = await Scene.findById(id);
+      if (!scene) {
+        return reply.status(404).send({ message: 'Scene not found', error: true });
+      }
+      return reply.send(scene);
+    } catch (error: any) {
+      return reply.status(500).send({
+        message: 'Error fetching scene',
+        error: error.message,
+      });
+    }
+  });
+
   fastify.post('/scene/save', async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       if (!request.user) {
         return reply.status(401).send({ message: 'Unauthorized', error: true });
       }
 
-      const { sceneid, roomData } = request.body as {
+      const { sceneid, roomData, editorLayers } = request.body as {
         sceneid: string;
         roomData: object;
+        editorLayers: any;
       };
 
       if (!sceneid || !roomData) {
@@ -22,7 +39,12 @@ export async function editorRoutes(fastify: FastifyInstance) {
 
       const updatedScene: IScene | null = await Scene.findOneAndUpdate(
         { _id: sceneid },
-        { $set: { roomData } },
+        { 
+          $set: { 
+            roomData: roomData,
+            ...(editorLayers !== undefined && { editorLayers: editorLayers }),
+          } 
+        },
         { new: true },
       );
 
@@ -31,8 +53,9 @@ export async function editorRoutes(fastify: FastifyInstance) {
       }
 
       return reply.send({
-        message: 'Room data saved successfully',
+        message: 'Room data (and layers) saved successfully',
         sceneId: updatedScene._id,
+        editorLayers: updatedScene.editorLayers,
       });
     } catch (error: any) {
       return reply.status(500).send({

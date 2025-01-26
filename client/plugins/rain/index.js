@@ -3,7 +3,7 @@ rain = {
     active: false,
     overrideActive: false,
 
-    start: function() {
+    start() {
         assets.preload([
             { name: 'rain_plugin_sfx', path: 'plugins/rain/rain.mp3' }
         ], () => {
@@ -12,14 +12,14 @@ rain = {
         });
     },
 
-    unmount: function() {
+    unmount() {
         assets.unload('rain_plugin_sfx');
         this.rainDrops = [];
         this.active = false;
     },
 
 
-    onRender: function() {
+    onRender() {
         game.ctx.restore();
         this.draw();
         this.update();
@@ -35,7 +35,7 @@ rain = {
         }
     },
 
-    create: function(opacity) {
+    create(opacity) {
         this.rainDrops = [];
         // 1000 drops across the world
         for (let i = 0; i < 1000; i++) {
@@ -49,7 +49,7 @@ rain = {
         }
     },
     
-    update: function() {
+    update() {
         if (!this.active) return;
 
         for (let drop of this.rainDrops) {
@@ -62,7 +62,7 @@ rain = {
         }
     },
     
-    draw: function() {
+    draw() {
         if (!this.active) return;
         // The main transform is already set (zoom + camera translate)
         game.ctx.save();

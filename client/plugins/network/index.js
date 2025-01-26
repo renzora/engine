@@ -2,7 +2,7 @@ network = {
     ws_uri: "wss://localhost:3000",
     socket: null,
 
-    start: function() {
+    start() {
         this.socket = new WebSocket(this.ws_uri);
 
         this.socket.onopen = (e) => {
@@ -22,11 +22,11 @@ network = {
         };
     },
 
-    open: function(e) {
+    open(e) {
         console.log("Connected to the WebSocket server.");
     },
 
-    send: function(message) {
+    send(message) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.socket.send(JSON.stringify(message));
             console.log("Sent message:", JSON.stringify(message));
@@ -35,13 +35,13 @@ network = {
         }
     },
 
-    message: function(e) {
+    message(e) {
         var json = JSON.parse(e.data);
         console.log("Received message:", json);
         document.dispatchEvent(new CustomEvent(json.command, { detail: json }));
     },
 
-    beforeUnload: function(event) {
+    beforeUnload(event) {
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             this.send({ command: 'playerDisconnected', data: { id: this.getPlayerId() } });
         }
@@ -50,11 +50,11 @@ network = {
         }
     },
 
-    close: function(e) {
+    close(e) {
         console.error("Disconnected from the server.");
     },
 
-    sendReloadRequest: function() {
+    sendReloadRequest() {
         this.send({ command: 'reloadData' });
     }
 }

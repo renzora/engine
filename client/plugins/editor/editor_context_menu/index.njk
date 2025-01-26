@@ -26,7 +26,7 @@ editor_context_menu = {
   initialClickY: null,
   menuItemsConfig: [],
 
-  start: function () {
+  start() {
     this.contextMenuElement = document.getElementById('editor_context_menu');
     this.menuItemsElement = document.getElementById('editor_menuItems');
 
@@ -67,18 +67,18 @@ this.contextmenuHandler = (event) => {
     document.addEventListener('click', this.clickHandler);
   },
 
-  unmount: function () {
+  unmount() {
     document.removeEventListener('contextmenu', this.contextmenuHandler);
     document.removeEventListener('click', this.clickHandler);
     this.contextMenuElement.classList.add('hidden');
     console.log("Editor context menu unmounted, all events removed.");
   },
 
-  onRenderAll: function() {
+  onRenderBackground() {
     this.renderIsometricGrid();
   },
 
-  populateMenuItems: function (clientX, clientY) {
+  populateMenuItems(clientX, clientY) {
     const clickedObject = this.getSelectedObject(clientX, clientY);
     console.log('Clicked Object:', clickedObject); // Debug
 
@@ -186,7 +186,7 @@ this.contextmenuHandler = (event) => {
     }
   },
 
-  moveObjectToLayer: function (obj, layerId) {
+  moveObjectToLayer(obj, layerId) {
     console.log("Moving object", obj.id, "to layer", layerId);
     if (obj) {
       obj.layerId = layerId;
@@ -194,7 +194,7 @@ this.contextmenuHandler = (event) => {
     this.contextMenuElement.classList.add('hidden');
   },
 
-  getSelectedObject: function (clientX, clientY) {
+  getSelectedObject(clientX, clientY) {
     const rect = game.canvas.getBoundingClientRect();
     const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
     const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
@@ -214,7 +214,7 @@ this.contextmenuHandler = (event) => {
     });
   },
 
-  editObject: function (selectedObject) {
+  editObject(selectedObject) {
     if (!selectedObject) return;
     const uniqueId = selectedObject.id;
     plugin.load('tileset_item_editor_window', {
@@ -226,11 +226,11 @@ this.contextmenuHandler = (event) => {
     this.contextMenuElement.classList.add('hidden');
   },
 
-  cameraSnapToggle: function (checked) {
+  cameraSnapToggle(checked) {
     console.log("cameraSnapToggle:", checked);
   },
 
-  cameraManualToggle: function (checked) {
+  cameraManualToggle(checked) {
     if (checked) {
       camera.lerpEnabled = false;
       camera.manual = true;
@@ -242,7 +242,7 @@ this.contextmenuHandler = (event) => {
     }
   },
 
-  spriteActiveToggle: function (checked) {
+  spriteActiveToggle(checked) {
     if (checked) {
       camera.lerpEnabled = false;
       camera.manual = true;
@@ -256,7 +256,7 @@ this.contextmenuHandler = (event) => {
     }
   },
 
-  spriteSetStartingPosition: function () {
+  spriteSetStartingPosition() {
     if (this.initialClickX === null || this.initialClickY === null) {
       console.error("Initial click position is not set.");
       return;
@@ -274,7 +274,7 @@ this.contextmenuHandler = (event) => {
     this.initialClickY = null;
   },
 
-  updateStartingPosition: function (gx, gy) {
+  updateStartingPosition(gx, gy) {
     const sceneId = game.sceneid;
     if (!sceneId) {
       alert('No scene loaded!');
@@ -307,7 +307,7 @@ this.contextmenuHandler = (event) => {
       });
   },
 
-  openSceneProperties: function (x, y) {
+  openSceneProperties(x, y) {
     plugin.load('editor_scene_properties', {
       path: 'editor',
       ext: 'njk',
@@ -318,12 +318,12 @@ this.contextmenuHandler = (event) => {
     this.contextMenuElement.classList.add('hidden');
   },
 
-  openTerrainEditor: function () {
+  openTerrainEditor() {
     console.log("Open Terrain Editor...");
     this.contextMenuElement.classList.add('hidden');
   },
 
-  openTilesetManager: function () {
+  openTilesetManager() {
     plugin.load('tileset_manager', {
       ext: 'njk',
       drag: true,
@@ -331,35 +331,35 @@ this.contextmenuHandler = (event) => {
     });
   },
 
-  advancedOption1: function () {
+  advancedOption1() {
     console.log("Advanced Option 1 triggered");
   },
 
-  nestedOption1: function () {
+  nestedOption1() {
     console.log("Nested Option 1 triggered");
   },
 
-  deepNestedOption1: function () {
+  deepNestedOption1() {
     console.log("Deep Nested Option 1 triggered");
   },
 
-  deepNestedOption2: function () {
+  deepNestedOption2() {
     console.log("Deep Nested Option 2 triggered");
   },
 
-  effectsConsoleToggle: function (checked) {
+  effectsConsoleToggle(checked) {
     console.log("Console toggled =>", checked);
   },
 
-  effectsBrushSize: function (val) {
+  effectsBrushSize(val) {
     console.log("Brush Size =>", val);
   },
 
-  utilsToggleGrid: function (checked) {
+  utilsToggleGrid(checked) {
     this.toggleGrid(checked);
   },
 
-  toggleGrid: function (checked) {
+  toggleGrid(checked) {
     this.isGridEnabled = checked;
     if (checked) {
       console.log("Grid enabled.");
@@ -369,7 +369,7 @@ this.contextmenuHandler = (event) => {
     }
   },
 
-  render2dGrid: function () {
+  render2dGrid() {
     if (!this.isGridEnabled) return;
 
     game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
@@ -394,7 +394,7 @@ this.contextmenuHandler = (event) => {
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
 
-  renderIsometricGrid: function () {
+  renderIsometricGrid() {
     if (!this.isGridEnabled) return;
 
     const tileWidth = 32;
@@ -424,7 +424,7 @@ this.contextmenuHandler = (event) => {
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
 
-  utilsToggleNightFilter: function (checked) {
+  utilsToggleNightFilter(checked) {
     this.isNightfilterEnabled = checked;
     if (checked) {
       lighting.nightFilterActive = true;

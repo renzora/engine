@@ -5,7 +5,7 @@
         { name: 'spriteData', path: 'assets/json/spritesData.json' }
     ],() => {
 
-        input.assign('keydown.tab', () => {
+        input.assign('keydown+shift+e', () => {
             plugin.load('console_window', {
                 path: 'editor',
                 ext: 'njk',
@@ -17,7 +17,7 @@
             });
         });
 
-        input.assign('keydown+ctrl+shift+f', () => { plugin.ui.fullScreen(); });
+        input.assign('keydown+shift+f', () => { plugin.ui.fullScreen(); });
 
         plugin.preload([
             { id: 'time', path: 'core' },
@@ -25,15 +25,12 @@
             { id: 'notif', path: 'core', ext: 'html' },
             { id: 'collision' },
             { id: 'pathfinding' },
-            { id: 'scripting' },
-            { id: 'snow', after: function() {
-                plugin.notif.show("load_success_1", "Press Tab to open the editor", "info");
-                plugin.notif.show("load_success_2", "Edit client/init.js to change startup settings", "danger");
-            }},
-            { id: 'terminal', ext: 'html' },
+            { id: 'snow' },
             { id: 'debug', ext: 'html' },
-            { id: 'activity_monitor', ext: 'njk' },
             { id: 'pie_menu', ext: 'html' },
+            { id: 'code', ext: 'html' },
+            { id: 'terminal', ext: 'html' }
+            
         ]);
 
         const playerSprite = sprite.create({

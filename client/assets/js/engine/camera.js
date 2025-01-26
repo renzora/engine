@@ -11,7 +11,7 @@ camera = {
     panSpeed: 5,
     cutsceneMode: false,
 
-    setCameraPosition: function(x, y) {
+    setCameraPosition(x, y) {
         this.cameraX = x;
         this.cameraY = y;
         this.manual = true;
@@ -20,17 +20,17 @@ camera = {
         this.cutsceneMode = false;
     },
 
-    startCutscene: function() {
+    startCutscene() {
         this.cutsceneMode = true; 
         this.activeCamera = false;
     },
 
-    endCutscene: function() {
+    endCutscene() {
         this.cutsceneMode = false;
         this.activeCamera = true;
     },
 
-    panTo: function(targetX, targetY, speed, random) {
+    panTo(targetX, targetY, speed, random) {
         if (random) {
             this.targetCameraX = Math.random() * (game.worldWidth - game.canvas.width / game.zoomLevel);
             this.targetCameraY = Math.random() * (game.worldHeight - game.canvas.height / game.zoomLevel);
@@ -46,7 +46,7 @@ camera = {
         this.cutsceneMode = true;
     },
 
-    update: function() {
+    update() {
         let activeSprite = game.sprites[game.playerid];
     
         if (game.isEditorActive) {
@@ -102,7 +102,7 @@ camera = {
         }
     },    
         
-    lerp: function(start, end, t) {
+    lerp(start, end, t) {
         return start * (1 - t) + end * t;
     }
 };

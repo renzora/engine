@@ -4,21 +4,21 @@ fireflies = {
     active: null,
     overrideActive: false,
 
-    start: function() {
+    start() {
         this.create();
     },
 
-    unmount: function() {
+    unmount() {
         console.log(`Weather Plugin unmounted: ${this.id}`);
     },
 
-    onRender: function() {
+    onRender() {
         game.ctx.restore();
         this.draw();
         this.update();
     },
 
-    create: function () {
+    create() {
         this.fireflies = [];
         this.fireflyLights = {};
         for (let i = 0; i < 20; i++) {
@@ -50,7 +50,7 @@ fireflies = {
     }
     },
 
-    update: function () {
+    update() {
     if (!this.active && plugin.exists('lighting')) {
         lighting.lights = lighting.lights.filter(light => !light.id.startsWith("firefly_"));
         return;
@@ -115,7 +115,7 @@ fireflies = {
     if(plugin.exists('debug')) debug.tracker('fireflies.update()');
 },
 
-    draw: function () {
+    draw() {
         if (!this.active) return;
         game.ctx.save();
         this.fireflies.forEach((firefly) => {

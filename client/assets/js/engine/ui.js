@@ -3,7 +3,7 @@ ui = {
   activeMenuId: null,
   activeSubItemIndex: 0,
 
-  html: function(selectorOrElement, htmlString, action = 'replace') {
+  html(selectorOrElement, htmlString, action = 'replace') {
     const element = (typeof selectorOrElement === 'string') ? document.querySelector(selectorOrElement) : selectorOrElement;
 
     if (!element) {
@@ -110,7 +110,7 @@ ajax: async function({ url, method = 'GET', data = null, outputType = 'text', su
   }
 },
 
-isMobile: function() {
+isMobile() {
   const userAgent = navigator.userAgent || navigator.vendor || window.opera;
 
   if (/android/i.test(userAgent)) {
@@ -123,7 +123,7 @@ isMobile: function() {
   return window.innerWidth <= 768;
 },
 
-fullScreen: function() {
+fullScreen() {
   const element = document.documentElement;
 
   if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement) {
@@ -299,7 +299,7 @@ contextMenu: {
   }
 },
 
-unmount: function(id) {
+unmount(id) {
   
   if (window[id] && typeof window[id].unmount === 'function') {
       window[id].unmount();

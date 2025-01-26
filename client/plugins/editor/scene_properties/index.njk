@@ -29,7 +29,7 @@
     <script>
 editor_scene_properties = {
     id: id,
-    start: function() {
+    start() {
         const widthSlider = document.getElementById('sceneWidth');
         const heightSlider = document.getElementById('sceneHeight');
         const widthValue = document.getElementById('sceneWidthValue');
@@ -73,7 +73,7 @@ editor_scene_properties = {
         heightSlider.addEventListener('input', updateDimensions);
     },
 
-    save: function() {
+    save() {
         const width = document.getElementById('sceneWidth').value;
         const height = document.getElementById('sceneHeight').value;
 
@@ -102,7 +102,7 @@ editor_scene_properties = {
         });
     },
 
-    unmount: function() {
+    unmount() {
         // Clean up code if necessary
     }
 };

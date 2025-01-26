@@ -1,20 +1,20 @@
 effects = {
 
-    start: function() {
+    start() {
 
     },
 
-    unmount: function() {
+    unmount() {
 
     },
 
-    onRender: function() {
+    onRender() {
         this.transitions.render();
         this.transitions.update();
         this.letterbox.update();
     },
 
-    shakeMap: function(duration, intensity) {
+    shakeMap(duration, intensity) {
         const originalCameraX = camera.cameraX;
         const originalCameraY = camera.cameraY;
 
@@ -43,7 +43,7 @@ effects = {
         startTime: null,
         progress: 0,
 
-        start: function(type, duration) {
+        start(type, duration) {
             this.active = true;
             this.type = type || 'fadeIn';
             this.duration = duration || 1000;
@@ -51,7 +51,7 @@ effects = {
             this.progress = 0;
         },
 
-        update: function() {
+        update() {
             if (!this.active) return;
 
             const currentTime = performance.now();
@@ -63,7 +63,7 @@ effects = {
             }
         },
 
-        render: function() {
+        render() {
             if (!this.active) return;
 
             switch (this.type) {
@@ -76,13 +76,13 @@ effects = {
             }
         },
 
-        renderFadeIn: function() {
+        renderFadeIn() {
             const opacity = 1 - this.progress;
             game.ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
             game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
         },
 
-        renderFadeOut: function() {
+        renderFadeOut() {
             const opacity = this.progress;
             game.ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`;
             game.ctx.fillRect(0, 0, game.canvas.width, game.canvas.height);
@@ -94,14 +94,14 @@ effects = {
         barHeight: 0,
         maxBarHeight: 130,
         speed: 3,
-        start: function() {
+        start() {
             this.active = true;
             this.barHeight = 0;
         },
-        stop: function() {
+        stop() {
             this.active = false;
         },
-        update: function() {
+        update() {
             if (this.active && this.barHeight < this.maxBarHeight) {
                 this.barHeight += this.speed;
                 if (this.barHeight > this.maxBarHeight) {
@@ -116,7 +116,7 @@ effects = {
             }
             this.render();
         },
-        render: function() {
+        render() {
             if (this.barHeight > 0) {
                 game.ctx.setTransform(1, 0, 0, 1, 0, 0);
                 game.ctx.fillStyle = 'rgba(0, 0, 0, 1)';
@@ -129,7 +129,7 @@ effects = {
     bubbleEffect: {
         activeEffects: [],
     
-        create: function (sprite, colorHex) {
+        create(sprite, colorHex) {
             const effectInstance = {
                 spriteId: sprite.id,
                 bubbles: [],
@@ -149,7 +149,7 @@ effects = {
             this.activeEffects.push(effectInstance);
         },
     
-        updateAndRender: function (deltaTime) {
+        updateAndRender(deltaTime) {
             const ctx = game.ctx;
         
             for (let i = this.activeEffects.length - 1; i >= 0; i--) {
@@ -200,7 +200,7 @@ effects = {
         lastCloudTime: 0,
         cloudInterval: 350,
     
-        create: function (sprite, colorHex = '#8B4513') {
+        create(sprite, colorHex = '#8B4513') {
             const currentTime = performance.now();
     
             if (currentTime - this.lastCloudTime < this.cloudInterval) {
@@ -238,7 +238,7 @@ effects = {
             this.activeClouds.push(cloudInstance);
         },
     
-        generateIrregularShape: function () {
+        generateIrregularShape() {
             const shapePoints = [];
             const numPoints = Math.random() * 5 + 5;
             const maxRadius = Math.random() * 3 + 2;
@@ -255,7 +255,7 @@ effects = {
             return shapePoints;
         },
     
-        updateAndRender: function (deltaTime) {
+        updateAndRender(deltaTime) {
             const ctx = game.ctx;
     
             for (let i = this.activeClouds.length - 1; i >= 0; i--) {

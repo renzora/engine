@@ -10,7 +10,7 @@ audio = {
     channelTempos: {},
     isLoopingAudioPlaying: {},
 
-    start: function() {
+    start() {
         if (!this.audioContext) {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
             this.masterGain = this.audioContext.createGain();
@@ -22,40 +22,40 @@ audio = {
         }
     },
 
-    unmount: function() {
+    unmount() {
         if (this.audioContext) {
             this.audioContext.close();
         }
     },
 
-    onGameCreate: function() {
+    onGameCreate() {
 
     },
 
-    pauseAll: function() {
+    pauseAll() {
         if (this.audioContext && this.audioContext.state === 'running') {
             this.audioContext.suspend();
         }
     },
 
-    resumeAll: function() {
+    resumeAll() {
         if (this.audioContext && this.audioContext.state === 'suspended') {
             this.audioContext.resume();
         }
     },
 
-    stopAllSounds: function(channel) {
+    stopAllSounds(channel) {
         if (this.sources[channel]) {
             this.sources[channel].forEach(source => source.stop());
             this.sources[channel] = [];
         }
     },
 
-    setChannelTempo: function(channel, bpm) {
+    setChannelTempo(channel, bpm) {
         this.channelTempos[channel] = bpm;
     },
 
-    play: function(params, channel = 'synth') {
+    play(params, channel = 'synth') {
         const { bpm, ticks_per_beat, instruments, patterns, tempos } = params;
         let currentBpm = bpm;
         let startTime = this.audioContext.currentTime;
@@ -86,7 +86,7 @@ audio = {
         });
     },
 
-    playNote: function(id, instrument, combinedNote, startTime, channel = 'master') {
+    playNote(id, instrument, combinedNote, startTime, channel = 'master') {
         const [pitch, octave] = this.parseNote(combinedNote);
         if (pitch === null || octave === null) {
             return;
@@ -101,7 +101,7 @@ audio = {
         );
     },
 
-    _playNote: function(id, instrument, noteNumber, startTime, channel) {
+    _playNote(id, instrument, noteNumber, startTime, channel) {
         let oscillator = null;
         let gainNode = this.audioContext.createGain();
     
@@ -139,7 +139,7 @@ audio = {
         this.detectPitch(analyser);
     },
 
-    playAudio: function(id, audioBuffer, channel = 'sfx', loop = false) {
+    playAudio(id, audioBuffer, channel = 'sfx', loop = false) {
         if (this.audioContext.state !== 'running') {
             this.audioContext.resume().then(() => {
                 this.playAudio(id, audioBuffer, channel, loop);
@@ -177,7 +177,7 @@ audio = {
         this.sources[channel].push(source);
     },    
 
-    processQueue: function(channel) {
+    processQueue(channel) {
         if (!this.queues[channel] || this.queues[channel].length === 0) {
             return;
         }
@@ -212,7 +212,7 @@ audio = {
         }
     },
 
-    stopLoopingAudio: function(id, channel, fadeDuration = 0.5) {
+    stopLoopingAudio(id, channel, fadeDuration = 0.5) {
         if (this.sources[channel]) {
             this.sources[channel].forEach(source => {
                 if (source.looping && source.loopId === id) {
@@ -232,7 +232,7 @@ audio = {
         }
     },
 
-    setVolume: function(channel, volume) {
+    setVolume(channel, volume) {
 
         if (isNaN(volume) || volume === null || volume === undefined) {
             volume = this.defaultVolume;
@@ -249,7 +249,7 @@ audio = {
         }
     },
 
-    createChannel: function(name, volume = this.defaultVolume) {
+    createChannel(name, volume = this.defaultVolume) {
         if (!this.channels[name]) {
             const gainNode = this.audioContext.createGain();
             gainNode.connect(this.masterGain);
@@ -260,7 +260,7 @@ audio = {
         }
     },
 
-    removeChannel: function(channel) {
+    removeChannel(channel) {
         if (!this.channels[channel]) {
             return;
         }
@@ -269,7 +269,7 @@ audio = {
         document.dispatchEvent(new CustomEvent('channelRemoved', { detail: { channel } }));
     },
 
-    routeChannel: function(sourceChannel, destinationChannel) {
+    routeChannel(sourceChannel, destinationChannel) {
         if (!this.channels[sourceChannel] || !this.channels[destinationChannel]) {
             return;
         }
@@ -278,7 +278,7 @@ audio = {
         this.channels[sourceChannel].connect(this.channels[destinationChannel]);
     },
 
-    parseNote: function(combinedNote) {
+    parseNote(combinedNote) {
         const match = combinedNote.match(/([A-G]#?)(\d)/);
         if (match) {
             return [match[1], parseInt(match[2])];
@@ -286,16 +286,16 @@ audio = {
         return [null, null];
     },
     
-    noteToNumber: function(pitch, octave) {
+    noteToNumber(pitch, octave) {
         const notes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const noteIndex = notes.indexOf(pitch);
         return noteIndex + ((octave + 1) * 12);
     },
-    calculateFrequency: function(noteNumber) {
+    calculateFrequency(noteNumber) {
         return 440 * Math.pow(2, (noteNumber - 69) / 12);
     },
 
-    createNoiseBuffer: function() {
+    createNoiseBuffer() {
         const bufferSize = this.audioContext.sampleRate;
         const buffer = this.audioContext.createBuffer(1, bufferSize, this.audioContext.sampleRate);
         const output = buffer.getChannelData(0);
@@ -305,7 +305,7 @@ audio = {
         return buffer;
     },
 
-    applyEnvelope: function(gainNode, envelope, startTime) {
+    applyEnvelope(gainNode, envelope, startTime) {
         const { attack_time, attack_gain, decay_time, sustain_gain, release_time } = envelope;
         gainNode.gain.setValueAtTime(0, startTime);
         gainNode.gain.linearRampToValueAtTime(attack_gain, startTime + attack_time);
@@ -317,7 +317,7 @@ audio = {
         return gainNode;
     },
 
-    detectPitch: function(analyser) {
+    detectPitch(analyser) {
         const bufferLength = analyser.fftSize;
         const dataArray = new Float32Array(bufferLength);
 

@@ -1,4 +1,3 @@
-
 <div class="fixed bottom-0 left-1/2 -translate-x-1/2 z-10 text-sm mb-1 tracking-tight" data-close="false">
   <span class="text-white" id="input_method" onclick="plugin.load('gamepads', { ext: 'njk' });">Input:keyboard</span>
   <span id="tiles_rendered" class="text-white rounded-md"></span>
@@ -6,6 +5,8 @@
   <span id="lights_rendered" class="text-white rounded-md"></span>
   <span id="effects_rendered" class="text-white rounded-md"></span>
   <span id="animations_rendered" class="text-white rounded-md"></span>
+  <span id="render_calls" class="text-white rounded-md"></span>
+
   <span id="game_time" class="text-white rounded-md"></span>
   <span class="text-white rounded-md cursor-pointer" id="gameFps" onclick="plugin.load('activity_monitor', { ext: 'njk' });"></span>
 </div>
@@ -14,24 +15,57 @@
 debug = {
   functionCalls: {},
   lastRenderTime: null,
+  fpsSamples: [],
+  lastFpsTextUpdate: 0,
+  fpsUpdateInterval: 100,
 
-  onRender: function() {
+  onRender() {
     const now = performance.now();
+    
     if (this.lastRenderTime === null) {
       this.lastRenderTime = now;
     } else {
       const timeElapsed = now - this.lastRenderTime;
       this.lastRenderTime = now;
-      const fps = 1000 / timeElapsed;
 
+      const fps = 1000 / timeElapsed;
       this.tracker('fps', fps);
 
-      const debugFPS = document.getElementById('gameFps');
-      if (debugFPS) {
-        debugFPS.innerHTML = 'FPS:' + fps.toFixed(2);
+      this.fpsSamples.push({ t: now, fps: fps });
+      while (this.fpsSamples.length && this.fpsSamples[0].t < now - 1000) {
+        this.fpsSamples.shift();
+      }
+
+      if (now - this.lastFpsTextUpdate >= this.fpsUpdateInterval) {
+        this.lastFpsTextUpdate = now;
+
+        let sum = 0;
+        for (let i = 0; i < this.fpsSamples.length; i++) {
+          sum += this.fpsSamples[i].fps;
+        }
+        const avgFPS = this.fpsSamples.length > 0
+          ? sum / this.fpsSamples.length
+          : 0;
+
+        const debugFPS = document.getElementById('gameFps');
+        if (debugFPS) {
+  debugFPS.innerHTML = `FPS:${fps.toFixed(2)} (Avg:${avgFPS.toFixed(2)})`;
+  debugFPS.classList.remove('text-red-500', 'text-yellow-500', 'text-green-500');
+
+  if (fps < 30) {
+  debugFPS.classList.add('text-red-500');
+} else if (fps < 50) {
+  debugFPS.classList.add('text-yellow-500');
+} else {
+  debugFPS.classList.add('text-green-500');
+}
+
+}
+
       }
     }
 
+    // Update time display if plugin.time exists
     if (plugin.exists('time')) {
       const gameTimeDisplay = document.getElementById('game_time');
       if (gameTimeDisplay && typeof time !== 'undefined' && time.display) {
@@ -39,39 +73,47 @@ debug = {
       }
     }
 
+    // Finally, update the debug UI with tile counts, etc.
     this.updateUI();
+    // end-of-frame aggregator
     this.finalizeFrame();
   },
 
-  updateUI: function() {
-  const tilesRenderedEl = document.getElementById('tiles_rendered');
-  const backgroundRenderedEl = document.getElementById('background_rendered');
-  const lightsRenderedEl = document.getElementById('lights_rendered');
-  const effectsRenderedEl = document.getElementById('effects_rendered');
-  const animationsRenderedEl = document.getElementById('animations_rendered');
+  updateUI() {
+    const tilesRenderedEl = document.getElementById('tiles_rendered');
+    const backgroundRenderedEl = document.getElementById('background_rendered');
+    const lightsRenderedEl = document.getElementById('lights_rendered');
+    const effectsRenderedEl = document.getElementById('effects_rendered');
+    const animationsRenderedEl = document.getElementById('animations_rendered');
 
-  if (tilesRenderedEl && typeof game !== 'undefined') {
-    tilesRenderedEl.innerHTML = `Tiles:${game.tileCount || 0}`;
-  }
+    // (B) A new element for "render_calls"
+    const renderCallsEl = document.getElementById('render_calls');
 
-  if (backgroundRenderedEl && typeof game !== 'undefined') {
-    backgroundRenderedEl.innerHTML = `Background:${game.backgroundTileCount || 0}`;
-  }
+    if (tilesRenderedEl && typeof game !== 'undefined') {
+      tilesRenderedEl.innerHTML = `Tiles:${game.tileCount || 0}`;
+    }
+    if (backgroundRenderedEl && typeof game !== 'undefined') {
+      backgroundRenderedEl.innerHTML = `Background:${game.backgroundTileCount || 0}`;
+    }
+    if (lightsRenderedEl && plugin.exists('lighting') && typeof lighting !== 'undefined') {
+      lightsRenderedEl.innerHTML = `Lights:${lighting.lights.length}`;
+    }
+    if (effectsRenderedEl && plugin.exists('effects') && typeof effects !== 'undefined') {
+      effectsRenderedEl.innerHTML = `Effects:${
+        effects.activeEffects ? Object.keys(effects.activeEffects).length : 0
+      }`;
+    }
+    if (animationsRenderedEl && typeof game !== 'undefined') {
+      animationsRenderedEl.innerHTML = `Animations:${game.animationCount || 0}`;
+    }
 
-  if (lightsRenderedEl && plugin.exists('lighting') && typeof lighting !== 'undefined') {
-    lightsRenderedEl.innerHTML = `Lights:${lighting.lights.length}`;
-  }
+    // (C) Set the "Draw Calls" text
+    if (renderCallsEl && typeof game !== 'undefined') {
+      renderCallsEl.innerHTML = `Draws:${game.renderCalls || 0}`;
+    }
+  },
 
-  if (effectsRenderedEl && plugin.exists('effects') && typeof effects !== 'undefined') {
-    effectsRenderedEl.innerHTML = `Effects:${effects.activeEffects ? Object.keys(effects.activeEffects).length : 0}`;
-  }
-
-  if (animationsRenderedEl && typeof game !== 'undefined') {
-    animationsRenderedEl.innerHTML = `Animations:${game.animationCount || 0}`;
-  }
-},
-
-  tracker: function(functionName, value = null) {
+  tracker(functionName, value = null) {
     if (!this.functionCalls[functionName]) {
       this.functionCalls[functionName] = {
         frameCount: 0,
@@ -81,7 +123,6 @@ debug = {
         valueHistory: []
       };
     }
-
     const trackedFunction = this.functionCalls[functionName];
     trackedFunction.frameCount++;
     if (value !== null) {
@@ -89,7 +130,7 @@ debug = {
     }
   },
 
-  finalizeFrame: function() {
+  finalizeFrame() {
     const now = Date.now();
     const FIVE_SECONDS = 5000;
 
@@ -100,6 +141,7 @@ debug = {
       tracked.valueHistory.push(tracked.lastValue);
       tracked.frameCount = 0;
 
+      // remove data older than 5 seconds
       while (tracked.timestamps.length && tracked.timestamps[0] < now - FIVE_SECONDS) {
         tracked.timestamps.shift();
         tracked.countHistory.shift();

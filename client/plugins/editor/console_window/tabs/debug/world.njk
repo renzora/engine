@@ -255,7 +255,7 @@
 
     <script>
 var ui_console_tab_window = {
-    start: function() {
+    start() {
         ui.initTabs('world_editor_tabs', 'tab1');
         this.initSliders();
         this.bindEvents();
@@ -266,7 +266,7 @@ var ui_console_tab_window = {
         this.initParticleEventListeners();
     },
     
-    setNightFilterCompositeOperation: function() {
+    setNightFilterCompositeOperation() {
         var compositeOperation = lighting.nightFilter.compositeOperation;
         var selectElement = document.getElementById('nightFilterCompositeOperation');
         if (selectElement) {
@@ -274,7 +274,7 @@ var ui_console_tab_window = {
         }
     },
 
-    updateNightFilterCompositeOperation: function() {
+    updateNightFilterCompositeOperation() {
         const compositeOperation = document.getElementById('nightFilterCompositeOperation').value;
         if (lighting && lighting.nightFilter) {
             lighting.nightFilter.compositeOperation = compositeOperation;
@@ -284,7 +284,7 @@ var ui_console_tab_window = {
         }
     },
 
-    initNightFilter: function() {
+    initNightFilter() {
         document.getElementById('nightFilterOpacity').value = lighting.nightFilter.opacity;
         document.getElementById('nightFilterColorR').value = lighting.nightFilter.color.r;
         document.getElementById('nightFilterColorG').value = lighting.nightFilter.color.g;
@@ -319,7 +319,7 @@ var ui_console_tab_window = {
         this.updateNightFilterCompositeOperation();
     },
 
-    initSliders: function() {
+    initSliders() {
         this.updateSliderValue('hours', 'hours_value');
         this.updateSliderValue('minutes', 'minutes_value');
         this.updateSliderValue('seconds', 'seconds_value');
@@ -327,7 +327,7 @@ var ui_console_tab_window = {
         this.updateSliderValue('speed_multiplier', 'speed_multiplier_value');
     },
 
-    updateSliderValue: function(sliderId, valueId) {
+    updateSliderValue(sliderId, valueId) {
         var slider = document.getElementById(sliderId);
         var valueSpan = document.getElementById(valueId);
         var self = this;
@@ -337,17 +337,17 @@ var ui_console_tab_window = {
         });
     },
 
-    bindEvents: function() {
+    bindEvents() {
         document.getElementById('set_weather_button').addEventListener('click', this.setWeather.bind(this));
         document.getElementById('nightFilterCompositeOperation').addEventListener('change', this.updateNightFilterCompositeOperation.bind(this));
     },
 
-    unbindEvents: function() {
+    unbindEvents() {
         document.getElementById('set_weather_button').removeEventListener('click', this.setWeather.bind(this));
         document.getElementById('nightFilterCompositeOperation').removeEventListener('change', this.updateNightFilterCompositeOperation.bind(this));
     },
 
-    updateGameTime: function() {
+    updateGameTime() {
         var hours = document.getElementById('hours').value;
         var minutes = document.getElementById('minutes').value;
         var seconds = document.getElementById('seconds').value;
@@ -363,7 +363,7 @@ var ui_console_tab_window = {
         console.log('Game time set to: ', utils.gameTime.display());
     },
 
-    setWeather: function() {
+    setWeather() {
         var snow = document.getElementById('toggle_snow').checked;
         var rain = document.getElementById('toggle_rain').checked;
         var fog = document.getElementById('toggle_fog').checked;
@@ -382,7 +382,7 @@ var ui_console_tab_window = {
         console.log('Weather updated: Snow -', snow, ', Rain -', rain, ', Fog -', fog, ', FireFlys -', fireflys);
     },
 
-    initLightTypes: function() {
+    initLightTypes() {
         const lightTypeContainer = document.getElementById('lightTypeContainer');
         lightTypeContainer.innerHTML = '';
 
@@ -437,7 +437,7 @@ var ui_console_tab_window = {
         });
     },
 
-    updateLightTypeAndLabel: function(type, labelId, value, property) {
+    updateLightTypeAndLabel(type, labelId, value, property) {
         if (labelId.includes('lightFlickerLabel')) {
             document.getElementById(labelId).textContent = value ? 'true' : 'false';
         } else {
@@ -446,7 +446,7 @@ var ui_console_tab_window = {
         this.updateLightType(type, value, property);
     },
 
-    updateLightType: function(type, value, property) {
+    updateLightType(type, value, property) {
         const lightsOfType = lighting.lights.filter(light => light.type === type);
         lightsOfType.forEach(light => {
             switch (property) {
@@ -483,7 +483,7 @@ var ui_console_tab_window = {
         window.dispatchEvent(event);
     },
 
-    populateEffectList: function() {
+    populateEffectList() {
         const effectSelect = document.getElementById('effectSelect');
         effectSelect.innerHTML = '<option value="">Select Effect</option>';
 
@@ -495,7 +495,7 @@ var ui_console_tab_window = {
         });
     },
 
-    initParticleEventListeners: function() {
+    initParticleEventListeners() {
         document.getElementById('effectSelect').addEventListener('change', this.loadEffectData.bind(this));
         document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
             slider.addEventListener('input', this.updateEffectData.bind(this, slider.id));
@@ -510,7 +510,7 @@ var ui_console_tab_window = {
     },
 
     // Function to load and display controls for the selected effect
-    loadEffectData: function(event) {
+    loadEffectData(event) {
         const effectId = event.target.value;
         const effect = particles.activeEffects[effectId];
 
@@ -542,7 +542,7 @@ var ui_console_tab_window = {
     },
 
     // Helper function to set input values
-    setInputValue: function(inputId, value) {
+    setInputValue(inputId, value) {
         const inputElement = document.getElementById(inputId);
         const valueElement = document.getElementById(inputId + 'Value');
 
@@ -552,7 +552,7 @@ var ui_console_tab_window = {
         }
     },
 
-    initTimeBasedUpdates: function() {
+    initTimeBasedUpdates() {
         const toggleElement = document.getElementById('toggleTimeBasedUpdates');
         if (toggleElement) {
             toggleElement.checked = lighting.timeBasedUpdatesEnabled;
@@ -562,12 +562,12 @@ var ui_console_tab_window = {
         }
     },
 
-    toggleTimeBasedUpdates: function(enabled) {
+    toggleTimeBasedUpdates(enabled) {
         lighting.timeBasedUpdatesEnabled = enabled;
         console.log('Time-based updates enabled:', enabled);
     },
 
-    updateEffectData: function(property, event) {
+    updateEffectData(property, event) {
         const effectId = document.getElementById('effectSelect').value;
         const effect = particles.activeEffects[effectId];
 
@@ -640,7 +640,7 @@ var ui_console_tab_window = {
         }
     },
 
-    restartEffect: function(effectId) {
+    restartEffect(effectId) {
         const effect = particles.activeEffects[effectId];
         if (effect && effect.length > 0) {
             const initialX = effect[0].initialX;
@@ -685,7 +685,7 @@ var ui_console_tab_window = {
         }
     },
 
-    createNewParticleEffect: function() {
+    createNewParticleEffect() {
         const effectId = 'new_effect_' + Date.now(); // Generate a unique effect ID based on the current timestamp
 
         // Get X and Y position values from the sliders
@@ -760,7 +760,7 @@ var ui_console_tab_window = {
     },
 
     // Function to remove the entire particle effect
-    removeParticleEffect: function() {
+    removeParticleEffect() {
         const effectId = document.getElementById('effectSelect').value;
 
         if (particles.activeEffects[effectId]) {
@@ -792,7 +792,7 @@ var ui_console_tab_window = {
         }
     },
 
-    hexToRgb: function(hex) {
+    hexToRgb(hex) {
         const bigint = parseInt(hex.slice(1), 16);
         const r = (bigint >> 16) & 255;
         const g = (bigint >> 8) & 255;
@@ -800,7 +800,7 @@ var ui_console_tab_window = {
         return `rgba(${r}, ${g}, ${b}, 1)`;
     },
 
-    rgbToHex: function(rgb) {
+    rgbToHex(rgb) {
         const [r, g, b] = rgb.match(/\d+/g).map(Number);
         return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
     }

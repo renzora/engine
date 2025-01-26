@@ -1,0 +1,52 @@
+{% if auth %}
+  <div class='window window_bg'>
+
+    <div data-part='handle' class='window_title window_border'>
+      <div class='float-right'>
+        <i data-part='close' class="fa fa-window-close fa-2x pb-3 ps-2 window_border" data-close></i>
+      </div>
+      <div data-part='title' class='window_bg window_border'>Sign Out confirmation</div>
+    </div>
+
+    <div class='clearfix'></div>
+
+    <div class='window_body'>
+      <div class='p-3 text-center text-white'>
+        Are you sure you want to sign out?
+        <div class='clearfix'></div>
+
+        <button class="bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-full w-full mt-3" onclick='signout.confirm();'>
+          Yes
+        </button>
+
+        <button class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full w-full mt-3" onclick='signout.cancel();'>
+          Cancel
+        </button>
+
+      </div>
+    </div>
+    </div>
+    
+<script>
+signout = {
+  signout() {
+    ui.ajax({
+      method: 'POST',
+        url: '/api/auth/signout',
+        success: function(data) {
+            plugin.notif.show("auth_signout_success", "You are now signed out. Please come back again soon :)");
+            plugin.load({ id: 'auth_window', url: 'plugins/auth/index.njk', drag: true, reload: true });
+            plugin.close('signout');
+          }
+        });
+  },
+  confirm() {
+    this.signout();
+    plugin.closeAll();
+  },
+  cancel() {
+    plugin.close(this.id);
+  }
+}
+</script>
+{% endif %}

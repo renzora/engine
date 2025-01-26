@@ -8,7 +8,7 @@ const rawPlugin = {
   preloadQueue: [],
   loadedPlugins: {},
 
-  init: function(selector, options) {
+  init(selector, options) {
     const element = document.querySelector(selector);
     if (!element) {
       return;
@@ -28,7 +28,7 @@ const rawPlugin = {
     element.addEventListener('click', () => this.front(element));
   },
 
-  front: function(elementOrId) {
+  front(elementOrId) {
     let element;
     if (typeof elementOrId === 'string') {
       element = document.querySelector(`[data-window='${elementOrId}']`);
@@ -55,7 +55,7 @@ const rawPlugin = {
     this.activePlugin = element.getAttribute('data-window');
   },
 
-  initDraggable: function(element, options) {
+  initDraggable(element, options) {
     if (element.getAttribute('data-drag') === 'false' || (options && options.drag === false)) {
       return;
     }
@@ -156,7 +156,7 @@ const rawPlugin = {
     element.addEventListener('touchstart', onStart, { passive: false });
   },
 
-  initCloseButton: function(element) {
+  initCloseButton(element) {
     const closeButton = element.querySelector('[data-close]');
     if (closeButton) {
       closeButton.addEventListener('click', (e) => {
@@ -167,7 +167,7 @@ const rawPlugin = {
     }
   },
 
-  minimize: function(id) {
+  minimize(id) {
     const pluginElement = document.querySelector(`[data-window='${id}']`);
     if (pluginElement) {
       pluginElement.style.display = 'none';
@@ -181,12 +181,12 @@ const rawPlugin = {
     }
   },
 
-  preload: function(pluginList) {
+  preload(pluginList) {
     this.preloadQueue = pluginList;
     this.loadNextPreload();
   },
 
-  loadNextPreload: function() {
+  loadNextPreload() {
     if (this.preloadQueue.length === 0) return;
     const nextPlugin = this.preloadQueue.shift();
     this.load(nextPlugin.id, nextPlugin).then(() => {
@@ -194,7 +194,7 @@ const rawPlugin = {
     });
   },
 
-  load: function(
+  load(
     id,
     {
       path = '',
@@ -262,7 +262,7 @@ const rawPlugin = {
     });
   },
 
-  _processLoadedContent: function({ id, data, ext, beforeStart, after, hidden, drag }) {
+  _processLoadedContent({ id, data, ext, beforeStart, after, hidden, drag }) {
     window[id] = window[id] || {};
     window[id].id = id;
 
@@ -332,7 +332,7 @@ const rawPlugin = {
     if (after) after(id);
   },
 
-  hook: function(hookName) {
+  hook(hookName) {
     for (const pluginId in this.loadedPlugins) {
       const pluginObj = this.loadedPlugins[pluginId];
       if (pluginObj && typeof pluginObj[hookName] === 'function') {
@@ -345,7 +345,7 @@ const rawPlugin = {
     }
   },
 
-  show: function(id) {
+  show(id) {
     const el = document.querySelector(`[data-window='${id}']`);
     if (el) {
       el.style.display = 'block';
@@ -353,7 +353,7 @@ const rawPlugin = {
     }
   },
 
-  close: function(id, fromEscKey = false) {
+  close(id, fromEscKey = false) {
     const pluginEl = document.querySelector(`[data-window='${id}']`);
     if (pluginEl) {
       pluginEl.remove();
@@ -399,7 +399,7 @@ const rawPlugin = {
     }
   },
 
-  unmount: function(id) {
+  unmount(id) {
     console.log('attempting to unmount', id);
 
     if (window[id]?.unmount) {
@@ -431,7 +431,7 @@ const rawPlugin = {
     }
   },
 
-  topZIndex: function() {
+  topZIndex() {
     const highest = Array.from(document.querySelectorAll('*'))
       .map(el => parseFloat(window.getComputedStyle(el).zIndex))
       .filter(z => !isNaN(z))
@@ -439,11 +439,11 @@ const rawPlugin = {
     return highest;
   },
 
-  getActivePlugin: function() {
+  getActivePlugin() {
     return this.activePlugin;
   },
 
-  showAll: function() {
+  showAll() {
     const all = document.querySelectorAll('[data-window]');
     all.forEach(el => el.style.display = 'block');
 
@@ -453,13 +453,13 @@ const rawPlugin = {
     }
   },
 
-  hideAll: function() {
+  hideAll() {
     const all = document.querySelectorAll('[data-window]');
     all.forEach(el => el.style.display = 'none');
     this.activePlugin = null;
   },
 
-  closeAll: function() {
+  closeAll() {
     const all = document.querySelectorAll('[data-window]');
     all.forEach(el => {
       const pluginId = el.getAttribute('data-window');
@@ -468,19 +468,19 @@ const rawPlugin = {
     });
   },
 
-  closest: function(element) {
+  closest(element) {
     while (element && !element.dataset.window) {
       element = element.parentElement;
     }
     return element ? element.dataset.window : null;
   },
 
-  isVisible: function(id) {
+  isVisible(id) {
     const el = document.querySelector(`[data-window='${id}']`);
     return el && el.style.display !== 'none';
   },
 
-  exists: function(...objNames) {
+  exists(...objNames) {
     for (let objName of objNames) {
       try {
         if (typeof eval(objName) === 'undefined') {
