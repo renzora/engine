@@ -28,8 +28,7 @@
             { id: 'snow' },
             { id: 'debug', ext: 'html' },
             { id: 'pie_menu', ext: 'html' },
-            { id: 'code', ext: 'html' },
-            { id: 'terminal', ext: 'html' }
+            { id: 'code', ext: 'html' }
             
         ]);
 
@@ -50,6 +49,7 @@
                 game.scene(localStorage.getItem('sceneid') || '678ec2d7433aae2deee168ee');
                 plugin.load('auth', { ext: 'njk' });
                 sprite.init();
+                plugin.time.hours = 10;
             }
         });
 

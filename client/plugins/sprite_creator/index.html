@@ -1,0 +1,1271 @@
+<!-- SPRITE EDITOR ROOT CONTAINER -->
+<div class="bg-gray-800 text-white w-full h-screen flex flex-col" id="sprite_editor_root">
+  <!-- TOP BAR -->
+  <div
+    class="flex-none h-16 bg-gray-900 border-b border-gray-700 flex items-center px-4 justify-between"
+  >
+    <!-- Left group: "Upload" + "Export" + "Save PNG" buttons -->
+    <div class="flex items-center space-x-2">
+      <button
+        id="btn_upload"
+        class="bg-blue-600 hover:bg-blue-500 transition-colors px-3 py-1 rounded font-bold"
+      >
+        Upload
+      </button>
+      <button
+        id="btn_export_json"
+        class="bg-blue-600 hover:bg-blue-500 transition-colors px-3 py-1 rounded font-bold"
+      >
+        Export JSON
+      </button>
+      <button
+        id="btn_export_png"
+        class="bg-blue-600 hover:bg-blue-500 transition-colors px-3 py-1 rounded font-bold"
+      >
+        Save to PNG
+      </button>
+    </div>
+
+    <!-- Center group: Tile Size + Sheet Zoom -->
+    <div class="flex items-center space-x-4">
+      <!-- Tile Size -->
+      <div class="flex items-center">
+        <label for="input_tile_size" class="mr-2">Tile Size:</label>
+        <input
+          id="input_tile_size"
+          type="number"
+          min="8"
+          value="32"
+          class="w-16 p-1 bg-gray-600 rounded border border-gray-500 text-white"
+        />
+      </div>
+
+      <!-- Sheet Zoom -->
+      <div class="flex items-center">
+        <label for="sheet_zoom_slider" class="mr-2">Sheet Zoom:</label>
+        <input
+          id="sheet_zoom_slider"
+          type="range"
+          min="1"
+          max="4"
+          step="0.5"
+          value="1"
+          class="w-24 accent-blue-500 hover:accent-blue-400 transition"
+        />
+        <span id="sheet_zoom_value" class="ml-2">1</span>
+      </div>
+    </div>
+
+    <!-- Right side: optional branding or text -->
+    <div class="text-sm opacity-75">Sprite Editor</div>
+  </div>
+
+  <!-- MAIN CONTENT AREA -->
+  <div class="flex-1 flex flex-col overflow-hidden" id="main_content_area">
+    <!-- TOP SECTION -->
+    <div class="border-b border-gray-700 flex" id="top_section" style="flex:1; min-height:0;">
+      <!-- Preview (left) -->
+      <div
+        id="preview_container"
+        class="flex-none w-64 bg-gray-800 border-r border-gray-700 flex flex-col"
+      >
+        <div class="p-2 border-b border-gray-700">
+          <h2 class="font-bold mb-2">Preview</h2>
+          <label class="block mb-2">
+            <span>Sprite Name:</span>
+            <input
+              id="sprite_name"
+              type="text"
+              value="sprite-01"
+              class="p-1 w-36 bg-gray-600 rounded border border-gray-500 text-white ml-2"
+            />
+          </label>
+          <label class="block mb-2">
+            <span>Preview Zoom:</span>
+            <input
+              id="preview_zoom_slider"
+              type="range"
+              min="1"
+              max="8"
+              step="1"
+              value="3"
+              class="w-32 accent-blue-500 hover:accent-blue-400 ml-2 transition"
+            />
+          </label>
+
+          <!-- NEW FEATURE: Onion Skin checkbox -->
+          <label class="block mb-2 flex items-center space-x-2">
+            <input
+              type="checkbox"
+              id="checkbox_onion_skin"
+              class="accent-blue-500 hover:accent-blue-400"
+            />
+            <span>Onion Skin</span>
+          </label>
+        </div>
+        <div class="p-2 flex-grow flex items-center justify-center">
+          <canvas
+            id="preview_canvas"
+            width="96"
+            height="96"
+            class="bg-gray-600 border border-gray-500 rounded"
+          ></canvas>
+        </div>
+      </div>
+
+      <!-- Vertical Resizer -->
+      <div
+        id="vertical_resizer"
+        class="w-2 bg-gray-600 hover:bg-gray-500 cursor-col-resize transition-colors"
+        title="Drag to resize panels"
+      ></div>
+
+      <!-- Sprite sheet area -->
+      <div class="flex-1 relative overflow-auto bg-gray-700" id="sprite_sheet_container">
+        <div class="absolute inset-0" style="transform-origin: top left;">
+          <!-- The three layered canvases -->
+          <canvas
+            id="sprite_canvas"
+            style="display:none; position:absolute; left:0; top:0;"
+          ></canvas>
+          <canvas
+            id="grid_canvas"
+            style="display:none; position:absolute; left:0; top:0; pointer-events:none;"
+          ></canvas>
+          <canvas
+            id="selection_canvas"
+            style="display:none; position:absolute; left:0; top:0;"
+          ></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- DRAG HANDLE (horizontal splitter) -->
+    <div
+      id="timeline_resizer"
+      class="h-2 bg-gray-600 hover:bg-gray-500 cursor-row-resize transition-colors"
+      title="Drag to resize timeline"
+    ></div>
+
+    <!-- TIMELINE SECTION (bottom) -->
+    <div
+      class="bg-gray-900 border-t border-gray-700 p-2 flex flex-col"
+      id="timeline_area"
+      style="height: 200px; min-height: 80px;"
+    >
+      <!-- Timeline Header with Title, Transport in the middle, and help text -->
+      <div class="flex items-center justify-between mb-2">
+        <!-- Left: Title + Add/Remove Channel -->
+        <div class="flex items-center space-x-2">
+          <h2 class="text-lg font-bold">Timeline</h2>
+          <button
+            id="btn_add_channel"
+            class="bg-blue-600 hover:bg-blue-500 transition-colors px-3 py-1 rounded font-bold ml-4"
+          >
+            Add Channel
+          </button>
+          <button
+            id="btn_remove_channel"
+            class="bg-red-600 hover:bg-red-500 transition-colors px-3 py-1 rounded font-bold"
+            title="Remove the last channel if empty"
+          >
+            Remove Channel
+          </button>
+        </div>
+
+        <!-- Center: Transport buttons -->
+        <div class="flex items-center space-x-2">
+          <button
+            id="btn_prev_frame"
+            class="bg-gray-700 hover:bg-gray-600 transition-colors px-2 py-1 rounded font-bold text-white"
+          >
+            ◀
+          </button>
+          <button
+            id="btn_play"
+            class="bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1 rounded font-bold text-white"
+          >
+            Play
+          </button>
+          <button
+            id="btn_stop"
+            class="bg-gray-700 hover:bg-gray-600 transition-colors px-3 py-1 rounded font-bold text-white"
+          >
+            Stop
+          </button>
+          <button
+            id="btn_next_frame"
+            class="bg-gray-700 hover:bg-gray-600 transition-colors px-2 py-1 rounded font-bold text-white"
+          >
+            ▶
+          </button>
+          <label class="ml-2 flex items-center space-x-1">
+            <span>FPS:</span>
+            <input
+              type="number"
+              id="input_fps"
+              value="8"
+              min="1"
+              max="60"
+              class="w-16 p-1 bg-gray-600 rounded border border-gray-500 text-white"
+            />
+          </label>
+          <!-- NEW FEATURE: Loop checkbox -->
+          <label class="ml-2 flex items-center space-x-1">
+            <span>Loop:</span>
+            <input
+              type="checkbox"
+              id="checkbox_loop"
+              class="accent-blue-500 hover:accent-blue-400"
+            />
+          </label>
+        </div>
+
+        <!-- Right: help text -->
+        <p class="text-sm text-gray-400">
+          Click clips to select, <kbd>Delete</kbd> to remove
+        </p>
+      </div>
+
+      <!-- The scrub bar (click to jump) -->
+      <div
+        class="relative h-4 bg-gray-700 rounded cursor-pointer mb-2"
+        id="timeline_scrub_wrapper"
+      >
+        <div
+          id="timeline_scrubber"
+          class="absolute top-0 w-1 h-4 bg-red-500 transition-all"
+          style="left: 0;"
+        ></div>
+      </div>
+
+      <!-- Timeline body: each track row with channel info + clips -->
+      <div class="flex-1 relative overflow-auto" id="timeline_scroller">
+        <div
+          class="absolute top-0 left-0 right-0 bottom-0"
+          id="clips_container"
+        ></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Hidden file input (triggered by "Upload" button) -->
+<input id="input_sprite_file" type="file" accept="image/*" class="hidden" />
+
+<script>
+sprite_creator = {
+  // Scale factor for timeline frames
+  TIMELINE_SCALE: 200,
+
+  // Canvas references
+  spriteCanvas: null,
+  gridCanvas: null,
+  selectionCanvas: null,
+  ctxSprite: null,
+  ctxGrid: null,
+  ctxSelection: null,
+
+  // Preview
+  previewCanvas: null,
+  ctxPreview: null,
+  previewZoomSlider: null,
+  previewScale: 6, // default
+
+  // NEW FEATURE: onion skin toggle
+  onionSkinCheckbox: null,
+  onionSkinEnabled: false,
+
+  // Sprite sheet
+  sheetZoomSlider: null,
+  sheetZoomValueEl: null,
+  sheetScale: 1,
+
+  // File / data
+  fileInput: null,
+  imageWidth: 0,
+  imageHeight: 0,
+  imageLoaded: false,
+
+  // Tile size
+  tileSizeInput: null,
+  tileSize: 32,
+  columns: 0,
+  rows: 0,
+
+  // Selection on the sprite sheet
+  isSelecting: false,
+  selectionStart: { x: 0, y: 0 },
+  selectionBox: null,
+  selectedTiles: new Set(),
+  shiftKeyDown: false,
+
+  // Timeline
+  timelineScrubWrapper: null,
+  timelineScrubber: null,
+  timelineScroller: null,
+  clipsContainer: null,
+  currentFrameIndex: 0,
+  maxFrames: 0,
+
+  // Transport
+  btnPlay: null,
+  btnStop: null,
+  btnPrevFrame: null,
+  btnNextFrame: null,
+  inputFps: null,
+  animInterval: null,
+
+  // NEW FEATURE: loop toggle
+  loopCheckbox: null,
+  loopEnabled: false,
+
+  // Tracks & clips
+  tracks: [
+    {
+      name: 'Default Channel',
+      direction: 'NONE',
+      flip: false,
+      index: 0
+    }
+  ],
+  clips: [],
+  activeTrackIndex: 0,
+  selectedClips: new Set(),
+
+  // We’ll track how many clips have been created (for naming)
+  clipCounter: 1,
+
+  // Export
+  btnExportJson: null,
+  inputSpriteName: null,
+
+  // NEW FEATURE: save to PNG
+  btnExportPng: null,
+
+  // Resizers
+  timelineResizer: null,
+  timelineArea: null,
+  topSection: null,
+  main_content_area: null,
+  verticalResizer: null,
+  previewContainer: null,
+
+  listeners: [],
+
+  start: function() {
+    // Grab references
+    this.spriteCanvas    = document.getElementById('sprite_canvas');
+    this.gridCanvas      = document.getElementById('grid_canvas');
+    this.selectionCanvas = document.getElementById('selection_canvas');
+    this.ctxSprite       = this.spriteCanvas.getContext('2d');
+    this.ctxGrid         = this.gridCanvas.getContext('2d');
+    this.ctxSelection    = this.selectionCanvas.getContext('2d');
+
+    this.previewCanvas       = document.getElementById('preview_canvas');
+    this.ctxPreview          = this.previewCanvas.getContext('2d');
+    this.previewZoomSlider   = document.getElementById('preview_zoom_slider');
+
+    // NEW FEATURE: onion skin checkbox
+    this.onionSkinCheckbox   = document.getElementById('checkbox_onion_skin');
+
+    this.sheetZoomSlider     = document.getElementById('sheet_zoom_slider');
+    this.sheetZoomValueEl    = document.getElementById('sheet_zoom_value');
+
+    this.fileInput       = document.getElementById('input_sprite_file');
+    this.tileSizeInput   = document.getElementById('input_tile_size');
+
+    this.timelineScrubWrapper = document.getElementById('timeline_scrub_wrapper');
+    this.timelineScrubber     = document.getElementById('timeline_scrubber');
+    this.timelineScroller     = document.getElementById('timeline_scroller');
+    this.clipsContainer       = document.getElementById('clips_container');
+
+    this.btnPlay      = document.getElementById('btn_play');
+    this.btnStop      = document.getElementById('btn_stop');
+    this.btnPrevFrame = document.getElementById('btn_prev_frame');
+    this.btnNextFrame = document.getElementById('btn_next_frame');
+    this.inputFps     = document.getElementById('input_fps');
+
+    this.btnExportJson   = document.getElementById('btn_export_json');
+    this.inputSpriteName = document.getElementById('sprite_name');
+
+    // NEW FEATURE: loop checkbox
+    this.loopCheckbox    = document.getElementById('checkbox_loop');
+
+    // NEW FEATURE: save to PNG
+    this.btnExportPng    = document.getElementById('btn_export_png');
+
+    this.timelineResizer   = document.getElementById('timeline_resizer');
+    this.timelineArea      = document.getElementById('timeline_area');
+    this.topSection        = document.getElementById('top_section');
+    this.main_content_area = document.getElementById('main_content_area');
+    this.verticalResizer   = document.getElementById('vertical_resizer');
+    this.previewContainer  = document.getElementById('preview_container');
+
+    // Init
+    this.initDragDrop();
+    this.addListener(document.getElementById('btn_upload'), 'click', () => this.fileInput.click());
+    this.addListener(this.fileInput, 'change', () => {
+      if (!this.fileInput.files.length) return;
+      this.loadImageFile(this.fileInput.files[0]);
+    });
+
+    // Tile size
+    this.addListener(this.tileSizeInput, 'change', () => this.updateTileSize());
+
+    // Sprite sheet Zoom
+    this.addListener(this.sheetZoomSlider, 'input', (e) => {
+      this.setSheetScale(parseFloat(e.target.value));
+    });
+
+    // Preview Zoom
+    this.addListener(this.previewZoomSlider, 'input', (e) => {
+      this.previewScale = parseInt(e.target.value, 10) || 1;
+      this.drawPreviewForScrubber();
+    });
+
+    // NEW FEATURE: onion skin toggle
+    this.addListener(this.onionSkinCheckbox, 'change', (e) => {
+      this.onionSkinEnabled = e.target.checked;
+      this.drawPreviewForScrubber();
+    });
+
+    // Selection on sprite sheet
+    this.addListener(this.selectionCanvas, 'mousedown', (e) => this.onSheetMouseDown(e));
+    this.addListener(this.selectionCanvas, 'mousemove', (e) => this.onSheetMouseMove(e));
+    this.addListener(this.selectionCanvas, 'mouseup',   (e) => this.onSheetMouseUp(e));
+
+    // Keyboard for Delete/Shift
+    this.addListener(window, 'keydown', (e) => {
+      if (e.key === 'Shift') this.shiftKeyDown = true;
+      if (e.key === 'Delete') this.deleteSelectedClips();
+    });
+    this.addListener(window, 'keyup', (e) => {
+      if (e.key === 'Shift') this.shiftKeyDown = false;
+    });
+
+    // Timeline events
+    this.addListener(this.timelineScrubWrapper, 'mousedown', (e) => this.scrubMouseDown(e));
+
+    // Transport
+    this.addListener(this.btnPlay, 'click', () => this.play());
+    this.addListener(this.btnStop, 'click', () => this.stop());
+    this.addListener(this.btnPrevFrame, 'click', () => this.seekFrame(this.currentFrameIndex - 1));
+    this.addListener(this.btnNextFrame, 'click', () => this.seekFrame(this.currentFrameIndex + 1));
+
+    // NEW FEATURE: loop checkbox
+    this.addListener(this.loopCheckbox, 'change', (e) => {
+      this.loopEnabled = e.target.checked;
+    });
+
+    // Export
+    this.addListener(this.btnExportJson, 'click', () => this.exportJson());
+
+    // NEW FEATURE: Save to PNG
+    this.addListener(this.btnExportPng, 'click', () => this.exportToPng());
+
+    // Add Channel button
+    this.addListener(document.getElementById('btn_add_channel'), 'click', () => this.addChannel());
+
+    // Remove Channel button
+    this.addListener(document.getElementById('btn_remove_channel'), 'click', () => this.removeLastChannel());
+
+    // Make timeline draggable upward
+    this.initTimelineResizer();
+    // Make vertical resizer for preview vs sheet
+    this.initVerticalResizer();
+    this.renderClips();
+
+    console.log("Sprite Editor started");
+  },
+
+  // Creates a new empty track for the timeline
+  addChannel: function() {
+    const newIndex = this.tracks.length;
+    const channelName = `Channel ${newIndex + 1}`;
+
+    this.tracks.push({
+      name: channelName,
+      direction: 'NONE',
+      flip: false,
+      index: newIndex
+    });
+
+    // Re-render timeline so the new track appears
+    this.renderClips();
+  },
+
+  // Safely removes the last channel if it has no clips
+  removeLastChannel: function() {
+    if (this.tracks.length <= 1) {
+      alert("Cannot remove the default channel!");
+      return;
+    }
+    const lastChannelIndex = this.tracks.length - 1;
+    const hasClips = this.clips.some(c => c.trackIndex === lastChannelIndex);
+    if (hasClips) {
+      alert("Cannot remove this channel - it still has clips!");
+      return;
+    }
+    this.tracks.pop();
+    if (this.activeTrackIndex >= this.tracks.length) {
+      this.activeTrackIndex = this.tracks.length - 1;
+    }
+    this.renderClips();
+  },
+
+  initDragDrop: function() {
+    const root = document.getElementById('sprite_editor_root');
+    const onDragOver = (e) => {
+      e.preventDefault();
+      root.classList.add('ring-2', 'ring-blue-500');
+    };
+    const onDragLeave = (e) => {
+      e.preventDefault();
+      root.classList.remove('ring-2', 'ring-blue-500');
+    };
+    const onDrop = (e) => {
+      e.preventDefault();
+      root.classList.remove('ring-2', 'ring-blue-500');
+      const files = e.dataTransfer.files;
+      if (!files.length) return;
+      this.loadImageFile(files[0]);
+    };
+    this.addListener(root, 'dragover',  onDragOver);
+    this.addListener(root, 'dragenter', onDragOver);
+    this.addListener(root, 'dragleave', onDragLeave);
+    this.addListener(root, 'drop',      onDrop);
+  },
+
+  loadImageFile: function(file) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const img = new Image();
+      img.onload = () => {
+        this.imageWidth  = img.width;
+        this.imageHeight = img.height;
+
+        [this.spriteCanvas, this.gridCanvas, this.selectionCanvas].forEach((canvas) => {
+          canvas.width  = img.width;
+          canvas.height = img.height;
+          canvas.style.display = 'block';
+        });
+
+        this.ctxSprite.clearRect(0, 0, img.width, img.height);
+        this.ctxSprite.drawImage(img, 0, 0);
+
+        this.updateTileSize();
+        this.imageLoaded = true;
+
+        // Default to 4x right after loading
+        this.setSheetScale(4);
+        this.sheetZoomSlider.value = 4;
+
+        console.log(`Image loaded: ${file.name} (${img.width}x${img.height})`);
+      };
+      img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  },
+
+  updateTileSize: function() {
+    const newSize = parseInt(this.tileSizeInput.value, 10) || 32;
+    this.tileSize = newSize;
+    if (this.imageWidth && this.imageHeight) {
+      this.columns = Math.floor(this.imageWidth / this.tileSize);
+      this.rows    = Math.floor(this.imageHeight / this.tileSize);
+      this.drawGrid();
+    }
+  },
+
+  drawGrid: function() {
+    const w = this.gridCanvas.width;
+    const h = this.gridCanvas.height;
+    this.ctxGrid.clearRect(0, 0, w, h);
+
+    this.ctxGrid.strokeStyle = 'rgba(255,255,255,0.3)';
+    this.ctxGrid.lineWidth = 1;
+
+    for (let x = 0; x <= w; x += this.tileSize) {
+      this.ctxGrid.beginPath();
+      this.ctxGrid.moveTo(x+0.5, 0);
+      this.ctxGrid.lineTo(x+0.5, h);
+      this.ctxGrid.stroke();
+    }
+    for (let y = 0; y <= h; y += this.tileSize) {
+      this.ctxGrid.beginPath();
+      this.ctxGrid.moveTo(0, y+0.5);
+      this.ctxGrid.lineTo(w, y+0.5);
+      this.ctxGrid.stroke();
+    }
+  },
+
+  setSheetScale: function(newScale) {
+    this.sheetScale = newScale;
+    this.sheetZoomValueEl.textContent = newScale.toString();
+    [this.spriteCanvas, this.gridCanvas, this.selectionCanvas].forEach((canvas) => {
+      canvas.style.transform = `scale(${this.sheetScale})`;
+      canvas.style.transformOrigin = 'top left';
+    });
+  },
+
+  onSheetMouseDown: function(e) {
+    if (!this.imageLoaded) return;
+    this.isSelecting = true;
+
+    const { x, y } = this.getCanvasCoords(e);
+    this.selectionStart = { x, y };
+    this.selectionBox = { x1: x, y1: y, x2: x, y2: y };
+
+    this.ctxSelection.clearRect(0, 0, this.selectionCanvas.width, this.selectionCanvas.height);
+  },
+
+  onSheetMouseMove: function(e) {
+    if (!this.isSelecting) return;
+    const { x, y } = this.getCanvasCoords(e);
+    this.selectionBox.x2 = x;
+    this.selectionBox.y2 = y;
+
+    this.ctxSelection.clearRect(0, 0, this.selectionCanvas.width, this.selectionCanvas.height);
+    this.ctxSelection.fillStyle = 'rgba(0,255,0,0.3)';
+    this.ctxSelection.strokeStyle = 'white';
+
+    const x1 = Math.min(this.selectionBox.x1, this.selectionBox.x2);
+    const y1 = Math.min(this.selectionBox.y1, this.selectionBox.y2);
+    const x2 = Math.max(this.selectionBox.x1, this.selectionBox.x2);
+    const y2 = Math.max(this.selectionBox.y1, this.selectionBox.y2);
+    const w = x2 - x1;
+    const h = y2 - y1;
+
+    this.ctxSelection.fillRect(x1, y1, w, h);
+    this.ctxSelection.strokeRect(x1, y1, w, h);
+  },
+
+  onSheetMouseUp: function(e) {
+    if (!this.isSelecting) return;
+    this.isSelecting = false;
+    this.ctxSelection.clearRect(0, 0, this.selectionCanvas.width, this.selectionCanvas.height);
+
+    const x1 = Math.min(this.selectionBox.x1, this.selectionBox.x2);
+    const y1 = Math.min(this.selectionBox.y1, this.selectionBox.y2);
+    const x2 = Math.max(this.selectionBox.x1, this.selectionBox.x2);
+    const y2 = Math.max(this.selectionBox.y1, this.selectionBox.y2);
+
+    const col1 = Math.floor(x1 / this.tileSize);
+    const row1 = Math.floor(y1 / this.tileSize);
+    const col2 = Math.floor(x2 / this.tileSize);
+    const row2 = Math.floor(y2 / this.tileSize);
+
+    const tileIds = [];
+    for (let r = row1; r <= row2; r++) {
+      for (let c = col1; c <= col2; c++) {
+        if (r >= 0 && r < this.rows && c >= 0 && c < this.columns) {
+          const tileId = r * this.columns + c;
+          tileIds.push(tileId);
+        }
+      }
+    }
+
+    // SHIFT = toggle selection
+    if (this.shiftKeyDown) {
+      tileIds.forEach((tileId) => {
+        if (this.selectedTiles.has(tileId)) {
+          this.selectedTiles.delete(tileId);
+        } else {
+          this.selectedTiles.add(tileId);
+        }
+      });
+    } else {
+      // Single tile? Or bounding box?
+      if (tileIds.length === 1) {
+        // Single tile => single clip
+        this.selectedTiles.clear();
+        this.selectedTiles.add(tileIds[0]);
+        this.addClipForTile(tileIds[0], this.activeTrackIndex);
+      } else {
+        // Check if Ctrl/Meta => multi-frame clip
+        if (e.ctrlKey || e.metaKey) {
+          this.selectedTiles.clear();
+          tileIds.forEach(tid => this.selectedTiles.add(tid));
+          this.addClipForMultiFrames(tileIds, this.activeTrackIndex);
+        } else {
+          // Else multiple single-tile clips
+          this.selectedTiles.clear();
+          tileIds.forEach((tid) => {
+            this.selectedTiles.add(tid);
+            this.addClipForTile(tid, this.activeTrackIndex);
+          });
+        }
+      }
+    }
+
+    this.updateMaxFrames();
+    this.renderClips();
+  },
+
+  addClipForTile: function(tileId, trackIndex) {
+    const clipId = Date.now() + '_' + Math.floor(Math.random() * 10000);
+    let nextStart = 0;
+    const trackClips = this.clips.filter(c => c.trackIndex === trackIndex);
+    if (trackClips.length) {
+      nextStart = Math.max(...trackClips.map(c => c.startFrame + c.length));
+    }
+
+    const clip = {
+      id: clipId,
+      // Default name is "frame X" instead of "Clip ...":
+      name: 'frame ' + this.clipCounter++,
+      frames: [tileId],
+      trackIndex: trackIndex,
+      startFrame: nextStart,
+      length: 1,
+      flip: this.tracks[trackIndex]?.flip || false
+    };
+    this.clips.push(clip);
+  },
+
+  // NEW FEATURE: multi-frame clip
+  addClipForMultiFrames: function(tileIds, trackIndex) {
+    const clipId = Date.now() + '_' + Math.floor(Math.random() * 10000);
+    let nextStart = 0;
+    const trackClips = this.clips.filter(c => c.trackIndex === trackIndex);
+    if (trackClips.length) {
+      nextStart = Math.max(...trackClips.map(c => c.startFrame + c.length));
+    }
+
+    const clip = {
+      id: clipId,
+      // Default name is "frame X" here too:
+      name: 'frame ' + this.clipCounter++,
+      frames: tileIds,
+      trackIndex: trackIndex,
+      startFrame: nextStart,
+      length: tileIds.length,
+      flip: this.tracks[trackIndex]?.flip || false
+    };
+    this.clips.push(clip);
+  },
+
+  getCanvasCoords: function(e) {
+    const rect = this.selectionCanvas.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) / this.sheetScale,
+      y: (e.clientY - rect.top)  / this.sheetScale
+    };
+  },
+
+  renderClips: function() {
+    this.clipsContainer.innerHTML = '';
+    const trackHeight = 60; // Each row's height
+
+    this.tracks.forEach((track) => {
+      // One row per track
+      const rowDiv = document.createElement('div');
+      rowDiv.className = 'flex border-b border-gray-700 relative';
+      rowDiv.style.height = trackHeight + 'px';
+      rowDiv.style.userSelect = 'none';
+      this.clipsContainer.appendChild(rowDiv);
+
+      // Channel panel
+      const channelDiv = document.createElement('div');
+      channelDiv.className = 'w-56 p-2 flex flex-col justify-center border-r border-gray-600';
+      rowDiv.appendChild(channelDiv);
+
+      // Channel name + renaming
+      const topLine = document.createElement('div');
+      topLine.className = 'flex items-center justify-between mb-2';
+      channelDiv.appendChild(topLine);
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'font-bold cursor-pointer';
+      nameSpan.innerText = track.name;
+      nameSpan.title = 'Double-click to rename channel';
+      nameSpan.ondblclick = () => {
+        const newName = prompt('Enter channel name:', track.name);
+        if (newName) {
+          track.name = newName.trim();
+          nameSpan.innerText = track.name;
+        }
+      };
+      topLine.appendChild(nameSpan);
+
+      // Direction + Flip
+      const controlsDiv = document.createElement('div');
+      controlsDiv.className = 'flex items-center space-x-2';
+      channelDiv.appendChild(controlsDiv);
+
+      // Direction dropdown
+      const dirSelect = document.createElement('select');
+      dirSelect.className = 'p-1 bg-gray-600 rounded border border-gray-500 text-white';
+      ['S','N','E','W','NE','SE','NW','SW','NONE'].forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d;
+        opt.innerText = d;
+        dirSelect.appendChild(opt);
+      });
+      dirSelect.value = track.direction;
+      dirSelect.onchange = () => track.direction = dirSelect.value;
+      controlsDiv.appendChild(dirSelect);
+
+      // Flip checkbox
+      const flipLabel = document.createElement('label');
+      flipLabel.className = 'flex items-center space-x-1';
+      const flipCheckbox = document.createElement('input');
+      flipCheckbox.type = 'checkbox';
+      flipCheckbox.className = 'accent-blue-500 hover:accent-blue-400';
+      flipCheckbox.checked = track.flip;
+      flipCheckbox.onchange = () => {
+        track.flip = flipCheckbox.checked;
+        this.clips.forEach((c) => {
+          if (c.trackIndex === track.index) {
+            c.flip = track.flip;
+          }
+        });
+        this.drawPreviewForScrubber();
+      };
+      flipLabel.appendChild(flipCheckbox);
+      const flipTxt = document.createElement('span');
+      flipTxt.innerText = 'Flip';
+      flipLabel.appendChild(flipTxt);
+      controlsDiv.appendChild(flipLabel);
+
+      // Row highlight logic
+      rowDiv.onclick = () => {
+        this.activeTrackIndex = track.index;
+        [...this.clipsContainer.children].forEach(c => {
+          c.classList.remove('ring-1', 'ring-blue-500', 'bg-blue-900');
+        });
+        rowDiv.classList.add('ring-1', 'ring-blue-500', 'bg-blue-900');
+      };
+      if (track.index === this.activeTrackIndex) {
+        rowDiv.classList.add('ring-1', 'ring-blue-500', 'bg-blue-900');
+      }
+
+      // Timeline area for clips
+      const timelineDiv = document.createElement('div');
+      // Remove "flex-1" so we can set an explicit width
+      timelineDiv.className = 'relative h-full';
+      rowDiv.appendChild(timelineDiv);
+
+      // Find this track's clips and figure out max end
+      const trackClips = this.clips.filter(c => c.trackIndex === track.index);
+      const trackMaxFrames = trackClips.reduce((acc, c) => {
+        const endFrame = c.startFrame + c.length;
+        return Math.max(acc, endFrame);
+      }, 0);
+      // Set the timeline width for this track so it ends at the last clip
+      timelineDiv.style.width = (trackMaxFrames * this.TIMELINE_SCALE) + 'px';
+
+      // Render each clip in this track
+      trackClips.forEach((clip) => {
+        const clipDiv = document.createElement('div');
+        clipDiv.className =
+          'absolute bg-blue-600 text-xs px-2 cursor-move ' +
+          'transition-colors flex items-center whitespace-nowrap';
+        // Fill row height, so they're aligned
+        clipDiv.style.top = '0';
+        clipDiv.style.bottom = '0';
+        clipDiv.style.width = (clip.length * this.TIMELINE_SCALE) + 'px';
+        // Position horizontally (startFrame => left offset)
+        clipDiv.style.left = (clip.startFrame * this.TIMELINE_SCALE) + 'px';
+
+        // selection style
+        if (this.selectedClips.has(clip.id)) {
+          clipDiv.style.border = '2px solid white';
+        } else {
+          clipDiv.style.border = '2px solid transparent';
+        }
+
+        // Title text
+        const clipLabel = document.createElement('span');
+        clipLabel.textContent = clip.name;
+
+        // "x" button
+        const closeButton = document.createElement('button');
+        closeButton.textContent = 'x';
+        closeButton.className = 'ml-2 text-white bg-red-700 hover:bg-red-600 px-1 rounded';
+        closeButton.onclick = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          // remove this clip
+          this.clips = this.clips.filter(c => c.id !== clip.id);
+          this.updateMaxFrames();
+          this.renderClips();
+        };
+
+        clipDiv.appendChild(clipLabel);
+        clipDiv.appendChild(closeButton);
+
+        // Clip Title (hover)
+        clipDiv.title = `Tile(s): ${clip.frames.join(', ')}`;
+
+        // Double-click => rename
+        clipDiv.ondblclick = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          const newClipName = prompt('Enter new clip name:', clip.name || '');
+          if (newClipName) {
+            clip.name = newClipName.trim();
+            clipLabel.textContent = clip.name;
+          }
+        };
+
+        // Click => select
+        clipDiv.onclick = (ev) => {
+          ev.stopPropagation();
+          ev.preventDefault();
+          if (this.shiftKeyDown) {
+            if (this.selectedClips.has(clip.id)) {
+              this.selectedClips.delete(clip.id);
+            } else {
+              this.selectedClips.add(clip.id);
+            }
+          } else {
+            this.selectedClips.clear();
+            this.selectedClips.add(clip.id);
+          }
+          this.renderClips();
+        };
+
+        // Dragging logic
+        let isDragging = false, dragStartX = 0, clipStartLeft = 0;
+        clipDiv.onmousedown = (ev) => {
+          // Avoid drag if user clicked the x button
+          if (ev.target === closeButton) return;
+          isDragging = true;
+          dragStartX = ev.clientX;
+          clipStartLeft = parseInt(clipDiv.style.left) || 0;
+          ev.stopPropagation();
+          ev.preventDefault();
+        };
+        const onMouseMove = (ev) => {
+          if (!isDragging) return;
+          const deltaX = ev.clientX - dragStartX;
+          const newLeft = clipStartLeft + deltaX;
+          clip.startFrame = Math.max(0, Math.floor(newLeft / this.TIMELINE_SCALE));
+          clipDiv.style.left = (clip.startFrame * this.TIMELINE_SCALE) + 'px';
+          this.drawScrubber();
+        };
+        const onMouseUp = (ev) => {
+          if (isDragging) {
+            // finalize track index: which row did we end up in?
+            const timelineRect = this.clipsContainer.getBoundingClientRect();
+            const relativeY = ev.clientY - timelineRect.top;
+            const newTrackIndex = Math.floor(relativeY / trackHeight);
+            if (newTrackIndex >= 0 && newTrackIndex < this.tracks.length) {
+              clip.trackIndex = newTrackIndex;
+              clip.flip = this.tracks[newTrackIndex].flip;
+            }
+            this.renderClips();
+          }
+          isDragging = false;
+        };
+        window.addEventListener('mousemove', onMouseMove);
+        window.addEventListener('mouseup', onMouseUp);
+
+        timelineDiv.appendChild(clipDiv);
+      });
+    });
+
+    this.clipsContainer.style.height = (this.tracks.length * trackHeight) + 'px';
+  },
+
+  deleteSelectedClips: function() {
+    if (this.selectedClips.size === 0) return;
+    this.clips = this.clips.filter((clip) => !this.selectedClips.has(clip.id));
+    this.selectedClips.clear();
+    this.updateMaxFrames();
+    this.renderClips();
+  },
+
+  updateMaxFrames: function() {
+    let max = 0;
+    this.clips.forEach((c) => {
+      const end = c.startFrame + c.length;
+      if (end > max) max = end;
+    });
+    this.maxFrames = max;
+    if (this.currentFrameIndex >= max) {
+      this.currentFrameIndex = max > 0 ? max - 1 : 0;
+    }
+    this.drawScrubber();
+  },
+
+  scrubMouseDown: function(e) {
+    const rect = this.timelineScrubWrapper.getBoundingClientRect();
+    const onMouseMove = (ev) => {
+      const dx = ev.clientX - rect.left;
+      const ratio = dx / rect.width;
+      this.currentFrameIndex = Math.floor(ratio * this.maxFrames);
+      if (this.currentFrameIndex < 0) this.currentFrameIndex = 0;
+      if (this.currentFrameIndex >= this.maxFrames) this.currentFrameIndex = this.maxFrames - 1;
+      this.drawScrubber();
+      this.drawPreviewForScrubber();
+    };
+    const onMouseUp = () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+    onMouseMove(e);
+  },
+
+  drawScrubber: function() {
+    if (this.maxFrames <= 0) {
+      this.timelineScrubber.style.left = '0px';
+      return;
+    }
+    const wrapperWidth = this.timelineScrubWrapper.clientWidth;
+    const ratio = this.currentFrameIndex / this.maxFrames;
+    const xPos = Math.floor(ratio * wrapperWidth);
+    this.timelineScrubber.style.left = xPos + 'px';
+  },
+
+  seekFrame: function(frameIdx) {
+    if (this.maxFrames <= 0) return;
+    const clamped = Math.max(0, Math.min(frameIdx, this.maxFrames - 1));
+    this.currentFrameIndex = clamped;
+    this.drawScrubber();
+    this.drawPreviewForScrubber();
+  },
+
+  play: function() {
+    if (this.animInterval) this.stop();
+    const fps = parseInt(this.inputFps.value, 10) || 8;
+    const frameDuration = 1000 / fps;
+    this.animInterval = setInterval(() => {
+      this.seekFrame(this.currentFrameIndex + 1);
+      // if loop is enabled, jump back to 0
+      if (this.currentFrameIndex >= this.maxFrames - 1) {
+        if (this.loopEnabled) {
+          this.seekFrame(0);
+        } else {
+          this.stop();
+        }
+      }
+    }, frameDuration);
+  },
+
+  stop: function() {
+    if (this.animInterval) {
+      clearInterval(this.animInterval);
+      this.animInterval = null;
+    }
+  },
+
+  drawPreviewForScrubber: function() {
+    // set preview canvas size for upscaling
+    this.previewCanvas.width = this.tileSize * this.previewScale;
+    this.previewCanvas.height = this.tileSize * this.previewScale;
+    this.ctxPreview.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
+
+    if (!this.imageLoaded || this.tracks.length === 0) return;
+
+    const activeTrack = this.tracks[this.activeTrackIndex];
+    const clip = this.clips.find(
+      (c) =>
+        c.trackIndex === this.activeTrackIndex &&
+        this.currentFrameIndex >= c.startFrame &&
+        this.currentFrameIndex < c.startFrame + c.length
+    );
+    if (!clip) return;
+
+    const localFrame = this.currentFrameIndex - clip.startFrame;
+    const frameIdx = clip.frames[localFrame] ?? clip.frames[clip.frames.length - 1];
+    const sx = (frameIdx % this.columns) * this.tileSize;
+    const sy = Math.floor(frameIdx / this.columns) * this.tileSize;
+
+    this.ctxPreview.imageSmoothingEnabled = false;
+
+    // onion-skin: draw previous frame in red
+    if (this.onionSkinEnabled) {
+      const prevFrameIndex = localFrame > 0 ? localFrame - 1 : null;
+      if (prevFrameIndex !== null) {
+        const prevTileId = clip.frames[prevFrameIndex];
+        const psx = (prevTileId % this.columns) * this.tileSize;
+        const psy = Math.floor(prevTileId / this.columns) * this.tileSize;
+
+        this.ctxPreview.save();
+        this.ctxPreview.globalAlpha = 0.5;
+        if (clip.flip) {
+          this.ctxPreview.scale(-1, 1);
+          this.ctxPreview.drawImage(
+            this.spriteCanvas,
+            psx,
+            psy,
+            this.tileSize,
+            this.tileSize,
+            -this.previewCanvas.width,
+            0,
+            this.previewCanvas.width,
+            this.previewCanvas.height
+          );
+        } else {
+          this.ctxPreview.drawImage(
+            this.spriteCanvas,
+            psx,
+            psy,
+            this.tileSize,
+            this.tileSize,
+            0,
+            0,
+            this.previewCanvas.width,
+            this.previewCanvas.height
+          );
+        }
+        this.ctxPreview.globalCompositeOperation = 'source-in';
+        this.ctxPreview.fillStyle = 'red';
+        this.ctxPreview.fillRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
+        this.ctxPreview.restore();
+      }
+    }
+
+    // Draw current frame
+    if (clip.flip) {
+      this.ctxPreview.save();
+      this.ctxPreview.scale(-1, 1);
+      this.ctxPreview.drawImage(
+        this.spriteCanvas,
+        sx,
+        sy,
+        this.tileSize,
+        this.tileSize,
+        -this.previewCanvas.width,
+        0,
+        this.previewCanvas.width,
+        this.previewCanvas.height
+      );
+      this.ctxPreview.restore();
+    } else {
+      this.ctxPreview.drawImage(
+        this.spriteCanvas,
+        sx,
+        sy,
+        this.tileSize,
+        this.tileSize,
+        0,
+        0,
+        this.previewCanvas.width,
+        this.previewCanvas.height
+      );
+    }
+  },
+
+  exportJson: function() {
+    const name = this.inputSpriteName.value.trim() || 'sprite-01';
+    const trackData = {};
+    this.tracks.forEach((t) => {
+      trackData[t.name] = {
+        direction: t.direction,
+        flip: t.flip
+      };
+    });
+    const clipData = this.clips.map((c) => {
+      const trackName = this.tracks[c.trackIndex]?.name || `Track${c.trackIndex}`;
+      return {
+        id: c.id,
+        name: c.name,
+        track: trackName,
+        frames: c.frames,
+        startFrame: c.startFrame,
+        length: c.length,
+        flip: c.flip
+      };
+    });
+    const result = {
+      name: name,
+      tileSize: this.tileSize,
+      width: this.tileSize,
+      height: this.tileSize,
+      columns: this.columns,
+      rows: this.rows,
+      tracks: trackData,
+      clips: clipData
+    };
+    console.log('Export JSON:\n', JSON.stringify(result, null, 2));
+    alert('Check console for exported JSON!');
+  },
+
+  // NEW FEATURE: export to PNG
+  exportToPng: function() {
+    if (!this.imageLoaded) {
+      alert('No sprite sheet loaded yet!');
+      return;
+    }
+    const dataUrl = this.spriteCanvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.download = 'my-sprite.png';
+    link.href = dataUrl;
+    link.click();
+  },
+
+  initTimelineResizer: function() {
+    let isResizing = false;
+    let startY = 0;
+    let startHeight = 0;
+
+    const onMouseDown = (e) => {
+      isResizing = true;
+      startY = e.clientY;
+      startHeight = this.timelineArea.offsetHeight;
+      e.preventDefault();
+    };
+    const onMouseMove = (e) => {
+      if (!isResizing) return;
+      const dy = e.clientY - startY;
+      const newHeight = startHeight - dy;
+      const minHeight = 80;
+      const maxHeight = window.innerHeight - 120;
+      const clamped = Math.max(minHeight, Math.min(newHeight, maxHeight));
+      this.timelineArea.style.height = clamped + 'px';
+
+      // recalc top section
+      const parentHeight = this.main_content_area.offsetHeight;
+      const newTopHeight =
+        parentHeight - clamped - this.timelineResizer.offsetHeight;
+      this.topSection.style.height = newTopHeight + 'px';
+    };
+    const onMouseUp = () => {
+      isResizing = false;
+    };
+    this.addListener(this.timelineResizer, 'mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  },
+
+  initVerticalResizer: function() {
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+
+    const onMouseDown = (e) => {
+      isResizing = true;
+      startX = e.clientX;
+      startWidth = this.previewContainer.offsetWidth;
+      e.preventDefault();
+    };
+    const onMouseMove = (e) => {
+      if (!isResizing) return;
+      const dx = e.clientX - startX;
+      const newWidth = startWidth + dx;
+      const minWidth = 120;
+      const maxWidth = Math.min(window.innerWidth - 100, 600);
+      const clamped = Math.max(minWidth, Math.min(newWidth, maxWidth));
+      this.previewContainer.style.width = clamped + 'px';
+    };
+    const onMouseUp = () => {
+      isResizing = false;
+    };
+    this.addListener(this.verticalResizer, 'mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+  },
+
+  addListener: function(element, event, handler) {
+    if (!element) return;
+    element.addEventListener(event, handler);
+    this.listeners.push({ element, event, handler });
+  }
+};
+</script>

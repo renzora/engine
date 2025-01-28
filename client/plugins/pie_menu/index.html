@@ -3,16 +3,16 @@
     <div id="pieMenu" class="pie-menu">
         <div class="pie-menu-ring"></div>
         <div class="pie-item" data-action="action1" style="--item-index: 0;">
-            <div class="pie-item-content">Item 1</div>
+            <div class="pie-item-content">Editor</div>
         </div>
         <div class="pie-item" data-action="action2" style="--item-index: 1;">
-            <div class="pie-item-content">Item 2</div>
+            <div class="pie-item-content">Terminal</div>
         </div>
         <div class="pie-item" data-action="action3" style="--item-index: 2;">
-            <div class="pie-item-content">Item 3</div>
+            <div class="pie-item-content">Tileset</div>
         </div>
         <div class="pie-item" data-action="action4" style="--item-index: 3;">
-            <div class="pie-item-content">Item 4</div>
+            <div class="pie-item-content">Sprites</div>
         </div>
         <div class="pie-item" data-action="action5" style="--item-index: 4;">
             <div class="pie-item-content">Item 5</div>
@@ -180,13 +180,21 @@
                     if (this.pieMenuVisible && this.currentHoveredAction) {
                         console.log(`Executing action: ${this.currentHoveredAction}`);
                         if (this.currentHoveredAction === 'action1') {
-                            console.log('item 1 triggered');
+                            plugin.load('console_window', {
+                                path: 'editor',
+                                ext: 'njk',
+                                drag: false,
+                                reload: true,
+                                after: function () {
+                                    plugin.load('editor_window', { path: 'editor', ext: 'njk' });
+                                }
+                            });
                         } else if (this.currentHoveredAction === 'action2') {
-                            console.log('item 2 triggered');
+                            plugin.load('terminal', { ext: 'html' });
                         } else if (this.currentHoveredAction === 'action3') {
-                            console.log('item 3 triggered');
+                            plugin.load('tileset_manager', { ext: 'njk'});
                         } else if (this.currentHoveredAction === 'action4') {
-                            console.log('item 4 triggered');
+                            plugin.load('sprite_creator', { ext: 'html'});
                         } else if (this.currentHoveredAction === 'action5') {
                             console.log('item 5 triggered');
                         } else if (this.currentHoveredAction === 'action6') {

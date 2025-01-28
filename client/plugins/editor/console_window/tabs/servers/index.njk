@@ -1,476 +1,344 @@
-{% if auth %}
-<div class="p-2">
-
-  <button id="btn-new-server" class="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded shadow-md">
-    New Server
-  </button>
-
-  <div id="server-list" class="mt-4 text-white">
-    Loading servers...
+<div id="console_window_content" class="text-white overflow-y-auto h-full">
+  <div class="p-2">
+    <button id="btn-new-server" class="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded shadow-md">
+      New Server
+    </button>
+    <div id="server-list" class="mt-4 text-white">
+      Loading servers...
+    </div>
   </div>
 </div>
 
 <script>
-var serverConsole = {
+serverConsole = {
   eventListeners: [],
-
-  start: function() {
-    this.attachGlobalListeners();
-    this.loadServers();
+  deleteModes: {},
+  start() {
+    this.addListener('btn-new-server', 'click', this.handleCreateServer.bind(this))
+    this.loadServers()
   },
-
-  attachGlobalListeners: function() {
-    const newServerBtn = document.getElementById("btn-new-server");
-    if (newServerBtn) {
-      const listener = this.handleCreateServerClick.bind(this);
-      newServerBtn.addEventListener("click", listener);
-      this.eventListeners.push({
-        element: newServerBtn,
-        event: "click",
-        handler: listener
-      });
+  addListener(id, event, handler) {
+    const element = document.getElementById(id)
+    if (element) {
+      element.addEventListener(event, handler)
+      this.eventListeners.push({ element, event, handler })
     }
   },
-
-  handleCreateServerClick: function() {
-    fetch("/api/servers/create_server", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include',
+  async fetchData(url, options = {}) {
+    try {
+      const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        ...options
+      })
+      return await response.json()
+    } catch (error) {
+      console.error('Fetch error:', error)
+      return { message: 'error', error: error.message }
+    }
+  },
+  showError(message, error) {
+    console.error(message, error)
+    alert(`${message}: ${error || 'Unknown error'}`)
+  },
+  async handleCreateServer() {
+    const res = await this.fetchData('/api/servers/create_server', {
+      method: 'POST',
       body: JSON.stringify({})
     })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(res => {
-        if (res.message === "success") {
-          serverConsole.addServerToUI(res.server, true);
-        } else {
-          alert("Error creating server: " + (res.error || ""));
-        }
-      })
-      .catch(err => {
-        console.error("Error creating server", err);
-        alert("Error creating server");
-      });
-  },
-
-  loadServers: function() {
-    const container = document.getElementById("server-list");
-    if (!container) return;
-    container.innerHTML = "Loading servers...";
-
-    fetch("/api/servers/get_servers", {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include'
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.message === "success") {
-          this.displayServers(data.servers, container);
-        } else {
-          container.innerHTML = "Error loading servers.";
-        }
-      })
-      .catch(() => {
-        container.innerHTML = "Error loading servers.";
-      });
-  },
-
-  displayServers: function(servers, container) {
-    if (!servers.length) {
-      container.innerHTML = "No servers found.";
-      return;
-    }
-
-    container.innerHTML = "";
-
-    servers.forEach(server => {
-      this.addServerToUI(server, false, container);
-    });
-  },
-
-  addServerToUI: function(server, prepend = false, container) {
-    const serverList = container || document.getElementById("server-list");
-    if (!serverList) return;
-
-    const serverItem = document.createElement("div");
-    serverItem.className = "bg-gray-700 rounded mt-2 mb-4";
-    const row = document.createElement("div");
-    row.className = "flex items-center justify-between px-2 py-2 ml-2 cursor-default";
-    const nameSpan = document.createElement("span");
-    nameSpan.className = "font-semibold text-lg";
-    nameSpan.textContent = server.name;
-    nameSpan.setAttribute("data-server-id", server.id);
-    nameSpan.style.cursor = "text";
-
-    nameSpan.addEventListener("dblclick", e => {
-      this.handleServerRename(e, server);
-    });
-
-    const btnContainer = document.createElement("div");
-    const newSceneBtn = document.createElement("button");
-    newSceneBtn.className =
-      "bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded shadow-md";
-    newSceneBtn.textContent = "New Scene";
-    newSceneBtn.addEventListener("click", () => {
-      this.createScene(server.id);
-    });
-
-    btnContainer.appendChild(newSceneBtn);
-    row.appendChild(nameSpan);
-    row.appendChild(btnContainer);
-    const scenesDiv = document.createElement("div");
-    scenesDiv.className = "ml-4 mb-2 p-2";
-    scenesDiv.setAttribute("data-server-id", server.id);
-    serverItem.appendChild(row);
-    serverItem.appendChild(scenesDiv);
-
-    if (prepend && serverList.firstChild) {
-      serverList.insertBefore(serverItem, serverList.firstChild);
+    if (res.message === 'success') {
+      this.addServerToUI(res.server, true)
     } else {
-      serverList.appendChild(serverItem);
+      this.showError('Error creating server', res.error)
     }
-
-    this.loadScenes(server.id, scenesDiv);
   },
-
-  handleServerRename: function(e, server) {
-    const span = e.target;
-    const oldName = server.name;
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = oldName;
-    input.className = "text-gray-800 px-2 py-1 rounded";
-    span.replaceWith(input);
-    input.focus();
-
-    const save = () => {
-      let newName = input.value.trim();
-      if (!newName) newName = oldName;
-
-      span.textContent = newName;
-      input.replaceWith(span);
-
-      if (newName !== oldName) {
-        this.saveServerName(server.id, newName);
-        server.name = newName;
-      }
-    };
-
-    input.addEventListener("blur", save);
-    input.addEventListener("keydown", ev => {
-      if (ev.key === "Enter") {
-        save();
-      }
-    });
+  async loadServers() {
+    const container = document.getElementById('server-list')
+    if (!container) return
+    container.innerHTML = 'Loading servers...'
+    const res = await this.fetchData('/api/servers/get_servers')
+    if (res.message === 'success') {
+      container.innerHTML = res.servers.length ? '' : '<div class="text-gray-400">No servers found</div>'
+      res.servers.forEach(server => this.addServerToUI(server, false, container))
+    } else {
+      container.innerHTML = 'Error loading servers'
+    }
   },
+  addServerToUI(server, prepend, container) {
+    const serverList = container || document.getElementById('server-list')
+    if (!serverList) return
 
-  saveServerName: function(serverId, newName) {
-    fetch("/api/servers/edit_server", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include',
-      body: JSON.stringify({ id: serverId, name: newName })
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(res => {
-        if (res.message !== "success") {
-          alert("Error editing server: " + (res.error || ""));
-        }
-      })
-      .catch(err => {
-        console.error("Error editing server", err);
-        alert("Error editing server");
-      });
+    const serverItem = document.createElement('div')
+    serverItem.className = 'bg-gray-700 border border-gray-600 shadow-md rounded mt-2 mb-4'
+    serverItem.innerHTML =
+      `<div class="flex items-center justify-between mb-2 px-4 py-2">
+        <span class="font-semibold text-lg cursor-text" data-server-id="${server.id}">${server.name}</span>
+        <div class="flex items-center space-x-2">
+          <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded shadow-md">
+            New Scene
+          </button>
+          <button class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-1 px-2 rounded shadow-md flex items-center justify-center" data-cog-button="true">
+            <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20">
+              <path d="M10 2a1 1 0 0 1 .993.883L11 3v1.07a6.02 6.02 0 0 1 1.867.78l.76-.438a1 1 0 0 1 1.308.37l.5.866a1 1 0 0 1-.365 1.366l-.76.439c.115.389.186.8.207 1.221h1.143a1 1 0 0 1 .993.883L16 10v1a1 1 0 0 1-.883.993L15 12h-1.143a6.026 6.026 0 0 1-.207 1.221l.76.439a1 1 0 0 1 .365 1.366l-.5.866a1 1 0 0 1-1.308.37l-.76-.438A6.02 6.02 0 0 1 11 16.93V18a1 1 0 0 1-.883.993L10 19a1 1 0 0 1-.993-.883L9 18v-1.07a6.02 6.02 0 0 1-1.867-.78l-.76.438a1 1 0 0 1-1.308-.37l-.5-.866a1 1 0 0 1 .365-1.366l.76-.439A6.026 6.026 0 0 1 5 12.001H3.857A1 1 0 0 1 2.864 11L3 10V9a1 1 0 0 1 .883-.993L4 8h1.143a6.026 6.026 0 0 1 .207-1.221l-.76-.439a1 1 0 0 1-.365-1.366l.5-.866a1 1 0 0 1 1.308-.37l.76.438A6.02 6.02 0 0 1 9 4.07V3a1 1 0 0 1 .883-.993L10 2zm0 5a3 3 0 1 0 2.995 2.824L13 10a3 3 0 0 0-3-3z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <ul id="scenes-list-${server.id}" class="p-0 m-0 list-none" data-draggable-list="true"></ul>`
+
+    const nameSpan = serverItem.querySelector('span')
+    nameSpan.addEventListener('dblclick', (e) => this.handleServerRename(e, server))
+
+    const newSceneBtn = serverItem.querySelector('button')
+    newSceneBtn.addEventListener('click', () => this.createScene(server.id))
+
+    const cogBtn = serverItem.querySelector('[data-cog-button]')
+    cogBtn.addEventListener('click', () => this.toggleDeleteMode(server.id))
+
+    this.deleteModes[server.id] = false
+    prepend ? serverList.prepend(serverItem) : serverList.appendChild(serverItem)
+    this.loadScenes(server.id)
   },
-
-  loadScenes: function(serverId, container) {
-    container.innerHTML = "Loading scenes...";
-
-    fetch("/api/scenes/scenes", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include',
-      body: JSON.stringify({ serverId: serverId })
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(data => {
-        if (data.message === "success" && data.scenes) {
-          this.displayScenes(data.scenes, container);
-        } else {
-          container.innerHTML = "No scenes found or error loading scenes.";
-        }
-      })
-      .catch(err => {
-        console.error("Error loading scenes for server", serverId, err);
-        container.innerHTML = "Error loading scenes.";
-      });
-  },
-
-displayScenes: function(scenes, container) {
-  // Sort scenes by their 'order' property before displaying
-  scenes.sort((a, b) => a.order - b.order);
-
-  container.innerHTML = "";
-  if (!scenes.length) {
-    container.innerHTML = "<p>No scenes found.</p>";
-    return;
-  }
-
-  // Create a list container (ul)
-  const list = document.createElement("ul");
-  list.className = "space-y-1";
-  list.setAttribute("data-draggable-list", "true");
-
-  // For each scene, create a list item with nameSpan and a "Go" button
-  scenes.forEach(scene => {
-    const li = document.createElement("li");
-    li.className =
-      "px-4 py-2 bg-gray-800 rounded flex justify-between items-center cursor-move";
-    li.setAttribute("data-scene-id", scene._id);
-
-    // Scene name text
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = scene.name;
-    nameSpan.style.cursor = "text";
-
-    // Double-click to rename the scene
-    nameSpan.addEventListener("dblclick", e => {
-      this.handleSceneRename(e, scene);
-    });
-
-    // Append nameSpan to the list item
-    li.appendChild(nameSpan);
-
-    // "Go" button that explicitly triggers game.scene(scene._id)
-    const goBtn = document.createElement("button");
-    goBtn.className =
-      "bg-blue-600 hover:bg-blue-700 text-white font-bold py-1 px-2 rounded shadow-md ml-2";
-    goBtn.textContent = "Go";
-
-    // Stop the drag event from interfering and call game.scene
-    goBtn.addEventListener("click", e => {
-      e.stopPropagation();
-      game.scene(scene._id);
-    });
-
-    // Append "Go" button to the list item
-    li.appendChild(goBtn);
-
-    // Add the list item to the list container
-    list.appendChild(li);
-  });
-
-  // Append the list of scenes
-  container.appendChild(list);
-
-  // Make the scenes draggable
-  this.makeScenesDraggable(list);
-},
-
-
-  createScene: function(serverId) {
-    fetch("/api/scenes/create_scene", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include',
-      body: JSON.stringify({ serverId: serverId })
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(res => {
-        if (res.message === "success" && res.scene) {
-          const scenesContainer = document.querySelector(
-            `[data-server-id="${serverId}"]`
-          );
-          if (scenesContainer) {
-            this.loadScenes(serverId, scenesContainer);
-          }
-        } else {
-          alert("Error creating scene: " + (res.error || ""));
-        }
-      })
-      .catch(err => {
-        console.error("Error creating scene", err);
-        alert("Error creating scene");
-      });
-  },
-
-  handleSceneRename: function(e, scene) {
-    const span = e.target;
-    const oldName = scene.name;
-
-    const input = document.createElement("input");
-    input.type = "text";
-    input.value = oldName;
-    input.className = "text-gray-800 px-2 py-1 rounded";
-    span.replaceWith(input);
-    input.focus();
-
-    const save = () => {
-      let newName = input.value.trim();
-      if (!newName) newName = oldName;
-      span.textContent = newName;
-      input.replaceWith(span);
-
-      if (newName !== oldName) {
-        this.saveSceneName(scene._id, newName);
-        scene.name = newName;
-      }
-    };
-    input.addEventListener("blur", save);
-    input.addEventListener("keydown", ev => {
-      if (ev.key === "Enter") {
-        save();
-      }
-    });
-  },
-
-  saveSceneName: function(sceneId, newName) {
-    fetch("/api/scenes/edit_scene", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include',
-      body: JSON.stringify({ sceneId: sceneId, name: newName })
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(res => {
-        if (res.message !== "success") {
-          alert("Error updating scene");
-        }
-      })
-      .catch(err => {
-        console.error("Error updating scene name", err);
-        alert("Error updating scene");
-      });
-  },
-
-  makeScenesDraggable: function(list) {
-    const items = list.querySelectorAll("li");
-    items.forEach(item => {
-      item.draggable = true;
-
-      item.addEventListener("dragstart", e => {
-        e.dataTransfer.setData(
-          "text/plain",
-          e.target.getAttribute("data-scene-id")
-        );
-        e.dropEffect = "move";
-        e.target.classList.add("opacity-50");
-      });
-
-      item.addEventListener("dragend", e => {
-        e.target.classList.remove("opacity-50");
-      });
-    });
-
-    list.addEventListener("dragover", e => {
-      e.preventDefault();
-      const draggedOverItem = e.target.closest("li");
-      if (!draggedOverItem) return;
-      const bounding = draggedOverItem.getBoundingClientRect();
-      const offset = bounding.y + bounding.height / 2;
-      if (e.clientY - offset > 0) {
-        draggedOverItem.parentNode.insertBefore(
-          document.querySelector(".opacity-50"),
-          draggedOverItem.nextSibling
-        );
+  toggleDeleteMode(serverId) {
+    this.deleteModes[serverId] = !this.deleteModes[serverId]
+    const scenesList = document.getElementById(`scenes-list-${serverId}`)
+    if (!scenesList) return
+    const deleteButtons = scenesList.querySelectorAll('[data-delete-button]')
+    deleteButtons.forEach(btn => {
+      if (this.deleteModes[serverId]) {
+        btn.classList.remove('hidden')
       } else {
-        draggedOverItem.parentNode.insertBefore(
-          document.querySelector(".opacity-50"),
-          draggedOverItem
-        );
+        btn.classList.add('hidden')
       }
-    });
-
-    list.addEventListener("drop", e => {
-      e.preventDefault();
-      const serverId = list.parentNode.getAttribute("data-server-id");
-      const newOrder = [];
-      list.querySelectorAll("li").forEach((li) => {
-        newOrder.push(li.getAttribute("data-scene-id"));
-      });
-      this.saveNewSceneOrder(serverId, newOrder);
-    });
-  },
-
-  saveNewSceneOrder: function(serverId, orderedSceneIds) {
-    fetch("/api/scenes/reorder_scenes", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      credentials: 'include',
-      body: JSON.stringify({ serverId: serverId, orderedSceneIds: orderedSceneIds })
     })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(res => {
-        if (res.message === "success") {
-          console.log("Scene order updated successfully");
-        } else {
-          alert("Error reordering scenes: " + (res.error || ""));
-        }
-      })
-      .catch(err => {
-        console.error("Error reordering scenes", err);
-        alert("Error reordering scenes");
-      });
   },
+  handleServerRename(e, server) {
+    const span = e.target
+    const oldName = server.name
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.value = oldName
+    input.className = 'text-gray-800 px-2 py-1 rounded'
+    span.replaceWith(input)
+    input.focus()
+    input.select()
+    let hasSaved = false
+    const save = async () => {
+      if (hasSaved) return
+      hasSaved = true
+      const newName = input.value.trim() || oldName
+      span.textContent = newName
+      input.replaceWith(span)
+      if (newName !== oldName) {
+        const res = await this.fetchData('/api/servers/edit_server', {
+          method: 'POST',
+          body: JSON.stringify({ id: server.id, name: newName })
+        })
+        if (res.message !== 'success') {
+          this.showError('Error renaming server', res.error)
+          span.textContent = oldName
+        }
+      }
+    }
+    const onBlur = () => {
+      input.removeEventListener('keydown', onKeyDown)
+      save()
+    }
+    const onKeyDown = (evt) => {
+      if (evt.key === 'Enter') {
+        evt.preventDefault()
+        input.removeEventListener('blur', onBlur)
+        save()
+      }
+    }
+    input.addEventListener('blur', onBlur)
+    input.addEventListener('keydown', onKeyDown)
+  },
+  async createScene(serverId) {
+    const res = await this.fetchData('/api/scenes/create_scene', {
+      method: 'POST',
+      body: JSON.stringify({ serverId })
+    })
+    if (res.message === 'success') {
+      const scenesList = document.getElementById(`scenes-list-${serverId}`)
+      if (scenesList) {
+        this.prependSceneToList(res.scene, scenesList)
+        this.makeScenesDraggable(scenesList)
+      }
+    } else {
+      this.showError('Error creating scene', res.error)
+    }
+  },
+  async loadScenes(serverId) {
+    const res = await this.fetchData('/api/scenes/scenes', {
+      method: 'POST',
+      body: JSON.stringify({ serverId })
+    })
+    const scenesList = document.getElementById(`scenes-list-${serverId}`)
+    if (!scenesList) return
+    if (res.message === 'success') {
+      scenesList.innerHTML = ''
+      res.scenes.forEach(scene => this.prependSceneToList(scene, scenesList))
+      this.makeScenesDraggable(scenesList)
+    } else {
+      scenesList.innerHTML = 'Error loading scenes'
+    }
+  },
+  prependSceneToList(scene, list) {
+    const li = document.createElement('li')
+    li.className = 'odd:bg-gray-900 even:bg-gray-800 px-4 py-2 cursor-move flex items-center justify-between last:rounded-b'
+    li.setAttribute('data-scene-id', scene._id)
+    li.innerHTML =
+      `<span class="flex-grow cursor-text">${scene.name}</span>
+       <div class="flex items-center space-x-2">
+         <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded shadow-md" data-go-button="true">
+           Edit
+         </button>
+         <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded shadow-md hidden" data-delete-button="true">
+           <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M6 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1h3a1 1 0 1 1 0 2h-.306l-1.2 12A2 2 0 0 1 12.5 18h-5a2 2 0 0 1-1.994-1.8l-1.2-12H4a1 1 0 1 1 0-2h3V2zm2 3v9a1 1 0 1 0 2 0V5H8zm4 0v9a1 1 0 1 0 2 0V5h-2z"/></svg>
+         </button>
+       </div>`
 
-  unmount: function() {
-    this.eventListeners.forEach(l => {
-      l.element.removeEventListener(l.event, l.handler);
-    });
+    li.querySelector('span').addEventListener('dblclick', (e) => this.handleSceneRename(e, scene))
+    li.querySelector('[data-go-button]').addEventListener('click', () => game.scene(scene._id))
+    li.querySelector('[data-delete-button]').addEventListener('click', () => this.handleDeleteScene(scene._id, li))
+    list.prepend(li)
+  },
+  handleSceneRename(e, scene) {
+    const span = e.target
+    const oldName = scene.name
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.value = oldName
+    input.className = 'text-gray-800 px-2 py-1 rounded'
+    span.replaceWith(input)
+    input.focus()
+    input.select()
+    let hasSaved = false
+    const save = async () => {
+      if (hasSaved) return
+      hasSaved = true
+      const newName = input.value.trim() || oldName
+      span.textContent = newName
+      input.replaceWith(span)
+      if (newName !== oldName) {
+        const res = await this.fetchData('/api/scenes/edit_scene', {
+          method: 'POST',
+          body: JSON.stringify({ sceneId: scene._id, name: newName })
+        })
+        if (res.message !== 'success') {
+          this.showError('Error renaming scene', res.error)
+          span.textContent = oldName
+        }
+      }
+    }
+    const onBlur = () => {
+      input.removeEventListener('keydown', onKeyDown)
+      save()
+    }
+    const onKeyDown = (evt) => {
+      if (evt.key === 'Enter') {
+        evt.preventDefault()
+        input.removeEventListener('blur', onBlur)
+        save()
+      }
+    }
+    input.addEventListener('blur', onBlur)
+    input.addEventListener('keydown', onKeyDown)
+  },
+  async handleDeleteScene(sceneId, listItem) {
+    const res = await this.fetchData('/api/scenes/delete_scene', {
+      method: 'POST',
+      body: JSON.stringify({ sceneId })
+    })
+    if (res.message === 'success') {
+      listItem.remove()
+    } else {
+      this.showError('Error deleting scene', res.error)
+    }
+  },
+  makeScenesDraggable(list) {
+    let draggedItem = null
+    list.querySelectorAll('li').forEach(item => {
+      item.draggable = true
+      item.addEventListener('dragstart', () => {
+        draggedItem = item
+        item.classList.add('opacity-50')
+      })
+      item.addEventListener('dragend', () => {
+        item.classList.remove('opacity-50')
+        draggedItem = null
+      })
+    })
+    list.addEventListener('dragover', (e) => {
+      e.preventDefault()
+      const afterElement = this.getDragAfterElement(list, e.clientY)
+      const currentItem = draggedItem
+      if (!currentItem) return
+      if (!afterElement) {
+        list.appendChild(currentItem)
+      } else {
+        list.insertBefore(currentItem, afterElement)
+      }
+    })
+    list.addEventListener('drop', async (e) => {
+      e.preventDefault()
+      if (!draggedItem) return
+      const sceneId = draggedItem.dataset.sceneId
+      const oldServerId = draggedItem.closest('ul').id.split('-')[2]
+      const newServerId = list.id.split('-')[2]
+      if (oldServerId === newServerId) {
+        const sceneIds = Array.from(list.children).map(li => li.dataset.sceneId)
+        const res = await this.fetchData('/api/scenes/reorder_scenes', {
+          method: 'POST',
+          body: JSON.stringify({ serverId: oldServerId, orderedSceneIds: sceneIds })
+        })
+        if (res.message !== 'success') {
+          this.showError('Error saving scene order', res.error)
+          this.loadScenes(oldServerId)
+        }
+      } else {
+        const moveRes = await this.fetchData('/api/scenes/move_scene', {
+          method: 'POST',
+          body: JSON.stringify({ sceneId, newServerId })
+        })
+        if (moveRes.message !== 'success') {
+          this.showError('Error moving scene', moveRes.error)
+          this.loadScenes(oldServerId)
+          this.loadScenes(newServerId)
+          return
+        }
+        const sceneIds = Array.from(list.children).map(li => li.dataset.sceneId)
+        const reorderRes = await this.fetchData('/api/scenes/reorder_scenes', {
+          method: 'POST',
+          body: JSON.stringify({ serverId: newServerId, orderedSceneIds: sceneIds })
+        })
+        if (reorderRes.message !== 'success') {
+          this.showError('Error saving scene order in new server', reorderRes.error)
+        }
+        this.loadScenes(oldServerId)
+        this.loadScenes(newServerId)
+      }
+    })
+  },
+  getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('li:not(.opacity-50)')]
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect()
+      const offset = y - box.top - box.height / 2
+      if (offset < 0 && offset > closest.offset) {
+        return { offset, element: child }
+      } else {
+        return closest
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element
+  },
+  cleanup() {
+    this.eventListeners.forEach(({ element, event, handler }) => {
+      element.removeEventListener(event, handler)
+    })
+    this.eventListeners = []
   }
-};
-
-serverConsole.start();
+}
+serverConsole.start()
 </script>
-{% endif %}
