@@ -298,6 +298,7 @@ game = {
         }
         this.ctx.fillRect(0, 0, width, height);
         this.ctx.restore();
+        plugin.hook('onRenderBackground');
         this.renderCalls++;
     },
     

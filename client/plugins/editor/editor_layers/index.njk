@@ -1,4 +1,10 @@
-<div id="layersPanel" class="fixed top-0 right-0 w-72 bg-gray-800 text-white rounded shadow-lg h-full flex flex-col">
+<div id="layersPanel" class="fixed top-0 right-0 w-72 bg-gray-800 text-white rounded shadow-lg h-full flex flex-col transition-transform duration-300">
+  <div id="slideTab" class="absolute -left-4 top-2 w-4 h-6 bg-gray-700 text-white flex items-center justify-center cursor-pointer rounded-l shadow-lg z-20">
+    <svg id="slideTabIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  </div>
+
   <div id="resizeHandle" class="resize-handle"></div>
 
   <div id="propertiesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
@@ -15,7 +21,6 @@
     </svg>
   </div>
 
-  <!-- PROPERTIES BODY -->
   <div id="propertiesBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
     <div class="mb-4">
       <label for="objectName" class="block text-sm font-medium text-gray-300">Object Name</label>
@@ -115,26 +120,27 @@
       </div>
     </div>
 
-    <!-- NEW BACKGROUND INPUT -->
-    <div class="mb-4 relative">
-      <label for="backgroundInput" class="block text-sm font-medium text-gray-300">Scene Background</label>
+    <div class="relative">
       <input
         id="backgroundInput"
         type="text"
         class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
         placeholder="Type to search"
+        autocomplete="off"
       />
-      <!-- Suggestions container; hidden by default -->
+      <button
+        id="clearBackgroundBtn"
+        class="hidden absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-600 text-gray-300 rounded px-2 text-sm"
+        type="button"
+      >x</button>
+
       <div
         id="backgroundSuggestions"
-        class="absolute w-full bg-gray-700 rounded border border-gray-600 mt-1 hidden z-50 max-h-40 overflow-auto"
-        style="top: 5.5rem;"
+        class="absolute w-full rounded border border-gray-700 mt-1 hidden z-50 max-h-60 overflow-auto bg-gray-800"
       >
       </div>
     </div>
-    <!-- END BACKGROUND INPUT -->
   </div>
-  <!-- END PROPERTIES BODY -->
 
   <div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Color Spectrum</span>
@@ -170,7 +176,6 @@
       </div>
       <div id="spectrumHandle" class="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg cursor-pointer" style="transform: translate(-50%, -50%)"></div>
     </div>
-    
     <div class="flex gap-2 items-center">
       <div id="selectedColorPreview" class="w-8 h-8 rounded border border-gray-600"></div>
       <input type="text" id="colorHexInput" class="bg-gray-700 text-sm px-2 py-1 rounded border border-gray-600" value="#000000">
@@ -210,7 +215,6 @@
         </svg>
       </div>
     </div>
-
     <div id="nodesList" class="h-64 overflow-y-auto">
       <div class="node-list-container">
       </div>
@@ -373,17 +377,32 @@
     cursor: ew-resize;
     z-index: 10;
   }
-
   #resizeHandle:hover {
     background: rgba(255, 255, 255, 0.1);
   }
-  /* Minimal styling for suggestions */
-  #backgroundSuggestions div:hover {
-    background-color: #4b5563;
+  #backgroundSuggestions {
+    top: calc(100% + 0.5rem) !important;
+    left: 0;
   }
-  #backgroundSuggestions div {
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
+  #backgroundSuggestions::before {
+    content: "";
+    position: absolute;
+    top: -10px;
+    left: 1.5rem;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 10px solid #1f2937;
+  }
+  #backgroundSuggestions div:hover {
+    background-color: #2563eb;
+    color: #ffffff;
+  }
+  #backgroundSuggestions {
+    max-height: 16rem;
+    border-color: #2563eb;
+  }
+  .slid-off {
+    transform: translateX(100%);
   }
 </style>
 
@@ -431,6 +450,7 @@ editor_layers = {
     ],
   },
   filteredNodes: null,
+  panelSlideVisible: true,
 
   initUI() {
     const addLayerBtn = document.getElementById("addLayerBtn");
@@ -440,111 +460,105 @@ editor_layers = {
     const nodesTitleBar = document.getElementById("nodesTitleBar");
     const spectrumTitleBar = document.getElementById("spectrumTitleBar");
     const propertiesTitleBar = document.getElementById("propertiesTitleBar");
-    
     nodesTitleBar.addEventListener("click", () => this.toggleNodesPanel());
     spectrumTitleBar.addEventListener("click", () => this.toggleSpectrumPanel());
     propertiesTitleBar.addEventListener("click", () => this.togglePropertiesPanel());
-
     const searchInput = document.getElementById('nodeSearch');
     searchInput.addEventListener('input', (e) => this.handleNodeSearch(e.target.value));
-
     addLayerBtn.addEventListener("click", () => this.addLayer());
     addGroupBtn.addEventListener("click", () => this.addGroup());
     addItemBtn.addEventListener("click", () => this.addItemToLayer("New Item"));
-
     layersTitleBar.addEventListener("click", () => this.toggleLayersPanel());
-
     this.dropIndicator = document.createElement("div");
     this.dropIndicator.className = "drop-indicator";
     const layersList = document.getElementById("layersList");
     layersList.appendChild(this.dropIndicator);
-
     this.dragContainer = document.createElement("div");
     this.dragContainer.className = "drag-container";
     layersList.appendChild(this.dragContainer);
-
     document.addEventListener("mousemove", (e) => this.handleMouseMove(e));
     document.addEventListener("mouseup",   (e) => this.handleMouseUp(e));
-
     const layersPanel = document.getElementById("layersPanel");
     const resizeHandle = document.getElementById("resizeHandle");
-
     let isResizing = false;
-
     resizeHandle.addEventListener("mousedown", (e) => {
       isResizing = true;
       document.body.style.cursor = "ew-resize";
     });
-
     document.addEventListener("mousemove", (e) => {
       if (!isResizing) return;
-
       const panelRect = layersPanel.getBoundingClientRect();
       const newWidth = window.innerWidth - e.clientX;
-
       if (newWidth >= 200 && newWidth <= 600) {
         layersPanel.style.width = `${newWidth}px`;
       }
     });
-
     document.addEventListener("mouseup", () => {
       if (isResizing) {
         isResizing = false;
         document.body.style.cursor = "";
       }
     });
-
-    // Initialize the new background input
     this.initBackgroundInput();
+    const slideTab = document.getElementById("slideTab");
+    slideTab.addEventListener("click", () => this.togglePanelSlide());
   },
 
-  initBackgroundInput: function() {
+  initBackgroundInput() {
     const bgInput = document.getElementById('backgroundInput');
     const suggestionsEl = document.getElementById('backgroundSuggestions');
-
-    // We'll assume objectData is available via `assets.use('objectData')` or `game.objectData`.
-    // For demonstration, we do something like:
-    let objectData = null;
-    try {
-      objectData = assets.use('objectData'); 
-    } catch (e) {
-      console.warn("objectData not found in assets, trying game.objectData instead.");
-      objectData = game.objectData;
-    }
-
-    if (!objectData) {
-      console.warn("No objectData found; background autocomplete will not function.");
-      return;
-    }
-
-    // Gather single-tile objects: those that have "i" as a single number or array with length 1
-    const singleTileEntries = [];
-    for (const [key, objArr] of Object.entries(objectData)) {
-      // Each key is something like "405gzo1m64neik4", 
-      // and objArr is an array with potentially one item
-      if (!Array.isArray(objArr)) continue;
-
-      objArr.forEach(obj => {
-        // Check "i"
-        const tileIndices = obj.i;
-        let singleTile = false;
-        if (Array.isArray(tileIndices) && tileIndices.length === 1) {
-          singleTile = true;
-        } else if (typeof tileIndices === 'number') {
-          singleTile = true;
-        }
-        if (singleTile) {
-          singleTileEntries.push({
-            key: key,       // the top-level key
-            name: obj.n,    // the object's name
-            data: obj       // the entire object
-          });
-        }
-      });
-    }
-
-    // Show/hide suggestions
-    const showSuggestions = (filtered) => {
+    const clearBtn = document.getElementById('clearBackgroundBtn');
+    bgInput.setAttribute('autocomplete', 'off');
+    clearBtn.addEventListener('click', () => {
+      game.sceneBg = null;
+      game.buildRepeatingBackground();
+      bgInput.value = '';
+      suggestionsEl.classList.add('hidden');
+      clearBtn.classList.add('hidden');
+      bgInput.focus();
+    });
+    bgInput.addEventListener('input', () => {
+      const val = bgInput.value.trim();
+      if (val === '') {
+        clearBtn.classList.add('hidden');
+        suggestionsEl.classList.add('hidden');
+        suggestionsEl.innerHTML = '';
+        return;
+      } else {
+        clearBtn.classList.remove('hidden');
+      }
+      const query = val.toLowerCase();
+      let objectData = null;
+      try {
+        objectData = assets.use('objectData');
+      } catch (e) {
+        objectData = game.objectData;
+      }
+      if (!objectData) return;
+      const singleTileEntries = [];
+      for (const [key, objArr] of Object.entries(objectData)) {
+        if (!Array.isArray(objArr)) continue;
+        objArr.forEach(obj => {
+          const tileIndices = obj.i;
+          let singleTile = false;
+          if (typeof tileIndices === 'number') {
+            singleTile = true;
+          } else if (Array.isArray(tileIndices) && tileIndices.length === 1) {
+            const tileVal = tileIndices[0];
+            if (typeof tileVal === 'number') {
+              singleTile = true;
+            } else if (typeof tileVal === 'string' && !tileVal.includes('-')) {
+              singleTile = true;
+            }
+          }
+          if (singleTile) {
+            singleTileEntries.push({ key, name: obj.n, data: obj });
+          }
+        });
+      }
+      const filtered = singleTileEntries.filter(entry =>
+        entry.name.toLowerCase().includes(query)
+      );
       suggestionsEl.innerHTML = '';
       if (!filtered.length) {
         suggestionsEl.classList.add('hidden');
@@ -554,8 +568,8 @@ editor_layers = {
       filtered.forEach(entry => {
         const div = document.createElement('div');
         div.textContent = entry.name;
+        div.className = 'px-2 py-1 cursor-pointer';
         div.addEventListener('click', () => {
-          // On selection
           bgInput.value = entry.name;
           game.sceneBg = entry.key;
           game.buildRepeatingBackground();
@@ -563,23 +577,7 @@ editor_layers = {
         });
         suggestionsEl.appendChild(div);
       });
-    };
-
-    bgInput.addEventListener('input', () => {
-      const query = bgInput.value.toLowerCase();
-      if (!query) {
-        showSuggestions([]); 
-        return;
-      }
-      // Filter by name
-      const filtered = singleTileEntries.filter(entry =>
-        entry.name.toLowerCase().includes(query)
-      );
-      showSuggestions(filtered);
     });
-
-    // Hide suggestions on blur, if you like
-    // (Alternatively, you could keep them open or handle differently)
     bgInput.addEventListener('blur', () => {
       setTimeout(() => {
         suggestionsEl.classList.add('hidden');
@@ -594,10 +592,8 @@ editor_layers = {
     const selectedColorPreview = document.getElementById("selectedColorPreview");
     const canvas = document.createElement("canvas");
     const ctx = canvas.getContext("2d");
-
     let isDragging = false;
     let containerRect;
-
     const buildSpectrumCanvas = () => {
       containerRect = spectrumContainer.getBoundingClientRect();
       canvas.width = containerRect.width;
@@ -622,61 +618,46 @@ editor_layers = {
       ctx.fillStyle = whiteGradient;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     };
-
     const rgbToHex = (r, g, b) => {
-      return "#" + [r, g, b]
-        .map(x => {
-          const hex = x.toString(16);
-          return hex.length === 1 ? "0" + hex : hex;
-        })
-        .join("");
+      return "#" + [r, g, b].map(x => {
+        const hex = x.toString(16);
+        return hex.length === 1 ? "0" + hex : hex;
+      }).join("");
     };
-
     const updateColorFromPosition = (clientX, clientY) => {
       let x = clientX - containerRect.left;
       let y = clientY - containerRect.top;
-
       if (x < 0) x = 0;
       if (x > containerRect.width) x = containerRect.width;
       if (y < 0) y = 0;
       if (y > containerRect.height) y = containerRect.height;
-
       spectrumHandle.style.left = x + "px";
       spectrumHandle.style.top = y + "px";
-
       const pixel = ctx.getImageData(x, y, 1, 1).data;
       const [r, g, b] = pixel;
       const hex = rgbToHex(r, g, b);
-
       colorHexInput.value = hex;
       selectedColorPreview.style.backgroundColor = hex;
     };
-
     const pointerDown = (e) => {
       isDragging = true;
       buildSpectrumCanvas();
       updateColorFromPosition(e.clientX, e.clientY);
     };
-
     const pointerMove = (e) => {
       if (!isDragging) return;
       updateColorFromPosition(e.clientX, e.clientY);
     };
-
     const pointerUp = () => {
       isDragging = false;
     };
-
     spectrumContainer.addEventListener("mousedown", pointerDown);
-
     spectrumHandle.addEventListener("mousedown", (e) => {
       e.stopPropagation();
       pointerDown(e);
     });
-
     document.addEventListener("mousemove", pointerMove);
     document.addEventListener("mouseup", pointerUp);
-
     colorHexInput.addEventListener("change", (e) => {
       const val = e.target.value.trim();
       selectedColorPreview.style.backgroundColor = val;
@@ -686,11 +667,8 @@ editor_layers = {
   fetchSceneLayers: async function(sceneId) {
     try {
       const response = await fetch(`/api/editor/scene/${sceneId}`);
-      if (!response.ok) {
-        throw new Error('Failed to load scene data.');
-      }
+      if (!response.ok) throw new Error('Failed to load scene data.');
       const sceneData = await response.json();
-
       if (sceneData && sceneData.editorLayers) {
         this.layers = sceneData.editorLayers;
       } else {
@@ -705,7 +683,6 @@ editor_layers = {
         }];
       }
     } catch (err) {
-      console.error('Unable to fetch scene data for layers:', err);
       this.layers = [{
         id: "layer_default",
         type: "layer",
@@ -719,11 +696,8 @@ editor_layers = {
   },
 
   start() {
-    console.log("Starting Layers Panel");
-
     this.fetchSceneLayers(game.sceneid).then(() => {
       this.initUI();
-
       if (!this.layers || this.layers.length === 0) {
         this.layers = [{
           id: "layer_default",
@@ -735,7 +709,6 @@ editor_layers = {
           children: []
         }];
       }
-
       this.activeLayerId = this.layers[0].id;
       this.selectLayersById(this.activeLayerId);
       this.renderAllLayers();
@@ -746,7 +719,6 @@ editor_layers = {
   addLayer() {
     const selectedNodes = this.getSelectedNodes();
     let newLayer;
-    
     if (selectedNodes.length === 0) {
       newLayer = {
         id: `layer_${Date.now()}`,
@@ -763,23 +735,17 @@ editor_layers = {
       this.activeLayerId = newLayer.id;
       this.lastClickedId = newLayer.id;
       this.renderAllLayers();
-      
-      setTimeout(() => {
-        this.editLayerName(newLayer.id);
-      }, 0);
+      setTimeout(() => this.editLayerName(newLayer.id), 0);
       return;
     }
-
     let topmostNode = selectedNodes[0];
     let topmostParentInfo = this.findParentNodeById(topmostNode.id);
     let insertIndex = 0;
-    
     if (topmostParentInfo) {
       insertIndex = topmostParentInfo.node.children.indexOf(topmostNode);
     } else {
       insertIndex = this.layers.indexOf(topmostNode);
     }
-
     newLayer = {
       id: `layer_${Date.now()}`,
       type: "layer",
@@ -789,34 +755,26 @@ editor_layers = {
       expanded: true,
       children: []
     };
-
     selectedNodes.forEach(node => {
       this.removeNodeFromParent(node.id);
       newLayer.children.push(node);
     });
-
     if (topmostParentInfo) {
       topmostParentInfo.node.children.splice(insertIndex, 0, newLayer);
     } else {
       this.layers.splice(insertIndex, 0, newLayer);
     }
-
     this.selectedLayers.clear();
     this.selectedLayers.add(newLayer.id);
     this.activeLayerId = newLayer.id;
     this.lastClickedId = newLayer.id;
-    
     this.renderAllLayers();
-    
-    setTimeout(() => {
-      this.editLayerName(newLayer.id);
-    }, 0);
+    setTimeout(() => this.editLayerName(newLayer.id), 0);
   },
 
   addGroup() {
     const selectedNodes = this.getSelectedNodes();
     let newGroup;
-    
     if (selectedNodes.length === 0) {
       newGroup = {
         id: `group_${Date.now()}`,
@@ -833,23 +791,17 @@ editor_layers = {
       this.activeLayerId = newGroup.id;
       this.lastClickedId = newGroup.id;
       this.renderAllLayers();
-      
-      setTimeout(() => {
-        this.editLayerName(newGroup.id);
-      }, 0);
+      setTimeout(() => this.editLayerName(newGroup.id), 0);
       return;
     }
-
     let topmostNode = selectedNodes[0];
     let topmostParentInfo = this.findParentNodeById(topmostNode.id);
     let insertIndex = 0;
-    
     if (topmostParentInfo) {
       insertIndex = topmostParentInfo.node.children.indexOf(topmostNode);
     } else {
       insertIndex = this.layers.indexOf(topmostNode);
     }
-
     newGroup = {
       id: `group_${Date.now()}`,
       type: "group",
@@ -859,33 +811,24 @@ editor_layers = {
       expanded: true,
       children: []
     };
-
     selectedNodes.forEach(node => {
       this.removeNodeFromParent(node.id);
       newGroup.children.push(node);
     });
-
     if (topmostParentInfo) {
       topmostParentInfo.node.children.splice(insertIndex, 0, newGroup);
     } else {
       this.layers.splice(insertIndex, 0, newGroup);
     }
-
     this.selectedLayers.clear();
     this.selectedLayers.add(newGroup.id);
     this.activeLayerId = newGroup.id;
     this.lastClickedId = newGroup.id;
-    
     this.renderAllLayers();
-    
-    setTimeout(() => {
-      this.editLayerName(newGroup.id);
-    }, 0);
+    setTimeout(() => this.editLayerName(newGroup.id), 0);
   },
 
   addItemToLayer(itemInfo = {}) {
-    console.log("Adding item, active layer ID:", this.activeLayerId);
-
     const newItem = {
       id: `item_${itemInfo.layer_id || Date.now()}`,
       type: "item",
@@ -894,14 +837,10 @@ editor_layers = {
       locked: false,
       children: []
     };
-
     let targetParent = null;
     let parentArray = this.layers;
-    
     if (this.activeLayerId) {
       const activeNode = this.findNodeById(this.activeLayerId);
-      console.log("Found active node:", activeNode);
-
       if (activeNode) {
         if (activeNode.node.type === "item") {
           const parentInfo = this.findParentNodeById(this.activeLayerId);
@@ -915,21 +854,16 @@ editor_layers = {
         }
       }
     }
-
-    console.log("Target parent:", targetParent);
-
     if (targetParent) {
       targetParent.expanded = true;
       parentArray.push(newItem);
     } else {
       this.layers.push(newItem);
     }
-
     this.selectedLayers.clear();
     this.selectedLayers.add(newItem.id);
     this.activeLayerId = newItem.id;
     this.lastClickedId = newItem.id;
-
     this.renderAllLayers();
   },
 
@@ -951,39 +885,29 @@ editor_layers = {
     list.innerHTML = "";
     list.appendChild(this.dropIndicator);
     list.appendChild(this.dragContainer);
-
     this.layers.forEach(node => {
       this.renderNode(node, list);
     });
-
-    console.log('rendering layers');
   },
 
   selectLayersById(layerIds) {
     if (!Array.isArray(layerIds)) {
       layerIds = [layerIds];
     }
-
     this.selectedLayers.clear();
-
     layerIds.forEach(layerId => {
       const foundLayer = this.findNodeById(layerId);
       if (foundLayer) {
         this.selectedLayers.add(layerId);
-      } else {
-        console.warn(`Layer with ID "${layerId}" not found.`);
       }
     });
-
     if (layerIds.length > 0) {
       const firstValidLayer = layerIds.find(layerId => this.findNodeById(layerId));
       this.activeLayerId = firstValidLayer || null;
     } else {
       this.activeLayerId = null;
     }
-
     this.renderAllLayers();
-    console.log(`Selected layers: ${Array.from(this.selectedLayers).join(", ")}`);
   },
 
   removeLayerById(layerId) {
@@ -1002,12 +926,8 @@ editor_layers = {
       }
       return false;
     };
-
     if (removeNodeRecursively(layerId, this.layers)) {
-      console.log(`Layer with ID "${layerId}" removed.`);
-      this.renderAllLayers(); // Update UI
-    } else {
-      console.warn(`Layer with ID "${layerId}" not found.`);
+      this.renderAllLayers();
     }
   },
 
@@ -1027,25 +947,19 @@ editor_layers = {
   selectInEditor(ids) {
     const editor = window.edit_mode_window;
     if (!editor) return;
-
     editor.selectedObjects = [];
-
     ids.forEach(id => {
       if (id.startsWith('item_')) {
         const layerId = id.replace('item_', '');
         const obj = game.roomData.items.find(item => item.layer_id === layerId);
-        if (obj) {
-          editor.selectedObjects.push(obj);
-        }
+        if (obj) editor.selectedObjects.push(obj);
       }
     });
-
     if (editor.selectedObjects.length > 0) {
       editor.changeMode('move');
     } else {
       editor.changeMode('select');
     }
-
     editor.renderSelectedTiles();
   },
 
@@ -1054,7 +968,6 @@ editor_layers = {
       isLocked = true;
     }
     node.locked = isLocked;
-
     if (node.children && node.children.length > 0) {
       node.children.forEach(child => {
         this.updateLockState(child, isLocked);
@@ -1077,12 +990,10 @@ editor_layers = {
     if ((node.type === "layer" || node.type === "group") && typeof node.expanded === "undefined") {
       node.expanded = true;
     }
-
     const nodeContainer = document.createElement("div");
     nodeContainer.className = "node-container";
     nodeContainer.dataset.id = node.id;
     nodeContainer.dataset.type = node.type;
-
     const row = document.createElement("div");
     row.className = "layer-item";
     if (this.selectedLayers.has(node.id)) {
@@ -1090,7 +1001,6 @@ editor_layers = {
     }
     row.dataset.id = node.id;
     row.dataset.type = node.type;
-
     const typeIcon = document.createElement("div");
     typeIcon.className = "icon-btn";
     let iconHTML = "";
@@ -1106,15 +1016,13 @@ editor_layers = {
             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
                  viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" 
-                      d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2
+                      d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2 
                          2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
             </svg>`;
     } else {
-      // item
       iconHTML = `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2, 22 8, 12 14, 2 8" fill="none" /><polygon points="12 14, 2 8, 2 20, 12 24" fill="none" /><polygon points="12 14, 22 8, 22 20, 12 24" fill="none" /></svg>`;
     }
     typeIcon.innerHTML = iconHTML;
-
     if (node.type === "layer" || node.type === "group") {
       typeIcon.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1122,7 +1030,6 @@ editor_layers = {
         this.renderAllLayers();
       });
     }
-
     const eyeBtn = document.createElement("div");
     eyeBtn.className = "icon-btn";
     eyeBtn.innerHTML = node.visible
@@ -1140,12 +1047,9 @@ editor_layers = {
             <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
                      c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
           </svg>`;
-
     eyeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-
       node.visible = !node.visible;
-
       const updateVisibility = (node, visible) => {
         if (node.id.startsWith("item_")) {
           const layerId = node.id.replace("item_", "");
@@ -1158,11 +1062,9 @@ editor_layers = {
           node.children.forEach(child => updateVisibility(child, visible));
         }
       };
-
       updateVisibility(node, node.visible);
       this.renderAllLayers();
     });
-
     const lockBtn = document.createElement("div");
     lockBtn.className = "icon-btn";
     lockBtn.innerHTML = node.locked
@@ -1178,16 +1080,13 @@ editor_layers = {
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>`;
-
     lockBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      
       node.locked = !node.locked;
       this.updateLockState(node, node.locked);
       this.removeLockedOrInvisible(node);
       this.renderAllLayers();
     });
-
     const nameSpan = document.createElement("span");
     nameSpan.className = "layer-name";
     nameSpan.textContent = node.name;
@@ -1195,7 +1094,6 @@ editor_layers = {
       evt.stopPropagation();
       this.editLayerName(node.id);
     };
-
     const trashBtn = document.createElement("div");
     trashBtn.className = "icon-btn";
     trashBtn.innerHTML = `
@@ -1212,16 +1110,13 @@ editor_layers = {
       e.stopPropagation();
       this.deleteLayer(node.id);
     });
-
     row.appendChild(typeIcon);
     row.appendChild(eyeBtn);
     row.appendChild(lockBtn);
     row.appendChild(nameSpan);
     row.appendChild(trashBtn);
-
     row.addEventListener("click", (e) => {
       e.stopPropagation();
-
       if (node.locked) {
         this.selectedLayers.clear();
         this.selectedLayers.add(node.id);
@@ -1230,11 +1125,9 @@ editor_layers = {
         this.renderAllLayers();
         return;
       }
-      
       if (e.ctrlKey || e.metaKey) {
         if (this.selectedLayers.has(node.id)) {
           this.selectedLayers.delete(node.id);
-          
           if (this.activeLayerId === node.id) {
             const remaining = Array.from(this.selectedLayers);
             this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
@@ -1243,19 +1136,15 @@ editor_layers = {
           this.selectedLayers.add(node.id);
           this.activeLayerId = node.id;
         }
-        
         this.lastClickedId = node.id;
-        
         const selectedIds = Array.from(this.selectedLayers).filter(id => {
           const node = this.findNodeById(id);
           return node && !node.node.locked;
         });
-        
         this.selectInEditor(selectedIds);
         this.renderAllLayers();
         return;
       }
-      
       let idsToSelect;
       if (e.shiftKey && this.lastClickedId) {
         this.selectRange(this.lastClickedId, node.id);
@@ -1263,7 +1152,6 @@ editor_layers = {
       } else {
         this.selectedLayers.clear();
         this.selectedLayers.add(node.id);
-        
         if (node.type === 'layer' || node.type === 'group') {
           idsToSelect = this.getAllChildIds(node).filter(id => {
             const childNode = this.findNodeById(id);
@@ -1273,20 +1161,16 @@ editor_layers = {
           idsToSelect = [node.id];
         }
       }
-      
       this.activeLayerId = node.id;
       this.lastClickedId = node.id;
-      
       this.renderAllLayers();
       this.selectInEditor(idsToSelect);
     });
-
     row.addEventListener("mousedown", (e) => {
       if (node.locked) return;
       if (e.detail === 2) return;
       if (e.target === typeIcon) return;
       if (e.ctrlKey || e.metaKey || e.shiftKey) return;
-
       this.dragCandidate = true;
       row.classList.add("pending-drag");
       this.dragStartX = e.clientX;
@@ -1300,60 +1184,47 @@ editor_layers = {
       }
       this.draggedEl = nodeContainer;
     });
-
     nodeContainer.appendChild(row);
-
     if ((node.type === "group" || node.type === "layer") && node.children.length) {
       const childrenContainer = document.createElement("div");
       childrenContainer.className = "children-container";
-      if (!node.expanded) {
-        childrenContainer.classList.add("collapsed");
-      }
+      if (!node.expanded) childrenContainer.classList.add("collapsed");
       node.children.forEach(child => {
         this.renderNode(child, childrenContainer);
       });
       nodeContainer.appendChild(childrenContainer);
     }
-
     parentEl.appendChild(nodeContainer);
   },
 
   renderNodes() {
     const container = document.querySelector('.node-list-container');
     container.innerHTML = '';
-
     const nodesToRender = this.filteredNodes || this.nodeCategories;
-
     for (const [category, nodes] of Object.entries(nodesToRender)) {
       const categoryEl = document.createElement('div');
       categoryEl.className = 'node-category';
-
       const header = document.createElement('div');
       header.className = 'p-2 bg-gray-700 text-sm font-medium text-gray-300 border-b border-gray-600';
       header.textContent = category;
       categoryEl.appendChild(header);
-
       nodes.forEach(node => {
         const nodeEl = document.createElement('div');
         nodeEl.className = 'node-item p-2 pl-4 flex items-center gap-2 hover:bg-gray-700 cursor-grab';
         nodeEl.draggable = true;
         nodeEl.dataset.nodeId = node.id;
-
         const iconEl = document.createElement('div');
         iconEl.className = 'w-3 h-3 rounded-full';
         iconEl.style.backgroundColor = node.color;
         nodeEl.appendChild(iconEl);
-
         const nameEl = document.createElement('span');
         nameEl.className = 'text-sm text-gray-200';
         nameEl.textContent = node.name;
         nodeEl.appendChild(nameEl);
         nodeEl.addEventListener('dragstart', (e) => this.handleNodeDragStart(e));
         nodeEl.addEventListener('dragend', (e) => this.handleNodeDragEnd(e));
-
         categoryEl.appendChild(nodeEl);
       });
-
       container.appendChild(categoryEl);
     }
   },
@@ -1362,8 +1233,6 @@ editor_layers = {
     const nodeId = e.target.dataset.nodeId;
     e.dataTransfer.setData('application/node', nodeId);
     e.target.classList.add('dragging');
-    
-    // Create and set drag image
     const dragImage = e.target.cloneNode(true);
     dragImage.classList.add('node-drag-preview');
     document.body.appendChild(dragImage);
@@ -1379,53 +1248,29 @@ editor_layers = {
     if (!searchTerm || !searchTerm.trim()) {
       this.filteredNodes = null;
       const container = document.querySelector('.node-list-container');
-      if (container) {
-        container.innerHTML = '';
-      }
+      if (container) container.innerHTML = '';
       return;
     }
-
     const searchLower = searchTerm.toLowerCase();
     this.filteredNodes = {};
-
     for (const [category, nodes] of Object.entries(this.nodeCategories)) {
       const matchedNodes = nodes.filter(node => 
         node.name.toLowerCase().includes(searchLower) ||
         node.id.toLowerCase().includes(searchLower) ||
         category.toLowerCase().includes(searchLower)
       );
-
       if (matchedNodes.length > 0) {
         this.filteredNodes[category] = matchedNodes;
       }
     }
-
     this.renderNodes();
-  },
-
-  handleNodeDragStart(e) {
-    const nodeId = e.target.dataset.nodeId;
-    e.dataTransfer.setData('application/node', nodeId);
-    e.target.classList.add('dragging');
-    
-    const dragImage = e.target.cloneNode(true);
-    dragImage.classList.add('node-drag-preview');
-    document.body.appendChild(dragImage);
-    e.dataTransfer.setDragImage(dragImage, 0, 0);
-    setTimeout(() => document.body.removeChild(dragImage), 0);
-  },
-
-  handleNodeDragEnd(e) {
-    e.target.classList.remove('dragging');
   },
 
   selectRange(idA, idB) {
     const visibleIds = this.getFlattenedVisibleIds();
     const idxA = visibleIds.indexOf(idA);
     const idxB = visibleIds.indexOf(idB);
-    if (idxA === -1 || idxB === -1) {
-      return;
-    }
+    if (idxA === -1 || idxB === -1) return;
     const [start, end] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
     for (let i = start; i <= end; i++) {
       this.selectedLayers.add(visibleIds[i]);
@@ -1480,7 +1325,6 @@ editor_layers = {
       this.draggedEl = null;
       return;
     }
-
     if (this.isDragging) {
       this.stopDrag();
     }
@@ -1489,11 +1333,9 @@ editor_layers = {
   startDrag(e) {
     this.isDragging = true;
     this.dragCandidate = false;
-
     if (this.draggedEl) {
       this.draggedEl.querySelector(".layer-item")?.classList.remove("pending-drag");
     }
-
     const clone = document.createElement("div");
     clone.classList.add("dragging-clone");
     if (this.draggedNodes.length === 1) {
@@ -1502,50 +1344,41 @@ editor_layers = {
       clone.innerText = `Dragging ${this.draggedNodes.length} items...`;
     }
     this.draggedClone = clone;
-
     const rect = this.draggedEl?.getBoundingClientRect();
     if (rect) {
       this.offsetX = e.clientX - rect.left;
       this.offsetY = e.clientY - rect.top;
     }
-
     this.dragContainer.appendChild(clone);
     this.updateDragPosition(e);
   },
 
   updateDragPosition(e) {
     if (!this.draggedClone) return;
-
     const panelRect = document.getElementById("layersBody").getBoundingClientRect();
     let x = e.clientX - this.offsetX;
     let y = e.clientY - this.offsetY;
-
     if (x < panelRect.left) x = panelRect.left;
     if (y < panelRect.top)  y = panelRect.top;
     if (x > panelRect.right - 30) x = panelRect.right - 30;
     if (y > panelRect.bottom - 20) y = panelRect.bottom - 20;
-
     x -= panelRect.left;
     y -= panelRect.top;
-
     this.draggedClone.style.transform = `translate(${x}px, ${y}px)`;
   },
 
   stopDrag() {
     this.isDragging = false;
-
     if (this.draggedClone && this.draggedClone.parentNode) {
       this.draggedClone.parentNode.removeChild(this.draggedClone);
     }
     this.draggedClone = null;
-
     if (this.dropPosition) {
       const { targetId, mode } = this.dropPosition;
       const found = this.findNodeById(targetId);
       for (const dn of this.draggedNodes) {
         this.removeNodeFromParent(dn.id);
       }
-
       if (!found) {
         this.layers.push(...this.draggedNodes);
       } else {
@@ -1573,14 +1406,12 @@ editor_layers = {
       }
       this.layers.push(...this.draggedNodes);
     }
-
     this.dragCandidate = false;
     this.draggedNodes = [];
     this.draggedEl = null;
     this.dropPosition = null;
     this.hideDropIndicator();
     this.dragContainer.innerHTML = "";
-
     this.renderAllLayers();
   },
 
@@ -1588,10 +1419,8 @@ editor_layers = {
     const container = document.getElementById("layersList");
     const rowContainers = container.querySelectorAll(".layer-item");
     const mouseY = e.clientY;
-
     let hovered = null;
     let hoveredRect = null;
-
     for (let i = 0; i < rowContainers.length; i++) {
       const c = rowContainers[i];
       if (this.draggedNodes.find(dn => dn.id === c.dataset.id)) {
@@ -1604,13 +1433,11 @@ editor_layers = {
         break;
       }
     }
-
     if (!hovered) {
       this.dropPosition = null;
       this.hideDropIndicator();
       return;
     }
-
     const hoveredNodeId = hovered.dataset.id;
     const hoveredData = this.findNodeById(hoveredNodeId);
     if (!hoveredData) {
@@ -1618,13 +1445,10 @@ editor_layers = {
       this.hideDropIndicator();
       return;
     }
-
     const offsetY = mouseY - hoveredRect.top;
     const height = hoveredRect.height;
-
     const topZone = height * 0.33;
     const bottomZone = height * 0.66;
-
     if (offsetY < topZone) {
       this.dropPosition = { targetId: hoveredNodeId, mode: "above" };
       this.showDropIndicator(hovered, "above");
@@ -1646,7 +1470,6 @@ editor_layers = {
   showDropIndicator(elem, mode) {
     const rect = elem.getBoundingClientRect();
     const listRect = document.getElementById("layersList").getBoundingClientRect();
-    
     let nestingLevel = 0;
     let parent = elem.parentElement;
     while (parent && !parent.id?.includes('layersList')) {
@@ -1655,14 +1478,11 @@ editor_layers = {
       }
       parent = parent.parentElement;
     }
-
     const baseIndent = nestingLevel * 20;
     const indentOffset = mode === 'inside' ? 20 : 0;
     const totalIndent = baseIndent + indentOffset;
-
     this.dropIndicator.style.left = totalIndent + 'px';
     this.dropIndicator.style.right = '0';
-    
     if (mode === "above") {
       this.dropIndicator.style.top = (rect.top - listRect.top) + "px";
       this.dropIndicator.style.display = "block";
@@ -1683,9 +1503,7 @@ editor_layers = {
   findNodeById(id, arr = this.layers) {
     for (let i = 0; i < arr.length; i++) {
       const n = arr[i];
-      if (n.id === id) {
-        return { node: n, parentArray: arr };
-      }
+      if (n.id === id) return { node: n, parentArray: arr };
       if ((n.type === "group" || n.type === "layer") && n.children) {
         const sub = this.findNodeById(id, n.children);
         if (sub) return sub;
@@ -1735,13 +1553,11 @@ editor_layers = {
     if (!span) return;
     const container = span.closest(".layer-item");
     const w = container.offsetWidth;
-
     const input = document.createElement("input");
     input.type = "text";
     input.value = node.name;
     input.className = "edit-layer-name";
     input.style.width = w + "px";
-
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === "Escape") input.blur();
     });
@@ -1749,7 +1565,6 @@ editor_layers = {
       node.name = input.value.trim() || "Unnamed";
       this.renderAllLayers();
     });
-
     span.textContent = "";
     span.appendChild(input);
     input.focus();
@@ -1760,7 +1575,6 @@ editor_layers = {
     const bodyEl = document.getElementById("layersBody");
     const toggleIcon = document.getElementById("layersToggleIcon");
     this.panelOpen = !this.panelOpen;
-
     if (this.panelOpen) {
       bodyEl.classList.remove("hidden-panel");
       toggleIcon.classList.remove("rotate-180");
@@ -1774,7 +1588,6 @@ editor_layers = {
     const bodyEl = document.getElementById("nodesBody");
     const toggleIcon = document.getElementById("nodesToggleIcon");
     this.nodesPanelOpen = !this.nodesPanelOpen;
-
     if (this.nodesPanelOpen) {
       bodyEl.classList.remove("hidden-panel");
       toggleIcon.classList.remove("rotate-180");
@@ -1788,7 +1601,6 @@ editor_layers = {
     const bodyEl = document.getElementById("propertiesBody");
     const toggleIcon = document.getElementById("propertiesToggleIcon");
     this.propertiesPanelOpen = !this.propertiesPanelOpen;
-
     if (this.propertiesPanelOpen) {
       bodyEl.classList.remove("hidden-panel");
       toggleIcon.classList.remove("rotate-180");
@@ -1802,13 +1614,25 @@ editor_layers = {
     const bodyEl = document.getElementById("spectrumBody");
     const toggleIcon = document.getElementById("spectrumToggleIcon");
     this.spectrumPanelOpen = !this.spectrumPanelOpen;
-
     if (this.spectrumPanelOpen) {
       bodyEl.classList.remove("hidden-panel");
       toggleIcon.classList.remove("rotate-180");
     } else {
       bodyEl.classList.add("hidden-panel");
       toggleIcon.classList.add("rotate-180");
+    }
+  },
+
+  togglePanelSlide() {
+    const panel = document.getElementById("layersPanel");
+    const icon = document.getElementById("slideTabIcon");
+    this.panelSlideVisible = !this.panelSlideVisible;
+    if (this.panelSlideVisible) {
+      panel.classList.remove("slid-off");
+      icon.style.transform = "rotate(0deg)";
+    } else {
+      panel.classList.add("slid-off");
+      icon.style.transform = "rotate(180deg)";
     }
   }
 };
