@@ -1643,37 +1643,38 @@ redo() {
 },
 
     saveRoomData() {
-      fetch('/api/editor/scene/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            sceneid: game.sceneid,
-            roomData: game.roomData,
-            editorLayers: editor_layers.layers
-        }),
-      })
-      .then(async (response) => {
-        if (!response.ok) {
-          let errorData;
-          try {
-            errorData = await response.json();
-          } catch {
-            errorData = { message: await response.text() };
-          }
-          throw new Error(errorData.message || 'Unknown error');
+    fetch('/api/editor/scene/save', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+          sceneid: game.sceneid,
+          bg: game.sceneBg,
+          roomData: game.roomData,
+          editorLayers: editor_layers.layers
+      }),
+    })
+    .then(async (response) => {
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { message: await response.text() };
         }
-        return response.json();
-      })
-      .then((result) => {
-        plugin.close('editor_window');
-        plugin.collision.createWalkableGrid();
-        console.log('Save successful:', result);
-      })
-      .catch((error) => {
-        console.error('Error saving room data:', error);
-      });
+        throw new Error(errorData.message || 'Unknown error');
+      }
+      return response.json();
+    })
+    .then((result) => {
+      plugin.close('editor_window');
+      plugin.collision.createWalkableGrid();
+      console.log('Save successful:', result);
+    })
+    .catch((error) => {
+      console.error('Error saving room data:', error);
+    });
     },
 
 revertToOriginalState() {

@@ -120,27 +120,28 @@
       </div>
     </div>
 
-    <div class="relative">
-      <input
-        id="backgroundInput"
-        type="text"
-        class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        placeholder="Type to search"
-        autocomplete="off"
-      />
-      <button
-        id="clearBackgroundBtn"
-        class="hidden absolute right-2 top-1/2 transform -translate-y-1/2 bg-gray-600 text-gray-300 rounded px-2 text-sm"
-        type="button"
-      >x</button>
+  <label for="objectName" class="block text-sm font-medium text-gray-300">Scene Background</label>
+<div class="relative">
+  <input
+    id="backgroundInput"
+    type="text"
+    class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+    placeholder="Type to search"
+    autocomplete="off"
+  />
+  <button
+    id="clearBackgroundBtn"
+    class="hidden absolute right-2 top-1/2 -translate-y-1/2 bg-gray-600 text-gray-300 rounded w-6 h-6 flex items-center justify-center text-sm"
+    type="button"
+  >x</button>
 
-      <div
-        id="backgroundSuggestions"
-        class="absolute w-full rounded border border-gray-700 mt-1 hidden z-50 max-h-60 overflow-auto bg-gray-800"
-      >
-      </div>
-    </div>
+  <div
+    id="backgroundSuggestions"
+    class="absolute w-full rounded border border-gray-700 hidden z-50 max-h-60 overflow-auto bg-gray-800"
+  >
   </div>
+</div>
+</div>
 
   <div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Color Spectrum</span>

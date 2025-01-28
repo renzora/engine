@@ -35,7 +35,7 @@
         const playerSprite = sprite.create({
             id: 'player1',
             isPlayer: true,
-            speed: 65,
+            speed: 85,
             animalType: 'female-01',
             canShoot: true,
             targetAim: false

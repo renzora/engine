@@ -38,13 +38,14 @@ function getMaxTileIndex(objectData: Record<string, any>, tilesetName: string): 
     if (!Array.isArray(arr)) continue;
     arr.forEach((item: any) => {
       if (item.t === tilesetName && Array.isArray(item.i)) {
-        item.i.forEach((str: string) => {
-          if (str.includes('-')) {
-            const [_, endStr] = str.split('-');
+        item.i.forEach((entry: any) => {
+          const strVal = String(entry);
+          if (strVal.includes('-')) {
+            const [_, endStr] = strVal.split('-');
             const endNum = parseInt(endStr, 10);
             if (endNum > maxIndex) maxIndex = endNum;
           } else {
-            const val = parseInt(str, 10);
+            const val = parseInt(strVal, 10);
             if (val > maxIndex) maxIndex = val;
           }
         });
@@ -59,7 +60,6 @@ function expandPngHeight(oldPng: PNG, newRows: number): PNG {
   const newHeight = newRows * tileSize;
   const newPng = new PNG({ width: oldPng.width, height: newHeight });
   newPng.data.fill(0);
-
   for (let y = 0; y < oldPng.height; y++) {
     for (let x = 0; x < oldPng.width; x++) {
       const oldIdx = (y * oldPng.width + x) << 2;
@@ -88,10 +88,8 @@ function copyTile(
       const sY = sy + row;
       const dX = dx + col;
       const dY = dy + row;
-
       if (sX >= srcPng.width || sY >= srcPng.height) continue;
       if (dX >= dstPng.width || dY >= dstPng.height) continue;
-
       const srcIdx = (sY * srcPng.width + sX) << 2;
       const dstIdx = (dY * dstPng.width + dX) << 2;
       dstPng.data[dstIdx + 0] = srcPng.data[srcIdx + 0];
@@ -126,27 +124,22 @@ export async function tilesetManagerRoutes(fastify: FastifyInstance) {
           message: '`groupedData` must be a non-empty array.',
         });
       }
-
       const objectDataFile = getObjectDataFile();
       if (!(await fileExists(objectDataFile))) {
         throw new Error('objectData.json not found');
       }
-
       const objectDataRaw = await readFile(objectDataFile, 'utf8');
       const objectData = JSON.parse(objectDataRaw);
-
       for (const group of groupedData) {
         const tilesetName = (group.tileset || 'gen1').trim();
         const items = group.items || [];
         if (!items.length) continue;
-
         const tileSize = 16;
         const tilesPerRow = 150;
-        const sheetPath = path.join(getSheetsDir(), `${tilesetName}.png`); 
+        const sheetPath = path.join(getSheetsDir(), `${tilesetName}.png`);
         let basePng: PNG;
         let currentWidth: number;
         let currentHeight: number;
-
         if (await fileExists(sheetPath)) {
           const buf = await readFile(sheetPath);
           basePng = PNG.sync.read(buf);
@@ -158,67 +151,53 @@ export async function tilesetManagerRoutes(fastify: FastifyInstance) {
           basePng = new PNG({ width: currentWidth, height: currentHeight });
           basePng.data.fill(0);
         }
-
         const maxIdx = getMaxTileIndex(objectData, tilesetName);
         let runningTileIndex = maxIdx < 0 ? 0 : maxIdx + 1;
-
         for (const item of items) {
           const { newObject, imageData, aCoords, bCoords } = item;
           if (!newObject || !imageData || !aCoords?.length || !bCoords?.length) {
             continue;
           }
-
           const base64Regex = /^data:image\/\w+;base64,/;
           const raw = imageData.replace(base64Regex, '');
           const imgBuf = Buffer.from(raw, 'base64');
           const croppedPng = PNG.sync.read(imgBuf);
-
           const tileCount = aCoords.length;
           const startIndex = runningTileIndex;
           const endIndex = startIndex + tileCount - 1;
-
           for (let i = 0; i < tileCount; i++) {
             const sx = aCoords[i] * tileSize;
             const sy = bCoords[i] * tileSize;
             const row = Math.floor(runningTileIndex / tilesPerRow);
             const col = runningTileIndex % tilesPerRow;
-
             const requiredHeight = (row + 1) * tileSize;
             if (requiredHeight > basePng.height) {
               basePng = expandPngHeight(basePng, row + 1);
               currentHeight = basePng.height;
             }
-
             const dx = col * tileSize;
             const dy = row * tileSize;
             copyTile(croppedPng, basePng, sx, sy, dx, dy, tileSize);
-
             runningTileIndex++;
           }
-
           if (tileCount === 1) {
             newObject.i = [`${startIndex}`];
           } else {
             newObject.i = [`${startIndex}-${endIndex}`];
           }
-
           const minA = Math.min(...aCoords);
           const maxA = Math.max(...aCoords);
           const minB = Math.min(...bCoords);
           const maxB = Math.max(...bCoords);
           newObject.a = maxA - minA;
           newObject.b = maxB - minB;
-
           const uid = uniqid();
           objectData[uid] = [newObject];
         }
-
         const newPngBuf = PNG.sync.write(basePng);
         await writeFile(sheetPath, newPngBuf);
       }
-
       await writeFile(objectDataFile, JSON.stringify(objectData), 'utf8');
-
       return reply.send({ success: true });
     } catch (err: any) {
       fastify.log.error('Error /api/tileset_manager/save:', err);

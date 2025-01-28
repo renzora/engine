@@ -24,34 +24,35 @@ export async function editorRoutes(fastify: FastifyInstance) {
       if (!request.user) {
         return reply.status(401).send({ message: 'Unauthorized', error: true });
       }
-
-      const { sceneid, roomData, editorLayers } = request.body as {
+      const { sceneid, roomData, editorLayers, bg } = request.body as {
         sceneid: string;
         roomData: object;
         editorLayers: any;
+        bg?: string;
       };
-
+  
       if (!sceneid || !roomData) {
         return reply
           .status(400)
           .send({ message: 'sceneid or roomData not provided', error: true });
       }
-
+  
       const updatedScene: IScene | null = await Scene.findOneAndUpdate(
         { _id: sceneid },
-        { 
-          $set: { 
-            roomData: roomData,
-            ...(editorLayers !== undefined && { editorLayers: editorLayers }),
-          } 
+        {
+          $set: {
+            roomData,
+            ...(editorLayers !== undefined && { editorLayers }),
+            ...(bg !== undefined && { bg }),
+          },
         },
         { new: true },
       );
-
+  
       if (!updatedScene) {
         return reply.status(404).send({ message: 'Scene not found', error: true });
       }
-
+  
       return reply.send({
         message: 'Room data (and layers) saved successfully',
         sceneId: updatedScene._id,
@@ -64,6 +65,7 @@ export async function editorRoutes(fastify: FastifyInstance) {
       });
     }
   });
+  
 
   fastify.post('/scene/dimensions', async (request: FastifyRequest, reply: FastifyReply) => {
     try {

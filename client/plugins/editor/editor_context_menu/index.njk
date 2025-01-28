@@ -75,7 +75,11 @@ this.contextmenuHandler = (event) => {
   },
 
   onRenderBackground() {
-    this.renderIsometricGrid();
+    if(editor_window.renderMode == 'isometric') {
+      this.renderIsometricGrid();
+    } else {
+      this.render2dGrid();
+    }
   },
 
   populateMenuItems(clientX, clientY) {
@@ -389,7 +393,7 @@ this.contextmenuHandler = (event) => {
       game.ctx.stroke();
     }
 
-    game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
@@ -402,7 +406,7 @@ this.contextmenuHandler = (event) => {
     const maxY = game.worldHeight;
     const minY = -game.worldHeight;
 
-    game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
     game.ctx.lineWidth = 1;
 
     for (let y = minY; y <= maxY; y += tileHeight) {
@@ -419,7 +423,7 @@ this.contextmenuHandler = (event) => {
       game.ctx.stroke();
     }
 
-    game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
