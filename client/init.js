@@ -25,7 +25,7 @@
             { id: 'notif', path: 'core', ext: 'html' },
             { id: 'collision' },
             { id: 'pathfinding' },
-            { id: 'snow' },
+            //{ id: 'snow' },
             { id: 'debug', ext: 'html' },
             { id: 'pie_menu', ext: 'html' },
             { id: 'code', ext: 'html' }
