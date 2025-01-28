@@ -64,10 +64,8 @@ console_window = {
         buttons.forEach(button => {
             const iconDiv = button.querySelector('div');
             if (!iconDiv) return;
-
             const iconName = iconDiv.classList[0];
             if (!iconName) return;
-
             this.setTabIcon(button, iconDiv, iconName);
         });
     },
@@ -130,7 +128,7 @@ console_window = {
             });
     },
 
-    toggleConsoleWindow(toggle = true, tabName = null) {  
+    toggleConsoleWindow(toggle = true, tabName = null) {
         const consoleElement = document.getElementById('console_window');
         const tabsElement = document.getElementById('tabs');
 
@@ -187,18 +185,14 @@ console_window = {
 
     handleTabClick(tab, index) {
         const newTabName = tab.getAttribute('data-tab');
-        
         if (this.tab_name && this.tab_name !== newTabName) {
             ui.unmount(`ui_console_${this.tab_name}`);
             console.log(`Unmounting ui_console_${this.tab_name}`);
         }
-        
         this.currentTabIndex = index;
         this.tab_name = newTabName;
-        
         this.clearActiveTabs();
         tab.classList.add('bg-[#fff]', 'text-white');
-        
         if (!this.isOpen) {
             this.toggleConsoleWindow();
         } else {
@@ -211,12 +205,10 @@ console_window = {
             ui.unmount('ui_console_' + this.tab_name);
             console.log(`Unmounting ui_console_${this.tab_name}`);
         }
-
         this.tab_name = target;
         const contentDiv = document.getElementById('console_window_content');
         if (contentDiv) {
             contentDiv.innerHTML = '';
-
             fetch(`/api/ajax/plugins/editor/console_window/tabs/${target}/index.njk`, { method: 'GET' })
                 .then(response => {
                     if (!response.ok) {
@@ -252,13 +244,11 @@ console_window = {
     navigateTabs(direction) {
         const tabs = document.querySelectorAll('#console_window .console_tab');
         let newIndex = this.currentTabIndex;
-
         if (direction === 'up') {
             newIndex = (this.currentTabIndex - 1 + tabs.length) % tabs.length;
         } else if (direction === 'down') {
             newIndex = (this.currentTabIndex + 1) % tabs.length;
         }
-
         if (this.isOpen) {
             this.clearActiveTabs();
             tabs[newIndex].classList.add('bg-[#fff]', 'text-white');

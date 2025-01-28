@@ -71,7 +71,6 @@ var ui_console_editor_inventory = {
     const gridContainer = document.querySelector('#inventory-grid');
     const tileSize = 16;
     const tilesPerRow = 150;
-
     gridContainer.innerHTML = '';
 
     for (let category in itemData) {
@@ -94,17 +93,13 @@ var ui_console_editor_inventory = {
       items.forEach(item => {
         const tilesetImage = assets.use(item.t);
         if (!tilesetImage) return;
-
         const itemCanvas = document.createElement('canvas');
         const ctx = itemCanvas.getContext('2d');
-
         const maxCol = item.a;
         const maxRow = item.b;
         itemCanvas.width = (maxCol + 1) * tileSize;
         itemCanvas.height = (maxRow + 1) * tileSize;
-
         let framesToRender = [];
-
         if (item.d && Array.isArray(item.i[0])) {
           framesToRender = item.i[0];
         } else if (Array.isArray(item.i[0])) {
@@ -117,35 +112,27 @@ var ui_console_editor_inventory = {
             return [frame];
           }).flat();
         }
-
         framesToRender.forEach((frame, index) => {
           const srcX = (frame % tilesPerRow) * tileSize;
           const srcY = Math.floor(frame / tilesPerRow) * tileSize;
-
           const destX = (index % (maxCol + 1)) * tileSize;
           const destY = Math.floor(index / (maxCol + 1)) * tileSize;
-
           ctx.drawImage(
             tilesetImage,
             srcX, srcY, tileSize, tileSize,
             destX, destY, tileSize, tileSize
           );
         });
-
         itemCanvas.setAttribute('data-item-id', category);
-
         const canvasContainer = document.createElement('div');
         canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg p-1 transition duration-300 transform hover:scale-125';
         itemCanvas.className += ' w-full h-full object-contain';
-
         itemCanvas.addEventListener('mousedown', function(event) {
           ui_console_editor_inventory.handleMouseDown(event);
         });
-
         canvasContainer.appendChild(itemCanvas);
         itemGroupElement.appendChild(canvasContainer);
       });
-
       gridContainer.appendChild(itemGroupElement);
     }
   },
@@ -163,29 +150,23 @@ var ui_console_editor_inventory = {
 
   filterItems(searchTerm, tilesetFilter) {
     if (!this.itemData) return;
-
     if (!searchTerm && !tilesetFilter) {
       this.displayItems(this.itemData);
       return;
     }
-
     const filteredData = {};
-
     for (let category in this.itemData) {
       if (!this.itemData.hasOwnProperty(category)) continue;
       const items = this.itemData[category];
-
       const matchingItems = items.filter(item => {
         const matchesName = searchTerm ? (item.n || '').toLowerCase().includes(searchTerm) : true;
         const matchesTileset = tilesetFilter ? (item.t === tilesetFilter) : true;
         return matchesName && matchesTileset;
       });
-
       if (matchingItems.length > 0) {
         filteredData[category] = matchingItems;
       }
     }
-
     this.displayItems(filteredData);
   },
 
@@ -194,20 +175,16 @@ var ui_console_editor_inventory = {
       ? game.objectData[this.selectedInventoryItem][0]
       : null;
     if (!itemData) return;
-
     if (editor_window.isAddingNewObject) {
       game.ctx.save();
       game.ctx.globalAlpha = 0.5;
     }
-
     const objectWidth = (itemData.a + 1) * 16;
     const objectHeight = (itemData.b + 1) * 16;
-
     let posX = this.selectedInventoryItemPos.x - objectWidth / 2;
     let posY = this.selectedInventoryItemPos.y - objectHeight / 2;
     posX = Math.round(posX);
     posY = Math.round(posY);
-
     const parseRange = function(rangeString) {
       const [start, end] = rangeString.split('-').map(Number);
       const rangeArray = [];
@@ -216,14 +193,12 @@ var ui_console_editor_inventory = {
       }
       return rangeArray;
     };
-
     let frameIndices = [];
     if (typeof itemData.i[0] === 'string' && itemData.i[0].includes('-')) {
       frameIndices = parseRange(itemData.i[0]);
     } else {
       frameIndices = itemData.i;
     }
-
     const img = assets.use(itemData.t);
     if (!img) {
       if (editor_window.isAddingNewObject) {
@@ -231,24 +206,19 @@ var ui_console_editor_inventory = {
       }
       return;
     }
-
     let frameIndex = 0;
     for (let row = 0; row < itemData.b + 1; row++) {
-      for (let col = 0; col < itemData.a + 1; col++) {
+      for (let col = 0; col <= itemData.a; col++) {
         if (frameIndex >= frameIndices.length) break;
-
         const tileFrameIndex = frameIndices[frameIndex];
         const srcX = (tileFrameIndex % 150) * 16;
         const srcY = Math.floor(tileFrameIndex / 150) * 16;
-
         const tilePosX = Math.round(posX + col * 16);
         const tilePosY = Math.round(posY + row * 16);
-
         game.ctx.drawImage(img, srcX, srcY, 16, 16, tilePosX, tilePosY, 16, 16);
         frameIndex++;
       }
     }
-
     if (editor_window.isAddingNewObject) {
       game.ctx.restore();
     }
@@ -257,12 +227,7 @@ var ui_console_editor_inventory = {
   handleMouseDown(event) {
     const clickedCanvas = event.currentTarget;
     const itemId = clickedCanvas.getAttribute('data-item-id');
-
-    if (!itemId) {
-      console.error("Item ID not found.");
-      return;
-    }
-
+    if (!itemId) return;
     ui_console_editor_inventory.stopDragging();
     editor_window.isAddingNewObject = true;
     ui_console_editor_inventory.selectedInventoryItem = itemId;
@@ -274,10 +239,9 @@ var ui_console_editor_inventory = {
     const rect = game.canvas.getBoundingClientRect();
     const mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
     const mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-
     ui_console_editor_inventory.selectedInventoryItemPos.x = mouseX;
     ui_console_editor_inventory.selectedInventoryItemPos.y = mouseY;
-    document.addEventListener('mouseup', ui_console_editor_inventory.handleMapClick);
+    game.canvas.addEventListener('mouseup', ui_console_editor_inventory.handleMapClick);
   },
 
   handleMapClick(event) {
@@ -285,16 +249,13 @@ var ui_console_editor_inventory = {
     if (editor_window.isAddingNewObject) {
       const clonedObjectX = ui_console_editor_inventory.selectedInventoryItemPos.x;
       const clonedObjectY = ui_console_editor_inventory.selectedInventoryItemPos.y;
-
       if (ui_console_editor_inventory.selectedInventoryItem) {
         const itemData = game.objectData[ui_console_editor_inventory.selectedInventoryItem][0];
         if (!itemData) return;
-
         const objectWidth = (itemData.a + 1) * 16;
         const objectHeight = (itemData.b + 1) * 16;
         const adjustedMouseX = clonedObjectX - objectWidth / 2;
         const adjustedMouseY = clonedObjectY - objectHeight / 2;
-
         ui_console_editor_inventory.addItemToRoomData(
           ui_console_editor_inventory.selectedInventoryItem,
           adjustedMouseX,
@@ -309,7 +270,7 @@ var ui_console_editor_inventory = {
     if (this.selectedInventoryItem) {
       this.deselectInventoryItem();
       document.removeEventListener('mousemove', this.trackMouseForItem);
-      document.removeEventListener('mouseup', this.handleMapClick);
+      game.canvas.removeEventListener('mouseup', this.handleMapClick);
       this.isDragging = false;
     }
   },
@@ -333,24 +294,17 @@ var ui_console_editor_inventory = {
 
   addItemToRoomData(itemId, mouseX, mouseY) {
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
-    if (!itemData) {
-      console.error("Item data not found for itemId:", itemId);
-      return;
-    }
-
+    if (!itemData) return;
     let baseX = editor_context_menu.isSnapEnabled
       ? Math.floor(mouseX / 16) * 16
       : Math.round(mouseX);
     let baseY = editor_context_menu.isSnapEnabled
       ? Math.floor(mouseY / 16) * 16
       : Math.round(mouseY);
-
     const maxColumns = itemData.a || 0;
     const maxRows = itemData.b || 0;
-
     const newX = [];
     const newY = [];
-
     for (let col = 0; col <= maxColumns; col++) {
       if (editor_context_menu.isSnapEnabled) {
         newX.push(Math.floor(baseX / 16) + col);
@@ -358,7 +312,6 @@ var ui_console_editor_inventory = {
         newX.push((baseX + col * 16) / 16);
       }
     }
-
     for (let row = 0; row <= maxRows; row++) {
       if (editor_context_menu.isSnapEnabled) {
         newY.push(Math.floor(baseY / 16) + row);
@@ -366,7 +319,6 @@ var ui_console_editor_inventory = {
         newY.push((baseY + row * 16) / 16);
       }
     }
-
     const newItem = {
       id: itemId,
       n: itemData.n,
@@ -376,20 +328,12 @@ var ui_console_editor_inventory = {
       animationState: [{ currentFrame: 0, elapsedTime: 0 }],
       w: itemData.w || []
     };
-
     if (!game.roomData.items) {
       game.roomData.items = [];
     }
     game.roomData.items.push(newItem);
     editor_layers.addItemToLayer(newItem);
-
-    console.log(
-      'New object added:',
-      newItem,
-      'with',
-      editor_utils_window.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect',
-      'placement.'
-    );
+    console.log('New object added:', newItem, 'with', editor_utils_window.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect', 'placement.');
   },
 
   unmount() {
@@ -399,21 +343,16 @@ var ui_console_editor_inventory = {
   addGlobalListeners() {
     document.addEventListener('contextmenu', function(event) {
       event.preventDefault();
-      console.log("Right-click detected - calling cancelAddingObject()");
       ui_console_editor_inventory.cancelAddingObject();
     });
-
     document.addEventListener('keydown', function(event) {
       if (event.key === 'Escape') {
-        console.log("Escape key pressed - calling cancelAddingObject()");
         ui_console_editor_inventory.cancelAddingObject();
       }
     });
   }
 };
 
-// Start it up
 ui_console_editor_inventory.start();
 </script>
-
 {% endif %}
