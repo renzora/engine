@@ -1,5 +1,4 @@
 {% if auth %}
-
 <div class="tabs mb-4 flex items-center space-x-2">
   <select id="tileset_filter" class="p-2 rounded text-base text-black border border-gray-300">
     <option value="">All Tilesets</option>
@@ -28,152 +27,231 @@ var ui_console_editor_inventory = {
   itemData: null,
   currentSearchTerm: '',
   currentTilesetFilter: '',
+  itemsPerPage: 50,
+  currentPage: 1,
+  isLoading: false,
+  scrollContainer: null,
 
   start() {
     this.itemData = assets.use('objectData');
+    this.setupScrollContainer();
     this.displayItems();
     this.addGlobalListeners();
     this.addSearchListener();
     this.fetchTilesetList();
+    this.addScrollListener();
+  },
+
+  setupScrollContainer() {
+    const gridContainer = document.querySelector('#inventory-grid');
+    const wrapper = document.createElement('div');
+    wrapper.style.height = 'calc(100vh - 111px)';
+    wrapper.style.overflowY = 'auto';
+    wrapper.className = 'inventory-scroll-wrapper';
+    gridContainer.parentNode.insertBefore(wrapper, gridContainer);
+    wrapper.appendChild(gridContainer);
+    gridContainer.className = 'inventory-grid grid grid-cols-5 gap-1 mt-2';
+    this.scrollContainer = wrapper;
+  },
+
+  addScrollListener() {
+    if (!this.scrollContainer) return;
+    this.scrollContainer.addEventListener('scroll', () => {
+      if (this.isLoading) return;
+      const { scrollTop, scrollHeight, clientHeight } = this.scrollContainer;
+      if (scrollHeight - scrollTop <= clientHeight + 100) {
+        this.loadMoreItems();
+      }
+    });
   },
 
   fetchTilesetList() {
     const tilesetSelect = document.getElementById('tileset_filter');
-    fetch('/api/tileset_manager/list_sheets')
-      .then(res => res.json())
-      .then(json => {
-        if (!json.success) {
-          console.warn('Error loading sheets:', json.message);
-          return;
-        }
-        const sheets = json.sheets || [];
-        sheets.forEach(sheetName => {
-          const option = document.createElement('option');
-          option.value = sheetName;
-          option.textContent = sheetName;
-          tilesetSelect.appendChild(option);
-        });
-        tilesetSelect.addEventListener('change', (event) => {
-          ui_console_editor_inventory.currentTilesetFilter = event.target.value;
-          ui_console_editor_inventory.filterItems(
-            ui_console_editor_inventory.currentSearchTerm,
-            ui_console_editor_inventory.currentTilesetFilter
-          );
-        });
-      })
-      .catch(err => {
-        console.error('Error fetching tileset list:', err);
+    const uniqueTilesets = new Set();
+    
+    // Get unique tileset values from itemData
+    Object.values(this.itemData).forEach(items => {
+      items.forEach(item => {
+        if (item.t) uniqueTilesets.add(item.t);
       });
+    });
+
+    // Add options for each unique tileset
+    uniqueTilesets.forEach(tilesetName => {
+      const option = document.createElement('option');
+      option.value = tilesetName;
+      option.textContent = tilesetName;
+      tilesetSelect.appendChild(option);
+    });
+
+    tilesetSelect.addEventListener('change', (event) => {
+      this.currentTilesetFilter = event.target.value;
+      this.currentPage = 1;
+      this.filterItems(this.currentSearchTerm, this.currentTilesetFilter);
+    });
   },
 
-  displayItems(filteredData = null) {
-    const itemData = filteredData || this.itemData;
-    const gridContainer = document.querySelector('#inventory-grid');
-    const tileSize = 16;
-    const tilesPerRow = 150;
+displayItems(filteredData = null) {
+  const itemData = filteredData || this.itemData;
+  const gridContainer = document.querySelector('#inventory-grid');
+  const tileSize = 16;
+  const tilesPerRow = 150;
+
+  if (this.currentPage === 1) {
     gridContainer.innerHTML = '';
+  }
 
-    for (let category in itemData) {
-      if (!itemData.hasOwnProperty(category)) continue;
-      const items = itemData[category];
-      if (!items || items.length === 0) continue;
+  this.isLoading = true;
+  
+  let allItems = [];
+  Object.entries(itemData).forEach(([id, items]) => {
+    items.forEach(item => {
+      allItems.push({id, item});
+    });
+  });
 
-      const itemGroupElement = document.createElement('div');
-      itemGroupElement.classList.add(
-        'inventory-item-group',
-        'bg-gray-700',
-        'rounded',
-        'shadow-lg',
-        'hover:bg-gray-600',
-        'transition',
-        'duration-300',
-        'p-2'
-      );
+  if (this.currentTilesetFilter) {
+    allItems = allItems.filter(({item}) => item.t === this.currentTilesetFilter);
+  }
 
-      items.forEach(item => {
-        const tilesetImage = assets.use(item.t);
-        if (!tilesetImage) return;
-        const itemCanvas = document.createElement('canvas');
-        const ctx = itemCanvas.getContext('2d');
-        const maxCol = item.a;
-        const maxRow = item.b;
-        itemCanvas.width = (maxCol + 1) * tileSize;
-        itemCanvas.height = (maxRow + 1) * tileSize;
-        let framesToRender = [];
-        if (item.d && Array.isArray(item.i[0])) {
-          framesToRender = item.i[0];
-        } else if (Array.isArray(item.i[0])) {
-          framesToRender = item.i.flat();
-        } else {
-          framesToRender = item.i.map(frame => {
-            if (typeof frame === 'string' && frame.includes('-')) {
-              return game.parseRange(frame);
-            }
-            return [frame];
-          }).flat();
+  const startIdx = (this.currentPage - 1) * this.itemsPerPage;
+  const endIdx = startIdx + this.itemsPerPage;
+  const itemsToShow = allItems.slice(startIdx, endIdx);
+
+  itemsToShow.forEach(({id, item}) => {
+    const tilesetImage = assets.use(item.t);
+    if (!tilesetImage) return;
+
+    const itemGroupElement = document.createElement('div');
+    itemGroupElement.classList.add(
+      'inventory-item-group',
+      'bg-gray-700',
+      'rounded',
+      'shadow-lg',
+      'hover:bg-gray-600',
+      'transition',
+      'duration-300',
+      'p-2'
+    );
+    itemGroupElement.style.position = 'relative';
+    itemGroupElement.style.height = '150px';
+    itemGroupElement.style.display = 'flex';
+    itemGroupElement.style.flexDirection = 'column';
+    itemGroupElement.style.gap = '0';
+    itemGroupElement.style.cursor = 'pointer';
+
+    const itemCanvas = document.createElement('canvas');
+    const ctx = itemCanvas.getContext('2d');
+    const maxCol = item.a;
+    const maxRow = item.b;
+    itemCanvas.width = (maxCol + 1) * tileSize;
+    itemCanvas.height = (maxRow + 1) * tileSize;
+
+    let framesToRender = [];
+    if (item.d && Array.isArray(item.i[0])) {
+      framesToRender = item.i[0];
+    } else if (Array.isArray(item.i[0])) {
+      framesToRender = item.i.flat();
+    } else {
+      framesToRender = item.i.map(frame => {
+        if (typeof frame === 'string' && frame.includes('-')) {
+          return game.parseRange(frame);
         }
-        framesToRender.forEach((frame, index) => {
-          const srcX = (frame % tilesPerRow) * tileSize;
-          const srcY = Math.floor(frame / tilesPerRow) * tileSize;
-          const destX = (index % (maxCol + 1)) * tileSize;
-          const destY = Math.floor(index / (maxCol + 1)) * tileSize;
-          ctx.drawImage(
-            tilesetImage,
-            srcX, srcY, tileSize, tileSize,
-            destX, destY, tileSize, tileSize
-          );
-        });
-        itemCanvas.setAttribute('data-item-id', category);
-        const canvasContainer = document.createElement('div');
-        canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg p-1 transition duration-300 transform hover:scale-125';
-        itemCanvas.className += ' w-full h-full object-contain';
-        itemCanvas.addEventListener('mousedown', function(event) {
-          ui_console_editor_inventory.handleMouseDown(event);
-        });
-        canvasContainer.appendChild(itemCanvas);
-        itemGroupElement.appendChild(canvasContainer);
-      });
-      gridContainer.appendChild(itemGroupElement);
+        return [frame];
+      }).flat();
     }
+
+    framesToRender.forEach((frame, index) => {
+      const srcX = (frame % tilesPerRow) * tileSize;
+      const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+      const destX = (index % (maxCol + 1)) * tileSize;
+      const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+      ctx.drawImage(tilesetImage, srcX, srcY, 16, 16, destX, destY, 16, 16);
+    });
+
+    itemCanvas.setAttribute('data-item-id', id);
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg transition duration-300 transform hover:scale-125';
+    canvasContainer.style.marginTop = '-20px';
+    itemCanvas.className += ' w-full h-full object-contain';
+    itemCanvas.addEventListener('mousedown', (event) => this.handleMouseDown(event));
+    canvasContainer.appendChild(itemCanvas);
+    
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'text-white text-xs text-center';
+    nameLabel.title = item.n || 'Unnamed Item';
+    nameLabel.style.overflow = 'hidden';
+    nameLabel.style.textOverflow = 'ellipsis';
+    nameLabel.style.display = '-webkit-box';
+    nameLabel.style.WebkitLineClamp = '2';
+    nameLabel.style.WebkitBoxOrient = 'vertical';
+    nameLabel.style.lineHeight = '1.2';
+    nameLabel.style.minHeight = '2.4em';
+    nameLabel.style.position = 'relative';
+    nameLabel.style.zIndex = '1';
+    nameLabel.style.width = '100%';
+    nameLabel.textContent = item.n || 'Unnamed Item';
+
+    itemGroupElement.appendChild(nameLabel);
+    itemGroupElement.appendChild(canvasContainer);
+    gridContainer.appendChild(itemGroupElement);
+  });
+
+  this.isLoading = false;
+},
+
+  loadMoreItems() {
+    if (this.isLoading) return;
+    
+    let totalItems;
+    if (!this.currentTilesetFilter) {
+      totalItems = Object.values(this.itemData)
+        .reduce((sum, items) => sum + items.length, 0);
+    } else {
+      totalItems = Object.values(this.itemData)
+        .reduce((sum, items) => 
+          sum + items.filter(item => item.t === this.currentTilesetFilter).length, 0);
+    }
+    
+    if (this.currentPage * this.itemsPerPage >= totalItems) return;
+    
+    this.currentPage++;
+    this.displayItems(this.itemData);
   },
 
   addSearchListener() {
     const searchInput = document.querySelector('#inventory-search');
     searchInput.addEventListener('input', (event) => {
-      ui_console_editor_inventory.currentSearchTerm = event.target.value.toLowerCase();
-      ui_console_editor_inventory.filterItems(
-        ui_console_editor_inventory.currentSearchTerm,
-        ui_console_editor_inventory.currentTilesetFilter
-      );
+      this.currentSearchTerm = event.target.value.toLowerCase();
+      this.currentPage = 1;
+      this.filterItems(this.currentSearchTerm, this.currentTilesetFilter);
     });
   },
 
   filterItems(searchTerm, tilesetFilter) {
     if (!this.itemData) return;
-    if (!searchTerm && !tilesetFilter) {
-      this.displayItems(this.itemData);
-      return;
-    }
+    
     const filteredData = {};
     for (let category in this.itemData) {
       if (!this.itemData.hasOwnProperty(category)) continue;
+      
       const items = this.itemData[category];
       const matchingItems = items.filter(item => {
         const matchesName = searchTerm ? (item.n || '').toLowerCase().includes(searchTerm) : true;
-        const matchesTileset = tilesetFilter ? (item.t === tilesetFilter) : true;
+        const matchesTileset = tilesetFilter ? item.t === tilesetFilter : true;
         return matchesName && matchesTileset;
       });
+      
       if (matchingItems.length > 0) {
         filteredData[category] = matchingItems;
       }
     }
+    
     this.displayItems(filteredData);
   },
 
   render() {
-    const itemData = game.objectData[this.selectedInventoryItem]
-      ? game.objectData[this.selectedInventoryItem][0]
-      : null;
+    const itemData = game.objectData[this.selectedInventoryItem] ? game.objectData[this.selectedInventoryItem][0] : null;
     if (!itemData) return;
     if (editor_window.isAddingNewObject) {
       game.ctx.save();
@@ -228,11 +306,11 @@ var ui_console_editor_inventory = {
     const clickedCanvas = event.currentTarget;
     const itemId = clickedCanvas.getAttribute('data-item-id');
     if (!itemId) return;
-    ui_console_editor_inventory.stopDragging();
+    this.stopDragging();
     editor_window.isAddingNewObject = true;
-    ui_console_editor_inventory.selectedInventoryItem = itemId;
-    document.addEventListener('mousemove', ui_console_editor_inventory.trackMouseForItem);
-    ui_console_editor_inventory.isDragging = true;
+    this.selectedInventoryItem = itemId;
+    document.addEventListener('mousemove', this.trackMouseForItem);
+    this.isDragging = true;
   },
 
   trackMouseForItem(event) {
@@ -256,11 +334,7 @@ var ui_console_editor_inventory = {
         const objectHeight = (itemData.b + 1) * 16;
         const adjustedMouseX = clonedObjectX - objectWidth / 2;
         const adjustedMouseY = clonedObjectY - objectHeight / 2;
-        ui_console_editor_inventory.addItemToRoomData(
-          ui_console_editor_inventory.selectedInventoryItem,
-          adjustedMouseX,
-          adjustedMouseY
-        );
+        ui_console_editor_inventory.addItemToRoomData(ui_console_editor_inventory.selectedInventoryItem, adjustedMouseX, adjustedMouseY);
         return;
       }
     }
@@ -295,12 +369,8 @@ var ui_console_editor_inventory = {
   addItemToRoomData(itemId, mouseX, mouseY) {
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
     if (!itemData) return;
-    let baseX = editor_context_menu.isSnapEnabled
-      ? Math.floor(mouseX / 16) * 16
-      : Math.round(mouseX);
-    let baseY = editor_context_menu.isSnapEnabled
-      ? Math.floor(mouseY / 16) * 16
-      : Math.round(mouseY);
+    let baseX = editor_context_menu.isSnapEnabled ? Math.floor(mouseX / 16) * 16 : Math.round(mouseX);
+    let baseY = editor_context_menu.isSnapEnabled ? Math.floor(mouseY / 16) * 16 : Math.round(mouseY);
     const maxColumns = itemData.a || 0;
     const maxRows = itemData.b || 0;
     const newX = [];
@@ -333,14 +403,9 @@ var ui_console_editor_inventory = {
     }
     game.roomData.items.push(newItem);
     editor_layers.addItemToLayer(newItem);
-    console.log('New object added:', newItem, 'with', editor_utils_window.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect', 'placement.');
+    console.log('New object added:', newItem, 'with', editor_context_menu.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect', 'placement.');
   },
-
-  unmount() {
-    this.stopDragging();
-  },
-
-  addGlobalListeners() {
+    addGlobalListeners() {
     document.addEventListener('contextmenu', function(event) {
       event.preventDefault();
       ui_console_editor_inventory.cancelAddingObject();
@@ -350,6 +415,15 @@ var ui_console_editor_inventory = {
         ui_console_editor_inventory.cancelAddingObject();
       }
     });
+  },
+
+  unmount() {
+    this.stopDragging();
+    if (this.scrollContainer) {
+      this.scrollContainer.removeEventListener('scroll', this.loadMoreItems);
+    }
+    document.removeEventListener('contextmenu', this.addGlobalListeners);
+    document.removeEventListener('keydown', this.addGlobalListeners);
   }
 };
 
