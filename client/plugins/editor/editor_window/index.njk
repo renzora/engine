@@ -40,6 +40,13 @@
   </button>
   <button
     type="button"
+    id="rotate_button"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
+    onclick="editor_window.rotateObjects()"
+  >
+  </button>
+  <button
+    type="button"
     id="close_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
     onclick="plugin.close('editor_window')"
@@ -48,1766 +55,1750 @@
 </div>
 
 <style>
-    body.move-cursor {
-      cursor: move !important;
-    }
-  </style>
+  body.move-cursor {
+    cursor: move !important;
+  }
+</style>
 
-  <script>
+<script>
 editor_window = {
-    renderMode: '2d',
-    originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
-    modeButtons: {},
-    brushRadius: 16,
-    isBrushModeActive: false,
-    isPanning: false,
-    isMiddleClickPanning: false,
-    mouseX: 0,
-    mouseY: 0,
-    lastMouseX: 0,
-    lastMouseY: 0,
-    defaultCursor: 'default',
-    previousMode: null,
-    modes: ['select', 'zoom', 'delete', 'pan', 'lasso', 'move'],
-    lassoPath: [],
-    isLassoActive: false,
-    boundMouseMoveHandler: null,
-    boundMouseDownHandler: null,
-    boundMouseUpHandler: null,
-    boundMouseScrollHandler: null,
-    boundKeyDownHandler: null,
-    clipboard: [],
-    isAddingNewObject: false,
-    isDragging: false,
-    selectionStart: { x: 0, y: 0 },
-    selectionEnd: { x: 0, y: 0 },
-    selectedObjects: [],
-    undoStack: [],
-    redoStack: [],
-    isMovingObjects: false,
-    moveOffsetX: 0,
-    moveOffsetY: 0,
-    currentHour: null,
-    currentMinute: null,
-    currentDay: null,
-    isSnapEnabled: false,
-    isGroupObjectsEnabled: false,
-    dragStartAxis: null,
-    hoveredAxis: null,
-    iconPositions: {
-        pencil: 0,
-        scissors: 1,
-        zoom: 2,
-        save: 4,
-        trash: 5,
-        undo: 6,
-        redo: 7,
-        select: 8,
-        eye: 9,
-        move: 10,
-        pan: 11,
-        cancel: 12,
-    },
+  renderMode: 'isometric',
+  originalRoomData: JSON.parse(JSON.stringify(game.roomData)),
+  modeButtons: {},
+  brushRadius: 16,
+  isBrushModeActive: false,
+  isPanning: false,
+  isMiddleClickPanning: false,
+  mouseX: 0,
+  mouseY: 0,
+  lastMouseX: 0,
+  lastMouseY: 0,
+  defaultCursor: 'default',
+  previousMode: null,
+  modes: ['select', 'zoom', 'delete', 'pan', 'lasso', 'move'],
+  lassoPath: [],
+  isLassoActive: false,
+  boundMouseMoveHandler: null,
+  boundMouseDownHandler: null,
+  boundMouseUpHandler: null,
+  boundMouseScrollHandler: null,
+  boundKeyDownHandler: null,
+  clipboard: [],
+  isAddingNewObject: false,
+  isDragging: false,
+  selectionStart: { x: 0, y: 0 },
+  selectionEnd: { x: 0, y: 0 },
+  selectedObjects: [],
+  undoStack: [],
+  redoStack: [],
+  isMovingObjects: false,
+  moveOffsetX: 0,
+  moveOffsetY: 0,
+  currentHour: null,
+  currentMinute: null,
+  currentDay: null,
+  isSnapEnabled: false,
+  isGroupObjectsEnabled: false,
+  dragStartAxis: null,
+  hoveredAxis: null,
+  iconPositions: {
+    pencil: 0,
+    scissors: 1,
+    zoom: 2,
+    save: 4,
+    trash: 5,
+    undo: 6,
+    redo: 7,
+    select: 8,
+    eye: 9,
+    move: 10,
+    pan: 11,
+    cancel: 12,
+    rotate: 13
+  },
 
-    start() {
-
+  start() {
     assets.preload([{ name: 'edit_mode_window_icons', path: 'plugins/editor/editor_window/icons.png' }], () => {
-        this.setButtonIcon('select_button', 'select');
-        this.setButtonIcon('pan_button', 'pan');
-        this.setButtonIcon('lasso_button', 'pencil');
-        this.setButtonIcon('move_button', 'move');
-        this.setButtonIcon('save_button', 'save');
-        this.setButtonIcon('close_button', 'cancel');
-    });
+      this.setButtonIcon('select_button', 'select')
+      this.setButtonIcon('pan_button', 'pan')
+      this.setButtonIcon('lasso_button', 'pencil')
+      this.setButtonIcon('move_button', 'move')
+      this.setButtonIcon('save_button', 'save')
+      this.setButtonIcon('rotate_button', 'rotate')
+      this.setButtonIcon('close_button', 'cancel')
+    })
 
     this.modeButtons = {
-        select: document.getElementById('select_button'),
-        zoom: document.getElementById('zoom_button'),
-        delete: document.getElementById('delete_button'),
-        pan: document.getElementById('pan_button'),
-        lasso: document.getElementById('lasso_button'),
-        move: document.getElementById('move_button')
-    };
+      select: document.getElementById('select_button'),
+      zoom: document.getElementById('zoom_button'),
+      delete: document.getElementById('delete_button'),
+      pan: document.getElementById('pan_button'),
+      lasso: document.getElementById('lasso_button'),
+      move: document.getElementById('move_button')
+    }
 
-    plugin.time.active = true;
-    game.isEditMode = true;
-    game.pathfinding = false;
-    game.allowControls = true;
-    camera.lerpEnabled = false;
-    game.zoomLevel = 4;
-    plugin.actions.tooltipActive = false;
-    plugin.pathfinding.stopPathfinding();
-    plugin.actions.hideTooltip();
+    plugin.time.active = true
+    game.isEditMode = true
+    game.pathfinding = false
+    game.allowControls = true
+    camera.lerpEnabled = false
+    game.zoomLevel = 4
+    plugin.actions.tooltipActive = false
+    plugin.pathfinding.stopPathfinding()
+    plugin.actions.hideTooltip()
 
-    this.updateCurrentTimeAndDay();
-    this.boundMouseMoveHandler = this.handleMouseMove.bind(this);
-    this.boundMouseDownHandler = this.handleMouseDown.bind(this);
-    this.boundMouseUpHandler = this.handleMouseUp.bind(this);
-    this.boundMouseScrollHandler = this.handleMouseScroll.bind(this);
-    this.boundKeyDownHandler = this.handleKeyDown.bind(this);
+    this.updateCurrentTimeAndDay()
+    this.boundMouseMoveHandler = this.handleMouseMove.bind(this)
+    this.boundMouseDownHandler = this.handleMouseDown.bind(this)
+    this.boundMouseUpHandler = this.handleMouseUp.bind(this)
+    this.boundMouseScrollHandler = this.handleMouseScroll.bind(this)
+    this.boundKeyDownHandler = this.handleKeyDown.bind(this)
 
-    game.canvas.addEventListener('mousemove', this.boundMouseMoveHandler);
-    game.canvas.addEventListener('mousedown', this.boundMouseDownHandler);
-    game.canvas.addEventListener('mouseup', this.boundMouseUpHandler);
-    game.canvas.addEventListener('wheel', this.boundMouseScrollHandler);
-    window.addEventListener('keyup', this.handleKeyUp.bind(this));
-    window.addEventListener('keydown', this.boundKeyDownHandler);
+    game.canvas.addEventListener('mousemove', this.boundMouseMoveHandler)
+    game.canvas.addEventListener('mousedown', this.boundMouseDownHandler)
+    game.canvas.addEventListener('mouseup', this.boundMouseUpHandler)
+    game.canvas.addEventListener('wheel', this.boundMouseScrollHandler)
+    window.addEventListener('keyup', this.handleKeyUp.bind(this))
+    window.addEventListener('keydown', this.boundKeyDownHandler)
 
-    plugin.minimize('ui_inventory_window');
-    plugin.minimize('ui_overlay_window');
-    //plugin.close('context_menu');
-    
-    plugin.console_window.load_tab_buttons('editor');
-    plugin.console_window.toggleConsoleWindow('editor_inventory');
-    plugin.console_window.allowToggle = false;
+    plugin.minimize('ui_inventory_window')
+    plugin.minimize('ui_overlay_window')
 
-plugin.preload([
-    { priority: 0, id: 'editor_layers', path: 'editor', ext: 'njk', drag: false, reload: false },
-    { priority: 1, id: 'editor_context_menu', path: 'editor', ext: 'njk', drag: false, reload: true }
-]);
+    plugin.console_window.load_tab_buttons('editor')
+    plugin.console_window.toggleConsoleWindow('editor_inventory')
+    plugin.console_window.allowToggle = false
 
-    setTimeout(() => { camera.manual = true; }, 0);
-    this.changeMode('select');
-},
+    plugin.preload([
+      { priority: 0, id: 'editor_layers', path: 'editor', ext: 'njk', drag: false, reload: false },
+      { priority: 1, id: 'editor_context_menu', path: 'editor', ext: 'njk', drag: false, reload: true }
+    ])
 
-unmount() {
-    game.isEditMode = false;
-    game.pathfinding = true;
-    game.allowControls = true;
-    plugin.time.active = true;
-    plugin.time.hours = this.currentHour;
-    plugin.time.minutes = this.currentMinute;
-    game.displaySprite = true;
-    camera.lerpEnabled = true;
-    camera.manual = false;
-    game.zoomLevel = 4;
-    game.canvas.removeEventListener('mousemove', this.boundMouseMoveHandler);
-    game.canvas.removeEventListener('mousedown', this.boundMouseDownHandler);
-    game.canvas.removeEventListener('mouseup', this.boundMouseUpHandler);
-    game.canvas.removeEventListener('wheel', this.boundMouseScrollHandler);
-    window.removeEventListener('keydown', this.boundKeyDownHandler);
-    window.removeEventListener('keyup', this.boundKeyUpHandler);
+    setTimeout(() => { camera.manual = true }, 0)
+    this.changeMode('select')
+  },
 
-    this.isDragging = false;
-    this.isLassoActive = false;
-    this.selectedObjects = [];
-    this.lassoPath = [];
-    this.selectionStart = { x: 0, y: 0 };
-    this.selectionEnd = { x: 0, y: 0 };
-    this.isMovingObjects = false;
-    this.isMiddleClickPanning = false;
-    plugin.actions.tooltipActive = true;
+  unmount() {
+    game.isEditMode = false
+    game.pathfinding = true
+    game.allowControls = true
+    plugin.time.active = true
+    plugin.time.hours = this.currentHour
+    plugin.time.minutes = this.currentMinute
+    game.displaySprite = true
+    camera.lerpEnabled = true
+    camera.manual = false
+    game.zoomLevel = 4
+    game.canvas.removeEventListener('mousemove', this.boundMouseMoveHandler)
+    game.canvas.removeEventListener('mousedown', this.boundMouseDownHandler)
+    game.canvas.removeEventListener('mouseup', this.boundMouseUpHandler)
+    game.canvas.removeEventListener('wheel', this.boundMouseScrollHandler)
+    window.removeEventListener('keydown', this.boundKeyDownHandler)
+    window.removeEventListener('keyup', this.boundKeyUpHandler)
 
-    this.clearSelectionBox();
-    this.clearLassoPath();
+    this.isDragging = false
+    this.isLassoActive = false
+    this.selectedObjects = []
+    this.lassoPath = []
+    this.selectionStart = { x: 0, y: 0 }
+    this.selectionEnd = { x: 0, y: 0 }
+    this.isMovingObjects = false
+    this.isMiddleClickPanning = false
+    plugin.actions.tooltipActive = true
 
-    document.body.style.cursor = 'default';
-    plugin.close('editor_context_menu');
-    plugin.close('console_window');
-    plugin.close('editor_layers');
-    plugin.show('ui_inventory_window');
-    plugin.show('ui_overlay_window');
-    assets.unload('edit_mode_window_icons');
-    game.resizeCanvas();
-},
+    this.clearSelectionBox()
+    this.clearLassoPath()
 
-onRender() {
-    this.renderSelectionBox();
-    this.renderSelectedTiles();
-    this.renderLasso();
-},
+    document.body.style.cursor = 'default'
+    plugin.close('editor_context_menu')
+    plugin.close('console_window')
+    plugin.close('editor_layers')
+    plugin.show('ui_inventory_window')
+    plugin.show('ui_overlay_window')
+    assets.unload('edit_mode_window_icons')
+    game.resizeCanvas()
+  },
 
-setButtonIcon: function(buttonId, iconName) {
-  const buttonEl = document.getElementById(buttonId);
-  if (!buttonEl) return;
+  onRender() {
+    this.renderSelectionBox()
+    this.renderSelectedTiles()
+    this.renderLasso()
+  },
 
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  
-  canvas.width = 32;
-  canvas.height = 32;
+  setButtonIcon: function(buttonId, iconName) {
+    const buttonEl = document.getElementById(buttonId)
+    if (!buttonEl) return
 
-  const iconIndex = this.iconPositions[iconName];
-  const iconSprite = assets.use('edit_mode_window_icons');
-  const offsetX = iconIndex * 32; 
-  ctx.drawImage(iconSprite,offsetX, 0,32,32,0,0,32,32);
-  buttonEl.appendChild(canvas);
-},
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
 
-updateCurrentTimeAndDay() {
-    if(!plugin.time) return;
-        this.currentHour = Math.floor(time.hours);
-        this.currentMinute = Math.floor(time.minutes);
-        this.currentDay = time.daysOfWeek[time.days % 7];
-},
+    canvas.width = 32
+    canvas.height = 32
 
-    changeMode(newMode) {
-    const contextMenu = document.getElementById('editor_context_menu');
+    const iconIndex = this.iconPositions[iconName]
+    const iconSprite = assets.use('edit_mode_window_icons')
+    const offsetX = iconIndex * 32
+    ctx.drawImage(iconSprite, offsetX, 0, 32, 32, 0, 0, 32, 32)
+    buttonEl.appendChild(canvas)
+  },
+
+  updateCurrentTimeAndDay() {
+    if(!plugin.time) return
+    this.currentHour = Math.floor(time.hours)
+    this.currentMinute = Math.floor(time.minutes)
+    this.currentDay = time.daysOfWeek[time.days % 7]
+  },
+
+  changeMode(newMode) {
+    const contextMenu = document.getElementById('editor_context_menu')
     if (contextMenu) {
-        contextMenu.classList.add('hidden');
+      contextMenu.classList.add('hidden')
     }
 
     if (this.isDragging) {
-        return;
+      return
     }
 
-    if (game.editorMode === newMode) return;
+    if (game.editorMode === newMode) return
 
-    document.body.style.cursor = 'default';
-    game.editorMode = newMode;
-    this.isBrushModeActive = false;
-    this.isLassoActive = false;
-    this.isPanning = false;
+    document.body.style.cursor = 'default'
+    game.editorMode = newMode
+    this.isBrushModeActive = false
+    this.isLassoActive = false
+    this.isPanning = false
 
     switch (newMode) {
-        case 'select':
-            this.defaultCursor = 'pointer';
-            break;
-        case 'pan':
-            this.defaultCursor = 'grab';
-            this.isPanning = true;
-            break;
-        case 'lasso':
-            this.defaultCursor = 'crosshair';
-            this.isLassoActive = true;
-            break;
-        default:
-            this.defaultCursor = 'default';
+      case 'select':
+        this.defaultCursor = 'pointer'
+        break
+      case 'pan':
+        this.defaultCursor = 'grab'
+        this.isPanning = true
+        break
+      case 'lasso':
+        this.defaultCursor = 'crosshair'
+        this.isLassoActive = true
+        break
+      default:
+        this.defaultCursor = 'default'
     }
 
-    document.body.style.cursor = this.defaultCursor;
+    document.body.style.cursor = this.defaultCursor
 
-    const buttons = document.querySelectorAll('.mode-button');
+    const buttons = document.querySelectorAll('.mode-button')
     buttons.forEach(button => {
-        button.classList.remove('active');
-        if (button.id === `${newMode}_button`) {
-            button.classList.add('active');
-        }
-    });
-},
+      button.classList.remove('active')
+      if (button.id === `${newMode}_button`) {
+        button.classList.add('active')
+      }
+    })
+  },
 
-handleMouseMove(event) {
-    const rect = game.canvas.getBoundingClientRect();
-    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+  handleMouseMove(event) {
+    const rect = game.canvas.getBoundingClientRect()
+    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
+    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
 
     if (event.buttons === 4 && this.isMiddleClickPanning) {
-        const deltaX = event.clientX - this.lastMouseX;
-        const deltaY = event.clientY - this.lastMouseY;
-        const canvasLeft = parseInt(game.canvas.style.left || '0', 10);
-        const canvasTop = parseInt(game.canvas.style.top || '0', 10);
-        const atLeftEdge = camera.cameraX <= 0;
-        const atRightEdge = camera.cameraX >= game.worldWidth - (window.innerWidth / game.zoomLevel);
-        const atTopEdge = camera.cameraY <= 0;
-        const atBottomEdge = camera.cameraY >= game.worldHeight - (window.innerHeight / game.zoomLevel);
-        const isAtHorizontalEdge = atLeftEdge || atRightEdge;
-        const isAtVerticalEdge = atTopEdge || atBottomEdge;
+      const deltaX = event.clientX - this.lastMouseX
+      const deltaY = event.clientY - this.lastMouseY
+      const canvasLeft = parseInt(game.canvas.style.left || '0', 10)
+      const canvasTop = parseInt(game.canvas.style.top || '0', 10)
+      const atLeftEdge = camera.cameraX <= 0
+      const atRightEdge = camera.cameraX >= game.worldWidth - (window.innerWidth / game.zoomLevel)
+      const atTopEdge = camera.cameraY <= 0
+      const atBottomEdge = camera.cameraY >= game.worldHeight - (window.innerHeight / game.zoomLevel)
+      const isAtHorizontalEdge = atLeftEdge || atRightEdge
+      const isAtVerticalEdge = atTopEdge || atBottomEdge
 
-        if (!isAtHorizontalEdge && !isAtVerticalEdge) {
-            const cameraDeltaX = deltaX / game.zoomLevel;
-            const cameraDeltaY = deltaY / game.zoomLevel;
+      if (!isAtHorizontalEdge && !isAtVerticalEdge) {
+        const cameraDeltaX = deltaX / game.zoomLevel
+        const cameraDeltaY = deltaY / game.zoomLevel
 
-            camera.cameraX = Math.max(
-                0,
-                Math.min(camera.cameraX - cameraDeltaX, game.worldWidth - (window.innerWidth / game.zoomLevel))
-            );
-            camera.cameraY = Math.max(
-                0,
-                Math.min(camera.cameraY - cameraDeltaY, game.worldHeight - (window.innerHeight / game.zoomLevel))
-            );
+        camera.cameraX = Math.max(
+          0,
+          Math.min(camera.cameraX - cameraDeltaX, game.worldWidth - (window.innerWidth / game.zoomLevel))
+        )
+        camera.cameraY = Math.max(
+          0,
+          Math.min(camera.cameraY - cameraDeltaY, game.worldHeight - (window.innerHeight / game.zoomLevel))
+        )
 
-            this.lastMouseX = event.clientX;
-            this.lastMouseY = event.clientY;
-            return;
-        }
+        this.lastMouseX = event.clientX
+        this.lastMouseY = event.clientY
+        return
+      }
 
-        game.canvas.style.left = `${canvasLeft + deltaX}px`;
-        game.canvas.style.top = `${canvasTop + deltaY}px`;
+      game.canvas.style.left = `${canvasLeft + deltaX}px`
+      game.canvas.style.top = `${canvasTop + deltaY}px`
 
-        this.lastMouseX = event.clientX;
-        this.lastMouseY = event.clientY;
-        return;
+      this.lastMouseX = event.clientX
+      this.lastMouseY = event.clientY
+      return
     }
 
     if (this.isDragging && event.buttons === 1) {
-        if (game.editorMode === 'move') {
-            this.handleObjectMovement();
-            return;
-        }
-        if (game.editorMode === 'lasso') {
-            this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
-            this.renderLasso();
-            return;
-        }
+      if (game.editorMode === 'move') {
+        this.handleObjectMovement()
+        return
+      }
+      if (game.editorMode === 'lasso') {
+        this.lassoPath.push({ x: this.mouseX, y: this.mouseY })
+        this.renderLasso()
+        return
+      }
     }
 
-    // Circle drag handle only
     if (game.editorMode === 'move' && this.selectedObjects.length > 0 && !this.isDragging) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        this.selectedObjects.forEach(obj => {
-            minX = Math.min(minX, Math.min(...obj.x) * 16);
-            minY = Math.min(minY, Math.min(...obj.y) * 16);
-            maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16);
-            maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16);
-        });
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+      this.selectedObjects.forEach(obj => {
+        minX = Math.min(minX, Math.min(...obj.x) * 16)
+        minY = Math.min(minY, Math.min(...obj.y) * 16)
+        maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16)
+        maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16)
+      })
 
-        const centerX = (minX + maxX) / 2;
-        const centerY = (minY + maxY) / 2;
-        const centerCircleRadius = 10;
-        const distToCenter = Math.sqrt(
-            Math.pow(this.mouseX - centerX, 2) + 
-            Math.pow(this.mouseY - centerY, 2)
-        );
+      const centerX = (minX + maxX) / 2
+      const centerY = (minY + maxY) / 2
+      const centerCircleRadius = 10
+      const distToCenter = Math.sqrt(
+        Math.pow(this.mouseX - centerX, 2) +
+        Math.pow(this.mouseY - centerY, 2)
+      )
 
-        if (distToCenter <= centerCircleRadius) {
-            this.hoveredAxis = 'center';
-            document.body.style.cursor = 'move';
-            return;
-        }
+      if (distToCenter <= centerCircleRadius) {
+        this.hoveredAxis = 'center'
+        document.body.style.cursor = 'move'
+        return
+      }
 
-        this.hoveredAxis = null;
-        document.body.style.cursor = this.defaultCursor;
+      this.hoveredAxis = null
+      document.body.style.cursor = this.defaultCursor
     }
 
     if (game.editorMode === 'pan' && this.isPanning && event.buttons === 1) {
-        const deltaX = event.clientX - this.lastMouseX;
-        const deltaY = event.clientY - this.lastMouseY;
+      const deltaX = event.clientX - this.lastMouseX
+      const deltaY = event.clientY - this.lastMouseY
 
-        camera.cameraX -= deltaX / game.zoomLevel;
-        camera.cameraY -= deltaY / game.zoomLevel;
-        this.constrainCamera();
+      camera.cameraX -= deltaX / game.zoomLevel
+      camera.cameraY -= deltaY / game.zoomLevel
+      this.constrainCamera()
 
-        this.lastMouseX = event.clientX;
-        this.lastMouseY = event.clientY;
-        return;
+      this.lastMouseX = event.clientX
+      this.lastMouseY = event.clientY
+      return
     }
 
     if (this.isDragging && event.buttons === 1) {
-        if (game.editorMode === 'select') {
-            this.handleSelectionBox(event, rect);
-        }
+      if (game.editorMode === 'select') {
+        this.handleSelectionBox(event, rect)
+      }
     }
-},
+  },
 
-handleMouseDown: function (e) {
-    if (plugin.editor_window.isAddingNewObject) return;
-    
-    if (game.editorMode === 'pan') {
-        this.isPanning = true;
-        this.lastMouseX = e.clientX;
-        this.lastMouseY = e.clientY;
-        document.body.style.cursor = 'grabbing';
-        return;
+  handleMouseDown: function (e) {
+  if (plugin.editor_window.isAddingNewObject) return;
+
+  if (game.editorMode === 'pan') {
+    this.isPanning = true;
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
+    document.body.style.cursor = 'grabbing';
+    return;
+  }
+
+  this.updateMousePosition(e);
+
+  if (e.button === 2) {
+    const isClickInsideSelection = this.isCursorInsideSelectedArea();
+    if (!isClickInsideSelection) {
+      this.selectedObjects = [];
+      this.clearSelectionBox();
+      this.clearLassoPath();
+      this.changeMode('select');
+    }
+    return;
+  }
+
+  if (e.button === 1) {
+    this.previousMode = game.editorMode;
+    this.changeMode('pan');
+    this.isMiddleClickPanning = true;
+    this.isPanning = true;
+    this.lastMouseX = e.clientX;
+    this.lastMouseY = e.clientY;
+    document.body.style.cursor = 'grabbing';
+    return;
+  }
+
+  if (e.button === 0) {
+    if (game.editorMode === 'lasso') {
+      this.isDragging = true;
+      this.lassoPath = [{ x: this.mouseX, y: this.mouseY }];
+      return;
     }
 
-    this.updateMousePosition(e);
-
-    if (e.button === 2) {
-        const isClickInsideSelection = this.isCursorInsideSelectedArea();
-        if (!isClickInsideSelection) {
-            this.selectedObjects = [];
-            this.clearSelectionBox();
-            this.clearLassoPath();
-            this.changeMode('select');
+    if (e.shiftKey && game.editorMode === 'move') {
+      const clickedObject = this.selectedObjects.find(obj => {
+        const objRect = {
+          x: Math.min(...obj.x) * 16,
+          y: Math.min(...obj.y) * 16,
+          width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
+          height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
+        };
+        return (
+          this.mouseX >= objRect.x &&
+          this.mouseX <= objRect.x + objRect.width &&
+          this.mouseY >= objRect.y &&
+          this.mouseY <= objRect.y + objRect.height
+        );
+      });
+      if (clickedObject && !this.isObjectLocked(clickedObject)) {
+        this.selectedObjects = this.selectedObjects.filter(o => o !== clickedObject);
+        if (this.selectedObjects.length === 0) {
+          this.changeMode('select');
         }
-        return;
+        this.renderSelectedTiles();
+      }
+      return;
     }
 
-    if (e.button === 1) {
-        this.previousMode = game.editorMode;
-        this.changeMode('pan');
-        this.isMiddleClickPanning = true;
-        this.isPanning = true;
-        this.lastMouseX = e.clientX;
-        this.lastMouseY = e.clientY;
-        document.body.style.cursor = 'grabbing';
-        return;
+    if (game.editorMode === 'move') {
+      const clickedOnSelectedObject = this.checkIfClickedOnSelectedObject();
+      if (!clickedOnSelectedObject) {
+        const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
+        if (clickedItem) {
+          this.selectedObjects = [clickedItem];
+          editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
+
+          this.clearSelectionBox();
+          this.changeMode('move');
+          this.renderSelectedTiles();
+        } else {
+          this.changeMode('select');
+          this.handleSelectionStart(e);
+        }
+      } else {
+        if (this.hoveredAxis === 'center') {
+          this.isDragging = true;
+          this.dragStartAxis = 'center';
+          this.lastMouseX = this.mouseX;
+          this.lastMouseY = this.mouseY;
+          this.clearSelectionBox();
+        } else {
+          this.changeMode('select');
+          this.handleSelectionStart(e);
+        }
+      }
+      return;
     }
 
-    if (e.button === 0) {
-        if (game.editorMode === 'lasso') {
-            this.isDragging = true;
-            this.lassoPath = [{ x: this.mouseX, y: this.mouseY }];
-            return;
+    if (game.editorMode === 'select') {
+      if (!this.isDragging && !e.shiftKey) {
+        const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
+        if (clickedItem) {
+          this.selectedObjects = [clickedItem];
+          editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
+
+          this.clearSelectionBox();
+          this.changeMode('move');
+          this.renderSelectedTiles();
+          return;
         }
-
-        if (e.shiftKey && game.editorMode === 'move') {
-            const clickedObject = this.selectedObjects.find(obj => {
-                const objRect = {
-                    x: Math.min(...obj.x) * 16,
-                    y: Math.min(...obj.y) * 16,
-                    width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
-                    height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
-                };
-                return (
-                    this.mouseX >= objRect.x &&
-                    this.mouseX <= objRect.x + objRect.width &&
-                    this.mouseY >= objRect.y &&
-                    this.mouseY <= objRect.y + objRect.height
-                );
-            });
-
-            if (clickedObject && !this.isObjectLocked(clickedObject)) {
-                this.selectedObjects = this.selectedObjects.filter(o => o !== clickedObject);
-                if (this.selectedObjects.length === 0) {
-                    this.changeMode('select');
-                }
-                this.renderSelectedTiles();
-            }
-            return;
-        }
-
-        if (game.editorMode === 'move') {
-            const clickedOnSelectedObject = this.checkIfClickedOnSelectedObject();
-            if (!clickedOnSelectedObject) {
-                const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
-
-                if (clickedItem) {
-                    this.selectedObjects = [clickedItem];
-                    this.clearSelectionBox();
-                    this.changeMode('move');
-                    this.renderSelectedTiles();
-                } else {
-                    this.changeMode('select');
-                    this.handleSelectionStart(e);
-                }
-            } else {
-                // Just start dragging with the circle if hoveredAxis === 'center'
-                if (this.hoveredAxis === 'center') {
-                    this.isDragging = true;
-                    this.dragStartAxis = 'center';
-                    this.lastMouseX = this.mouseX;
-                    this.lastMouseY = this.mouseY;
-                    this.clearSelectionBox();
-                } else {
-                    // If not hovering the circle, treat it as a normal selection box start
-                    this.changeMode('select');
-                    this.handleSelectionStart(e);
-                }
-            }
-            return;
-        }
-
-        if (game.editorMode === 'select') {
-            if (!this.isDragging && !e.shiftKey) {
-                const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
-                if (clickedItem) {
-                    this.selectedObjects = [clickedItem];
-                    this.clearSelectionBox();
-                    this.changeMode('move');
-                    this.renderSelectedTiles();
-                    return;
-                }
-            }
-            this.handleSelectionStart(e);
-        }
+      }
+      this.handleSelectionStart(e);
     }
-},
+  }
+  },
 
-handleMouseUp(event) {
+  handleMouseUp(event) {
     if (event.button === 1 && this.isMiddleClickPanning) {
-        this.isMiddleClickPanning = false;
-        this.isPanning = false;
-        this.changeMode(this.previousMode);
-        document.body.style.cursor = this.defaultCursor;
-        return;
+      this.isMiddleClickPanning = false
+      this.isPanning = false
+      this.changeMode(this.previousMode)
+      document.body.style.cursor = this.defaultCursor
+      return
     }
 
     if (event.button === 0) {
-        this.isDragging = false;
-        this.dragStartAxis = null;
-        
-        if (this.isPanning) {
-            this.isPanning = false;
-            document.body.style.cursor = this.defaultCursor;
+      this.isDragging = false
+      this.dragStartAxis = null
+
+      if (this.isPanning) {
+        this.isPanning = false
+        document.body.style.cursor = this.defaultCursor
+      }
+
+      if (game.editorMode === 'lasso') {
+        if (this.lassoPath.length > 2) {
+          this.updateSelectedObjectsWithLasso(event.shiftKey)
         }
-        
-        if (game.editorMode === 'lasso') {
-            if (this.lassoPath.length > 2) {
-                this.updateSelectedObjectsWithLasso(event.shiftKey);
-            }
-            this.clearLassoPath();
-            return;
-        }
-        
-        if (this.handleSelectionEnd(event)) return;
-        
-        if (game.editorMode === 'move') {
-            this.finalizeObjectMovement();
-        }
+        this.clearLassoPath()
+        return
+      }
+
+      if (this.handleSelectionEnd(event)) return
+
+      if (game.editorMode === 'move') {
+        this.finalizeObjectMovement()
+      }
     }
-},
+  },
 
-handleMouseScroll(event) {
-    if (!game.isEditMode) return;
-    const zoomFactor = event.deltaY < 0 ? 1 : -1;
-    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10));
-    const rect = game.canvas.getBoundingClientRect();
-    const mouseXOnCanvas = event.clientX - rect.left;
-    const mouseYOnCanvas = event.clientY - rect.top;
-    const worldMouseX = mouseXOnCanvas / game.zoomLevel + camera.cameraX;
-    const worldMouseY = mouseYOnCanvas / game.zoomLevel + camera.cameraY;
-    game.zoomLevel = newZoomLevel;
-    const newWorldMouseX = mouseXOnCanvas / game.zoomLevel + camera.cameraX;
-    const newWorldMouseY = mouseYOnCanvas / game.zoomLevel + camera.cameraY;
-    camera.cameraX += worldMouseX - newWorldMouseX;
-    camera.cameraY += worldMouseY - newWorldMouseY;
-    this.constrainCamera();
-},
+  handleMouseScroll(event) {
+    if (!game.isEditMode) return
+    const zoomFactor = event.deltaY < 0 ? 1 : -1
+    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + zoomFactor, 10))
+    const rect = game.canvas.getBoundingClientRect()
+    const mouseXOnCanvas = event.clientX - rect.left
+    const mouseYOnCanvas = event.clientY - rect.top
+    const worldMouseX = mouseXOnCanvas / game.zoomLevel + camera.cameraX
+    const worldMouseY = mouseYOnCanvas / game.zoomLevel + camera.cameraY
+    game.zoomLevel = newZoomLevel
+    const newWorldMouseX = mouseXOnCanvas / game.zoomLevel + camera.cameraX
+    const newWorldMouseY = mouseYOnCanvas / game.zoomLevel + camera.cameraY
+    camera.cameraX += worldMouseX - newWorldMouseX
+    camera.cameraY += worldMouseY - newWorldMouseY
+    this.constrainCamera()
+  },
 
-findTopmostObjectWithPixelCheck(worldX, worldY) {
-    const items = [...game.roomData.items];
+  findTopmostObjectWithPixelCheck(worldX, worldY) {
+    const items = [...game.roomData.items]
     items.sort((a, b) => {
-        const zA = this.getRoomItemZIndex(a);
-        const zB = this.getRoomItemZIndex(b);
-        return zA - zB;
-    });
+      const zA = this.getRoomItemZIndex(a)
+      const zB = this.getRoomItemZIndex(b)
+      return zA - zB
+    })
 
     for (let i = items.length - 1; i >= 0; i--) {
-        const rItem = items[i];
-        if (rItem.visible === false) continue;
-        if (editor_window.isObjectLocked(rItem)) continue;
+      const rItem = items[i]
+      if (rItem.visible === false) continue
+      if (editor_window.isObjectLocked(rItem)) continue
 
-        const minX = Math.min(...rItem.x) * 16;
-        const maxX = Math.max(...rItem.x) * 16 + 16;
-        const minY = Math.min(...rItem.y) * 16;
-        const maxY = Math.max(...rItem.y) * 16 + 16;
-        if (worldX < minX || worldX > maxX || worldY < minY || worldY > maxY) {
-            continue;
-        }
+      const minX = Math.min(...rItem.x) * 16
+      const maxX = Math.max(...rItem.x) * 16 + 16
+      const minY = Math.min(...rItem.y) * 16
+      const maxY = Math.max(...rItem.y) * 16 + 16
+      if (worldX < minX || worldX > maxX || worldY < minY || worldY > maxY) {
+        continue
+      }
 
-        const tileDataArray = game.objectData[rItem.id];
-        if (!tileDataArray || !tileDataArray.length) continue;
-        const tileData = tileDataArray[0];
-        const frame = tileData.currentFrame || 0;
-        const rot = (rItem.rotation != null) ? rItem.rotation : (tileData.rotation || 0);
-        const cacheKey = `${rItem.id}_${frame}_${rot}`;
-        const offscreen = game.objectCache[cacheKey];
-        if (!offscreen) continue;
+      const tileDataArray = game.objectData[rItem.id]
+      if (!tileDataArray || !tileDataArray.length) continue
+      const tileData = tileDataArray[0]
+      const frame = tileData.currentFrame || 0
+      const rot = (rItem.rotation != null) ? rItem.rotation : (tileData.rotation || 0)
+      const cacheKey = `${rItem.id}_${frame}_${rot}`
+      const offscreen = game.objectCache[cacheKey]
+      if (!offscreen) continue
 
-        const pivotX = (minX + maxX) / 2;
-        const pivotY = maxY;
-        let localX = worldX - pivotX;
-        let localY = worldY - pivotY;
-        if (rot !== 0) {
-            const cosA = Math.cos(-rot);
-            const sinA = Math.sin(-rot);
-            const rx = localX * cosA - localY * sinA;
-            const ry = localX * sinA + localY * cosA;
-            localX = rx;
-            localY = ry;
-        }
-        localX += offscreen.width / 2;
-        localY += offscreen.height;
+      const pivotX = (minX + maxX) / 2
+      const pivotY = maxY
+      let localX = worldX - pivotX
+      let localY = worldY - pivotY
+      if (rot !== 0) {
+        const cosA = Math.cos(-rot)
+        const sinA = Math.sin(-rot)
+        const rx = localX * cosA - localY * sinA
+        const ry = localX * sinA + localY * cosA
+        localX = rx
+        localY = ry
+      }
+      if (rItem.flipHorizontal && editor_window.renderMode === 'isometric') {
+        localX = -localX
+      }
+      localX += offscreen.width / 2
+      localY += offscreen.height
 
-        const px = Math.floor(localX);
-        const py = Math.floor(localY);
-        if (px < 0 || px >= offscreen.width || py < 0 || py >= offscreen.height) {
-            continue;
-        }
+      const px = Math.floor(localX)
+      const py = Math.floor(localY)
+      if (px < 0 || px >= offscreen.width || py < 0 || py >= offscreen.height) {
+        continue
+      }
 
-        const offCtx = offscreen.getContext('2d');
-        const pixel = offCtx.getImageData(px, py, 1, 1).data;
-        if (pixel[3] > 0) {
-            return rItem;
-        }
+      const offCtx = offscreen.getContext('2d')
+      const pixel = offCtx.getImageData(px, py, 1, 1).data
+      if (pixel[3] > 0) {
+        return rItem
+      }
     }
-    return null;
-},
+    return null
+  },
 
-getRoomItemZIndex(rItem) {
-    const iData = game.objectData[rItem.id];
-    if (!iData || !iData.length) return Number.MIN_SAFE_INTEGER;
-    const tData = iData[0];
-    if (tData.z === 0) return -9999;
-    const maxY = Math.max(...rItem.y);
-    return maxY * 16;
-},
+  getRoomItemZIndex(rItem) {
+    const iData = game.objectData[rItem.id]
+    if (!iData || !iData.length) return Number.MIN_SAFE_INTEGER
+    const tData = iData[0]
+    if (tData.z === 0) return -9999
+    const maxY = Math.max(...rItem.y)
+    return maxY * 16
+  },
 
-isCursorInsideSelectedArea() {
+  isCursorInsideSelectedArea() {
     return this.selectedObjects.some(obj => {
-        const objRect = {
-            x: Math.min(...obj.x) * 16,
-            y: Math.min(...obj.y) * 16,
-            width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
-            height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
-        };
+      const objRect = {
+        x: Math.min(...obj.x) * 16,
+        y: Math.min(...obj.y) * 16,
+        width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
+        height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
+      }
 
-        return (
-            this.mouseX >= objRect.x &&
-            this.mouseX <= objRect.x + objRect.width &&
-            this.mouseY >= objRect.y &&
-            this.mouseY <= objRect.y + objRect.height
-        );
-    });
-},
+      return (
+        this.mouseX >= objRect.x &&
+        this.mouseX <= objRect.x + objRect.width &&
+        this.mouseY >= objRect.y &&
+        this.mouseY <= objRect.y + objRect.height
+      )
+    })
+  },
 
-handlePanning(event) {
+  handlePanning(event) {
     if (event.button === 1 || game.editorMode === 'pan') {
-        this.isDragging = true;
-        this.isPanning = true;
-        this.lastMouseX = event.clientX;
-        this.lastMouseY = event.clientY;
-        document.body.style.cursor = 'grabbing';
-        return true;
+      this.isDragging = true
+      this.isPanning = true
+      this.lastMouseX = event.clientX
+      this.lastMouseY = event.clientY
+      document.body.style.cursor = 'grabbing'
+      return true
     }
-    return false;
-},
+    return false
+  },
 
-handleCameraPanning: function(event) {
-    const deltaX = event.clientX - this.lastMouseX;
-    const deltaY = event.clientY - this.lastMouseY;
-    camera.cameraX -= deltaX / game.zoomLevel;
-    camera.cameraY -= deltaY / game.zoomLevel;
-    this.constrainCamera();
-    this.lastMouseX = event.clientX;
-    this.lastMouseY = event.clientY;
-},
+  handleCameraPanning: function(event) {
+    const deltaX = event.clientX - this.lastMouseX
+    const deltaY = event.clientY - this.lastMouseY
+    camera.cameraX -= deltaX / game.zoomLevel
+    camera.cameraY -= deltaY / game.zoomLevel
+    this.constrainCamera()
+    this.lastMouseX = event.clientX
+    this.lastMouseY = event.clientY
+  },
 
-handleZoomDrag(event) {
+  handleZoomDrag(event) {
     if (event.button === 0) {
-        this.isDragging = true;
-        this.lastMouseY = event.clientY;
-        return true;
+      this.isDragging = true
+      this.lastMouseY = event.clientY
+      return true
     }
-    return false;
-},
+    return false
+  },
 
-handleObjectMovement() {
-    if (!this.selectedObjects.length) return;
-    if (this.dragStartAxis !== 'center') return;
+  handleObjectMovement() {
+    if (!this.selectedObjects.length) return
+    if (this.dragStartAxis !== 'center') return
 
-    let totalDeltaX = this.mouseX - this.lastMouseX;
-    let totalDeltaY = this.mouseY - this.lastMouseY;
+    let totalDeltaX = this.mouseX - this.lastMouseX
+    let totalDeltaY = this.mouseY - this.lastMouseY
 
     this.selectedObjects.forEach((obj) => {
-        obj.x = obj.x.map(coord => coord + totalDeltaX / 16);
-        obj.y = obj.y.map(coord => coord + totalDeltaY / 16);
-    });
+      obj.x = obj.x.map(coord => coord + totalDeltaX / 16)
+      obj.y = obj.y.map(coord => coord + totalDeltaY / 16)
+    })
 
-    this.lastMouseX = this.mouseX;
-    this.lastMouseY = this.mouseY;
-},
+    this.lastMouseX = this.mouseX
+    this.lastMouseY = this.mouseY
+  },
 
-handleSelectionStart(event) {
-    if (plugin.editor_window.isAddingNewObject) return;
-    this.isDragging = true;
-    const rect = game.canvas.getBoundingClientRect();
+  handleSelectionStart(event) {
+    if (plugin.editor_window.isAddingNewObject) return
+    this.isDragging = true
+    const rect = game.canvas.getBoundingClientRect()
     this.selectionStart = {
-        x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
-        y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
-    };
-    this.selectionEnd = { ...this.selectionStart };
+      x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
+      y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
+    }
+    this.selectionEnd = { ...this.selectionStart }
 
     if (!event.shiftKey) {
-        this.selectedObjects = [];
+      this.selectedObjects = []
     }
-},
+  },
 
-handleSelectionBox: function(event, rect) {
+  handleSelectionBox: function(event, rect) {
     if (game.editorMode === 'select' || (game.editorMode === 'move' && event.shiftKey)) {
-        this.selectionEnd = {
-            x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
-            y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
-        };
-        this.renderSelectionBox();
-        const edgeThreshold = 50;
-        const viewportWidth = window.innerWidth;
-        const viewportHeight = window.innerHeight;
-        const canvasStyle = game.canvas.style;
-        const canvasLeft = parseInt(canvasStyle.left || '0', 10);
-        const canvasTop = parseInt(canvasStyle.top || '0', 10);
-
-        if (event.clientX < edgeThreshold) {
-            if (camera.cameraX > 0) {
-                camera.cameraX -= 5;
-            } else {
-                game.canvas.style.left = `${Math.min(canvasLeft + 5, 0)}px`;
-            }
-        } else if (event.clientX > viewportWidth - edgeThreshold) {
-            const maxCameraX = game.worldWidth - viewportWidth / game.zoomLevel;
-            if (camera.cameraX < maxCameraX) {
-                camera.cameraX += 5;
-            } else {
-                game.canvas.style.left = `${Math.max(canvasLeft - 5, viewportWidth - rect.width)}px`;
-            }
-        }
-
-        if (event.clientY < edgeThreshold) {
-            if (camera.cameraY > 0) {
-                camera.cameraY -= 5;
-            } else {
-                game.canvas.style.top = `${Math.min(canvasTop + 5, 0)}px`;
-            }
-        } else if (event.clientY > viewportHeight - edgeThreshold) {
-            const maxCameraY = game.worldHeight - viewportHeight / game.zoomLevel;
-            if (camera.cameraY < maxCameraY) {
-                camera.cameraY += 5;
-            } else {
-                game.canvas.style.top = `${Math.max(canvasTop - 5, viewportHeight - rect.height)}px`;
-            }
-        }
-
-        this.constrainCamera();
-    }
-},
-
-handleLassoStart(event) {
-    if (event.button === 0) {
-        this.isDragging = true;
-        this.lassoPath = [{ x: this.mouseX, y: this.mouseY }];
-        return true;
-    }
-    return false;
-},
-
-handleLassoDragging() {
-    this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
-    this.renderLasso();
-},
-
-handleMoveMode(event) {
-    const clickedOnSelectedObject = this.checkIfClickedOnSelectedObject();
-
-    if (!clickedOnSelectedObject) {
-        this.changeToSelectModeAndStart(event);
-    } else {
-        this.startObjectMove(event);
-    }
-},
-
-checkIfClickedOnSelectedObject() {
-    return this.selectedObjects.some(obj => {
-        const objRect = {
-            x: Math.min(...obj.x) * 16,
-            y: Math.min(...obj.y) * 16,
-            width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
-            height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
-        };
-
-        return this.mouseX >= objRect.x &&
-            this.mouseX <= objRect.x + objRect.width &&
-            this.mouseY >= objRect.y &&
-            this.mouseY <= objRect.y + objRect.height;
-    });
-},
-
-startObjectMove(event) {
-    this.isDragging = true;
-    this.initialOffsets = [];
-
-    this.selectedObjects.forEach(obj => {
-        const offsetX = this.mouseX - (obj.x[0] * 16);
-        const offsetY = this.mouseY - (obj.y[0] * 16);
-
-        this.initialOffsets.push({
-            obj: obj,
-            offsetX: offsetX,
-            offsetY: offsetY
-        });
-    });
-
-    this.lastMouseX = this.mouseX;
-    this.lastMouseY = this.mouseY;
-    this.clearSelectionBox();
-},
-
-changeToSelectModeAndStart(event) {
-    this.changeMode('select');
-    this.isDragging = true;
-    const rect = game.canvas.getBoundingClientRect();
-    this.selectionStart = {
+      this.selectionEnd = {
         x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
         y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
-    };
-    this.selectionEnd = { ...this.selectionStart };
-},
+      }
+      this.renderSelectionBox()
+      const edgeThreshold = 50
+      const viewportWidth = window.innerWidth
+      const viewportHeight = window.innerHeight
+      const canvasStyle = game.canvas.style
+      const canvasLeft = parseInt(canvasStyle.left || '0', 10)
+      const canvasTop = parseInt(canvasStyle.top || '0', 10)
 
-handleSelectionEnd(event) {
+      if (event.clientX < edgeThreshold) {
+        if (camera.cameraX > 0) {
+          camera.cameraX -= 5
+        } else {
+          game.canvas.style.left = `${Math.min(canvasLeft + 5, 0)}px`
+        }
+      } else if (event.clientX > viewportWidth - edgeThreshold) {
+        const maxCameraX = game.worldWidth - viewportWidth / game.zoomLevel
+        if (camera.cameraX < maxCameraX) {
+          camera.cameraX += 5
+        } else {
+          game.canvas.style.left = `${Math.max(canvasLeft - 5, viewportWidth - rect.width)}px`
+        }
+      }
+
+      if (event.clientY < edgeThreshold) {
+        if (camera.cameraY > 0) {
+          camera.cameraY -= 5
+        } else {
+          game.canvas.style.top = `${Math.min(canvasTop + 5, 0)}px`
+        }
+      } else if (event.clientY > viewportHeight - edgeThreshold) {
+        const maxCameraY = game.worldHeight - viewportHeight / game.zoomLevel
+        if (camera.cameraY < maxCameraY) {
+          camera.cameraY += 5
+        } else {
+          game.canvas.style.top = `${Math.max(canvasTop - 5, viewportHeight - rect.height)}px`
+        }
+      }
+
+      this.constrainCamera()
+    }
+  },
+
+  handleLassoStart(event) {
+    if (event.button === 0) {
+      this.isDragging = true
+      this.lassoPath = [{ x: this.mouseX, y: this.mouseY }]
+      return true
+    }
+    return false
+  },
+
+  handleLassoDragging() {
+    this.lassoPath.push({ x: this.mouseX, y: this.mouseY })
+    this.renderLasso()
+  },
+
+  handleMoveMode(event) {
+    const clickedOnSelectedObject = this.checkIfClickedOnSelectedObject()
+
+    if (!clickedOnSelectedObject) {
+      this.changeToSelectModeAndStart(event)
+    } else {
+      this.startObjectMove(event)
+    }
+  },
+
+  checkIfClickedOnSelectedObject() {
+    return this.selectedObjects.some(obj => {
+      const objRect = {
+        x: Math.min(...obj.x) * 16,
+        y: Math.min(...obj.y) * 16,
+        width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
+        height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
+      }
+
+      return this.mouseX >= objRect.x &&
+        this.mouseX <= objRect.x + objRect.width &&
+        this.mouseY >= objRect.y &&
+        this.mouseY <= objRect.y + objRect.height
+    })
+  },
+
+  startObjectMove(event) {
+    this.isDragging = true
+    this.initialOffsets = []
+
+    this.selectedObjects.forEach(obj => {
+      const offsetX = this.mouseX - (obj.x[0] * 16)
+      const offsetY = this.mouseY - (obj.y[0] * 16)
+
+      this.initialOffsets.push({
+        obj: obj,
+        offsetX: offsetX,
+        offsetY: offsetY
+      })
+    })
+
+    this.lastMouseX = this.mouseX
+    this.lastMouseY = this.mouseY
+    this.clearSelectionBox()
+  },
+
+  changeToSelectModeAndStart(event) {
+    this.changeMode('select')
+    this.isDragging = true
+    const rect = game.canvas.getBoundingClientRect()
+    this.selectionStart = {
+      x: (event.clientX - rect.left) / game.zoomLevel + camera.cameraX,
+      y: (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
+    }
+    this.selectionEnd = { ...this.selectionStart }
+  },
+
+  handleSelectionEnd(event) {
     if (game.editorMode === 'select') {
-        this.isDragging = false;
-        this.updateSelectedObjects(event.shiftKey);
-        this.clearSelectionBox();
-        return true;
+      this.isDragging = false
+      this.updateSelectedObjects(event.shiftKey)
+      this.clearSelectionBox()
+      return true
     }
 
     if (game.editorMode === 'lasso') {
-        this.isDragging = false;
-        this.updateSelectedObjectsWithLasso(event.shiftKey);
-        this.clearLassoPath();
-        return true;
+      this.isDragging = false
+      this.updateSelectedObjectsWithLasso(event.shiftKey)
+      this.clearLassoPath()
+      return true
     }
-    return false;
-},
+    return false
+  },
 
-finalizeObjectMovement() {
-    this.isDragging = false;
+  finalizeObjectMovement() {
+    this.isDragging = false
     if (this.selectedObjects.length > 0) {
-        this.selectedObjects.forEach(obj => {
-            obj.x = obj.x.map(coord => {
-                const pixelCoordX = coord * 16;
-                const snappedX = Math.round(pixelCoordX) / 16;
-                return snappedX;
-            });
-            obj.y = obj.y.map(coord => {
-                const pixelCoordY = coord * 16;
-                const snappedY = Math.round(pixelCoordY) / 16;
-                return snappedY;
-            });
-        });
-        this.pushToUndoStack();
+      this.selectedObjects.forEach(obj => {
+        obj.x = obj.x.map(coord => {
+          const pixelCoordX = coord * 16
+          const snappedX = Math.round(pixelCoordX) / 16
+          return snappedX
+        })
+        obj.y = obj.y.map(coord => {
+          const pixelCoordY = coord * 16
+          const snappedY = Math.round(pixelCoordY) / 16
+          return snappedY
+        })
+      })
+      this.pushToUndoStack()
     }
-},
+  },
 
-handlePanningEnd(event) {
+  handlePanningEnd(event) {
     if (event.button === 1 || game.editorMode === 'pan') {
-        this.isPanning = false;
-        this.isDragging = false;
-        document.body.style.cursor = this.defaultCursor;
-        this.stopSlidingCamera();
-        return true;
+      this.isPanning = false
+      this.isDragging = false
+      document.body.style.cursor = this.defaultCursor
+      this.stopSlidingCamera()
+      return true
     }
-    return false;
-},
+    return false
+  },
 
-moveSelectedObjectsWithArrowKeys(direction) {
+  moveSelectedObjectsWithArrowKeys(direction) {
     if (this.selectedObjects.length === 0) {
-        return;
+      return
     }
 
-    const step = this.isSnapEnabled ? 16 : 1;
-    let deltaX = 0, deltaY = 0;
+    const step = this.isSnapEnabled ? 16 : 1
+    let deltaX = 0, deltaY = 0
     switch (direction) {
-        case 'ArrowUp':
-            deltaY = -step;
-            break;
-        case 'ArrowDown':
-            deltaY = step;
-            break;
-        case 'ArrowLeft':
-            deltaX = -step;
-            break;
-        case 'ArrowRight':
-            deltaX = step;
-            break;
+      case 'ArrowUp':
+        deltaY = -step
+        break
+      case 'ArrowDown':
+        deltaY = step
+        break
+      case 'ArrowLeft':
+        deltaX = -step
+        break
+      case 'ArrowRight':
+        deltaX = step
+        break
     }
 
     this.selectedObjects.forEach(obj => {
-        obj.x = obj.x.map(coord => coord + deltaX / 16);
-        obj.y = obj.y.map(coord => coord + deltaY / 16);
-    });
+      obj.x = obj.x.map(coord => coord + deltaX / 16)
+      obj.y = obj.y.map(coord => coord + deltaY / 16)
+    })
+  },
 
-    console.log(`Objects moved ${direction} by ${step} pixels.`);
+  updateMousePosition(event) {
+    const rect = game.canvas.getBoundingClientRect()
+    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
+    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
+  },
 
-},
-
-updateMousePosition(event) {
-    const rect = game.canvas.getBoundingClientRect();
-    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-},
-
-renderSelectedTiles() {
+  renderSelectedTiles() {
     this.selectedObjects = this.selectedObjects.filter(obj => {
-        if (this.isObjectLocked(obj)) return false;
-        if (obj.visible === false) return false;
-        return true;
-    });
+      if (this.isObjectLocked(obj)) return false
+      if (obj.visible === false) return false
+      return true
+    })
 
     if (this.selectedObjects.length === 0) {
-        return;
+      return
     }
 
-    game.ctx.save();
+    game.ctx.save()
 
-    const animationSpeed = 300;
-    const markerLength = 4;
-    const lineWidth = 1;
-    const shadowOffset = 1;
-    const paddingFactor = 0.15;
-    const centerCircleRadius = 5;
+    const animationSpeed = 300
+    const markerLength = 4
+    const lineWidth = 1
+    const shadowOffset = 1
+    const paddingFactor = 0.15
+    const centerCircleRadius = 5
 
-    game.ctx.lineWidth = lineWidth;
+    game.ctx.lineWidth = lineWidth
 
     if (!this.objectColors || this.objectColors.length !== this.selectedObjects.length) {
-        const vibrantColors = [
-            'rgb(255, 0, 0)', 'rgb(0, 255, 0)', 'rgb(0, 0, 255)',
-            'rgb(255, 255, 0)', 'rgb(255, 0, 255)', 'rgb(0, 255, 255)',
-            'rgb(255, 165, 0)', 'rgb(128, 0, 128)'
-        ];
-        this.objectColors = this.selectedObjects.map(
-            (_, index) => vibrantColors[index % vibrantColors.length]
-        );
+      const vibrantColors = [
+        'rgb(255, 0, 0)', 'rgb(0, 255, 0)', 'rgb(0, 0, 255)',
+        'rgb(255, 255, 0)', 'rgb(255, 0, 255)', 'rgb(0, 255, 255)',
+        'rgb(255, 165, 0)', 'rgb(128, 0, 128)'
+      ]
+      this.objectColors = this.selectedObjects.map(
+        (_, index) => vibrantColors[index % vibrantColors.length]
+      )
     }
 
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
     this.selectedObjects.forEach(obj => {
-        minX = Math.min(minX, Math.min(...obj.x) * 16);
-        minY = Math.min(minY, Math.min(...obj.y) * 16);
-        maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16);
-        maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16);
-    });
+      minX = Math.min(minX, Math.min(...obj.x) * 16)
+      minY = Math.min(minY, Math.min(...obj.y) * 16)
+      maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16)
+      maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16)
+    })
 
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
+    const centerX = (minX + maxX) / 2
+    const centerY = (minY + maxY) / 2
 
     this.selectedObjects.forEach((obj, index) => {
-        const objectColor = this.objectColors[index];
-        const objWidth = Math.max(...obj.x) - Math.min(...obj.x) + 1;
-        const objHeight = Math.max(...obj.y) - Math.min(...obj.y) + 1;
-        const paddingX = objWidth * 16 * paddingFactor;
-        const paddingY = objHeight * 16 * paddingFactor;
-        const minObjX = Math.min(...obj.x) * 16 + paddingX;
-        const minObjY = Math.min(...obj.y) * 16 + paddingY;
-        const maxObjX = Math.max(...obj.x) * 16 + 16 - paddingX;
-        const maxObjY = Math.max(...obj.y) * 16 + 16 - paddingY;
+      const objectColor = this.objectColors[index]
+      const objWidth = Math.max(...obj.x) - Math.min(...obj.x) + 1
+      const objHeight = Math.max(...obj.y) - Math.min(...obj.y) + 1
+      const paddingX = objWidth * 16 * paddingFactor
+      const paddingY = objHeight * 16 * paddingFactor
+      const minObjX = Math.min(...obj.x) * 16 + paddingX
+      const minObjY = Math.min(...obj.y) * 16 + paddingY
+      const maxObjX = Math.max(...obj.x) * 16 + 16 - paddingX
+      const maxObjY = Math.max(...obj.y) * 16 + 16 - paddingY
 
-        const corners = [
-            { x1: minObjX, y1: minObjY, x2: minObjX + markerLength, y2: minObjY, x3: minObjX, y3: minObjY + markerLength, dx: 1, dy: 1 },
-            { x1: maxObjX, y1: minObjY, x2: maxObjX - markerLength, y2: minObjY, x3: maxObjX, y3: minObjY + markerLength, dx: -1, dy: 1 },
-            { x1: minObjX, y1: maxObjY, x2: minObjX + markerLength, y2: maxObjY, x3: minObjX, y3: maxObjY - markerLength, dx: 1, dy: -1 },
-            { x1: maxObjX, y1: maxObjY, x2: maxObjX - markerLength, y2: maxObjY, x3: maxObjX, y3: maxObjY - markerLength, dx: -1, dy: -1 }
-        ];
+      const corners = [
+        { x1: minObjX, y1: minObjY, x2: minObjX + markerLength, y2: minObjY, x3: minObjX, y3: minObjY + markerLength, dx: 1, dy: 1 },
+        { x1: maxObjX, y1: minObjY, x2: maxObjX - markerLength, y2: minObjY, x3: maxObjX, y3: minObjY + markerLength, dx: -1, dy: 1 },
+        { x1: minObjX, y1: maxObjY, x2: minObjX + markerLength, y2: maxObjY, x3: minObjX, y3: maxObjY - markerLength, dx: 1, dy: -1 },
+        { x1: maxObjX, y1: maxObjY, x2: maxObjX - markerLength, y2: maxObjY, x3: maxObjX, y3: maxObjY - markerLength, dx: -1, dy: -1 }
+      ]
 
-        const timeOffset = performance.now() / animationSpeed;
-        const offset = Math.sin(timeOffset) * 2;
+      const timeOffset = performance.now() / animationSpeed
+      const offset = Math.sin(timeOffset) * 2
 
-        corners.forEach(corner => {
-            const animatedX = corner.dx * offset;
-            const animatedY = corner.dy * offset;
-            game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-            game.ctx.beginPath();
-            game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset);
-            game.ctx.lineTo(corner.x2 + animatedX + shadowOffset, corner.y2 + animatedY + shadowOffset);
-            game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset);
-            game.ctx.lineTo(corner.x3 + animatedX + shadowOffset, corner.y3 + animatedY + shadowOffset);
-            game.ctx.stroke();
-            game.ctx.strokeStyle = objectColor;
-            game.ctx.beginPath();
-            game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
-            game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY);
-            game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY);
-            game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY);
-            game.ctx.stroke();
-        });
-    });
+      corners.forEach(corner => {
+        const animatedX = corner.dx * offset
+        const animatedY = corner.dy * offset
+        game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'
+        game.ctx.beginPath()
+        game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset)
+        game.ctx.lineTo(corner.x2 + animatedX + shadowOffset, corner.y2 + animatedY + shadowOffset)
+        game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset)
+        game.ctx.lineTo(corner.x3 + animatedX + shadowOffset, corner.y3 + animatedY + shadowOffset)
+        game.ctx.stroke()
+        game.ctx.strokeStyle = objectColor
+        game.ctx.beginPath()
+        game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY)
+        game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY)
+        game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY)
+        game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY)
+        game.ctx.stroke()
+      })
+    })
 
-    // Draw only the center circle (for 2D dragging)
     if (game.editorMode === 'move' && this.selectedObjects.length > 0) {
-        game.ctx.beginPath();
-        game.ctx.arc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2);
-        if (this.hoveredAxis === 'center' || this.dragStartAxis === 'center') {
-            game.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
-            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-        } else {
-            game.ctx.fillStyle = 'rgba(150, 150, 150, 0.5)';
-            game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        }
-        game.ctx.fill();
-        game.ctx.stroke();
+      game.ctx.beginPath()
+      game.ctx.arc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2)
+      if (this.hoveredAxis === 'center' || this.dragStartAxis === 'center') {
+        game.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)'
+        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
+      } else {
+        game.ctx.fillStyle = 'rgba(150, 150, 150, 0.5)'
+        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
+      }
+      game.ctx.fill()
+      game.ctx.stroke()
     }
 
-    game.ctx.restore();
-},
+    game.ctx.restore()
+  },
 
-startObjectMove(event) {
-    this.isDragging = true;
-    this.initialOffsets = [];
-    const axisClicked = this.checkAxisClick(event);
+  startObjectMove(event) {
+    this.isDragging = true
+    this.initialOffsets = []
+    const axisClicked = this.checkAxisClick(event)
     if (axisClicked) {
-        this.currentDragAxis = axisClicked;
-        console.log('Starting drag on axis:', axisClicked);
+      this.currentDragAxis = axisClicked
     } else {
-        this.currentDragAxis = null;
+      this.currentDragAxis = null
     }
 
     this.selectedObjects.forEach(obj => {
-        this.initialOffsets.push({
-            obj: obj,
-            offsetX: this.mouseX - obj.x[0] * 16,
-            offsetY: this.mouseY - obj.y[0] * 16
-        });
-    });
+      this.initialOffsets.push({
+        obj: obj,
+        offsetX: this.mouseX - obj.x[0] * 16,
+        offsetY: this.mouseY - obj.y[0] * 16
+      })
+    })
 
-    this.lastMouseX = this.mouseX;
-    this.lastMouseY = this.mouseY;
-    this.clearSelectionBox();
-},
+    this.lastMouseX = this.mouseX
+    this.lastMouseY = this.mouseY
+    this.clearSelectionBox()
+  },
 
-checkAxisClick: function(event) {
-    if (this.selectedObjects.length === 0) return null;
+  checkAxisClick: function(event) {
+    if (this.selectedObjects.length === 0) return null
 
-    const obj = this.selectedObjects[0];
-    const centerX = (Math.min(...obj.x) + Math.max(...obj.x)) / 2 * 16;
-    const bottomY = Math.max(...obj.y) * 16;
-    const axisLength = 30;
-    const clickRadius = 8;
+    const obj = this.selectedObjects[0]
+    const centerX = (Math.min(...obj.x) + Math.max(...obj.x)) / 2 * 16
+    const bottomY = Math.max(...obj.y) * 16
+    const axisLength = 30
+    const clickRadius = 8
     const axes = {
-        x: { dx: axisLength, dy: axisLength/2 },
-        z: { dx: -axisLength, dy: axisLength/2 },
-        y: { dx: 0, dy: -axisLength }
-    };
+      x: { dx: axisLength, dy: axisLength/2 },
+      z: { dx: -axisLength, dy: axisLength/2 },
+      y: { dx: 0, dy: -axisLength }
+    }
 
     for (const [axis, vector] of Object.entries(axes)) {
-        const endX = centerX + vector.dx;
-        const endY = bottomY + vector.dy;
-        const dist = this.pointToLineDistance(
-            this.mouseX, this.mouseY,
-            centerX, bottomY,
-            endX, endY
-        );
-
-        if (dist < clickRadius) {
-            return axis;
-        }
+      const endX = centerX + vector.dx
+      const endY = bottomY + vector.dy
+      const dist = this.pointToLineDistance(
+        this.mouseX, this.mouseY,
+        centerX, bottomY,
+        endX, endY
+      )
+      if (dist < clickRadius) {
+        return axis
+      }
     }
+    return null
+  },
 
-    return null;
-},
+  pointToLineDistance: function(px, py, x1, y1, x2, y2) {
+    const A = px - x1
+    const B = py - y1
+    const C = x2 - x1
+    const D = y2 - y1
 
-pointToLineDistance: function(px, py, x1, y1, x2, y2) {
-    const A = px - x1;
-    const B = py - y1;
-    const C = x2 - x1;
-    const D = y2 - y1;
-
-    const dot = A * C + B * D;
-    const lenSq = C * C + D * D;
-    let param = -1;
+    const dot = A * C + B * D
+    const lenSq = C * C + D * D
+    let param = -1
 
     if (lenSq !== 0) {
-        param = dot / lenSq;
+      param = dot / lenSq
     }
 
-    let xx, yy;
+    let xx, yy
 
     if (param < 0) {
-        xx = x1;
-        yy = y1;
+      xx = x1
+      yy = y1
     } else if (param > 1) {
-        xx = x2;
-        yy = y2;
+      xx = x2
+      yy = y2
     } else {
-        xx = x1 + param * C;
-        yy = y1 + param * D;
+      xx = x1 + param * C
+      yy = y1 + param * D
     }
 
-    const dx = px - xx;
-    const dy = py - yy;
-    const distance = Math.sqrt(dx * dx + dy * dy);
-    game.ctx.save();
-    game.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)';
-    game.ctx.beginPath();
-    game.ctx.arc(xx, yy, 2, 0, Math.PI * 2);
-    game.ctx.fill();
-    game.ctx.restore();
+    const dx = px - xx
+    const dy = py - yy
+    const distance = Math.sqrt(dx * dx + dy * dy)
+    game.ctx.save()
+    game.ctx.fillStyle = 'rgba(255, 0, 0, 0.3)'
+    game.ctx.beginPath()
+    game.ctx.arc(xx, yy, 2, 0, Math.PI * 2)
+    game.ctx.fill()
+    game.ctx.restore()
 
-    return distance;
-},
+    return distance
+  },
 
-isObjectLocked: function(obj) {
-    const layerId = `item_${obj.layer_id}`;
-    const layerNode = editor_layers.findNodeById(layerId);
-    return layerNode && layerNode.node.locked;
-},
+  isObjectLocked: function(obj) {
+    const layerId = `item_${obj.layer_id}`
+    const layerNode = editor_layers.findNodeById(layerId)
+    return layerNode && layerNode.node.locked
+  },
 
-isTopmostObject(obj, selectedObjects) {
-    const objIndex = game.roomData.items.indexOf(obj);
+  isTopmostObject(obj, selectedObjects) {
+    const objIndex = game.roomData.items.indexOf(obj)
 
     return selectedObjects.every(otherObj => {
-        if (obj === otherObj) return true;
-        const otherIndex = game.roomData.items.indexOf(otherObj);
+      if (obj === otherObj) return true
+      const otherIndex = game.roomData.items.indexOf(otherObj)
 
-        if (otherIndex > objIndex) {
-            const objRect = {
-                x: Math.min(...obj.x) * 16,
-                y: Math.min(...obj.y) * 16,
-                width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
-                height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16,
-            };
-
-            const otherRect = {
-                x: Math.min(...otherObj.x) * 16,
-                y: Math.min(...otherObj.y) * 16,
-                width: (Math.max(...otherObj.x) - Math.min(...otherObj.x) + 1) * 16,
-                height: (Math.max(...otherObj.y) - Math.min(...otherObj.y) + 1) * 16,
-            };
-
-            return !(
-                objRect.x < otherRect.x + otherRect.width &&
-                objRect.x + objRect.width > otherRect.x &&
-                objRect.y < otherRect.y + otherRect.height &&
-                objRect.y + objRect.height > otherRect.y
-            );
+      if (otherIndex > objIndex) {
+        const objRect = {
+          x: Math.min(...obj.x) * 16,
+          y: Math.min(...obj.y) * 16,
+          width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
+          height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16,
         }
 
-        return true;
-    });
-},
+        const otherRect = {
+          x: Math.min(...otherObj.x) * 16,
+          y: Math.min(...otherObj.y) * 16,
+          width: (Math.max(...otherObj.x) - Math.min(...otherObj.x) + 1) * 16,
+          height: (Math.max(...otherObj.y) - Math.min(...otherObj.y) + 1) * 16,
+        }
 
-renderSelectionBox() {
+        return !(
+          objRect.x < otherRect.x + otherRect.width &&
+          objRect.x + objRect.width > otherRect.x &&
+          objRect.y < otherRect.y + otherRect.height &&
+          objRect.y + objRect.height > otherRect.y
+        )
+      }
+      return true
+    })
+  },
+
+  renderSelectionBox() {
     if (this.isDragging) {
-        const rect = {
-            x: Math.min(this.selectionStart.x, this.selectionEnd.x),
-            y: Math.min(this.selectionStart.y, this.selectionEnd.y),
-            width: Math.abs(this.selectionEnd.x - this.selectionStart.x),
-            height: Math.abs(this.selectionEnd.y - this.selectionStart.y)
-        };
-
-        game.ctx.save();
-        game.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
-        game.ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-        game.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        game.ctx.shadowBlur = 8;
-        game.ctx.shadowOffsetX = 4;
-        game.ctx.shadowOffsetY = 4;
-        const dashSpeed = performance.now() / 100;
-        game.ctx.lineDashOffset = -dashSpeed;
-        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        game.ctx.lineWidth = 2;
-        game.ctx.setLineDash([6, 3]);
-        game.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-        game.ctx.restore();
+      const rect = {
+        x: Math.min(this.selectionStart.x, this.selectionEnd.x),
+        y: Math.min(this.selectionStart.y, this.selectionEnd.y),
+        width: Math.abs(this.selectionEnd.x - this.selectionStart.x),
+        height: Math.abs(this.selectionEnd.y - this.selectionStart.y)
+      }
+      game.ctx.save()
+      game.ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'
+      game.ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
+      game.ctx.shadowColor = 'rgba(0, 0, 0, 0.5)'
+      game.ctx.shadowBlur = 8
+      game.ctx.shadowOffsetX = 4
+      game.ctx.shadowOffsetY = 4
+      const dashSpeed = performance.now() / 100
+      game.ctx.lineDashOffset = -dashSpeed
+      game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+      game.ctx.lineWidth = 2
+      game.ctx.setLineDash([6, 3])
+      game.ctx.strokeRect(rect.x, rect.y, rect.width, rect.height)
+      game.ctx.restore()
     }
-},
+  },
 
-renderLasso() {
+  renderLasso() {
     if (this.lassoPath.length > 1) {
-        const dashSpeed = performance.now() / 100;
-        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-        game.ctx.lineWidth = 2;
-        game.ctx.setLineDash([6, 3]);
-        game.ctx.lineDashOffset = -dashSpeed;
-        game.ctx.beginPath();
-        game.ctx.moveTo(this.lassoPath[0].x, this.lassoPath[0].y);
+      const dashSpeed = performance.now() / 100
+      game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+      game.ctx.lineWidth = 2
+      game.ctx.setLineDash([6, 3])
+      game.ctx.lineDashOffset = -dashSpeed
+      game.ctx.beginPath()
+      game.ctx.moveTo(this.lassoPath[0].x, this.lassoPath[0].y)
 
-        for (let i = 1; i < this.lassoPath.length; i++) {
-            game.ctx.lineTo(this.lassoPath[i].x, this.lassoPath[i].y);
-        }
+      for (let i = 1; i < this.lassoPath.length; i++) {
+        game.ctx.lineTo(this.lassoPath[i].x, this.lassoPath[i].y)
+      }
 
-        game.ctx.stroke();
-        game.ctx.setLineDash([]);
-        game.ctx.lineDashOffset = 0;
+      game.ctx.stroke()
+      game.ctx.setLineDash([])
+      game.ctx.lineDashOffset = 0
     }
-},
+  },
 
-deleteSelectedObjects() {
-    if (this.selectedObjects.length === 0) {
-        return;
+  deleteSelectedObjects() {
+  if (this.selectedObjects.length === 0) {
+    return
+  }
+  this.pushToUndoStack()
+  game.roomData.items = game.roomData.items.filter(item => {
+    return !this.selectedObjects.includes(item)
+  })
+  this.selectedObjects.forEach(obj => {
+    const iData = game.objectData[obj.id]
+    if (iData && iData.length > 0) {
+      const tileData = iData[0]
+      if (tileData.l && Array.isArray(tileData.l)) {
+        tileData.l.forEach((_, lightIndex) => {
+          const lId = `${obj.layer_id}_light_${lightIndex}`
+          lighting.lights = lighting.lights.filter(l => l.id !== lId)
+        })
+      }
     }
+    const layerId = `item_${obj.layer_id}`
+    editor_layers.removeLayerById(layerId)
+  })
+  this.selectedObjects = []
+  editor_layers.selectLayersById([])
+  if (this.previousMode === 'lasso') {
+    this.changeMode('lasso')
+  } else {
+    this.changeMode('select')
+  }
+  },
 
-    this.pushToUndoStack();
+  updateSelectedObjects(shiftKeyHeld, isClick = false, clickedCoords = null) {
+  if (game.editorMode === 'pan') {
+    return;
+  }
 
-    game.roomData.items = game.roomData.items.filter(item => {
-        return !this.selectedObjects.includes(item);
+  const isSingleClick = isClick || (
+    this.selectionStart.x === this.selectionEnd.x &&
+    this.selectionStart.y === this.selectionEnd.y
+  );
+
+  if (isSingleClick) {
+    const clickedX = clickedCoords ? clickedCoords.x : this.selectionStart.x;
+    const clickedY = clickedCoords ? clickedCoords.y : this.selectionStart.y;
+
+    const affectedObjects = game.roomData.items.filter(roomItem => {
+      if (this.isObjectLocked(roomItem)) return false;
+
+      const xCoordinates = roomItem.x || [];
+      const yCoordinates = roomItem.y || [];
+      const itemBounds = {
+        x: Math.min(...xCoordinates) * 16,
+        y: Math.min(...yCoordinates) * 16,
+        width: (Math.max(...xCoordinates) - Math.min(...xCoordinates) + 1) * 16,
+        height: (Math.max(...yCoordinates) - Math.min(...yCoordinates) + 1) * 16
+      };
+      return (
+        clickedX >= itemBounds.x &&
+        clickedX < itemBounds.x + itemBounds.width &&
+        clickedY >= itemBounds.y &&
+        clickedY < itemBounds.y + itemBounds.height
+      );
     });
+    const topmostObject = affectedObjects.length > 0 ? affectedObjects[0] : null;
 
-    this.selectedObjects.forEach(obj => {
-        const layerId = `item_${obj.layer_id}`;
-        editor_layers.removeLayerById(layerId);
-    });
-
-    this.selectedObjects = [];
-
-    if (this.previousMode === 'lasso') {
-        this.changeMode('lasso');
-    } else {
-        this.changeMode('select');
-    }
-},
-
-updateSelectedObjects(shiftKeyHeld, isClick = false, clickedCoords = null) {
-    if (game.editorMode === 'pan') {
-        return;
-    }
-
-    const isSingleClick = isClick || (this.selectionStart.x === this.selectionEnd.x && this.selectionStart.y === this.selectionEnd.y);
-
-    if (isSingleClick) {
-        const clickedX = clickedCoords ? clickedCoords.x : this.selectionStart.x;
-        const clickedY = clickedCoords ? clickedCoords.y : this.selectionStart.y;
-
-        const affectedObjects = game.roomData.items.filter(roomItem => {
-            if (this.isObjectLocked(roomItem)) return false;
-
-            const itemData = game.objectData[roomItem.id];
-            if (!itemData || itemData.length === 0) return false;
-
-            const xCoordinates = roomItem.x || [];
-            const yCoordinates = roomItem.y || [];
-
-            const itemBounds = {
-                x: Math.min(...xCoordinates) * 16,
-                y: Math.min(...yCoordinates) * 16,
-                width: (Math.max(...xCoordinates) - Math.min(...xCoordinates) + 1) * 16,
-                height: (Math.max(...yCoordinates) - Math.min(...yCoordinates) + 1) * 16,
-            };
-
-            return (
-                clickedX >= itemBounds.x &&
-                clickedX < itemBounds.x + itemBounds.width &&
-                clickedY >= itemBounds.y &&
-                clickedY < itemBounds.y + itemBounds.height
-            );
-        });
-
-        const topmostObject = affectedObjects.length > 0 ? affectedObjects[0] : null;
-
-        if (topmostObject) {
-            if (shiftKeyHeld) {
-                const index = this.selectedObjects.indexOf(topmostObject);
-                if (index === -1) {
-                    this.selectedObjects.push(topmostObject);
-                } else {
-                    this.selectedObjects.splice(index, 1);
-                }
-            } else {
-                this.selectedObjects = [topmostObject];
-            }
-        }
-    } else {
-        const selectionRect = {
-            x: Math.min(this.selectionStart.x, this.selectionEnd.x),
-            y: Math.min(this.selectionStart.y, this.selectionEnd.y),
-            width: Math.abs(this.selectionEnd.x - this.selectionStart.x),
-            height: Math.abs(this.selectionEnd.y - this.selectionStart.y),
-        };
-
-        const overlappingObjects = game.roomData.items.filter(item => {
-            if (this.isObjectLocked(item)) return false;
-
-            const itemRect = {
-                x: Math.min(...item.x) * 16,
-                y: Math.min(...item.y) * 16,
-                width: (Math.max(...item.x) - Math.min(...item.x) + 1) * 16,
-                height: (Math.max(...item.y) - Math.min(...item.y) + 1) * 16,
-            };
-
-            return (
-                itemRect.x < selectionRect.x + selectionRect.width &&
-                itemRect.x + itemRect.width > selectionRect.x &&
-                itemRect.y < selectionRect.y + selectionRect.height &&
-                itemRect.y + itemRect.height > selectionRect.y
-            );
-        });
-
-        if (shiftKeyHeld) {
-            overlappingObjects.forEach(obj => {
-                const index = this.selectedObjects.indexOf(obj);
-                if (index === -1) {
-                    this.selectedObjects.push(obj);
-                } else {
-                    this.selectedObjects.splice(index, 1);
-                }
-            });
+    if (topmostObject) {
+      if (shiftKeyHeld) {
+        const index = this.selectedObjects.indexOf(topmostObject);
+        if (index === -1) {
+          this.selectedObjects.push(topmostObject);
         } else {
-            this.selectedObjects = overlappingObjects;
+          this.selectedObjects.splice(index, 1);
         }
+      } else {
+        this.selectedObjects = [topmostObject];
+      }
     }
+  } else {
+    const selectionRect = {
+      x: Math.min(this.selectionStart.x, this.selectionEnd.x),
+      y: Math.min(this.selectionStart.y, this.selectionEnd.y),
+      width: Math.abs(this.selectionEnd.x - this.selectionStart.x),
+      height: Math.abs(this.selectionEnd.y - this.selectionStart.y)
+    };
+    const overlappingObjects = game.roomData.items.filter(item => {
+      if (this.isObjectLocked(item)) return false;
 
-    if (this.selectedObjects.length > 0) {
-        this.changeMode('move');
-    }
+      const itemRect = {
+        x: Math.min(...item.x) * 16,
+        y: Math.min(...item.y) * 16,
+        width: (Math.max(...item.x) - Math.min(...item.x) + 1) * 16,
+        height: (Math.max(...item.y) - Math.min(...item.y) + 1) * 16
+      };
 
-    const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id);
-    editor_layers.selectLayersById(layerIds);
-},
-
-
-renderObjectToCanvas(ctx, roomItem, tileData, xCoordinates, yCoordinates) {
-    const tileSize = 16;
-    let frameData = tileData.i;
-    const isAnimated = Array.isArray(frameData[0][0]);
-    const currentFrame = tileData.currentFrame || 0;
-
-    if (isAnimated) {
-        frameData = frameData[currentFrame % frameData.length];
-    }
-
-    const tileIndices = frameData.flatMap(entry => {
-        if (typeof entry === 'string' && entry.includes('-')) {
-            const [start, end] = entry.split('-').map(Number);
-            return Array.from({ length: end - start + 1 }, (_, i) => start + i);
-        }
-        return entry;
-    });
-
-    const gridWidth = tileData.a + 1;
-    const gridHeight = tileData.b + 1;
-    const topLeftX = Math.min(...xCoordinates) * tileSize;
-    const topLeftY = Math.min(...yCoordinates) * tileSize;
-    let currentIndex = 0;
-
-    for (let row = 0; row < gridHeight; row++) {
-        for (let col = 0; col < gridWidth; col++) {
-            const tileFrameIndex = tileIndices[currentIndex % tileIndices.length];
-            currentIndex++;
-            const srcX = (tileFrameIndex % 150) * tileSize;
-            const srcY = Math.floor(tileFrameIndex / 150) * tileSize;
-            const posX = col * tileSize;
-            const posY = row * tileSize;
-
-            ctx.drawImage(
-                assets.use(tileData.t),
-                srcX, srcY, tileSize, tileSize,
-                posX, posY, tileSize, tileSize
-            );
-        }
-    }
-},
-
-
-updateSelectedObjectsWithLasso(shiftKeyHeld) {
-    const affectedObjects = game.roomData.items.filter(item => {
-        if (this.isObjectLocked(item)) return false;
-
-        const itemCenter = {
-            x: (Math.min(...item.x) + Math.max(...item.x)) / 2 * 16,
-            y: (Math.min(...item.y) + Math.max(...item.y)) / 2 * 16
-        };
-
-        return this.isPointInLasso(itemCenter);
+      return (
+        itemRect.x < selectionRect.x + selectionRect.width &&
+        itemRect.x + itemRect.width > selectionRect.x &&
+        itemRect.y < selectionRect.y + selectionRect.height &&
+        itemRect.y + itemRect.height > selectionRect.y
+      );
     });
 
     if (shiftKeyHeld) {
-        affectedObjects.forEach(obj => {
-            const index = this.selectedObjects.indexOf(obj);
-            if (index === -1) {
-                this.selectedObjects.push(obj);
-            } else {
-                this.selectedObjects.splice(index, 1);
-            }
-        });
+      overlappingObjects.forEach(obj => {
+        const index = this.selectedObjects.indexOf(obj);
+        if (index === -1) {
+          this.selectedObjects.push(obj);
+        } else {
+          this.selectedObjects.splice(index, 1);
+        }
+      });
     } else {
-        this.selectedObjects = affectedObjects;
+      this.selectedObjects = overlappingObjects;
+    }
+  }
+
+  if (this.selectedObjects.length > 0) {
+    this.changeMode('move');
+  }
+
+  const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id);
+  editor_layers.selectLayersById(layerIds);
+  },
+
+  renderObjectToCanvas(ctx, roomItem, tileData, xCoordinates, yCoordinates) {
+    const tileSize = 16
+    let frameData = tileData.i
+    const isAnimated = Array.isArray(frameData[0][0])
+    const currentFrame = tileData.currentFrame || 0
+
+    if (isAnimated) {
+      frameData = frameData[currentFrame % frameData.length]
+    }
+
+    const tileIndices = frameData.flatMap(entry => {
+      if (typeof entry === 'string' && entry.includes('-')) {
+        const [start, end] = entry.split('-').map(Number)
+        return Array.from({ length: end - start + 1 }, (_, i) => start + i)
+      }
+      return entry
+    })
+
+    const gridWidth = tileData.a + 1
+    const gridHeight = tileData.b + 1
+    const topLeftX = Math.min(...xCoordinates) * tileSize
+    const topLeftY = Math.min(...yCoordinates) * tileSize
+    let currentIndex = 0
+
+    for (let row = 0; row < gridHeight; row++) {
+      for (let col = 0; col < gridWidth; col++) {
+        const tileFrameIndex = tileIndices[currentIndex % tileIndices.length]
+        currentIndex++
+        const srcX = (tileFrameIndex % 150) * tileSize
+        const srcY = Math.floor(tileFrameIndex / 150) * tileSize
+        const posX = col * tileSize
+        const posY = row * tileSize
+
+        ctx.drawImage(
+          assets.use(tileData.t),
+          srcX, srcY, tileSize, tileSize,
+          posX, posY, tileSize, tileSize
+        )
+      }
+    }
+  },
+
+  updateSelectedObjectsWithLasso(shiftKeyHeld) {
+    const affectedObjects = game.roomData.items.filter(item => {
+      if (this.isObjectLocked(item)) return false
+
+      const itemCenter = {
+        x: (Math.min(...item.x) + Math.max(...item.x)) / 2 * 16,
+        y: (Math.min(...item.y) + Math.max(...item.y)) / 2 * 16
+      }
+      return this.isPointInLasso(itemCenter)
+    })
+
+    if (shiftKeyHeld) {
+      affectedObjects.forEach(obj => {
+        const index = this.selectedObjects.indexOf(obj)
+        if (index === -1) {
+          this.selectedObjects.push(obj)
+        } else {
+          this.selectedObjects.splice(index, 1)
+        }
+      })
+    } else {
+      this.selectedObjects = affectedObjects
     }
 
     if (this.selectedObjects.length > 0) {
-        this.changeMode('move');
+      this.changeMode('move')
     }
 
-    const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id);
-    editor_layers.selectLayersById(layerIds);
-},
+    const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id)
+    editor_layers.selectLayersById(layerIds)
+  },
 
-isPointInLasso(point) {
-    let inside = false;
-    const { x, y } = point;
+  isPointInLasso(point) {
+    let inside = false
+    const { x, y } = point
 
     for (let i = 0, j = this.lassoPath.length - 1; i < this.lassoPath.length; j = i++) {
-        const xi = this.lassoPath[i].x, yi = this.lassoPath[i].y;
-        const xj = this.lassoPath[j].x, yj = this.lassoPath[j].y;
+      const xi = this.lassoPath[i].x, yi = this.lassoPath[i].y
+      const xj = this.lassoPath[j].x, yj = this.lassoPath[j].y
 
-        const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
-        if (intersect) inside = !inside;
+      const intersect = ((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+      if (intersect) inside = !inside
     }
+    return inside
+  },
 
-    return inside;
-},
-
-pushSelectedObjectsToTop() {
+  pushSelectedObjectsToTop() {
     if (this.selectedObjects.length === 0) {
-        return;
+      return
     }
 
-    this.pushToUndoStack();
-    const items = game.roomData.items;
+    this.pushToUndoStack()
+    const items = game.roomData.items
 
     this.selectedObjects.forEach(obj => {
-        const index = items.indexOf(obj);
-        if (index > -1) {
-            items.splice(index, 1);
-        }
-    });
+      const index = items.indexOf(obj)
+      if (index > -1) {
+        items.splice(index, 1)
+      }
+    })
 
-    items.push(...this.selectedObjects);
-},
+    items.push(...this.selectedObjects)
+  },
 
-pushSelectedObjectsToBottom() {
+  pushSelectedObjectsToBottom() {
     if (this.selectedObjects.length === 0) {
-        return;
+      return
     }
 
-    this.pushToUndoStack();
-    const items = game.roomData.items;
+    this.pushToUndoStack()
+    const items = game.roomData.items
 
     this.selectedObjects.forEach(obj => {
-        const index = items.indexOf(obj);
-        if (index > -1) {
-            items.splice(index, 1);
-        }
-    });
+      const index = items.indexOf(obj)
+      if (index > -1) {
+        items.splice(index, 1)
+      }
+    })
 
-    items.unshift(...this.selectedObjects);
-},
+    items.unshift(...this.selectedObjects)
+  },
 
-spaceOutSelectedObjects() {
+  spaceOutSelectedObjects() {
     if (this.selectedObjects.length <= 1) {
-        return;
+      return
     }
 
-    const spacingDistance = 48;
+    const spacingDistance = 48
 
-    let centerX = 0;
-    let centerY = 0;
+    let centerX = 0
+    let centerY = 0
 
     this.selectedObjects.forEach(obj => {
-        centerX += Math.min(...obj.x) * 16;
-        centerY += Math.min(...obj.y) * 16;
-    });
+      centerX += Math.min(...obj.x) * 16
+      centerY += Math.min(...obj.y) * 16
+    })
 
-    centerX /= this.selectedObjects.length;
-    centerY /= this.selectedObjects.length;
+    centerX /= this.selectedObjects.length
+    centerY /= this.selectedObjects.length
 
     this.selectedObjects.forEach((obj, index) => {
-        const angle = (index / this.selectedObjects.length) * Math.PI * 2;
-        let newX = centerX + Math.cos(angle) * spacingDistance;
-        let newY = centerY + Math.sin(angle) * spacingDistance;
+      const angle = (index / this.selectedObjects.length) * Math.PI * 2
+      let newX = centerX + Math.cos(angle) * spacingDistance
+      let newY = centerY + Math.sin(angle) * spacingDistance
 
-        newX = Math.round(newX);
-        newY = Math.round(newY);
+      newX = Math.round(newX)
+      newY = Math.round(newY)
 
-        const offsetX = (newX / 16) - Math.min(...obj.x);
-        const offsetY = (newY / 16) - Math.min(...obj.y);
+      const offsetX = (newX / 16) - Math.min(...obj.x)
+      const offsetY = (newY / 16) - Math.min(...obj.y)
 
-        obj.x = obj.x.map(coord => Math.round(coord + offsetX));
-        obj.y = obj.y.map(coord => Math.round(coord + offsetY));
-    });
-},
+      obj.x = obj.x.map(coord => Math.round(coord + offsetX))
+      obj.y = obj.y.map(coord => Math.round(coord + offsetY))
+    })
+  },
 
-selectAllObjects() {
-    this.selectedObjects = game.roomData.items.slice();
-
+  selectAllObjects() {
+    this.selectedObjects = game.roomData.items.slice()
     if (this.selectedObjects.length > 0) {
-        this.changeMode('move');
+      this.changeMode('move')
     }
-},
+  },
 
-copySelectedObjects() {
-        if (this.selectedObjects.length > 0) {
-            this.clipboard = this.selectedObjects.map(obj => JSON.parse(JSON.stringify(obj)));
-            console.log("Objects copied:", this.clipboard);
-        }
-    },
+  copySelectedObjects() {
+    if (this.selectedObjects.length > 0) {
+      this.clipboard = this.selectedObjects.map(obj => JSON.parse(JSON.stringify(obj)))
+    }
+  },
 
-pasteCopiedObjects() {
+  pasteCopiedObjects() {
     if (this.clipboard.length > 0) {
-        const mouseX = this.mouseX;
-        const mouseY = this.mouseY;
-        const clipboardCenterX = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.x) * 16, 0) / this.clipboard.length;
-        const clipboardCenterY = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.y) * 16, 0) / this.clipboard.length;
-        const offsetX = mouseX - clipboardCenterX;
-        const offsetY = mouseY - clipboardCenterY;
-        const offsetForX = this.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX);
-        const offsetForY = this.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY);
+      const mouseX = this.mouseX
+      const mouseY = this.mouseY
+      const clipboardCenterX = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.x) * 16, 0) / this.clipboard.length
+      const clipboardCenterY = this.clipboard.reduce((sum, obj) => sum + Math.min(...obj.y) * 16, 0) / this.clipboard.length
+      const offsetX = mouseX - clipboardCenterX
+      const offsetY = mouseY - clipboardCenterY
+      const offsetForX = this.isSnapEnabled ? Math.floor(offsetX / 16) * 16 : Math.round(offsetX)
+      const offsetForY = this.isSnapEnabled ? Math.floor(offsetY / 16) * 16 : Math.round(offsetY)
 
-        const pastedObjects = this.clipboard.map(obj => {
-            const newObj = JSON.parse(JSON.stringify(obj));
-            const newLayerId = utils.generateId();
-            newObj.layer_id = newLayerId;
+      const pastedObjects = this.clipboard.map(obj => {
+        const newObj = JSON.parse(JSON.stringify(obj))
+        const newLayerId = utils.generateId()
+        newObj.layer_id = newLayerId
 
-            newObj.x = newObj.x.map(coord => {
-                const newCoordX = coord * 16 + offsetForX;
-                return this.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16;
-            });
+        newObj.x = newObj.x.map(coord => {
+          const newCoordX = coord * 16 + offsetForX
+          return this.isSnapEnabled ? Math.floor(newCoordX / 16) : newCoordX / 16
+        })
 
-            newObj.y = newObj.y.map(coord => {
-                const newCoordY = coord * 16 + offsetForY;
-                return this.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16;
-            });
+        newObj.y = newObj.y.map(coord => {
+          const newCoordY = coord * 16 + offsetForY
+          return this.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16
+        })
 
-            editor_layers.addItemToLayer({
-                layer_id: newLayerId,
-                n: newObj.name || "Pasted Item"
-            });
+        editor_layers.addItemToLayer({
+          layer_id: newLayerId,
+          n: newObj.name || "Pasted Item"
+        })
 
-            return newObj;
-        });
+        return newObj
+      })
 
-        game.roomData.items.push(...pastedObjects);
-        this.selectedObjects = pastedObjects;
-        const pastedLayerIds = pastedObjects.map(obj => "item_" + obj.layer_id);
-        editor_layers.selectLayersById(pastedLayerIds);
-        this.renderSelectedTiles();
-        this.changeMode('move');
+      game.roomData.items.push(...pastedObjects)
+      this.selectedObjects = pastedObjects
+      const pastedLayerIds = pastedObjects.map(obj => "item_" + obj.layer_id)
+      editor_layers.selectLayersById(pastedLayerIds)
+      this.renderSelectedTiles()
+      this.changeMode('move')
     }
-},
+  },
 
-undo() {
+  undo() {
     if (this.undoStack.length === 0) {
-        console.log("Nothing to undo.");
-        return;
+      return
     }
+    this.pushToRedoStack()
+    const lastState = this.undoStack.pop()
+    this.restoreRoomData(lastState)
+  },
 
-    this.pushToRedoStack();
-    const lastState = this.undoStack.pop();
-    this.restoreRoomData(lastState);
-
-    console.log("Undo completed.");
-},
-
-redo() {
+  redo() {
     if (this.redoStack.length === 0) {
-        console.log("Nothing to redo.");
-        return;
+      return
     }
+    this.pushToUndoStack()
+    const lastState = this.redoStack.pop()
+    this.restoreRoomData(lastState)
+  },
 
-    this.pushToUndoStack();
-    const lastState = this.redoStack.pop();
-    this.restoreRoomData(lastState);
-},
-
-    saveRoomData() {
+  saveRoomData() {
     fetch('/api/editor/scene/save', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-          sceneid: game.sceneid,
-          bg: game.sceneBg,
-          roomData: game.roomData,
-          editorLayers: editor_layers.layers
+        sceneid: game.sceneid,
+        bg: game.sceneBg,
+        roomData: game.roomData,
+        editorLayers: editor_layers.layers
       }),
     })
     .then(async (response) => {
       if (!response.ok) {
-        let errorData;
+        let errorData
         try {
-          errorData = await response.json();
+          errorData = await response.json()
         } catch {
-          errorData = { message: await response.text() };
+          errorData = { message: await response.text() }
         }
-        throw new Error(errorData.message || 'Unknown error');
+        throw new Error(errorData.message || 'Unknown error')
       }
-      return response.json();
+      return response.json()
     })
     .then((result) => {
-      plugin.close('editor_window');
-      plugin.collision.createWalkableGrid();
-      console.log('Save successful:', result);
+      plugin.close('editor_window')
+      plugin.collision.createWalkableGrid()
     })
     .catch((error) => {
-      console.error('Error saving room data:', error);
-    });
-    },
+    })
+  },
 
-revertToOriginalState() {
+  revertToOriginalState() {
     if (this.originalRoomData) {
-        game.roomData = JSON.parse(JSON.stringify(this.originalRoomData));
-        plugin.collision.createWalkableGrid();
-    } else {
-        console.error("Original room data not found.");
+      game.roomData = JSON.parse(JSON.stringify(this.originalRoomData))
+      plugin.collision.createWalkableGrid()
     }
-},
+  },
 
-constrainCamera() {
-        const scaledWindowWidth = window.innerWidth / game.zoomLevel;
-        const scaledWindowHeight = window.innerHeight / game.zoomLevel;
+  constrainCamera() {
+    const scaledWindowWidth = window.innerWidth / game.zoomLevel
+    const scaledWindowHeight = window.innerHeight / game.zoomLevel
 
-        const maxCameraX = game.worldWidth - scaledWindowWidth;
-        camera.cameraX = Math.max(0, Math.min(camera.cameraX, maxCameraX));
+    const maxCameraX = game.worldWidth - scaledWindowWidth
+    camera.cameraX = Math.max(0, Math.min(camera.cameraX, maxCameraX))
 
-        const maxCameraY = game.worldHeight - scaledWindowHeight;
-        camera.cameraY = Math.max(0, Math.min(camera.cameraY, maxCameraY));
-    },
+    const maxCameraY = game.worldHeight - scaledWindowHeight
+    camera.cameraY = Math.max(0, Math.min(camera.cameraY, maxCameraY))
+  },
 
-    pushToUndoStack() {
-    const currentState = JSON.parse(JSON.stringify(game.roomData));
-    this.undoStack.push(currentState);
-    console.log("Undo stack pushed, current undo stack size:", this.undoStack.length);
-    this.redoStack = [];
-},
+  pushToUndoStack() {
+    const currentState = JSON.parse(JSON.stringify(game.roomData))
+    this.undoStack.push(currentState)
+    this.redoStack = []
+  },
 
-pushToRedoStack() {
-    const currentState = JSON.parse(JSON.stringify(game.roomData));
-    this.redoStack.push(currentState);
-    console.log("Redo stack pushed, current redo stack size:", this.redoStack.length);
-},
+  pushToRedoStack() {
+    const currentState = JSON.parse(JSON.stringify(game.roomData))
+    this.redoStack.push(currentState)
+  },
 
-restoreRoomData(state) {
+  restoreRoomData(state) {
     if (!state) {
-        console.error("Error: Attempting to restore an undefined state.");
-        return;
+      return
     }
-
     try {
-        game.roomData = JSON.parse(JSON.stringify(state));
-        plugin.collision.createWalkableGrid();
+      game.roomData = JSON.parse(JSON.stringify(state))
+      plugin.collision.createWalkableGrid()
     } catch (error) {
-        console.error("Error restoring room data:", error);
     }
-},
+  },
 
-    clearSelectionBox() {
-    this.selectionStart = { x: 0, y: 0 };
-    this.selectionEnd = { x: 0, y: 0 };
-},
+  clearSelectionBox() {
+    this.selectionStart = { x: 0, y: 0 }
+    this.selectionEnd = { x: 0, y: 0 }
+  },
 
-clearLassoPath() {
-    this.lassoPath = [];
-},
+  clearLassoPath() {
+    this.lassoPath = []
+  },
 
-panCameraHorizontally: function(deltaY) {
-    const scrollDirection = deltaY < 0 ? -1 : 1;
-    camera.cameraX += scrollDirection * 10;
-    this.constrainCamera();
-},
+  panCameraHorizontally: function(deltaY) {
+    const scrollDirection = deltaY < 0 ? -1 : 1
+    camera.cameraX += scrollDirection * 10
+    this.constrainCamera()
+  },
 
-isModeWithZoomOrMovement() {
-    return ['select', 'lasso', 'move', 'zoom', 'delete'].includes(game.editorMode);
-},
+  isModeWithZoomOrMovement() {
+    return ['select', 'lasso', 'move', 'zoom', 'delete'].includes(game.editorMode)
+  },
 
-handleZoomOrMovement: function(deltaY, event) {
-    camera.lerpEnabled = false;
-    camera.manual = true;
+  handleZoomOrMovement: function(deltaY, event) {
+    camera.lerpEnabled = false
+    camera.manual = true
 
-    const rect = game.canvas.getBoundingClientRect();
-    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
-    const zoomFactor = deltaY < 0 ? 1 : -1;
-    const newZoomLevel = Math.max(1, Math.min(game.zoomLevel + zoomFactor, 10));
+    const rect = game.canvas.getBoundingClientRect()
+    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
+    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
+    const zoomFactor = deltaY < 0 ? 1 : -1
+    const newZoomLevel = Math.max(1, Math.min(game.zoomLevel + zoomFactor, 10))
 
-    game.zoomLevel = newZoomLevel;
-    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+    game.zoomLevel = newZoomLevel
+    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
+    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
 
-    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
-    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
+    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom
+    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom
 
-    this.constrainCamera();
-    game.resizeCanvas();
-},
+    this.constrainCamera()
+    game.resizeCanvas()
+  },
 
-panCameraVertically: function(deltaY) {
-    const scrollDirection = deltaY < 0 ? -1 : 1;
-    camera.cameraY += scrollDirection * 10;
-    this.constrainCamera();
-},
+  panCameraVertically: function(deltaY) {
+    const scrollDirection = deltaY < 0 ? -1 : 1
+    camera.cameraY += scrollDirection * 10
+    this.constrainCamera()
+  },
 
-zoomInBrushMode: function(deltaY, event) {
-    const scrollDirection = deltaY < 0 ? 1 : -1;
-    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + scrollDirection, 10));
+  zoomInBrushMode: function(deltaY, event) {
+    const scrollDirection = deltaY < 0 ? 1 : -1
+    const newZoomLevel = Math.max(2, Math.min(game.zoomLevel + scrollDirection, 10))
 
-    const rect = game.canvas.getBoundingClientRect();
-    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+    const rect = game.canvas.getBoundingClientRect()
+    const mouseXBeforeZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
+    const mouseYBeforeZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
 
-    game.zoomLevel = newZoomLevel;
-    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
-    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+    game.zoomLevel = newZoomLevel
+    const mouseXAfterZoom = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
+    const mouseYAfterZoom = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
 
-    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom;
-    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom;
+    camera.cameraX += mouseXBeforeZoom - mouseXAfterZoom
+    camera.cameraY += mouseYBeforeZoom - mouseYAfterZoom
 
-    this.constrainCamera();
-},
+    this.constrainCamera()
+  },
 
-findConnectedClusters() {
-    const clusters = [];
-    const visited = new Set();
+  findConnectedClusters() {
+    const clusters = []
+    const visited = new Set()
 
     this.selectedObjects.forEach(object => {
-        if (!visited.has(object)) {
-            const cluster = [];
-            this.dfsFindCluster(object, cluster, visited);
-            clusters.push(cluster);
-        }
-    });
+      if (!visited.has(object)) {
+        const cluster = []
+        this.dfsFindCluster(object, cluster, visited)
+        clusters.push(cluster)
+      }
+    })
+    return clusters
+  },
 
-    return clusters;
-},
-
-dfsFindCluster: function(object, cluster, visited) {
-    visited.add(object);
-    cluster.push(object);
+  dfsFindCluster: function(object, cluster, visited) {
+    visited.add(object)
+    cluster.push(object)
 
     this.selectedObjects.forEach(otherObject => {
-        if (!visited.has(otherObject) && this.areObjectsConnected(object, otherObject)) {
-            this.dfsFindCluster(otherObject, cluster, visited);
-        }
-    });
-},
+      if (!visited.has(otherObject) && this.areObjectsConnected(object, otherObject)) {
+        this.dfsFindCluster(otherObject, cluster, visited)
+      }
+    })
+  },
 
-areObjectsConnected: function(obj1, obj2) {
-    const obj1MinX = Math.min(...obj1.x) * 16;
-    const obj1MinY = Math.min(...obj1.y) * 16;
-    const obj1MaxX = Math.max(...obj1.x) * 16 + 16;
-    const obj1MaxY = Math.max(...obj1.y) * 16 + 16;
-    const obj2MinX = Math.min(...obj2.x) * 16;
-    const obj2MinY = Math.min(...obj2.y) * 16;
-    const obj2MaxX = Math.max(...obj2.x) * 16 + 16;
-    const obj2MaxY = Math.max(...obj2.y) * 16 + 16;
-    const connected = obj1MaxX >= obj2MinX && obj1MinX <= obj2MaxX && obj1MaxY >= obj2MinY && obj1MinY <= obj2MaxY;
-    return connected;
-},
+  areObjectsConnected: function(obj1, obj2) {
+    const obj1MinX = Math.min(...obj1.x) * 16
+    const obj1MinY = Math.min(...obj1.y) * 16
+    const obj1MaxX = Math.max(...obj1.x) * 16 + 16
+    const obj1MaxY = Math.max(...obj1.y) * 16 + 16
+    const obj2MinX = Math.min(...obj2.x) * 16
+    const obj2MinY = Math.min(...obj2.y) * 16
+    const obj2MaxX = Math.max(...obj2.x) * 16 + 16
+    const obj2MaxY = Math.max(...obj2.y) * 16 + 16
+    const connected = obj1MaxX >= obj2MinX && obj1MinX <= obj2MaxX && obj1MaxY >= obj2MinY && obj1MinY <= obj2MaxY
+    return connected
+  },
 
-handleKeyDown(event) {
-    const key = event.key;
-    const activeElement = document.activeElement;
+  handleKeyDown(event) {
+    const key = event.key
+    const activeElement = document.activeElement
     if (
-        activeElement.tagName === 'INPUT' ||
-        activeElement.tagName === 'TEXTAREA' ||
-        activeElement.tagName === 'SELECT' ||
-        activeElement.isContentEditable
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.tagName === 'SELECT' ||
+      activeElement.isContentEditable
     ) {
-        return;
+      return
     }
 
     switch (key) {
-        case '1':
-            this.changeMode('select');
-            break;
-        case '3':
-            this.changeMode('zoom');
-            break;
-        case '4':
-            this.changeMode('delete');
-            break;
-        case '5':
-            this.changeMode('pan');
-            break;
-        case '6':
-            this.changeMode('lasso');
-            break;
-        case '7':
-            this.changeMode('move');
-            break;
-        default:
-            break;
+      case '1':
+        this.changeMode('select')
+        break
+      case '3':
+        this.changeMode('zoom')
+        break
+      case '4':
+        this.changeMode('delete')
+        break
+      case '5':
+        this.changeMode('pan')
+        break
+      case '6':
+        this.changeMode('lasso')
+        break
+      case '7':
+        this.changeMode('move')
+        break
+      default:
+        break
     }
 
     if (key === 'Escape') {
-        this.selectedObjects = [];
-        this.clearSelectionBox();
-        this.clearLassoPath();
-        console.log('All selections cleared.');
-        this.changeMode('select');
+      this.selectedObjects = []
+      this.clearSelectionBox()
+      this.clearLassoPath()
+      this.changeMode('select')
     } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
-        this.moveSelectedObjectsWithArrowKeys(key);
-        event.preventDefault();
+      this.moveSelectedObjectsWithArrowKeys(key)
+      event.preventDefault()
     } else if (key === 'Delete' || key === 'Backspace') {
-        this.deleteSelectedObjects();
-        event.preventDefault();
+      this.deleteSelectedObjects()
+      event.preventDefault()
     }
-},
+  },
 
-handleKeyUp(event) {
-    const key = event.key;
-    const activeElement = document.activeElement;
+  handleKeyUp(event) {
+    const key = event.key
+    const activeElement = document.activeElement
     if (
-        activeElement.tagName === 'INPUT' ||
-        activeElement.tagName === 'TEXTAREA' ||
-        activeElement.tagName === 'SELECT' ||
-        activeElement.isContentEditable
+      activeElement.tagName === 'INPUT' ||
+      activeElement.tagName === 'TEXTAREA' ||
+      activeElement.tagName === 'SELECT' ||
+      activeElement.isContentEditable
     ) {
-        return;
+      return
     }
 
     if (key === 'Shift' && (game.editorMode === 'select' || game.editorMode === 'lasso')) {
-        this.changeMode('move');
+      this.changeMode('move')
     }
+  },
+
+  rotateObjects() {
+    if (this.selectedObjects.length === 0) return
+    this.pushToUndoStack()
+    this.selectedObjects.forEach((obj) => {
+      if (this.renderMode === 'isometric') {
+        obj.flipHorizontal = !obj.flipHorizontal
+      } else {
+        const currentRotation = obj.rotation || 0
+        obj.rotation = currentRotation + (Math.PI / 2)
+      }
+    })
+  }
 }
-};
-</script>
 {% endif %}

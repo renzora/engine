@@ -1,16 +1,16 @@
 <div data-close="false">
   <div
     id="editor_context_menu"
-    class="absolute z-50 hidden flex flex-col items-start space-y-2">
-
+    class="absolute z-50 hidden flex flex-col items-start space-y-2"
+  >
     <div
       id="editor_menu_container"
       class="bg-black text-white rounded-lg shadow-lg"
-      style="width: 220px; align-self: flex-start;">
+      style="width: 220px; align-self: flex-start;"
+    >
       <ul id="editor_menuItems" class="space-y-1"></ul>
     </div>
   </div>
-</div>
 </div>
 
 <script>
@@ -30,34 +30,34 @@ editor_context_menu = {
     this.contextMenuElement = document.getElementById('editor_context_menu');
     this.menuItemsElement = document.getElementById('editor_menuItems');
 
-this.contextmenuHandler = (event) => {
-  event.preventDefault();
+    this.contextmenuHandler = (event) => {
+      event.preventDefault();
 
-  if ( editor_window.isAddingNewObject || (plugin?.ui_console_editor_inventory?.isDragging === true)) {
-    plugin?.ui_console_editor_inventory?.cancelAddingObject();
-    return;
-  }
+      // If user is adding a new object or dragging from the inventory, cancel that
+      if (editor_window.isAddingNewObject || (plugin?.ui_console_editor_inventory?.isDragging === true)) {
+        plugin?.ui_console_editor_inventory?.cancelAddingObject();
+        return;
+      }
 
-  this.initialClickX = event.clientX;
-  this.initialClickY = event.clientY;
+      this.initialClickX = event.clientX;
+      this.initialClickY = event.clientY;
 
-  this.populateMenuItems(event.clientX, event.clientY);
+      // Build menu items for context menu
+      this.populateMenuItems(event.clientX, event.clientY);
 
-  if (this.menuItemsConfig.length > 0) {
-    plugin.front('editor_context_menu');
-    ui.contextMenu.showContextMenu(
-      this.contextMenuElement,
-      this.menuItemsElement,
-      this.menuItemsConfig,
-      event.clientX,
-      event.clientY
-    );
-  } else {
-    this.contextMenuElement.classList.add('hidden');
-  }
-};
-
-
+      if (this.menuItemsConfig.length > 0) {
+        plugin.front('editor_context_menu');
+        ui.contextMenu.showContextMenu(
+          this.contextMenuElement,
+          this.menuItemsElement,
+          this.menuItemsConfig,
+          event.clientX,
+          event.clientY
+        );
+      } else {
+        this.contextMenuElement.classList.add('hidden');
+      }
+    };
 
     this.clickHandler = (e) => {
       ui.contextMenu.hideMenus(e, this.contextMenuElement);
@@ -86,11 +86,10 @@ this.contextmenuHandler = (event) => {
     const clickedObject = this.getSelectedObject(clientX, clientY);
     console.log('Clicked Object:', clickedObject); // Debug
 
+    // If we clicked on a selected object, show object-related context menu
     if (clickedObject && editor_window.selectedObjects.includes(clickedObject)) {
       const objectId = clickedObject.id;
       console.log('Object ID:', objectId);
-
-      document.getElementById('editor_toolbar_buttons').classList.add('hidden');
 
       const objectDetails = game.objectData[objectId];
       const objectName = (objectDetails && objectDetails[0]?.n) ? objectDetails[0].n : 'Unnamed Object';
@@ -117,7 +116,7 @@ this.contextmenuHandler = (event) => {
           ]
         },
         {
-          label: `move to layer`,
+          label: "move to layer",
           subMenu: layersSubMenu
         },
         {
@@ -126,12 +125,12 @@ this.contextmenuHandler = (event) => {
         },
         {
           label: "Delete",
-          callback: () => this.rotateObject(clickedObject)
+          callback: () => this.deleteObject(clickedObject)
         }
       ];
-    } else {
-
-      document.getElementById('editor_toolbar_buttons').classList.remove('hidden');
+    }
+    // Otherwise, show a more general scene-level context menu
+    else {
 
       this.menuItemsConfig = [
         {
@@ -190,10 +189,46 @@ this.contextmenuHandler = (event) => {
     }
   },
 
+  // Simple rotate logic, same as in editor_window
+  rotateObject(obj) {
+    if (!obj) return;
+
+    // We push a new state to the undo stack
+    editor_window.pushToUndoStack();
+
+    // If in isometric mode, flip horizontally
+    if (editor_window.renderMode === 'isometric') {
+      obj.flipHorizontal = !obj.flipHorizontal;
+    }
+    // If in 2d mode, just rotate 90 degrees
+    else {
+      obj.rotation = (obj.rotation || 0) + (Math.PI / 2);
+    }
+
+    // Re-render or do anything else you need here
+    console.log("Rotated object:", obj);
+    this.contextMenuElement.classList.add('hidden');
+  },
+
+  deleteObject(obj) {
+    if (!obj) return;
+
+    // Also push to undo so we can revert the delete
+    editor_window.pushToUndoStack();
+
+    // Filter the item out of the roomData
+    game.roomData.items = game.roomData.items.filter(item => item !== obj);
+    // Remove from selected objects if present
+    editor_window.selectedObjects = editor_window.selectedObjects.filter(item => item !== obj);
+
+    console.log("Deleted object:", obj.id);
+    this.contextMenuElement.classList.add('hidden');
+  },
+
   moveObjectToLayer(obj, layerId) {
     console.log("Moving object", obj.id, "to layer", layerId);
     if (obj) {
-      obj.layerId = layerId;
+      obj.layer_id = layerId; // note: it's layer_id (underscore) in the data
     }
     this.contextMenuElement.classList.add('hidden');
   },

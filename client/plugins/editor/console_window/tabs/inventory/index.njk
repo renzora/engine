@@ -69,14 +69,12 @@ var ui_console_editor_inventory = {
     const tilesetSelect = document.getElementById('tileset_filter');
     const uniqueTilesets = new Set();
     
-    // Get unique tileset values from itemData
     Object.values(this.itemData).forEach(items => {
       items.forEach(item => {
         if (item.t) uniqueTilesets.add(item.t);
       });
     });
 
-    // Add options for each unique tileset
     uniqueTilesets.forEach(tilesetName => {
       const option = document.createElement('option');
       option.value = tilesetName;

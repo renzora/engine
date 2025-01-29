@@ -46,7 +46,7 @@
             spriteData: assets.use('spriteData'),
             player: playerSprite,
             after: function() {
-                game.scene(localStorage.getItem('sceneid') || '678ec2d7433aae2deee168ee');
+                game.scene(localStorage.getItem('sceneid') || '6799a5c66a1f68cfcfd3d4d1');
                 plugin.load('auth', { ext: 'njk' });
                 sprite.init();
                 plugin.time.hours = 10;
