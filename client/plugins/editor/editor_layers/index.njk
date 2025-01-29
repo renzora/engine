@@ -1034,7 +1034,6 @@ editor_layers = {
   }
   typeIcon.innerHTML = iconHTML;
 
-  // For layers/groups, clicking the icon toggles expansion
   if (node.type === "layer" || node.type === "group") {
     typeIcon.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -1063,7 +1062,6 @@ editor_layers = {
   eyeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     node.visible = !node.visible;
-
     const updateVisibility = (node, visible) => {
       if (node.id.startsWith("item_")) {
         const layerId = node.id.replace("item_", "");
@@ -1133,6 +1131,7 @@ editor_layers = {
   row.appendChild(lockBtn);
   row.appendChild(nameSpan);
   row.appendChild(trashBtn);
+
   row.addEventListener("click", (e) => {
     e.stopPropagation();
     if (node.locked) {
@@ -1143,7 +1142,6 @@ editor_layers = {
       this.renderAllLayers();
       return;
     }
-
     if (e.ctrlKey || e.metaKey) {
       if (this.selectedLayers.has(node.id)) {
         this.selectedLayers.delete(node.id);
@@ -1164,7 +1162,6 @@ editor_layers = {
       this.renderAllLayers();
       return;
     }
-
     let idsToSelect;
     if (e.shiftKey && this.lastClickedId) {
       this.selectRange(this.lastClickedId, node.id);
@@ -1185,6 +1182,26 @@ editor_layers = {
     this.lastClickedId = node.id;
     this.renderAllLayers();
     this.selectInEditor(idsToSelect);
+  });
+
+  row.addEventListener("mousedown", (e) => {
+    if (e.target.closest(".icon-btn")) return;
+    if (node.locked) return;
+    e.stopPropagation();
+    e.preventDefault();
+    this.dragCandidate = true;
+    this.dragStartX = e.clientX;
+    this.dragStartY = e.clientY;
+    if (!this.selectedLayers.has(node.id)) {
+      this.selectedLayers.clear();
+      this.selectedLayers.add(node.id);
+      this.activeLayerId = node.id;
+      this.lastClickedId = node.id;
+      this.renderAllLayers();
+    }
+    this.draggedNodes = this.getSelectedNodes();
+    this.draggedEl = nodeContainer;
+    row.classList.add("pending-drag");
   });
 
   nodeContainer.appendChild(row);
