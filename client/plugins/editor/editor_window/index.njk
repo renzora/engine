@@ -334,7 +334,6 @@ handleMouseMove(event) {
             this.handleObjectMovement();
             return;
         }
-        
         if (game.editorMode === 'lasso') {
             this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
             this.renderLasso();
@@ -342,6 +341,7 @@ handleMouseMove(event) {
         }
     }
 
+    // Circle drag handle only
     if (game.editorMode === 'move' && this.selectedObjects.length > 0 && !this.isDragging) {
         let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
         this.selectedObjects.forEach(obj => {
@@ -353,64 +353,20 @@ handleMouseMove(event) {
 
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
-        const axisLength = 30;
-        const hoverTolerance = 5;
         const centerCircleRadius = 10;
         const distToCenter = Math.sqrt(
             Math.pow(this.mouseX - centerX, 2) + 
             Math.pow(this.mouseY - centerY, 2)
         );
-        
+
         if (distToCenter <= centerCircleRadius) {
             this.hoveredAxis = 'center';
             document.body.style.cursor = 'move';
             return;
         }
 
-        const axes = [{ 
-                name: 'x',
-                mainLine: { dx: axisLength, dy: axisLength/2 },
-                oppositeLine: { dx: -axisLength, dy: -axisLength/2 }
-            },
-            { 
-                name: 'z',
-                mainLine: { dx: -axisLength, dy: axisLength/2 },
-                oppositeLine: { dx: axisLength, dy: -axisLength/2 }
-            },
-            { 
-                name: 'y',
-                mainLine: { dx: 0, dy: -axisLength },
-                oppositeLine: { dx: 0, dy: axisLength }
-            }];
-
         this.hoveredAxis = null;
-        for (const axis of axes) {
-            const mainDist = this.pointToLineDistance(
-                this.mouseX, this.mouseY,
-                centerX + Math.cos(Math.atan2(axis.mainLine.dy, axis.mainLine.dx)) * centerCircleRadius,
-                centerY + Math.sin(Math.atan2(axis.mainLine.dy, axis.mainLine.dx)) * centerCircleRadius,
-                centerX + axis.mainLine.dx,
-                centerY + axis.mainLine.dy
-            );
-
-            const oppositeDist = this.pointToLineDistance(
-                this.mouseX, this.mouseY,
-                centerX + Math.cos(Math.atan2(axis.oppositeLine.dy, axis.oppositeLine.dx)) * centerCircleRadius,
-                centerY + Math.sin(Math.atan2(axis.oppositeLine.dy, axis.oppositeLine.dx)) * centerCircleRadius,
-                centerX + axis.oppositeLine.dx,
-                centerY + axis.oppositeLine.dy
-            );
-
-            if (Math.min(mainDist, oppositeDist) < hoverTolerance) {
-                this.hoveredAxis = axis.name;
-                document.body.style.cursor = 'pointer';
-                return;
-            }
-        }
-
-        if (!this.isDragging) {
-            document.body.style.cursor = this.defaultCursor;
-        }
+        document.body.style.cursor = this.defaultCursor;
     }
 
     if (game.editorMode === 'pan' && this.isPanning && event.buttons === 1) {
@@ -516,7 +472,18 @@ handleMouseDown: function (e) {
                     this.handleSelectionStart(e);
                 }
             } else {
-                this.handleMoveMode(e);
+                // Just start dragging with the circle if hoveredAxis === 'center'
+                if (this.hoveredAxis === 'center') {
+                    this.isDragging = true;
+                    this.dragStartAxis = 'center';
+                    this.lastMouseX = this.mouseX;
+                    this.lastMouseY = this.mouseY;
+                    this.clearSelectionBox();
+                } else {
+                    // If not hovering the circle, treat it as a normal selection box start
+                    this.changeMode('select');
+                    this.handleSelectionStart(e);
+                }
             }
             return;
         }
@@ -555,7 +522,7 @@ handleMouseUp(event) {
             document.body.style.cursor = this.defaultCursor;
         }
         
-        if (game.editorMode === 'brush' || game.editorMode === 'lasso') {
+        if (game.editorMode === 'lasso') {
             if (this.lassoPath.length > 2) {
                 this.updateSelectedObjectsWithLasso(event.shiftKey);
             }
@@ -707,27 +674,11 @@ handleZoomDrag(event) {
 },
 
 handleObjectMovement() {
-    if (this.selectedObjects.length === 0) return;
+    if (!this.selectedObjects.length) return;
+    if (this.dragStartAxis !== 'center') return;
+
     let totalDeltaX = this.mouseX - this.lastMouseX;
     let totalDeltaY = this.mouseY - this.lastMouseY;
-
-    if (this.dragStartAxis && this.dragStartAxis !== 'center') {
-        switch (this.dragStartAxis) {
-            case 'x':
-                const xProjection = (totalDeltaX + totalDeltaY) / 2;
-                totalDeltaX = xProjection;
-                totalDeltaY = xProjection;
-                break;
-            case 'z':
-                const zProjection = (-totalDeltaX + totalDeltaY) / 2;
-                totalDeltaX = -zProjection;
-                totalDeltaY = zProjection;
-                break;
-            case 'y': 
-                totalDeltaX = 0;
-                break;
-        }
-    }
 
     this.selectedObjects.forEach((obj) => {
         obj.x = obj.x.map(coord => coord + totalDeltaX / 16);
@@ -958,13 +909,8 @@ updateMousePosition(event) {
 
 renderSelectedTiles() {
     this.selectedObjects = this.selectedObjects.filter(obj => {
-        if (this.isObjectLocked(obj)) {
-            return false;
-        }
-
-        if (obj.visible === false) {
-            return false;
-        }
+        if (this.isObjectLocked(obj)) return false;
+        if (obj.visible === false) return false;
         return true;
     });
 
@@ -979,7 +925,6 @@ renderSelectedTiles() {
     const lineWidth = 1;
     const shadowOffset = 1;
     const paddingFactor = 0.15;
-    const axisLength = 30;
     const centerCircleRadius = 5;
 
     game.ctx.lineWidth = lineWidth;
@@ -1047,6 +992,7 @@ renderSelectedTiles() {
         });
     });
 
+    // Draw only the center circle (for 2D dragging)
     if (game.editorMode === 'move' && this.selectedObjects.length > 0) {
         game.ctx.beginPath();
         game.ctx.arc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2);
@@ -1059,37 +1005,6 @@ renderSelectedTiles() {
         }
         game.ctx.fill();
         game.ctx.stroke();
-
-        const axes = [
-            { name: 'x', color: 'rgb(255, 50, 50)', x: axisLength,  y: axisLength/2  },
-            { name: 'z', color: 'rgb(50, 50, 255)', x: -axisLength, y: axisLength/2  },
-            { name: 'y', color: 'rgb(50, 255, 50)', x: 0,           y: -axisLength   }
-        ];
-
-        axes.forEach(axis => {
-            const isAxisHovered = this.hoveredAxis === axis.name;
-            const isSelected = this.dragStartAxis === axis.name;
-            const color = isAxisHovered || isSelected
-                ? axis.color
-                : axis.color.replace('rgb', 'rgba').replace(')', ', 0.5)');
-            game.ctx.beginPath();
-            const angle = Math.atan2(axis.y, axis.x);
-            const startX = centerX + Math.cos(angle) * centerCircleRadius;
-            const startY = centerY + Math.sin(angle) * centerCircleRadius;
-            game.ctx.moveTo(startX, startY);
-            game.ctx.lineTo(centerX + axis.x, centerY + axis.y);
-            game.ctx.strokeStyle = color;
-            game.ctx.lineWidth = isAxisHovered || isSelected ? 3 : 2;
-            game.ctx.stroke();
-            const oppositeAngle = Math.atan2(-axis.y, -axis.x);
-            const oppositeStartX = centerX + Math.cos(oppositeAngle) * centerCircleRadius;
-            const oppositeStartY = centerY + Math.sin(oppositeAngle) * centerCircleRadius;
-            game.ctx.beginPath();
-            game.ctx.moveTo(oppositeStartX, oppositeStartY);
-            game.ctx.lineTo(centerX - axis.x, centerY - axis.y);
-            game.ctx.strokeStyle = color;
-            game.ctx.stroke();
-        });
     }
 
     game.ctx.restore();
