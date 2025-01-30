@@ -19,7 +19,7 @@
         <label for="sceneHeight" class="block text-sm mb-1">Height: <span id="sceneHeightValue"></span></label>
         <input type="range" id="sceneHeight" min="96    " max="2000" step="1" class="w-full mb-4">
             <!-- Save Button -->
-    <button id="saveSceneProperties" onclick="editor_scene_properties.save();" class="bg-yellow-500 text-white px-4 py-2 mt-4 rounded hover:bg-yellow-600">
+    <button id="saveSceneProperties" onclick="scene_properties.save();" class="bg-yellow-500 text-white px-4 py-2 mt-4 rounded hover:bg-yellow-600">
         Save
     </button>
       </div>
@@ -27,8 +27,7 @@
     </div>
 
     <script>
-editor_scene_properties = {
-    id: id,
+scene_properties = {
     start() {
         const widthSlider = document.getElementById('sceneWidth');
         const heightSlider = document.getElementById('sceneHeight');
@@ -73,34 +72,30 @@ editor_scene_properties = {
         heightSlider.addEventListener('input', updateDimensions);
     },
 
-    save() {
-        const width = document.getElementById('sceneWidth').value;
-        const height = document.getElementById('sceneHeight').value;
-
-        const data = {
-            sceneId: game.sceneid,
-            width: parseInt(width, 10),
-            height: parseInt(height, 10)
-        };
-
-        // Send AJAX request to save the updated width and height
-        ui.ajax({
-            outputType: 'json',
-            method: 'POST',
-            url: '/api/editor/scene/dimensions',
-            data: JSON.stringify(data),
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            success: function(response) {
-                console.log('Scene properties saved successfully:', response);
-                plugin.close('editor_scene_properties');
-            },
-            error: function(error) {
-                console.error('Error saving scene properties:', error);
-            }
-        });
-    },
+save() {
+    const width = document.getElementById('sceneWidth').value
+    const height = document.getElementById('sceneHeight').value
+    const data = {
+        sceneId: game.sceneid,
+        width: parseInt(width, 10),
+        height: parseInt(height, 10)
+    }
+    fetch('/api/editor/scene/dimensions', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+    })
+    .then(response => response.json())
+    .then(response => {
+        console.log('Scene properties saved successfully:', response)
+        plugin.close('scene_properties')
+    })
+    .catch(error => {
+        console.error('Error saving scene properties:', error)
+    })
+},
 
     unmount() {
         // Clean up code if necessary

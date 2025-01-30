@@ -282,22 +282,32 @@ game = {
     },
   
     renderBackground() {
-      const startX = this.viewportXStart * 16
-      const startY = this.viewportYStart * 16
-      const width  = (this.viewportXEnd - this.viewportXStart) * 16
-      const height = (this.viewportYEnd - this.viewportYStart) * 16
-      if (width <= 0 || height <= 0) return
-      this.ctx.save()
-      this.ctx.translate(startX, startY)
-      if (!this.bgPattern) {
-        this.ctx.fillStyle = 'black'
-      } else {
-        this.ctx.fillStyle = this.bgPattern
+      // Fill margin with black
+      this.ctx.save();
+      this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      this.ctx.fillStyle = 'black';
+      this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+      this.ctx.restore();
+    
+      // Set transform back for world space
+      this.ctx.setTransform(this.zoomLevel, 0, 0, this.zoomLevel,
+        -Math.round(camera.cameraX * this.zoomLevel),
+        -Math.round(camera.cameraY * this.zoomLevel));
+    
+      // Draw background pattern just for world bounds
+      this.ctx.save();
+      this.ctx.beginPath();
+      this.ctx.rect(0, 0, this.worldWidth, this.worldHeight);
+      this.ctx.clip();
+    
+      if (this.bgPattern) {
+        this.ctx.fillStyle = this.bgPattern;
+        this.ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
       }
-      this.ctx.fillRect(0, 0, width, height)
-      this.ctx.restore()
-      plugin.hook('onRenderBackground')
-      this.renderCalls++
+    
+      this.ctx.restore();
+      plugin.hook('onRenderBackground');
+      this.renderCalls++;
     },
   
     buildObjectCanvas(cacheKey, tileData, xCoords, yCoords) {
@@ -339,66 +349,72 @@ game = {
     },
   
     render() {
-      this.renderQueue = []
-      plugin.hook('onRenderAll')
+      this.renderQueue = [];
+      plugin.hook('onRenderAll');
+      
       const expanded = Object.keys(this.objectData).reduce((acc, key) => {
-        acc[key] = this.objectData[key].map(this.expandTileData.bind(this))
-        return acc
-      }, {})
-  
+        acc[key] = this.objectData[key].map(this.expandTileData.bind(this));
+        return acc;
+      }, {});
+    
+      // Set transform for game world rendering
+      this.ctx.setTransform(this.zoomLevel, 0, 0, this.zoomLevel,
+        -Math.round(camera.cameraX * this.zoomLevel),
+        -Math.round(camera.cameraY * this.zoomLevel));
+    
       if (this.roomData && this.roomData.items) {
         this.roomData.items.forEach(rItem => {
-          const iData = expanded[rItem.id]
-          if (!iData || iData.length === 0) return
-          const tData = iData[0]
-  
+          const iData = expanded[rItem.id];
+          if (!iData || iData.length === 0) return;
+          const tData = iData[0];
+    
           if (rItem.visible === false) {
-            this.currentTileData = tData
-            this.currentRoomItem = rItem
-            this.handleLights()
-            return
+            this.currentTileData = tData;
+            this.currentRoomItem = rItem;
+            this.handleLights();
+            return;
           }
-  
-          const xC = rItem.x || []
-          const yC = rItem.y || []
-          const minX = Math.min(...xC)
-          const maxX = Math.max(...xC)
-          const minY = Math.min(...yC)
-          const maxY = Math.max(...yC)
-          const objL = minX * 16
-          const objR = (maxX + 1) * 16
-          const objT = minY * 16
-          const objB = (maxY + 1) * 16
-          const cL = this.viewportXStart * 16
-          const cR = this.viewportXEnd * 16
-          const cT = this.viewportYStart * 16
-          const cB = this.viewportYEnd * 16
-          if (objR < cL || objL > cR || objB < cT || objT > cB) return
-  
-          let rot = tData.rotation || 0
+    
+          const xC = rItem.x || [];
+          const yC = rItem.y || [];
+          const minX = Math.min(...xC);
+          const maxX = Math.max(...xC);
+          const minY = Math.min(...yC);
+          const maxY = Math.max(...yC);
+          const objL = minX * 16;
+          const objR = (maxX + 1) * 16;
+          const objT = minY * 16;
+          const objB = (maxY + 1) * 16;
+          const cL = this.viewportXStart * 16;
+          const cR = this.viewportXEnd * 16;
+          const cT = this.viewportYStart * 16;
+          const cB = this.viewportYEnd * 16;
+          if (objR < cL || objL > cR || objB < cT || objT > cB) return;
+    
+          let rot = tData.rotation || 0;
           if (rItem.isRotating) {
-            actions.handleRotation(rItem)
-            rot = rItem.rotation
+            actions.handleRotation(rItem);
+            rot = rItem.rotation;
           }
           if (tData.sway === true) {
-            rot += this.handleSway(rItem)
+            rot += this.handleSway(rItem);
           }
           if (rItem.rotation != null) {
-            rot = rItem.rotation
+            rot = rItem.rotation;
           }
-          const cacheKey = rItem.id + '_' + (tData.currentFrame || 0) + '_' + rot
-          let offscreen = this.objectCache[cacheKey]
+          const cacheKey = rItem.id + '_' + (tData.currentFrame || 0) + '_' + rot;
+          let offscreen = this.objectCache[cacheKey];
           if (!offscreen) {
-            offscreen = this.buildObjectCanvas(cacheKey, tData, xC, yC)
+            offscreen = this.buildObjectCanvas(cacheKey, tData, xC, yC);
           }
-  
-          let zIndex
+    
+          let zIndex;
           if (tData.z === 0) {
-            zIndex = -9999
+            zIndex = -9999;
           } else {
-            zIndex = maxY * 16
+            zIndex = maxY * 16;
           }
-  
+    
           this.renderQueue.push({
             zIndex: zIndex,
             type: 'object',
@@ -410,70 +426,70 @@ game = {
               rotation: rot
             },
             draw: () => {
-              this.ctx.save()
-              const pivotX = (minX + maxX + 1) / 2 * 16
-              const pivotY = (maxY + 1) * 16
-              this.ctx.translate(pivotX, pivotY)
-              const scale = rItem.scale || 1
-              this.ctx.scale(scale, scale)
+              this.ctx.save();
+              const pivotX = (minX + maxX + 1) / 2 * 16;
+              const pivotY = (maxY + 1) * 16;
+              this.ctx.translate(pivotX, pivotY);
+              const scale = rItem.scale || 1;
+              this.ctx.scale(scale, scale);
             
               if (rItem.flipHorizontal) {
-                this.ctx.scale(-1, 1)
+                this.ctx.scale(-1, 1);
               }
               
               if (rItem.rotation != null) {
-                this.ctx.rotate(rItem.rotation)
+                this.ctx.rotate(rItem.rotation);
               } else {
-                this.ctx.rotate(rot)
+                this.ctx.rotate(rot);
               }
             
-              const dx = -offscreen.width / 2
-              const dy = -offscreen.height
-              this.ctx.drawImage(offscreen, dx, dy)
-              this.renderCalls++
-              this.tileCount++
-              this.ctx.restore()
+              const dx = -offscreen.width / 2;
+              const dy = -offscreen.height;
+              this.ctx.drawImage(offscreen, dx, dy);
+              this.renderCalls++;
+              this.tileCount++;
+              this.ctx.restore();
             }
-          })
-  
-          this.currentTileData = tData
-          this.currentRoomItem = rItem
-          this.handleLights()
-          this.handleEffects()
-        })
+          });
+    
+          this.currentTileData = tData;
+          this.currentRoomItem = rItem;
+          this.handleLights();
+          this.handleEffects();
+        });
       }
-  
+    
       for (let id in this.sprites) {
-        const sp = this.sprites[id]
-        const r = sp.x + sp.width
-        const b = sp.y + sp.height
+        const sp = this.sprites[id];
+        const r = sp.x + sp.width;
+        const b = sp.y + sp.height;
         if (
           r >= this.viewportXStart * 16 &&
           sp.x < this.viewportXEnd * 16 &&
           b >= this.viewportYStart * 16 &&
           sp.y < this.viewportYEnd * 16
         ) {
-          const z = sp.y + sp.height
+          const z = sp.y + sp.height;
           this.renderQueue.push({
             zIndex: z,
             type: 'sprite',
             id: id,
             data: { sprite: sp },
             draw: () => {
-              this.renderPathfinderLine()
-              sp.drawShadow()
-              sp.draw()
+              this.renderPathfinderLine();
+              sp.drawShadow();
+              sp.draw();
             }
-          })
-          this.spriteCount++
+          });
+          this.spriteCount++;
         }
       }
-  
-      this.renderQueue.sort((a, b) => a.zIndex - b.zIndex)
+    
+      this.renderQueue.sort((a, b) => a.zIndex - b.zIndex);
       this.renderQueue.forEach(item => {
-        item.draw()
-      })
-      plugin.debug.tracker("render.renderAll")
+        item.draw();
+      });
+      plugin.debug.tracker("render.renderAll");
     },
   
     handleMouseUp(e) {

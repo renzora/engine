@@ -256,138 +256,129 @@
     <script>
 var ui_console_tab_window = {
     start() {
-        ui.initTabs('world_editor_tabs', 'tab1');
-        this.initSliders();
-        this.bindEvents();
-        this.initLightTypes();
-        this.initNightFilter();
-        this.initTimeBasedUpdates();
-        this.populateEffectList();
-        this.initParticleEventListeners();
+        let tabButtons = document.querySelectorAll('#tabs .tab')
+        let tabContents = document.querySelectorAll('.tab-content')
+        tabButtons.forEach((btn)=>{
+            btn.addEventListener('click',()=>{
+                let tab = btn.getAttribute('data-tab')
+                tabContents.forEach((content)=>{
+                    if(content.getAttribute('data-tab-content') === tab){
+                        content.classList.remove('hidden')
+                    } else {
+                        content.classList.add('hidden')
+                    }
+                })
+            })
+        })
+        document.querySelector('[data-tab="tab1"]').click()
+        this.initSliders()
+        this.bindEvents()
+        this.initLightTypes()
+        this.initNightFilter()
+        this.initTimeBasedUpdates()
+        this.populateEffectList()
+        this.initParticleEventListeners()
     },
-    
     setNightFilterCompositeOperation() {
-        var compositeOperation = lighting.nightFilter.compositeOperation;
-        var selectElement = document.getElementById('nightFilterCompositeOperation');
+        var compositeOperation = lighting.nightFilter.compositeOperation
+        var selectElement = document.getElementById('nightFilterCompositeOperation')
         if (selectElement) {
-            selectElement.value = compositeOperation;
+            selectElement.value = compositeOperation
         }
     },
-
     updateNightFilterCompositeOperation() {
-        const compositeOperation = document.getElementById('nightFilterCompositeOperation').value;
+        const compositeOperation = document.getElementById('nightFilterCompositeOperation').value
         if (lighting && lighting.nightFilter) {
-            lighting.nightFilter.compositeOperation = compositeOperation;
-            console.log(`Night Filter Composite Operation set to: ${compositeOperation}`);
+            lighting.nightFilter.compositeOperation = compositeOperation
+            console.log(`Night Filter Composite Operation set to: ${compositeOperation}`)
         } else {
-            console.error('Lighting object or nightFilter not found');
+            console.error('Lighting object or nightFilter not found')
         }
     },
-
     initNightFilter() {
-        document.getElementById('nightFilterOpacity').value = lighting.nightFilter.opacity;
-        document.getElementById('nightFilterColorR').value = lighting.nightFilter.color.r;
-        document.getElementById('nightFilterColorG').value = lighting.nightFilter.color.g;
-        document.getElementById('nightFilterColorB').value = lighting.nightFilter.color.b;
-
-        this.setNightFilterCompositeOperation();
-
+        document.getElementById('nightFilterOpacity').value = lighting.nightFilter.opacity
+        document.getElementById('nightFilterColorR').value = lighting.nightFilter.color.r
+        document.getElementById('nightFilterColorG').value = lighting.nightFilter.color.g
+        document.getElementById('nightFilterColorB').value = lighting.nightFilter.color.b
+        this.setNightFilterCompositeOperation()
         document.getElementById('nightFilterOpacity').addEventListener('input', function() {
-            const opacity = parseFloat(this.value);
-            lighting.nightFilter.opacity = opacity;
-            document.getElementById('nightFilterOpacityLabel').textContent = opacity;
-        });
-
+            const opacity = parseFloat(this.value)
+            lighting.nightFilter.opacity = opacity
+            document.getElementById('nightFilterOpacityLabel').textContent = opacity
+        })
         document.getElementById('nightFilterColorR').addEventListener('input', function() {
-            const r = parseInt(this.value);
-            lighting.nightFilter.color.r = r;
-            document.getElementById('nightFilterColorRLabel').textContent = r;
-        });
-
+            const r = parseInt(this.value)
+            lighting.nightFilter.color.r = r
+            document.getElementById('nightFilterColorRLabel').textContent = r
+        })
         document.getElementById('nightFilterColorG').addEventListener('input', function() {
-            const g = parseInt(this.value);
-            lighting.nightFilter.color.g = g;
-            document.getElementById('nightFilterColorGLabel').textContent = g;
-        });
-
+            const g = parseInt(this.value)
+            lighting.nightFilter.color.g = g
+            document.getElementById('nightFilterColorGLabel').textContent = g
+        })
         document.getElementById('nightFilterColorB').addEventListener('input', function() {
-            const b = parseInt(this.value);
-            lighting.nightFilter.color.b = b;
-            document.getElementById('nightFilterColorBLabel').textContent = b;
-        });
-
-        this.updateNightFilterCompositeOperation();
+            const b = parseInt(this.value)
+            lighting.nightFilter.color.b = b
+            document.getElementById('nightFilterColorBLabel').textContent = b
+        })
+        this.updateNightFilterCompositeOperation()
     },
-
     initSliders() {
-        this.updateSliderValue('hours', 'hours_value');
-        this.updateSliderValue('minutes', 'minutes_value');
-        this.updateSliderValue('seconds', 'seconds_value');
-        this.updateSliderValue('days', 'days_value');
-        this.updateSliderValue('speed_multiplier', 'speed_multiplier_value');
+        this.updateSliderValue('hours', 'hours_value')
+        this.updateSliderValue('minutes', 'minutes_value')
+        this.updateSliderValue('seconds', 'seconds_value')
+        this.updateSliderValue('days', 'days_value')
+        this.updateSliderValue('speed_multiplier', 'speed_multiplier_value')
     },
-
     updateSliderValue(sliderId, valueId) {
-        var slider = document.getElementById(sliderId);
-        var valueSpan = document.getElementById(valueId);
-        var self = this;
+        var slider = document.getElementById(sliderId)
+        var valueSpan = document.getElementById(valueId)
+        var self = this
         slider.addEventListener('input', function() {
-            valueSpan.textContent = slider.value;
-            self.updateGameTime();
-        });
+            valueSpan.textContent = slider.value
+            self.updateGameTime()
+        })
     },
-
     bindEvents() {
-        document.getElementById('set_weather_button').addEventListener('click', this.setWeather.bind(this));
-        document.getElementById('nightFilterCompositeOperation').addEventListener('change', this.updateNightFilterCompositeOperation.bind(this));
+        document.getElementById('set_weather_button').addEventListener('click', this.setWeather.bind(this))
+        document.getElementById('nightFilterCompositeOperation').addEventListener('change', this.updateNightFilterCompositeOperation.bind(this))
     },
-
     unbindEvents() {
-        document.getElementById('set_weather_button').removeEventListener('click', this.setWeather.bind(this));
-        document.getElementById('nightFilterCompositeOperation').removeEventListener('change', this.updateNightFilterCompositeOperation.bind(this));
+        document.getElementById('set_weather_button').removeEventListener('click', this.setWeather.bind(this))
+        document.getElementById('nightFilterCompositeOperation').removeEventListener('change', this.updateNightFilterCompositeOperation.bind(this))
     },
-
     updateGameTime() {
-        var hours = document.getElementById('hours').value;
-        var minutes = document.getElementById('minutes').value;
-        var seconds = document.getElementById('seconds').value;
-        var days = document.getElementById('days').value;
-        var speedMultiplier = document.getElementById('speed_multiplier').value;
-
-        utils.gameTime.hours = parseInt(hours);
-        utils.gameTime.minutes = parseInt(minutes);
-        utils.gameTime.seconds = parseInt(seconds);
-        utils.gameTime.days = parseInt(days);
-        utils.gameTime.speedMultiplier = parseInt(speedMultiplier);
-
-        console.log('Game time set to: ', utils.gameTime.display());
+        var hours = document.getElementById('hours').value
+        var minutes = document.getElementById('minutes').value
+        var seconds = document.getElementById('seconds').value
+        var days = document.getElementById('days').value
+        var speedMultiplier = document.getElementById('speed_multiplier').value
+        utils.gameTime.hours = parseInt(hours)
+        utils.gameTime.minutes = parseInt(minutes)
+        utils.gameTime.seconds = parseInt(seconds)
+        utils.gameTime.days = parseInt(days)
+        utils.gameTime.speedMultiplier = parseInt(speedMultiplier)
+        console.log('Game time set to: ', utils.gameTime.display())
     },
-
     setWeather() {
-        var snow = document.getElementById('toggle_snow').checked;
-        var rain = document.getElementById('toggle_rain').checked;
-        var fog = document.getElementById('toggle_fog').checked;
-        var fireflys = document.getElementById('toggle_fireflys').checked;
-
-        weather.snow.active = snow;
-        weather.rain.active = rain;
-        weather.fog.active = fog;
-        weather.fireflys.active = fireflys;
-
-        if (snow) weather.snow.create(0.5); else weather.snow.stop();
-        if (rain) weather.rain.create(0.7);
-        if (fog) weather.fog.create(0.1);
-        if (fireflys) weather.firewflys.create();
-
-        console.log('Weather updated: Snow -', snow, ', Rain -', rain, ', Fog -', fog, ', FireFlys -', fireflys);
+        var snow = document.getElementById('toggle_snow').checked
+        var rain = document.getElementById('toggle_rain').checked
+        var fog = document.getElementById('toggle_fog').checked
+        var fireflys = document.getElementById('toggle_fireflys').checked
+        weather.snow.active = snow
+        weather.rain.active = rain
+        weather.fog.active = fog
+        weather.fireflys.active = fireflys
+        if (snow) weather.snow.create(0.5); else weather.snow.stop()
+        if (rain) weather.rain.create(0.7)
+        if (fog) weather.fog.create(0.1)
+        if (fireflys) weather.firewflys.create()
+        console.log('Weather updated: Snow -', snow, ', Rain -', rain, ', Fog -', fog, ', FireFlys -', fireflys)
     },
-
     initLightTypes() {
-        const lightTypeContainer = document.getElementById('lightTypeContainer');
-        lightTypeContainer.innerHTML = '';
-
-        const lightTypes = [...new Set(lighting.lights.map(light => light.type))];
-
+        const lightTypeContainer = document.getElementById('lightTypeContainer')
+        lightTypeContainer.innerHTML = ''
+        const lightTypes = [...new Set(lighting.lights.map(light => light.type))]
         lightTypes.forEach((type, index) => {
             const lightControls = `
               <div class="light-item" style="background: #2D2D2D; padding: 10px; margin-bottom: 10px; border-radius: 5px;">
@@ -432,229 +423,202 @@ var ui_console_tab_window = {
                   <span id="lightFlickerAmountLabel_${index}" class="block text-sm text-gray-400">${lighting.lights.find(light => light.type === type).flickerAmount}</span>
                 </div>
               </div>
-            `;
-            lightTypeContainer.insertAdjacentHTML('beforeend', lightControls);
-        });
+            `
+            lightTypeContainer.insertAdjacentHTML('beforeend', lightControls)
+        })
     },
-
     updateLightTypeAndLabel(type, labelId, value, property) {
         if (labelId.includes('lightFlickerLabel')) {
-            document.getElementById(labelId).textContent = value ? 'true' : 'false';
+            document.getElementById(labelId).textContent = value ? 'true' : 'false'
         } else {
-            document.getElementById(labelId).textContent = value;
+            document.getElementById(labelId).textContent = value
         }
-        this.updateLightType(type, value, property);
+        this.updateLightType(type, value, property)
     },
-
     updateLightType(type, value, property) {
-        const lightsOfType = lighting.lights.filter(light => light.type === type);
+        const lightsOfType = lighting.lights.filter(light => light.type === type)
         lightsOfType.forEach(light => {
             switch (property) {
                 case 'radius':
-                    light.baseRadius = parseInt(value);
-                    break;
+                    light.baseRadius = parseInt(value)
+                    break
                 case 'colorR':
-                    light.color.r = parseInt(value);
-                    break;
+                    light.color.r = parseInt(value)
+                    break
                 case 'colorG':
-                    light.color.g = parseInt(value);
-                    break;
+                    light.color.g = parseInt(value)
+                    break
                 case 'colorB':
-                    light.color.b = parseInt(value);
-                    break;
+                    light.color.b = parseInt(value)
+                    break
                 case 'intensity':
-                    light.maxIntensity = parseFloat(value);
-                    break;
+                    light.maxIntensity = parseFloat(value)
+                    break
                 case 'flicker':
-                    light.flicker = value;
-                    break;
+                    light.flicker = value
+                    break
                 case 'flickerSpeed':
-                    light.flickerSpeed = parseFloat(value);
-                    break;
+                    light.flickerSpeed = parseFloat(value)
+                    break
                 case 'flickerAmount':
-                    light.flickerAmount = parseFloat(value);
-                    break;
+                    light.flickerAmount = parseFloat(value)
+                    break
                 default:
-                    break;
+                    break
             }
-        });
-
-        const event = new CustomEvent('lightTypeUpdated', { detail: { type, property, value } });
-        window.dispatchEvent(event);
+        })
+        const event = new CustomEvent('lightTypeUpdated', { detail: { type, property, value } })
+        window.dispatchEvent(event)
     },
-
     populateEffectList() {
-        const effectSelect = document.getElementById('effectSelect');
-        effectSelect.innerHTML = '<option value="">Select Effect</option>';
-
+        const effectSelect = document.getElementById('effectSelect')
+        effectSelect.innerHTML = '<option value="">Select Effect</option>'
         Object.keys(particles.activeEffects).forEach(effectId => {
-            const option = document.createElement('option');
-            option.value = effectId;
-            option.text = effectId;
-            effectSelect.appendChild(option);
-        });
+            const option = document.createElement('option')
+            option.value = effectId
+            option.text = effectId
+            effectSelect.appendChild(option)
+        })
     },
-
     initParticleEventListeners() {
-        document.getElementById('effectSelect').addEventListener('change', this.loadEffectData.bind(this));
+        document.getElementById('effectSelect').addEventListener('change', this.loadEffectData.bind(this))
         document.querySelectorAll('.slider-group input[type="range"]').forEach(slider => {
-            slider.addEventListener('input', this.updateEffectData.bind(this, slider.id));
-        });
+            slider.addEventListener('input', this.updateEffectData.bind(this, slider.id))
+        })
         document.querySelectorAll('.slider-group select').forEach(select => {
-            select.addEventListener('change', this.updateEffectData.bind(this, select.id));
-        });
+            select.addEventListener('change', this.updateEffectData.bind(this, select.id))
+        })
         document.querySelectorAll('.slider-group input[type="color"]').forEach(colorPicker => {
-            colorPicker.addEventListener('input', this.updateEffectData.bind(this, colorPicker.id));
-        });
-        document.getElementById('particleRepeat').addEventListener('change', this.updateEffectData.bind(this, 'particleRepeat'));
+            colorPicker.addEventListener('input', this.updateEffectData.bind(this, colorPicker.id))
+        })
+        document.getElementById('particleRepeat').addEventListener('change', this.updateEffectData.bind(this, 'particleRepeat'))
     },
-
-    // Function to load and display controls for the selected effect
     loadEffectData(event) {
-        const effectId = event.target.value;
-        const effect = particles.activeEffects[effectId];
-
+        const effectId = event.target.value
+        const effect = particles.activeEffects[effectId]
         if (effect && effect.length > 0) {
-            document.getElementById('effectControls').style.display = 'block';
-
-            // Load and set control values here...
-            // Set the controls based on the first particle in the effect (e.g., size, speed, color, etc.)
-            this.setInputValue('particleCount', effect.length);
-            this.setInputValue('particleSpeed', effect[0].vx);
-            this.setInputValue('particleLife', effect[0].life);
-            this.setInputValue('particleSize', effect[0].size);
-            this.setInputValue('particleGlow', effect[0].glow);
-            this.setInputValue('particleOpacity', effect[0].initialOpacity);
-            this.setInputValue('particleBlur', effect[0].blur);
-            this.setInputValue('particleShape', effect[0].shape);
-            this.setInputValue('particleColor1', effect[0].color);
-            this.setInputValue('particleX', effect[0].x);
-            this.setInputValue('particleY', effect[0].y);
-            this.setInputValue('particleGravity', effect[0].gravity);  // Added for gravity
-            this.setInputValue('particleSway', effect[0].sway);  // Added for sway
-            this.setInputValue('particleTwinkle', effect[0].twinkleSpeed);  // Added for twinkle
-
-            console.log('Loaded controls for effect:', effectId);
+            document.getElementById('effectControls').style.display = 'block'
+            this.setInputValue('particleCount', effect.length)
+            this.setInputValue('particleSpeed', effect[0].vx)
+            this.setInputValue('particleLife', effect[0].life)
+            this.setInputValue('particleSize', effect[0].size)
+            this.setInputValue('particleGlow', effect[0].glow)
+            this.setInputValue('particleOpacity', effect[0].initialOpacity)
+            this.setInputValue('particleBlur', effect[0].blur)
+            this.setInputValue('particleShape', effect[0].shape)
+            this.setInputValue('particleColor1', effect[0].color)
+            this.setInputValue('particleX', effect[0].x)
+            this.setInputValue('particleY', effect[0].y)
+            this.setInputValue('particleGravity', effect[0].gravity)
+            this.setInputValue('particleSway', effect[0].sway)
+            this.setInputValue('particleTwinkle', effect[0].twinkleSpeed)
+            console.log('Loaded controls for effect:', effectId)
         } else {
-            document.getElementById('effectControls').style.display = 'none';
-            console.warn(`Effect ${effectId} is not defined or has no particles.`);
+            document.getElementById('effectControls').style.display = 'none'
+            console.warn(`Effect ${effectId} is not defined or has no particles.`)
         }
     },
-
-    // Helper function to set input values
     setInputValue(inputId, value) {
-        const inputElement = document.getElementById(inputId);
-        const valueElement = document.getElementById(inputId + 'Value');
-
+        const inputElement = document.getElementById(inputId)
+        const valueElement = document.getElementById(inputId + 'Value')
         if (inputElement && valueElement) {
-            inputElement.value = value;
-            valueElement.textContent = value;
+            inputElement.value = value
+            valueElement.textContent = value
         }
     },
-
     initTimeBasedUpdates() {
-        const toggleElement = document.getElementById('toggleTimeBasedUpdates');
+        const toggleElement = document.getElementById('toggleTimeBasedUpdates')
         if (toggleElement) {
-            toggleElement.checked = lighting.timeBasedUpdatesEnabled;
+            toggleElement.checked = lighting.timeBasedUpdatesEnabled
             toggleElement.addEventListener('change', (event) => {
-                this.toggleTimeBasedUpdates(event.target.checked);
-            });
+                this.toggleTimeBasedUpdates(event.target.checked)
+            })
         }
     },
-
     toggleTimeBasedUpdates(enabled) {
-        lighting.timeBasedUpdatesEnabled = enabled;
-        console.log('Time-based updates enabled:', enabled);
+        lighting.timeBasedUpdatesEnabled = enabled
+        console.log('Time-based updates enabled:', enabled)
     },
-
     updateEffectData(property, event) {
-        const effectId = document.getElementById('effectSelect').value;
-        const effect = particles.activeEffects[effectId];
-
+        const effectId = document.getElementById('effectSelect').value
+        const effect = particles.activeEffects[effectId]
         if (effect && effect.length > 0) {
-            let value;
+            let value
             if (property === 'particleRepeat') {
-                value = event.target.checked;
+                value = event.target.checked
             } else {
-                value = event.target.value;
+                value = event.target.value
             }
-
             if (property === 'particleCount') {
-                const newCount = parseInt(value);
-                const currentCount = effect.length;
-
+                const newCount = parseInt(value)
+                const currentCount = effect.length
                 if (newCount > currentCount) {
                     for (let i = currentCount; i < newCount; i++) {
-                        const baseParticle = effect[0];
+                        const baseParticle = effect[0]
                         if (baseParticle) {
-                            const newParticle = { ...baseParticle, life: baseParticle.maxLife, x: baseParticle.initialX, y: baseParticle.initialY };
-                            effect.push(newParticle);
-                            game.particles.push(newParticle);
+                            const newParticle = { ...baseParticle, life: baseParticle.maxLife, x: baseParticle.initialX, y: baseParticle.initialY }
+                            effect.push(newParticle)
+                            game.particles.push(newParticle)
                         }
                     }
                 } else if (newCount < currentCount) {
-                    const particlesToRemove = currentCount - newCount;
+                    const particlesToRemove = currentCount - newCount
                     for (let i = 0; i < particlesToRemove; i++) {
-                        const particle = effect.pop();
-                        const index = game.particles.indexOf(particle);
+                        const particle = effect.pop()
+                        const index = game.particles.indexOf(particle)
                         if (index > -1) {
-                            game.particles.splice(index, 1);
+                            game.particles.splice(index, 1)
                         }
                     }
                 }
             } else if (property.startsWith('particleColor')) {
                 effect.forEach(particle => {
                     if (particle) {
-                        particle.color = this.hexToRgb(value);
+                        particle.color = this.hexToRgb(value)
                     }
-                });
-            } else if (property === 'particleGravity') {  // Added for gravity
+                })
+            } else if (property === 'particleGravity') {
                 effect.forEach(particle => {
-                    particle.gravity = parseFloat(value);
-                });
-            } else if (property === 'particleSway') {  // Added for sway
+                    particle.gravity = parseFloat(value)
+                })
+            } else if (property === 'particleSway') {
                 effect.forEach(particle => {
-                    particle.sway = parseFloat(value);
-                });
-            } else if (property === 'particleTwinkle') {  // Added for twinkle
+                    particle.sway = parseFloat(value)
+                })
+            } else if (property === 'particleTwinkle') {
                 effect.forEach(particle => {
-                    particle.twinkleSpeed = parseFloat(value);
-                });
+                    particle.twinkleSpeed = parseFloat(value)
+                })
             } else {
                 effect.forEach(particle => {
                     if (particle) {
-                        particle[property.replace('particle', '').toLowerCase()] = isNaN(value) ? value : parseFloat(value);
+                        particle[property.replace('particle', '').toLowerCase()] = isNaN(value) ? value : parseFloat(value)
                     }
-                });
+                })
             }
-
-            const valueElement = document.getElementById(`${property}Value`);
+            const valueElement = document.getElementById(`${property}Value`)
             if (valueElement) {
-                valueElement.textContent = value;
+                valueElement.textContent = value
             }
-
-            this.restartEffect(effectId);
-            game.render();
+            this.restartEffect(effectId)
+            game.render()
         } else {
-            console.warn(`Effect ${effectId} is not defined or has no particles.`);
+            console.warn(`Effect ${effectId} is not defined or has no particles.`)
         }
     },
-
     restartEffect(effectId) {
-        const effect = particles.activeEffects[effectId];
+        const effect = particles.activeEffects[effectId]
         if (effect && effect.length > 0) {
-            const initialX = effect[0].initialX;
-            const initialY = effect[0].initialY;
-            const repeat = effect[0].repeat;
-
+            const initialX = effect[0].initialX
+            const initialY = effect[0].initialY
+            const repeat = effect[0].repeat
             effect.forEach(particle => {
-                const index = game.particles.indexOf(particle);
+                const index = game.particles.indexOf(particle)
                 if (index > -1) {
-                    game.particles.splice(index, 1);
+                    game.particles.splice(index, 1)
                 }
-            });
-
-            effect.length = 0;
+            })
+            effect.length = 0
             particles.createParticles(
                 initialX, initialY,
                 {
@@ -673,28 +637,23 @@ var ui_console_tab_window = {
                     ],
                     angle: parseFloat(document.getElementById('particleAngle').value),
                     spread: parseFloat(document.getElementById('particleSpread').value),
-                    gravity: parseFloat(document.getElementById('particleGravity').value),  // Added for gravity
-                    sway: parseFloat(document.getElementById('particleSway').value),  // Added for sway
-                    twinkle: parseFloat(document.getElementById('particleTwinkle').value),  // Added for twinkle
+                    gravity: parseFloat(document.getElementById('particleGravity').value),
+                    sway: parseFloat(document.getElementById('particleSway').value),
+                    twinkle: parseFloat(document.getElementById('particleTwinkle').value),
                     repeat: document.getElementById('particleRepeat').checked
                 },
                 effectId
-            );
+            )
         } else {
-            console.warn(`Effect ${effectId} is not defined or has no particles.`);
+            console.warn(`Effect ${effectId} is not defined or has no particles.`)
         }
     },
-
     createNewParticleEffect() {
-        const effectId = 'new_effect_' + Date.now(); // Generate a unique effect ID based on the current timestamp
-
-        // Get X and Y position values from the sliders
-        const xPosition = parseInt(document.getElementById('particleX').value, 10);
-        const yPosition = parseInt(document.getElementById('particleY').value, 10);
-
-        // Define the particle options for the new effect
+        const effectId = 'new_effect_' + Date.now()
+        const xPosition = parseInt(document.getElementById('particleX').value, 10)
+        const yPosition = parseInt(document.getElementById('particleY').value, 10)
         const particleOptions = {
-            color: [[106, 106, 106], [169, 169, 169], [192, 192, 192]], // Smoke colors
+            color: [[106, 106, 106], [169, 169, 169], [192, 192, 192]],
             count: 4,
             speed: 0.2,
             baseAngle: 260,
@@ -709,22 +668,18 @@ var ui_console_tab_window = {
             Blur: 20,
             Shape: "circle",
             repeat: true
-        };
-
-        // Initialize the effect in particles.activeEffects
-        particles.activeEffects[effectId] = [];
-
+        }
+        particles.activeEffects[effectId] = []
         for (let i = 0; i < particleOptions.count; i++) {
-            const randomSpread = (Math.random() - 0.5) * particleOptions.spread * (Math.PI / 180);
-            const angle = particleOptions.baseAngle * (Math.PI / 180) + randomSpread;
-            const speed = particleOptions.speed * (0.5 + Math.random() * 0.5);
-            const color = `rgba(${particleOptions.color[Math.floor(Math.random() * particleOptions.color.length)].join(',')}, ${particleOptions.Opacity})`;
-
+            const randomSpread = (Math.random() - 0.5) * particleOptions.spread * (Math.PI / 180)
+            const angle = particleOptions.baseAngle * (Math.PI / 180) + randomSpread
+            const speed = particleOptions.speed * (0.5 + Math.random() * 0.5)
+            const color = `rgba(${particleOptions.color[Math.floor(Math.random() * particleOptions.color.length)].join(',')}, ${particleOptions.Opacity})`
             const newParticle = {
-                x: xPosition,  // Set X position based on slider
-                y: yPosition,  // Set Y position based on slider
-                initialX: xPosition,  // Set initial X position
-                initialY: yPosition,  // Set initial Y position
+                x: xPosition,
+                y: yPosition,
+                initialX: xPosition,
+                initialY: yPosition,
                 vx: Math.cos(angle) * speed,
                 vy: Math.sin(angle) * speed,
                 life: particleOptions.frames,
@@ -737,77 +692,53 @@ var ui_console_tab_window = {
                 initialOpacity: particleOptions.Opacity,
                 blur: particleOptions.Blur,
                 shape: particleOptions.Shape
-            };
-
-            particles.activeEffects[effectId].push(newParticle);
-            game.particles.push(newParticle);
-        }
-
-        // Add the new effect to the dropdown
-        const effectSelect = document.getElementById('effectSelect');
-        const option = document.createElement('option');
-        option.value = effectId;
-        option.text = `Effect ${effectId}`;
-        effectSelect.appendChild(option);
-
-        // Select the newly added effect
-        effectSelect.value = effectId;
-
-        // Trigger the display of controls for the newly added effect
-        this.loadEffectData({ target: effectSelect });
-
-        console.log('Created and activated new particle effect:', effectId);
-    },
-
-    // Function to remove the entire particle effect
-    removeParticleEffect() {
-        const effectId = document.getElementById('effectSelect').value;
-
-        if (particles.activeEffects[effectId]) {
-            // Remove particles associated with the effect from game.particles
-            particles.activeEffects[effectId].forEach(particle => {
-                const index = game.particles.indexOf(particle);
-                if (index > -1) {
-                    game.particles.splice(index, 1);
-                }
-            });
-
-            // Delete the effect from activeEffects
-            delete particles.activeEffects[effectId];
-
-            // Remove the effect from the dropdown
-            const effectSelect = document.getElementById('effectSelect');
-            const optionToRemove = effectSelect.querySelector(`option[value="${effectId}"]`);
-            if (optionToRemove) {
-                optionToRemove.remove();
             }
-
-            // Clear controls if no effect is selected
-            effectSelect.value = '';
-            document.getElementById('effectControls').style.display = 'none';
-
-            console.log('Removed particle effect:', effectId);
+            particles.activeEffects[effectId].push(newParticle)
+            game.particles.push(newParticle)
+        }
+        const effectSelect = document.getElementById('effectSelect')
+        const option = document.createElement('option')
+        option.value = effectId
+        option.text = `Effect ${effectId}`
+        effectSelect.appendChild(option)
+        effectSelect.value = effectId
+        this.loadEffectData({ target: effectSelect })
+        console.log('Created and activated new particle effect:', effectId)
+    },
+    removeParticleEffect() {
+        const effectId = document.getElementById('effectSelect').value
+        if (particles.activeEffects[effectId]) {
+            particles.activeEffects[effectId].forEach(particle => {
+                const index = game.particles.indexOf(particle)
+                if (index > -1) {
+                    game.particles.splice(index, 1)
+                }
+            })
+            delete particles.activeEffects[effectId]
+            const effectSelect = document.getElementById('effectSelect')
+            const optionToRemove = effectSelect.querySelector(`option[value="${effectId}"]`)
+            if (optionToRemove) {
+                optionToRemove.remove()
+            }
+            effectSelect.value = ''
+            document.getElementById('effectControls').style.display = 'none'
+            console.log('Removed particle effect:', effectId)
         } else {
-            console.warn(`Effect ${effectId} does not exist.`);
+            console.warn(`Effect ${effectId} does not exist.`)
         }
     },
-
     hexToRgb(hex) {
-        const bigint = parseInt(hex.slice(1), 16);
-        const r = (bigint >> 16) & 255;
-        const g = (bigint >> 8) & 255;
-        const b = (bigint & 255);
-        return `rgba(${r}, ${g}, ${b}, 1)`;
+        const bigint = parseInt(hex.slice(1), 16)
+        const r = (bigint >> 16) & 255
+        const g = (bigint >> 8) & 255
+        const b = (bigint & 255)
+        return `rgba(${r}, ${g}, ${b}, 1)`
     },
-
     rgbToHex(rgb) {
-        const [r, g, b] = rgb.match(/\d+/g).map(Number);
-        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`;
+        const [r, g, b] = rgb.match(/\d+/g).map(Number)
+        return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase()}`
     }
-};
-
-// Call the start function to initialize everything
-ui_console_tab_window.start();
-
+}
+ui_console_tab_window.start()
     </script>
 {% endif %}

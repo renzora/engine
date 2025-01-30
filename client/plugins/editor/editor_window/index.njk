@@ -293,107 +293,88 @@ editor_window = {
     })
   },
 
-  handleMouseMove(event) {
-    const rect = game.canvas.getBoundingClientRect()
-    this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX
-    this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
+handleMouseMove(event) {
+  const rect = game.canvas.getBoundingClientRect();
+  this.mouseX = (event.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+  this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY;
 
-    if (event.buttons === 4 && this.isMiddleClickPanning) {
-      const deltaX = event.clientX - this.lastMouseX
-      const deltaY = event.clientY - this.lastMouseY
-      const canvasLeft = parseInt(game.canvas.style.left || '0', 10)
-      const canvasTop = parseInt(game.canvas.style.top || '0', 10)
-      const atLeftEdge = camera.cameraX <= 0
-      const atRightEdge = camera.cameraX >= game.worldWidth - (window.innerWidth / game.zoomLevel)
-      const atTopEdge = camera.cameraY <= 0
-      const atBottomEdge = camera.cameraY >= game.worldHeight - (window.innerHeight / game.zoomLevel)
-      const isAtHorizontalEdge = atLeftEdge || atRightEdge
-      const isAtVerticalEdge = atTopEdge || atBottomEdge
+  if (event.buttons === 4 && this.isMiddleClickPanning) {
+    const deltaX = event.clientX - this.lastMouseX;
+    const deltaY = event.clientY - this.lastMouseY;
+    
+    // Calculate new camera position with margin
+    const margin = 1000; // Pixels of extra draggable space beyond boundaries
+    const minX = -margin / game.zoomLevel;
+    const minY = -margin / game.zoomLevel;
+    const maxX = (game.worldWidth - window.innerWidth / game.zoomLevel) + margin / game.zoomLevel;
+    const maxY = (game.worldHeight - window.innerHeight / game.zoomLevel) + margin / game.zoomLevel;
 
-      if (!isAtHorizontalEdge && !isAtVerticalEdge) {
-        const cameraDeltaX = deltaX / game.zoomLevel
-        const cameraDeltaY = deltaY / game.zoomLevel
+    camera.cameraX = Math.max(minX, Math.min(maxX, camera.cameraX - deltaX / game.zoomLevel));
+    camera.cameraY = Math.max(minY, Math.min(maxY, camera.cameraY - deltaY / game.zoomLevel));
 
-        camera.cameraX = Math.max(
-          0,
-          Math.min(camera.cameraX - cameraDeltaX, game.worldWidth - (window.innerWidth / game.zoomLevel))
-        )
-        camera.cameraY = Math.max(
-          0,
-          Math.min(camera.cameraY - cameraDeltaY, game.worldHeight - (window.innerHeight / game.zoomLevel))
-        )
+    this.lastMouseX = event.clientX;
+    this.lastMouseY = event.clientY;
+    return;
+  }
 
-        this.lastMouseX = event.clientX
-        this.lastMouseY = event.clientY
-        return
-      }
+  if (this.isDragging && event.buttons === 1) {
+    if (game.editorMode === 'move') {
+      this.handleObjectMovement();
+      return;
+    }
+    if (game.editorMode === 'lasso') {
+      this.lassoPath.push({ x: this.mouseX, y: this.mouseY });
+      this.renderLasso();
+      return;
+    }
+  }
 
-      game.canvas.style.left = `${canvasLeft + deltaX}px`
-      game.canvas.style.top = `${canvasTop + deltaY}px`
+  if (game.editorMode === 'move' && this.selectedObjects.length > 0 && !this.isDragging) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    this.selectedObjects.forEach(obj => {
+      minX = Math.min(minX, Math.min(...obj.x) * 16);
+      minY = Math.min(minY, Math.min(...obj.y) * 16);
+      maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16);
+      maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16);
+    });
 
-      this.lastMouseX = event.clientX
-      this.lastMouseY = event.clientY
-      return
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const centerCircleRadius = 10 / game.zoomLevel;
+    const distToCenter = Math.sqrt(
+      Math.pow(this.mouseX - centerX, 2) +
+      Math.pow(this.mouseY - centerY, 2)
+    );
+
+    if (distToCenter <= centerCircleRadius) {
+      this.hoveredAxis = 'center';
+      document.body.style.cursor = 'move';
+      return;
     }
 
-    if (this.isDragging && event.buttons === 1) {
-      if (game.editorMode === 'move') {
-        this.handleObjectMovement()
-        return
-      }
-      if (game.editorMode === 'lasso') {
-        this.lassoPath.push({ x: this.mouseX, y: this.mouseY })
-        this.renderLasso()
-        return
-      }
+    this.hoveredAxis = null;
+    document.body.style.cursor = this.defaultCursor;
+  }
+
+  if (game.editorMode === 'pan' && this.isPanning && event.buttons === 1) {
+    const deltaX = event.clientX - this.lastMouseX;
+    const deltaY = event.clientY - this.lastMouseY;
+
+    camera.cameraX -= deltaX / game.zoomLevel;
+    camera.cameraY -= deltaY / game.zoomLevel;
+    this.constrainCamera();
+
+    this.lastMouseX = event.clientX;
+    this.lastMouseY = event.clientY;
+    return;
+  }
+
+  if (this.isDragging && event.buttons === 1) {
+    if (game.editorMode === 'select') {
+      this.handleSelectionBox(event, rect);
     }
-
-    if (game.editorMode === 'move' && this.selectedObjects.length > 0 && !this.isDragging) {
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-      this.selectedObjects.forEach(obj => {
-        minX = Math.min(minX, Math.min(...obj.x) * 16)
-        minY = Math.min(minY, Math.min(...obj.y) * 16)
-        maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16)
-        maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16)
-      })
-
-      const centerX = (minX + maxX) / 2
-      const centerY = (minY + maxY) / 2
-      const centerCircleRadius = 10
-      const distToCenter = Math.sqrt(
-        Math.pow(this.mouseX - centerX, 2) +
-        Math.pow(this.mouseY - centerY, 2)
-      )
-
-      if (distToCenter <= centerCircleRadius) {
-        this.hoveredAxis = 'center'
-        document.body.style.cursor = 'move'
-        return
-      }
-
-      this.hoveredAxis = null
-      document.body.style.cursor = this.defaultCursor
-    }
-
-    if (game.editorMode === 'pan' && this.isPanning && event.buttons === 1) {
-      const deltaX = event.clientX - this.lastMouseX
-      const deltaY = event.clientY - this.lastMouseY
-
-      camera.cameraX -= deltaX / game.zoomLevel
-      camera.cameraY -= deltaY / game.zoomLevel
-      this.constrainCamera()
-
-      this.lastMouseX = event.clientX
-      this.lastMouseY = event.clientY
-      return
-    }
-
-    if (this.isDragging && event.buttons === 1) {
-      if (game.editorMode === 'select') {
-        this.handleSelectionBox(event, rect)
-      }
-    }
-  },
+  }
+},
 
   handleMouseDown: function (e) {
   if (plugin.editor_window.isAddingNewObject) return;
@@ -1587,16 +1568,19 @@ editor_window = {
     }
   },
 
-  constrainCamera() {
-    const scaledWindowWidth = window.innerWidth / game.zoomLevel
-    const scaledWindowHeight = window.innerHeight / game.zoomLevel
+constrainCamera() {
+  const margin = 1000; // Same margin as in handleMouseMove
+  const scaledWindowWidth = window.innerWidth / game.zoomLevel;
+  const scaledWindowHeight = window.innerHeight / game.zoomLevel;
 
-    const maxCameraX = game.worldWidth - scaledWindowWidth
-    camera.cameraX = Math.max(0, Math.min(camera.cameraX, maxCameraX))
+  const minX = -margin / game.zoomLevel;
+  const minY = -margin / game.zoomLevel;
+  const maxX = (game.worldWidth - scaledWindowWidth) + margin / game.zoomLevel;
+  const maxY = (game.worldHeight - scaledWindowHeight) + margin / game.zoomLevel;
 
-    const maxCameraY = game.worldHeight - scaledWindowHeight
-    camera.cameraY = Math.max(0, Math.min(camera.cameraY, maxCameraY))
-  },
+  camera.cameraX = Math.max(minX, Math.min(camera.cameraX, maxX));
+  camera.cameraY = Math.max(minY, Math.min(camera.cameraY, maxY));
+},
 
   pushToUndoStack() {
     const currentState = JSON.parse(JSON.stringify(game.roomData))
@@ -1801,4 +1785,5 @@ editor_window = {
     })
   }
 }
+</script>
 {% endif %}

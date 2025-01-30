@@ -16,6 +16,11 @@
   Tileset Manager
 </button>
 
+<button id="btn-edit-inventory"
+        class="bg-blue-600 hover:bg-blue-700 text-white font-bold p-2 rounded shadow-md ml-2">
+  Edit
+</button>
+
 <div id="inventory-grid" class="inventory-grid grid grid-cols-5 gap-1 mt-2">
 </div>
 
@@ -31,6 +36,7 @@ var ui_console_editor_inventory = {
   currentPage: 1,
   isLoading: false,
   scrollContainer: null,
+  isEditMode: false,
 
   start() {
     this.itemData = assets.use('objectData');
@@ -40,6 +46,9 @@ var ui_console_editor_inventory = {
     this.addSearchListener();
     this.fetchTilesetList();
     this.addScrollListener();
+    document.getElementById('btn-edit-inventory').addEventListener('click', () => {
+      this.toggleEditMode();
+    });
   },
 
   setupScrollContainer() {
@@ -68,20 +77,17 @@ var ui_console_editor_inventory = {
   fetchTilesetList() {
     const tilesetSelect = document.getElementById('tileset_filter');
     const uniqueTilesets = new Set();
-    
     Object.values(this.itemData).forEach(items => {
       items.forEach(item => {
         if (item.t) uniqueTilesets.add(item.t);
       });
     });
-
     uniqueTilesets.forEach(tilesetName => {
       const option = document.createElement('option');
       option.value = tilesetName;
       option.textContent = tilesetName;
       tilesetSelect.appendChild(option);
     });
-
     tilesetSelect.addEventListener('change', (event) => {
       this.currentTilesetFilter = event.target.value;
       this.currentPage = 1;
@@ -89,130 +95,135 @@ var ui_console_editor_inventory = {
     });
   },
 
-displayItems(filteredData = null) {
-  const itemData = filteredData || this.itemData;
-  const gridContainer = document.querySelector('#inventory-grid');
-  const tileSize = 16;
-  const tilesPerRow = 150;
-
-  if (this.currentPage === 1) {
-    gridContainer.innerHTML = '';
-  }
-
-  this.isLoading = true;
-  
-  let allItems = [];
-  Object.entries(itemData).forEach(([id, items]) => {
-    items.forEach(item => {
-      allItems.push({id, item});
-    });
-  });
-
-  if (this.currentTilesetFilter) {
-    allItems = allItems.filter(({item}) => item.t === this.currentTilesetFilter);
-  }
-
-  const startIdx = (this.currentPage - 1) * this.itemsPerPage;
-  const endIdx = startIdx + this.itemsPerPage;
-  const itemsToShow = allItems.slice(startIdx, endIdx);
-
-  itemsToShow.forEach(({id, item}) => {
-    const tilesetImage = assets.use(item.t);
-    if (!tilesetImage) return;
-
-    const itemGroupElement = document.createElement('div');
-    itemGroupElement.classList.add(
-      'inventory-item-group',
-      'bg-gray-700',
-      'rounded',
-      'shadow-lg',
-      'hover:bg-gray-600',
-      'transition',
-      'duration-300',
-      'p-2'
-    );
-    itemGroupElement.style.position = 'relative';
-    itemGroupElement.style.height = '150px';
-    itemGroupElement.style.display = 'flex';
-    itemGroupElement.style.flexDirection = 'column';
-    itemGroupElement.style.gap = '0';
-    itemGroupElement.style.cursor = 'pointer';
-
-    const itemCanvas = document.createElement('canvas');
-    const ctx = itemCanvas.getContext('2d');
-    const maxCol = item.a;
-    const maxRow = item.b;
-    itemCanvas.width = (maxCol + 1) * tileSize;
-    itemCanvas.height = (maxRow + 1) * tileSize;
-
-    let framesToRender = [];
-    if (item.d && Array.isArray(item.i[0])) {
-      framesToRender = item.i[0];
-    } else if (Array.isArray(item.i[0])) {
-      framesToRender = item.i.flat();
-    } else {
-      framesToRender = item.i.map(frame => {
-        if (typeof frame === 'string' && frame.includes('-')) {
-          return game.parseRange(frame);
-        }
-        return [frame];
-      }).flat();
+  displayItems(filteredData = null) {
+    const itemData = filteredData || this.itemData;
+    const gridContainer = document.querySelector('#inventory-grid');
+    const tileSize = 16;
+    const tilesPerRow = 150;
+    if (this.currentPage === 1) {
+      gridContainer.innerHTML = '';
     }
-
-    framesToRender.forEach((frame, index) => {
-      const srcX = (frame % tilesPerRow) * tileSize;
-      const srcY = Math.floor(frame / tilesPerRow) * tileSize;
-      const destX = (index % (maxCol + 1)) * tileSize;
-      const destY = Math.floor(index / (maxCol + 1)) * tileSize;
-      ctx.drawImage(tilesetImage, srcX, srcY, 16, 16, destX, destY, 16, 16);
+    this.isLoading = true;
+    let allItems = [];
+    Object.entries(itemData).forEach(([id, items]) => {
+      items.forEach(item => {
+        allItems.push({id, item});
+      });
     });
-
-    itemCanvas.setAttribute('data-item-id', id);
-    const canvasContainer = document.createElement('div');
-    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg transition duration-300 transform hover:scale-125';
-    canvasContainer.style.marginTop = '-20px';
-    itemCanvas.className += ' w-full h-full object-contain';
-    itemCanvas.addEventListener('mousedown', (event) => this.handleMouseDown(event));
-    canvasContainer.appendChild(itemCanvas);
-    
-    const nameLabel = document.createElement('div');
-    nameLabel.className = 'text-white text-xs text-center';
-    nameLabel.title = item.n || 'Unnamed Item';
-    nameLabel.style.overflow = 'hidden';
-    nameLabel.style.textOverflow = 'ellipsis';
-    nameLabel.style.display = '-webkit-box';
-    nameLabel.style.WebkitLineClamp = '2';
-    nameLabel.style.WebkitBoxOrient = 'vertical';
-    nameLabel.style.lineHeight = '1.2';
-    nameLabel.style.minHeight = '2.4em';
-    nameLabel.style.position = 'relative';
-    nameLabel.style.zIndex = '1';
-    nameLabel.style.width = '100%';
-    nameLabel.textContent = item.n || 'Unnamed Item';
-
-    itemGroupElement.appendChild(nameLabel);
-    itemGroupElement.appendChild(canvasContainer);
-    gridContainer.appendChild(itemGroupElement);
-  });
-
-  this.isLoading = false;
-},
+    if (this.currentTilesetFilter) {
+      allItems = allItems.filter(({item}) => item.t === this.currentTilesetFilter);
+    }
+    const startIdx = (this.currentPage - 1) * this.itemsPerPage;
+    const endIdx = startIdx + this.itemsPerPage;
+    const itemsToShow = allItems.slice(startIdx, endIdx);
+    itemsToShow.forEach(({id, item}) => {
+      const tilesetImage = assets.use(item.t);
+      if (!tilesetImage) return;
+      const itemGroupElement = document.createElement('div');
+      itemGroupElement.classList.add(
+        'inventory-item-group',
+        'bg-gray-700',
+        'rounded',
+        'shadow-lg',
+        'hover:bg-gray-600',
+        'transition',
+        'duration-300',
+        'p-2'
+      );
+      itemGroupElement.style.position = 'relative';
+      itemGroupElement.style.height = '150px';
+      itemGroupElement.style.display = 'flex';
+      itemGroupElement.style.flexDirection = 'column';
+      itemGroupElement.style.gap = '0';
+      itemGroupElement.style.cursor = this.isEditMode ? 'default' : 'pointer';
+      const itemCanvas = document.createElement('canvas');
+      const ctx = itemCanvas.getContext('2d');
+      const maxCol = item.a;
+      const maxRow = item.b;
+      itemCanvas.width = (maxCol + 1) * tileSize;
+      itemCanvas.height = (maxRow + 1) * tileSize;
+      if (this.isEditMode) {
+        itemCanvas.style.pointerEvents = 'none';
+      }
+      let framesToRender = [];
+      if (item.d && Array.isArray(item.i[0])) {
+        framesToRender = item.i[0];
+      } else if (Array.isArray(item.i[0])) {
+        framesToRender = item.i.flat();
+      } else {
+        framesToRender = item.i.map(frame => {
+          if (typeof frame === 'string' && frame.includes('-')) {
+            return game.parseRange(frame);
+          }
+          return [frame];
+        }).flat();
+      }
+      framesToRender.forEach((frame, index) => {
+        const srcX = (frame % tilesPerRow) * tileSize;
+        const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+        const destX = (index % (maxCol + 1)) * tileSize;
+        const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+        ctx.drawImage(tilesetImage, srcX, srcY, 16, 16, destX, destY, 16, 16);
+      });
+      itemCanvas.setAttribute('data-item-id', id);
+      const canvasContainer = document.createElement('div');
+      canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg transition duration-300';
+      canvasContainer.style.marginTop = '-20px';
+      if (!this.isEditMode) {
+        canvasContainer.classList.add('transform', 'hover:scale-125');
+      }
+      if (!this.isEditMode) {
+        itemCanvas.addEventListener('mousedown', (event) => this.handleMouseDown(event));
+      }
+      itemCanvas.className += ' w-full h-full object-contain';
+      canvasContainer.appendChild(itemCanvas);
+      const nameLabel = document.createElement('div');
+      nameLabel.className = 'text-white text-xs text-center';
+      nameLabel.title = item.n || 'Unnamed Item';
+      nameLabel.style.overflow = 'hidden';
+      nameLabel.style.textOverflow = 'ellipsis';
+      nameLabel.style.display = '-webkit-box';
+      nameLabel.style.WebkitLineClamp = '2';
+      nameLabel.style.WebkitBoxOrient = 'vertical';
+      nameLabel.style.lineHeight = '1.2';
+      nameLabel.style.minHeight = '2.4em';
+      nameLabel.style.position = 'relative';
+      nameLabel.style.zIndex = '1';
+      nameLabel.style.width = '100%';
+      nameLabel.textContent = item.n || 'Unnamed Item';
+      itemGroupElement.appendChild(nameLabel);
+      itemGroupElement.appendChild(canvasContainer);
+      if (this.isEditMode) {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'absolute top-2 left-2 w-5 h-5 text-blue-600 form-checkbox transition duration-300 transform hover:scale-110';
+        checkbox.style.zIndex = '999';
+        checkbox.addEventListener('mousedown', (e) => e.stopPropagation());
+        checkbox.addEventListener('mouseup', (e) => e.stopPropagation());
+        checkbox.addEventListener('click', (e) => e.stopPropagation());
+        itemGroupElement.appendChild(checkbox);
+        itemGroupElement.addEventListener('click', () => {
+          checkbox.checked = !checkbox.checked;
+        });
+      }
+      gridContainer.appendChild(itemGroupElement);
+    });
+    this.isLoading = false;
+  },
 
   loadMoreItems() {
     if (this.isLoading) return;
-    
     let totalItems;
     if (!this.currentTilesetFilter) {
       totalItems = Object.values(this.itemData)
         .reduce((sum, items) => sum + items.length, 0);
     } else {
       totalItems = Object.values(this.itemData)
-        .reduce((sum, items) => 
-          sum + items.filter(item => item.t === this.currentTilesetFilter).length, 0);
+        .reduce((sum, items) =>
+          sum + items.filter(item => item.t === this.currentTilesetFilter).length, 0
+        );
     }
-    
     if (this.currentPage * this.itemsPerPage >= totalItems) return;
-    
     this.currentPage++;
     this.displayItems(this.itemData);
   },
@@ -228,23 +239,19 @@ displayItems(filteredData = null) {
 
   filterItems(searchTerm, tilesetFilter) {
     if (!this.itemData) return;
-    
     const filteredData = {};
     for (let category in this.itemData) {
       if (!this.itemData.hasOwnProperty(category)) continue;
-      
       const items = this.itemData[category];
       const matchingItems = items.filter(item => {
         const matchesName = searchTerm ? (item.n || '').toLowerCase().includes(searchTerm) : true;
         const matchesTileset = tilesetFilter ? item.t === tilesetFilter : true;
         return matchesName && matchesTileset;
       });
-      
       if (matchingItems.length > 0) {
         filteredData[category] = matchingItems;
       }
     }
-    
     this.displayItems(filteredData);
   },
 
@@ -301,6 +308,9 @@ displayItems(filteredData = null) {
   },
 
   handleMouseDown(event) {
+    if (this.isEditMode) {
+      return;
+    }
     const clickedCanvas = event.currentTarget;
     const itemId = clickedCanvas.getAttribute('data-item-id');
     if (!itemId) return;
@@ -355,7 +365,6 @@ displayItems(filteredData = null) {
   cancelAddingObject() {
     this.stopDragging();
     this.deselectInventoryItem();
-    console.log("Object selection cancelled");
   },
 
   generateId() {
@@ -401,9 +410,9 @@ displayItems(filteredData = null) {
     }
     game.roomData.items.push(newItem);
     editor_layers.addItemToLayer(newItem);
-    console.log('New object added:', newItem, 'with', editor_context_menu.isSnapEnabled ? 'grid-snapping' : 'pixel-perfect', 'placement.');
   },
-    addGlobalListeners() {
+
+  addGlobalListeners() {
     document.addEventListener('contextmenu', function(event) {
       event.preventDefault();
       ui_console_editor_inventory.cancelAddingObject();
@@ -413,6 +422,12 @@ displayItems(filteredData = null) {
         ui_console_editor_inventory.cancelAddingObject();
       }
     });
+  },
+
+  toggleEditMode() {
+    this.isEditMode = !this.isEditMode;
+    this.currentPage = 1;
+    this.displayItems();
   },
 
   unmount() {

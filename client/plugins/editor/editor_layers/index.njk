@@ -22,103 +22,6 @@
   </div>
 
   <div id="propertiesBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
-    <div class="mb-4">
-      <label for="objectName" class="block text-sm font-medium text-gray-300">Object Name</label>
-      <input
-        id="objectName"
-        type="text"
-        class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-        placeholder="Object name"
-      />
-    </div>
-
-    <div class="mb-4">
-      <div class="text-sm font-medium text-gray-300 mb-2">Position</div>
-      
-      <div class="mb-2">
-        <div class="flex items-center gap-2">
-          <label class="w-6 text-sm font-medium text-red-500">X</label>
-          <input
-            type="number"
-            class="w-24 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            step="0.1"
-            value="0"
-          />
-          <input
-            type="range"
-            class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-red-500"
-            min="-100"
-            max="100"
-            step="0.1"
-            value="0"
-          />
-          <div class="flex items-center gap-1">
-            <input
-              type="checkbox"
-              class="w-3 h-3 accent-red-500"
-              title="Snap X"
-            />
-            <span class="text-xs text-gray-400">Snap</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="mb-2">
-        <div class="flex items-center gap-2">
-          <label class="w-6 text-sm font-medium text-green-500">Y</label>
-          <input
-            type="number"
-            class="w-24 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            step="0.1"
-            value="0"
-          />
-          <input
-            type="range"
-            class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-green-500"
-            min="-100"
-            max="100"
-            step="0.1"
-            value="0"
-          />
-          <div class="flex items-center gap-1">
-            <input
-              type="checkbox"
-              class="w-3 h-3 accent-green-500"
-              title="Snap Y"
-            />
-            <span class="text-xs text-gray-400">Snap</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="mb-2">
-        <div class="flex items-center gap-2">
-          <label class="w-6 text-sm font-medium text-blue-500">Z</label>
-          <input
-            type="number"
-            class="w-24 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
-            step="0.1"
-            value="0"
-          />
-          <input
-            type="range"
-            class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-            min="-100"
-            max="100"
-            step="0.1"
-            value="0"
-          />
-          <div class="flex items-center gap-1">
-            <input
-              type="checkbox"
-              class="w-3 h-3 accent-blue-500"
-              title="Snap Z"
-            />
-            <span class="text-xs text-gray-400">Snap</span>
-          </div>
-        </div>
-      </div>
-    </div>
 
   <label for="objectName" class="block text-sm font-medium text-gray-300">Scene Background</label>
 <div class="relative">
@@ -761,86 +664,136 @@ start() {
   });
 },
 
-  initBackgroundInput() {
-    const bgInput = document.getElementById('backgroundInput');
-    const suggestionsEl = document.getElementById('backgroundSuggestions');
-    const clearBtn = document.getElementById('clearBackgroundBtn');
-    bgInput.setAttribute('autocomplete', 'off');
-    clearBtn.addEventListener('click', () => {
-      game.sceneBg = null;
-      game.buildRepeatingBackground();
-      bgInput.value = '';
-      suggestionsEl.classList.add('hidden');
+initBackgroundInput() {
+  const bgInput = document.getElementById('backgroundInput');
+  const suggestionsEl = document.getElementById('backgroundSuggestions');
+  const clearBtn = document.getElementById('clearBackgroundBtn');
+  bgInput.setAttribute('autocomplete', 'off');
+
+  // Enhanced clear functionality
+  clearBtn.addEventListener('click', () => {
+    game.sceneBg = null;
+    if (game.roomData) {
+      game.roomData.bg = null;
+    }
+    game.buildRepeatingBackground();
+    game.resizeCanvas();
+    bgInput.value = '';
+    suggestionsEl.classList.add('hidden');
+    clearBtn.classList.add('hidden');
+    bgInput.focus();
+  });
+
+  // Initial value setup
+  if (game.sceneBg) {
+    const objectData = assets.use('objectData') || game.objectData;
+    if (objectData && objectData[game.sceneBg] && objectData[game.sceneBg][0]) {
+      bgInput.value = objectData[game.sceneBg][0].n || '';
+      clearBtn.classList.remove('hidden');
+    }
+  }
+
+  bgInput.addEventListener('input', () => {
+    const val = bgInput.value.trim();
+    if (val === '') {
       clearBtn.classList.add('hidden');
-      bgInput.focus();
-    });
-    bgInput.addEventListener('input', () => {
-      const val = bgInput.value.trim();
-      if (val === '') {
-        clearBtn.classList.add('hidden');
-        suggestionsEl.classList.add('hidden');
-        suggestionsEl.innerHTML = '';
-        return;
-      } else {
-        clearBtn.classList.remove('hidden');
-      }
-      const query = val.toLowerCase();
-      let objectData = null;
-      try {
-        objectData = assets.use('objectData');
-      } catch (e) {
-        objectData = game.objectData;
-      }
-      if (!objectData) return;
-      const singleTileEntries = [];
-      for (const [key, objArr] of Object.entries(objectData)) {
-        if (!Array.isArray(objArr)) continue;
-        objArr.forEach(obj => {
-          const tileIndices = obj.i;
-          let singleTile = false;
-          if (typeof tileIndices === 'number') {
-            singleTile = true;
-          } else if (Array.isArray(tileIndices) && tileIndices.length === 1) {
+      suggestionsEl.classList.add('hidden');
+      suggestionsEl.innerHTML = '';
+      return;
+    } else {
+      clearBtn.classList.remove('hidden');
+    }
+    
+    const objectData = assets.use('objectData') || game.objectData;
+    if (!objectData) return;
+    
+    const singleTileEntries = [];
+    for (const [key, objArr] of Object.entries(objectData)) {
+      if (!Array.isArray(objArr)) continue;
+      objArr.forEach(obj => {
+        const tileIndices = obj.i;
+        let singleTile = false;
+        
+        // Improved single tile detection
+        if (typeof tileIndices === 'number') {
+          singleTile = true;
+        } else if (Array.isArray(tileIndices)) {
+          if (tileIndices.length === 1) {
             const tileVal = tileIndices[0];
-            if (typeof tileVal === 'number') {
-              singleTile = true;
-            } else if (typeof tileVal === 'string' && !tileVal.includes('-')) {
+            if (typeof tileVal === 'number' || 
+               (typeof tileVal === 'string' && !tileVal.includes('-'))) {
               singleTile = true;
             }
           }
-          if (singleTile) {
-            singleTileEntries.push({ key, name: obj.n, data: obj });
-          }
-        });
-      }
-      const filtered = singleTileEntries.filter(entry =>
-        entry.name.toLowerCase().includes(query)
-      );
-      suggestionsEl.innerHTML = '';
-      if (!filtered.length) {
-        suggestionsEl.classList.add('hidden');
-        return;
-      }
-      suggestionsEl.classList.remove('hidden');
-      filtered.forEach(entry => {
-        const div = document.createElement('div');
-        div.textContent = entry.name;
-        div.className = 'px-2 py-1 cursor-pointer';
-        div.addEventListener('click', () => {
-          bgInput.value = entry.name;
-          game.sceneBg = entry.key;
-          game.buildRepeatingBackground();
-          suggestionsEl.classList.add('hidden');
-        });
-        suggestionsEl.appendChild(div);
+        } else if (typeof tileIndices === 'string' && !tileIndices.includes('-')) {
+          singleTile = true;
+        }
+        
+        if (singleTile) {
+          singleTileEntries.push({ 
+            key, 
+            name: obj.n || key,
+            data: obj,
+            tileIndex: typeof tileIndices === 'number' ? tileIndices : 
+                      Array.isArray(tileIndices) ? tileIndices[0] : 
+                      parseInt(tileIndices)
+          });
+        }
       });
-    });
-    bgInput.addEventListener('blur', () => {
-      setTimeout(() => {
+    }
+    
+    const query = val.toLowerCase();
+    const filtered = singleTileEntries.filter(entry =>
+      entry.name.toLowerCase().includes(query)
+    );
+    
+    suggestionsEl.innerHTML = '';
+    if (!filtered.length) {
+      suggestionsEl.classList.add('hidden');
+      return;
+    }
+    
+    suggestionsEl.classList.remove('hidden');
+    filtered.forEach(entry => {
+      const div = document.createElement('div');
+      div.textContent = entry.name;
+      div.className = 'px-2 py-1 cursor-pointer';
+      div.addEventListener('click', () => {
+        bgInput.value = entry.name;
+        
+        // Update game state
+        game.sceneBg = entry.key;
+        if (game.roomData) {
+          game.roomData.bg = entry.key;
+        }
+        
+        // Rebuild background
+        game.buildRepeatingBackground();
+        
+        // Force refresh
+        game.resizeCanvas();
+        
+        // Update UI
         suggestionsEl.classList.add('hidden');
-      }, 200);
+        clearBtn.classList.remove('hidden');
+      });
+      suggestionsEl.appendChild(div);
     });
-  },
+  });
+
+  bgInput.addEventListener('blur', () => {
+    setTimeout(() => {
+      suggestionsEl.classList.add('hidden');
+    }, 200);
+  });
+
+  // Prevent form submission
+  bgInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+    }
+  });
+},
 
   initColorPicker: function() {
     const spectrumContainer = document.querySelector(".spectrum-container");
