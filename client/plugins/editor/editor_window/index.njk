@@ -301,9 +301,7 @@ handleMouseMove(event) {
   if (event.buttons === 4 && this.isMiddleClickPanning) {
     const deltaX = event.clientX - this.lastMouseX;
     const deltaY = event.clientY - this.lastMouseY;
-    
-    // Calculate new camera position with margin
-    const margin = 1000; // Pixels of extra draggable space beyond boundaries
+    const margin = 1000;
     const minX = -margin / game.zoomLevel;
     const minY = -margin / game.zoomLevel;
     const maxX = (game.worldWidth - window.innerWidth / game.zoomLevel) + margin / game.zoomLevel;
@@ -376,7 +374,7 @@ handleMouseMove(event) {
   }
 },
 
-  handleMouseDown: function (e) {
+handleMouseDown: function (e) {
   if (plugin.editor_window.isAddingNewObject) return;
 
   if (game.editorMode === 'pan') {
@@ -448,8 +446,13 @@ handleMouseMove(event) {
       if (!clickedOnSelectedObject) {
         const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
         if (clickedItem) {
+          const isNewSelection = !this.selectedObjects.includes(clickedItem);
           this.selectedObjects = [clickedItem];
           editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
+
+          if (isNewSelection) {
+            this.panCameraToObject(clickedItem);
+          }
 
           this.clearSelectionBox();
           this.changeMode('move');
@@ -477,8 +480,13 @@ handleMouseMove(event) {
       if (!this.isDragging && !e.shiftKey) {
         const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
         if (clickedItem) {
+          const isNewSelection = !this.selectedObjects.includes(clickedItem);
           this.selectedObjects = [clickedItem];
           editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
+
+          if (isNewSelection) {
+            this.panCameraToObject(clickedItem);
+          }
 
           this.clearSelectionBox();
           this.changeMode('move');
@@ -489,7 +497,7 @@ handleMouseMove(event) {
       this.handleSelectionStart(e);
     }
   }
-  },
+},
 
   handleMouseUp(event) {
     if (event.button === 1 && this.isMiddleClickPanning) {
@@ -1569,7 +1577,7 @@ handleMouseMove(event) {
   },
 
 constrainCamera() {
-  const margin = 1000; // Same margin as in handleMouseMove
+  const margin = 1000;
   const scaledWindowWidth = window.innerWidth / game.zoomLevel;
   const scaledWindowHeight = window.innerHeight / game.zoomLevel;
 
@@ -1580,6 +1588,29 @@ constrainCamera() {
 
   camera.cameraX = Math.max(minX, Math.min(camera.cameraX, maxX));
   camera.cameraY = Math.max(minY, Math.min(camera.cameraY, maxY));
+},
+
+panCameraToObject(obj) {
+  if (!obj) return;
+  
+  const minX = Math.min(...obj.x) * 16;
+  const maxX = Math.max(...obj.x) * 16 + 16;
+  const minY = Math.min(...obj.y) * 16;
+  const maxY = Math.max(...obj.y) * 16 + 16;
+  
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  
+  // Calculate target camera position to center the object
+  const targetX = centerX - (window.innerWidth / game.zoomLevel / 2);
+  const targetY = centerY - (window.innerHeight / game.zoomLevel / 2);
+  
+  // Update camera position
+  camera.cameraX = targetX;
+  camera.cameraY = targetY;
+  
+  // Ensure camera stays within bounds
+  this.constrainCamera();
 },
 
   pushToUndoStack() {

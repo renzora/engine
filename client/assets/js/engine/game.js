@@ -282,19 +282,16 @@ game = {
     },
   
     renderBackground() {
-      // Fill margin with black
       this.ctx.save();
       this.ctx.setTransform(1, 0, 0, 1, 0, 0);
       this.ctx.fillStyle = 'black';
       this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
       this.ctx.restore();
     
-      // Set transform back for world space
       this.ctx.setTransform(this.zoomLevel, 0, 0, this.zoomLevel,
         -Math.round(camera.cameraX * this.zoomLevel),
         -Math.round(camera.cameraY * this.zoomLevel));
     
-      // Draw background pattern just for world bounds
       this.ctx.save();
       this.ctx.beginPath();
       this.ctx.rect(0, 0, this.worldWidth, this.worldHeight);
@@ -357,7 +354,6 @@ game = {
         return acc;
       }, {});
     
-      // Set transform for game world rendering
       this.ctx.setTransform(this.zoomLevel, 0, 0, this.zoomLevel,
         -Math.round(camera.cameraX * this.zoomLevel),
         -Math.round(camera.cameraY * this.zoomLevel));

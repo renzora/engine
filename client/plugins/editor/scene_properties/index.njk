@@ -33,13 +33,10 @@ scene_properties = {
         const heightSlider = document.getElementById('sceneHeight');
         const widthValue = document.getElementById('sceneWidthValue');
         const heightValue = document.getElementById('sceneHeightValue');
-
-        // Function to round to the nearest multiple of 16
         const roundToMultiple = (value, multiple) => {
             return Math.round(value / multiple) * multiple;
         };
 
-        // Initialize slider values from `game` object
         if (typeof game !== 'undefined') {
             widthSlider.value = roundToMultiple(game.worldWidth, 16);
             heightSlider.value = roundToMultiple(game.worldHeight, 16);
@@ -47,19 +44,17 @@ scene_properties = {
             heightValue.textContent = heightSlider.value;
         }
 
-        // Update `game.worldWidth` and `game.worldHeight` dynamically
         const updateDimensions = () => {
             let newWidth = roundToMultiple(widthSlider.value, 16);
             let newHeight = roundToMultiple(heightSlider.value, 16);
 
-            // Adjust the slider values to the nearest multiple of 16
             widthSlider.value = newWidth;
             heightSlider.value = newHeight;
 
             if (typeof game !== 'undefined') {
                 game.worldWidth = newWidth;
                 game.worldHeight = newHeight;
-                game.resizeCanvas(); // Update the canvas immediately
+                game.resizeCanvas();
                 widthValue.textContent = newWidth;
                 heightValue.textContent = newHeight;
             } else {
@@ -67,7 +62,6 @@ scene_properties = {
             }
         };
 
-        // Add event listeners to sliders for dynamic updates
         widthSlider.addEventListener('input', updateDimensions);
         heightSlider.addEventListener('input', updateDimensions);
     },
@@ -98,7 +92,7 @@ save() {
 },
 
     unmount() {
-        // Clean up code if necessary
+
     }
 };
     </script>
