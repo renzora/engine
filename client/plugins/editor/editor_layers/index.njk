@@ -228,19 +228,44 @@
   </div>
 </div>
 
-  <div id="layersTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
-    <span class="font-semibold">Layers</span>
+<div id="layersTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
+  <span class="font-semibold">Layers</span>
+  <svg
+    id="layersToggleIcon"
+    xmlns="http://www.w3.org/2000/svg"
+    class="h-4 w-4 transition-transform duration-300"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+</div>
+
+<!-- Add the search input here -->
+<div class="border-b border-gray-600">
+  <div class="relative">
+    <input
+      type="text"
+      id="layerSearch"
+      placeholder="Search layers..."
+      class="w-full bg-gray-700 text-white text-sm px-3 py-2 pl-8 pr-8 focus:outline-none"
+    />
     <svg
-      id="layersToggleIcon"
       xmlns="http://www.w3.org/2000/svg"
-      class="h-4 w-4 transition-transform duration-300"
+      class="h-4 w-4 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
       fill="none"
       viewBox="0 0 24 24"
-      stroke="currentColor"
-      stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+      stroke="currentColor">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
     </svg>
+    <button
+      id="clearLayerSearchBtn"
+      class="hidden absolute right-2 top-1/2 -translate-y-1/2 bg-gray-600 text-gray-300 rounded w-6 h-6 flex items-center justify-center text-sm"
+      type="button"
+    >x</button>
   </div>
+</div>
 
   <div id="layersBody" class="flex flex-col flex-grow overflow-y-auto transition-all duration-300">
     <div id="layersList" class="flex flex-col mt-1 relative"></div>
@@ -438,6 +463,8 @@ editor_layers = {
   dropPosition: null,
   dropIndicator: null,
   dragContainer: null,
+  searchTerm: '',
+  filteredLayers: null,
   nodeCategories: {
     'Input': [
       { id: 'number', name: 'Number', color: '#3B82F6', icon: 'hash' },
@@ -460,7 +487,7 @@ editor_layers = {
   filteredNodes: null,
   panelSlideVisible: true,
 
-  initUI() {
+initUI() {
     const addLayerBtn = document.getElementById("addLayerBtn");
     const addGroupBtn = document.getElementById("addGroupBtn");
     const addItemBtn = document.getElementById("addItemBtn");
@@ -469,50 +496,73 @@ editor_layers = {
     const spectrumTitleBar = document.getElementById("spectrumTitleBar");
     const propertiesTitleBar = document.getElementById("propertiesTitleBar");
     const transformTitleBar = document.getElementById("transformTitleBar");
+    
     nodesTitleBar.addEventListener("click", () => this.toggleNodesPanel());
     spectrumTitleBar.addEventListener("click", () => this.toggleSpectrumPanel());
     propertiesTitleBar.addEventListener("click", () => this.togglePropertiesPanel());
     transformTitleBar.addEventListener("click", () => this.toggleTransformPanel());
+    
     const searchInput = document.getElementById('nodeSearch');
     searchInput.addEventListener('input', (e) => this.handleNodeSearch(e.target.value));
+    
+    const layerSearch = document.getElementById('layerSearch');
+    const clearLayerSearchBtn = document.getElementById('clearLayerSearchBtn');
+
+    layerSearch.addEventListener('input', (e) => this.handleLayerSearch(e.target.value));
+
+    clearLayerSearchBtn.addEventListener('click', () => {
+        layerSearch.value = '';
+        this.handleLayerSearch('');
+        layerSearch.focus();
+    });
+    
     addLayerBtn.addEventListener("click", () => this.addLayer());
     addGroupBtn.addEventListener("click", () => this.addGroup());
     addItemBtn.addEventListener("click", () => this.addItemToLayer("New Item"));
     layersTitleBar.addEventListener("click", () => this.toggleLayersPanel());
+    
     this.dropIndicator = document.createElement("div");
     this.dropIndicator.className = "drop-indicator";
     const layersList = document.getElementById("layersList");
     layersList.appendChild(this.dropIndicator);
+    
     this.dragContainer = document.createElement("div");
     this.dragContainer.className = "drag-container";
     layersList.appendChild(this.dragContainer);
+    
     document.addEventListener("mousemove", (e) => this.handleMouseMove(e));
-    document.addEventListener("mouseup",   (e) => this.handleMouseUp(e));
+    document.addEventListener("mouseup", (e) => this.handleMouseUp(e));
+    
     const layersPanel = document.getElementById("layersPanel");
     const resizeHandle = document.getElementById("resizeHandle");
     let isResizing = false;
+    
     resizeHandle.addEventListener("mousedown", (e) => {
-      isResizing = true;
-      document.body.style.cursor = "ew-resize";
+        isResizing = true;
+        document.body.style.cursor = "ew-resize";
     });
+    
     document.addEventListener("mousemove", (e) => {
-      if (!isResizing) return;
-      const panelRect = layersPanel.getBoundingClientRect();
-      const newWidth = window.innerWidth - e.clientX;
-      if (newWidth >= 200 && newWidth <= 600) {
-        layersPanel.style.width = `${newWidth}px`;
-      }
+        if (!isResizing) return;
+        const panelRect = layersPanel.getBoundingClientRect();
+        const newWidth = window.innerWidth - e.clientX;
+        if (newWidth >= 200 && newWidth <= 600) {
+            layersPanel.style.width = `${newWidth}px`;
+        }
     });
+    
     document.addEventListener("mouseup", () => {
-      if (isResizing) {
-        isResizing = false;
-        document.body.style.cursor = "";
-      }
+        if (isResizing) {
+            isResizing = false;
+            document.body.style.cursor = "";
+        }
     });
+    
     this.initBackgroundInput();
+    
     const slideTab = document.getElementById("slideTab");
     slideTab.addEventListener("click", () => this.togglePanelSlide());
-  },
+},
 
 initTransformControls() {
   const scaleInput = document.getElementById('scaleInput');
@@ -894,28 +944,6 @@ initBackgroundInput() {
     }
   },
 
-  start() {
-    this.fetchSceneLayers(game.sceneid).then(() => {
-      this.initUI();
-      if (!this.layers || this.layers.length === 0) {
-        this.layers = [{
-          id: "layer_default",
-          type: "layer",
-          name: "Default Layer",
-          visible: true,
-          locked: false,
-          expanded: true,
-          children: []
-        }];
-      }
-      this.activeLayerId = this.layers[0].id;
-      this.selectLayersById(this.activeLayerId);
-      this.renderAllLayers();
-      this.initColorPicker();
-      this.initTransformControls();
-    });
-  },
-
   addLayer() {
     const selectedNodes = this.getSelectedNodes();
     let newLayer;
@@ -970,6 +998,7 @@ initBackgroundInput() {
     this.lastClickedId = newLayer.id;
     this.renderAllLayers();
     setTimeout(() => this.editLayerName(newLayer.id), 0);
+    this.refreshLayerView();
   },
 
   addGroup() {
@@ -1026,46 +1055,63 @@ initBackgroundInput() {
     this.lastClickedId = newGroup.id;
     this.renderAllLayers();
     setTimeout(() => this.editLayerName(newGroup.id), 0);
+    this.refreshLayerView();
   },
 
-  addItemToLayer(itemInfo = {}) {
+addItemToLayer(itemInfo = {}) {
     const newItem = {
-      id: `item_${itemInfo.layer_id || Date.now()}`,
-      type: "item",
-      name: itemInfo.n || "New Item",
-      visible: true,
-      locked: false,
-      children: []
+        id: `item_${itemInfo.layer_id || Date.now()}`,
+        type: "item",
+        name: itemInfo.n || "New Item",
+        visible: true,
+        locked: false,
+        children: []
     };
+
     let targetParent = null;
     let parentArray = this.layers;
     if (this.activeLayerId) {
-      const activeNode = this.findNodeById(this.activeLayerId);
-      if (activeNode) {
-        if (activeNode.node.type === "item") {
-          const parentInfo = this.findParentNodeById(this.activeLayerId);
-          if (parentInfo) {
-            targetParent = parentInfo.node;
-            parentArray = parentInfo.node.children;
-          }
-        } else if (activeNode.node.type === "layer" || activeNode.node.type === "group") {
-          targetParent = activeNode.node;
-          parentArray = activeNode.node.children;
+        const activeNode = this.findNodeById(this.activeLayerId);
+        if (activeNode) {
+            if (activeNode.node.type === "item") {
+                const parentInfo = this.findParentNodeById(this.activeLayerId);
+                if (parentInfo) {
+                    targetParent = parentInfo.node;
+                    parentArray = parentInfo.node.children;
+                }
+            } else if (activeNode.node.type === "layer" || activeNode.node.type === "group") {
+                targetParent = activeNode.node;
+                parentArray = activeNode.node.children;
+            }
         }
-      }
     }
+
     if (targetParent) {
-      targetParent.expanded = true;
-      parentArray.push(newItem);
+        targetParent.expanded = true;
+        parentArray.push(newItem);
     } else {
-      this.layers.push(newItem);
+        this.layers.push(newItem);
     }
+
     this.selectedLayers.clear();
     this.selectedLayers.add(newItem.id);
     this.activeLayerId = newItem.id;
     this.lastClickedId = newItem.id;
-    this.renderAllLayers();
-  },
+
+    if (this.searchTerm) {
+        this.handleLayerSearch(this.searchTerm);
+    } else {
+        this.renderAllLayers();
+    }
+},
+
+refreshLayerView() {
+    if (this.searchTerm) {
+        this.handleLayerSearch(this.searchTerm);
+    } else {
+        this.renderAllLayers();
+    }
+},
 
   findParentNodeById(id, arr = this.layers) {
     for (const node of arr) {
@@ -1080,15 +1126,65 @@ initBackgroundInput() {
     return null;
   },
 
-  renderAllLayers() {
-    const list = document.getElementById("layersList");
-    list.innerHTML = "";
-    list.appendChild(this.dropIndicator);
-    list.appendChild(this.dragContainer);
-    this.layers.forEach(node => {
-      this.renderNode(node, list);
-    });
-  },
+handleLayerSearch(searchTerm) {
+  const clearBtn = document.getElementById('clearLayerSearchBtn');
+  this.searchTerm = searchTerm.toLowerCase().trim();
+  
+  if (this.searchTerm) {
+    clearBtn.classList.remove('hidden');
+  } else {
+    clearBtn.classList.add('hidden');
+    this.filteredLayers = null;
+    this.renderAllLayers();
+    return;
+  }
+
+  const filterNodes = (nodes) => {
+    return nodes.map(node => {
+      const nodeCopy = {
+        ...node,
+        type: node.type,
+        name: node.name,
+        visible: node.visible,
+        locked: node.locked,
+        expanded: node.expanded,
+        id: node.id
+      };
+      
+      if (node.children && node.children.length > 0) {
+        nodeCopy.children = filterNodes(node.children);
+      }
+
+      const matchesSearch = node.name.toLowerCase().includes(this.searchTerm);
+      const hasMatchingChildren = nodeCopy.children && nodeCopy.children.length > 0;
+
+      if (matchesSearch || hasMatchingChildren) {
+        if (hasMatchingChildren) {
+          nodeCopy.expanded = true;
+        }
+        return nodeCopy;
+      }
+      
+      return null;
+    }).filter(Boolean);
+  };
+
+  const filtered = filterNodes([...this.layers]);
+  this.filteredLayers = filtered.length > 0 ? filtered : null;
+  this.renderAllLayers();
+},
+
+renderAllLayers() {
+  const list = document.getElementById("layersList");
+  list.innerHTML = "";
+  list.appendChild(this.dropIndicator);
+  list.appendChild(this.dragContainer);
+  
+  const layersToRender = this.filteredLayers || this.layers;
+  layersToRender.forEach(node => {
+    this.renderNode(node, list);
+  });
+},
 
   selectLayersById(layerIds) {
     if (!Array.isArray(layerIds)) {
@@ -1813,6 +1909,7 @@ renderNode(node, parentEl) {
     }
   }
   this.renderAllLayers();
+  this.refreshLayerView();
   },
 
   editLayerName(id) {

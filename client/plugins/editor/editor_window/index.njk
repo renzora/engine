@@ -1597,19 +1597,14 @@ panCameraToObject(obj) {
   const maxX = Math.max(...obj.x) * 16 + 16;
   const minY = Math.min(...obj.y) * 16;
   const maxY = Math.max(...obj.y) * 16 + 16;
-  
   const centerX = (minX + maxX) / 2;
   const centerY = (minY + maxY) / 2;
-  
-  // Calculate target camera position to center the object
   const targetX = centerX - (window.innerWidth / game.zoomLevel / 2);
   const targetY = centerY - (window.innerHeight / game.zoomLevel / 2);
   
-  // Update camera position
   camera.cameraX = targetX;
   camera.cameraY = targetY;
   
-  // Ensure camera stays within bounds
   this.constrainCamera();
 },
 
