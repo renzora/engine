@@ -991,234 +991,224 @@ editor_layers = {
   },
 
   renderNode(node, parentEl) {
-  const nodeContainer = document.createElement("div");
-  nodeContainer.className = "node-container";
-  nodeContainer.dataset.id = node.id;
-  nodeContainer.dataset.type = node.type;
+    const nodeContainer = document.createElement("div");
+    nodeContainer.className = "node-container";
+    nodeContainer.dataset.id = node.id;
+    nodeContainer.dataset.type = node.type;
 
-  const row = document.createElement("div");
-  row.className = "layer-item";
-  if (this.selectedLayers.has(node.id)) {
-    row.classList.add("selected");
-  }
-  row.dataset.id = node.id;
-  row.dataset.type = node.type;
+    const row = document.createElement("div");
+    row.className = "layer-item";
+    if (this.selectedLayers.has(node.id)) {
+      row.classList.add("selected");
+    }
+    row.dataset.id = node.id;
+    row.dataset.type = node.type;
 
-  const typeIcon = document.createElement("div");
-  typeIcon.className = "icon-btn";
-  let iconHTML = "";
-  if (node.type === "layer") {
-    iconHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" 
-           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" 
-              d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-      </svg>`;
-  } else if (node.type === "group") {
-    iconHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
-           viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-        <path stroke-linecap="round" stroke-linejoin="round" 
-              d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2 
-                 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-      </svg>`;
-  } else {
-    iconHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="12 2, 22 8, 12 14, 2 8" fill="none" />
-        <polygon points="12 14, 2 8, 2 20, 12 24" fill="none" />
-        <polygon points="12 14, 22 8, 22 20, 12 24" fill="none" />
-      </svg>`;
-  }
-  typeIcon.innerHTML = iconHTML;
+    const typeIcon = document.createElement("div");
+    typeIcon.className = "icon-btn";
+    let iconHTML = "";
+    if (node.type === "layer") {
+      iconHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>`;
+    } else if (node.type === "group") {
+      iconHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+             viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2
+                   2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+        </svg>`;
+    } else {
+      iconHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+             viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="12 2, 22 8, 12 14, 2 8" fill="none" />
+          <polygon points="12 14, 2 8, 2 20, 12 24" fill="none" />
+          <polygon points="12 14, 22 8, 22 20, 12 24" fill="none" />
+        </svg>`;
+    }
+    typeIcon.innerHTML = iconHTML;
+    if (node.type === "layer" || node.type === "group") {
+      typeIcon.addEventListener("click", (e) => {
+        e.stopPropagation();
+        node.expanded = !node.expanded;
+        this.renderAllLayers();
+      });
+    }
 
-  if (node.type === "layer" || node.type === "group") {
-    typeIcon.addEventListener("click", (e) => {
+    const eyeBtn = document.createElement("div");
+    eyeBtn.className = "icon-btn";
+    eyeBtn.innerHTML = node.visible
+      ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+               viewBox="0 0 24 24" stroke="currentColor" fill="none"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3"></circle>
+         </svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+               viewBox="0 0 24 24" stroke="currentColor" fill="none"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 2l20 20" />
+            <path d="M1 12s4-8 11-8c3.31 0 5.99 1.39 8 3.27" />
+            <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
+                     c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
+         </svg>`;
+    eyeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      node.expanded = !node.expanded;
+      node.visible = !node.visible;
+      const updateVisibility = (n, v) => {
+        if (n.id.startsWith("item_")) {
+          const layerId = n.id.replace("item_", "");
+          const roomItem = game.roomData.items.find(it => it.layer_id === layerId);
+          if (roomItem) {
+            roomItem.visible = v;
+          }
+        }
+        if (n.children && n.children.length) {
+          n.children.forEach(child => updateVisibility(child, v));
+        }
+      };
+      updateVisibility(node, node.visible);
       this.renderAllLayers();
     });
-  }
 
-  const eyeBtn = document.createElement("div");
-  eyeBtn.className = "icon-btn";
-  eyeBtn.innerHTML = node.visible
-    ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-             viewBox="0 0 24 24" stroke="currentColor" fill="none"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-          <circle cx="12" cy="12" r="3"></circle>
-       </svg>`
-    : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-             viewBox="0 0 24 24" stroke="currentColor" fill="none"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M2 2l20 20" />
-          <path d="M1 12s4-8 11-8c3.31 0 5.99 1.39 8 3.27" />
-          <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
-                   c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
-       </svg>`;
-  eyeBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    node.visible = !node.visible;
-    const updateVisibility = (node, visible) => {
-      if (node.id.startsWith("item_")) {
-        const layerId = node.id.replace("item_", "");
-        const roomItem = game.roomData.items.find(it => it.layer_id === layerId);
-        if (roomItem) {
-          roomItem.visible = visible;
-        }
-      }
-      if (node.children && node.children.length) {
-        node.children.forEach(child => updateVisibility(child, visible));
-      }
-    };
-    updateVisibility(node, node.visible);
-    this.renderAllLayers();
-  });
-
-  const lockBtn = document.createElement("div");
-  lockBtn.className = "icon-btn";
-  lockBtn.innerHTML = node.locked
-    ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500"
-             viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 9.9-1" />
-       </svg>`
-    : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
-             viewBox="0 0 24 24" fill="none" stroke="currentColor"
-             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-       </svg>`;
-  lockBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    node.locked = !node.locked;
-    this.updateLockState(node, node.locked);
-    this.removeLockedOrInvisible(node);
-    this.renderAllLayers();
-  });
-
-  const nameSpan = document.createElement("span");
-  nameSpan.className = "layer-name";
-  nameSpan.textContent = node.name;
-  nameSpan.ondblclick = (evt) => {
-    evt.stopPropagation();
-    this.editLayerName(node.id);
-  };
-
-  const trashBtn = document.createElement("div");
-  trashBtn.className = "icon-btn";
-  trashBtn.innerHTML = `
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-         viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="3 6 5 6 21 6"/>
-      <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 
-               2 0 0 1-2-2L5 6m3 0V4a2 
-               2 0 0 1 2-2h4a2 2 0 0 
-               1 2 2v2"/>
-    </svg>`;
-  trashBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    this.deleteLayer(node.id);
-  });
-
-  row.appendChild(typeIcon);
-  row.appendChild(eyeBtn);
-  row.appendChild(lockBtn);
-  row.appendChild(nameSpan);
-  row.appendChild(trashBtn);
-
-  row.addEventListener("click", (e) => {
-    e.stopPropagation();
-    if (node.locked) {
-      this.selectedLayers.clear();
-      this.selectedLayers.add(node.id);
-      this.activeLayerId = node.id;
-      this.lastClickedId = node.id;
+    const lockBtn = document.createElement("div");
+    lockBtn.className = "icon-btn";
+    lockBtn.innerHTML = node.locked
+      ? `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-500"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" />
+         </svg>`
+      : `<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-white"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+         </svg>`;
+    lockBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      node.locked = !node.locked;
+      this.updateLockState(node, node.locked);
+      this.removeLockedOrInvisible(node);
       this.renderAllLayers();
-      return;
-    }
-    if (e.ctrlKey || e.metaKey) {
-      if (this.selectedLayers.has(node.id)) {
-        this.selectedLayers.delete(node.id);
-        if (this.activeLayerId === node.id) {
-          const remaining = Array.from(this.selectedLayers);
-          this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
-        }
-      } else {
+    });
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "layer-name";
+    nameSpan.textContent = node.name;
+    nameSpan.ondblclick = (evt) => {
+      evt.stopPropagation();
+      this.editLayerName(node.id);
+    };
+
+    const trashBtn = document.createElement("div");
+    trashBtn.className = "icon-btn";
+    trashBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+           viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2
+                 2 0 0 1-2-2L5 6m3 0V4a2
+                 2 0 0 1 2-2h4a2 2 0 0
+                 1 2 2v2"/>
+      </svg>`;
+    trashBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.deleteLayer(node.id);
+    });
+
+    row.appendChild(typeIcon);
+    row.appendChild(eyeBtn);
+    row.appendChild(lockBtn);
+    row.appendChild(nameSpan);
+    row.appendChild(trashBtn);
+
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (node.locked) {
+        this.selectedLayers.clear();
         this.selectedLayers.add(node.id);
         this.activeLayerId = node.id;
+        this.lastClickedId = node.id;
+        this.renderAllLayers();
+        return;
       }
-      this.lastClickedId = node.id;
-      const selectedIds = Array.from(this.selectedLayers).filter(id => {
-        const testNode = this.findNodeById(id);
-        return testNode && !testNode.node.locked;
-      }).map(id => id);
-      this.selectInEditor(selectedIds);
-      this.renderAllLayers();
-      return;
-    }
-    let idsToSelect;
-    if (e.shiftKey && this.lastClickedId) {
-      this.selectRange(this.lastClickedId, node.id);
-      idsToSelect = Array.from(this.selectedLayers);
-    } else {
-      this.selectedLayers.clear();
-      this.selectedLayers.add(node.id);
-      if (node.type === 'layer' || node.type === 'group') {
-        idsToSelect = this.getAllChildIds(node).filter(id => {
-          const childNode = this.findNodeById(id);
-          return childNode && !childNode.node.locked;
-        });
+      if (e.ctrlKey || e.metaKey) {
+        if (this.selectedLayers.has(node.id)) {
+          this.selectedLayers.delete(node.id);
+          if (this.activeLayerId === node.id) {
+            const remaining = Array.from(this.selectedLayers);
+            this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
+          }
+        } else {
+          this.selectedLayers.add(node.id);
+          this.activeLayerId = node.id;
+        }
+        this.lastClickedId = node.id;
+        const selectedIds = Array.from(this.selectedLayers).filter(id => {
+          const testNode = this.findNodeById(id);
+          return testNode && !testNode.node.locked;
+        }).map(id => id);
+        this.selectInEditor(selectedIds);
+        this.renderAllLayers();
+        return;
+      }
+      let idsToSelect;
+      if (e.shiftKey && this.lastClickedId) {
+        this.selectRange(this.lastClickedId, node.id);
+        idsToSelect = Array.from(this.selectedLayers);
       } else {
-        idsToSelect = [node.id];
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+        if (node.type === 'layer' || node.type === 'group') {
+          idsToSelect = this.getAllChildIds(node).filter(id => {
+            const childNode = this.findNodeById(id);
+            return childNode && !childNode.node.locked;
+          });
+        } else {
+          idsToSelect = [node.id];
+        }
       }
-    }
-    this.activeLayerId = node.id;
-    this.lastClickedId = node.id;
-    this.renderAllLayers();
-    this.selectInEditor(idsToSelect);
-  });
-
-  row.addEventListener("mousedown", (e) => {
-    if (e.target.closest(".icon-btn")) return;
-    if (node.locked) return;
-    e.stopPropagation();
-    e.preventDefault();
-    this.dragCandidate = true;
-    this.dragStartX = e.clientX;
-    this.dragStartY = e.clientY;
-    if (!this.selectedLayers.has(node.id)) {
-      this.selectedLayers.clear();
-      this.selectedLayers.add(node.id);
       this.activeLayerId = node.id;
       this.lastClickedId = node.id;
       this.renderAllLayers();
-    }
-    this.draggedNodes = this.getSelectedNodes();
-    this.draggedEl = nodeContainer;
-    row.classList.add("pending-drag");
-  });
-
-  nodeContainer.appendChild(row);
-
-  if ((node.type === "group" || node.type === "layer") && node.children.length) {
-    const childrenContainer = document.createElement("div");
-    childrenContainer.className = "children-container";
-    if (!node.expanded) {
-      childrenContainer.classList.add("collapsed");
-    }
-    node.children.forEach(child => {
-      this.renderNode(child, childrenContainer);
+      this.selectInEditor(idsToSelect);
     });
-    nodeContainer.appendChild(childrenContainer);
-  }
 
-  parentEl.appendChild(nodeContainer);
+    row.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      this.dragCandidate = true;
+      this.dragStartX = e.clientX;
+      this.dragStartY = e.clientY;
+      if (this.selectedLayers.has(node.id)) {
+        this.draggedNodes = this.getSelectedNodes();
+      } else {
+        this.draggedNodes = [node];
+      }
+      this.draggedEl = nodeContainer;
+    });
+
+    nodeContainer.appendChild(row);
+    if ((node.type === "group" || node.type === "layer") && node.children.length) {
+      const childrenContainer = document.createElement("div");
+      childrenContainer.className = "children-container";
+      if (!node.expanded) {
+        childrenContainer.classList.add("collapsed");
+      }
+      node.children.forEach(child => {
+        this.renderNode(child, childrenContainer);
+      });
+      nodeContainer.appendChild(childrenContainer);
+    }
+    parentEl.appendChild(nodeContainer);
   },
 
   renderNodes() {
@@ -1547,42 +1537,38 @@ editor_layers = {
   },
 
   deleteLayer(id) {
-  const found = this.findNodeById(id)
-  if (!found) return
+  const found = this.findNodeById(id);
+  if (!found) return;
 
-  const { node } = found
+  const { node } = found;
 
-  let itemNodeIds = this.getAllChildIds(node)
+  let itemNodeIds = this.getAllChildIds(node);
   if (node.type === 'item') {
-    itemNodeIds.push(node.id)
+    itemNodeIds.push(node.id);
   }
 
   itemNodeIds.forEach(itemNodeId => {
-    const layerId = itemNodeId.replace('item_', '')
+    const layerId = itemNodeId.replace('item_', '');
     game.roomData.items = game.roomData.items.filter(removedItem => {
       if (removedItem.layer_id !== layerId) {
-        return true
+        return true;
       }
       if (plugin.exists('lighting')) {
         plugin.lighting.lights =
           plugin.lighting.lights.filter(light => {
-            return !light.id.startsWith(layerId + '_light_')
-          })
+            return !light.id.startsWith(layerId + '_light_');
+          });
       }
-      return false
-    })
-  })
+      return false;
+    });
+  });
 
-  this.removeNodeFromParent(id)
-  this.selectedLayers.delete(id)
-  this.selectedLayers.clear()
-  editor_window.selectedObjects = []
-  editor_window.renderSelectedTiles()
-  editor_window.changeMode('select')
-
+  // Remove the layer/node from the tree itself
+  this.removeNodeFromParent(id);
+  this.selectedLayers.delete(id);
   if (this.activeLayerId === id) {
     if (this.layers.length) {
-      this.activeLayerId = this.layers[0].id
+      this.activeLayerId = this.layers[0].id;
     } else {
       const def = {
         id: `layer_default_${Date.now()}`,
@@ -1592,12 +1578,12 @@ editor_layers = {
         locked: false,
         expanded: true,
         children: []
-      }
-      this.layers.push(def)
-      this.activeLayerId = def.id
+      };
+      this.layers.push(def);
+      this.activeLayerId = def.id;
     }
   }
-  this.renderAllLayers()
+  this.renderAllLayers();
   },
 
   editLayerName(id) {

@@ -1,0 +1,254 @@
+<div class="window window_bg text-white" id="map_generator_window">
+    <div class="window_title p-2 bg-gray-800">
+        <span>Map Generator</span>
+    </div>
+    <div class="container window_body p-4 text-center">
+        <div class="flex flex-col items-center">
+            <div class="relative w-full mb-2">
+                <input
+                    id="map_generator_input"
+                    type="text"
+                    class="w-full mt-1 p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="Type to search"
+                    autocomplete="off"
+                />
+                <button
+                    id="map_generator_clear"
+                    class="hidden absolute right-2 top-1/2 -translate-y-1/2 bg-gray-600 text-gray-300 rounded w-6 h-6 flex items-center justify-center text-sm"
+                    type="button"
+                >x</button>
+                <div
+                    id="map_generator_suggestions"
+                    class="absolute w-full rounded border border-gray-700 hidden z-50 max-h-60 overflow-auto bg-gray-800"
+                ></div>
+            </div>
+            <div id="map_generator_selected" class="border border-gray-700 p-2 rounded w-full text-left"></div>
+            <button id="map_generator_generate_btn" class="white_button p-2 rounded mt-4">Generate Map</button>
+            <button data-close class="white_button p-2 rounded mt-2" aria-label="Close">Close</button>
+        </div>
+    </div>
+</div>
+
+<style>
+#map_generator_suggestions {
+    top: calc(100% + 0.5rem) !important;
+    left: 0;
+    max-height: 16rem;
+    border-color: #2563eb;
+}
+#map_generator_suggestions::before {
+    content: "";
+    position: absolute;
+    top: -10px;
+    left: 1.5rem;
+    border-left: 10px solid transparent;
+    border-right: 10px solid transparent;
+    border-bottom: 10px solid #1f2937;
+}
+#map_generator_suggestions div:hover {
+    background-color: #2563eb;
+    color: #ffffff;
+}
+</style>
+
+<script>
+map_generator = {
+    searchQuery: '',
+    selectedObjects: [],
+    start() {
+        this.setupUI()
+    },
+    setupUI() {
+        const inputEl = document.getElementById('map_generator_input')
+        const clearEl = document.getElementById('map_generator_clear')
+        const suggestEl = document.getElementById('map_generator_suggestions')
+        const selectedEl = document.getElementById('map_generator_selected')
+        const generateBtn = document.getElementById('map_generator_generate_btn')
+        inputEl.oninput = () => {
+            this.searchQuery = inputEl.value.trim().toLowerCase()
+            if (this.searchQuery.length < 1) {
+                suggestEl.innerHTML = ''
+                suggestEl.classList.add('hidden')
+                clearEl.classList.add('hidden')
+                return
+            }
+            clearEl.classList.remove('hidden')
+            this.showSuggestions()
+        }
+        clearEl.onclick = () => {
+            inputEl.value = ''
+            this.searchQuery = ''
+            suggestEl.innerHTML = ''
+            suggestEl.classList.add('hidden')
+            clearEl.classList.add('hidden')
+        }
+        generateBtn.onclick = () => {
+            this.generateMap()
+        }
+        selectedEl.innerText = 'No objects selected'
+    },
+    showSuggestions() {
+        const suggestEl = document.getElementById('map_generator_suggestions')
+        suggestEl.innerHTML = ''
+        this.searchResults = []
+        for (const key in game.objectData) {
+            const info = game.objectData[key]
+            if (info && info.length > 0 && info[0].n.toLowerCase().includes(this.searchQuery)) {
+                this.searchResults.push({ id: key, name: info[0].n })
+            }
+        }
+        if (this.searchResults.length < 1) {
+            suggestEl.classList.add('hidden')
+            return
+        }
+        suggestEl.classList.remove('hidden')
+        this.searchResults.forEach(obj => {
+            const div = document.createElement('div')
+            div.className = 'p-2 cursor-pointer text-sm'
+            div.innerText = obj.name
+            div.onclick = () => {
+                if (!this.selectedObjects.some(o => o.id === obj.id)) {
+                    this.selectedObjects.push(obj)
+                    this.renderSelected()
+                }
+                suggestEl.innerHTML = ''
+                suggestEl.classList.add('hidden')
+                document.getElementById('map_generator_input').value = ''
+                document.getElementById('map_generator_clear').classList.add('hidden')
+            }
+            suggestEl.appendChild(div)
+        })
+    },
+    renderSelected() {
+        const selectedEl = document.getElementById('map_generator_selected')
+        selectedEl.innerHTML = ''
+        if (this.selectedObjects.length === 0) {
+            selectedEl.innerText = 'No objects selected'
+            return
+        }
+        this.selectedObjects.forEach(obj => {
+            const row = document.createElement('div')
+            row.className = 'flex justify-between items-center mb-1'
+            const nameSpan = document.createElement('span')
+            nameSpan.innerText = obj.name
+            const removeBtn = document.createElement('button')
+            removeBtn.className = 'white_button p-1 rounded ml-2'
+            removeBtn.innerText = 'X'
+            removeBtn.onclick = () => {
+                this.selectedObjects = this.selectedObjects.filter(o => o.id !== obj.id)
+                this.renderSelected()
+            }
+            row.appendChild(nameSpan)
+            row.appendChild(removeBtn)
+            selectedEl.appendChild(row)
+        })
+    },
+    generateMap() {
+    if (!game.roomData) {
+        game.roomData = { items: [] }
+    }
+    if (this.selectedObjects.length === 0) return
+
+    // 1. Calculate the total number of tiles in the world
+    const worldTilesX = Math.floor(game.worldWidth / 16)
+    const worldTilesY = Math.floor(game.worldHeight / 16)
+    const totalTileCount = worldTilesX * worldTilesY
+
+    // 2. Calculate the total area of all selected objects (in tiles)
+    let sumSelectedArea = 0
+    this.selectedObjects.forEach(obj => {
+        const itemData = game.objectData[obj.id] ? game.objectData[obj.id][0] : null
+        if (!itemData) return
+        // a and b mean the item is (a+1) tiles wide and (b+1) tiles tall
+        const objectArea = (itemData.a + 1) * (itemData.b + 1)
+        sumSelectedArea += objectArea
+    })
+    if (sumSelectedArea === 0) return
+
+    // 3. Figure out roughly how many total items we can place
+    //    (so they "fill" the map, but randomizing object picks)
+    const fillCount = Math.floor(totalTileCount / sumSelectedArea)
+    if (fillCount <= 0) return
+
+    // 4. Scatter them around randomly
+    //    (We do fillCount placements, each one picks a random object)
+    for (let i = 0; i < fillCount; i++) {
+        const randomObj = this.selectedObjects[
+            Math.floor(Math.random() * this.selectedObjects.length)
+        ]
+        const itemData = game.objectData[randomObj.id][0]
+        if (!itemData) continue
+
+        // We can't place the item so it hangs outside the world
+        // so we calculate the max top-left position in tiles
+        const objectWidth = (itemData.a + 1)
+        const objectHeight = (itemData.b + 1)
+        const maxTileX = worldTilesX - objectWidth
+        const maxTileY = worldTilesY - objectHeight
+
+        if (maxTileX < 0 || maxTileY < 0) {
+            // This item is bigger than the map dimensions, skip
+            continue
+        }
+
+        // Random tile coords that can fit the object
+        const randTileX = Math.floor(Math.random() * (maxTileX + 1))
+        const randTileY = Math.floor(Math.random() * (maxTileY + 1))
+
+        // Convert tile coords to pixel coords
+        const pixelX = randTileX * 16
+        const pixelY = randTileY * 16
+
+        this.addItemToRoomData(randomObj.id, pixelX, pixelY)
+    }
+
+    // 5. Clear the selection, update
+    this.selectedObjects = []
+    this.renderSelected()
+},
+
+    addItemToRoomData(itemId, mouseX, mouseY) {
+        const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null
+        if (!itemData) return
+        let baseX = editor_context_menu.isSnapEnabled ? Math.floor(mouseX / 16) * 16 : Math.round(mouseX)
+        let baseY = editor_context_menu.isSnapEnabled ? Math.floor(mouseY / 16) * 16 : Math.round(mouseY)
+        const maxColumns = itemData.a || 0
+        const maxRows = itemData.b || 0
+        const newX = []
+        const newY = []
+        for (let col = 0; col <= maxColumns; col++) {
+            if (editor_context_menu.isSnapEnabled) {
+                newX.push(Math.floor(baseX / 16) + col)
+            } else {
+                newX.push((baseX + col * 16) / 16)
+            }
+        }
+        for (let row = 0; row <= maxRows; row++) {
+            if (editor_context_menu.isSnapEnabled) {
+                newY.push(Math.floor(baseY / 16) + row)
+            } else {
+                newY.push((baseY + row * 16) / 16)
+            }
+        }
+        const newItem = {
+            id: itemId,
+            n: itemData.n,
+            x: newX,
+            y: newY,
+            layer_id: this.generateId(),
+            animationState: [{ currentFrame: 0, elapsedTime: 0 }],
+            w: itemData.w || []
+        }
+        if (!game.roomData.items) {
+            game.roomData.items = []
+        }
+        game.roomData.items.push(newItem)
+        editor_layers.addItemToLayer(newItem)
+    },
+    generateId() {
+        return 'layer_' + Date.now() + '_' + Math.floor(Math.random() * 10000)
+    },
+    unmount() {
+    }
+};
+</script>

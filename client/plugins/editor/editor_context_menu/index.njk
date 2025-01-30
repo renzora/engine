@@ -163,6 +163,7 @@ editor_context_menu = {
             { label: "Tileset Manager", callback: () => this.openTilesetManager() },
             { label: "Sprites Manager", callback: () => this.openTerrainEditor() },
             { label: "Scene Debugging", callback: () => this.openTerrainEditor() },
+            { label: "Map Generator", callback: () => this.openMapGenerator() },
           ]
         },
         {
@@ -362,6 +363,17 @@ editor_context_menu = {
     this.contextMenuElement.classList.add('hidden');
   },
 
+  openMapGenerator() {
+    console.log("Open Terrain Editor...");
+    this.contextMenuElement.classList.add('hidden');
+    plugin.load('map_generator', {
+      path: 'editor',
+      ext: 'html',
+      drag: true,
+      reload: true,
+    });
+  },
+
   openTilesetManager() {
     plugin.load('tileset_manager', {
       ext: 'njk',
@@ -459,7 +471,7 @@ editor_context_menu = {
     }
 
     game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
-    game.ctx.lineWidth = 2;
+    game.ctx.lineWidth = 1;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
 
