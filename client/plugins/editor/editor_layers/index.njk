@@ -242,7 +242,6 @@
   </svg>
 </div>
 
-<!-- Add the search input here -->
 <div class="border-b border-gray-600">
   <div class="relative">
     <input
@@ -271,29 +270,51 @@
     <div id="layersList" class="flex flex-col mt-1 relative"></div>
   </div>
 
-  <div class="p-3 bg-gray-700 border-t border-gray-600 flex justify-center gap-2">
-    <button id="addLayerBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Layer">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-        <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
-      </svg>
-    </button>
+<div class="p-2 bg-gray-700 border-t border-gray-600 flex justify-center">
+  <div class="flex gap-12">
+    <div class="flex gap-3">
+      <button id="addLayerBtn" class="hint--top px-3 py-2 bg-gray-800 hover:bg-gray-900 text-gray-300 hover:text-white text-sm flex items-center gap-2 rounded-md transition-colors duration-150 shadow-sm border border-gray-700" aria-label="New Layer">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clip-rule="evenodd" />
+        </svg>
+      </button>
 
-    <button id="addGroupBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Group">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 21V8a2 2 0 0 0-2-2H7v15a2 2 0 0 0 2 2h10" />
-        <path d="M3 21V3h13a2 2 0 0 1 2 2v2" />
-      </svg>
-    </button>
+      <button id="addGroupBtn" class="hint--top px-3 py-2 bg-gray-800 hover:bg-gray-900 text-gray-300 hover:text-white text-sm flex items-center gap-2 rounded-md transition-colors duration-150 shadow-sm border border-gray-700" aria-label="New Group">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 21V8a2 2 0 0 0-2-2H7v15a2 2 0 0 0 2 2h10" />
+          <path d="M3 21V3h13a2 2 0 0 1 2 2v2" />
+        </svg>
+      </button>
+    </div>
 
-    <button id="addItemBtn" class="px-2 py-1 bg-white text-black text-sm flex items-center gap-1" aria-label="Add Item">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
-           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10" />
-        <circle cx="12" cy="12" r="3" />
-      </svg>
-    </button>
+    <div class="flex gap-3">
+      <button id="expandAllBtn" class="hint--top px-3 py-2 bg-gray-800 hover:bg-gray-900 text-gray-300 hover:text-white text-sm flex items-center gap-2 rounded-md transition-colors duration-150 shadow-sm border border-gray-700" aria-label="Expand All">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" 
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 8l5 5 5-5"/>
+          <path d="M7 13l5 5 5-5"/>
+        </svg>
+      </button>
+
+      <button id="collapseAllBtn" class="hint--top px-3 py-2 bg-gray-800 hover:bg-gray-900 text-gray-300 hover:text-white text-sm flex items-center gap-2 rounded-md transition-colors duration-150 shadow-sm border border-gray-700" aria-label="Collapse All">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M7 15l5-5 5 5"/>
+          <path d="M7 10l5-5 5 5"/>
+        </svg>
+      </button>
+      
+      <button id="toggleLockAllBtn" class="hint--top px-3 py-2 bg-gray-800 hover:bg-gray-900 text-gray-300 hover:text-white text-sm flex items-center gap-2 rounded-md transition-colors duration-150 shadow-sm border border-gray-700" aria-label="Toggle Lock">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" 
+             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+      </button>
+    </div>
   </div>
+</div>
 </div>
 
 <style>
@@ -490,7 +511,6 @@ editor_layers = {
 initUI() {
     const addLayerBtn = document.getElementById("addLayerBtn");
     const addGroupBtn = document.getElementById("addGroupBtn");
-    const addItemBtn = document.getElementById("addItemBtn");
     const layersTitleBar = document.getElementById("layersTitleBar");
     const nodesTitleBar = document.getElementById("nodesTitleBar");
     const spectrumTitleBar = document.getElementById("spectrumTitleBar");
@@ -516,9 +536,16 @@ initUI() {
         layerSearch.focus();
     });
     
+    const expandAllBtn = document.getElementById("expandAllBtn");
+    const collapseAllBtn = document.getElementById("collapseAllBtn");
+    const toggleLockAllBtn = document.getElementById("toggleLockAllBtn");
+
+    expandAllBtn.addEventListener("click", () => this.expandAll());
+    collapseAllBtn.addEventListener("click", () => this.collapseAll());
+    toggleLockAllBtn.addEventListener("click", () => this.toggleLockAll());
+    
     addLayerBtn.addEventListener("click", () => this.addLayer());
     addGroupBtn.addEventListener("click", () => this.addGroup());
-    addItemBtn.addEventListener("click", () => this.addItemToLayer("New Item"));
     layersTitleBar.addEventListener("click", () => this.toggleLayersPanel());
     
     this.dropIndicator = document.createElement("div");
@@ -1605,6 +1632,60 @@ renderNode(node, parentEl) {
     }
     this.renderNodes();
   },
+
+  expandAll() {
+  const expandRecursively = (nodes) => {
+    for (const node of nodes) {
+      if (node.type === 'layer' || node.type === 'group') {
+        node.expanded = true;
+        if (node.children && node.children.length > 0) {
+          expandRecursively(node.children);
+        }
+      }
+    }
+  };
+  expandRecursively(this.layers);
+  this.renderAllLayers();
+},
+
+collapseAll() {
+  const collapseRecursively = (nodes) => {
+    for (const node of nodes) {
+      if (node.type === 'layer' || node.type === 'group') {
+        node.expanded = false;
+        if (node.children && node.children.length > 0) {
+          collapseRecursively(node.children);
+        }
+      }
+    }
+  };
+  collapseRecursively(this.layers);
+  this.renderAllLayers();
+},
+
+toggleLockAll() {
+  const allLocked = this.areAllLocked(this.layers);
+  const toggleRecursively = (nodes, lock) => {
+    for (const node of nodes) {
+      node.locked = lock;
+      if (node.children && node.children.length > 0) {
+        toggleRecursively(node.children, lock);
+      }
+    }
+  };
+  toggleRecursively(this.layers, !allLocked);
+  this.renderAllLayers();
+},
+
+areAllLocked(nodes) {
+  for (const node of nodes) {
+    if (!node.locked) return false;
+    if (node.children && node.children.length > 0) {
+      if (!this.areAllLocked(node.children)) return false;
+    }
+  }
+  return true;
+},
 
   selectRange(idA, idB) {
     const visibleIds = this.getFlattenedVisibleIds();
