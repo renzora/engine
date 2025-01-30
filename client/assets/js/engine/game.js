@@ -310,7 +310,7 @@ game = {
       const offscreen = document.createElement('canvas')
       offscreen.width = wTiles * 16
       offscreen.height = hTiles * 16
-      const offCtx = offscreen.getContext('2d')
+      const offCtx = offscreen.getContext('2d', { willReadFrequently: true })
       let index = 0
       for (let yy=0; yy<yCoords.length; yy++) {
         for (let xx=0; xx<xCoords.length; xx++) {
@@ -414,13 +414,19 @@ game = {
               const pivotX = (minX + maxX + 1) / 2 * 16
               const pivotY = (maxY + 1) * 16
               this.ctx.translate(pivotX, pivotY)
+              const scale = rItem.scale || 1
+              this.ctx.scale(scale, scale)
+            
               if (rItem.flipHorizontal) {
                 this.ctx.scale(-1, 1)
-              } else if (rItem.rotation != null) {
+              }
+              
+              if (rItem.rotation != null) {
                 this.ctx.rotate(rItem.rotation)
               } else {
                 this.ctx.rotate(rot)
               }
+            
               const dx = -offscreen.width / 2
               const dy = -offscreen.height
               this.ctx.drawImage(offscreen, dx, dy)

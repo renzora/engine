@@ -143,84 +143,189 @@
 </div>
 </div>
 
-  <div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
-    <span class="font-semibold">Color Spectrum</span>
-    <svg
-      id="spectrumToggleIcon"
-      xmlns="http://www.w3.org/2000/svg"
-      class="h-4 w-4 transition-transform duration-300"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  </div>
+<div id="transformTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10 hidden">
+  <span class="font-semibold">Transform</span>
+  <svg
+    id="transformToggleIcon"
+    xmlns="http://www.w3.org/2000/svg"
+    class="h-4 w-4 transition-transform duration-300"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+</div>
 
-  <div id="spectrumBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300">
-    <div class="spectrum-container h-32 mb-4 relative">
-      <div class="absolute inset-0 rounded" style="background: linear-gradient(to right, 
-        hsl(0, 100%, 50%),
-        hsl(60, 100%, 50%),
-        hsl(120, 100%, 50%),
-        hsl(180, 100%, 50%),
-        hsl(240, 100%, 50%),
-        hsl(300, 100%, 50%),
-        hsl(360, 100%, 50%))">
-      </div>
-      <div class="absolute inset-0 rounded" style="background: linear-gradient(to bottom,
-        rgba(0,0,0,0),
-        rgba(0,0,0,1)),
-        linear-gradient(to right,
-        rgba(255,255,255,1),
-        rgba(255,255,255,0))">
-      </div>
-      <div id="spectrumHandle" class="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg cursor-pointer" style="transform: translate(-50%, -50%)"></div>
-    </div>
-    <div class="flex gap-2 items-center">
-      <div id="selectedColorPreview" class="w-8 h-8 rounded border border-gray-600"></div>
-      <input type="text" id="colorHexInput" class="bg-gray-700 text-sm px-2 py-1 rounded border border-gray-600" value="#000000">
-    </div>
-  </div>
-
-  <div id="nodesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
-    <span class="font-semibold">Object Addons</span>
-    <svg
-      id="nodesToggleIcon"
-      xmlns="http://www.w3.org/2000/svg"
-      class="h-4 w-4 transition-transform duration-300"
-      fill="none"
-      viewBox="0 0 24 24"
-      stroke="currentColor"
-      stroke-width="2">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
-    </svg>
-  </div>
-
-  <div id="nodesBody" class="flex flex-col bg-gray-800 transition-all duration-300">
-    <div class="border-b border-gray-600">
-      <div class="relative">
+<div id="transformBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300 hidden">
+  <!-- Scale -->
+  <div class="mb-4">
+    <div class="flex items-center gap-2">
+      <div class="text-sm font-medium text-gray-300">Scale</div>
+      <div class="flex items-center gap-2 flex-1">
+        <select
+          id="scaleInput"
+          class="w-20 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="0.1">0.1x</option>
+          <option value="0.2">0.2x</option>
+          <option value="0.3">0.3x</option>
+          <option value="0.4">0.4x</option>
+          <option value="0.5">0.5x</option>
+          <option value="0.6">0.6x</option>
+          <option value="0.7">0.7x</option>
+          <option value="0.8">0.8x</option>
+          <option value="0.9">0.9x</option>
+          <option value="1" selected>1.0x</option>
+          <option value="1.1">1.1x</option>
+          <option value="1.2">1.2x</option>
+          <option value="1.3">1.3x</option>
+          <option value="1.4">1.4x</option>
+          <option value="1.5">1.5x</option>
+          <option value="1.6">1.6x</option>
+          <option value="1.7">1.7x</option>
+          <option value="1.8">1.8x</option>
+          <option value="1.9">1.9x</option>
+          <option value="2.0">2.0x</option>
+        </select>
         <input
-          type="text"
-          id="nodeSearch"
-          placeholder="Search nodes..."
-          class="w-full bg-gray-700 text-white text-sm px-3 py-2 pl-8 focus:outline-none"
+          type="range"
+          id="scaleSlider"
+          class="flex-1 h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-purple-500"
+          min="0.1"
+          max="2"
+          step="0.1"
+          value="1"
         />
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          class="h-4 w-4 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-        </svg>
-      </div>
-    </div>
-    <div id="nodesList" class="h-64 overflow-y-auto">
-      <div class="node-list-container">
       </div>
     </div>
   </div>
+
+  <!-- Rotation -->
+  <div class="mb-4">
+    <div class="text-sm font-medium text-gray-300 mb-2">Rotation</div>
+    <div class="flex items-center gap-2">
+      <input
+        type="number"
+        id="rotationInput"
+        class="w-20 p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        step="45"
+        value="0"
+      />
+      <input
+        type="range"
+        id="rotationSlider"
+        class="flex-grow h-1 bg-gray-600 rounded-lg appearance-none cursor-pointer accent-orange-500"
+        min="0"
+        max="360"
+        step="45"
+        value="0"
+      />
+      <button
+        id="resetRotateBtn"
+        class="px-2 py-1 bg-gray-600 text-xs text-gray-300 rounded hover:bg-gray-500"
+      >Reset</button>
+    </div>
+  </div>
+
+  <!-- Flip -->
+  <div class="mb-4">
+    <div class="text-sm font-medium text-gray-300 mb-2">Flip</div>
+    <div class="flex items-center gap-2">
+      <button
+        id="flipHBtn"
+        class="px-2 py-1 bg-gray-600 text-xs text-gray-300 rounded hover:bg-gray-500"
+        title="Flip Horizontally"
+      >Horizontal</button>
+      <button
+        id="flipVBtn"
+        class="px-2 py-1 bg-gray-600 text-xs text-gray-300 rounded hover:bg-gray-500"
+        title="Flip Vertically"
+      >Vertical</button>
+    </div>
+  </div>
+</div>
+
+<!-- Color Spectrum Panel -->
+<div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10 hidden">
+  <span class="font-semibold">Color Spectrum</span>
+  <svg
+    id="spectrumToggleIcon"
+    xmlns="http://www.w3.org/2000/svg"
+    class="h-4 w-4 transition-transform duration-300"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+</div>
+
+<div id="spectrumBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300 hidden">
+  <div class="spectrum-container h-32 mb-4 relative">
+    <div class="absolute inset-0 rounded" style="background: linear-gradient(to right, 
+      hsl(0, 100%, 50%),
+      hsl(60, 100%, 50%),
+      hsl(120, 100%, 50%),
+      hsl(180, 100%, 50%),
+      hsl(240, 100%, 50%),
+      hsl(300, 100%, 50%),
+      hsl(360, 100%, 50%))">
+    </div>
+    <div class="absolute inset-0 rounded" style="background: linear-gradient(to bottom,
+      rgba(0,0,0,0),
+      rgba(0,0,0,1)),
+      linear-gradient(to right,
+      rgba(255,255,255,1),
+      rgba(255,255,255,0))">
+    </div>
+    <div id="spectrumHandle" class="absolute w-4 h-4 border-2 border-white rounded-full shadow-lg cursor-pointer" style="transform: translate(-50%, -50%)"></div>
+  </div>
+  <div class="flex gap-2 items-center">
+    <div id="selectedColorPreview" class="w-8 h-8 rounded border border-gray-600"></div>
+    <input type="text" id="colorHexInput" class="bg-gray-700 text-sm px-2 py-1 rounded border border-gray-600" value="#000000">
+  </div>
+</div>
+
+<!-- Object Nodes Panel -->
+<div id="nodesTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10 hidden">
+  <span class="font-semibold">Object Addons</span>
+  <svg
+    id="nodesToggleIcon"
+    xmlns="http://www.w3.org/2000/svg"
+    class="h-4 w-4 transition-transform duration-300"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+</div>
+
+<div id="nodesBody" class="flex flex-col bg-gray-800 transition-all duration-300 hidden">
+  <div class="border-b border-gray-600">
+    <div class="relative">
+      <input
+        type="text"
+        id="nodeSearch"
+        placeholder="Search nodes..."
+        class="w-full bg-gray-700 text-white text-sm px-3 py-2 pl-8 focus:outline-none"
+      />
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        class="h-4 w-4 absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+    </div>
+  </div>
+  <div id="nodesList" class="h-64 overflow-y-auto">
+    <div class="node-list-container">
+    </div>
+  </div>
+</div>
 
   <div id="layersTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10">
     <span class="font-semibold">Layers</span>
@@ -413,6 +518,7 @@ editor_layers = {
   nodesPanelOpen: true,
   spectrumPanelOpen: true,
   propertiesPanelOpen: true,
+  transformPanelOpen: true,
   layers: [],
   activeLayerId: "layer_default",
   selectedLayers: new Set(),
@@ -461,9 +567,11 @@ editor_layers = {
     const nodesTitleBar = document.getElementById("nodesTitleBar");
     const spectrumTitleBar = document.getElementById("spectrumTitleBar");
     const propertiesTitleBar = document.getElementById("propertiesTitleBar");
+    const transformTitleBar = document.getElementById("transformTitleBar");
     nodesTitleBar.addEventListener("click", () => this.toggleNodesPanel());
     spectrumTitleBar.addEventListener("click", () => this.toggleSpectrumPanel());
     propertiesTitleBar.addEventListener("click", () => this.togglePropertiesPanel());
+    transformTitleBar.addEventListener("click", () => this.toggleTransformPanel());
     const searchInput = document.getElementById('nodeSearch');
     searchInput.addEventListener('input', (e) => this.handleNodeSearch(e.target.value));
     addLayerBtn.addEventListener("click", () => this.addLayer());
@@ -504,6 +612,154 @@ editor_layers = {
     const slideTab = document.getElementById("slideTab");
     slideTab.addEventListener("click", () => this.togglePanelSlide());
   },
+
+initTransformControls() {
+  const scaleInput = document.getElementById('scaleInput');
+  const scaleSlider = document.getElementById('scaleSlider');
+  const rotationInput = document.getElementById('rotationInput');
+  const rotationSlider = document.getElementById('rotationSlider');
+  const flipHBtn = document.getElementById('flipHBtn');
+  const flipVBtn = document.getElementById('flipVBtn');
+  const resetRotateBtn = document.getElementById('resetRotateBtn');
+
+  const updateScale = (value) => {
+    if (!editor_window.selectedObjects.length) return;
+    editor_window.pushToUndoStack();
+    const scale = parseFloat(value);
+    scaleInput.value = scale;
+    scaleSlider.value = scale;
+    editor_window.selectedObjects.forEach(obj => {
+      obj.scale = scale;
+    });
+  };
+
+  const updateRotation = (value) => {
+    if (!editor_window.selectedObjects.length) return;
+    editor_window.pushToUndoStack();
+    editor_window.selectedObjects.forEach(obj => {
+      obj.rotation = (parseFloat(value) * Math.PI) / 180;
+    });
+  };
+
+  scaleInput.addEventListener('change', (e) => {
+    updateScale(e.target.value);
+  });
+
+  scaleSlider.addEventListener('input', (e) => {
+    updateScale(e.target.value);
+  });
+
+  rotationInput.addEventListener('input', (e) => {
+    const value = e.target.value;
+    rotationSlider.value = value;
+    updateRotation(value);
+  });
+
+  rotationSlider.addEventListener('input', (e) => {
+    const value = e.target.value;
+    rotationInput.value = value;
+    updateRotation(value);
+  });
+
+  flipHBtn.addEventListener('click', () => {
+    if (!editor_window.selectedObjects.length) return;
+    editor_window.pushToUndoStack();
+    editor_window.selectedObjects.forEach(obj => {
+      obj.flipHorizontal = !obj.flipHorizontal;
+    });
+  });
+
+  flipVBtn.addEventListener('click', () => {
+    if (!editor_window.selectedObjects.length) return;
+    editor_window.pushToUndoStack();
+    editor_window.selectedObjects.forEach(obj => {
+      obj.flipVertical = !obj.flipVertical;
+    });
+  });
+
+  resetRotateBtn.addEventListener('click', () => {
+    if (!editor_window.selectedObjects.length) return;
+    rotationInput.value = 0;
+    rotationSlider.value = 0;
+    updateRotation(0);
+  });
+},
+
+updateTransformControls() {
+  const transformTitleBar = document.getElementById('transformTitleBar');
+  const transformBody = document.getElementById('transformBody');
+  const scaleInput = document.getElementById('scaleInput');
+  const scaleSlider = document.getElementById('scaleSlider');
+  const rotationInput = document.getElementById('rotationInput');
+  const rotationSlider = document.getElementById('rotationSlider');
+  const flipHBtn = document.getElementById('flipHBtn');
+  const flipVBtn = document.getElementById('flipVBtn');
+
+  if (editor_window.selectedObjects.length > 0) {
+    transformTitleBar.classList.remove('hidden');
+    if (this.transformPanelOpen) {
+      transformBody.classList.remove('hidden');
+    }
+  } else {
+    transformTitleBar.classList.add('hidden');
+    transformBody.classList.add('hidden');
+  }
+
+  if (editor_window.selectedObjects.length === 1) {
+    const obj = editor_window.selectedObjects[0];
+    const scale = obj.scale || 1;
+    scaleInput.value = scale;
+    scaleSlider.value = scale;
+    const rotation = obj.rotation || 0;
+    const degrees = (rotation * 180) / Math.PI;
+    rotationInput.value = degrees;
+    rotationSlider.value = degrees;
+    flipHBtn.classList.toggle('bg-blue-500', obj.flipHorizontal);
+    flipVBtn.classList.toggle('bg-blue-500', obj.flipVertical);
+  } else if (editor_window.selectedObjects.length > 1) {
+    scaleInput.value = 1;
+    scaleSlider.value = 1;
+    rotationInput.value = 0;
+    rotationSlider.value = 0;
+    flipHBtn.classList.remove('bg-blue-500');
+    flipVBtn.classList.remove('bg-blue-500');
+  }
+},
+
+toggleTransformPanel() {
+  const bodyEl = document.getElementById("transformBody");
+  const toggleIcon = document.getElementById("transformToggleIcon");
+  this.transformPanelOpen = !this.transformPanelOpen;
+  if (this.transformPanelOpen) {
+    bodyEl.classList.remove("hidden-panel");
+    toggleIcon.classList.remove("rotate-180");
+  } else {
+    bodyEl.classList.add("hidden-panel");
+    toggleIcon.classList.add("rotate-180");
+  }
+},
+
+start() {
+  this.fetchSceneLayers(game.sceneid).then(() => {
+    this.initUI();
+    this.initTransformControls();
+    if (!this.layers || this.layers.length === 0) {
+      this.layers = [{
+        id: "layer_default",
+        type: "layer",
+        name: "Default Layer",
+        visible: true,
+        locked: false,
+        expanded: true,
+        children: []
+      }];
+    }
+    this.activeLayerId = this.layers[0].id;
+    this.selectLayersById(this.activeLayerId);
+    this.renderAllLayers();
+    this.initColorPicker();
+  });
+},
 
   initBackgroundInput() {
     const bgInput = document.getElementById('backgroundInput');
@@ -714,6 +970,7 @@ editor_layers = {
       this.selectLayersById(this.activeLayerId);
       this.renderAllLayers();
       this.initColorPicker();
+      this.initTransformControls();
     });
   },
 
@@ -909,6 +1166,7 @@ editor_layers = {
       this.activeLayerId = null;
     }
     this.renderAllLayers();
+    this.updateTransformControls();
   },
 
   removeLayerById(layerId) {
@@ -1563,7 +1821,6 @@ editor_layers = {
     });
   });
 
-  // Remove the layer/node from the tree itself
   this.removeNodeFromParent(id);
   this.selectedLayers.delete(id);
   if (this.activeLayerId === id) {
