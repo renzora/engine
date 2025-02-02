@@ -1,12 +1,11 @@
 <div class="fixed bottom-0 left-1/2 -translate-x-1/2 z-10 text-sm mb-1 tracking-tight" data-close="false">
-  <span class="text-white" id="input_method" onclick="plugin.load('gamepads', { ext: 'njk' });">Input:keyboard</span>
-  <span id="tiles_rendered" class="text-white rounded-md"></span>
-  <span id="background_rendered" class="text-white rounded-md"></span>
-  <span id="lights_rendered" class="text-white rounded-md"></span>
-  <span id="effects_rendered" class="text-white rounded-md"></span>
-  <span id="animations_rendered" class="text-white rounded-md"></span>
-  <span id="render_calls" class="text-white rounded-md"></span>
-
+  <span class="text-white" id="input_method" onclick="plugin.load('gamepads', { ext: 'njk' });">{input}:{keyboard}</span>
+  <span id="tiles_rendered" class="text-white rounded-md">{tiles}: <span id="tiles_value"></span></span>
+  <span id="background_rendered" class="text-white rounded-md">{background}: <span id="background_value"></span></span>
+  <span id="lights_rendered" class="text-white rounded-md">{lights}: <span id="lights_value"></span></span>
+  <span id="effects_rendered" class="text-white rounded-md">{effects}: <span id="effects_value"></span></span>
+  <span id="animations_rendered" class="text-white rounded-md">{animations}: <span id="animations_value"></span></span>
+  <span id="render_calls" class="text-white rounded-md">{draws}: <span id="draws_value"></span></span>
   <span id="game_time" class="text-white rounded-md"></span>
   <span class="text-white rounded-md cursor-pointer" id="gameFps" onclick="plugin.load('activity_monitor', { ext: 'njk' });"></span>
 </div>
@@ -21,89 +20,72 @@ debug = {
 
   onRender() {
     const now = performance.now();
-    
     if (this.lastRenderTime === null) {
       this.lastRenderTime = now;
     } else {
       const timeElapsed = now - this.lastRenderTime;
       this.lastRenderTime = now;
-
       const fps = 1000 / timeElapsed;
       this.tracker('fps', fps);
-
       this.fpsSamples.push({ t: now, fps: fps });
       while (this.fpsSamples.length && this.fpsSamples[0].t < now - 1000) {
         this.fpsSamples.shift();
       }
-
       if (now - this.lastFpsTextUpdate >= this.fpsUpdateInterval) {
         this.lastFpsTextUpdate = now;
-
         let sum = 0;
         for (let i = 0; i < this.fpsSamples.length; i++) {
           sum += this.fpsSamples[i].fps;
         }
-        const avgFPS = this.fpsSamples.length > 0
-          ? sum / this.fpsSamples.length
-          : 0;
-
+        const avgFPS = this.fpsSamples.length > 0 ? sum / this.fpsSamples.length : 0;
         const debugFPS = document.getElementById('gameFps');
         if (debugFPS) {
-  debugFPS.innerHTML = `FPS:${fps.toFixed(2)} (Avg:${avgFPS.toFixed(2)})`;
-  debugFPS.classList.remove('text-red-500', 'text-yellow-500', 'text-green-500');
-
-  if (fps < 30) {
-  debugFPS.classList.add('text-red-500');
-} else if (fps < 50) {
-  debugFPS.classList.add('text-yellow-500');
-} else {
-  debugFPS.classList.add('text-green-500');
-}
-
-}
-
+          debugFPS.innerHTML = `FPS:${fps.toFixed(2)} (Avg:${avgFPS.toFixed(2)})`;
+          debugFPS.classList.remove('text-red-500', 'text-yellow-500', 'text-green-500');
+          if (fps < 30) {
+            debugFPS.classList.add('text-red-500');
+          } else if (fps < 50) {
+            debugFPS.classList.add('text-yellow-500');
+          } else {
+            debugFPS.classList.add('text-green-500');
+          }
+        }
       }
     }
-
     if (plugin.exists('time')) {
       const gameTimeDisplay = document.getElementById('game_time');
       if (gameTimeDisplay && typeof time !== 'undefined' && time.display) {
         gameTimeDisplay.innerHTML = time.display();
       }
     }
-
     this.updateUI();
     this.finalizeFrame();
   },
 
   updateUI() {
-    const tilesRenderedEl = document.getElementById('tiles_rendered');
-    const backgroundRenderedEl = document.getElementById('background_rendered');
-    const lightsRenderedEl = document.getElementById('lights_rendered');
-    const effectsRenderedEl = document.getElementById('effects_rendered');
-    const animationsRenderedEl = document.getElementById('animations_rendered');
-    const renderCallsEl = document.getElementById('render_calls');
-
-    if (tilesRenderedEl && typeof game !== 'undefined') {
-      tilesRenderedEl.innerHTML = `Tiles:${game.tileCount || 0}`;
+    const tilesValueEl = document.getElementById('tiles_value');
+    const backgroundValueEl = document.getElementById('background_value');
+    const lightsValueEl = document.getElementById('lights_value');
+    const effectsValueEl = document.getElementById('effects_value');
+    const animationsValueEl = document.getElementById('animations_value');
+    const drawsValueEl = document.getElementById('draws_value');
+    if (tilesValueEl && typeof game !== 'undefined') {
+      tilesValueEl.innerHTML = game.tileCount || 0;
     }
-    if (backgroundRenderedEl && typeof game !== 'undefined') {
-      backgroundRenderedEl.innerHTML = `Background:${game.backgroundTileCount || 0}`;
+    if (backgroundValueEl && typeof game !== 'undefined') {
+      backgroundValueEl.innerHTML = game.backgroundTileCount || 0;
     }
-    if (lightsRenderedEl && plugin.exists('lighting') && typeof lighting !== 'undefined') {
-      lightsRenderedEl.innerHTML = `Lights:${lighting.lights.length}`;
+    if (lightsValueEl && plugin.exists('lighting') && typeof lighting !== 'undefined') {
+      lightsValueEl.innerHTML = lighting.lights.length;
     }
-    if (effectsRenderedEl && plugin.exists('effects') && typeof effects !== 'undefined') {
-      effectsRenderedEl.innerHTML = `Effects:${
-        effects.activeEffects ? Object.keys(effects.activeEffects).length : 0
-      }`;
+    if (effectsValueEl && plugin.exists('effects') && typeof effects !== 'undefined') {
+      effectsValueEl.innerHTML = effects.activeEffects ? Object.keys(effects.activeEffects).length : 0;
     }
-    if (animationsRenderedEl && typeof game !== 'undefined') {
-      animationsRenderedEl.innerHTML = `Animations:${game.animationCount || 0}`;
+    if (animationsValueEl && typeof game !== 'undefined') {
+      animationsValueEl.innerHTML = game.animationCount || 0;
     }
-
-    if (renderCallsEl && typeof game !== 'undefined') {
-      renderCallsEl.innerHTML = `Draws:${game.renderCalls || 0}`;
+    if (drawsValueEl && typeof game !== 'undefined') {
+      drawsValueEl.innerHTML = game.renderCalls || 0;
     }
   },
 
@@ -127,14 +109,12 @@ debug = {
   finalizeFrame() {
     const now = Date.now();
     const FIVE_SECONDS = 5000;
-
     for (const fnName in this.functionCalls) {
       const tracked = this.functionCalls[fnName];
       tracked.timestamps.push(now);
       tracked.countHistory.push(tracked.frameCount);
       tracked.valueHistory.push(tracked.lastValue);
       tracked.frameCount = 0;
-
       while (tracked.timestamps.length && tracked.timestamps[0] < now - FIVE_SECONDS) {
         tracked.timestamps.shift();
         tracked.countHistory.shift();

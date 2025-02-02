@@ -6,6 +6,7 @@ game = {
   x: null,
   y: null,
   timestamp: 0,
+  local: null,
   worldWidth: 1280,
   worldHeight: 944,
   zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 5,
@@ -73,7 +74,6 @@ game = {
       input.assign('resize', e => this.resizeCanvas(e))
       this.resizeCanvas()
       this.loop()
-      gamepad.init(config)
       plugin.hook('onGameCreate')
       this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this))
       this.canvas.addEventListener('contextmenu', e => e.preventDefault())
@@ -87,9 +87,10 @@ game = {
         this.playerid = this.mainSprite.id
         this.sprites[this.playerid] = this.mainSprite
       }
+      this.local = config.local
       if (typeof config.after === 'function') config.after()
     })
-  },
+},
 
   pause() {
     cancelAnimationFrame(this.animationFrameId)
@@ -126,41 +127,72 @@ game = {
   },
 
   scene(sceneId) {
-      plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid])
-      fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
-        method: 'GET', headers: { 'Content-Type': 'application/json' }
-      })
-      .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-      .then(d => {
-        if (d.message === 'success') {
-          plugin.lighting.clearLightsAndEffects()
-          this.roomData = d.roomData
-          this.sceneid = d._id
-          this.serverid = d.server_id
-          localStorage.setItem('sceneid', d._id)
-          this.worldWidth = d.width || 1280
-          this.worldHeight = d.height || 944
-          this.x = d.startingX || 0
-          this.y = d.startingY || 0
-          const p = this.sprites[this.playerid]
-          if (p) { p.x = this.x; p.y = this.y; }
-          this.sceneBg = d.bg || null
-          this.resizeCanvas()
-          plugin.collision.walkableGridCache = null
-          plugin.collision.createWalkableGrid()
-          this.overlappingTiles = []
-          camera.update()
-          plugin.effects.start('fadeOut', 1000)
-          plugin.effects.start('fadeIn', 1000)
-          this.buildRepeatingBackground()
-        } else {
-          plugin.load('errors', { ext: 'html' })
-        }
-      })
-      .catch(() => {
-        plugin.load('errors', { ext: 'html' })
-      })
-    },      
+    plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
+    if (this.local) {
+        console.log('fetching locally');
+        fetch('assets/json/roomData.json')
+            .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+            .then(d => {
+                plugin.lighting.clearLightsAndEffects();
+                this.roomData = d.roomData;
+                this.sceneid = d._id;
+                this.serverid = d.server_id;
+                localStorage.setItem('sceneid', d._id);
+                this.worldWidth = d.width || 1280;
+                this.worldHeight = d.height || 944;
+                this.x = d.startingX || 0;
+                this.y = d.startingY || 0;
+                this.roomData.items = this.roomData.items.filter(item => this.objectData[item.id]);
+                const p = this.sprites[this.playerid];
+                if (p) { p.x = this.x; p.y = this.y; }
+                this.sceneBg = d.bg || null;
+                this.resizeCanvas();
+                this.overlappingTiles = [];
+                camera.update();
+                plugin.effects.start('fadeOut', 1000);
+                plugin.effects.start('fadeIn', 1000);
+                this.buildRepeatingBackground();
+            })
+            .catch(() => {
+                plugin.load('errors', { ext: 'html' });
+            });
+    } else {
+        console.log("fetching from database");
+        fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+        })
+        .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+        .then(d => {
+            if (d.message === 'success') {
+                plugin.lighting.clearLightsAndEffects();
+                this.roomData = d.roomData;
+                this.sceneid = d._id;
+                this.serverid = d.server_id;
+                localStorage.setItem('sceneid', d._id);
+                this.worldWidth = d.width || 1280;
+                this.worldHeight = d.height || 944;
+                this.x = d.startingX || 0;
+                this.y = d.startingY || 0;
+                this.roomData.items = this.roomData.items.filter(item => this.objectData[item.id]);
+                const p = this.sprites[this.playerid];
+                if (p) { p.x = this.x; p.y = this.y; }
+                this.sceneBg = d.bg || null;
+                this.resizeCanvas();
+                this.overlappingTiles = [];
+                camera.update();
+                plugin.effects.start('fadeOut', 1000);
+                plugin.effects.start('fadeIn', 1000);
+                this.buildRepeatingBackground();
+            } else {
+                plugin.load('errors', { ext: 'html' });
+            }
+        })
+        .catch(() => {
+            plugin.load('errors', { ext: 'html' });
+        });
+    }
+},
 
   loop(timestamp) {
     if (!this.lastTime) {
@@ -178,7 +210,6 @@ game = {
     this.deltaTime = this.fixedDeltaTime
     this.lastTime = timestamp
     while (this.accumulatedTime >= this.fixedDeltaTime) {
-      gamepad.updateGamepadState()
       this.viewportXStart = Math.floor(camera.cameraX / 16)
       this.viewportXEnd   = Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16)
       this.viewportYStart = Math.floor(camera.cameraY / 16)
@@ -210,7 +241,6 @@ game = {
     this.render()
     plugin.hook('onRender')
     this.renderCarriedObjects()
-    this.handleDebugUtilities()
     if (plugin.ui_console_editor_inventory.selectedInventoryItem) plugin.ui_console_editor_inventory.render()
     plugin.ui_console_tab_window.renderCollisionBoundaries()
     plugin.ui_console_tab_window.renderNearestWalkableTile()
@@ -287,21 +317,17 @@ game = {
     this.ctx.fillStyle = 'black';
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.ctx.restore();
-  
     this.ctx.setTransform(this.zoomLevel, 0, 0, this.zoomLevel,
       -Math.round(camera.cameraX * this.zoomLevel),
       -Math.round(camera.cameraY * this.zoomLevel));
-  
     this.ctx.save();
     this.ctx.beginPath();
     this.ctx.rect(0, 0, this.worldWidth, this.worldHeight);
     this.ctx.clip();
-  
     if (this.bgPattern) {
       this.ctx.fillStyle = this.bgPattern;
       this.ctx.fillRect(0, 0, this.worldWidth, this.worldHeight);
     }
-  
     this.ctx.restore();
     plugin.hook('onRenderBackground');
     this.renderCalls++;
@@ -348,29 +374,24 @@ game = {
   render() {
     this.renderQueue = [];
     plugin.hook('onRenderAll');
-    
     const expanded = Object.keys(this.objectData).reduce((acc, key) => {
       acc[key] = this.objectData[key].map(this.expandTileData.bind(this));
       return acc;
     }, {});
-  
     this.ctx.setTransform(this.zoomLevel, 0, 0, this.zoomLevel,
       -Math.round(camera.cameraX * this.zoomLevel),
       -Math.round(camera.cameraY * this.zoomLevel));
-  
     if (this.roomData && this.roomData.items) {
       this.roomData.items.forEach(rItem => {
         const iData = expanded[rItem.id];
         if (!iData || iData.length === 0) return;
         const tData = iData[0];
-  
         if (rItem.visible === false) {
           this.currentTileData = tData;
           this.currentRoomItem = rItem;
           this.handleLights();
           return;
         }
-  
         const xC = rItem.x || [];
         const yC = rItem.y || [];
         const minX = Math.min(...xC);
@@ -386,55 +407,36 @@ game = {
         const cT = this.viewportYStart * 16;
         const cB = this.viewportYEnd * 16;
         if (objR < cL || objL > cR || objB < cT || objT > cB) return;
-  
-        let rot = tData.rotation || 0;
-        if (rItem.isRotating) {
-          actions.handleRotation(rItem);
-          rot = rItem.rotation;
-        }
-        if (tData.sway === true) {
-          rot += this.handleSway(rItem);
-        }
-        if (rItem.rotation != null) {
-          rot = rItem.rotation;
-        }
-  
-        const cacheKey = rItem.id + '_' + (tData.currentFrame || 0) + '_' + rot;
+        const cacheKey = rItem.id + '_' + (tData.currentFrame || 0);
         let offscreen = this.objectCache[cacheKey];
         if (!offscreen) {
           offscreen = this.buildObjectCanvas(cacheKey, tData, xC, yC);
         }
-  
         let zIndex;
         if (tData.z === 0) {
           zIndex = -9999;
         } else {
           zIndex = maxY * 16;
-  
           if (!tData.s) {
             const overlappingItems = this.roomData.items.filter(other => {
               if (other === rItem) return false;
               const otherData = expanded[other.id]?.[0];
               if (!otherData || !otherData.s) return false;
-  
               const otherX = other.x || [];
               const otherY = other.y || [];
               const ox1 = Math.min(...otherX) * 16;
               const ox2 = (Math.max(...otherX) + 1) * 16;
               const oy1 = Math.min(...otherY) * 16;
               const oy2 = (Math.max(...otherY) + 1) * 16;
-  
               const thisX1 = minX * 16;
               const thisX2 = (maxX + 1) * 16;
               const thisY1 = minY * 16;
               const thisY2 = (maxY + 1) * 16;
-  
               return (
                 thisX1 < ox2 && thisX2 > ox1 &&
                 thisY1 < oy2 && thisY2 > oy1
               );
             });
-  
             if (overlappingItems.length > 0) {
               let highestSurfaceZ = 0;
               overlappingItems.forEach(surface => {
@@ -446,7 +448,6 @@ game = {
             }
           }
         }
-  
         this.renderQueue.push({
           zIndex: zIndex,
           type: 'object',
@@ -454,8 +455,7 @@ game = {
           visible: true,
           layer_id: "item_" + rItem.layer_id,
           data: {
-            offscreen,
-            rotation: rot
+            offscreen
           },
           draw: () => {
             this.ctx.save();
@@ -464,17 +464,9 @@ game = {
             this.ctx.translate(pivotX, pivotY);
             const scale = rItem.scale || 1;
             this.ctx.scale(scale, scale);
-  
             if (rItem.flipHorizontal) {
               this.ctx.scale(-1, 1);
             }
-  
-            if (rItem.rotation != null) {
-              this.ctx.rotate(rItem.rotation);
-            } else {
-              this.ctx.rotate(rot);
-            }
-  
             const dx = -offscreen.width / 2;
             const dy = -offscreen.height;
             this.ctx.drawImage(offscreen, dx, dy);
@@ -483,14 +475,11 @@ game = {
             this.ctx.restore();
           }
         });
-  
         this.currentTileData = tData;
         this.currentRoomItem = rItem;
         this.handleLights();
-        this.handleEffects();
       });
     }
-  
     for (let id in this.sprites) {
       const sp = this.sprites[id];
       const r = sp.x + sp.width;
@@ -516,12 +505,10 @@ game = {
         this.spriteCount++;
       }
     }
-  
     this.renderQueue.sort((a, b) => a.zIndex - b.zIndex);
     this.renderQueue.forEach(item => {
       item.draw();
     });
-    
     plugin.hook('onRender');
     plugin.debug.tracker("render.renderAll");
   },
@@ -533,34 +520,9 @@ game = {
     const my = (e.clientY - r.top)/this.zoomLevel + camera.cameraY
     this.x = Math.floor(mx/16)
     this.y = Math.floor(my/16)
-    if (plugin.exists('collision')) {
-      if (!plugin.collision.isTileWalkable(this.x,this.y)) return
-    }
     if (plugin.exists('pathfinding')) {
-      plugin.pathfinding.walkToClickedTile(this.mainSprite, e, this.x, this.y)
+      plugin.pathfinding.walkToClickedTile(this.mainSprite, e, this.x, this.y);
     }
-  },
-
-  handleSway(rm) {
-    if (!rm.swayInitialized) {
-      rm.swayAngle = Math.PI/(160+Math.random()*40)
-      rm.swaySpeed = 5000+Math.random()*2000
-      rm.swayInitialized=true
-    }
-    if (rm.isInViewport) {
-      const et = rm.swayElapsed||0
-      rm.swayElapsed=et+this.deltaTime
-      const s = Math.sin((rm.swayElapsed / rm.swaySpeed)*Math.PI*2)*rm.swayAngle
-      return s
-    }
-    return 0
-  },
-
-  initializeSway(rm) {
-    rm.swayAngle=Math.PI/(160+Math.random()*40)
-    rm.swaySpeed=5000+Math.random()*2000
-    rm.swayElapsed=0
-    rm.swayInitialized=true
   },
 
   renderPathfinderLine() {
@@ -604,14 +566,6 @@ game = {
       const ix=this.mainSprite.x-8
       const iy=this.mainSprite.y-32-(this.objectData[id][0].b.length)
       this.drawCarriedObject(this.ctx,id,ix,iy)
-    }
-  },
-
-  handleDebugUtilities() {
-    if (typeof debug_window!=='undefined') {
-      if (this.showGrid && debug_window.grid) debug_window.grid()
-      if (this.showCollision && debug_window.tiles) debug_window.tiles()
-      if (this.showTiles && debug_window.tiles) debug_window.tiles()
     }
   },
 
@@ -665,49 +619,6 @@ game = {
         }
       })
     }
-  },
-
-  handleEffects() {
-    const td=this.currentTileData
-    const ri=this.currentRoomItem
-    if(!td||!ri||!this.fxData||!td.fx)return
-    const fxInfo=this.fxData[td.fx]
-    if(!fxInfo||!td.fxp)return
-    const sx=this.viewportXStart
-    const ex=this.viewportXEnd
-    const sy=this.viewportYStart
-    const ey=this.viewportYEnd
-    td.fxp.forEach(pos=>{
-      const ix=pos[0], iy=pos[1]
-      if(ix>=0&&ix<ri.x.length && iy>=0&&iy<ri.y.length) {
-        const tX=ri.x[ix], tY=ri.y[iy]
-        const px=tX*16+8, py=tY*16+8
-        const inV=(px>=sx*16&&px<ex*16&&py>=sy*16&&py<ey*16)
-        const fID=`${ri.id}_${tX}_${tY}`
-        if(inV) {
-          if(!particles.activeEffects[fID]) {
-            const opts={
-              count:fxInfo.count,
-              speed:fxInfo.speed,
-              angle:fxInfo.baseAngle,
-              spread:fxInfo.spread,
-              colors:fxInfo.color.map(c=>`rgba(${c.join(',')},${fxInfo.Opacity})`),
-              life:fxInfo.frames,
-              size:fxInfo.size,
-              type:'default',
-              repeat:fxInfo.repeat,
-              glow:fxInfo.Glow,
-              opacity:fxInfo.Opacity,
-              blur:fxInfo.Blur,
-              shape:fxInfo.Shape.toLowerCase()
-            }
-            particles.createParticles(px,py,opts,fID)
-          }
-        } else {
-          if(particles.activeEffects[fID]) delete particles.activeEffects[fID]
-        }
-      }
-    })
   },
 
   renderBubbles(sp,colorHex) {

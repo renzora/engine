@@ -11,6 +11,20 @@
   </div>
 </div>
 
+<style>
+#console_resizeHandle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+#console_window.slid-off {
+  transform: translateX(100%);
+}
+
+#console_slideTabIcon {
+  transition: transform 0.3s ease;
+}
+</style>
+
 <script>
 console_window = {
     isOpen: false,
@@ -31,17 +45,18 @@ console_window = {
         full_screen: 11
     },
 
-    start() {
-        this.load_tab_buttons();
-        this.toggleConsoleWindow(false);
-        this.bindGamepadButtons();
+start() {
+    this.load_tab_buttons();
+    this.toggleConsoleWindow(false);
+    this.bindGamepadButtons();
+    this.initResizeAndSlide();
 
-        game.canvas.addEventListener('click', function(event) {
-            if (this.isOpen) {
-                this.toggleConsoleWindow();
-            }
-        });
-    },
+    game.canvas.addEventListener('click', function(event) {
+        if (this.isOpen) {
+            this.toggleConsoleWindow();
+        }
+    });
+},
 
     unmount() {
         this.eventListeners.forEach(({ element, event, handler }) => {
@@ -87,6 +102,80 @@ console_window = {
         button.removeChild(iconDiv);
         button.appendChild(canvas);
     },
+
+initResizeAndSlide() {
+  const consoleWindow = document.getElementById('console_window');
+  const resizeHandle = document.createElement('div');
+  resizeHandle.id = 'console_resizeHandle';
+  resizeHandle.className = 'resize-handle';
+  resizeHandle.style.cssText = `
+    position: absolute;
+    right: -5px;
+    top: 0;
+    bottom: 0;
+    width: 10px;
+    cursor: ew-resize;
+    z-index: 10;
+  `;
+  consoleWindow.appendChild(resizeHandle);
+
+  const slideTab = document.createElement('div');
+  slideTab.id = 'console_slideTab';
+  slideTab.className = 'absolute -right-4 top-2 w-4 h-6 bg-[#1c3660] text-white flex items-center justify-center cursor-pointer rounded-r shadow-lg z-20';
+  slideTab.innerHTML = `
+    <svg id="console_slideTabIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7" />
+    </svg>
+  `;
+  consoleWindow.appendChild(slideTab);
+
+  let isResizing = false;
+  let initialWidth = consoleWindow.offsetWidth;
+  let initialX = 0;
+
+  resizeHandle.addEventListener('mousedown', (e) => {
+    isResizing = true;
+    initialWidth = consoleWindow.offsetWidth;
+    initialX = e.clientX;
+    document.body.style.cursor = 'ew-resize';
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!isResizing) return;
+    const deltaX = e.clientX - initialX;
+    const newWidth = initialWidth + deltaX;
+    if (newWidth >= 200 && newWidth <= 600) {
+      consoleWindow.style.width = `${newWidth}px`;
+      game.resizeCanvas();
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (isResizing) {
+      isResizing = false;
+      document.body.style.cursor = '';
+    }
+  });
+
+  slideTab.addEventListener('click', () => this.toggleConsoleSlide());
+},
+
+toggleConsoleSlide() {
+  const consoleWindow = document.getElementById('console_window');
+  const slideTabIcon = document.getElementById('console_slideTabIcon');
+  
+  this.panelSlideVisible = !this.panelSlideVisible;
+  
+  if (this.panelSlideVisible) {
+    consoleWindow.style.transform = 'translateX(0)';
+    slideTabIcon.style.transform = 'rotate(0deg)';
+  } else {
+    consoleWindow.style.transform = 'translateX(-100%)';
+    slideTabIcon.style.transform = 'rotate(180deg)';
+  }
+  
+  game.resizeCanvas();
+},
 
     bButton() {
         console.log("b button pressed from console_window");

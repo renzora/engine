@@ -6,96 +6,234 @@
   >
     <ul id="menuItems" class="space-y-1"></ul>
   </div>
-  </div>
+</div>
 
-  <script>
+<script>
 context_menu = {
-      contextMenuElement: null,
-      menuItemsElement: null,
-      contextmenuHandler: null,
-      clickHandler: null,
-      menuItemsConfig: [],
+  contextMenuElement: null,
+  menuItemsElement: null,
+  contextmenuHandler: null,
+  clickHandler: null,
+  menuItemsConfig: [],
 
-      start() {
-        this.contextMenuElement = document.getElementById('context_menu_window');
-        this.menuItemsElement = document.getElementById('menuItems');
+  contextMenu: {
+    showContextMenu: function (menuElement, menuItemsElement, config, clientX, clientY) {
+      menuItemsElement.innerHTML = '';
+      this.buildMenu(menuItemsElement, config);
+      menuElement.classList.remove('hidden');
+      const w = menuElement.offsetWidth;
+      const h = menuElement.offsetHeight;
+      let finalLeft = clientX;
+      let finalTop = clientY;
 
-        this.contextmenuHandler = (event) => {
-          ui.contextMenu.disableDefaultContextMenu(event, (x, y) => {
-            this.populateMenuItems(x, y);
-            ui.contextMenu.showContextMenu(
-              this.contextMenuElement,
-              this.menuItemsElement,
-              this.menuItemsConfig,
-              x,
-              y
-            );
+      if (clientX + w > window.innerWidth) {
+        finalLeft = clientX - w;
+        if (finalLeft < 0) finalLeft = 0;
+      }
+
+      if (clientY + h > window.innerHeight) {
+        finalTop = clientY - h;
+        if (finalTop < 0) finalTop = 0;
+      }
+
+      menuElement.style.left = finalLeft + 'px';
+      menuElement.style.top = finalTop + 'px';
+    },
+
+    buildMenu: function (parentUl, items) {
+      items.forEach((item) => {
+        let li = document.createElement('li');
+        li.classList.add('px-4', 'py-2', 'cursor-pointer', 'hover:bg-gray-900', 'text-white');
+
+        if (item.type === 'checkbox') {
+          const checkbox = document.createElement('input');
+          checkbox.type = 'checkbox';
+          checkbox.id = item.id;
+          checkbox.checked = item.initialValue;
+          li.style.userSelect = 'none';
+
+          li.addEventListener('click', () => {
+            checkbox.checked = !checkbox.checked;
+            item.initialValue = checkbox.checked;
+            if (item.callback) item.callback(checkbox.checked);
           });
-        };
 
-        this.clickHandler = (event) => {
-          ui.contextMenu.hideMenus(event, this.contextMenuElement);
-        };
+          li.appendChild(checkbox);
+          li.appendChild(document.createTextNode(' ' + item.label));
+        } else if (item.type === 'number') {
+          li.textContent = item.label;
 
-        document.addEventListener('contextmenu', this.contextmenuHandler);
-        document.addEventListener('click', this.clickHandler);
-      },
+          const numberInput = document.createElement('input');
+          numberInput.type = 'number';
+          numberInput.id = item.id;
+          numberInput.value = item.initialValue;
+          numberInput.classList.add('ml-2', 'w-16', 'text-black', 'px-1', 'py-1', 'border', 'border-gray-600');
+          numberInput.addEventListener('click', (e) => e.stopPropagation());
 
-      unmount() {
-        document.removeEventListener('contextmenu', this.contextmenuHandler);
-        document.removeEventListener('click', this.clickHandler);
-        this.contextMenuElement.classList.add('hidden');
-        console.log('First context menu unmounted, events removed.');
-      },
-
-      populateMenuItems(clientX, clientY) {
-        this.menuItemsConfig = [];
-
-        const { gridX, gridY } = this.getMouseCoordinates(clientX, clientY);
-        const isTileWalkable = collision.isTileWalkable(gridX, gridY);
-
-        if (isTileWalkable) {
-          this.menuItemsConfig.push({
-            label: 'Walk Here',
-            callback: () => this.walkHere(gridX, gridY),
+          numberInput.addEventListener('input', (e) => {
+            item.initialValue = Number(e.target.value);
+            if (item.callback) item.callback(Number(e.target.value));
           });
+
+          li.appendChild(numberInput);
+        } else if (item.subMenu) {
+          li.textContent = item.label;
+          let arrow = document.createElement('span');
+          arrow.textContent = '▶';
+          arrow.classList.add('ml-2', 'text-gray-400');
+          li.appendChild(arrow);
+
+          li.classList.add('relative', 'group');
+
+          let nestedUl = document.createElement('ul');
+          nestedUl.classList.add(
+            'hidden',
+            'absolute',
+            'bg-black',
+            'rounded-lg',
+            'shadow-lg',
+            'z-50',
+            'top-0',
+            'text-white'
+          );
+          nestedUl.style.minWidth = '200px';
+          this.buildMenu(nestedUl, item.subMenu);
+          li.appendChild(nestedUl);
+
+          li.addEventListener('mouseenter', () => {
+            nestedUl.classList.remove('hidden');
+            nestedUl.style.left = li.offsetWidth + 'px';
+            nestedUl.style.top = '0';
+
+            let subW = nestedUl.offsetWidth;
+            let subH = nestedUl.offsetHeight;
+            let liRect = li.getBoundingClientRect();
+            let rightEdge = liRect.left + liRect.width + subW;
+            let bottomEdge = liRect.top + subH;
+
+            if (rightEdge > window.innerWidth) {
+              nestedUl.style.left = -subW + 'px';
+            }
+
+            let topVal = 0;
+            if (bottomEdge > window.innerHeight) {
+              topVal = -(subH - liRect.height);
+            }
+            nestedUl.style.top = topVal + 'px';
+          });
+
+          li.addEventListener('mouseleave', () => {
+            nestedUl.classList.add('hidden');
+          });
+        } else {
+          li.textContent = item.label;
+          if (item.callback) {
+            li.onclick = (e) => item.callback(e.clientX, e.clientY);
+          }
         }
 
-        this.menuItemsConfig.push({
-            label: 'Scene Editor',
-            callback: () => this.sceneEditor(),
-          });
-      },
+        parentUl.appendChild(li);
+      });
 
-      getMouseCoordinates(clientX, clientY) {
-        const rect = game.canvas.getBoundingClientRect();
-        const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
-        const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
-        const gridX = Math.floor(mouseX / 16);
-        const gridY = Math.floor(mouseY / 16);
-        return { mouseX, mouseY, gridX, gridY };
-      },
+      const allLis = parentUl.querySelectorAll(':scope > li');
+      if (allLis.length > 0) {
+        allLis[0].classList.add('rounded-t-lg');
+        allLis[allLis.length - 1].classList.add('rounded-b-lg');
+      }
+    },
 
-      walkHere(gridX, gridY) {
-        game.mainSprite.walkToClickedTile(gridX, gridY);
-        this.contextMenuElement.classList.add('hidden');
-      },
+    hideMenus: function (event, menuElement) {
+      if (!menuElement.contains(event.target)) {
+        menuElement.classList.add('hidden');
+      }
+    },
 
-      sceneEditor() {
+    disableDefaultContextMenu: function (event, callback) {
+      event.preventDefault();
+      if (callback) callback(event.clientX, event.clientY);
+    }
+  },
+
+  start() {
+    this.contextMenuElement = document.getElementById('context_menu_window');
+    this.menuItemsElement = document.getElementById('menuItems');
+
+    this.contextmenuHandler = (event) => {
+      this.contextMenu.disableDefaultContextMenu(event, (x, y) => {
+        this.populateMenuItems(x, y);
+        this.contextMenu.showContextMenu(
+          this.contextMenuElement,
+          this.menuItemsElement,
+          this.menuItemsConfig,
+          x,
+          y
+        );
+      });
+    };
+
+    this.clickHandler = (event) => {
+      this.contextMenu.hideMenus(event, this.contextMenuElement);
+    };
+
+    document.addEventListener('contextmenu', this.contextmenuHandler);
+    document.addEventListener('click', this.clickHandler);
+  },
+
+  unmount() {
+    document.removeEventListener('contextmenu', this.contextmenuHandler);
+    document.removeEventListener('click', this.clickHandler);
+    this.contextMenuElement.classList.add('hidden');
+    console.log('First context menu unmounted, events removed.');
+  },
+
+  populateMenuItems(clientX, clientY) {
+    this.menuItemsConfig = [];
+
+    const { gridX, gridY } = this.getMouseCoordinates(clientX, clientY);
+    const isTileWalkable = collision.isTileWalkable(gridX, gridY);
+
+    if (isTileWalkable) {
+      this.menuItemsConfig.push({
+        label: 'Walk Here',
+        callback: () => this.walkHere(gridX, gridY),
+      });
+    }
+
+    this.menuItemsConfig.push({
+      label: 'Scene Editor',
+      callback: () => this.sceneEditor(),
+    });
+  },
+
+  getMouseCoordinates(clientX, clientY) {
+    const rect = game.canvas.getBoundingClientRect();
+    const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
+    const mouseY = (clientY - rect.top) / game.zoomLevel + camera.cameraY;
+    const gridX = Math.floor(mouseX / 16);
+    const gridY = Math.floor(mouseY / 16);
+    return { mouseX, mouseY, gridX, gridY };
+  },
+
+  walkHere(gridX, gridY) {
+    game.mainSprite.walkToClickedTile(gridX, gridY);
+    this.contextMenuElement.classList.add('hidden');
+  },
+
+  sceneEditor() {
+    plugin.load({
+      id: 'console_window',
+      url: 'plugins/editor/console/index.njk',
+      drag: false,
+      reload: true,
+      after() {
         plugin.load({
-          id: 'console_window',
-          url: 'plugins/editor/console/index.njk',
+          id: 'edit_mode_window',
+          url: 'plugins/editor/main/index.njk',
           drag: false,
-          reload: true,
-          after() {
-            plugin.load({
-                id: 'edit_mode_window',
-                url: 'plugins/editor/main/index.njk',
-                drag: false,
-                reload: true
-            });
-          }
+          reload: true
         });
       }
-    };
-  </script>
+    });
+  }
+};
+</script>

@@ -1,0 +1,39 @@
+{
+    "en": {
+      "select_language": "select language",
+      "coins": "coins",
+      "reload": "reload",
+      "input": "input",
+      "tiles": "tiles",
+      "background": "background",
+      "lights": "lights",
+      "effects": "effects",
+      "animations":"animations",
+      "draws":"draws"
+    },
+    "es": {
+      "select_language": "releccionar idioma",
+      "coins": "monedas",
+      "reload": "recargar",
+      "input": "aporte",
+      "tiles": "azulejos",
+      "background": "fondo",
+      "lights": "luces",
+      "effects": "efectos",
+      "animations":"animaciones",
+      "draws":"dibuja"
+    },
+    "fr": {
+      "select_language": "Sélectionner la langue",
+      "coins": "pièces",
+      "reload": "recharger",
+      "input": "saisir",
+      "tiles": "carrelage",
+      "background": "arrière-plan",
+      "lights": "lumières",
+      "effects": "effets",
+      "animations":"animations",
+      "draws":"dessine"
+    }
+  }
+  

@@ -298,6 +298,7 @@ const rawPlugin = {
         last.after(topDiv);
       } else {
         document.body.appendChild(topDiv);
+        //plugin.language.translate();
       }
 
       const inlineScript = tempContainer.querySelector('script');

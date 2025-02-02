@@ -161,9 +161,6 @@ editor_window = {
     window.addEventListener('keyup', this.handleKeyUp.bind(this))
     window.addEventListener('keydown', this.boundKeyDownHandler)
 
-    plugin.minimize('ui_inventory_window')
-    plugin.minimize('ui_overlay_window')
-
     plugin.console_window.load_tab_buttons('editor')
     plugin.console_window.toggleConsoleWindow('editor_inventory')
     plugin.console_window.allowToggle = false
@@ -212,8 +209,7 @@ editor_window = {
     plugin.close('editor_context_menu')
     plugin.close('console_window')
     plugin.close('editor_layers')
-    plugin.show('ui_inventory_window')
-    plugin.show('ui_overlay_window')
+    plugin.showAll();
     assets.unload('edit_mode_window_icons')
     game.resizeCanvas()
   },
@@ -306,10 +302,8 @@ handleMouseMove(event) {
     const minY = -margin / game.zoomLevel;
     const maxX = (game.worldWidth - window.innerWidth / game.zoomLevel) + margin / game.zoomLevel;
     const maxY = (game.worldHeight - window.innerHeight / game.zoomLevel) + margin / game.zoomLevel;
-
     camera.cameraX = Math.max(minX, Math.min(maxX, camera.cameraX - deltaX / game.zoomLevel));
     camera.cameraY = Math.max(minY, Math.min(maxY, camera.cameraY - deltaY / game.zoomLevel));
-
     this.lastMouseX = event.clientX;
     this.lastMouseY = event.clientY;
     return;
@@ -328,28 +322,37 @@ handleMouseMove(event) {
   }
 
   if (game.editorMode === 'move' && this.selectedObjects.length > 0 && !this.isDragging) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    let globalMinX = Infinity, globalMinY = Infinity, globalMaxX = -Infinity, globalMaxY = -Infinity;
     this.selectedObjects.forEach(obj => {
-      minX = Math.min(minX, Math.min(...obj.x) * 16);
-      minY = Math.min(minY, Math.min(...obj.y) * 16);
-      maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16);
-      maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16);
+      let tileMinX = Math.min(...obj.x) * 16;
+      let tileMaxX = Math.max(...obj.x) * 16 + 16;
+      let tileMinY = Math.min(...obj.y) * 16;
+      let tileMaxY = Math.max(...obj.y) * 16 + 16;
+      const pivotX = (tileMinX + tileMaxX) / 2;
+      const pivotY = tileMaxY;
+      const scale = obj.scale || 1;
+      const widthScaled = (tileMaxX - tileMinX) * scale;
+      const heightScaled = (tileMaxY - tileMinY) * scale;
+      const objMinX = pivotX - widthScaled / 2;
+      const objMinY = pivotY - heightScaled;
+      const objMaxX = pivotX + widthScaled / 2;
+      const objMaxY = pivotY;
+      globalMinX = Math.min(globalMinX, objMinX);
+      globalMinY = Math.min(globalMinY, objMinY);
+      globalMaxX = Math.max(globalMaxX, objMaxX);
+      globalMaxY = Math.max(globalMaxY, objMaxY);
     });
-
-    const centerX = (minX + maxX) / 2;
-    const centerY = (minY + maxY) / 2;
+    const centerX = (globalMinX + globalMaxX) / 2;
+    const centerY = (globalMinY + globalMaxY) / 2;
     const centerCircleRadius = 10 / game.zoomLevel;
     const distToCenter = Math.sqrt(
-      Math.pow(this.mouseX - centerX, 2) +
-      Math.pow(this.mouseY - centerY, 2)
+      Math.pow(this.mouseX - centerX, 2) + Math.pow(this.mouseY - centerY, 2)
     );
-
     if (distToCenter <= centerCircleRadius) {
       this.hoveredAxis = 'center';
       document.body.style.cursor = 'move';
       return;
     }
-
     this.hoveredAxis = null;
     document.body.style.cursor = this.defaultCursor;
   }
@@ -357,11 +360,9 @@ handleMouseMove(event) {
   if (game.editorMode === 'pan' && this.isPanning && event.buttons === 1) {
     const deltaX = event.clientX - this.lastMouseX;
     const deltaY = event.clientY - this.lastMouseY;
-
     camera.cameraX -= deltaX / game.zoomLevel;
     camera.cameraY -= deltaY / game.zoomLevel;
     this.constrainCamera();
-
     this.lastMouseX = event.clientX;
     this.lastMouseY = event.clientY;
     return;
@@ -902,107 +903,114 @@ handleMouseDown: function (e) {
     this.mouseY = (event.clientY - rect.top) / game.zoomLevel + camera.cameraY
   },
 
-  renderSelectedTiles() {
-    this.selectedObjects = this.selectedObjects.filter(obj => {
-      if (this.isObjectLocked(obj)) return false
-      if (obj.visible === false) return false
-      return true
-    })
-
-    if (this.selectedObjects.length === 0) {
-      return
-    }
-
-    game.ctx.save()
-
-    const animationSpeed = 300
-    const markerLength = 4
-    const lineWidth = 1
-    const shadowOffset = 1
-    const paddingFactor = 0.15
-    const centerCircleRadius = 5
-
-    game.ctx.lineWidth = lineWidth
-
-    if (!this.objectColors || this.objectColors.length !== this.selectedObjects.length) {
-      const vibrantColors = [
-        'rgb(255, 0, 0)', 'rgb(0, 255, 0)', 'rgb(0, 0, 255)',
-        'rgb(255, 255, 0)', 'rgb(255, 0, 255)', 'rgb(0, 255, 255)',
-        'rgb(255, 165, 0)', 'rgb(128, 0, 128)'
-      ]
-      this.objectColors = this.selectedObjects.map(
-        (_, index) => vibrantColors[index % vibrantColors.length]
-      )
-    }
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    this.selectedObjects.forEach(obj => {
-      minX = Math.min(minX, Math.min(...obj.x) * 16)
-      minY = Math.min(minY, Math.min(...obj.y) * 16)
-      maxX = Math.max(maxX, Math.max(...obj.x) * 16 + 16)
-      maxY = Math.max(maxY, Math.max(...obj.y) * 16 + 16)
-    })
-
-    const centerX = (minX + maxX) / 2
-    const centerY = (minY + maxY) / 2
-
-    this.selectedObjects.forEach((obj, index) => {
-      const objectColor = this.objectColors[index]
-      const objWidth = Math.max(...obj.x) - Math.min(...obj.x) + 1
-      const objHeight = Math.max(...obj.y) - Math.min(...obj.y) + 1
-      const paddingX = objWidth * 16 * paddingFactor
-      const paddingY = objHeight * 16 * paddingFactor
-      const minObjX = Math.min(...obj.x) * 16 + paddingX
-      const minObjY = Math.min(...obj.y) * 16 + paddingY
-      const maxObjX = Math.max(...obj.x) * 16 + 16 - paddingX
-      const maxObjY = Math.max(...obj.y) * 16 + 16 - paddingY
-
-      const corners = [
-        { x1: minObjX, y1: minObjY, x2: minObjX + markerLength, y2: minObjY, x3: minObjX, y3: minObjY + markerLength, dx: 1, dy: 1 },
-        { x1: maxObjX, y1: minObjY, x2: maxObjX - markerLength, y2: minObjY, x3: maxObjX, y3: minObjY + markerLength, dx: -1, dy: 1 },
-        { x1: minObjX, y1: maxObjY, x2: minObjX + markerLength, y2: maxObjY, x3: minObjX, y3: maxObjY - markerLength, dx: 1, dy: -1 },
-        { x1: maxObjX, y1: maxObjY, x2: maxObjX - markerLength, y2: maxObjY, x3: maxObjX, y3: maxObjY - markerLength, dx: -1, dy: -1 }
-      ]
-
-      const timeOffset = performance.now() / animationSpeed
-      const offset = Math.sin(timeOffset) * 2
-
-      corners.forEach(corner => {
-        const animatedX = corner.dx * offset
-        const animatedY = corner.dy * offset
-        game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'
-        game.ctx.beginPath()
-        game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset)
-        game.ctx.lineTo(corner.x2 + animatedX + shadowOffset, corner.y2 + animatedY + shadowOffset)
-        game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset)
-        game.ctx.lineTo(corner.x3 + animatedX + shadowOffset, corner.y3 + animatedY + shadowOffset)
-        game.ctx.stroke()
-        game.ctx.strokeStyle = objectColor
-        game.ctx.beginPath()
-        game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY)
-        game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY)
-        game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY)
-        game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY)
-        game.ctx.stroke()
-      })
-    })
-
-    if (game.editorMode === 'move' && this.selectedObjects.length > 0) {
+renderSelectedTiles() {
+  this.selectedObjects = this.selectedObjects.filter(obj => {
+    if (this.isObjectLocked(obj)) return false
+    if (obj.visible === false) return false
+    return true
+  })
+  if (this.selectedObjects.length === 0) return
+  game.ctx.save()
+  const animationSpeed = 300
+  const markerLength = 4
+  const lineWidth = 1
+  const shadowOffset = 1
+  const paddingFactor = 0.15
+  const centerCircleRadius = 5
+  game.ctx.lineWidth = lineWidth
+  let globalMinX = Infinity, globalMinY = Infinity, globalMaxX = -Infinity, globalMaxY = -Infinity
+  this.selectedObjects.forEach(obj => {
+    const tileMinX = Math.min(...obj.x) * 16
+    const tileMaxX = Math.max(...obj.x) * 16 + 16
+    const tileMinY = Math.min(...obj.y) * 16
+    const tileMaxY = Math.max(...obj.y) * 16 + 16
+    const pivotX = (tileMinX + tileMaxX) / 2
+    const pivotY = tileMaxY
+    const scale = obj.scale || 1
+    const widthScaled = (tileMaxX - tileMinX) * scale
+    const heightScaled = (tileMaxY - tileMinY) * scale
+    const objMinX = pivotX - widthScaled / 2
+    const objMinY = pivotY - heightScaled
+    const objMaxX = pivotX + widthScaled / 2
+    const objMaxY = pivotY
+    globalMinX = Math.min(globalMinX, objMinX)
+    globalMinY = Math.min(globalMinY, objMinY)
+    globalMaxX = Math.max(globalMaxX, objMaxX)
+    globalMaxY = Math.max(globalMaxY, objMaxY)
+  })
+  const centerX = (globalMinX + globalMaxX) / 2
+  const centerY = (globalMinY + globalMaxY) / 2
+  if (!this.objectColors || this.objectColors.length !== this.selectedObjects.length) {
+    const vibrantColors = [
+      'rgb(255, 0, 0)', 'rgb(0, 255, 0)', 'rgb(0, 0, 255)',
+      'rgb(255, 255, 0)', 'rgb(255, 0, 255)', 'rgb(0, 255, 255)',
+      'rgb(255, 165, 0)', 'rgb(128, 0, 128)'
+    ]
+    this.objectColors = this.selectedObjects.map((_, index) => vibrantColors[index % vibrantColors.length])
+  }
+  this.selectedObjects.forEach((obj, index) => {
+    const objectColor = this.objectColors[index]
+    const tileMinX = Math.min(...obj.x) * 16
+    const tileMaxX = Math.max(...obj.x) * 16 + 16
+    const tileMinY = Math.min(...obj.y) * 16
+    const tileMaxY = Math.max(...obj.y) * 16 + 16
+    const pivotX = (tileMinX + tileMaxX) / 2
+    const pivotY = tileMaxY
+    const scale = obj.scale || 1
+    const widthScaled = (tileMaxX - tileMinX) * scale
+    const heightScaled = (tileMaxY - tileMinY) * scale
+    const objMinX = pivotX - widthScaled / 2
+    const objMinY = pivotY - heightScaled
+    const objMaxX = pivotX + widthScaled / 2
+    const objMaxY = pivotY
+    const paddingX = widthScaled * paddingFactor
+    const paddingY = heightScaled * paddingFactor
+    const minObjX = objMinX + paddingX
+    const minObjY = objMinY + paddingY
+    const maxObjX = objMaxX - paddingX
+    const maxObjY = objMaxY - paddingY
+    const corners = [
+      { x1: minObjX, y1: minObjY, x2: minObjX + markerLength, y2: minObjY, x3: minObjX, y3: minObjY + markerLength, dx: 1, dy: 1 },
+      { x1: maxObjX, y1: minObjY, x2: maxObjX - markerLength, y2: minObjY, x3: maxObjX, y3: minObjY + markerLength, dx: -1, dy: 1 },
+      { x1: minObjX, y1: maxObjY, x2: minObjX + markerLength, y2: maxObjY, x3: minObjX, y3: maxObjY - markerLength, dx: 1, dy: -1 },
+      { x1: maxObjX, y1: maxObjY, x2: maxObjX - markerLength, y2: maxObjY, x3: maxObjX, y3: maxObjY - markerLength, dx: -1, dy: -1 }
+    ]
+    const timeOffset = performance.now() / animationSpeed
+    const offset = Math.sin(timeOffset) * 2
+    corners.forEach(corner => {
+      const animatedX = corner.dx * offset
+      const animatedY = corner.dy * offset
+      game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)'
       game.ctx.beginPath()
-      game.ctx.arc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2)
-      if (this.hoveredAxis === 'center' || this.dragStartAxis === 'center') {
-        game.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)'
-        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
-      } else {
-        game.ctx.fillStyle = 'rgba(150, 150, 150, 0.5)'
-        game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
-      }
-      game.ctx.fill()
+      game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset)
+      game.ctx.lineTo(corner.x2 + animatedX + shadowOffset, corner.y2 + animatedY + shadowOffset)
+      game.ctx.moveTo(corner.x1 + animatedX + shadowOffset, corner.y1 + animatedY + shadowOffset)
+      game.ctx.lineTo(corner.x3 + animatedX + shadowOffset, corner.y3 + animatedY + shadowOffset)
       game.ctx.stroke()
+      game.ctx.strokeStyle = objectColor
+      game.ctx.beginPath()
+      game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY)
+      game.ctx.lineTo(corner.x2 + animatedX, corner.y2 + animatedY)
+      game.ctx.moveTo(corner.x1 + animatedX, corner.y1 + animatedY)
+      game.ctx.lineTo(corner.x3 + animatedX, corner.y3 + animatedY)
+      game.ctx.stroke()
+    })
+  })
+  if (game.editorMode === 'move' && this.selectedObjects.length > 0) {
+    game.ctx.beginPath()
+    game.ctx.arc(centerX, centerY, centerCircleRadius, 0, Math.PI * 2)
+    if (this.hoveredAxis === 'center' || this.dragStartAxis === 'center') {
+      game.ctx.fillStyle = 'rgba(200, 200, 200, 0.8)'
+      game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)'
+    } else {
+      game.ctx.fillStyle = 'rgba(150, 150, 150, 0.5)'
+      game.ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'
     }
-
-    game.ctx.restore()
-  },
+    game.ctx.fill()
+    game.ctx.stroke()
+  }
+  game.ctx.restore()
+},
 
   startObjectMove(event) {
     this.isDragging = true
@@ -1732,54 +1740,81 @@ panCameraToObject(obj) {
     return connected
   },
 
-  handleKeyDown(event) {
-    const key = event.key
-    const activeElement = document.activeElement
-    if (
-      activeElement.tagName === 'INPUT' ||
-      activeElement.tagName === 'TEXTAREA' ||
-      activeElement.tagName === 'SELECT' ||
-      activeElement.isContentEditable
-    ) {
-      return
-    }
+handleKeyDown(event) {
+  const key = event.key
+  const activeElement = document.activeElement
+  if (
+    activeElement.tagName === 'INPUT' ||
+    activeElement.tagName === 'TEXTAREA' ||
+    activeElement.tagName === 'SELECT' ||
+    activeElement.isContentEditable
+  ) {
+    return
+  }
 
-    switch (key) {
-      case '1':
-        this.changeMode('select')
-        break
-      case '3':
-        this.changeMode('zoom')
-        break
-      case '4':
-        this.changeMode('delete')
-        break
-      case '5':
-        this.changeMode('pan')
-        break
-      case '6':
-        this.changeMode('lasso')
-        break
-      case '7':
-        this.changeMode('move')
-        break
-      default:
-        break
+  if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
+    event.preventDefault()
+    // Select all objects
+    this.selectedObjects = [...game.roomData.items].filter(item => {
+      const layerNode = editor_layers.findNodeById(`item_${item.layer_id}`)
+      return layerNode && !layerNode.node.locked && layerNode.node.visible
+    })
+    this.changeMode('move')
+    this.renderSelectedTiles()
+    
+    // Select all layers
+    const allLayerIds = []
+    const getAllLayerIds = (nodes) => {
+      nodes.forEach(node => {
+        if (!node.locked && node.visible) {
+          allLayerIds.push(node.id)
+          if (node.children && node.children.length > 0) {
+            getAllLayerIds(node.children)
+          }
+        }
+      })
     }
+    getAllLayerIds(editor_layers.layers)
+    editor_layers.selectLayersById(allLayerIds)
+    return
+  }
 
-    if (key === 'Escape') {
-      this.selectedObjects = []
-      this.clearSelectionBox()
-      this.clearLassoPath()
+  switch (key) {
+    case '1':
       this.changeMode('select')
-    } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
-      this.moveSelectedObjectsWithArrowKeys(key)
-      event.preventDefault()
-    } else if (key === 'Delete' || key === 'Backspace') {
-      this.deleteSelectedObjects()
-      event.preventDefault()
-    }
-  },
+      break
+    case '3':
+      this.changeMode('zoom')
+      break
+    case '4':
+      this.changeMode('delete')
+      break
+    case '5':
+      this.changeMode('pan')
+      break
+    case '6':
+      this.changeMode('lasso')
+      break
+    case '7':
+      this.changeMode('move')
+      break
+    default:
+      break
+  }
+
+  if (key === 'Escape') {
+    this.selectedObjects = []
+    this.clearSelectionBox()
+    this.clearLassoPath()
+    this.changeMode('select')
+  } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
+    this.moveSelectedObjectsWithArrowKeys(key)
+    event.preventDefault()
+  } else if (key === 'Delete' || key === 'Backspace') {
+    this.deleteSelectedObjects()
+    event.preventDefault()
+  }
+},
 
   handleKeyUp(event) {
     const key = event.key

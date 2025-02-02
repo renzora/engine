@@ -1,0 +1,704 @@
+{% if auth %}
+<div data-close="false" class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-center space-y-0">
+  <div id="ui_inventory_window" class="window_body flex space-x-2 bg-[#0a0d14]/90 p-2 shadow-inner hover:shadow-lg">
+    <div class="flex space-x-2" id="ui_quick_items_container"></div>
+  </div>
+</div>
+
+<script>
+inventory = {
+    inventory: [
+        { name: "sword", amount: 8, damage: 10 },
+        { name: "wood", amount: 12, damage: 60 },
+        { name: "banana", amount: 22, damage: 60 },
+        { name: "gift", amount: 0, damage: 0 },
+        { name: "sweet", amount: 0, damage: 60 },
+        { name: "bow_green", amount: 0, damage: 60 },
+        { name: "wine", amount: 0, damage: 60 },
+        { name: "potion", amount: 0, damage: 60 },
+        { name: "key", amount: 0, damage: 60 },
+        { name: "fish", amount: 0, damage: 60 }
+    ],
+    currentItemIndex: 0,
+    lastButtonPress: 0,
+    throttleDuration: 100,
+    isItemSelected: false,
+    currentItemIndexHeld: null,
+    heldItem: null,
+    itemsData: null,
+    itemsImg: null,
+    lastXPress: 0,
+    xCooldownDuration: 500,
+
+    start: function() {
+        assets.preload([
+            { name: 'itemsImg', path: 'plugins/inventory/items.png' },
+            { name: 'itemsData', path: 'plugins/inventory/itemsData.json' }
+        ], () => {
+            this.itemsData = assets.use('itemsData');
+            this.itemsImg = assets.use('itemsImg');
+
+            this.renderInventoryItems();
+            this.initializeDragAndDrop();
+            this.initializeQuickItems();
+            this.displayInventoryItems();
+            this.setupGamepadEvents();
+
+            if (this.itemsData && this.itemsImg) {
+                this.displayInventoryItems();
+            } else {
+                console.error("itemsData or itemsImg is not loaded.");
+            }
+
+            this.checkAndUpdateUIPositions();
+            this.selectItem(0);
+
+            document.addEventListener('dragover', this.documentDragOverHandler.bind(this));
+            document.addEventListener('drop', this.documentDropHandler.bind(this));
+        });
+    },
+
+    setupGamepadEvents: function() {
+        window.addEventListener('gamepadConnected', () => {
+            this.switchToGamepadMode();
+        });
+        window.addEventListener('gamepadDisconnected', () => {
+            this.switchToKeyboardMode();
+        });
+
+        gamepad.throttle((e) => this.l1Button(e), this.throttleDuration);
+        gamepad.throttle((e) => this.r1Button(e), this.throttleDuration);
+        gamepad.throttle((e) => this.bButton(e), this.throttleDuration);
+    },
+
+    switchToGamepadMode: function() {
+        console.log("Switched to gamepad mode.");
+        this.selectItem(0);
+    },
+
+    throttle: function(callback) {
+        const currentTime = Date.now();
+        if (currentTime - this.lastButtonPress < this.throttleDuration) {
+            return false;
+        }
+        this.lastButtonPress = currentTime;
+        callback();
+        return true;
+    },
+
+    throttleX: function(callback) {
+        const currentTime = Date.now();
+        if (currentTime - this.lastXPress < this.xCooldownDuration) {
+            return false;
+        }
+        this.lastXPress = currentTime;
+        callback();
+        return true;
+    },
+
+l1Button: function(e) {
+    this.throttle(() => {
+        const items = document.querySelectorAll('.ui_quick_item');
+        if (items.length > 0) {
+            this.currentItemIndex = (this.currentItemIndex - 1 + items.length) % items.length;
+            this.selectItem(this.currentItemIndex);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+        }
+    });
+},
+
+r1Button: function(e) {
+    this.throttle(() => {
+        const items = document.querySelectorAll('.ui_quick_item');
+        if (items.length > 0) {
+            this.currentItemIndex = (this.currentItemIndex + 1) % items.length;
+            this.selectItem(this.currentItemIndex);
+            audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+        }
+    });
+},
+
+    aButton: function(e) {
+        this.throttleX(() => {
+            if (!this.isItemSelected) {
+                const item = this.getFilteredInventory()[this.currentItemIndex];
+                if (!item) {
+                    audio.playAudio("error", assets.use('error'), 'sfx', false);
+                    return;
+                }
+                this.heldItem = { ...item };
+                this.isItemSelected = true;
+                this.currentItemIndexHeld = this.currentItemIndex;
+                this.clearHighlights();
+                this.highlightOriginalSlot();
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+            } else {
+                if (this.currentItemIndex === this.currentItemIndexHeld) {
+                    this.isItemSelected = false;
+                    this.heldItem = null;
+                    this.currentItemIndexHeld = null;
+                    this.clearHighlights();
+                    this.selectItem(this.currentItemIndex);
+                    audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+                } else {
+                    const targetItem = this.getFilteredInventory()[this.currentItemIndex];
+                    if (targetItem) {
+                        const temp = targetItem;
+                        this.inventory[this.currentItemIndex] = this.heldItem;
+                        this.inventory[this.currentItemIndexHeld] = temp;
+                    } else {
+                        this.inventory[this.currentItemIndex] = this.heldItem;
+                        this.inventory[this.currentItemIndexHeld] = null;
+                    }
+                    this.isItemSelected = false;
+                    this.heldItem = null;
+                    this.currentItemIndexHeld = null;
+                    this.renderInventoryItems();
+                    this.displayInventoryItems();
+                    this.selectItem(this.currentItemIndex);
+                    audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+                }
+            }
+        });
+    },
+
+    bButton: function(e) {
+        this.throttle(() => {
+            if (this.isItemSelected) {
+                this.inventory[this.currentItemIndexHeld] = this.heldItem;
+                this.isItemSelected = false;
+                this.heldItem = null;
+                this.currentItemIndexHeld = null;
+                this.renderInventoryItems();
+                this.displayInventoryItems();
+                this.selectItem(this.currentItemIndex);
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+            } else {
+                console.log('B button pressed, no swap mode active.');
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+            }
+        });
+    },
+
+    documentDragOverHandler: function(e) {
+        e.preventDefault();
+        if (this.dragClone) {
+            this.dragClone.style.top = `${e.clientY}px`;
+            this.dragClone.style.left = `${e.clientX}px`;
+        }
+    },
+
+    documentDropHandler: function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (this.dragClone) {
+            const rect = game.canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) / game.zoomLevel + camera.cameraX;
+            const mouseY = (e.clientY - rect.top) / game.zoomLevel + camera.cameraY;
+
+            if (e.clientX >= rect.left && e.clientX <= rect.right && e.clientY <= rect.bottom) {
+                const targetObject = utils.findObjectAt(mouseX, mouseY);
+
+                if (targetObject) {
+                    const draggedItemIcon = this.dragClone.querySelector('.items_icon');
+                    if (draggedItemIcon) {
+                        const itemClass = Array.from(draggedItemIcon.classList).find(cls => cls.startsWith('items_') && cls !== 'items_icon');
+                        if (itemClass) {
+                            const itemName = itemClass.replace('items_', '');
+                            actions.dropItemOnObject(itemName, targetObject);
+                        } else {
+                            console.error('No specific item class found on dragged item icon');
+                        }
+                    } else {
+                        console.error('Dragged item icon not found');
+                    }
+                }
+            }
+            document.body.removeChild(this.dragClone);
+            this.dragClone = null;
+        }
+        return false;
+    },
+
+    selectItem: function(index) {
+        this.clearHighlights();
+        const itemElements = document.querySelectorAll('.ui_quick_item');
+        const itemElement = itemElements[index];
+        if (itemElement) {
+            if (this.isItemSelected && index === this.currentItemIndexHeld) {
+                itemElement.classList.add('border-2', 'border-green-500');
+            } else {
+                itemElement.classList.add('border-2', 'border-dashed', 'border-yellow-500');
+            }
+        }
+        const filtered = this.getFilteredInventory();
+        const selectedItem = filtered[index];
+        const sprite = game.sprites[game.playerid];
+        if (selectedItem && sprite) {
+            sprite.currentItem = selectedItem.name;
+        } else if (sprite) {
+            sprite.currentItem = null;
+        }
+    },
+
+    highlightOriginalSlot: function() {
+        if (this.isItemSelected) {
+            const itemElements = document.querySelectorAll('.ui_quick_item');
+            const originalSlotElement = itemElements[this.currentItemIndexHeld];
+            if (originalSlotElement) {
+                originalSlotElement.classList.add('border-2', 'border-green-500');
+            }
+        }
+    },
+
+    clearHighlights: function(clearBlueBackground = true) {
+        const draggableItems = document.querySelectorAll('.ui_quick_item');
+        draggableItems.forEach((item) => {
+            item.classList.remove(
+                'border-2',
+                'border-dashed',
+                'border-yellow-500',
+                'border-green-500',
+                'animate-pulse'
+            );
+            if (clearBlueBackground) {
+                item.style.backgroundColor = '';
+            }
+        });
+        if (this.isItemSelected) {
+            this.highlightOriginalSlot();
+        }
+    },
+
+renderInventoryItems: function() {
+    const quickItemsContainer = document.getElementById('ui_quick_items_container');
+    quickItemsContainer.innerHTML = '';
+
+    const filteredItems = this.getFilteredInventory();
+
+    for (let i = 0; i < 10; i++) {
+        const item = filteredItems[i];
+        const itemElement = document.createElement('div');
+        itemElement.className = `ui_quick_item relative cursor-move 
+            w-16 h-16 
+            bg-[#1a1a1a]
+            shadow-[inset_0_0_4px_rgba(0,0,0,0.5)]
+            hover:shadow-[inset_0_0_8px_rgba(255,255,255,0.1)]
+            transition-all duration-150
+            flex items-center justify-center
+            `;
+        itemElement.dataset.item = item ? item.name : '';
+
+        if (item) {
+            const condition = 100 - (item.damage || 0);
+            let barColor = 'bg-[#32CD32]';
+            let barBg = 'bg-[#1a1a1a]';
+            if (condition <= 10) {
+                barColor = 'bg-[#FF4040]';
+            } else if (condition <= 50) {
+                barColor = 'bg-[#FFA500]';
+            }
+
+            itemElement.innerHTML = `
+                <div class="timeout-indicator absolute inset-0 bg-[#FF4040] opacity-75 transition-all ease-linear z-0 hidden"></div>
+                <div class="items_icon items_${item.name} scale-[2] z-10 pixel-scaling"></div>
+                ${item.amount > 1 ? `
+                <div class="item-badge absolute top-1 left-1 z-20 
+                    bg-[#2a2a2a] text-[#ffd700] 
+                    border-[2px] border-[#4a4a4a]
+                    pixel-corners
+                    text-xs min-w-[20px] h-[20px] 
+                    flex items-center justify-center 
+                    font-pixel">${item.amount}</div>
+                ` : ''}
+                <div class="absolute bottom-1 left-1 right-1 h-2 ${barBg} border-[1px] border-[#4a4a4a] pixel-corners overflow-hidden">
+                    <div class="h-full ${barColor} pixel-scaling transition-all duration-200" style="width: ${condition}%;"></div>
+                </div>
+            `;
+        } else {
+            itemElement.innerHTML = `
+                <div class="timeout-indicator absolute inset-0 bg-[#FF4040] opacity-75 transition-all ease-linear z-0 hidden"></div>
+            `;
+        }
+
+        quickItemsContainer.appendChild(itemElement);
+    }
+},
+
+    getFilteredInventory: function() {
+        const items = this.inventory.slice(0, 10);
+        const emptySlots = Array(10 - items.length).fill(null);
+        return [...items, ...emptySlots];
+    },
+
+    unmount: function() {
+        document.removeEventListener('dragover', this.documentDragOverHandler);
+        document.removeEventListener('drop', this.documentDropHandler);
+        this.dragClone = null;
+    },
+
+    displayInventoryItems: function() {
+        if (!this.itemsData || !this.itemsData.items) {
+            console.error("itemsData or items array is not defined.");
+            return;
+        }
+
+        this.getFilteredInventory().forEach((item) => {
+            if (!item) return;
+            const itemData = this.itemsData.items.find(data => data.name === item.name);
+            if (itemData) {
+                let itemElement = document.querySelector(`.ui_quick_item[data-item="${item.name}"]`);
+                if (itemElement) {
+                    this.setItemIcon(itemElement, itemData);
+                    itemElement.dataset.cd = itemData.cd;
+                    itemElement.querySelector('.items_icon').classList.add(`items_${item.name}`);
+                }
+            }
+        });
+    },
+
+    setItemIcon: function(element, itemData) {
+        const iconDiv = element.querySelector('.items_icon');
+        if (iconDiv) {
+            const iconSize = 16;
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = iconSize;
+            canvas.height = iconSize;
+
+            if (this.itemsImg && this.itemsImg instanceof HTMLImageElement) {
+                ctx.drawImage(
+                    this.itemsImg, 
+                    itemData.x, itemData.y, 
+                    iconSize, iconSize, 
+                    0, 0, 
+                    iconSize, iconSize
+                );
+
+                const dataURL = canvas.toDataURL();
+                iconDiv.style.backgroundImage = `url(${dataURL})`;
+                iconDiv.style.width = `${iconSize}px`;
+                iconDiv.style.height = `${iconSize}px`;
+                iconDiv.style.backgroundSize = 'cover';
+            } else {
+                console.error("Invalid or unloaded image source.");
+            }
+        }
+    },
+
+    checkAndUpdateUIPositions: function() {
+        const sprite = game.sprites[game.playerid];
+        if (!sprite) return;
+
+        const thresholdY = game.worldHeight - 50;
+        const inventoryElement = document.getElementById('ui_inventory_window');
+        if (inventoryElement) {
+            if (sprite.y > thresholdY) {
+                inventoryElement.classList.add('top-4');
+                inventoryElement.classList.remove('bottom-4');
+            } else {
+                inventoryElement.classList.add('bottom-4');
+                inventoryElement.classList.remove('top-4');
+            }
+        } else {
+            console.error('Inventory element not found.');
+        }
+    },
+
+    initializeDragAndDrop: function() {
+        const draggableItems = document.querySelectorAll('.ui_quick_item');
+
+        draggableItems.forEach(item => {
+            item.setAttribute('draggable', true);
+            item.style.cursor = 'grab';
+            item.addEventListener('mouseover', this.handleMouseOver.bind(this));
+            item.addEventListener('mouseout', this.handleMouseOut.bind(this));
+            item.addEventListener('dragstart', this.handleDragStart.bind(this));
+            item.addEventListener('dragover', this.handleDragOver.bind(this));
+            item.addEventListener('drop', this.handleDrop.bind(this));
+            item.addEventListener('dragend', this.handleDragEnd.bind(this));
+            item.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: false });
+        });
+
+        document.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
+        document.addEventListener('touchend', this.handleTouchEnd.bind(this), { passive: false });
+    },
+
+    initializeQuickItems: function() {
+        const quickItems = document.querySelectorAll('.ui_quick_item');
+        quickItems.forEach(item => {
+            item.addEventListener('click', () => {
+                const cooldown = parseInt(item.dataset.cd, 10) * 1000;
+                if (cooldown > 0) {
+                    this.startTimeout(item, cooldown);
+                }
+            });
+        });
+    },
+
+    startTimeout: function(item, duration) {
+        if (!item.classList.contains('pointer-events-none')) {
+            item.classList.add('pointer-events-none', 'opacity-80');
+            const indicator = item.querySelector('.timeout-indicator');
+            indicator.classList.remove('hidden');
+            indicator.style.width = '100%';
+            indicator.style.transitionDuration = `${duration}ms`;
+
+            setTimeout(() => {
+                indicator.style.width = '0%';
+            }, 10);
+
+            setTimeout(() => {
+                item.classList.remove('pointer-events-none', 'opacity-80');
+                indicator.style.transitionDuration = '0ms';
+                indicator.style.width = '100%';
+                indicator.classList.add('hidden');
+            }, duration);
+        }
+    },
+
+    handleMouseOver: function(e) {
+        e.target.style.cursor = 'grab';
+    },
+
+    handleMouseOut: function(e) {
+        e.target.style.cursor = 'default';
+    },
+
+    handleTouchStart: function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const touch = e.touches[0];
+        const target = e.target.closest('.ui_quick_item');
+        if (!target || !target.dataset.item) return;
+        this.dragSrcEl = target;
+        const sourceIndex = Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(target);
+        const sourceItem = this.inventory[sourceIndex];
+        if (sourceItem) {
+            this.draggedItemData = { ...sourceItem };
+            const iconDiv = target.querySelector('.items_icon');
+            if (iconDiv) {
+                const clonedIcon = iconDiv.cloneNode(true);
+                const dragWrapper = document.createElement('div');
+                dragWrapper.style.position = 'absolute';
+                dragWrapper.style.top = `${touch.clientY}px`;
+                dragWrapper.style.left = `${touch.clientX}px`;
+                dragWrapper.style.pointerEvents = 'none';
+                dragWrapper.style.zIndex = '1000';
+                clonedIcon.style.transform = 'scale(4)';
+                dragWrapper.appendChild(clonedIcon);
+                this.dragClone = dragWrapper;
+                document.body.appendChild(dragWrapper);
+            }
+            target.innerHTML = '';
+            target.classList.add('bg-[#2c3e50]', 'border-2', 'border-dashed', 'border-yellow-500', 'opacity-75');
+        }
+    },
+
+    handleTouchMove: function(e) {
+        if (!this.draggedItemData || !this.dragClone) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const touch = e.touches[0];
+        this.dragClone.style.top = `${touch.clientY}px`;
+        this.dragClone.style.left = `${touch.clientX}px`;
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (!target) return;
+        this.clearHighlights();
+        const slot = target.closest('.ui_quick_item');
+        if (slot) {
+            slot.classList.add('border-2', 'border-dashed', 'border-yellow-500', 'animate-pulse');
+            if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== slot) {
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+                this.hasPlayedDragOverSound = true;
+                this.lastHoveredSlot = slot;
+            }
+        } else {
+            this.hasPlayedDragOverSound = false;
+            this.lastHoveredSlot = null;
+        }
+    },
+
+    handleTouchEnd: function(e) {
+        if (!this.draggedItemData) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const touch = e.changedTouches[0];
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
+        let targetSlot = null;
+        if (target) {
+            targetSlot = target.closest('.ui_quick_item');
+        }
+        if (targetSlot) {
+            const targetIndex = Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(targetSlot);
+            if (this.inventory[targetIndex]) {
+                const temp = this.inventory[targetIndex];
+                this.inventory[targetIndex] = this.draggedItemData;
+                this.inventory[this.dragSrcEl ? Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(this.dragSrcEl) : targetIndex] = temp;
+            } else {
+                this.inventory[targetIndex] = this.draggedItemData;
+            }
+        } else {
+            const originalIndex = Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(this.dragSrcEl);
+            this.inventory[originalIndex] = this.draggedItemData;
+        }
+        this.draggedItemData = null;
+        this.dragSrcEl = null;
+        if (this.dragClone) {
+            document.body.removeChild(this.dragClone);
+            this.dragClone = null;
+        }
+        this.renderInventoryItems();
+        this.displayInventoryItems();
+        this.updateItemBadges();
+        this.initializeDragAndDrop();
+        this.initializeQuickItems();
+        this.selectItem(this.currentItemIndex);
+        audio.playAudio("slotDrop", assets.use('slotDrop'), 'sfx', false);
+    },
+
+    handleDragStart: function(e) {
+        this.dragSrcEl = e.target.closest('.ui_quick_item');
+        if (!this.dragSrcEl || !this.dragSrcEl.dataset.item) {
+            e.preventDefault();
+            return;
+        }
+        const sourceIndex = Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(this.dragSrcEl);
+        const sourceItem = this.inventory[sourceIndex];
+        if (sourceItem) {
+            this.draggedItemData = { ...sourceItem };
+            e.dataTransfer.effectAllowed = 'move';
+            const iconDiv = this.dragSrcEl.querySelector('.items_icon');
+            if (iconDiv) {
+                const clonedIcon = iconDiv.cloneNode(true);
+                const dragWrapper = document.createElement('div');
+                dragWrapper.style.position = 'absolute';
+                dragWrapper.style.top = `${e.clientY}px`;
+                dragWrapper.style.left = `${e.clientX}px`;
+                dragWrapper.style.pointerEvents = 'none';
+                dragWrapper.style.zIndex = '1000';
+                clonedIcon.style.transform = 'scale(4)';
+                dragWrapper.appendChild(clonedIcon);
+                this.dragClone = dragWrapper;
+                document.body.appendChild(dragWrapper);
+            }
+            this.dragSrcEl.innerHTML = '';
+            this.dragSrcEl.classList.add('bg-[#2c3e50]', 'border-2', 'border-dashed', 'border-yellow-500', 'opacity-75');
+            e.target.style.cursor = 'grabbing';
+            var img = new Image();
+            img.src = '';
+            e.dataTransfer.setDragImage(img, 0, 0);
+        } else {
+            e.preventDefault();
+        }
+    },
+
+    handleDragOver: function(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const target = e.target.closest('.ui_quick_item');
+        if (this.dragClone) {
+            this.dragClone.style.top = `${e.clientY}px`;
+            this.dragClone.style.left = `${e.clientX}px`;
+        }
+        this.clearHighlights();
+        if (target && target.classList.contains('ui_quick_item')) {
+            target.classList.add('border-2', 'border-dashed', 'border-yellow-500', 'animate-pulse');
+            if (!this.hasPlayedDragOverSound || this.lastHoveredSlot !== target) {
+                audio.playAudio("menuDrop", assets.use('menuDrop'), 'sfx', false);
+                this.hasPlayedDragOverSound = true;
+                this.lastHoveredSlot = target;
+            }
+        } else {
+            this.hasPlayedDragOverSound = false;
+            this.lastHoveredSlot = null;
+        }
+        return false;
+    },
+
+    handleDrop: function(e) {
+        e.stopPropagation();
+        e.preventDefault();
+        const targetSlot = e.target.closest('.ui_quick_item');
+        if (!this.draggedItemData) {
+            return false;
+        }
+        const sourceIndex = Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(this.dragSrcEl);
+        if (sourceIndex !== -1) {
+            this.inventory[sourceIndex] = null;
+        }
+        if (targetSlot) {
+            const targetIndex = Array.from(document.querySelectorAll('.ui_quick_item')).indexOf(targetSlot);
+            if (this.inventory[targetIndex]) {
+                const temp = this.inventory[targetIndex];
+                this.inventory[targetIndex] = this.draggedItemData;
+                this.inventory[sourceIndex] = temp;
+            } else {
+                this.inventory[targetIndex] = this.draggedItemData;
+            }
+        } else {
+            this.inventory[sourceIndex] = this.draggedItemData;
+        }
+        this.draggedItemData = null;
+        this.dragSrcEl = null;
+        this.renderInventoryItems();
+        this.displayInventoryItems();
+        this.updateItemBadges();
+        this.initializeDragAndDrop();
+        this.initializeQuickItems();
+        this.selectItem(this.currentItemIndex);
+        audio.playAudio("slotDrop", assets.use('slotDrop'), 'sfx', false);
+        return false;
+    },
+
+    handleDragEnd: function(e) {
+        const draggableItems = document.querySelectorAll('.ui_quick_item');
+        draggableItems.forEach(item => {
+            item.style.cursor = 'grab';
+        });
+        if (this.dragClone) {
+            document.body.removeChild(this.dragClone);
+            this.dragClone = null;
+        }
+        this.renderInventoryItems();
+        this.displayInventoryItems();
+        this.updateItemBadges();
+        this.initializeDragAndDrop();
+        this.initializeQuickItems();
+        this.selectItem(this.currentItemIndex);
+    },
+
+    updateItemBadges: function() {
+        const slots = document.querySelectorAll('.ui_quick_item');
+        slots.forEach((slot, index) => {
+            const badge = slot.querySelector('.item-badge');
+            if (badge) {
+                const item = this.inventory[index];
+                if (item && item.amount > 1) {
+                    badge.textContent = item.amount;
+                    badge.style.display = 'flex';
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+        });
+    },
+
+    updateScale: function(element) {
+        if (!element) {
+            console.error('Element is null, cannot update scale.');
+            return;
+        }
+        const icon = element.querySelector('.items_icon');
+        if (icon) {
+            icon.classList.remove('scale-[4]');
+            icon.classList.add('scale-[2.1]');
+        } else {
+            console.error('Icon element not found in the inventory item.');
+        }
+    }
+};
+</script>
+
+{% endif %}

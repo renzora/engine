@@ -11,7 +11,6 @@ input = {
       const modifiers = subParts.slice(0, -1);
 
       const comboListener = (e) => {
-        // Check each modifier
         for (let mod of modifiers) {
           mod = mod.toLowerCase();
           if (mod === 'shift' && !e.shiftKey) return;

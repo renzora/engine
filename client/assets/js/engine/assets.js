@@ -24,7 +24,7 @@ assets = {
         const assetsToLoad = assetsList.filter(asset => {
             if (!uniqueAssets[asset.name]) {
                 uniqueAssets[asset.name] = true;
-                return force ? true : !this.isAssetLoaded(asset.name);
+                return force || !this.isAssetLoaded(asset.name);
             }
             return false;
         });
@@ -42,15 +42,10 @@ assets = {
             const fileType = this.getFileType(asset.path);
             this.updateLoadingBar(asset.name);
 
-            if (fileType === 'image') {
-                return this.loadImage(asset);
-            } else if (fileType === 'json') {
-                return this.loadJSON(asset);
-            } else if (fileType === 'audio') {
-                return this.loadAudio(asset);
-            } else {
-                return Promise.resolve(null);
-            }
+            if (fileType === 'image') return this.loadImage(asset);
+            if (fileType === 'json') return this.loadJSON(asset);
+            if (fileType === 'audio') return this.loadAudio(asset);
+            return Promise.resolve(null);
         });
 
         Promise.all(promises).then(() => {
@@ -64,16 +59,11 @@ assets = {
     },
 
     getFileType(path) {
-        const pathParts = path.split('?');
-        const extension = pathParts[0].split('.').pop().toLowerCase();
+        const extension = path.split('?')[0].split('.').pop().toLowerCase();
 
-        if (['png', 'jpg', 'jpeg', 'gif', 'php'].includes(extension)) {
-            return 'image';
-        } else if (extension === 'json') {
-            return 'json';
-        } else if (['mp3', 'wav', 'ogg'].includes(extension)) {
-            return 'audio';
-        }
+        if (['png', 'jpg', 'jpeg', 'gif', 'php'].includes(extension)) return 'image';
+        if (extension === 'json') return 'json';
+        if (['mp3', 'wav', 'ogg'].includes(extension)) return 'audio';
 
         console.error('Unsupported file type:', extension);
         return null;

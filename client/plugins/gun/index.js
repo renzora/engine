@@ -7,6 +7,10 @@ gun = {
 
     },
 
+    onRender() {
+        this.aimTool();
+    },
+
     aimTool() {
         if (game.mainSprite && game.mainSprite.targetAim) {
             const handX = game.mainSprite.x + game.mainSprite.width / 2 + game.mainSprite.handOffsetX;

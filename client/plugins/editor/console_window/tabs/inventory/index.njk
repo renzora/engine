@@ -1,28 +1,39 @@
 {% if auth %}
-<div class="tabs mb-4 flex items-center space-x-2">
-  <select id="tileset_filter" class="p-2 rounded text-base text-black border border-gray-300">
-    <option value="">All Tilesets</option>
-  </select>
-
-  <input id="inventory-search"
-         type="text"
-         class="p-2 w-full rounded light_input text-base text-black"
-         placeholder="Search..."/>
+<div class="p-2 mb-4 flex flex-wrap gap-3">
+  <div class="flex-1 flex gap-3 min-w-[300px]">
+    <select id="tileset_filter" class="w-48 p-2 bg-gray-700 rounded text-white">
+      <option value="">All Tilesets</option>
+    </select>
+    <div class="flex-1 relative">
+      <input id="inventory-search" type="text" class="w-full p-2 pl-9 bg-gray-700 rounded text-white" placeholder="Search items..."/>
+      <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+      </svg>
+    </div>
+  </div>
+  <div class="flex gap-2">
+    <button id="btn-inventory-settings" class="p-2 bg-blue-600 rounded text-white">
+      Edit
+    </button>
+    <button id="btn-new-server" class="p-2 bg-green-600 rounded text-white" onclick="plugin.load('tileset_manager', { ext: 'njk'});">
+      Tileset Manager
+    </button>
+    <button id="btn-delete-inventory" class="hidden p-2 bg-red-600 rounded text-white">
+      Delete
+    </button>
+  </div>
 </div>
-
-<button id="btn-new-server"
-        class="bg-green-600 hover:bg-green-700 text-white font-bold p-2 rounded shadow-md"
-        onclick="plugin.load('tileset_manager', { ext: 'njk'});">
-  Tileset Manager
-</button>
-
-<button id="btn-edit-inventory"
-        class="bg-blue-600 hover:bg-blue-700 text-white font-bold p-2 rounded shadow-md ml-2">
-  Edit
-</button>
-
-<div id="inventory-grid" class="inventory-grid grid grid-cols-5 gap-1 mt-2">
+<div id="move-panel" class="hidden p-1 mb-2">
+  <div class="flex gap-1">
+    <select id="move-tileset-select" class="flex-1 p-2 bg-gray-700 rounded text-white">
+      <option value="">Select destination tileset...</option>
+    </select>
+    <button id="btn-move-inventory" class="p-2 bg-purple-600 rounded text-white">
+      Move Items
+    </button>
+  </div>
 </div>
+<div id="inventory-grid" class="grid grid-cols-5 gap-1 mt-2"></div>
 
 <script>
 var ui_console_editor_inventory = {
@@ -46,22 +57,39 @@ var ui_console_editor_inventory = {
     this.addSearchListener();
     this.fetchTilesetList();
     this.addScrollListener();
-    document.getElementById('btn-edit-inventory').addEventListener('click', () => {
+
+    // Cog button toggles edit mode
+    document.getElementById('btn-inventory-settings').addEventListener('click', () => {
       this.toggleEditMode();
     });
+
+    document.getElementById('btn-delete-inventory').addEventListener('click', () => {
+      this.deleteSelectedItems();
+    });
+
+    // Move panel controls
+    document.getElementById('btn-move-inventory').addEventListener('click', () => {
+      this.moveSelectedItems();
+    });
+
+    // We'll also populate #move-tileset-select with tileset names
+    this.populateMoveTilesetDropdown();
   },
 
-  setupScrollContainer() {
-    const gridContainer = document.querySelector('#inventory-grid');
-    const wrapper = document.createElement('div');
-    wrapper.style.height = 'calc(100vh - 111px)';
-    wrapper.style.overflowY = 'auto';
-    wrapper.className = 'inventory-scroll-wrapper';
-    gridContainer.parentNode.insertBefore(wrapper, gridContainer);
-    wrapper.appendChild(gridContainer);
-    gridContainer.className = 'inventory-grid grid grid-cols-5 gap-1 mt-2';
-    this.scrollContainer = wrapper;
-  },
+setupScrollContainer() {
+  const gridContainer = document.querySelector('#inventory-grid');
+  const wrapper = document.createElement('div');
+  wrapper.style.height = 'calc(100vh - 135px)';
+  wrapper.style.overflowY = 'auto';
+  wrapper.className = 'inventory-scroll-wrapper';
+  gridContainer.parentNode.insertBefore(wrapper, gridContainer);
+  wrapper.appendChild(gridContainer);
+  gridContainer.className = 'inventory-grid grid grid-cols-5 gap-1 mt-2';
+  
+  document.body.style.overflow = 'hidden';
+  
+  this.scrollContainer = wrapper;
+},
 
   addScrollListener() {
     if (!this.scrollContainer) return;
@@ -95,121 +123,171 @@ var ui_console_editor_inventory = {
     });
   },
 
-  displayItems(filteredData = null) {
-    const itemData = filteredData || this.itemData;
-    const gridContainer = document.querySelector('#inventory-grid');
-    const tileSize = 16;
-    const tilesPerRow = 150;
-    if (this.currentPage === 1) {
-      gridContainer.innerHTML = '';
-    }
-    this.isLoading = true;
-    let allItems = [];
-    Object.entries(itemData).forEach(([id, items]) => {
+  populateMoveTilesetDropdown() {
+    // Build a list of all unique tilesets for the move operation
+    const moveSelect = document.getElementById('move-tileset-select');
+    const uniqueTilesets = new Set();
+    Object.values(this.itemData).forEach(items => {
       items.forEach(item => {
-        allItems.push({id, item});
+        if (item.t) uniqueTilesets.add(item.t);
       });
     });
-    if (this.currentTilesetFilter) {
-      allItems = allItems.filter(({item}) => item.t === this.currentTilesetFilter);
-    }
-    const startIdx = (this.currentPage - 1) * this.itemsPerPage;
-    const endIdx = startIdx + this.itemsPerPage;
-    const itemsToShow = allItems.slice(startIdx, endIdx);
-    itemsToShow.forEach(({id, item}) => {
-      const tilesetImage = assets.use(item.t);
-      if (!tilesetImage) return;
-      const itemGroupElement = document.createElement('div');
-      itemGroupElement.classList.add(
-        'inventory-item-group',
-        'bg-gray-700',
-        'rounded',
-        'shadow-lg',
-        'hover:bg-gray-600',
-        'transition',
-        'duration-300',
-        'p-2'
-      );
-      itemGroupElement.style.position = 'relative';
-      itemGroupElement.style.height = '150px';
-      itemGroupElement.style.display = 'flex';
-      itemGroupElement.style.flexDirection = 'column';
-      itemGroupElement.style.gap = '0';
-      itemGroupElement.style.cursor = this.isEditMode ? 'default' : 'pointer';
-      const itemCanvas = document.createElement('canvas');
-      const ctx = itemCanvas.getContext('2d');
-      const maxCol = item.a;
-      const maxRow = item.b;
-      itemCanvas.width = (maxCol + 1) * tileSize;
-      itemCanvas.height = (maxRow + 1) * tileSize;
-      if (this.isEditMode) {
-        itemCanvas.style.pointerEvents = 'none';
-      }
-      let framesToRender = [];
-      if (item.d && Array.isArray(item.i[0])) {
-        framesToRender = item.i[0];
-      } else if (Array.isArray(item.i[0])) {
-        framesToRender = item.i.flat();
-      } else {
-        framesToRender = item.i.map(frame => {
-          if (typeof frame === 'string' && frame.includes('-')) {
-            return game.parseRange(frame);
-          }
-          return [frame];
-        }).flat();
-      }
-      framesToRender.forEach((frame, index) => {
-        const srcX = (frame % tilesPerRow) * tileSize;
-        const srcY = Math.floor(frame / tilesPerRow) * tileSize;
-        const destX = (index % (maxCol + 1)) * tileSize;
-        const destY = Math.floor(index / (maxCol + 1)) * tileSize;
-        ctx.drawImage(tilesetImage, srcX, srcY, 16, 16, destX, destY, 16, 16);
-      });
-      itemCanvas.setAttribute('data-item-id', id);
-      const canvasContainer = document.createElement('div');
-      canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg transition duration-300';
-      canvasContainer.style.marginTop = '-20px';
-      if (!this.isEditMode) {
-        canvasContainer.classList.add('transform', 'hover:scale-125');
-      }
-      if (!this.isEditMode) {
-        itemCanvas.addEventListener('mousedown', (event) => this.handleMouseDown(event));
-      }
-      itemCanvas.className += ' w-full h-full object-contain';
-      canvasContainer.appendChild(itemCanvas);
-      const nameLabel = document.createElement('div');
-      nameLabel.className = 'text-white text-xs text-center';
-      nameLabel.title = item.n || 'Unnamed Item';
-      nameLabel.style.overflow = 'hidden';
-      nameLabel.style.textOverflow = 'ellipsis';
-      nameLabel.style.display = '-webkit-box';
-      nameLabel.style.WebkitLineClamp = '2';
-      nameLabel.style.WebkitBoxOrient = 'vertical';
-      nameLabel.style.lineHeight = '1.2';
-      nameLabel.style.minHeight = '2.4em';
-      nameLabel.style.position = 'relative';
-      nameLabel.style.zIndex = '1';
-      nameLabel.style.width = '100%';
-      nameLabel.textContent = item.n || 'Unnamed Item';
-      itemGroupElement.appendChild(nameLabel);
-      itemGroupElement.appendChild(canvasContainer);
-      if (this.isEditMode) {
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.className = 'absolute top-2 left-2 w-5 h-5 text-blue-600 form-checkbox transition duration-300 transform hover:scale-110';
-        checkbox.style.zIndex = '999';
-        checkbox.addEventListener('mousedown', (e) => e.stopPropagation());
-        checkbox.addEventListener('mouseup', (e) => e.stopPropagation());
-        checkbox.addEventListener('click', (e) => e.stopPropagation());
-        itemGroupElement.appendChild(checkbox);
-        itemGroupElement.addEventListener('click', () => {
-          checkbox.checked = !checkbox.checked;
-        });
-      }
-      gridContainer.appendChild(itemGroupElement);
+
+    // Clear out any old options
+    moveSelect.innerHTML = '<option value="">Select a tileset...</option>';
+
+    uniqueTilesets.forEach(tilesetName => {
+      const option = document.createElement('option');
+      option.value = tilesetName;
+      option.textContent = tilesetName;
+      moveSelect.appendChild(option);
     });
-    this.isLoading = false;
   },
+
+displayItems(filteredData = null) {
+  const itemData = filteredData || this.itemData;
+  const gridContainer = document.querySelector('#inventory-grid');
+  const tileSize = 16;
+  const tilesPerRow = 150;
+  if (this.currentPage === 1) {
+    gridContainer.innerHTML = '';
+  }
+  this.isLoading = true;
+
+  let allItems = [];
+  Object.entries(itemData).forEach(([id, items]) => {
+    items.forEach(item => {
+      allItems.push({ id, item });
+    });
+  });
+  if (this.currentTilesetFilter) {
+    allItems = allItems.filter(({ item }) => item.t === this.currentTilesetFilter);
+  }
+
+  const startIdx = (this.currentPage - 1) * this.itemsPerPage;
+  const endIdx = startIdx + this.itemsPerPage;
+  const itemsToShow = allItems.slice(startIdx, endIdx);
+
+  itemsToShow.forEach(({ id, item }) => {
+    const tilesetImage = assets.use(item.t);
+    if (!tilesetImage) return;
+
+    const itemGroupElement = document.createElement('div');
+    itemGroupElement.classList.add(
+      'inventory-item-group',
+      'bg-gray-700',
+      'rounded',
+      'shadow-lg',
+      'hover:bg-gray-600',
+      'transition',
+      'duration-300',
+      'p-2'
+    );
+    itemGroupElement.style.position = 'relative';
+    itemGroupElement.style.height = '150px';
+    itemGroupElement.style.display = 'flex';
+    itemGroupElement.style.flexDirection = 'column';
+    itemGroupElement.style.gap = '0';
+    itemGroupElement.style.cursor = this.isEditMode ? 'default' : 'pointer';
+    itemGroupElement.style.paddingBottom = '25px';
+
+    const itemCanvas = document.createElement('canvas');
+    const ctx = itemCanvas.getContext('2d');
+    const maxCol = item.a;
+    const maxRow = item.b;
+    itemCanvas.width = (maxCol + 1) * tileSize;
+    itemCanvas.height = (maxRow + 1) * tileSize;
+    if (this.isEditMode) {
+      itemCanvas.style.pointerEvents = 'none';
+    }
+
+    let framesToRender = [];
+    if (item.d && Array.isArray(item.i[0])) {
+      framesToRender = item.i[0];
+    } else if (Array.isArray(item.i[0])) {
+      framesToRender = item.i.flat();
+    } else {
+      framesToRender = item.i.map(frame => {
+        if (typeof frame === 'string' && frame.includes('-')) {
+          return game.parseRange(frame);
+        }
+        return [frame];
+      }).flat();
+    }
+
+    framesToRender.forEach((frame, index) => {
+      const srcX = (frame % tilesPerRow) * tileSize;
+      const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+      const destX = (index % (maxCol + 1)) * tileSize;
+      const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+      ctx.drawImage(tilesetImage, srcX, srcY, 16, 16, destX, destY, 16, 16);
+    });
+
+    itemCanvas.setAttribute('data-item-id', id);
+
+    const canvasContainer = document.createElement('div');
+    canvasContainer.className = 'flex justify-center items-center w-full h-full max-w-[150px] max-h-[150px] aspect-w-1 aspect-h-1 rounded-lg transition duration-300';
+    canvasContainer.style.marginTop = '-20px';
+    if (!this.isEditMode) {
+      canvasContainer.classList.add('transform', 'hover:scale-125');
+    }
+    if (!this.isEditMode) {
+      itemCanvas.addEventListener('mousedown', (event) => this.handleMouseDown(event));
+    }
+
+    itemCanvas.className += ' w-full h-full object-contain';
+    canvasContainer.appendChild(itemCanvas);
+
+    const nameLabel = document.createElement('div');
+    nameLabel.className = 'text-white text-xs text-center';
+    nameLabel.title = item.n || 'Unnamed Item';
+    nameLabel.style.overflow = 'hidden';
+    nameLabel.style.textOverflow = 'ellipsis';
+    nameLabel.style.display = '-webkit-box';
+    nameLabel.style.WebkitLineClamp = '2';
+    nameLabel.style.WebkitBoxOrient = 'vertical';
+    nameLabel.style.lineHeight = '1.2';
+    nameLabel.style.minHeight = '2.4em';
+    nameLabel.style.position = 'relative';
+    nameLabel.style.zIndex = '1';
+    nameLabel.style.width = '100%';
+    nameLabel.textContent = item.n || 'Unnamed Item';
+
+    const tilesetTag = document.createElement('div');
+    tilesetTag.className = 'text-gray-400 text-xs text-center mt-1 bg-gray-800 rounded px-2 py-1';
+    tilesetTag.style.position = 'absolute';
+    tilesetTag.style.bottom = '2px';
+    tilesetTag.style.left = '2px';
+    tilesetTag.style.right = '2px';
+    tilesetTag.style.overflow = 'hidden';
+    tilesetTag.style.textOverflow = 'ellipsis';
+    tilesetTag.style.whiteSpace = 'nowrap';
+    tilesetTag.textContent = item.t || 'No tileset';
+
+    itemGroupElement.appendChild(nameLabel);
+    itemGroupElement.appendChild(canvasContainer);
+    itemGroupElement.appendChild(tilesetTag);
+
+    if (this.isEditMode) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'absolute top-2 left-2 w-5 h-5 text-blue-600 form-checkbox transition duration-300 transform hover:scale-110';
+      checkbox.style.zIndex = '999';
+      checkbox.addEventListener('mousedown', (e) => e.stopPropagation());
+      checkbox.addEventListener('mouseup', (e) => e.stopPropagation());
+      checkbox.addEventListener('click', (e) => e.stopPropagation());
+      itemGroupElement.appendChild(checkbox);
+
+      itemGroupElement.addEventListener('click', () => {
+        checkbox.checked = !checkbox.checked;
+      });
+    }
+
+    gridContainer.appendChild(itemGroupElement);
+  });
+
+  this.isLoading = false;
+},
 
   loadMoreItems() {
     if (this.isLoading) return;
@@ -268,6 +346,7 @@ var ui_console_editor_inventory = {
     let posY = this.selectedInventoryItemPos.y - objectHeight / 2;
     posX = Math.round(posX);
     posY = Math.round(posY);
+
     const parseRange = function(rangeString) {
       const [start, end] = rangeString.split('-').map(Number);
       const rangeArray = [];
@@ -276,12 +355,14 @@ var ui_console_editor_inventory = {
       }
       return rangeArray;
     };
+
     let frameIndices = [];
     if (typeof itemData.i[0] === 'string' && itemData.i[0].includes('-')) {
       frameIndices = parseRange(itemData.i[0]);
     } else {
       frameIndices = itemData.i;
     }
+
     const img = assets.use(itemData.t);
     if (!img) {
       if (editor_window.isAddingNewObject) {
@@ -289,6 +370,7 @@ var ui_console_editor_inventory = {
       }
       return;
     }
+
     let frameIndex = 0;
     for (let row = 0; row < itemData.b + 1; row++) {
       for (let col = 0; col <= itemData.a; col++) {
@@ -376,12 +458,15 @@ var ui_console_editor_inventory = {
   addItemToRoomData(itemId, mouseX, mouseY) {
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
     if (!itemData) return;
+
     let baseX = editor_context_menu.isSnapEnabled ? Math.floor(mouseX / 16) * 16 : Math.round(mouseX);
     let baseY = editor_context_menu.isSnapEnabled ? Math.floor(mouseY / 16) * 16 : Math.round(mouseY);
+
     const maxColumns = itemData.a || 0;
     const maxRows = itemData.b || 0;
     const newX = [];
     const newY = [];
+
     for (let col = 0; col <= maxColumns; col++) {
       if (editor_context_menu.isSnapEnabled) {
         newX.push(Math.floor(baseX / 16) + col);
@@ -396,6 +481,7 @@ var ui_console_editor_inventory = {
         newY.push((baseY + row * 16) / 16);
       }
     }
+
     const newItem = {
       id: itemId,
       n: itemData.n,
@@ -405,6 +491,7 @@ var ui_console_editor_inventory = {
       animationState: [{ currentFrame: 0, elapsedTime: 0 }],
       w: itemData.w || []
     };
+
     if (!game.roomData.items) {
       game.roomData.items = [];
     }
@@ -413,11 +500,11 @@ var ui_console_editor_inventory = {
   },
 
   addGlobalListeners() {
-    document.addEventListener('contextmenu', function(event) {
+    document.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       ui_console_editor_inventory.cancelAddingObject();
     });
-    document.addEventListener('keydown', function(event) {
+    document.addEventListener('keydown', (event) => {
       if (event.key === 'Escape') {
         ui_console_editor_inventory.cancelAddingObject();
       }
@@ -425,9 +512,114 @@ var ui_console_editor_inventory = {
   },
 
   toggleEditMode() {
-    this.isEditMode = !this.isEditMode;
-    this.currentPage = 1;
-    this.displayItems();
+  this.isEditMode = !this.isEditMode;
+  this.currentPage = 1;
+
+  const deleteBtn = document.getElementById('btn-delete-inventory');
+  const movePanel = document.getElementById('move-panel');
+
+  if (this.isEditMode) {
+    deleteBtn.classList.remove('hidden');
+    movePanel.classList.remove('hidden');
+    this.scrollContainer.style.height = 'calc(100vh - 185px)';
+  } else {
+    deleteBtn.classList.add('hidden');
+    movePanel.classList.add('hidden');
+    this.scrollContainer.style.height = 'calc(100vh - 135px)';
+  }
+
+  this.displayItems();
+  },
+
+  async deleteSelectedItems() {
+    const checkedElements = document.querySelectorAll('.inventory-item-group input[type="checkbox"]:checked');
+    if (!checkedElements.length) return;
+
+    const itemIds = [];
+    checkedElements.forEach(checkbox => {
+      const parentGroup = checkbox.closest('.inventory-item-group');
+      if (!parentGroup) return;
+      const canvas = parentGroup.querySelector('canvas[data-item-id]');
+      if (canvas) {
+        itemIds.push(canvas.getAttribute('data-item-id'));
+      }
+    });
+    if (!itemIds.length) return;
+
+    const confirmed = confirm('Are you sure you want to delete the selected items?');
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch('/api/tileset_manager/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // refresh objectData in your front-end
+        game.loadAsset('json', 'objectData', 'assets/json/objectData.json', (updated) => {
+          this.itemData = updated;
+          this.currentPage = 1;
+          this.displayItems();
+          this.populateMoveTilesetDropdown();
+        });
+      } else {
+        alert('Deletion failed: ' + (data.message || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Delete error:', err);
+      alert('Error deleting items. Check console for details.');
+    }
+  },
+
+  async moveSelectedItems() {
+    const checkedElements = document.querySelectorAll('.inventory-item-group input[type="checkbox"]:checked');
+    if (!checkedElements.length) return;
+
+    const itemIds = [];
+    checkedElements.forEach(checkbox => {
+      const parentGroup = checkbox.closest('.inventory-item-group');
+      if (!parentGroup) return;
+      const canvas = parentGroup.querySelector('canvas[data-item-id]');
+      if (canvas) {
+        itemIds.push(canvas.getAttribute('data-item-id'));
+      }
+    });
+    if (!itemIds.length) return;
+
+    const moveSelect = document.getElementById('move-tileset-select');
+    const newTileset = moveSelect.value.trim();
+    if (!newTileset) {
+      alert('Please select a tileset to move items into.');
+      return;
+    }
+
+    const confirmed = confirm(`Move selected items into tileset "${newTileset}"?`);
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch('/api/tileset_manager/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds, newTileset })
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Reload objectData
+        game.loadAsset('json', 'objectData', 'assets/json/objectData.json', (updated) => {
+          this.itemData = updated;
+          this.currentPage = 1;
+          this.displayItems();
+          this.populateMoveTilesetDropdown();
+        });
+      } else {
+        alert('Move failed: ' + (data.message || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Move error:', err);
+      alert('Error moving items. Check console for details.');
+    }
   },
 
   unmount() {
