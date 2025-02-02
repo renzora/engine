@@ -11,6 +11,9 @@
                 ext: 'njk',
                 drag: false,
                 reload: true,
+                before: function() {
+                    plugin.hideAll();
+                },
                 after: function () {
                     plugin.load('editor_window', { path: 'editor', ext: 'njk' });
                 }
@@ -20,25 +23,28 @@
         input.assign('keydown+shift+f', () => { plugin.ui.fullScreen(); });
 
         plugin.preload([
+            { id: 'audio' },
             { id: 'time', path: 'core' },
-            { id: 'lighting' },
             { id: 'notif', path: 'core', ext: 'html' },
+            { id: 'language', path: 'core' },
+            { id: 'gamepad' },
+            { id: 'lighting' },
             { id: 'collision' },
             { id: 'pathfinding' },
-            //{ id: 'snow' },
+            { id: 'snow' },
+            { id: 'fireflies' },
             { id: 'debug', ext: 'html' },
-            { id: 'pie_menu', ext: 'html' },
-            { id: 'code', ext: 'html' }
-            
+            { id: 'pie_menu', ext: 'html', drag: false },
+            { id: 'overlay', ext: 'njk' },
+            { id: 'actions' },
+            { id: 'inventory', ext: 'njk' }
         ]);
 
         const playerSprite = sprite.create({
             id: 'player1',
             isPlayer: true,
             speed: 85,
-            animalType: 'female-01',
-            canShoot: true,
-            targetAim: false
+            type: 'female-01',
         });
 
         game.create({
