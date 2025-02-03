@@ -375,7 +375,7 @@ handleMouseMove(event) {
   }
 },
 
-handleMouseDown: function (e) {
+handleMouseDown(e) {
   if (plugin.editor_window.isAddingNewObject) return;
 
   if (game.editorMode === 'pan') {
@@ -411,84 +411,69 @@ handleMouseDown: function (e) {
   }
 
   if (e.button === 0) {
+    if (e.shiftKey) {
+      const clickedObject = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY, true);
+      if (clickedObject && !this.isObjectLocked(clickedObject)) {
+        const index = this.selectedObjects.indexOf(clickedObject);
+        if (index === -1) {
+          this.selectedObjects.push(clickedObject);
+          const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id);
+          editor_layers.selectLayersById(layerIds);
+        } else {
+          this.selectedObjects.splice(index, 1);
+          const layerIds = this.selectedObjects.map(obj => "item_" + obj.layer_id);
+          editor_layers.selectLayersById(layerIds);
+        }
+        if (this.selectedObjects.length === 0) {
+          this.changeMode('select');
+        } else {
+          this.changeMode('move');
+        }
+        return;
+      }
+    }
+
     if (game.editorMode === 'lasso') {
       this.isDragging = true;
       this.lassoPath = [{ x: this.mouseX, y: this.mouseY }];
       return;
     }
 
-    if (e.shiftKey && game.editorMode === 'move') {
-      const clickedObject = this.selectedObjects.find(obj => {
-        const objRect = {
-          x: Math.min(...obj.x) * 16,
-          y: Math.min(...obj.y) * 16,
-          width: (Math.max(...obj.x) - Math.min(...obj.x) + 1) * 16,
-          height: (Math.max(...obj.y) - Math.min(...obj.y) + 1) * 16
-        };
-        return (
-          this.mouseX >= objRect.x &&
-          this.mouseX <= objRect.x + objRect.width &&
-          this.mouseY >= objRect.y &&
-          this.mouseY <= objRect.y + objRect.height
-        );
-      });
-      if (clickedObject && !this.isObjectLocked(clickedObject)) {
-        this.selectedObjects = this.selectedObjects.filter(o => o !== clickedObject);
-        if (this.selectedObjects.length === 0) {
-          this.changeMode('select');
-        }
-        this.renderSelectedTiles();
-      }
-      return;
-    }
-
     if (game.editorMode === 'move') {
-      const clickedOnSelectedObject = this.checkIfClickedOnSelectedObject();
-      if (!clickedOnSelectedObject) {
-        const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
-        if (clickedItem) {
-          const isNewSelection = !this.selectedObjects.includes(clickedItem);
+      if (this.hoveredAxis === 'center') {
+        this.isDragging = true;
+        this.dragStartAxis = 'center';
+        this.lastMouseX = this.mouseX;
+        this.lastMouseY = this.mouseY;
+        this.clearSelectionBox();
+        return;
+      }
+
+      const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY, true);
+      if (clickedItem) {
+        if (!this.selectedObjects.includes(clickedItem)) {
           this.selectedObjects = [clickedItem];
           editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
-
-          if (isNewSelection) {
-            this.panCameraToObject(clickedItem);
-          }
-
+          this.panCameraToObject(clickedItem);
           this.clearSelectionBox();
-          this.changeMode('move');
           this.renderSelectedTiles();
-        } else {
-          this.changeMode('select');
-          this.handleSelectionStart(e);
         }
-      } else {
-        if (this.hoveredAxis === 'center') {
-          this.isDragging = true;
-          this.dragStartAxis = 'center';
-          this.lastMouseX = this.mouseX;
-          this.lastMouseY = this.mouseY;
-          this.clearSelectionBox();
-        } else {
-          this.changeMode('select');
-          this.handleSelectionStart(e);
-        }
+      } else if (!this.checkIfClickedOnSelectedObject()) {
+        this.changeMode('select');
+        this.handleSelectionStart(e);
       }
       return;
     }
 
     if (game.editorMode === 'select') {
-      if (!this.isDragging && !e.shiftKey) {
-        const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY);
+      if (!this.isDragging) {
+        const clickedItem = this.findTopmostObjectWithPixelCheck(this.mouseX, this.mouseY, true);
         if (clickedItem) {
-          const isNewSelection = !this.selectedObjects.includes(clickedItem);
-          this.selectedObjects = [clickedItem];
-          editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
-
-          if (isNewSelection) {
+          if (!this.selectedObjects.includes(clickedItem)) {
+            this.selectedObjects = [clickedItem];
+            editor_layers.selectLayersById(['item_' + clickedItem.layer_id]);
             this.panCameraToObject(clickedItem);
           }
-
           this.clearSelectionBox();
           this.changeMode('move');
           this.renderSelectedTiles();
@@ -551,68 +536,84 @@ handleMouseDown: function (e) {
     this.constrainCamera()
   },
 
-  findTopmostObjectWithPixelCheck(worldX, worldY) {
-    const items = [...game.roomData.items]
-    items.sort((a, b) => {
-      const zA = this.getRoomItemZIndex(a)
-      const zB = this.getRoomItemZIndex(b)
-      return zA - zB
-    })
+findTopmostObjectWithPixelCheck(worldX, worldY, allowSameOrHigherZ = false) {
+   const items = [...game.roomData.items]
+   
+   const itemsWithinBounds = items.filter(rItem => {
+       const minX = Math.min(...rItem.x) * 16
+       const maxX = Math.max(...rItem.x) * 16 + 16
+       const minY = Math.min(...rItem.y) * 16
+       const maxY = Math.max(...rItem.y) * 16 + 16
+       
+       return (
+           worldX >= minX && 
+           worldX <= maxX && 
+           worldY >= minY && 
+           worldY <= maxY
+       )
+   })
 
-    for (let i = items.length - 1; i >= 0; i--) {
-      const rItem = items[i]
-      if (rItem.visible === false) continue
-      if (editor_window.isObjectLocked(rItem)) continue
+   let selectedZ = -Infinity;
+   if (this.selectedObjects.length > 0) {
+       const selectedObj = this.selectedObjects[0];
+       const selectedMaxY = Math.max(...selectedObj.y);
+       const selectedData = game.objectData[selectedObj.id]?.[0];
+       selectedZ = selectedData?.z === 0 ? -9999 : selectedMaxY * 16;
+   }
 
-      const minX = Math.min(...rItem.x) * 16
-      const maxX = Math.max(...rItem.x) * 16 + 16
-      const minY = Math.min(...rItem.y) * 16
-      const maxY = Math.max(...rItem.y) * 16 + 16
-      if (worldX < minX || worldX > maxX || worldY < minY || worldY > maxY) {
-        continue
-      }
+   const sortedItems = itemsWithinBounds.map(rItem => {
+       const tData = game.objectData[rItem.id]?.[0]
+       const maxY = Math.max(...rItem.y)
+       let zIndex = tData?.z === 0 ? -9999 : maxY * 16
+       
+       return { rItem, zIndex }
+   }).sort((a, b) => b.zIndex - a.zIndex)
 
-      const tileDataArray = game.objectData[rItem.id]
-      if (!tileDataArray || !tileDataArray.length) continue
-      const tileData = tileDataArray[0]
-      const frame = tileData.currentFrame || 0
-      const rot = (rItem.rotation != null) ? rItem.rotation : (tileData.rotation || 0)
-      const cacheKey = `${rItem.id}_${frame}_${rot}`
-      const offscreen = game.objectCache[cacheKey]
-      if (!offscreen) continue
+   for (const { rItem, zIndex } of sortedItems) {
+       if (rItem.visible === false || this.isObjectLocked(rItem)) {
+           continue
+       }
 
-      const pivotX = (minX + maxX) / 2
-      const pivotY = maxY
-      let localX = worldX - pivotX
-      let localY = worldY - pivotY
-      if (rot !== 0) {
-        const cosA = Math.cos(-rot)
-        const sinA = Math.sin(-rot)
-        const rx = localX * cosA - localY * sinA
-        const ry = localX * sinA + localY * cosA
-        localX = rx
-        localY = ry
-      }
-      if (rItem.flipHorizontal && editor_window.renderMode === 'isometric') {
-        localX = -localX
-      }
-      localX += offscreen.width / 2
-      localY += offscreen.height
+       if (this.selectedObjects.includes(rItem)) {
+           return rItem;
+       }
 
-      const px = Math.floor(localX)
-      const py = Math.floor(localY)
-      if (px < 0 || px >= offscreen.width || py < 0 || py >= offscreen.height) {
-        continue
-      }
+       if (!allowSameOrHigherZ && zIndex < selectedZ) {
+           continue;
+       }
 
-      const offCtx = offscreen.getContext('2d')
-      const pixel = offCtx.getImageData(px, py, 1, 1).data
-      if (pixel[3] > 0) {
-        return rItem
-      }
-    }
-    return null
-  },
+       const tileDataArray = game.objectData[rItem.id]
+       if (!tileDataArray?.length) {
+           continue
+       }
+       
+       const tileData = tileDataArray[0]
+       const frame = tileData.currentFrame || 0
+       const cacheKey = `${rItem.id}_${frame}`
+       const offscreen = game.objectCache[cacheKey]
+       if (!offscreen) {
+           continue
+       }
+
+       const minX = Math.min(...rItem.x) * 16
+       const minY = Math.min(...rItem.y) * 16
+       const px = Math.floor(worldX - minX)
+       const py = Math.floor(worldY - minY)
+       
+       if (px < 0 || px >= offscreen.width || py < 0 || py >= offscreen.height) {
+           continue
+       }
+
+       const offCtx = offscreen.getContext('2d')
+       const pixel = offCtx.getImageData(px, py, 1, 1).data
+       
+       if (pixel[3] > 0) {
+           return rItem
+       }
+   }
+   
+   return null
+},
 
   getRoomItemZIndex(rItem) {
     const iData = game.objectData[rItem.id]
@@ -1811,22 +1812,17 @@ handleKeyDown(event) {
     event.preventDefault()
   } else if (key === 'Delete' || key === 'Backspace') {
     this.pushToUndoStack()
-    // Remove layers from editor_layers
     this.selectedObjects.forEach(obj => {
       const layerId = `item_${obj.layer_id}`
       editor_layers.removeLayerById(layerId)
     })
     
-    // Remove items from game.roomData
     game.roomData.items = game.roomData.items.filter(item => 
       !this.selectedObjects.includes(item)
     )
     
-    // Clear selections
     this.selectedObjects = []
     editor_layers.selectLayersById([])
-    
-    // Update editor mode and render
     this.changeMode('select')
     this.renderSelectedTiles()
     event.preventDefault()
