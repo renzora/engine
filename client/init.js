@@ -34,6 +34,8 @@ assets.preload(
       },
       { id: "auth", ext: "njk" },
       { id: 'lighting' },
+      { id: 'collision' },
+      { id: 'pathfinding' },
       { id: 'gamepad' }
     ]);
 
