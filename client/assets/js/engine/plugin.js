@@ -88,11 +88,11 @@ const rawPlugin = {
       this.front(element);
 
       if (isTouch) {
-        document.addEventListener('touchmove', onMove, { passive: false });
-        document.addEventListener('touchend', onEnd);
+        input.assign('touchmove', onMove, { passive: false });
+        input.assign('touchend', onEnd);
       } else {
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onEnd);
+        input.assign('mousemove', onMove);
+        input.assign('mouseup', onEnd);
       }
     };
 

@@ -1754,7 +1754,6 @@ handleKeyDown(event) {
 
   if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
     event.preventDefault()
-    // Select all objects
     this.selectedObjects = [...game.roomData.items].filter(item => {
       const layerNode = editor_layers.findNodeById(`item_${item.layer_id}`)
       return layerNode && !layerNode.node.locked && layerNode.node.visible
@@ -1762,7 +1761,6 @@ handleKeyDown(event) {
     this.changeMode('move')
     this.renderSelectedTiles()
     
-    // Select all layers
     const allLayerIds = []
     const getAllLayerIds = (nodes) => {
       nodes.forEach(node => {
@@ -1807,11 +1805,30 @@ handleKeyDown(event) {
     this.clearSelectionBox()
     this.clearLassoPath()
     this.changeMode('select')
+    editor_layers.selectLayersById([])
   } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
     this.moveSelectedObjectsWithArrowKeys(key)
     event.preventDefault()
   } else if (key === 'Delete' || key === 'Backspace') {
-    this.deleteSelectedObjects()
+    this.pushToUndoStack()
+    // Remove layers from editor_layers
+    this.selectedObjects.forEach(obj => {
+      const layerId = `item_${obj.layer_id}`
+      editor_layers.removeLayerById(layerId)
+    })
+    
+    // Remove items from game.roomData
+    game.roomData.items = game.roomData.items.filter(item => 
+      !this.selectedObjects.includes(item)
+    )
+    
+    // Clear selections
+    this.selectedObjects = []
+    editor_layers.selectLayersById([])
+    
+    // Update editor mode and render
+    this.changeMode('select')
+    this.renderSelectedTiles()
     event.preventDefault()
   }
 },

@@ -28,7 +28,6 @@
                 notif.show('remove_messages', 'edit init.js to remove these messages', 'danger');
                 notif.show('access_editor', 'press shift + e to access editor');
             }},
-            { id: 'debug', path: 'core', ext: 'html' },
             { id: 'auth', ext: 'njk' }
         ]);
 

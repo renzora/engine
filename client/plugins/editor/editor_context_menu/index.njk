@@ -526,7 +526,8 @@ editor_context_menu = {
 
   render2dGrid() {
     if (!this.isGridEnabled) return;
-    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.1)';
+    game.ctx.strokeStyle = gridColor;
     game.ctx.lineWidth = 1;
     for (let x = 0; x < game.worldWidth; x += 16) {
       game.ctx.beginPath();
@@ -540,18 +541,19 @@ editor_context_menu = {
       game.ctx.lineTo(game.worldWidth, y);
       game.ctx.stroke();
     }
-    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    game.ctx.strokeStyle = gridColor;
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
 
   renderIsometricGrid() {
     if (!this.isGridEnabled) return;
+    const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.1)';
     const tileWidth = 32;
     const tileHeight = 16;
     const maxY = game.worldHeight;
     const minY = -game.worldHeight;
-    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    game.ctx.strokeStyle = gridColor;
     game.ctx.lineWidth = 1;
     for (let y = minY; y <= maxY; y += tileHeight) {
       game.ctx.beginPath();
@@ -565,7 +567,7 @@ editor_context_menu = {
       game.ctx.lineTo(0, game.worldHeight / 2 + y - game.worldWidth / 2);
       game.ctx.stroke();
     }
-    game.ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)';
+    game.ctx.strokeStyle = gridColor;
     game.ctx.lineWidth = 1;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },

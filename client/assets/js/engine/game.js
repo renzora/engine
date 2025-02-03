@@ -6,7 +6,6 @@ game = {
   x: null,
   y: null,
   timestamp: 0,
-  local: null,
   worldWidth: 1280,
   worldHeight: 944,
   zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 5,
@@ -128,35 +127,6 @@ game = {
 
   scene(sceneId) {
     plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
-    if (this.local) {
-        console.log('fetching locally');
-        fetch('assets/json/roomData.json')
-            .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-            .then(d => {
-                plugin.lighting.clearLightsAndEffects();
-                this.roomData = d.roomData;
-                this.sceneid = d._id;
-                this.serverid = d.server_id;
-                localStorage.setItem('sceneid', d._id);
-                this.worldWidth = d.width || 1280;
-                this.worldHeight = d.height || 944;
-                this.x = d.startingX || 0;
-                this.y = d.startingY || 0;
-                this.roomData.items = this.roomData.items.filter(item => this.objectData[item.id]);
-                const p = this.sprites[this.playerid];
-                if (p) { p.x = this.x; p.y = this.y; }
-                this.sceneBg = d.bg || null;
-                this.resizeCanvas();
-                this.overlappingTiles = [];
-                camera.update();
-                plugin.effects.start('fadeOut', 1000);
-                plugin.effects.start('fadeIn', 1000);
-                this.buildRepeatingBackground();
-            })
-            .catch(() => {
-                plugin.load('errors', { ext: 'html' });
-            });
-    } else {
         console.log("fetching from database");
         fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
             method: 'GET',
@@ -184,14 +154,11 @@ game = {
                 plugin.effects.start('fadeOut', 1000);
                 plugin.effects.start('fadeIn', 1000);
                 this.buildRepeatingBackground();
-            } else {
-                plugin.load('errors', { ext: 'html' });
             }
         })
         .catch(() => {
             plugin.load('errors', { ext: 'html' });
         });
-    }
 },
 
   loop(timestamp) {
@@ -240,14 +207,8 @@ game = {
     this.renderBackground()
     this.render()
     plugin.hook('onRender')
-    this.renderCarriedObjects()
     if (plugin.ui_console_editor_inventory.selectedInventoryItem) plugin.ui_console_editor_inventory.render()
-    plugin.ui_console_tab_window.renderCollisionBoundaries()
-    plugin.ui_console_tab_window.renderNearestWalkableTile()
-    plugin.ui_console_tab_window.renderObjectCollision()
-    if (this.mainSprite && this.mainSprite.isVehicle) {
-      plugin.ui_overlay_window.update(this.mainSprite.currentSpeed, this.mainSprite.maxSpeed)
-    }
+
     plugin.debug.tracker('game.loop')
     requestAnimationFrame(this.loop.bind(this))
   },
@@ -619,38 +580,6 @@ game = {
         }
       })
     }
-  },
-
-  renderBubbles(sp,colorHex) {
-    if(!sp.bubbleEffect){
-      sp.bubbleEffect={bubbles:[],duration:2000,startTime:Date.now()}
-    }
-    const ctx=this.ctx
-    const ct=Date.now()
-    const el=ct-sp.bubbleEffect.startTime
-    if(el>sp.bubbleEffect.duration){delete sp.bubbleEffect;return}
-    if(sp.bubbleEffect.bubbles.length<10){
-      sp.bubbleEffect.bubbles.push({
-        x:Math.random()*sp.width-sp.width/2,
-        y:Math.random()*-10,
-        radius:Math.random()*3+2,
-        opacity:1,
-        riseSpeed:Math.random()*0.5+0.2
-      })
-    }
-    sp.bubbleEffect.bubbles.forEach((bb,i)=>{
-      const bX=sp.x+sp.width/2+bb.x
-      const bY=sp.y-bb.y
-      const ah=Math.floor(bb.opacity*255).toString(16).padStart(2,'0')
-      const cwo=`${colorHex}${ah}`
-      ctx.fillStyle=cwo
-      ctx.beginPath()
-      ctx.arc(bX,bY,bb.radius,0,Math.PI*2)
-      ctx.fill()
-      bb.y += bb.riseSpeed*this.deltaTime/16
-      bb.opacity-=0.01
-      if(bb.opacity<=0||bY<sp.y-40) sp.bubbleEffect.bubbles.splice(i,1)
-    })
   },
 
   updateAnimatedTiles() {
