@@ -40,7 +40,7 @@ sprite = {
       width: options.width || 16,
       height: options.height || 32,
       scale: 1,
-      speed: 0,
+      speed: options.speed || 0,
       topSpeed: options.topSpeed || 70,
       currentFrame: 0,
       frameCounter: 0,
@@ -54,11 +54,11 @@ sprite = {
       type: options.type || 'character',
       active: options.active ?? true
     };
-
+  
     if (options.boundaryX !== undefined && options.boundaryY !== undefined) {
       newSprite.boundary = { x: options.boundaryX, y: options.boundaryY };
     }
-
+  
     Object.setPrototypeOf(newSprite, this.SpritePrototype);
     game.sprites[options.id] = newSprite;
     return newSprite;

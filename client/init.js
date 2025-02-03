@@ -23,27 +23,21 @@
         input.assign('keydown+shift+f', () => { plugin.ui.fullScreen(); });
 
         plugin.preload([
-            { id: 'audio' },
             { id: 'time', path: 'core' },
-            { id: 'notif', path: 'core', ext: 'html' },
-            { id: 'language', path: 'core' },
-            { id: 'gamepad' },
-            { id: 'lighting' },
-            { id: 'collision' },
-            { id: 'pathfinding' },
-            { id: 'snow' },
-            { id: 'fireflies' },
-            { id: 'debug', ext: 'html' },
-            { id: 'pie_menu', ext: 'html', drag: false },
-            { id: 'overlay', ext: 'njk' },
-            { id: 'actions' },
-            { id: 'inventory', ext: 'njk' }
+            { id: 'notif', path: 'core', ext: 'html', after: function() {
+                notif.show('remove_messages', 'edit init.js to remove these messages', 'danger');
+                notif.show('access_editor', 'press shift + e to access editor');
+            }},
+            { id: 'debug', path: 'core', ext: 'html' },
+            { id: 'auth', ext: 'njk' }
         ]);
 
         const playerSprite = sprite.create({
             id: 'player1',
             isPlayer: true,
-            speed: 85,
+            speed: 70,
+            topSpeed: 70,
+            currentAnimation: 'idle',
             type: 'female-01',
         });
 
@@ -55,7 +49,7 @@
                 game.scene(localStorage.getItem('sceneid') || '678ec2d7433aae2deee168ee');
                 plugin.load('auth', { ext: 'njk' });
                 sprite.init();
-                plugin.time.hours = 22;
+                plugin.time.hours = 6;
             }
         });
 

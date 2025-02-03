@@ -69,9 +69,9 @@ start() {
     },
 
     bindGamepadButtons() {
-        this.bButton = gamepad.throttle(this.bButton.bind(this), 200);
-        this.upButton = gamepad.throttle(this.upButton.bind(this), 200);
-        this.downButton = gamepad.throttle(this.downButton.bind(this), 200);
+        this.bButton = plugin.gamepad.throttle(this.bButton.bind(this), 200);
+        this.upButton = plugin.gamepad.throttle(this.upButton.bind(this), 200);
+        this.downButton = plugin.gamepad.throttle(this.downButton.bind(this), 200);
     },
 
     setupTabIcons() {
