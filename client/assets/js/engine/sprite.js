@@ -13,7 +13,6 @@ sprite = {
   init() {
     input.assign('keydown', e => this.handleKeyDownGlobal(e));
     input.assign('keyup', e => this.handleKeyUpGlobal(e));
-    input.assign('mouseup', e => game.handleMouseUp(e));
   },
 
   handleKeyDownGlobal(e) {
@@ -194,13 +193,6 @@ sprite = {
     },
 
     update() {
-      if (this.id === game.playerid && plugin.exists('lighting')) {
-        const playerLight = lighting.lights.find(light => light.id === this.id + '_light');
-        if (playerLight) {
-          playerLight.x = this.x + 8;
-          playerLight.y = this.y + 8;
-        }
-      }
 
       if (this.isMovingToTarget && plugin.exists('pathfinding')) {
         plugin.pathfinding.moveAlongPath(this);

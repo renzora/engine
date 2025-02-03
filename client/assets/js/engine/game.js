@@ -438,7 +438,6 @@ game = {
         });
         this.currentTileData = tData;
         this.currentRoomItem = rItem;
-        this.handleLights();
       });
     }
     for (let id in this.sprites) {
