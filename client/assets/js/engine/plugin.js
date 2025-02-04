@@ -134,26 +134,26 @@ const rawPlugin = {
     const onEnd = (e) => {
       if (!isDragging) return;
       isDragging = false;
-
+    
       document.onselectstart = null;
       document.body.style.userSelect = '';
-
+    
       if (options && typeof options.stop === 'function') {
         options.stop.call(element, e);
       }
-
+    
       const isTouch = e.type === 'touchend';
       if (isTouch) {
-        document.removeEventListener('touchmove', onMove);
-        document.removeEventListener('touchend', onEnd);
+        input.unassign('touchmove', onMove);
+        input.unassign('touchend', onEnd);
       } else {
-        document.removeEventListener('mousemove', onMove);
-        document.removeEventListener('mouseup', onEnd);
+        input.unassign('mousemove', onMove);
+        input.unassign('mouseup', onEnd);
       }
     };
 
-    element.addEventListener('mousedown', onStart);
-    element.addEventListener('touchstart', onStart, { passive: false });
+    input.assign('mousedown', onStart, {}, element);
+    input.assign('touchstart', onStart, { passive: false }, element);
   },
 
   initCloseButton(element) {

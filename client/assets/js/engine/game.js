@@ -70,15 +70,18 @@ game = {
       this.ctx = this.canvas.getContext('2d')
       this.ctx.imageSmoothingEnabled = false
       document.body.appendChild(this.canvas)
+      
+      input.assign('mouseup', this.handleMouseUp.bind(this), {}, this.canvas)
+      input.assign('contextmenu', e => e.preventDefault(), {}, this.canvas)
       input.assign('resize', e => this.resizeCanvas(e))
+      input.assign('visibilitychange', () => {
+        if (document.hidden) this.pause(); else this.resume()
+      }, {}, document)
+      
       this.resizeCanvas()
       this.loop()
       plugin.hook('onGameCreate')
-      this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this))
-      this.canvas.addEventListener('contextmenu', e => e.preventDefault())
-      document.addEventListener('visibilitychange', () => {
-        if (document.hidden) this.pause(); else this.resume()
-      })
+      
       if (config.objectData) this.objectData = config.objectData
       if (config.spriteData) this.spriteData = config.spriteData
       if (config.player) {
@@ -89,7 +92,7 @@ game = {
       this.local = config.local
       if (typeof config.after === 'function') config.after()
     })
-},
+  },
 
   pause() {
     cancelAnimationFrame(this.animationFrameId)
@@ -161,57 +164,70 @@ game = {
         });
 },
 
-  loop(timestamp) {
-    if (!this.lastTime) {
-      this.lastTime = timestamp
-      this.lastFpsUpdateTime = timestamp
-      requestAnimationFrame(this.loop.bind(this))
-      return
-    }
-    const dt = timestamp - this.lastTime
-    if (dt > 1000) {
-      this.accumulatedTime = this.fixedDeltaTime
-    } else {
-      this.accumulatedTime += dt
-    }
-    this.deltaTime = this.fixedDeltaTime
-    this.lastTime = timestamp
-    while (this.accumulatedTime >= this.fixedDeltaTime) {
-      this.viewportXStart = Math.floor(camera.cameraX / 16)
-      this.viewportXEnd   = Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16)
-      this.viewportYStart = Math.floor(camera.cameraY / 16)
-      this.viewportYEnd   = Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16)
-      this.viewportXStart = Math.max(0, this.viewportXStart)
-      this.viewportXEnd   = Math.min(this.worldWidth / 16, this.viewportXEnd)
-      this.viewportYStart = Math.max(0, this.viewportYStart)
-      this.viewportYEnd   = Math.min(this.worldHeight / 16, this.viewportYEnd)
-      for (let id in this.sprites) {
-        const sp = this.sprites[id]
-        const r = sp.x + sp.width
-        const b = sp.y + sp.height
-        if (r >= this.viewportXStart*16 && sp.x < this.viewportXEnd*16 &&
-            b >= this.viewportYStart*16 && sp.y < this.viewportYEnd*16) {
-          if (sp.update) sp.update()
-        }
-      }
-      camera.update()
-      this.updateAnimatedTiles()
-      this.accumulatedTime -= this.fixedDeltaTime
-    }
-    this.ctx.imageSmoothingEnabled = false
-    this.ctx.setTransform(1, 0, 0, 1, 0, 0)
-    this.ctx.scale(this.zoomLevel, this.zoomLevel)
-    this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY))
-    this.renderCalls = 0
-    this.tileCount = 0
-    this.renderBackground()
-    this.render()
-    plugin.hook('onRender')
-    if (plugin.ui_console_editor_inventory.selectedInventoryItem) plugin.ui_console_editor_inventory.render()
+loop(timestamp) {
+  if (!this.lastTime) {
+    this.lastTime = timestamp;
+    this.lastFpsUpdateTime = timestamp;
+    requestAnimationFrame(this.loop.bind(this));
+    return;
+  }
 
-    plugin.debug.tracker('game.loop')
-    requestAnimationFrame(this.loop.bind(this))
-  },
+  const frameTime = 1000 / 60; // Target 60 FPS
+  const dt = timestamp - this.lastTime;
+  
+  if (dt < frameTime) {
+    requestAnimationFrame(this.loop.bind(this));
+    return;
+  }
+
+  if (dt > 1000) {
+    this.accumulatedTime = this.fixedDeltaTime;
+  } else {
+    this.accumulatedTime += dt;
+  }
+
+  this.deltaTime = this.fixedDeltaTime;
+  this.lastTime = timestamp;
+
+  while (this.accumulatedTime >= this.fixedDeltaTime) {
+    this.viewportXStart = Math.floor(camera.cameraX / 16);
+    this.viewportXEnd   = Math.ceil((camera.cameraX + window.innerWidth / this.zoomLevel) / 16);
+    this.viewportYStart = Math.floor(camera.cameraY / 16);
+    this.viewportYEnd   = Math.ceil((camera.cameraY + window.innerHeight / this.zoomLevel) / 16);
+    this.viewportXStart = Math.max(0, this.viewportXStart);
+    this.viewportXEnd   = Math.min(this.worldWidth / 16, this.viewportXEnd);
+    this.viewportYStart = Math.max(0, this.viewportYStart);
+    this.viewportYEnd   = Math.min(this.worldHeight / 16, this.viewportYEnd);
+
+    for (let id in this.sprites) {
+      const sp = this.sprites[id];
+      const r = sp.x + sp.width;
+      const b = sp.y + sp.height;
+      if (r >= this.viewportXStart*16 && sp.x < this.viewportXEnd*16 &&
+          b >= this.viewportYStart*16 && sp.y < this.viewportYEnd*16) {
+        if (sp.update) sp.update();
+      }
+    }
+
+    camera.update();
+    this.updateAnimatedTiles();
+    this.accumulatedTime -= this.fixedDeltaTime;
+  }
+
+  this.ctx.imageSmoothingEnabled = false;
+  this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  this.ctx.scale(this.zoomLevel, this.zoomLevel);
+  this.ctx.translate(-Math.round(camera.cameraX), -Math.round(camera.cameraY));
+  this.renderCalls = 0;
+  this.tileCount = 0;
+  this.renderBackground();
+  this.render();
+  plugin.hook('onRender');
+  if (plugin.ui_console_editor_inventory.selectedInventoryItem) plugin.ui_console_editor_inventory.render();
+
+  plugin.debug.tracker('game.loop');
+  requestAnimationFrame(this.loop.bind(this));
+},
 
   buildRepeatingBackground() {
     if (!this.sceneBg || !this.objectData[this.sceneBg]) {
@@ -457,7 +473,6 @@ game = {
           id: id,
           data: { sprite: sp },
           draw: () => {
-            this.renderPathfinderLine();
             sp.drawShadow();
             sp.draw();
           }
@@ -482,50 +497,6 @@ game = {
     this.y = Math.floor(my/16)
     if (plugin.exists('pathfinding')) {
       plugin.pathfinding.walkToClickedTile(this.mainSprite, e, this.x, this.y);
-    }
-  },
-
-  renderPathfinderLine() {
-    if (this.mainSprite && this.mainSprite.path && this.mainSprite.path.length>0) {
-      const ctx = this.ctx
-      const last = this.mainSprite.path[this.mainSprite.path.length-1]
-      const el = Date.now()%1000
-      const p1 = (el%1000)/1000
-      const p2 = ((el+500)%1000)/1000
-      const r1 = 3+p1*10
-      const r2 = 3+p2*12
-      const o1 = 0.4-p1*0.4
-      const o2 = 0.4-p2*0.4
-      const ps=2
-      const r1p=Math.floor(r1/ps)*ps
-      for (let y=-r1p; y<=r1p; y+=ps) {
-        for (let x=-r1p; x<=r1p; x+=ps) {
-          const d=Math.sqrt(x*x+y*y)
-          if (d>=r1p-ps && d<=r1p) {
-            ctx.fillStyle=`rgba(0,102,255,${o1})`
-            ctx.fillRect(last.x*16+8+x-ps/2, last.y*16+8+y-ps/2, ps, ps)
-          }
-        }
-      }
-      const r2p=Math.floor(r2/ps)*ps
-      for (let y=-r2p; y<=r2p; y+=ps) {
-        for (let x=-r2p; x<=r2p; x+=ps) {
-          const d=Math.sqrt(x*x+y*y)
-          if (d>=r2p-ps && d<=r2p) {
-            ctx.fillStyle=`rgba(0,102,255,${o2})`
-            ctx.fillRect(last.x*16+8+x-ps/2, last.y*16+8+y-ps/2, ps, ps)
-          }
-        }
-      }
-    }
-  },
-
-  renderCarriedObjects() {
-    if (this.mainSprite && this.mainSprite.isCarrying) {
-      const id=this.mainSprite.carriedItem
-      const ix=this.mainSprite.x-8
-      const iy=this.mainSprite.y-32-(this.objectData[id][0].b.length)
-      this.drawCarriedObject(this.ctx,id,ix,iy)
     }
   },
 

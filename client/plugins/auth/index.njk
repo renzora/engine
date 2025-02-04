@@ -135,83 +135,87 @@ auth = {
         };
     },
 
-    login() {
-        const username = document.getElementById('login_username').value;
-        const password = document.getElementById('login_password').value;
+login() {
+    const username = document.getElementById('login_username').value;
+    const password = document.getElementById('login_password').value;
 
-        ui.ajax({
-            outputType: 'json',
-            method: 'POST',
-            url: '/api/auth/login',
-            data: {
-                login_username: username,
-                login_password: password
-            },
-            success(response) {
-                if (response.message === 'login_complete') {
-                    plugin.notif.show("auth_login_success", "Hey " + username + "! You are now signed in!");
-                    plugin.close('auth');
-                } else {
-                    switch(response.message) {
-                        case 'error_1':
-                            alert('Please fill in all fields');
-                            break;
-                        case 'user_not_found':
-                            alert('User not found');
-                            break;
-                        case 'incorrect_info':
-                            alert('Incorrect username or password');
-                            break;
-                        default:
-                            alert('An error occurred');
-                    }
-                }
+    fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            login_username: username,
+            login_password: password
+        })
+    })
+    .then(response => response.json())
+    .then(response => {
+        if (response.message === 'login_complete') {
+            plugin.notif.show("auth_login_success", "Hey " + username + "! You are now signed in!");
+            plugin.close('auth');
+        } else {
+            switch(response.message) {
+                case 'error_1':
+                    alert('Please fill in all fields');
+                    break;
+                case 'user_not_found':
+                    alert('User not found');
+                    break;
+                case 'incorrect_info':
+                    alert('Incorrect username or password');
+                    break;
+                default:
+                    alert('An error occurred');
             }
-        });
-    },
+        }
+    });
+},
 
-    register() {
-        const username = document.getElementById('register_username').value;
-        const password = document.getElementById('register_password').value;
-        const email = document.getElementById('register_email').value;
+ register() {
+    const username = document.getElementById('register_username').value;
+    const password = document.getElementById('register_password').value;
+    const email = document.getElementById('register_email').value;
 
-        ui.ajax({
-            outputType: 'json',
-            method: 'POST',
-            url: '/api/auth/register',
-            data: {
-                register_username: username,
-                register_password: password,
-                register_email: email
-            },
-            success(response) {
-                if (response.message === 'registration_complete') {
-                    plugin.notif.show("auth_register_success", "Hey " + username + "! You are now registered!");
-                    plugin.close('auth');
-                } else {
-                    switch(response.message) {
-                        case 'error_1':
-                            alert('Please fill in all fields');
-                            break;
-                        case 'username_exists':
-                            alert('Username already exists');
-                            break;
-                        case 'username_invalid':
-                            alert('Username contains invalid characters');
-                            break;
-                        case 'username_too_long':
-                            alert('Username is too long');
-                            break;
-                        case 'username_too_short':
-                            alert('Username is too short');
-                            break;
-                        default:
-                            alert('An error occurred');
-                    }
-                }
+    fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            register_username: username,
+            register_password: password,
+            register_email: email
+        })
+    })
+    .then(response => response.json())
+    .then(response => {
+        if (response.message === 'registration_complete') {
+            plugin.notif.show("auth_register_success", "Hey " + username + "! You are now registered!");
+            plugin.close('auth');
+        } else {
+            switch(response.message) {
+                case 'error_1':
+                    alert('Please fill in all fields');
+                    break;
+                case 'username_exists':
+                    alert('Username already exists');
+                    break;
+                case 'username_invalid':
+                    alert('Username contains invalid characters');
+                    break;
+                case 'username_too_long':
+                    alert('Username is too long');
+                    break;
+                case 'username_too_short':
+                    alert('Username is too short');
+                    break;
+                default:
+                    alert('An error occurred');
             }
-        });
-    },
+        }
+    });
+}
 
     signout() {
         fetch('/api/auth/signout', {

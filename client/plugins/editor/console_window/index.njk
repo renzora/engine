@@ -193,29 +193,32 @@ toggleConsoleSlide() {
     },
 
     load_tab_buttons(id) {
-        assets.preload([{ name: 'console_window_icons', path: 'plugins/editor/console_window/icons.png' }]);
-        console.log(id);
+    assets.preload([{ name: 'console_window_icons', path: 'plugins/editor/console_window/icons.png' }]);
+    console.log(id);
 
-        fetch(`/api/ajax/plugins/editor/console_window/tabs.njk`, { method: 'GET' })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                return response.text();
-            })
-            .then(data => {
-                ui.html('.console_window_tab_buttons', data, 'replace');
-                console_window.setupTabListeners();
-                console_window.setupTabIcons();
-            })
-            .catch(err => {
-                console.error("Failed to load content for tab:", id, err);
-                const contentDiv = document.getElementById('console_window_content');
-                if (contentDiv) {
-                    contentDiv.innerHTML = `<div class="error">Failed to load content. Please try again later.</div>`;
-                }
-            });
-    },
+    fetch(`/api/ajax/plugins/editor/console_window/tabs.njk`, { method: 'GET' })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.text();
+        })
+        .then(data => {
+            const tabButtons = document.querySelector('.console_window_tab_buttons');
+            if (tabButtons) {
+                tabButtons.innerHTML = data;
+            }
+            console_window.setupTabListeners();
+            console_window.setupTabIcons();
+        })
+        .catch(err => {
+            console.error("Failed to load content for tab:", id, err);
+            const contentDiv = document.getElementById('console_window_content');
+            if (contentDiv) {
+                contentDiv.innerHTML = `<div class="error">Failed to load content. Please try again later.</div>`;
+            }
+        });
+},
 
     toggleConsoleWindow(toggle = true, tabName = null) {
         const consoleElement = document.getElementById('console_window');
@@ -275,7 +278,7 @@ toggleConsoleSlide() {
     handleTabClick(tab, index) {
         const newTabName = tab.getAttribute('data-tab');
         if (this.tab_name && this.tab_name !== newTabName) {
-            ui.unmount(`ui_console_${this.tab_name}`);
+            plugin.unmount(`ui_console_${this.tab_name}`);
             console.log(`Unmounting ui_console_${this.tab_name}`);
         }
         this.currentTabIndex = index;
@@ -289,35 +292,57 @@ toggleConsoleSlide() {
         }
     },
 
-    loadTabContent(target) {
-        if (this.tab_name) {
-            ui.unmount('ui_console_' + this.tab_name);
-            console.log(`Unmounting ui_console_${this.tab_name}`);
-        }
-        this.tab_name = target;
-        const contentDiv = document.getElementById('console_window_content');
-        if (contentDiv) {
-            contentDiv.innerHTML = '';
-            fetch(`/api/ajax/plugins/editor/console_window/tabs/${target}/index.njk`, { method: 'GET' })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP error! status: ${response.status}`);
-                    }
-                    return response.text();
-                })
-                .then(data => {
-                    ui.html(contentDiv, data, 'replace');
-                    console.log(target, "loaded successfully");
-                })
-                .catch(err => {
-                    console.error("Failed to load content for tab:", target, err);
-                    contentDiv.innerHTML = `<div class="error">Failed to load content. Please try again later.</div>`;
-                });
-        }
-    },
+loadTabContent(target) {
+   if (this.tab_name) {
+       plugin.unmount('ui_console_' + this.tab_name);
+       console.log(`Unmounting ui_console_${this.tab_name}`);
+   }
+   this.tab_name = target;
+   const contentDiv = document.getElementById('console_window_content');
+   if (contentDiv) {
+       contentDiv.innerHTML = '';
+       fetch(`/api/ajax/plugins/editor/console_window/tabs/${target}/index.njk`, { method: 'GET' })
+           .then(response => {
+               if (!response.ok) {
+                   throw new Error(`HTTP error! status: ${response.status}`);
+               }
+               return response.text();
+           })
+           .then(data => {
+               contentDiv.innerHTML = data;
+               
+               const tempContainer = document.createElement('div');
+               tempContainer.innerHTML = data;
+               
+               const scripts = tempContainer.querySelectorAll('script');
+               scripts.forEach(oldScript => {
+                   const newScript = document.createElement('script');
+                   if (oldScript.src) {
+                       newScript.src = oldScript.src;
+                       newScript.async = false;
+                   } else {
+                       newScript.textContent = oldScript.textContent;
+                   }
+                   
+                   Array.from(oldScript.attributes).forEach(attr => {
+                       newScript.setAttribute(attr.name, attr.value);
+                   });
+                   
+                   document.body.appendChild(newScript);
+                   document.body.removeChild(newScript);
+               });
+               
+               console.log(target, "loaded successfully");
+           })
+           .catch(err => {
+               console.error("Failed to load content for tab:", target, err);
+               contentDiv.innerHTML = `<div class="error">Failed to load content. Please try again later.</div>`;
+           });
+   }
+},
 
     unmountCurrentTab() {
-        ui.unmount('ui_console_tab_window');
+        plugin.unmount('ui_console_tab_window');
         console.log("unmounting ui_console_tab_window");
         const contentDiv = document.getElementById('console_window_content');
         if (contentDiv) {

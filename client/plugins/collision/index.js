@@ -1,4 +1,4 @@
-collision = {
+const collision = {
     cornerBuffer: 16,
 
     pointInPolygon(px, py, polygon) {
@@ -6,8 +6,7 @@ collision = {
         for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
             const xi = polygon[i].x, yi = polygon[i].y;
             const xj = polygon[j].x, yj = polygon[j].y;
-
-            const intersect = ((yi > py) !== (yj > py)) && 
+            const intersect = ((yi > py) !== (yj > py)) &&
                               (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
             if (intersect) isInside = !isInside;
         }
@@ -18,6 +17,7 @@ collision = {
         if (!game.roomData?.items) {
             return { collisionDetected: false };
         }
+        const nudgeFactor = 0.1;
         const a = sprite.width / 2;
         const b = sprite.height / 4;
         const centerX = x + a;
@@ -30,8 +30,6 @@ collision = {
             const py = centerY + b * Math.sin(angle);
             pointsToCheck.push({ px, py });
         }
-    
-        const nudgeFactor = 0.1;
     
         for (const item of game.roomData.items) {
             const itemData = assets.use('objectData')[item.id]?.[0];
@@ -76,45 +74,36 @@ collision = {
             x: endX - startX,
             y: endY - startY
         };
-        
         const length = Math.hypot(direction.x, direction.y);
         if (length === 0) return null;
-        
         direction.x /= length;
         direction.y /= length;
-        
         const perpendicular = {
             x: -direction.y,
             y: direction.x
         };
-        
         const leftPath = this.checkPath(startX, startY, perpendicular.x, perpendicular.y, polygon);
         const rightPath = this.checkPath(startX, startY, -perpendicular.x, -perpendicular.y, polygon);
-        const path = leftPath.distance < rightPath.distance ? leftPath : rightPath; 
-
+        const path = leftPath.distance < rightPath.distance ? leftPath : rightPath;
         return {
-            x: path.vector.x * length,
-            y: path.vector.y * length
+            x: path.vector.x * path.distance,
+            y: path.vector.y * path.distance
         };
     },
 
     checkPath(startX, startY, dirX, dirY, polygon) {
         let clear = false;
         let distance = 16;
-        let maxDistance = 64;
-        
+        const maxDistance = 64;
         while (!clear && distance <= maxDistance) {
             const testX = startX + dirX * distance;
             const testY = startY + dirY * distance;
-            
             if (!this.pointInPolygon(testX, testY, polygon)) {
                 clear = true;
                 break;
             }
-            
             distance += 16;
         }
-        
         return {
             distance: distance,
             vector: { x: dirX, y: dirY }

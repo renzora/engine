@@ -401,34 +401,36 @@
     }
 },
 
-    saveData() { // Remove itemId parameter since we store it in the object
-        var item = game.objectData[this.itemId][0]; // Use this.itemId here
-        item.w = this.walkableData.polygon.concat(this.polygonPoints);
-        
-        console.log("Walkable data saved:", item.w);
+saveData() {
+    var item = game.objectData[this.itemId][0];
+    item.w = this.walkableData.polygon.concat(this.polygonPoints);
+    
+    console.log("Walkable data saved:", item.w);
 
-        ui.ajax({
-            method: 'POST',
-            url: '/api/tileset_manager/save_item',
-            data: JSON.stringify(game.objectData),
-            outputType: 'json',
-            success(response) {
-                if (response.success) {
-                    ui.notif("Data saved successfully!");
-                } else {
-                    ui.notif("Error saving data: " + response.message, "error");
-                    console.error('Server returned an error:', response.message);
-                }
-            },
-            error(err) {
-                console.error('Failed to save data:', err);
-                err.text().then(text => {
-                    console.error('Response from server:', text);
-                    ui.notif("Failed to save data. See console for details.", "error");
-                });
-            }
+    fetch('/api/tileset_manager/save_item', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(game.objectData)
+    })
+    .then(response => response.json())
+    .then(response => {
+        if (response.success) {
+            ui.notif("Data saved successfully!");
+        } else {
+            ui.notif("Error saving data: " + response.message, "error");
+            console.error('Server returned an error:', response.message);
+        }
+    })
+    .catch(err => {
+        console.error('Failed to save data:', err);
+        err.text().then(text => {
+            console.error('Response from server:', text);
+            ui.notif("Failed to save data. See console for details.", "error");
         });
-    },
+    });
+},
 
         unmount() {
             console.log("Unmounting Item Editor plugin");

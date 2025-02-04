@@ -1,0 +1,120 @@
+<div class="window window_bg text-white">
+    <div class="window_title p-2">
+        <span>Plugin Window</span>
+    </div>
+    <div class="container window_body text-center p-2">
+        <p>Plugin content goes here</p>
+        <button data-close class="white_button p-2 rounded mt-2" aria-label="Close">Okay</button>
+        <div id="editor" class="flex flex-row border border-gray-700 rounded mt-4 max-w-4xl mx-auto">
+            <div id="lineNumbers" class="bg-gray-800 text-gray-400 p-2 text-right select-none"></div>
+            <div id="codeArea" class="flex-1 p-2 bg-gray-900 text-gray-100 outline-none" contenteditable="true"></div>
+        </div>
+        <div class="flex flex-row gap-2 mt-2 justify-center">
+            <input id="searchInput" class="border border-gray-600 rounded p-1 bg-gray-700 text-white" placeholder="Search" />
+            <input id="replaceInput" class="border border-gray-600 rounded p-1 bg-gray-700 text-white" placeholder="Replace" />
+            <button id="searchButton" class="px-2 py-1 bg-blue-600 text-white rounded">Search</button>
+            <button id="replaceButton" class="px-2 py-1 bg-green-600 text-white rounded">Replace</button>
+        </div>
+    </div>
+</div>
+
+<script>
+code = {
+    start() {
+        console.log('Plugin started: ' + this.id)
+        this.createEditor()
+    },
+    unmount() {
+        console.log('Plugin unmounted: ' + this.id)
+    },
+    createEditor() {
+        this.editor = document.getElementById('editor')
+        this.lineNumbers = document.getElementById('lineNumbers')
+        this.codeArea = document.getElementById('codeArea')
+        this.searchInput = document.getElementById('searchInput')
+        this.replaceInput = document.getElementById('replaceInput')
+        this.searchButton = document.getElementById('searchButton')
+        this.replaceButton = document.getElementById('replaceButton')
+        this.codeArea.addEventListener('input', e => { this.updateEditor() })
+        this.codeArea.addEventListener('keydown', e => { this.handleKeydown(e) })
+        this.searchButton.addEventListener('click', e => { this.performSearch() })
+        this.replaceButton.addEventListener('click', e => { this.performReplace() })
+        this.updateEditor()
+    },
+    updateEditor() {
+        const text = this.codeArea.innerText
+        const lines = text.split('\n')
+        this.lineNumbers.innerHTML = ''
+        for (let i = 0; i < lines.length; i++) {
+            this.lineNumbers.innerHTML += (i+1) + '<br>'
+        }
+        const highlighted = this.syntaxHighlight(text)
+        this.codeArea.innerHTML = highlighted
+        this.placeCaretAtEnd(this.codeArea)
+    },
+    syntaxHighlight(text) {
+        let html = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+        html = html.replace(/\b(function|return|var|let|const|if|else|for|while|switch|case|break|continue|class|constructor|this|new|throw|typeof|instanceof|try|catch|finally|extends|super)\b/g, '<span class="text-blue-400">$1</span>')
+        html = html.replace(/\b(true|false|null|undefined)\b/g, '<span class="text-purple-400">$1</span>')
+        html = html.replace(/("[^"]*"|\'[^\']*\')/g, '<span class="text-yellow-400">$1</span>')
+        return html
+    },
+    placeCaretAtEnd(el) {
+        const range = document.createRange()
+        range.selectNodeContents(el)
+        range.collapse(false)
+        const sel = window.getSelection()
+        sel.removeAllRanges()
+        sel.addRange(range)
+    },
+    handleKeydown(e) {
+        if (e.key === 'Tab') {
+            e.preventDefault()
+            const selection = window.getSelection()
+            const range = selection.getRangeAt(0)
+            const tabNode = document.createTextNode('    ')
+            range.insertNode(tabNode)
+            range.setStartAfter(tabNode)
+            range.setEndAfter(tabNode)
+        }
+    },
+    performSearch() {
+        const searchValue = this.searchInput.value
+        const text = this.codeArea.innerText
+        const index = text.indexOf(searchValue)
+        if (index !== -1) {
+            const range = document.createRange()
+            const selection = window.getSelection()
+            let currentNode = this.codeArea.firstChild
+            let currentOffset = 0
+            let foundPos = 0
+            while (currentNode) {
+                if (currentNode.nodeType === 3) {
+                    foundPos = currentOffset + currentNode.textContent.length
+                    if (foundPos >= index) {
+                        const offsetInNode = index - currentOffset
+                        range.setStart(currentNode, offsetInNode)
+                        range.setEnd(currentNode, offsetInNode + searchValue.length)
+                        selection.removeAllRanges()
+                        selection.addRange(range)
+                        break
+                    }
+                    currentOffset = foundPos
+                }
+                currentNode = currentNode.nextSibling
+            }
+        }
+    },
+    performReplace() {
+        const searchValue = this.searchInput.value
+        const replaceValue = this.replaceInput.value
+        const text = this.codeArea.innerText
+        const newText = text.replace(new RegExp(searchValue, 'g'), replaceValue)
+        this.codeArea.innerText = newText
+        this.updateEditor()
+    }
+};
+</script>

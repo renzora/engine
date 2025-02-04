@@ -36,7 +36,12 @@ assets.preload(
       { id: 'lighting' },
       { id: 'collision' },
       { id: 'pathfinding' },
-      { id: 'gamepad' }
+      { id: 'debug', path: 'core', ext: 'html' },
+      { id: 'ui', path: 'core' },
+      { id: 'gamepad' },
+      { id: 'snow', reload: true, after: () => {
+            snow.start('medium');
+        }}
     ]);
 
     const playerSprite = sprite.create({

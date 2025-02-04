@@ -30,15 +30,15 @@
 <script>
 signout = {
   signout() {
-    ui.ajax({
-      method: 'POST',
-        url: '/api/auth/signout',
-        success: function(data) {
-            plugin.notif.show("auth_signout_success", "You are now signed out. Please come back again soon :)");
-            plugin.load({ id: 'auth_window', url: 'plugins/auth/index.njk', drag: true, reload: true });
-            plugin.close('signout');
-          }
-        });
+    fetch('/api/auth/signout', {
+      method: 'POST'
+    })
+    .then(response => response.json())
+    .then(data => {
+      plugin.notif.show("auth_signout_success", "You are now signed out. Please come back again soon :)");
+      plugin.load({ id: 'auth_window', url: 'plugins/auth/index.njk', drag: true, reload: true });
+      plugin.close('signout');
+    });
   },
   confirm() {
     this.signout();
