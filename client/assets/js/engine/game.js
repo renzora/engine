@@ -1,5 +1,4 @@
 game = {
-  needsFilterUpdate: true,
   canvas: undefined,
   ctx: undefined,
   isEditMode: false,
@@ -9,8 +8,6 @@ game = {
   worldWidth: 1280,
   worldHeight: 944,
   zoomLevel: localStorage.getItem('zoomLevel') ? parseInt(localStorage.getItem('zoomLevel')) : 5,
-  targetX: 0,
-  targetY: 0,
   roomData: undefined,
   sprites: {},
   objectData: null,
@@ -24,29 +21,20 @@ game = {
   lastTime: null,
   maxAccumulatedTime: 1000,
   allowControls: true,
-  selectedObjects: [],
-  selectedCache: [],
   pathfinding: true,
-  selectedTiles: [],
-  overlappingTiles: [],
   isPaused: false,
   inputMethod: 'keyboard',
-  fpsHistory: [],
-  maxFpsHistory: 60,
   bgPattern: null,
   renderCalls: 0,
   tileCount: 0,
   spriteCount: 0,
   animationCount: 0,
   backgroundTileCount: 0,
-  renderQueue: [],
   sceneBg: null,
   viewportXStart: 0,
   viewportXEnd: 0,
   viewportYStart: 0,
   viewportYEnd: 0,
-  currentTileData: null,
-  currentRoomItem: null,
   objectCache: {},
 
   loadGameAssets(onLoaded) {
@@ -366,7 +354,6 @@ loop(timestamp) {
         if (rItem.visible === false) {
           this.currentTileData = tData;
           this.currentRoomItem = rItem;
-          this.handleLights();
           return;
         }
         const xC = rItem.x || [];
@@ -497,58 +484,6 @@ loop(timestamp) {
     this.y = Math.floor(my/16)
     if (plugin.exists('pathfinding')) {
       plugin.pathfinding.walkToClickedTile(this.mainSprite, e, this.x, this.y);
-    }
-  },
-
-  handleLights: function() {
-    if (!plugin.exists('time','lighting')) return
-    const td = this.currentTileData
-    const ri = this.currentRoomItem
-    if (!td || !ri) return
-    if (ri.visible === false && td.l && Array.isArray(td.l)) {
-      td.l.forEach((lightConfig, lightIndex) => {
-        const lId = `${ri.layer_id}_light_${lightIndex}`
-        lighting.lights = lighting.lights.filter(l => l.id !== lId)
-      })
-      return
-    }
-    if (td.l && Array.isArray(td.l)) {
-      td.l.forEach((lightConfig, lightIndex) => {
-        const offsetX = lightConfig.x || 0
-        const offsetY = lightConfig.y || 0
-        const baseX   = Math.min(...ri.x) * 16
-        const baseY   = Math.min(...ri.y) * 16
-        const px      = baseX + offsetX
-        const py      = baseY + offsetY
-        const lId     = `${ri.layer_id}_light_${lightIndex}`
-        const dh      = time.hours + time.minutes / 60
-        const isNight = (dh >= 22 || dh < 7)
-        const inViewport = (
-          px + 200 >= this.viewportXStart * 16 &&
-          px - 200 <  this.viewportXEnd   * 16 &&
-          py + 200 >= this.viewportYStart * 16 &&
-          py - 200 <  this.viewportYEnd   * 16
-        )
-        if (inViewport && isNight) {
-          let existingLight = lighting.lights.find(l => l.id === lId)
-          if (!existingLight) {
-            const col = td.lc  || { r:255, g:255, b:255 }
-            const intens = td.li  || 1
-            const rad = td.lr  || 200
-            const flickerSpeed = td.lfs || 0.03
-            const flickerAmount = td.lfa || 0.04
-            const lt = td.lt  || 'lamp'
-            const shp = lightConfig.shape || null
-            lighting.addLight(lId, px, py, rad, col, intens, lt, true,
-                              flickerSpeed, flickerAmount, shp)
-          } else {
-            existingLight.x = px
-            existingLight.y = py
-          }
-        } else {
-          lighting.lights = lighting.lights.filter(l => l.id !== lId)
-        }
-      })
     }
   },
 

@@ -3,140 +3,86 @@ input = {
   listenerMap: {},
   
   assign(type, callback, options = {}, targetElement = window) {
-    if (type.includes('+')) {
-      const parts = type.split('+');
-      const mainType = parts[0];
-      const subParts = parts.slice(1);
-      const autoId = subParts.join('').replace(/\+/g, '');
-      const mainKey = subParts[subParts.length - 1].toLowerCase();
-      const modifiers = subParts.slice(0, -1);
-  
-      const comboListener = (e) => {
-        for (let mod of modifiers) {
-          mod = mod.toLowerCase();
-          if (mod === 'shift' && !e.shiftKey) return;
-          if (mod === 'ctrl' && !e.ctrlKey) return;
-          if (mod === 'alt' && !e.altKey) return;
-          if (mod === 'meta' && !e.metaKey) return;
-        }
-  
-        if (e.key.toLowerCase() === mainKey) {
-          console.log(`input.assign -> Handling "${type}" (id=${autoId})`);
-          callback(e);
-        }
-      };
-  
-      if (!this.eventListeners[mainType]) {
-        this.eventListeners[mainType] = new Set();
-      }
-      if (!this.eventListeners[mainType].has(comboListener)) {
-        this.eventListeners[mainType].add(comboListener);
-        targetElement.addEventListener(mainType, comboListener, options);
-        console.log(`input.assign -> Added combo listener for "${type}" (id=${autoId})`);
-  
-        this.listenerMap[autoId] = {
-          domEvent: mainType,
-          actualCallback: comboListener,
-          element: targetElement
-        };
-      }
-      return autoId;
-  
-    } else if (type.includes('.')) {
-      const [mainType, subKey] = type.split('.');
-      if (!subKey) return;
-  
-      const keyName = subKey.toLowerCase();
-      const subId = mainType + keyName;
-  
-      const keyListener = (e) => {
-        if (e.key.toLowerCase() === keyName) {
-          if (["tab", " "].includes(keyName)) {
-            e.preventDefault();
+      const createId = (type, subParts) => subParts ? subParts.join('').replace(/\+/g, '') : type.replace(/[^\w]/g, '') + '_gen';
+
+      const addListener = (eventType, listener, id, element = targetElement) => {
+          if (!this.eventListeners[eventType]) {
+              this.eventListeners[eventType] = new Set();
           }
-          console.log(`input.assign -> Handling ${mainType}.${keyName} (id=${subId})`);
-          callback(e);
-        }
+          if (!this.eventListeners[eventType].has(listener)) {
+              this.eventListeners[eventType].add(listener);
+              element.addEventListener(eventType, listener, options);
+              this.listenerMap[id] = { domEvent: eventType, actualCallback: listener, element };
+              return id;
+          }
       };
-  
-      if (!this.eventListeners[mainType]) {
-        this.eventListeners[mainType] = new Set();
+
+      if (type.includes('+')) {
+          const [mainType, ...subParts] = type.split('+');
+          const mainKey = subParts[subParts.length - 1].toLowerCase();
+          const modifiers = subParts.slice(0, -1);
+          const id = createId(type, subParts);
+
+          const comboListener = (e) => {
+              const modCheck = {
+                  'shift': e.shiftKey,
+                  'ctrl': e.ctrlKey,
+                  'alt': e.altKey,
+                  'meta': e.metaKey
+              };
+              if (modifiers.some(mod => !modCheck[mod.toLowerCase()])) return;
+              if (e.key.toLowerCase() === mainKey) callback(e);
+          };
+
+          return addListener(mainType, comboListener, id);
+      } 
+      
+      if (type.includes('.')) {
+          const [mainType, subKey] = type.split('.');
+          if (!subKey) return;
+          
+          const id = mainType + subKey.toLowerCase();
+          const keyListener = (e) => {
+              if (e.key.toLowerCase() === subKey.toLowerCase()) {
+                  if (["tab", " "].includes(subKey.toLowerCase())) e.preventDefault();
+                  callback(e);
+              }
+          };
+
+          return addListener(mainType, keyListener, id);
       }
-      if (!this.eventListeners[mainType].has(keyListener)) {
-        this.eventListeners[mainType].add(keyListener);
-        targetElement.addEventListener(mainType, keyListener, options);
-        console.log(`input.assign -> Added event listener for ${type} (id=${subId})`);
-  
-        this.listenerMap[subId] = {
-          domEvent: mainType,
-          actualCallback: keyListener,
-          element: targetElement
-        };
-      }
-      return subId;
-  
-    } else {
-      if (!this.eventListeners[type]) {
-        this.eventListeners[type] = new Set();
-      }
-      if (!this.eventListeners[type].has(callback)) {
-        this.eventListeners[type].add(callback);
-        targetElement.addEventListener(type, callback, options);
-        console.log(`input.assign -> Added event listener for ${type}`);
-        
-        const autoId = type.replace(/[^\w]/g, '') + '_gen';
-        this.listenerMap[autoId] = {
-          domEvent: type,
-          actualCallback: callback,
-          element: targetElement
-        };
-        return autoId;
-      }
-    }
+
+      return addListener(type, callback, createId(type));
   },
 
   destroy(id) {
-    if (!id) {
-      for (const [eventType, callbacks] of Object.entries(this.eventListeners)) {
-        for (const cb of callbacks) {
-          const record = Object.values(this.listenerMap).find(r => r.actualCallback === cb);
-          const element = record ? record.element : window;
-          element.removeEventListener(eventType, cb);
-        }
+      if (!id) {
+          Object.entries(this.eventListeners).forEach(([type, callbacks]) => {
+              callbacks.forEach(cb => {
+                  const record = Object.values(this.listenerMap).find(r => r.actualCallback === cb);
+                  (record?.element || window).removeEventListener(type, cb);
+              });
+          });
+          this.eventListeners = {};
+          this.listenerMap = {};
+          return;
       }
-      this.eventListeners = {};
-      this.listenerMap = {};
-      console.log('input.destroy -> Removed all event listeners');
-      return;
-    }
-  
-    const record = this.listenerMap[id];
-    if (!record) {
-      console.warn(`input.destroy -> No listener found for id="${id}"`);
-      return;
-    }
-  
-    const { domEvent, actualCallback, element } = record;
-    if (this.eventListeners[domEvent] && this.eventListeners[domEvent].has(actualCallback)) {
-      this.eventListeners[domEvent].delete(actualCallback);
-      element.removeEventListener(domEvent, actualCallback);
-      console.log(`input.destroy -> Removed event listener for id="${id}" (${domEvent})`);
-    }
-    delete this.listenerMap[id];
+
+      const record = this.listenerMap[id];
+      if (record && this.eventListeners[record.domEvent]?.has(record.actualCallback)) {
+          this.eventListeners[record.domEvent].delete(record.actualCallback);
+          record.element.removeEventListener(record.domEvent, record.actualCallback);
+          delete this.listenerMap[id];
+      }
   },
 
   reassign() {
-    this.destroy();
-    if (typeof this.init === 'function') {
-      this.init();
-    }
-    console.log(`input.reassign -> Reinitialized all input listeners`);
+      this.destroy();
+      if (this.init) this.init();
   },
 
   updateInputMethod(method, name = '') {
-    const inputMethodDisplay = document.getElementById('input_method');
-    if (inputMethodDisplay) {
-      inputMethodDisplay.innerText = `Input: ${method}${name ? ' (' + name + ')' : ''}`;
-    }
+      const display = document.getElementById('input_method');
+      if (display) display.innerText = `Input: ${method}${name ? ` (${name})` : ''}`;
   }
 };

@@ -63,7 +63,7 @@ assets.preload(
         );
         plugin.load("auth", { ext: "njk" });
         sprite.init();
-        plugin.time.hours = 6;
+        plugin.time.hours = 22;
       },
     });
   }

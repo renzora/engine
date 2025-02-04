@@ -1,521 +1,367 @@
 window.pluginResolves = window.pluginResolves || {};
 
 const rawPlugin = {
-  plugins: [],
-  baseZIndex: null,
-  pluginNames: {},
-  activePlugin: null,
-  preloadQueue: [],
-  loadedPlugins: {},
+    plugins: [],
+    baseZIndex: null,
+    activePlugin: null,
+    preloadQueue: [],
+    loadedPlugins: {},
 
-  init(selector, options) {
-    const element = document.querySelector(selector);
-    if (!element) {
-      return;
-    }
+    init(selector, options) {
+        const element = document.querySelector(selector);
+        if (!element) return;
 
-    if (this.plugins.length === 0) {
-      this.baseZIndex = this.topZIndex() + 1;
-    }
+        if (!this.plugins.length) this.baseZIndex = this.topZIndex() + 1;
 
-    this.initDraggable(element, options);
-    this.initCloseButton(element);
+        this.initDraggable(element, options);
+        this.initCloseButton(element);
 
-    const highestZIndex = this.baseZIndex + this.plugins.length;
-    element.style.zIndex = highestZIndex.toString();
-    this.plugins.push(element);
+        element.style.zIndex = (this.baseZIndex + this.plugins.length).toString();
+        this.plugins.push(element);
+        element.addEventListener('click', () => this.front(element));
+    },
 
-    element.addEventListener('click', () => this.front(element));
-  },
+    front(elementOrId) {
+        const element = typeof elementOrId === 'string' 
+            ? document.querySelector(`[data-window='${elementOrId}']`)
+            : elementOrId;
+        if (!element) return;
 
-  front(elementOrId) {
-    let element;
-    if (typeof elementOrId === 'string') {
-      element = document.querySelector(`[data-window='${elementOrId}']`);
-      if (!element) return;
-    } else {
-      element = elementOrId;
-    }
+        this.plugins = this.plugins.filter(p => p !== element);
+        this.plugins.push(element);
+        this.plugins.forEach((p, i) => p.style.zIndex = (this.baseZIndex + i).toString());
+        this.activePlugin = element.getAttribute('data-window');
+    },
 
-    this.plugins = this.plugins.filter(plugin => plugin !== element);
-    this.plugins.push(element);
+    initDraggable(element, options) {
+        if (element.getAttribute('data-drag') === 'false' || options?.drag === false) return;
 
-    this.plugins.forEach((plugin, index) => {
-      if (!plugin) {
-        console.error('Undefined plugin in plugin list at index:', index);
-        return;
-      }
-      try {
-        plugin.style.zIndex = (this.baseZIndex + index).toString();
-      } catch (error) {
-        console.error('Error setting zIndex for plugin:', plugin, error);
-      }
-    });
+        let isDragging = false;
+        let originalX, originalY, startX, startY;
 
-    this.activePlugin = element.getAttribute('data-window');
-  },
+        const handleDragStart = (e) => {
+            if (e.target.closest('.window_body,.resize-handle')) return;
+            
+            const isTouch = e.type === 'touchstart';
+            const coords = isTouch ? e.touches[0] : e;
+            
+            isDragging = true;
+            originalX = element.offsetLeft;
+            originalY = element.offsetTop;
+            startX = coords.clientX;
+            startY = coords.clientY;
 
-  initDraggable(element, options) {
-    if (element.getAttribute('data-drag') === 'false' || (options && options.drag === false)) {
-      return;
-    }
+            options?.start?.call(element, e);
+            document.body.style.userSelect = 'none';
+            this.front(element);
 
-    let isDragging = false;
-    let originalX, originalY, startX, startY;
+            const moveEvent = isTouch ? 'touchmove' : 'mousemove';
+            const endEvent = isTouch ? 'touchend' : 'mouseup';
+            input.assign(moveEvent, handleDragMove, { passive: !isTouch });
+            input.assign(endEvent, handleDragEnd);
+        };
 
-    const onStart = (e) => {
-      const isTouch = e.type === 'touchstart';
-      const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-      const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+        const handleDragMove = (e) => {
+            if (!isDragging) return;
 
-      if (e.target.closest('.window_body') || e.target.closest('.resize-handle')) {
-        return;
-      }
+            const isTouch = e.type === 'touchmove';
+            const coords = isTouch ? e.touches[0] : e;
+            
+            const newLeft = Math.max(0, Math.min(originalX + coords.clientX - startX, 
+                                                window.innerWidth - element.offsetWidth));
+            const newTop = Math.max(0, Math.min(originalY + coords.clientY - startY, 
+                                               window.innerHeight - element.offsetHeight));
 
-      isDragging = true;
-      originalX = element.offsetLeft;
-      originalY = element.offsetTop;
-      startX = clientX;
-      startY = clientY;
+            element.style.left = `${newLeft}px`;
+            element.style.top = `${newTop}px`;
 
-      if (options && typeof options.start === 'function') {
-        options.start.call(element, e);
-      }
+            options?.drag?.call(element, e);
+            if (isTouch) e.preventDefault();
+        };
 
-      document.onselectstart = () => false;
-      document.body.style.userSelect = 'none';
+        const handleDragEnd = (e) => {
+            if (!isDragging) return;
+            isDragging = false;
+            document.body.style.userSelect = '';
+            options?.stop?.call(element, e);
+            
+            const isTouch = e.type === 'touchend';
+            input.destroy(isTouch ? 'touchmove' : 'mousemove');
+            input.destroy(isTouch ? 'touchend' : 'mouseup');
+        };
 
-      this.front(element);
+        input.assign('mousedown', handleDragStart, {}, element);
+        input.assign('touchstart', handleDragStart, { passive: false }, element);
+    },
 
-      if (isTouch) {
-        input.assign('touchmove', onMove, { passive: false });
-        input.assign('touchend', onEnd);
-      } else {
-        input.assign('mousemove', onMove);
-        input.assign('mouseup', onEnd);
-      }
-    };
-
-    const onMove = (e) => {
-      if (!isDragging) return;
-
-      const isTouch = e.type === 'touchmove';
-      const clientX = isTouch ? e.touches[0].clientX : e.clientX;
-      const clientY = isTouch ? e.touches[0].clientY : e.clientY;
-      const dx = clientX - startX;
-      const dy = clientY - startY;
-      let newLeft = originalX + dx;
-      let newTop = originalY + dy;
-      const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-      const rect = element.getBoundingClientRect();
-
-      if (newLeft < 0) newLeft = 0;
-      if (newTop < 0) newTop = 0;
-      if (newLeft + rect.width > windowWidth) {
-        newLeft = windowWidth - rect.width;
-      }
-      if (newTop + rect.height > windowHeight) {
-        newTop = windowHeight - rect.height;
-      }
-
-      element.style.left = `${newLeft}px`;
-      element.style.top = `${newTop}px`;
-
-      if (options && typeof options.drag === 'function') {
-        options.drag.call(element, e);
-      }
-
-      if (isTouch) {
-        e.preventDefault();
-      }
-    };
-
-    const onEnd = (e) => {
-      if (!isDragging) return;
-      isDragging = false;
-    
-      document.onselectstart = null;
-      document.body.style.userSelect = '';
-    
-      if (options && typeof options.stop === 'function') {
-        options.stop.call(element, e);
-      }
-    
-      const isTouch = e.type === 'touchend';
-      if (isTouch) {
-        input.unassign('touchmove', onMove);
-        input.unassign('touchend', onEnd);
-      } else {
-        input.unassign('mousemove', onMove);
-        input.unassign('mouseup', onEnd);
-      }
-    };
-
-    input.assign('mousedown', onStart, {}, element);
-    input.assign('touchstart', onStart, { passive: false }, element);
-  },
-
-  initCloseButton(element) {
-    const closeButton = element.querySelector('[data-close]');
-    if (closeButton) {
-      closeButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const pluginId = element.getAttribute('data-window');
-        this.close(pluginId);
-      });
-    }
-  },
-
-  minimize(id) {
-    const pluginElement = document.querySelector(`[data-window='${id}']`);
-    if (pluginElement) {
-      pluginElement.style.display = 'none';
-
-      if (this.plugins.length > 0) {
-        const nextActivePlugin = this.plugins[this.plugins.length - 1];
-        this.front(nextActivePlugin.getAttribute('data-window'));
-      } else {
-        this.activePlugin = null;
-      }
-    }
-  },
-
-  preload(pluginList) {
-    this.preloadQueue = pluginList;
-    this.loadNextPreload();
-  },
-
-  loadNextPreload() {
-    if (this.preloadQueue.length === 0) return;
-    const nextPlugin = this.preloadQueue.shift();
-    this.load(nextPlugin.id, nextPlugin).then(() => {
-      this.loadNextPreload();
-    });
-  },
-
-  load(
-    id,
-    {
-      path = '',
-      ext = 'js',
-      reload = false,
-      hidden = false,
-      before = null,
-      beforeStart = null,
-      after = null,
-      onError = null,
-      drag = true,
-    } = {}
-  ) {
-    const existingPlugin = document.querySelector(`[data-window='${id}']`);
-
-    return new Promise((resolve, reject) => {
-      if (existingPlugin) {
-        if (reload) {
-          this.close(id);
-        } else {
-          hidden ? this.minimize(id) : this.front(existingPlugin);
-          if (after) after(id);
-          resolve();
-          return;
+    initCloseButton(element) {
+        const closeButton = element.querySelector('[data-close]');
+        if (closeButton) {
+            closeButton.addEventListener('click', e => {
+                e.stopPropagation();
+                this.close(element.getAttribute('data-window'));
+            });
         }
-      }
+    },
 
-      if (before) before(id);
+    minimize(id) {
+        const element = document.querySelector(`[data-window='${id}']`);
+        if (element) {
+            element.style.display = 'none';
+            if (this.plugins.length) {
+                this.front(this.plugins[this.plugins.length - 1].getAttribute('data-window'));
+            } else {
+                this.activePlugin = null;
+            }
+        }
+    },
 
-      const finalDir = path ? `${path}/${id}` : id;
+    load(id, {
+        path = '',
+        ext = 'js',
+        reload = false,
+        hidden = false,
+        before = null,
+        beforeStart = null,
+        after = null,
+        onError = null,
+        drag = true
+    } = {}) {
+        const existingPlugin = document.querySelector(`[data-window='${id}']`);
 
-      let url;
-      if (ext === 'njk') {
-        url = `/api/ajax/plugins/${finalDir}/index.njk`;
-      } else if (ext === 'html') {
-        url = `plugins/${finalDir}/index.html`;
-      } else {
-        url = `plugins/${finalDir}/index.js`;
-      }
+        return new Promise((resolve, reject) => {
+            if (existingPlugin && !reload) {
+                hidden ? this.minimize(id) : this.front(existingPlugin);
+                after?.(id);
+                resolve();
+                return;
+            }
 
-      fetch(url)
-        .then(response => {
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return response.text();
-        })
-        .then(data => {
-          this._processLoadedContent({
-            id,
-            data,
-            ext,
-            beforeStart,
-            after,
-            hidden,
-            drag
-          });
-          resolve();
-        })
-        .catch(err => {
-          console.error(`Failed to load plugin "${id}" from "${url}"`, err);
-          if (onError) onError(err, id);
-          reject(err);
+            if (existingPlugin) this.close(id);
+            before?.(id);
+
+            const finalPath = path ? `${path}/${id}` : id;
+            const url = ext === 'njk' ? `/api/ajax/plugins/${finalPath}/index.njk` :
+                       ext === 'html' ? `plugins/${finalPath}/index.html` :
+                       `plugins/${finalPath}/index.js`;
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    return response.text();
+                })
+                .then(data => {
+                    this._processLoadedContent({ id, data, ext, beforeStart, after, hidden, drag });
+                    resolve();
+                })
+                .catch(err => {
+                    console.error(`Failed to load plugin "${id}" from "${url}"`, err);
+                    onError?.(err, id);
+                    reject(err);
+                });
         });
-    });
-  },
+    },
 
-  _processLoadedContent({ id, data, ext, beforeStart, after, hidden, drag }) {
-    window[id] = window[id] || {};
-    window[id].id = id;
+    _processLoadedContent({ id, data, ext, beforeStart, after, hidden, drag }) {
+        window[id] = window[id] || {};
+        window[id].id = id;
 
-    if (ext === 'js') {
-      const script = document.createElement('script');
-      script.textContent = data;
-      script.setAttribute('id', `${id}_script`);
-      document.head.appendChild(script);
+        if (ext === 'js') {
+            const script = document.createElement('script');
+            script.textContent = data;
+            script.id = `${id}_script`;
+            document.head.appendChild(script);
 
-      if (window[id]?.start && !window[id]._hasStarted) {
-        window[id]._hasStarted = true;
-        if (beforeStart) beforeStart(id);
-        window[id].start();
-      }
-    } else {
-      const tempContainer = document.createElement('div');
-      tempContainer.innerHTML = data;
+            if (window[id]?.start && !window[id]._hasStarted) {
+                window[id]._hasStarted = true;
+                beforeStart?.(id);
+                window[id].start();
+            }
+        } else {
+            const container = document.createElement('div');
+            container.innerHTML = data;
 
-      let topDiv = tempContainer.querySelector('div');
-      if (!topDiv) {
-        topDiv = document.createElement('div');
-        topDiv.innerHTML = data;
-      }
-      topDiv.setAttribute('data-window', id);
+            const topDiv = container.querySelector('div') || container;
+            topDiv.setAttribute('data-window', id);
 
-      const styleTag = tempContainer.querySelector('style');
-      if (styleTag) {
-        topDiv.prepend(styleTag);
-      }
+            const styleTag = container.querySelector('style');
+            if (styleTag) topDiv.prepend(styleTag);
 
-      const last = document.querySelector('div[data-window]:last-of-type');
-      if (last) {
-        last.after(topDiv);
-      } else {
-        document.body.appendChild(topDiv);
-        //plugin.language.translate();
-      }
+            const last = document.querySelector('div[data-window]:last-of-type');
+            last ? last.after(topDiv) : document.body.appendChild(topDiv);
 
-      const inlineScript = tempContainer.querySelector('script');
-      if (inlineScript) {
-        const dynamicScript = document.createElement('script');
-        dynamicScript.textContent = inlineScript.textContent;
-        dynamicScript.setAttribute('id', `${id}_script`);
-        document.head.appendChild(dynamicScript);
+            const script = container.querySelector('script');
+            if (script) {
+                const newScript = document.createElement('script');
+                newScript.textContent = script.textContent;
+                newScript.id = `${id}_script`;
+                document.head.appendChild(newScript);
 
-        if (
-          !inlineScript.textContent.includes(`${id}.start()`) &&
-          window[id]?.start
-        ) {
-          if (beforeStart) beforeStart(id);
-          window[id].start();
+                if (!script.textContent.includes(`${id}.start()`) && window[id]?.start) {
+                    beforeStart?.(id);
+                    window[id].start();
+                }
+            }
+
+            this.init(`[data-window='${id}']`, {
+                drag,
+                start() { this.classList.add('dragging'); },
+                stop() { this.classList.remove('dragging'); }
+            });
+
+            hidden ? this.minimize(id) : this.front(id);
         }
-      }
 
-      this.init(`[data-window='${id}']`, {
-        drag,
-        start() { this.classList.add('dragging'); },
-        stop() { this.classList.remove('dragging'); }
-      });
+        if (window[id]) this.loadedPlugins[id] = window[id];
+        after?.(id);
+    },
 
-      hidden ? this.minimize(id) : this.front(id);
-    }
+    close(id, fromEscKey = false) {
+        const element = document.querySelector(`[data-window='${id}']`);
+        if (!element) return;
 
-    if (window[id]) {
-      this.loadedPlugins[id] = window[id];
-    }
+        if (fromEscKey && element.getAttribute('data-close') === 'false') return;
 
-    if (after) after(id);
-  },
+        element.remove();
 
-  hook(hookName) {
-    for (const pluginId in this.loadedPlugins) {
-      const pluginObj = this.loadedPlugins[pluginId];
-      if (pluginObj && typeof pluginObj[hookName] === 'function') {
-        try {
-          pluginObj[hookName]();
-        } catch (err) {
-          console.error(`Error running hook '${hookName}' for plugin '${pluginId}':`, err);
+        if (window[id]?.unmount) {
+            window[id].unmount();
+            Object.keys(window[id]).forEach(key => window[id][key] = null);
         }
-      }
-    }
-  },
 
-  show(id) {
-    const el = document.querySelector(`[data-window='${id}']`);
-    if (el) {
-      el.style.display = 'block';
-      this.front(id);
-    }
-  },
+        document.getElementById(id)?.remove();
+        document.querySelector(`script[id='${id}_script']`)?.remove();
 
-  close(id, fromEscKey = false) {
-    const pluginEl = document.querySelector(`[data-window='${id}']`);
-    if (pluginEl) {
-      pluginEl.remove();
-    }
+        this.plugins = this.plugins.filter(p => p.getAttribute('data-window') !== id);
+        delete this.loadedPlugins[id];
+        delete window[id];
 
-    if (fromEscKey && pluginEl && pluginEl.getAttribute('data-close') === 'false') {
-      return;
-    }
-
-    if (window[id]?.unmount) {
-      window[id].unmount();
-      for (let key in window[id]) {
-        if (Object.prototype.hasOwnProperty.call(window[id], key)) {
-          window[id][key] = null;
+        if (this.plugins.length) {
+            this.front(this.plugins[this.plugins.length - 1].getAttribute('data-window'));
+        } else {
+            this.activePlugin = null;
         }
-      }
-    }
+    },
 
-    const styleEl = document.getElementById(id);
-    if (styleEl) {
-      styleEl.remove();
-    }
+    unmount(id) {
+        if (window[id]?.unmount) window[id].unmount();
 
-    const scriptEl = document.querySelector(`script[id='${id}_script']`);
-    if (scriptEl) {
-      scriptEl.remove();
-    }
+        const obj = window[id];
+        if (obj) {
+            if (Array.isArray(obj.eventListeners)) obj.eventListeners.length = 0;
 
-    this.plugins = this.plugins.filter(p => p.getAttribute('data-window') !== id);
+            Object.keys(obj).forEach(key => {
+                if (typeof obj[key] === 'function') delete obj[key];
+                else if (Array.isArray(obj[key])) obj[key] = [];
+                else if (typeof obj[key] === 'object' && obj[key]) obj[key] = {};
+                else obj[key] = null;
+            });
 
-    if (this.loadedPlugins[id]) {
-      delete this.loadedPlugins[id];
-    }
-    if (typeof window[id] !== 'undefined') {
-      delete window[id];
-    }
-
-    if (this.plugins.length > 0) {
-      const nextActive = this.plugins[this.plugins.length - 1];
-      this.front(nextActive.getAttribute('data-window'));
-    } else {
-      this.activePlugin = null;
-    }
-  },
-
-  unmount(id) {
-    console.log('attempting to unmount', id);
-
-    if (window[id]?.unmount) {
-      window[id].unmount();
-    }
-
-    const obj = window[id];
-    if (obj) {
-      if (obj.eventListeners && Array.isArray(obj.eventListeners)) {
-        obj.eventListeners.length = 0;
-      }
-
-      for (let prop in obj) {
-        if (obj.hasOwnProperty(prop)) {
-          if (typeof obj[prop] === 'function') {
-            delete obj[prop];
-          } else if (Array.isArray(obj[prop])) {
-            obj[prop] = [];
-          } else if (typeof obj[prop] === 'object' && obj[prop] !== null) {
-            obj[prop] = {};
-          } else {
-            obj[prop] = null;
-          }
+            delete window[id];
+            delete this.loadedPlugins[id];
         }
-      }
-      delete window[id];
-      delete this.loadedPlugins[id];
-      console.log(id, 'has been completely unmounted and deleted.');
-    }
-  },
+    },
 
-  topZIndex() {
-    const highest = Array.from(document.querySelectorAll('*'))
-      .map(el => parseFloat(window.getComputedStyle(el).zIndex))
-      .filter(z => !isNaN(z))
-      .reduce((max, z) => Math.max(max, z), 0);
-    return highest;
-  },
+    preload(pluginList) {
+        this.preloadQueue = pluginList;
+        this.loadNextPreload();
+    },
 
-  getActivePlugin() {
-    return this.activePlugin;
-  },
+    loadNextPreload() {
+        if (!this.preloadQueue.length) return;
+        const next = this.preloadQueue.shift();
+        this.load(next.id, next).then(() => this.loadNextPreload());
+    },
 
-  showAll() {
-    const all = document.querySelectorAll('[data-window]');
-    all.forEach(el => el.style.display = 'block');
+    hook(hookName) {
+        Object.entries(this.loadedPlugins).forEach(([id, plugin]) => {
+            if (typeof plugin[hookName] === 'function') {
+                try {
+                    plugin[hookName]();
+                } catch (err) {
+                    console.error(`Error running hook '${hookName}' for plugin '${id}':`, err);
+                }
+            }
+        });
+    },
 
-    if (this.plugins.length > 0) {
-      const topmost = this.plugins[this.plugins.length - 1];
-      this.front(topmost.getAttribute('data-window'));
-    }
-  },
+    topZIndex() {
+        return Array.from(document.querySelectorAll('*'))
+            .map(el => parseFloat(window.getComputedStyle(el).zIndex))
+            .filter(z => !isNaN(z))
+            .reduce((max, z) => Math.max(max, z), 0);
+    },
 
-  hideAll() {
-    const all = document.querySelectorAll('[data-window]');
-    all.forEach(el => el.style.display = 'none');
-    this.activePlugin = null;
-  },
+    getActivePlugin() {
+        return this.activePlugin;
+    },
 
-  closeAll() {
-    const all = document.querySelectorAll('[data-window]');
-    all.forEach(el => {
-      const pluginId = el.getAttribute('data-window');
-      el.remove();
-      this.unmount(pluginId);
-    });
-  },
-
-  closest(element) {
-    while (element && !element.dataset.window) {
-      element = element.parentElement;
-    }
-    return element ? element.dataset.window : null;
-  },
-
-  isVisible(id) {
-    const el = document.querySelector(`[data-window='${id}']`);
-    return el && el.style.display !== 'none';
-  },
-
-  exists(...objNames) {
-    for (let objName of objNames) {
-      try {
-        if (typeof eval(objName) === 'undefined') {
-          return false;
+    show(id) {
+        const el = document.querySelector(`[data-window='${id}']`);
+        if (el) {
+            el.style.display = 'block';
+            this.front(id);
         }
-      } catch (e) {
-        return false;
-      }
+    },
+
+    showAll() {
+        const elements = document.querySelectorAll('[data-window]');
+        elements.forEach(el => el.style.display = 'block');
+        if (this.plugins.length) {
+            this.front(this.plugins[this.plugins.length - 1].getAttribute('data-window'));
+        }
+    },
+
+    hideAll() {
+        document.querySelectorAll('[data-window]').forEach(el => el.style.display = 'none');
+        this.activePlugin = null;
+    },
+
+    closeAll() {
+        document.querySelectorAll('[data-window]').forEach(el => {
+            const id = el.getAttribute('data-window');
+            el.remove();
+            this.unmount(id);
+        });
+    },
+
+    closest(element) {
+        while (element && !element.dataset.window) {
+            element = element.parentElement;
+        }
+        return element?.dataset.window || null;
+    },
+
+    isVisible(id) {
+        const el = document.querySelector(`[data-window='${id}']`);
+        return el && el.style.display !== 'none';
+    },
+
+    exists(...objNames) {
+        return objNames.every(name => {
+            try {
+                return typeof eval(name) !== 'undefined';
+            } catch {
+                return false;
+            }
+        });
     }
-    return true;
-  }
 };
 
 plugin = new Proxy(rawPlugin, {
-  get(target, propKey, receiver) {
-    if (Reflect.has(target, propKey)) {
-      return Reflect.get(target, propKey, receiver);
-    }
-
-    if (target.exists(propKey)) {
-      return new Proxy(window[propKey], {
-        get(subTarget, subProp, subReceiver) {
-          if (Reflect.has(subTarget, subProp)) {
-            return Reflect.get(subTarget, subProp, subReceiver);
-          }
-          return () => {};
+    get(target, propKey, receiver) {
+        if (Reflect.has(target, propKey)) return Reflect.get(target, propKey, receiver);
+        
+        if (target.exists(propKey)) {
+            return new Proxy(window[propKey], {
+                get(subTarget, subProp) {
+                    return Reflect.has(subTarget, subProp) 
+                        ? Reflect.get(subTarget, subProp) 
+                        : () => {};
+                }
+            });
         }
-      });
+        
+        return new Proxy({}, { get: () => () => {} });
     }
-
-    return new Proxy({}, {
-      get() {
-        return () => {};
-      }
-    });
-  }
 });
