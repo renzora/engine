@@ -23,8 +23,6 @@ gamepad = {
         assets.preload([
           { name: 'gamepad_buttons', path: 'plugins/gamepad/buttons.png' }
         ]);
-        console.log(`Plugin started: ${this.id}`)
-        plugin.loadedPlugins[this.id] = this;
         
         this.listenerIds = {
           connect: input.assign('gamepadconnected', (e) => this.connectGamepad(e)),

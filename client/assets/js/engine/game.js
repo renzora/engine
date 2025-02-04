@@ -118,7 +118,6 @@ game = {
 
   scene(sceneId) {
     plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
-        console.log("fetching from database");
         fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
