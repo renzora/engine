@@ -62,7 +62,7 @@ assets.preload(
           localStorage.getItem("sceneid") || "678ec2d7433aae2deee168ee"
         );
         sprite.init();
-        plugin.time.hours = 22;
+        plugin.time.hours = 6;
       },
     });
   }
