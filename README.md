@@ -5,6 +5,8 @@
 
 ![](https://i.imgur.com/V2j1yIL.png)
 
+# [> Click here for full documentation <](https://renzora.github.io/docs)
+
 # Requirements
 - Docker Desktop: https://www.docker.com/products/docker-desktop
 - MongoDB Software (optional): https://www.mongodb.com/products/tools/compass
@@ -26,8 +28,6 @@ docker-compose up --build
 - Client: Nginx ```(port 80/443)```
 - Website: ```http://localhost```
 - Bun Fastify endpoint: ```http://localhost:3000```
-- Username: ```admin```
-- Password: ```password```
 
 # Default MongoDB
 - URI: ```mongodb://admin:this_is_a_test_password@localhost:27017/```
