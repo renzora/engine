@@ -13,6 +13,7 @@ input = {
               this.eventListeners[eventType].add(listener);
               element.addEventListener(eventType, listener, options);
               this.listenerMap[id] = { domEvent: eventType, actualCallback: listener, element };
+              plugin.hook('onInputAssign', { type, id, targetElement });
               return id;
           }
       };
@@ -84,5 +85,6 @@ input = {
   updateInputMethod(method, name = '') {
       const display = document.getElementById('input_method');
       if (display) display.innerText = `Input: ${method}${name ? ` (${name})` : ''}`;
+      plugin.hook('onInputChange');
   }
 };

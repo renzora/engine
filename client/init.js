@@ -61,7 +61,6 @@ assets.preload(
         game.scene(
           localStorage.getItem("sceneid") || "678ec2d7433aae2deee168ee"
         );
-        plugin.load("auth", { ext: "njk" });
         sprite.init();
         plugin.time.hours = 22;
       },

@@ -86,11 +86,13 @@ game = {
     cancelAnimationFrame(this.animationFrameId)
     plugin.audio.pauseAll()
     this.isPaused = true
+    plugin.hook('onGamePause')
   },
 
   resume() {
     plugin.network.send({ command: 'requestGameState', playerId: this.playerid })
     plugin.audio.resumeAll()
+    plugin.hook('onGameResume')
   },
 
   resizeCanvas() {
@@ -114,6 +116,7 @@ game = {
     this.canvas.style.position = 'absolute'
     this.canvas.style.left = `${hOff}px`
     this.canvas.style.top = `${vOff}px`
+    plugin.hook('onResizeCanvas');
   },
 
   scene(sceneId) {
@@ -144,6 +147,7 @@ game = {
                 plugin.effects.start('fadeOut', 1000);
                 plugin.effects.start('fadeIn', 1000);
                 this.buildRepeatingBackground();
+                plugin.hook('onSceneChange')
             }
         })
         .catch(() => {
@@ -175,6 +179,8 @@ loop(timestamp) {
 
   this.deltaTime = this.fixedDeltaTime;
   this.lastTime = timestamp;
+
+  plugin.hook('onPreUpdate')
 
   while (this.accumulatedTime >= this.fixedDeltaTime) {
     this.viewportXStart = Math.floor(camera.cameraX / 16);
@@ -213,6 +219,7 @@ loop(timestamp) {
   if (plugin.ui_console_editor_inventory.selectedInventoryItem) plugin.ui_console_editor_inventory.render();
 
   plugin.debug.tracker('game.loop');
+  plugin.hook('onPostUpdate')
   requestAnimationFrame(this.loop.bind(this));
 },
 
@@ -337,7 +344,7 @@ loop(timestamp) {
 
   render() {
     this.renderQueue = [];
-    plugin.hook('onRenderAll');
+    plugin.hook('beforeRender');
     const expanded = Object.keys(this.objectData).reduce((acc, key) => {
       acc[key] = this.objectData[key].map(this.expandTileData.bind(this));
       return acc;
@@ -567,6 +574,7 @@ loop(timestamp) {
 
   setZoomLevel(n) {
     localStorage.setItem('zoomLevel',this.zoomLevel)
+    plugin.hook('onZoom')
   },
 
   parseRange(rs) {

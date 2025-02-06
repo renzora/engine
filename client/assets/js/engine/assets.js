@@ -28,6 +28,7 @@ assets = {
 
         Promise.all(promises).then(() => {
             document.getElementById('loadingBarContainer').classList.add('hidden');
+            plugin.hook('onAssetsLoaded')
             if (callback) callback();
         });
     },
@@ -99,5 +100,6 @@ assets = {
 
     reloadAssets(assetsList, callback) {
         this.preload(assetsList, callback, true);
+        plugin.hook('onReloadAssets');
     }
 };

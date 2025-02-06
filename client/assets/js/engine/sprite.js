@@ -9,6 +9,7 @@ sprite = {
   init() {
       input.assign('keydown', e => this.handleKeyDownGlobal(e));
       input.assign('keyup', e => this.handleKeyUpGlobal(e));
+      plugin.hook('onSpriteInit');
   },
 
   handleKeyDownGlobal(e) {
@@ -131,6 +132,7 @@ sprite = {
           if (this.isMovingToTarget && plugin.exists('pathfinding')) {
               plugin.pathfinding.moveAlongPath(this);
               this.animate();
+              plugin.hook('onSpriteUpdate')
               return;
           }
 
@@ -148,6 +150,7 @@ sprite = {
 
           this.animate();
           plugin.debug.tracker('sprite.update');
+          plugin.hook('onSpriteUpdate')
       },
 
       calculateDx() {

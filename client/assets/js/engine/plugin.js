@@ -152,6 +152,7 @@ const rawPlugin = {
                 })
                 .then(data => {
                     this._processLoadedContent({ id, data, ext, beforeStart, after, hidden, drag });
+                    plugin.hook('onPluginLoaded');
                     resolve();
                 })
                 .catch(err => {

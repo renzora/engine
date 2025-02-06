@@ -39,5 +39,6 @@ camera = {
                 this.cameraY = this.targetCameraY;
             }
         }
+        plugin.hook('onCameraUpdate');
     }
 };
