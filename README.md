@@ -5,7 +5,7 @@
 
 ![](https://i.imgur.com/V2j1yIL.png)
 
-# [> Click here for full documentation <](https://renzora.github.com/docs)
+# [> Click here for full documentation <](https://renzora.github.io/docs)
 
 # Requirements
 - Docker Desktop: https://www.docker.com/products/docker-desktop
