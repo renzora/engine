@@ -42,7 +42,7 @@ game = {
       .then(r => r.json())
       .then(d => {
         if (!d.success || !Array.isArray(d.sheets)) throw new Error('Failed to load sheets list')
-        const arr = d.sheets.map(n => ({ name: n, path: `assets/img/sheets/${n}.png` }))
+        const arr = d.sheets.map(n => ({ name: n, path: `assets/img/sheets/${n}.png`, noCache: true }))
         assets.preload(arr, () => {
           if (typeof onLoaded === 'function') onLoaded()
         })

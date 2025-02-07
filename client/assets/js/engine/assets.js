@@ -34,7 +34,12 @@ assets = {
     },
 
     loadAsset(asset, type) {
-        switch(type) {
+        let url = asset.path;
+        if (asset.noCache) {
+            console.log("no cache loading");
+            url += (url.indexOf('?') === -1 ? '?' : '&') + 'nocache=' + new Date().getTime();
+        }
+        switch (type) {
             case 'image':
                 return new Promise((resolve, reject) => {
                     const img = new Image();
@@ -43,12 +48,11 @@ assets = {
                         resolve(img);
                     };
                     img.onerror = reject;
-                    img.src = asset.path;
+                    img.src = url;
                 });
-                
             case 'json':
             case 'audio':
-                return fetch(asset.path)
+                return fetch(url)
                     .then(response => type === 'json' ? response.json() : response.arrayBuffer())
                     .then(data => {
                         if (type === 'audio') {
@@ -62,7 +66,7 @@ assets = {
                     })
                     .catch(error => console.error(`Error loading ${type}:`, error));
         }
-    },
+    },    
 
     updateLoadingBar(assetName) {
         const percentage = Math.floor((this.loadedCount / this.totalAssets) * 100);

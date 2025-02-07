@@ -1,4 +1,11 @@
 lighting = {
+  config: {
+    dayStart: 7,
+    sunsetStart: 19.5,
+    nightStart: 22,
+    nightEnd: 5,
+    sunriseEnd: 7
+  },
   lights: [],
   lightsActive: true,
   nightFilterActive: true,
@@ -18,7 +25,6 @@ lighting = {
 
   addLight(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05, shape = null) {
     if (!this.lightsActive) return;
-
     const existingLight = this.lights.find(light => light.id === id);
     if (!existingLight) {
       const clampedMaxIntensity = Math.min(Math.max(maxIntensity, 0), 1);
@@ -38,7 +44,6 @@ lighting = {
         flickerOffset: Math.random() * 1000,
         shape
       };
-
       this.lights.push(newLight);
     }
   },
@@ -46,12 +51,10 @@ lighting = {
   clearLightsAndEffects() {
     const playerLight = this.lights.find(light => light.id === game.playerid + '_light');
     this.lights = [];
-
     if (plugin.exists('particles')) {
       particles.activeEffects = {};
       particles.particles = [];
     }
-
     if (playerLight) {
       this.lights.push(playerLight);
       console.log('Preserved player light:', playerLight);
@@ -65,12 +68,10 @@ lighting = {
     this.updateDayNightCycle();
     this.updateLights();
     this.renderLights();
-
     if (!this.nightFilterActive) return;
     if (this.timeBasedUpdatesEnabled && this.lightIntensityMultiplier === 0) {
       return;
     }
-
     const { maskCanvas, maskCtx } = this.createBaseNightFilter();
     this.renderLightsOnFilter(maskCtx);
     this.renderFinalOverlay(game.ctx, maskCanvas);
@@ -78,13 +79,10 @@ lighting = {
 
   renderLights() {
     if (!game.roomData || !game.roomData.items) return;
-
     game.roomData.items.forEach(roomItem => {
       if (!roomItem || !roomItem.layer_id) return;
-
       const tileData = game.objectData[roomItem.id];
       if (!tileData || !tileData[0]) return;
-
       if (roomItem.visible === false && tileData[0].l && Array.isArray(tileData[0].l)) {
         tileData[0].l.forEach((lightConfig, lightIndex) => {
           const lId = `${roomItem.layer_id}_light_${lightIndex}`;
@@ -92,7 +90,6 @@ lighting = {
         });
         return;
       }
-
       if (tileData[0].l && Array.isArray(tileData[0].l)) {
         tileData[0].l.forEach((lightConfig, lightIndex) => {
           const offsetX = lightConfig.x || 0;
@@ -103,14 +100,14 @@ lighting = {
           const py = baseY + offsetY;
           const lId = `${roomItem.layer_id}_light_${lightIndex}`;
           const dh = plugin.time.hours + plugin.time.minutes / 60;
-          const isNight = (dh >= 22 || dh < 7);
+          const { nightStart, dayStart } = this.config;
+          const isNight = (dh >= nightStart || dh < dayStart);
           const inViewport = (
             px + 200 >= game.viewportXStart * 16 &&
             px - 200 < game.viewportXEnd * 16 &&
             py + 200 >= game.viewportYStart * 16 &&
             py - 200 < game.viewportYEnd * 16
           );
-
           if (inViewport && isNight) {
             let existingLight = this.lights.find(l => l.id === lId);
             if (!existingLight) {
@@ -121,9 +118,7 @@ lighting = {
               const flickerAmount = tileData[0].lfa || 0.04;
               const lt = tileData[0].lt || 'lamp';
               const shp = lightConfig.shape || null;
-              
-              this.addLight(lId, px, py, rad, col, intens, lt, true,
-                flickerSpeed, flickerAmount, shp);
+              this.addLight(lId, px, py, rad, col, intens, lt, true, flickerSpeed, flickerAmount, shp);
             } else {
               existingLight.x = px;
               existingLight.y = py;
@@ -139,7 +134,6 @@ lighting = {
   updateLights() {
     if (!this.lightsActive) return;
     const applyFlicker = this.timeBasedUpdatesEnabled || !this.useManualRGB;
-
     this.lights.forEach(light => {
       if (light.flicker && applyFlicker) {
         const flickerDelta = Math.sin((performance.now() + light.flickerOffset) * light.flickerSpeed) * light.flickerAmount;
@@ -150,18 +144,12 @@ lighting = {
 
   updateDayNightCycle() {
     if (!plugin.exists('time') || !this.timeBasedUpdatesEnabled) return;
-
     const hours = time.hours;
     const minutes = time.minutes;
     let currentTime = hours + minutes / 60;
     if (currentTime >= 24) currentTime -= 24;
-    const dayStart = 7;
-    const sunsetStart = 19.5;
-    const nightStart = 22;
-    const nightEnd = 5;
-    const sunriseEnd = 7;
+    const { dayStart, sunsetStart, nightStart, nightEnd, sunriseEnd } = this.config;
     let t = 0;
-
     if (currentTime >= dayStart && currentTime < sunsetStart) {
       t = 0;
     } else if (currentTime >= sunsetStart && currentTime < nightStart) {
@@ -173,7 +161,6 @@ lighting = {
     } else {
       t = 0;
     }
-
     this.lightIntensityMultiplier = t;
   },
 
@@ -186,10 +173,8 @@ lighting = {
       maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
       return { maskCanvas, maskCtx };
     }
-
     const { dayColor, nightColor, brightness, saturation, manualColor } = this.nightFilter;
     let newColor;
-
     if (this.timeBasedUpdatesEnabled) {
       const t = this.lightIntensityMultiplier;
       newColor = this.lerpColor(dayColor, nightColor, t);
@@ -201,7 +186,6 @@ lighting = {
         newColor = this.lerpColor(dayColor, nightColor, t);
       }
     }
-
     let finalColor;
     if (
       this.lastBaseNightFilterColor &&
@@ -215,14 +199,12 @@ lighting = {
       this.lastBaseNightFilterColor = { ...newColor };
       this.lastProcessedNightFilterColor = { ...finalColor };
     }
-
     const maskCanvas = document.createElement('canvas');
     maskCanvas.width = game.canvas.width;
     maskCanvas.height = game.canvas.height;
     const maskCtx = maskCanvas.getContext('2d');
     maskCtx.fillStyle = `rgb(${finalColor.r}, ${finalColor.g}, ${finalColor.b})`;
     maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
-
     return { maskCanvas, maskCtx };
   },
 
@@ -230,10 +212,8 @@ lighting = {
     let r = color.r / 255;
     let g = color.g / 255;
     let b = color.b / 255;
-
     let max = Math.max(r, g, b), min = Math.min(r, g, b);
     let h, s, l = (max + min) / 2;
-
     if (max === min) {
       h = s = 0;
     } else {
@@ -246,10 +226,8 @@ lighting = {
       }
       h /= 6;
     }
-
     l = l * brightness;
     s = s * saturation;
-
     function hue2rgb(p, q, t) {
       if (t < 0) t += 1;
       if (t > 1) t -= 1;
@@ -258,14 +236,11 @@ lighting = {
       if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
       return p;
     }
-
     let q = l < 0.5 ? l * (1 + s) : l + s - l * s;
     let p = 2 * l - q;
-
     r = hue2rgb(p, q, h + 1/3);
     g = hue2rgb(p, q, h);
     b = hue2rgb(p, q, h - 1/3);
-
     return {
       r: Math.round(r * 255),
       g: Math.round(g * 255),
@@ -279,15 +254,12 @@ lighting = {
         const screenX = (light.x - camera.cameraX) * game.zoomLevel;
         const screenY = (light.y - camera.cameraY) * game.zoomLevel;
         const screenRadius = light.baseRadius * game.zoomLevel;
-
         const gradient = maskCtx.createRadialGradient(
           screenX, screenY, 0,
           screenX, screenY, screenRadius
         );
-
         const { r, g, b } = light.color;
         const intensity = light.currentIntensity;
-
         gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, ${intensity})`);
         gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
         maskCtx.globalCompositeOperation = 'lighter';

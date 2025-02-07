@@ -1,9 +1,9 @@
 // This is your startup file. Add all your plugins, preload assets and do any engine configurations here.
 assets.preload(
   [
-    { name: "female-01", path: "assets/img/sprites/characters/female-01.png" },
-    { name: "objectData", path: "assets/json/objectData.json" },
-    { name: "spriteData", path: "assets/json/spritesData.json" },
+    { name: "female-01", path: "assets/img/sprites/characters/female-01.png", noCache: true },
+    { name: "objectData", path: "assets/json/objectData.json", noCache: true },
+    { name: "spriteData", path: "assets/json/spritesData.json", noCache: true },
   ],
   () => {
     input.assign("keydown+shift+e", () => {
@@ -33,15 +33,12 @@ assets.preload(
         },
       },
       { id: "auth", ext: "njk" },
-      { id: 'lighting' },
-      { id: 'collision' },
+      { id: 'lighting', path: 'core' },
+      { id: 'collision', path: 'core' },
       { id: 'pathfinding' },
       { id: 'debug', path: 'core', ext: 'html' },
       { id: 'ui', path: 'core' },
-      { id: 'gamepad' },
-      { id: 'snow', reload: true, after: () => {
-            snow.start('medium');
-        }}
+      { id: 'gamepad' }
     ]);
 
     const playerSprite = sprite.create({
@@ -62,7 +59,7 @@ assets.preload(
           localStorage.getItem("sceneid") || "678ec2d7433aae2deee168ee"
         );
         sprite.init();
-        plugin.time.hours = 6;
+        plugin.time.hours = 21;
       },
     });
   }
