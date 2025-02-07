@@ -274,11 +274,11 @@ const rawPlugin = {
         this.load(next.id, next).then(() => this.loadNextPreload());
     },
 
-    hook(hookName) {
+    hook(hookName, data) {
         Object.entries(this.loadedPlugins).forEach(([id, plugin]) => {
             if (typeof plugin[hookName] === 'function') {
                 try {
-                    plugin[hookName]();
+                    plugin[hookName](data);
                 } catch (err) {
                     console.error(`Error running hook '${hookName}' for plugin '${id}':`, err);
                 }

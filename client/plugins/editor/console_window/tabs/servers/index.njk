@@ -184,26 +184,48 @@ serverConsole = {
       scenesList.innerHTML = 'Error loading scenes'
     }
   },
-  prependSceneToList(scene, list) {
-    const li = document.createElement('li')
-    li.className = 'odd:bg-gray-900 even:bg-gray-800 px-4 py-2 cursor-move flex items-center justify-between last:rounded-b'
-    li.setAttribute('data-scene-id', scene._id)
-    li.innerHTML =
-      `<span class="flex-grow cursor-text">${scene.name}</span>
-       <div class="flex items-center space-x-2">
-         <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded shadow-md" data-go-button="true">
-           Edit
-         </button>
-         <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded shadow-md hidden" data-delete-button="true">
-           <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M6 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1h3a1 1 0 1 1 0 2h-.306l-1.2 12A2 2 0 0 1 12.5 18h-5a2 2 0 0 1-1.994-1.8l-1.2-12H4a1 1 0 1 1 0-2h3V2zm2 3v9a1 1 0 1 0 2 0V5H8zm4 0v9a1 1 0 1 0 2 0V5h-2z"/></svg>
-         </button>
-       </div>`
 
-    li.querySelector('span').addEventListener('dblclick', (e) => this.handleSceneRename(e, scene))
-    li.querySelector('[data-go-button]').addEventListener('click', () => game.scene(scene._id))
-    li.querySelector('[data-delete-button]').addEventListener('click', () => this.handleDeleteScene(scene._id, li))
-    list.prepend(li)
-  },
+handleSceneChange(sceneId) {
+  if (plugin.editor_layers.hasUnsavedChanges) {
+    if (!confirm("You have unsaved changes. Are you sure you want to leave this scene?")) {
+      return;
+    }
+  }
+  
+  plugin.editor_layers.hasUnsavedChanges = false;
+  plugin.editor_layers.selectedLayers.clear();
+  plugin.editor_layers.activeLayerId = null;
+  plugin.editor_layers.layers = [];
+  
+  // Change scene first
+  game.scene(sceneId);
+  
+  // Wait for scene to load then refresh layers
+  plugin.editor_layers.fetchSceneLayers(sceneId);
+  plugin.editor_layers.renderAllLayers();
+},
+
+prependSceneToList(scene, list) {
+  const li = document.createElement('li');
+  li.className = 'odd:bg-gray-900 even:bg-gray-800 px-4 py-2 cursor-move flex items-center justify-between last:rounded-b';
+  li.setAttribute('data-scene-id', scene._id);
+  li.innerHTML =
+    `<span class="flex-grow cursor-text">${scene.name}</span>
+     <div class="flex items-center space-x-2">
+       <button class="bg-green-600 hover:bg-green-700 text-white font-bold py-1 px-2 rounded shadow-md" data-go-button="true">
+         Edit
+       </button>
+       <button class="bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-2 rounded shadow-md hidden" data-delete-button="true">
+         <svg class="h-4 w-4 fill-current" viewBox="0 0 20 20"><path d="M6 2a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1h3a1 1 0 1 1 0 2h-.306l-1.2 12A2 2 0 0 1 12.5 18h-5a2 2 0 0 1-1.994-1.8l-1.2-12H4a1 1 0 1 1 0-2h3V2z"/></svg>
+       </button>
+     </div>`;
+
+  li.querySelector('span').addEventListener('dblclick', (e) => this.handleSceneRename(e, scene));
+  li.querySelector('[data-go-button]').addEventListener('click', () => this.handleSceneChange(scene._id));
+  li.querySelector('[data-delete-button]').addEventListener('click', () => this.handleDeleteScene(scene._id, li));
+  list.prepend(li);
+},
+
   handleSceneRename(e, scene) {
     const span = e.target
     const oldName = scene.name

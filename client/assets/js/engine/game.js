@@ -120,6 +120,7 @@ game = {
   },
 
   scene(sceneId) {
+    plugin.hook('onBeforeSceneChange', sceneId);
     plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
         fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
             method: 'GET',

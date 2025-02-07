@@ -1,7 +1,7 @@
 {% if auth %}
 <div
   id="editor_toolbar_buttons"
-  class="fixed top-2 bg-black/80 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-x-auto"
+  class="fixed top-2 bg-black/80 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-visible"
 >
   <button
     type="button"
@@ -34,8 +34,8 @@
   <button
     type="button"
     id="save_button"
-    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="editor_window.saveRoomData()"
+    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition relative"
+    onclick="editor_window.toggleSaveDropdown(event)"
   >
   </button>
   <button
@@ -52,6 +52,23 @@
     onclick="plugin.close('editor_window')"
   >
   </button>
+
+  <div id="save_dropdown" class="hidden absolute bg-black/80 text-white rounded-lg shadow-lg p-2 flex flex-col gap-2">
+    <button
+      type="button"
+      class="hover:bg-gray-700 px-4 py-2 rounded transition whitespace-nowrap"
+      onclick="editor_window.saveAndClose()"
+    >
+      Save and close
+    </button>
+    <button
+      type="button"
+      class="hover:bg-gray-700 px-4 py-2 rounded transition whitespace-nowrap"
+      onclick="editor_window.saveAndContinue()"
+    >
+      Save and continue editing
+    </button>
+  </div>
 </div>
 
 <style>
@@ -856,6 +873,7 @@ findTopmostObjectWithPixelCheck(worldX, worldY, allowSameOrHigherZ = false) {
         })
       })
       this.pushToUndoStack()
+      plugin.editor_layers.hasUnsavedChanges = true;
     }
   },
 
@@ -896,6 +914,7 @@ findTopmostObjectWithPixelCheck(worldX, worldY, allowSameOrHigherZ = false) {
       obj.x = obj.x.map(coord => coord + deltaX / 16)
       obj.y = obj.y.map(coord => coord + deltaY / 16)
     })
+    plugin.editor_layers.hasUnsavedChanges = true;
   },
 
   updateMousePosition(event) {
@@ -1417,6 +1436,7 @@ renderSelectedTiles() {
     })
 
     items.push(...this.selectedObjects)
+    plugin.editor_layers.hasUnsavedChanges = true;
   },
 
   pushSelectedObjectsToBottom() {
@@ -1435,6 +1455,7 @@ renderSelectedTiles() {
     })
 
     items.unshift(...this.selectedObjects)
+    plugin.editor_layers.hasUnsavedChanges = true;
   },
 
   spaceOutSelectedObjects() {
@@ -1469,6 +1490,7 @@ renderSelectedTiles() {
       obj.x = obj.x.map(coord => Math.round(coord + offsetX))
       obj.y = obj.y.map(coord => Math.round(coord + offsetY))
     })
+    plugin.editor_layers.hasUnsavedChanges = true;
   },
 
   selectAllObjects() {
@@ -1510,7 +1532,7 @@ renderSelectedTiles() {
           return this.isSnapEnabled ? Math.floor(newCoordY / 16) : newCoordY / 16
         })
 
-        editor_layers.addItemToLayer({
+        plugin.editor_layers.addItemToLayer({
           layer_id: newLayerId,
           n: newObj.name || "Pasted Item"
         })
@@ -1521,7 +1543,8 @@ renderSelectedTiles() {
       game.roomData.items.push(...pastedObjects)
       this.selectedObjects = pastedObjects
       const pastedLayerIds = pastedObjects.map(obj => "item_" + obj.layer_id)
-      editor_layers.selectLayersById(pastedLayerIds)
+      plugin.editor_layers.selectLayersById(pastedLayerIds)
+      plugin.editor_layers.hasUnsavedChanges = true;
       this.renderSelectedTiles()
       this.changeMode('move')
     }
@@ -1544,6 +1567,69 @@ renderSelectedTiles() {
     const lastState = this.redoStack.pop()
     this.restoreRoomData(lastState)
   },
+
+toggleSaveDropdown(event) {
+  event.stopPropagation()
+  const dropdown = document.getElementById('save_dropdown')
+  const saveButton = document.getElementById('save_button')
+  const buttonRect = saveButton.getBoundingClientRect()
+  
+  dropdown.style.position = 'absolute'
+  dropdown.style.top = `${buttonRect.height + 8}px`
+  dropdown.style.left = '0'
+  dropdown.style.zIndex = '1000'
+  saveButton.style.position = 'relative'
+  dropdown.classList.toggle('hidden')
+
+  const closeDropdown = (e) => {
+    if (!dropdown.contains(e.target) && !saveButton.contains(e.target)) {
+      dropdown.classList.add('hidden')
+      document.removeEventListener('click', closeDropdown)
+    }
+  }
+  
+  document.addEventListener('click', closeDropdown)
+},
+
+saveAndClose() {
+  this.saveRoomData()
+},
+
+saveAndContinue() {
+  const dropdown = document.getElementById('save_dropdown')
+  dropdown.classList.add('hidden')
+  
+  fetch('/api/editor/scene/save', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sceneid: game.sceneid,
+      bg: game.sceneBg,
+      roomData: game.roomData,
+      editorLayers: editor_layers.layers
+    }),
+  })
+  .then(async (response) => {
+    if (!response.ok) {
+      let errorData
+      try {
+        errorData = await response.json()
+      } catch {
+        errorData = { message: await response.text() }
+      }
+      throw new Error(errorData.message || 'Unknown error')
+    }
+    return response.json()
+  })
+  .then((result) => {
+    plugin.editor_layers.hasUnsavedChanges = false;
+    plugin.collision.createWalkableGrid()
+  })
+  .catch((error) => {
+  })
+},
 
   saveRoomData() {
     fetch('/api/editor/scene/save', {
@@ -1816,6 +1902,8 @@ handleKeyDown(event) {
       const layerId = `item_${obj.layer_id}`
       editor_layers.removeLayerById(layerId)
     })
+
+    plugin.editor_layers.hasUnsavedChanges = true;
     
     game.roomData.items = game.roomData.items.filter(item => 
       !this.selectedObjects.includes(item)
@@ -1857,6 +1945,7 @@ handleKeyDown(event) {
         obj.rotation = currentRotation + (Math.PI / 2)
       }
     })
+    plugin.editor_layers.hasUnsavedChanges = true;
   }
 }
 </script>

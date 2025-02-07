@@ -497,6 +497,7 @@ displayItems(filteredData = null) {
     }
     game.roomData.items.push(newItem);
     editor_layers.addItemToLayer(newItem);
+    plugin.editor_layers.hasUnsavedChanges = true;
   },
 
   addGlobalListeners() {

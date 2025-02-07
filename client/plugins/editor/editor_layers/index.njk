@@ -461,6 +461,7 @@
 
 <script>
 editor_layers = {
+  hasUnsavedChanges: false,
   needsUpdate: true,
   nodesPanelOpen: true,
   spectrumPanelOpen: true,
@@ -694,6 +695,7 @@ updateTransformControls() {
     rotationSlider.value = degrees;
     flipHBtn.classList.toggle('bg-blue-500', obj.flipHorizontal);
     flipVBtn.classList.toggle('bg-blue-500', obj.flipVertical);
+    this.hasUnsavedChanges = true;
   } else if (editor_window.selectedObjects.length > 1) {
     scaleInput.value = 1;
     scaleSlider.value = 1;
@@ -738,6 +740,32 @@ start() {
     this.initColorPicker();
   });
 },
+
+  onBeforeSceneChange(data) {
+    if (this.hasUnsavedChanges) {
+      if (!confirm("You have unsaved changes. Are you sure you want to leave this scene?")) {
+        return false;
+      }
+    }
+
+    this.hasUnsavedChanges = false;
+    this.fetchSceneLayers(data).then(() => {
+      if (!this.layers || this.layers.length === 0) {
+        this.layers = [{
+          id: "layer_default",
+          type: "layer", 
+          name: "Default Layer",
+          visible: true,
+          locked: false,
+          expanded: true,
+          children: []
+        }];
+      }
+      this.activeLayerId = this.layers[0].id;
+      this.selectLayersById(this.activeLayerId);
+      this.renderAllLayers();
+    });
+  },
 
 initBackgroundInput() {
   const bgInput = document.getElementById('backgroundInput');
@@ -837,7 +865,7 @@ initBackgroundInput() {
         if (game.roomData) {
           game.roomData.bg = entry.key;
         }
-        
+        this.hasUnsavedChanges = true; 
         game.buildRepeatingBackground();
         game.resizeCanvas();
         
@@ -1019,6 +1047,7 @@ initBackgroundInput() {
     } else {
       this.layers.splice(insertIndex, 0, newLayer);
     }
+    this.hasUnsavedChanges = true;
     this.selectedLayers.clear();
     this.selectedLayers.add(newLayer.id);
     this.activeLayerId = newLayer.id;
@@ -1046,6 +1075,7 @@ initBackgroundInput() {
       this.selectedLayers.add(newGroup.id);
       this.activeLayerId = newGroup.id;
       this.lastClickedId = newGroup.id;
+      this.hasUnsavedChanges = true;
       this.renderAllLayers();
       setTimeout(() => this.editLayerName(newGroup.id), 0);
       return;
@@ -1076,6 +1106,7 @@ initBackgroundInput() {
     } else {
       this.layers.splice(insertIndex, 0, newGroup);
     }
+    this.hasUnsavedChanges = true;
     this.selectedLayers.clear();
     this.selectedLayers.add(newGroup.id);
     this.activeLayerId = newGroup.id;
@@ -1120,6 +1151,7 @@ addItemToLayer(itemInfo = {}) {
         this.layers.push(newItem);
     }
 
+    this.hasUnsavedChanges = true;
     this.selectedLayers.clear();
     this.selectedLayers.add(newItem.id);
     this.activeLayerId = newItem.id;
@@ -1384,6 +1416,7 @@ renderNode(node, parentEl) {
   eyeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     node.visible = !node.visible;
+    this.hasUnsavedChanges = true;
     if (node.id.startsWith("item_")) {
       const layerId = node.id.replace("item_", "");
       const roomItem = game.roomData.items.find(it => it.layer_id === layerId);
@@ -1430,6 +1463,7 @@ renderNode(node, parentEl) {
   lockBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     node.locked = !node.locked;
+    this.hasUnsavedChanges = true;
     this.updateLockState(node, node.locked);
     this.removeLockedOrInvisible(node);
     this.renderAllLayers();
@@ -1795,6 +1829,7 @@ areAllLocked(nodes) {
     }
     this.draggedClone = null;
     if (this.dropPosition) {
+      this.hasUnsavedChanges = true;
       const { targetId, mode } = this.dropPosition;
       const found = this.findNodeById(targetId);
       for (const dn of this.draggedNodes) {
@@ -1989,6 +2024,7 @@ areAllLocked(nodes) {
       this.activeLayerId = def.id;
     }
   }
+  this.hasUnsavedChanges = true;
   this.renderAllLayers();
   this.refreshLayerView();
   },
@@ -2011,6 +2047,7 @@ areAllLocked(nodes) {
     });
     input.addEventListener("blur", () => {
       node.name = input.value.trim() || "Unnamed";
+      this.hasUnsavedChanges = true;
       this.renderAllLayers();
     });
     span.textContent = "";
