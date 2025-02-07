@@ -558,7 +558,7 @@ displayItems(filteredData = null) {
       const data = await res.json();
       if (data.success) {
         // refresh objectData in your front-end
-        game.loadAsset('json', 'objectData', 'assets/json/objectData.json', (updated) => {
+        assets.loadAsset('json', 'objectData', 'assets/json/objectData.json', (updated) => {
           this.itemData = updated;
           this.currentPage = 1;
           this.displayItems();
@@ -606,7 +606,6 @@ displayItems(filteredData = null) {
       });
       const data = await res.json();
       if (data.success) {
-        // Reload objectData
         game.loadAsset('json', 'objectData', 'assets/json/objectData.json', (updated) => {
           this.itemData = updated;
           this.currentPage = 1;

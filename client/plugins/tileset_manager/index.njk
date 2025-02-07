@@ -376,7 +376,6 @@ tileset_manager = {
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Create and store an offscreen canvas for this new image
         const offscreen = document.createElement('canvas');
         offscreen.width = img.width;
         offscreen.height = img.height;
@@ -705,7 +704,6 @@ tileset_manager = {
       return;
     }
 
-    // Store the current offscreen canvas so each item is self-contained
     this.batchQueue.push({
       category,
       name,
@@ -767,63 +765,90 @@ tileset_manager = {
     }
   },
 
-  saveQueuedItems() {
-    if (!this.batchQueue.length) {
-      alert('No items in queue to save.');
-      return;
-    }
-    const groupedData = {};
-    this.batchQueue.forEach(item => {
-      const tilesetName = item.category;
-      if (!groupedData[tilesetName]) groupedData[tilesetName] = [];
-      groupedData[tilesetName].push(item);
-    });
+saveQueuedItems() {
+  if (!this.batchQueue.length) {
+    alert('No items in queue to save.');
+    return;
+  }
+  const groupedData = {};
+  this.batchQueue.forEach(item => {
+    const tilesetName = item.category;
+    if (!groupedData[tilesetName]) groupedData[tilesetName] = [];
+    groupedData[tilesetName].push(item);
+  });
 
-    const payload = Object.keys(groupedData).map(tilesetName => {
-      const itemsForTileset = groupedData[tilesetName].map(qItem => {
-        // Pass qItem.imageCanvas here to create the cropped data correctly
-        const { croppedCanvas, relAcoords, relBcoords } = this.createCroppedCanvas(
-          qItem.selectedTiles,
-          qItem.imageCanvas
-        );
-        const imageData = croppedCanvas.toDataURL('image/png');
-        const newObject = {
-          n: qItem.name,
-          t: qItem.category
-        };
-        return {
-          newObject,
-          imageData,
-          aCoords: relAcoords,
-          bCoords: relBcoords
-        };
+  const payload = Object.keys(groupedData).map(tilesetName => {
+    const itemsForTileset = groupedData[tilesetName].map(qItem => {
+      const { croppedCanvas, relAcoords, relBcoords } = this.createCroppedCanvas(
+        qItem.selectedTiles,
+        qItem.imageCanvas
+      );
+      const imageData = croppedCanvas.toDataURL('image/png');
+      const newObject = {
+        n: qItem.name,
+        t: qItem.category
+      };
+      return {
+        newObject,
+        imageData,
+        aCoords: relAcoords,
+        bCoords: relBcoords
+      };
+    });
+    return { tileset: tilesetName, items: itemsForTileset };
+  });
+
+  const self = this;
+
+  fetch('/api/tileset_manager/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ groupedData: payload })
+  })
+  .then(res => res.json())
+  .then(result => {
+    if (result.success) {
+      const tilesetsToReload = [...new Set(Object.keys(groupedData))];
+      
+      const assetsToLoad = tilesetsToReload.map(tileset => ({
+        name: tileset,
+        path: `assets/img/sheets/${tileset}.png`,
+        noCache: true
+      }));
+
+      assetsToLoad.push({
+        name: 'objectData',
+        path: 'assets/json/objectData.json',
+        noCache: true
       });
-      return { tileset: tilesetName, items: itemsForTileset };
-    });
 
-    fetch('/api/tileset_manager/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ groupedData: payload })
-    })
-    .then(res => res.json())
-    .then(result => {
-      if (result.success) {
-        alert('All grouped items saved successfully!');
-        this.batchQueue = [];
-        this.renderQueueList();
-      } else {
-        console.warn('Error saving grouped items:', result);
-        alert('Error saving grouped items. Check console.');
-      }
-    })
-    .catch(err => {
-      console.error('Error saving grouped items:', err);
+      assets.preload(assetsToLoad, () => {
+        self.batchQueue = [];
+        self.renderQueueList();
+
+        const newObjectData = assets.use('objectData');
+        game.objectData = newObjectData;
+
+        if (plugin.exists('ui_console_editor_inventory')) {
+          ui_console_editor_inventory.itemData = newObjectData;
+          ui_console_editor_inventory.currentPage = 1;
+          ui_console_editor_inventory.displayItems();
+          ui_console_editor_inventory.populateMoveTilesetDropdown();
+        }
+
+        alert('All items saved successfully!');
+      }, true);
+    } else {
+      console.warn('Error saving grouped items:', result);
       alert('Error saving grouped items. Check console.');
-    });
-  },
+    }
+  })
+  .catch(err => {
+    console.error('Error saving grouped items:', err);
+    alert('Error saving grouped items. Check console.');
+  });
+},
 
-  // Now takes the reference to the canvas that actually holds the correct image
   createCroppedCanvas(tiles, sourceCanvas) {
     const tileSize = 16;
     const minX = Math.min(...tiles.map(t => t.x));
