@@ -290,26 +290,48 @@ editor_context_menu = {
             { label: "Map Generator", callback: () => this.openMapGenerator() },
           ]
         },
+{
+  label: "Editor",
+  subMenu: [
+    {
+      label: "Grid",
+      type: "checkbox",
+      id: "toggle_grid_checkbox", 
+      initialValue: true,
+      callback: (checked) => this.utilsToggleGrid(checked),
+    },
+    {
+      label: "Perspective",
+      subMenu: [
         {
-          label: "Editor",
-          subMenu: [
-            {
-              label: "Grid",
-              type: "checkbox",
-              id: "toggle_grid_checkbox",
-              initialValue: true,
-              callback: (checked) => this.utilsToggleGrid(checked),
-            },
-            { label: "Day/Time", callback: () => this.openTerrainEditor() },
-            {
-              label: "Manual Camera",
-              type: "checkbox",
-              id: "manual_camera_checkbox",
-              initialValue: true,
-              callback: (checked) => this.cameraManualToggle(checked),
-            }
-          ]
+          label: "2D View",
+          callback: () => {
+            editor_window.renderMode = '2d';
+            this.contextMenuElement.classList.add('hidden');
+          }
+        },
+        {
+          label: "Isometric View",
+          callback: () => {
+            editor_window.renderMode = 'isometric';
+            this.contextMenuElement.classList.add('hidden');
+          }
         }
+      ]
+    },
+    {
+      label: "Day/Time",
+      callback: () => this.openTerrainEditor()
+    },
+    {
+      label: "Manual Camera",
+      type: "checkbox",
+      id: "manual_camera_checkbox",
+      initialValue: true,
+      callback: (checked) => this.cameraManualToggle(checked),
+    }
+  ]
+}
       ];
     }
   },
@@ -523,6 +545,17 @@ editor_context_menu = {
       console.log("Grid disabled.");
     }
   },
+
+  setRenderMode(mode) {
+  editor_window.renderMode = mode;
+  if (this.isGridEnabled) {
+    if (mode === 'isometric') {
+      this.renderIsometricGrid();
+    } else {
+      this.render2dGrid();
+    }
+  }
+},
 
   render2dGrid() {
     if (!this.isGridEnabled) return;
