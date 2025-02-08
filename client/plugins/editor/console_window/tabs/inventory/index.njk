@@ -449,12 +449,6 @@ displayItems(filteredData = null) {
     this.deselectInventoryItem();
   },
 
-  generateId() {
-    const timestamp = Date.now().toString(36).slice(-4);
-    const randomPart = Math.random().toString(36).substring(2, 5);
-    return `${timestamp}${randomPart}`;
-  },
-
   addItemToRoomData(itemId, mouseX, mouseY) {
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
     if (!itemData) return;
@@ -487,7 +481,7 @@ displayItems(filteredData = null) {
       n: itemData.n,
       x: newX,
       y: newY,
-      layer_id: this.generateId(),
+      layer_id: plugin.editor_layers.generateId(),
       animationState: [{ currentFrame: 0, elapsedTime: 0 }],
       w: itemData.w || []
     };

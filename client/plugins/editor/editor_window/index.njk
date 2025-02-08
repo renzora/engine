@@ -1519,7 +1519,7 @@ renderSelectedTiles() {
 
       const pastedObjects = this.clipboard.map(obj => {
         const newObj = JSON.parse(JSON.stringify(obj))
-        const newLayerId = utils.generateId()
+        const newLayerId = plugin.editor_layers.generateId()
         newObj.layer_id = newLayerId
 
         newObj.x = newObj.x.map(coord => {
@@ -1839,6 +1839,20 @@ handleKeyDown(event) {
     return
   }
 
+  // Handle Ctrl+C (copy)
+  if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+    event.preventDefault()
+    this.copySelectedObjects()
+    return
+  }
+
+  // Handle Ctrl+V (paste)
+  if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+    event.preventDefault()
+    this.pasteCopiedObjects()
+    return
+  }
+
   if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
     event.preventDefault()
     this.selectedObjects = [...game.roomData.items].filter(item => {
@@ -1896,14 +1910,31 @@ handleKeyDown(event) {
   } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(key)) {
     this.moveSelectedObjectsWithArrowKeys(key)
     event.preventDefault()
-  } else if (key === 'Delete' || key === 'Backspace') {
-    this.pushToUndoStack()
-    this.selectedObjects.forEach(obj => {
-      const layerId = `item_${obj.layer_id}`
-      editor_layers.removeLayerById(layerId)
-    })
+} else if (key === 'Delete' || key === 'Backspace') {
+  if (this.selectedObjects.length === 0) return;
+  
+  this.pushToUndoStack();
+  
+  // Remove lights associated with selected objects
+  this.selectedObjects.forEach(obj => {
+    const layerId = `item_${obj.layer_id}`;
+    // Remove layer from editor layers
+    editor_layers.removeLayerById(layerId);
+    
+    // Remove associated lights
+    const iData = game.objectData[obj.id];
+    if (iData && iData.length > 0) {
+      const tileData = iData[0];
+      if (tileData.l && Array.isArray(tileData.l)) {
+        tileData.l.forEach((_, lightIndex) => {
+          const lId = `${obj.layer_id}_light_${lightIndex}`;
+          lighting.lights = lighting.lights.filter(l => l.id !== lId);
+        });
+      }
+    }
+  });
 
-    plugin.editor_layers.hasUnsavedChanges = true;
+  plugin.editor_layers.hasUnsavedChanges = true;
     
     game.roomData.items = game.roomData.items.filter(item => 
       !this.selectedObjects.includes(item)
