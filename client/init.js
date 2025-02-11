@@ -38,7 +38,8 @@ assets.preload(
       { id: 'pathfinding' },
       { id: 'debug', path: 'core', ext: 'html' },
       { id: 'ui', path: 'core' },
-      { id: 'gamepad' }
+      { id: 'gamepad' },
+      { id: 'actions' }
     ]);
 
     const playerSprite = sprite.create({

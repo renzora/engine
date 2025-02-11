@@ -54,19 +54,19 @@
   </button>
 
   <div id="save_dropdown" class="hidden absolute bg-black/80 text-white rounded-lg shadow-lg p-2 flex flex-col gap-2">
+        <button
+      type="button"
+      class="hover:bg-gray-700 px-4 py-2 rounded transition whitespace-nowrap"
+      onclick="editor_window.saveAndContinue()"
+    >
+      Save
+    </button>
     <button
       type="button"
       class="hover:bg-gray-700 px-4 py-2 rounded transition whitespace-nowrap"
       onclick="editor_window.saveAndClose()"
     >
-      Save and close
-    </button>
-    <button
-      type="button"
-      class="hover:bg-gray-700 px-4 py-2 rounded transition whitespace-nowrap"
-      onclick="editor_window.saveAndContinue()"
-    >
-      Save and continue editing
+      Save & close
     </button>
   </div>
 </div>
@@ -183,8 +183,9 @@ editor_window = {
     plugin.console_window.allowToggle = false
 
     plugin.preload([
-      { priority: 0, id: 'editor_layers', path: 'editor', ext: 'njk', drag: false, reload: false },
-      { priority: 1, id: 'editor_context_menu', path: 'editor', ext: 'njk', drag: false, reload: true }
+      { id: 'editor_layers', path: 'editor', ext: 'njk', drag: false, reload: false },
+      { id: 'editor_context_menu', path: 'editor', ext: 'njk', drag: false, reload: true },
+      { id: 'node_editor', path: 'editor', ext: 'html', drag: false, hidden: true }
     ])
 
     setTimeout(() => { camera.manual = true }, 0)
@@ -226,6 +227,7 @@ editor_window = {
     plugin.close('editor_context_menu')
     plugin.close('console_window')
     plugin.close('editor_layers')
+    plugin.close('node_editor')
     plugin.showAll();
     assets.unload('edit_mode_window_icons')
     game.resizeCanvas()
@@ -1839,14 +1841,12 @@ handleKeyDown(event) {
     return
   }
 
-  // Handle Ctrl+C (copy)
   if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
     event.preventDefault()
     this.copySelectedObjects()
     return
   }
 
-  // Handle Ctrl+V (paste)
   if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
     event.preventDefault()
     this.pasteCopiedObjects()
@@ -1915,13 +1915,10 @@ handleKeyDown(event) {
   
   this.pushToUndoStack();
   
-  // Remove lights associated with selected objects
   this.selectedObjects.forEach(obj => {
     const layerId = `item_${obj.layer_id}`;
-    // Remove layer from editor layers
     editor_layers.removeLayerById(layerId);
     
-    // Remove associated lights
     const iData = game.objectData[obj.id];
     if (iData && iData.length > 0) {
       const tileData = iData[0];

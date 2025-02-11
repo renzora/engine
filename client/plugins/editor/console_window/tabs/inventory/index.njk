@@ -449,7 +449,7 @@ displayItems(filteredData = null) {
     this.deselectInventoryItem();
   },
 
-  addItemToRoomData(itemId, mouseX, mouseY) {
+addItemToRoomData(itemId, mouseX, mouseY) {
     const itemData = game.objectData[itemId] ? game.objectData[itemId][0] : null;
     if (!itemData) return;
 
@@ -462,37 +462,37 @@ displayItems(filteredData = null) {
     const newY = [];
 
     for (let col = 0; col <= maxColumns; col++) {
-      if (editor_context_menu.isSnapEnabled) {
-        newX.push(Math.floor(baseX / 16) + col);
-      } else {
-        newX.push((baseX + col * 16) / 16);
-      }
+        if (editor_context_menu.isSnapEnabled) {
+            newX.push(Math.floor(baseX / 16) + col);
+        } else {
+            newX.push((baseX + col * 16) / 16);
+        }
     }
     for (let row = 0; row <= maxRows; row++) {
-      if (editor_context_menu.isSnapEnabled) {
-        newY.push(Math.floor(baseY / 16) + row);
-      } else {
-        newY.push((baseY + row * 16) / 16);
-      }
+        if (editor_context_menu.isSnapEnabled) {
+            newY.push(Math.floor(baseY / 16) + row);
+        } else {
+            newY.push((baseY + row * 16) / 16);
+        }
     }
 
     const newItem = {
-      id: itemId,
-      n: itemData.n,
-      x: newX,
-      y: newY,
-      layer_id: plugin.editor_layers.generateId(),
-      animationState: [{ currentFrame: 0, elapsedTime: 0 }],
-      w: itemData.w || []
+        id: itemId,  // This is the key from game.objectData we need
+        n: itemData.n,
+        x: newX,
+        y: newY,
+        layer_id: plugin.editor_layers.generateId(),
+        animationState: [{ currentFrame: 0, elapsedTime: 0 }],
+        w: itemData.w || []
     };
 
     if (!game.roomData.items) {
-      game.roomData.items = [];
+        game.roomData.items = [];
     }
     game.roomData.items.push(newItem);
     editor_layers.addItemToLayer(newItem);
     plugin.editor_layers.hasUnsavedChanges = true;
-  },
+},
 
   addGlobalListeners() {
     document.addEventListener('contextmenu', (event) => {

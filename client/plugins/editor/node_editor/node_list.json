@@ -1,0 +1,142 @@
+{
+  "initial": {
+    "title": "Door Object",
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true
+  },
+"scene": {
+  "title": "Scene",
+  "inputs": ["input"],
+  "bg": "#4a4a4a", 
+  "hasOutput": false,
+  "fields": [
+    {"name": "input", "label": "input"},
+    {"type": "text", "name": "id", "label": "scene id", "placeholder": "Scene ID", "width": "24"},
+    {"type": "number", "name": "x", "label": "Start X", "placeholder": "X position", "width": "24"},
+    {"type": "number", "name": "y", "label": "Start Y", "placeholder": "Y position", "width": "24"}
+  ]
+},
+"gamepad": {
+    "title": "Gamepad",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+      { "name": "input", "label": "input"},
+      {
+        "type": "select",
+        "name": "button_type",
+        "label": "Button:",
+        "width": "24",
+        "options": [
+          {"value": "aButton", "label": "A Button"},
+          {"value": "bButton", "label": "B Button"},
+          {"value": "xButton", "label": "X Button"},
+          {"value": "yButton", "label": "Y Button"},
+          {"value": "aPressed", "label": "A Button Pressed"},
+          {"value": "bPressed", "label": "B Button Pressed"},
+          {"value": "xPressed", "label": "X Button Pressed"},
+          {"value": "yPressed", "label": "Y Button Pressed"},
+          {"value": "aReleased", "label": "A Button Released"},
+          {"value": "bReleased", "label": "B Button Released"},
+          {"value": "xReleased", "label": "X Button Released"},
+          {"value": "yReleased", "label": "Y Button Released"},
+          {"value": "l1", "label": "L1 Button"},
+          {"value": "r1", "label": "R1 Button"},
+          {"value": "l2", "label": "L2 Button"},
+          {"value": "r2", "label": "R2 Button"},
+          {"value": "l1Pressed", "label": "L1 Pressed"},
+          {"value": "r1Pressed", "label": "R1 Pressed"},
+          {"value": "l2Pressed", "label": "L2 Pressed"},
+          {"value": "r2Pressed", "label": "R2 Pressed"},
+          {"value": "l1Released", "label": "L1 Released"},
+          {"value": "r1Released", "label": "R1 Released"},
+          {"value": "l2Released", "label": "L2 Released"},
+          {"value": "r2Released", "label": "R2 Released"},
+          {"value": "select", "label": "Select Button"},
+          {"value": "start", "label": "Start Button"},
+          {"value": "selectPressed", "label": "Select Pressed"},
+          {"value": "startPressed", "label": "Start Pressed"},
+          {"value": "selectReleased", "label": "Select Released"},
+          {"value": "startReleased", "label": "Start Released"},
+          {"value": "leftStick", "label": "Left Stick Button"},
+          {"value": "rightStick", "label": "Right Stick Button"},
+          {"value": "leftStickPressed", "label": "Left Stick Pressed"},
+          {"value": "rightStickPressed", "label": "Right Stick Pressed"},
+          {"value": "leftStickReleased", "label": "Left Stick Released"},
+          {"value": "rightStickReleased", "label": "Right Stick Released"},
+          {"value": "up", "label": "D-Pad Up"},
+          {"value": "down", "label": "D-Pad Down"},
+          {"value": "left", "label": "D-Pad Left"},
+          {"value": "right", "label": "D-Pad Right"},
+          {"value": "leftStickMove", "label": "Left Stick Movement"},
+          {"value": "rightStickMove", "label": "Right Stick Movement"},
+          {"value": "anyAxis", "label": "Any Stick Movement"},
+          {"value": "l2Analog", "label": "L2 Analog"},
+          {"value": "r2Analog", "label": "R2 Analog"}
+        ]
+      },
+      {
+        "type": "number",
+        "name": "throttle_delay",
+        "label": "Throttle Delay (ms):",
+        "default": "1000",
+        "width": "24"
+      }
+    ]
+  },
+  "lighting": {
+    "title": "Lighting",
+    "inputs": ["color"],
+    "bg": "#4a4a4a",
+    "hasOutput": false,
+    "fields": [
+      {"name": "color", "label": "color"},
+      {"type": "range", "name": "x", "label": "X:", "min": "0", "max": "500", "default": "50", "width": "24"},
+      {"type": "range", "name": "y", "label": "Y:", "min": "0", "max": "500", "default": "50", "width": "24"},
+      {"type": "range", "name": "radius", "label": "Radius:", "min": "0", "max": "500", "default": "100", "width": "24"},
+      {"type": "range", "name": "intensity", "label": "Intensity:", "min": "0", "max": "1", "step": "0.1", "default": "1", "width": "24"},
+      {"type": "checkbox", "name": "flicker", "label": "Flicker"},
+      {"type": "range", "name": "speed", "label": "Speed:", "min": "0", "max": "0.5", "step": "0.1", "default": "0", "width": "24"},
+      {"type": "range", "name": "amount", "label": "Amount:", "min": "0", "max": "0.5", "step": "0.1", "default": "0", "width": "24"}
+    ]
+  },
+  "color": {
+    "title": "Color",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+      {"label": "input", "name": "input"},
+      {"type": "color", "name": "color", "default": "#FFFFFF", "width": "24"}
+    ]
+  },
+  "condition": {
+    "title": "Condition",
+    "inputs": ["input"],
+    "outputs": ["true", "false"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+      {"type": "text", "name": "variable", "label": "Variable:", "placeholder": "Variable name", "width": "24"},
+      {
+        "type": "select",
+        "name": "operator",
+        "label": "Operator:",
+        "width": "24",
+        "options": [
+          {"value": "equals", "label": "=="},
+          {"value": "not_equals", "label": "!="},
+          {"value": "greater", "label": ">"},
+          {"value": "less", "label": "<"},
+          {"value": "greater_equals", "label": ">="},
+          {"value": "less_equals", "label": "<="}
+        ]
+      },
+      {"type": "text", "name": "value", "label": "Value:", "placeholder": "Compare value", "width": "24"}
+    ]
+  }
+}

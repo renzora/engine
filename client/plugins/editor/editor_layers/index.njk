@@ -149,6 +149,56 @@
   </div>
 </div>
 
+<div id="objectTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10 hidden">
+  <span class="font-semibold">Object Properties</span>
+  <svg
+    id="objectToggleIcon"
+    xmlns="http://www.w3.org/2000/svg"
+    class="h-4 w-4 transition-transform duration-300"
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    stroke-width="2">
+    <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+  </svg>
+</div>
+
+<div id="objectBody" class="p-4 flex flex-col bg-gray-800 transition-all duration-300 hidden">
+  <!-- Position Controls -->
+  <div class="mb-4">
+    <div class="text-sm font-medium text-gray-300 mb-2">Position</div>
+    <div class="grid grid-cols-2 gap-2">
+      <div>
+        <label class="text-xs text-gray-400">X</label>
+        <input
+          type="number"
+          id="objectXInput"
+          class="w-full p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+      <div>
+        <label class="text-xs text-gray-400">Y</label>
+        <input
+          type="number"
+          id="objectYInput"
+          class="w-full p-1 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+    </div>
+  </div>
+
+  <!-- Scene Linking -->
+  <div class="mb-4">
+    <label class="block text-sm font-medium text-gray-300 mb-2">Scene Link</label>
+    <input
+      type="text"
+      id="sceneLinkInput"
+      class="w-full p-2 text-black text-sm bg-gray-100 border border-gray-400 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+      placeholder="Enter scene ID"
+    />
+  </div>
+</div>
+
 <div id="spectrumTitleBar" class="p-3 bg-gray-700 border-b border-gray-600 flex justify-between items-center cursor-pointer z-10 hidden">
   <span class="font-semibold">Color Spectrum</span>
   <svg
@@ -467,6 +517,7 @@ editor_layers = {
   spectrumPanelOpen: true,
   propertiesPanelOpen: true,
   transformPanelOpen: true,
+  objectPanelOpen: false,
   layers: [],
   activeLayerId: "layer_default",
   selectedLayers: new Set(),
@@ -517,11 +568,13 @@ initUI() {
     const spectrumTitleBar = document.getElementById("spectrumTitleBar");
     const propertiesTitleBar = document.getElementById("propertiesTitleBar");
     const transformTitleBar = document.getElementById("transformTitleBar");
+    const objectTitleBar = document.getElementById("objectTitleBar");
     
     nodesTitleBar.addEventListener("click", () => this.toggleNodesPanel());
     spectrumTitleBar.addEventListener("click", () => this.toggleSpectrumPanel());
     propertiesTitleBar.addEventListener("click", () => this.togglePropertiesPanel());
     transformTitleBar.addEventListener("click", () => this.toggleTransformPanel());
+    objectTitleBar.addEventListener("click", () => this.toggleObjectPanel());
     
     const searchInput = document.getElementById('nodeSearch');
     searchInput.addEventListener('input', (e) => this.handleNodeSearch(e.target.value));
@@ -1361,14 +1414,47 @@ renderNode(node, parentEl) {
 
   const typeIcon = document.createElement("div");
   typeIcon.className = "icon-btn";
-  let iconHTML = "";
-  if (node.type === "layer") {
+
+if (node.type === "item") {
+  let iconHTML = `
+    <div class="cursor-pointer">
+      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="12 2, 22 8, 12 14, 2 8" fill="none" />
+        <polygon points="12 14, 2 8, 2 20, 12 24" fill="none" />
+        <polygon points="12 14, 22 8, 22 20, 12 24" fill="none" />
+      </svg>
+    </div>`;
+  typeIcon.innerHTML = iconHTML;
+  
+  const cubeIcon = typeIcon.querySelector('svg');
+  cubeIcon.addEventListener("click", (e) => {
+    e.stopPropagation();
+    plugin.show('node_editor');
+    editor_context_menu.menuItemsConfig = assets.use('editor_nodesMenu');
+    
+    const nodeData = game.roomData.nodeData?.[node.id] || {
+      nodes: [],
+      connections: []
+    };
+    
+    node_editor.currentLayerId = node.id;
+    node_editor.loadNodeData(nodeData);
+  });
+} else if (node.type === "layer") {
     iconHTML = `
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
            viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
         <path stroke-linecap="round" stroke-linejoin="round"
               d="M4 6h16M4 10h16M4 14h16M4 18h16" />
       </svg>`;
+    typeIcon.innerHTML = iconHTML;
+    typeIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      node.expanded = !node.expanded;
+      this.renderAllLayers();
+    });
   } else if (node.type === "group") {
     iconHTML = `
       <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
@@ -1377,18 +1463,7 @@ renderNode(node, parentEl) {
               d="M3 7h4l2 2h10a2 2 0 0 1 2 2v7a2
                  2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
       </svg>`;
-  } else {
-    iconHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4"
-           viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round">
-        <polygon points="12 2, 22 8, 12 14, 2 8" fill="none" />
-        <polygon points="12 14, 2 8, 2 20, 12 24" fill="none" />
-        <polygon points="12 14, 22 8, 22 20, 12 24" fill="none" />
-      </svg>`;
-  }
-  typeIcon.innerHTML = iconHTML;
-  if (node.type === "layer" || node.type === "group") {
+    typeIcon.innerHTML = iconHTML;
     typeIcon.addEventListener("click", (e) => {
       e.stopPropagation();
       node.expanded = !node.expanded;
@@ -1413,6 +1488,7 @@ renderNode(node, parentEl) {
           <path d="M21 12s-2-4-5-6m-7.5 9.5A3 3 0 0 1 12 9
                    c1.03 0 1.96.49 2.57 1.25M1 1l22 22"/>
        </svg>`;
+
   eyeBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     node.visible = !node.visible;
@@ -1460,6 +1536,7 @@ renderNode(node, parentEl) {
           <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
           <path d="M7 11V7a5 5 0 0 1 10 0v4" />
        </svg>`;
+
   lockBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     node.locked = !node.locked;
@@ -1489,101 +1566,103 @@ renderNode(node, parentEl) {
                2 0 0 1 2-2h4a2 2 0
                0 1 2 2v2"/>
     </svg>`;
+
   trashBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     this.deleteLayer(node.id);
   });
 
   row.appendChild(typeIcon);
-  row.appendChild(eyeBtn);
+  row.appendChild(eyeBtn); 
   row.appendChild(lockBtn);
   row.appendChild(nameSpan);
   row.appendChild(trashBtn);
 
-  row.addEventListener("click", (e) => {
+row.addEventListener("click", (e) => {
     e.stopPropagation();
     if (node.locked) {
-      this.selectedLayers.clear();
-      this.selectedLayers.add(node.id);
-      this.activeLayerId = node.id;
-      this.lastClickedId = node.id;
-      this.renderAllLayers();
-      return;
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+        this.activeLayerId = node.id;
+        this.lastClickedId = node.id;
+        this.renderAllLayers();
+        return;
     }
 
     if (e.ctrlKey || e.metaKey) {
-      if (this.selectedLayers.has(node.id)) {
-        this.selectedLayers.delete(node.id);
-        if (this.activeLayerId === node.id) {
-          const remaining = Array.from(this.selectedLayers);
-          this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
+        if (this.selectedLayers.has(node.id)) {
+            this.selectedLayers.delete(node.id);
+            if (this.activeLayerId === node.id) {
+                const remaining = Array.from(this.selectedLayers);
+                this.activeLayerId = remaining.length > 0 ? remaining[0] : null;
+            }
+        } else {
+            this.selectedLayers.add(node.id);
+            this.activeLayerId = node.id;
         }
-      } else {
-        this.selectedLayers.add(node.id);
-        this.activeLayerId = node.id;
-      }
-      this.lastClickedId = node.id;
-      const selectedIds = Array.from(this.selectedLayers).filter(id => {
-        const testNode = this.findNodeById(id);
-        return testNode && !testNode.node.locked;
-      }).map(id => id);
-      
-      if (node.type === 'item') {
-        const layerId = node.id.replace('item_', '');
-        const roomItem = game.roomData.items.find(item => item.layer_id === layerId);
-        if (roomItem) {
-          editor_window.panCameraToObject(roomItem);
+        this.lastClickedId = node.id;
+        const selectedIds = Array.from(this.selectedLayers).filter(id => {
+            const testNode = this.findNodeById(id);
+            return testNode && !testNode.node.locked;
+        }).map(id => id);
+        
+        if (node.type === 'item') {
+            const layerId = node.id.replace('item_', '');
+            const roomItem = game.roomData.items.find(item => item.layer_id === layerId);
+            if (roomItem) {
+                editor_window.panCameraToObject(roomItem);
+            }
         }
-      }
-      
-      this.selectInEditor(selectedIds);
-      this.renderAllLayers();
-      return;
+        
+        editor_window.selectInEditor(selectedIds);
+        this.renderAllLayers();
+        return;
     }
 
     let idsToSelect;
     if (e.shiftKey && this.lastClickedId) {
-      this.selectRange(this.lastClickedId, node.id);
-      idsToSelect = Array.from(this.selectedLayers);
+        this.selectRange(this.lastClickedId, node.id);
+        idsToSelect = Array.from(this.selectedLayers);
     } else {
-      this.selectedLayers.clear();
-      this.selectedLayers.add(node.id);
-      if (node.type === 'layer' || node.type === 'group') {
-        idsToSelect = this.getAllChildIds(node).filter(id => {
-          const childNode = this.findNodeById(id);
-          return childNode && !childNode.node.locked;
-        });
-      } else {
-        idsToSelect = [node.id];
-        if (node.type === 'item') {
-          const layerId = node.id.replace('item_', '');
-          const roomItem = game.roomData.items.find(item => item.layer_id === layerId);
-          if (roomItem) {
-            editor_window.panCameraToObject(roomItem);
-          }
+        this.selectedLayers.clear();
+        this.selectedLayers.add(node.id);
+        if (node.type === 'layer' || node.type === 'group') {
+            idsToSelect = this.getAllChildIds(node).filter(id => {
+                const childNode = this.findNodeById(id);
+                return childNode && !childNode.node.locked;
+            });
+        } else {
+            idsToSelect = [node.id];
+            if (node.type === 'item') {
+                const layerId = node.id.replace('item_', '');
+                const roomItem = game.roomData.items.find(item => item.layer_id === layerId);
+                if (roomItem) {
+                    editor_window.panCameraToObject(roomItem);
+                }
+            }
         }
-      }
     }
     this.activeLayerId = node.id;
     this.lastClickedId = node.id;
     this.renderAllLayers();
     this.selectInEditor(idsToSelect);
-  });
+});
 
-  row.addEventListener("mousedown", (e) => {
+row.addEventListener("mousedown", (e) => {
     if (e.button !== 0) return;
     this.dragCandidate = true;
     this.dragStartX = e.clientX;
     this.dragStartY = e.clientY;
     if (this.selectedLayers.has(node.id)) {
-      this.draggedNodes = this.getSelectedNodes();
+        this.draggedNodes = this.getSelectedNodes();
     } else {
-      this.draggedNodes = [node];
+        this.draggedNodes = [node];
     }
     this.draggedEl = nodeContainer;
-  });
+});
 
   nodeContainer.appendChild(row);
+
   if ((node.type === "group" || node.type === "layer") && node.children.length) {
     const childrenContainer = document.createElement("div");
     childrenContainer.className = "children-container";
@@ -1595,6 +1674,7 @@ renderNode(node, parentEl) {
     });
     nodeContainer.appendChild(childrenContainer);
   }
+
   parentEl.appendChild(nodeContainer);
 },
 
@@ -1989,7 +2069,6 @@ deleteLayer(id) {
     itemNodeIds.push(node.id);
   }
 
-  // Keep track of which objects were removed
   const removedLayerIds = new Set();
   
   itemNodeIds.forEach(itemNodeId => {
@@ -2032,12 +2111,10 @@ deleteLayer(id) {
     }
   }
 
-  // Only remove the deleted objects from editor_window selection
   editor_window.selectedObjects = editor_window.selectedObjects.filter(obj => 
     !removedLayerIds.has(obj.layer_id)
   );
 
-  // If no objects remain selected, switch to select mode
   if (editor_window.selectedObjects.length === 0) {
     editor_window.changeMode('select');
   }
@@ -2139,10 +2216,72 @@ deleteLayer(id) {
     }
   },
 
+  showObjectPanel(nodeId) {
+  const objectTitleBar = document.getElementById("objectTitleBar");
+  const objectBody = document.getElementById("objectBody");
+  const objectXInput = document.getElementById("objectXInput");
+  const objectYInput = document.getElementById("objectYInput");
+  const sceneLinkInput = document.getElementById("sceneLinkInput");
+
+  objectTitleBar.classList.remove("hidden");
+  if (this.objectPanelOpen) {
+    objectBody.classList.remove("hidden");
+  }
+
+  // Get the object data
+  const layerId = nodeId.replace("item_", "");
+  const roomItem = game.roomData.items.find(item => item.layer_id === layerId);
+  
+  if (roomItem) {
+    objectXInput.value = Math.round(roomItem.x);
+    objectYInput.value = Math.round(roomItem.y);
+    sceneLinkInput.value = roomItem.link || "";
+
+    // Add input handlers
+    objectXInput.onchange = (e) => {
+      roomItem.x = parseFloat(e.target.value);
+      this.hasUnsavedChanges = true;
+      editor_window.renderSelectedTiles();
+    };
+
+    objectYInput.onchange = (e) => {
+      roomItem.y = parseFloat(e.target.value);
+      this.hasUnsavedChanges = true;
+      editor_window.renderSelectedTiles();
+    };
+
+    sceneLinkInput.onchange = (e) => {
+      roomItem.link = e.target.value;
+      this.hasUnsavedChanges = true;
+    };
+  }
+},
+
+toggleObjectPanel() {
+  const bodyEl = document.getElementById("objectBody");
+  const toggleIcon = document.getElementById("objectToggleIcon");
+  this.objectPanelOpen = !this.objectPanelOpen;
+  if (this.objectPanelOpen) {
+    bodyEl.classList.remove("hidden-panel");
+    toggleIcon.classList.remove("rotate-180");
+  } else {
+    bodyEl.classList.add("hidden-panel");
+    toggleIcon.classList.add("rotate-180");
+  }
+},
+
   generateId() {
     const timestamp = Date.now().toString(36).slice(-4);
     const randomPart = Math.random().toString(36).substring(2, 5);
     return `${timestamp}${randomPart}`;
-  },
+  }, 
+
+  storeNodeData(layerId, nodeData) {
+  const layerNode = this.findNodeById(layerId);
+  if (layerNode && layerNode.node) {
+    layerNode.node.nodeData = nodeData;
+    this.hasUnsavedChanges = true;
+  }
+}
 };
 </script>

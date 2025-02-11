@@ -197,10 +197,7 @@ handleSceneChange(sceneId) {
   plugin.editor_layers.activeLayerId = null;
   plugin.editor_layers.layers = [];
   
-  // Change scene first
-  game.scene(sceneId);
-  
-  // Wait for scene to load then refresh layers
+  game.scene(sceneId, null, null);
   plugin.editor_layers.fetchSceneLayers(sceneId);
   plugin.editor_layers.renderAllLayers();
 },

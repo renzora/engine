@@ -119,41 +119,48 @@ game = {
     plugin.hook('onResizeCanvas');
   },
 
-  scene(sceneId) {
+  scene(sceneId, startX, startY) {
     plugin.hook('onBeforeSceneChange', sceneId);
     plugin.pathfinding.cancelPathfinding(this.sprites[this.playerid]);
-        fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-        })
-        .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
-        .then(d => {
-            if (d.message === 'success') {
-                plugin.lighting.clearLightsAndEffects();
-                this.roomData = d.roomData;
-                this.sceneid = d._id;
-                this.serverid = d.server_id;
-                localStorage.setItem('sceneid', d._id);
-                this.worldWidth = d.width || 1280;
-                this.worldHeight = d.height || 944;
+    fetch(`/api/scenes/${encodeURIComponent(sceneId)}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(r => { if (!r.ok) throw new Error(r.statusText); return r.json(); })
+    .then(d => {
+        if (d.message === 'success') {
+            plugin.lighting.clearLightsAndEffects();
+            this.roomData = d.roomData;
+            this.sceneid = d._id;
+            this.serverid = d.server_id;
+            localStorage.setItem('sceneid', d._id);
+            this.worldWidth = d.width || 1280;
+            this.worldHeight = d.height || 944;
+            const validX = (startX !== undefined && startX !== null && startX !== "");
+            const validY = (startY !== undefined && startY !== null && startY !== "");
+            if (validX && validY) {
+                this.x = parseFloat(startX);
+                this.y = parseFloat(startY);
+            } else {
                 this.x = d.startingX || 0;
                 this.y = d.startingY || 0;
-                this.roomData.items = this.roomData.items.filter(item => this.objectData[item.id]);
-                const p = this.sprites[this.playerid];
-                if (p) { p.x = this.x; p.y = this.y; }
-                this.sceneBg = d.bg || null;
-                this.resizeCanvas();
-                this.overlappingTiles = [];
-                camera.update();
-                plugin.effects.start('fadeOut', 1000);
-                plugin.effects.start('fadeIn', 1000);
-                this.buildRepeatingBackground();
-                plugin.hook('onSceneChange')
             }
-        })
-        .catch(() => {
-            plugin.load('errors', { ext: 'html' });
-        });
+            this.roomData.items = this.roomData.items.filter(item => this.objectData[item.id]);
+            const p = this.sprites[this.playerid];
+            if (p) { p.x = this.x; p.y = this.y; }
+            this.sceneBg = d.bg || null;
+            this.resizeCanvas();
+            this.overlappingTiles = [];
+            camera.update();
+            plugin.effects.start('fadeOut', 1000);
+            plugin.effects.start('fadeIn', 1000);
+            this.buildRepeatingBackground();
+            plugin.hook('onSceneChange');
+        }
+    })
+    .catch(() => {
+        plugin.load('errors', { ext: 'html' });
+    });
 },
 
 loop(timestamp) {

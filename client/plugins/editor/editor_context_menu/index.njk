@@ -1,13 +1,6 @@
 <div data-close="false">
-  <div
-    id="editor_context_menu"
-    class="absolute z-50 hidden flex flex-col items-start space-y-2"
-  >
-    <div
-      id="editor_menu_container"
-      class="bg-black text-white rounded-lg shadow-lg"
-      style="width: 220px; align-self: flex-start;"
-    >
+  <div id="editor_context_menu" class="absolute z-50 hidden flex flex-col items-start space-y-2">
+    <div id="editor_menu_container" class="bg-black text-white rounded-lg shadow-lg" style="width: 220px; align-self: flex-start;">
       <ul id="editor_menuItems" class="space-y-1"></ul>
     </div>
   </div>
@@ -24,8 +17,9 @@ editor_context_menu = {
   clickHandler: null,
   initialClickX: null,
   initialClickY: null,
-  menuItemsConfig: [],
-
+  menuItemsConfig: {},
+  currentMenuConfig: [],
+  currentClickedObject: null,
   contextMenu: {
     showContextMenu: function (menuElement, menuItemsElement, config, clientX, clientY) {
       menuItemsElement.innerHTML = '';
@@ -35,154 +29,223 @@ editor_context_menu = {
       const h = menuElement.offsetHeight;
       let finalLeft = clientX;
       let finalTop = clientY;
-
       if (clientX + w > window.innerWidth) {
         finalLeft = clientX - w;
         if (finalLeft < 0) finalLeft = 0;
       }
-
       if (clientY + h > window.innerHeight) {
         finalTop = clientY - h;
         if (finalTop < 0) finalTop = 0;
       }
-
       menuElement.style.left = finalLeft + 'px';
       menuElement.style.top = finalTop + 'px';
     },
+buildMenu(parentUl, items) {
+  items.forEach((item) => {
+    let li = document.createElement('li');
+    li.classList.add('px-4', 'py-2', 'cursor-pointer', 'hover:bg-gray-900', 'text-white');
 
-    buildMenu: function (parentUl, items) {
-      items.forEach((item) => {
-        let li = document.createElement('li');
-        li.classList.add('px-4', 'py-2', 'cursor-pointer', 'hover:bg-gray-900', 'text-white');
+    // ---- 1) Checkbox Items ----
+    if (item.type === 'checkbox') {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = item.id;
+      checkbox.checked = item.initialValue;
+      li.style.userSelect = 'none';
 
-        if (item.type === 'checkbox') {
-          const checkbox = document.createElement('input');
-          checkbox.type = 'checkbox';
-          checkbox.id = item.id;
-          checkbox.checked = item.initialValue;
-          li.style.userSelect = 'none';
+      li.addEventListener('click', () => {
+        checkbox.checked = !checkbox.checked;
+        item.initialValue = checkbox.checked;
 
-          li.addEventListener('click', () => {
-            checkbox.checked = !checkbox.checked;
-            item.initialValue = checkbox.checked;
-            if (item.callback) item.callback(checkbox.checked);
-          });
-
-          li.appendChild(checkbox);
-          li.appendChild(document.createTextNode(' ' + item.label));
-        } else if (item.type === 'number') {
-          li.textContent = item.label;
-
-          const numberInput = document.createElement('input');
-          numberInput.type = 'number';
-          numberInput.id = item.id;
-          numberInput.value = item.initialValue;
-          numberInput.classList.add('ml-2', 'w-16', 'text-black', 'px-1', 'py-1', 'border', 'border-gray-600');
-          numberInput.addEventListener('click', (e) => e.stopPropagation());
-
-          numberInput.addEventListener('input', (e) => {
-            item.initialValue = Number(e.target.value);
-            if (item.callback) item.callback(Number(e.target.value));
-          });
-
-          li.appendChild(numberInput);
-        } else if (item.subMenu) {
-          li.textContent = item.label;
-          let arrow = document.createElement('span');
-          arrow.textContent = '▶';
-          arrow.classList.add('ml-2', 'text-gray-400');
-          li.appendChild(arrow);
-
-          li.classList.add('relative', 'group');
-
-          let nestedUl = document.createElement('ul');
-          nestedUl.classList.add(
-            'hidden',
-            'absolute',
-            'bg-black',
-            'rounded-lg',
-            'shadow-lg',
-            'z-50',
-            'top-0',
-            'text-white'
-          );
-          nestedUl.style.minWidth = '200px';
-          this.buildMenu(nestedUl, item.subMenu);
-          li.appendChild(nestedUl);
-
-          li.addEventListener('mouseenter', () => {
-            nestedUl.classList.remove('hidden');
-            nestedUl.style.left = li.offsetWidth + 'px';
-            nestedUl.style.top = '0';
-
-            let subW = nestedUl.offsetWidth;
-            let subH = nestedUl.offsetHeight;
-            let liRect = li.getBoundingClientRect();
-            let rightEdge = liRect.left + liRect.width + subW;
-            let bottomEdge = liRect.top + subH;
-
-            if (rightEdge > window.innerWidth) {
-              nestedUl.style.left = -subW + 'px';
+        if (item.callback) {
+          if (typeof item.callback === 'string') {
+            // Check if callback is in the form "objectName.functionName"
+            if (item.callback.includes('.')) {
+              const [objName, fnName] = item.callback.split('.');
+              const objRef = window[objName];
+              if (objRef && typeof objRef[fnName] === 'function') {
+                objRef[fnName](checkbox.checked);
+              }
+            } else {
+              // Otherwise, assume it's a function on editor_context_menu
+              if (editor_context_menu.currentClickedObject) {
+                editor_context_menu[item.callback](checkbox.checked, editor_context_menu.currentClickedObject);
+              } else {
+                editor_context_menu[item.callback](checkbox.checked);
+              }
             }
-
-            let topVal = 0;
-            if (bottomEdge > window.innerHeight) {
-              topVal = -(subH - liRect.height);
-            }
-            nestedUl.style.top = topVal + 'px';
-          });
-
-          li.addEventListener('mouseleave', () => {
-            nestedUl.classList.add('hidden');
-          });
-        } else {
-          li.textContent = item.label;
-          if (item.callback) {
-            li.onclick = (e) => item.callback(e.clientX, e.clientY);
+          } else if (typeof item.callback === 'function') {
+            item.callback(checkbox.checked);
           }
         }
-
-        parentUl.appendChild(li);
       });
 
-      const allLis = parentUl.querySelectorAll(':scope > li');
-      if (allLis.length > 0) {
-        allLis[0].classList.add('rounded-t-lg');
-        allLis[allLis.length - 1].classList.add('rounded-b-lg');
-      }
-    },
+      li.appendChild(checkbox);
+      li.appendChild(document.createTextNode(' ' + item.label));
+    }
 
+    // ---- 2) Number Items ----
+    else if (item.type === 'number') {
+      li.textContent = item.label;
+      const numberInput = document.createElement('input');
+      numberInput.type = 'number';
+      numberInput.id = item.id;
+      numberInput.value = item.initialValue;
+      numberInput.classList.add('ml-2', 'w-16', 'text-black', 'px-1', 'py-1', 'border', 'border-gray-600');
+
+      numberInput.addEventListener('click', (e) => e.stopPropagation());
+      numberInput.addEventListener('input', (e) => {
+        item.initialValue = Number(e.target.value);
+        if (item.callback) {
+          if (typeof item.callback === 'string') {
+            if (item.callback.includes('.')) {
+              const [objName, fnName] = item.callback.split('.');
+              const objRef = window[objName];
+              if (objRef && typeof objRef[fnName] === 'function') {
+                objRef[fnName](Number(e.target.value));
+              }
+            } else {
+              editor_context_menu[item.callback](Number(e.target.value));
+            }
+          } else if (typeof item.callback === 'function') {
+            item.callback(Number(e.target.value));
+          }
+        }
+      });
+
+      li.appendChild(numberInput);
+    }
+
+    // ---- 3) Submenu Items ----
+    else if (item.subMenu) {
+      li.textContent = item.label;
+      let arrow = document.createElement('span');
+      arrow.textContent = '▶';
+      arrow.classList.add('ml-2', 'text-gray-400');
+      li.appendChild(arrow);
+      li.classList.add('relative', 'group');
+
+      let nestedUl = document.createElement('ul');
+      nestedUl.classList.add(
+        'hidden',
+        'absolute',
+        'bg-black',
+        'rounded-lg',
+        'shadow-lg',
+        'z-50',
+        'top-0',
+        'text-white'
+      );
+      nestedUl.style.minWidth = '200px';
+
+      this.buildMenu(nestedUl, item.subMenu);
+      li.appendChild(nestedUl);
+
+      li.addEventListener('mouseenter', () => {
+        nestedUl.classList.remove('hidden');
+        nestedUl.style.left = li.offsetWidth + 'px';
+        nestedUl.style.top = '0';
+
+        let subW = nestedUl.offsetWidth;
+        let subH = nestedUl.offsetHeight;
+        let liRect = li.getBoundingClientRect();
+        let rightEdge = liRect.left + liRect.width + subW;
+        let bottomEdge = liRect.top + subH;
+
+        if (rightEdge > window.innerWidth) {
+          nestedUl.style.left = -subW + 'px';
+        }
+        let topVal = 0;
+        if (bottomEdge > window.innerHeight) {
+          topVal = -(subH - liRect.height);
+        }
+        nestedUl.style.top = topVal + 'px';
+      });
+
+      li.addEventListener('mouseleave', () => {
+        nestedUl.classList.add('hidden');
+      });
+    }
+
+    // ---- 4) Regular Menu Items ----
+    else {
+      li.textContent = item.label;
+      if (item.callback) {
+        li.onclick = (e) => {
+          if (typeof item.callback === 'string') {
+            // If callback is "objectName.functionName"
+            if (item.callback.includes('.')) {
+              const [objName, fnName] = item.callback.split('.');
+              const objRef = window[objName];
+
+              if (objRef && typeof objRef[fnName] === 'function') {
+                // If there's a 'type' property (e.g. a node type), pass it along; else pass coords
+                if (item.type) {
+                  objRef[fnName](item.type);
+                } else {
+                  objRef[fnName](e.clientX, e.clientY);
+                }
+              }
+            } else {
+              // Fallback: assume function name is on editor_context_menu
+              if (editor_context_menu.currentClickedObject) {
+                editor_context_menu[item.callback](editor_context_menu.currentClickedObject);
+              } else {
+                editor_context_menu[item.callback](e.clientX, e.clientY);
+              }
+            }
+          } else if (typeof item.callback === 'function') {
+            // If callback is a direct function reference
+            item.callback(e.clientX, e.clientY);
+          }
+        };
+      }
+    }
+
+    parentUl.appendChild(li);
+  });
+
+  // Make the first and last list items have rounded corners
+  const allLis = parentUl.querySelectorAll(':scope > li');
+  if (allLis.length > 0) {
+    allLis[0].classList.add('rounded-t-lg');
+    allLis[allLis.length - 1].classList.add('rounded-b-lg');
+  }
+},
     hideMenus: function (event, menuElement) {
       if (!menuElement.contains(event.target)) {
         menuElement.classList.add('hidden');
       }
     },
-
     disableDefaultContextMenu: function (event, callback) {
       event.preventDefault();
       if (callback) callback(event.clientX, event.clientY);
     }
   },
-
   start() {
-    this.contextMenuElement = document.getElementById('editor_context_menu');
+    assets.preload(
+  [
+    { name: "editor_context_menu", path: "plugins/editor/editor_context_menu/menu.json", noCache: true },
+  ],
+  () => {
+    editor_context_menu.menuItemsConfig = assets.use('editor_context_menu');
+       this.contextMenuElement = document.getElementById('editor_context_menu');
     this.menuItemsElement = document.getElementById('editor_menuItems');
-
     this.contextmenuHandler = (event) => {
       event.preventDefault();
-      if (editor_window.isAddingNewObject || (plugin?.ui_console_editor_inventory?.isDragging === true)) {
-        plugin?.ui_console_editor_inventory?.cancelAddingObject();
+      if (editor_window.isAddingNewObject || (plugin && plugin.ui_console_editor_inventory && plugin.ui_console_editor_inventory.isDragging === true)) {
+        plugin.ui_console_editor_inventory.cancelAddingObject();
         return;
       }
       this.initialClickX = event.clientX;
       this.initialClickY = event.clientY;
       this.populateMenuItems(event.clientX, event.clientY);
-      if (this.menuItemsConfig.length > 0) {
+      if (this.currentMenuConfig.length > 0) {
         plugin.front('editor_context_menu');
         this.contextMenu.showContextMenu(
           this.contextMenuElement,
           this.menuItemsElement,
-          this.menuItemsConfig,
+          this.currentMenuConfig,
           event.clientX,
           event.clientY
         );
@@ -190,181 +253,42 @@ editor_context_menu = {
         this.contextMenuElement.classList.add('hidden');
       }
     };
-
     this.clickHandler = (e) => {
       this.contextMenu.hideMenus(e, this.contextMenuElement);
     };
-
     document.addEventListener('contextmenu', this.contextmenuHandler);
     document.addEventListener('click', this.clickHandler);
-  },
+  }
+);
 
+  },
   unmount() {
     document.removeEventListener('contextmenu', this.contextmenuHandler);
     document.removeEventListener('click', this.clickHandler);
     this.contextMenuElement.classList.add('hidden');
     console.log("Editor context menu unmounted, all events removed.");
   },
-
-  onRenderBackground() {
-    if (editor_window.renderMode == 'isometric') {
-      this.renderIsometricGrid();
-    } else {
-      this.render2dGrid();
-    }
-  },
-
   populateMenuItems(clientX, clientY) {
     const clickedObject = this.getSelectedObject(clientX, clientY);
-    console.log('Clicked Object:', clickedObject);
     if (clickedObject && editor_window.selectedObjects.includes(clickedObject)) {
+      this.currentClickedObject = clickedObject;
+      let config = JSON.parse(JSON.stringify(this.menuItemsConfig.object));
       const objectId = clickedObject.id;
-      console.log('Object ID:', objectId);
       const objectDetails = game.objectData[objectId];
-      const objectName = (objectDetails && objectDetails[0]?.n) ? objectDetails[0].n : 'Unnamed Object';
-      let layersSubMenu = [];
+      config[0].label = (objectDetails && objectDetails[0] && objectDetails[0].n) ? objectDetails[0].n : "Unnamed Object";
       if (window.editor_layers && Array.isArray(window.editor_layers.layers)) {
-        layersSubMenu = window.editor_layers.layers.map(layer => ({
+        config[1].subMenu = window.editor_layers.layers.map(layer => ({
           label: layer.name,
-          callback: () => this.moveObjectToLayer(clickedObject, layer.id),
+          callback: "moveObjectToLayer",
+          layerId: layer.id
         }));
       }
-      this.menuItemsConfig = [
-        {
-          label: `${objectName}`,
-          subMenu: [
-            { label: "Properties", callback: () => this.editLighting(clickedObject) },
-            { label: "Lighting", callback: () => this.editLighting(clickedObject) },
-            { label: "Scripting", callback: () => this.editScripting(clickedObject) },
-            { label: "Collision", callback: () => this.editCollision(clickedObject) },
-            { label: "Stacking", callback: () => this.editCollision(clickedObject) },
-            { label: "Animation", callback: () => this.editLighting(clickedObject) },
-            { label: "Effects", callback: () => this.editLighting(clickedObject) },
-          ]
-        },
-        {
-          label: "move to layer",
-          subMenu: layersSubMenu
-        },
-        {
-          label: "Rotate",
-          callback: () => this.rotateObject(clickedObject)
-        },
-        {
-          label: "Delete",
-          callback: () => this.deleteObject(clickedObject)
-        }
-      ];
+      this.currentMenuConfig = config;
     } else {
-      this.menuItemsConfig = [
-        {
-          label: "Scene",
-          subMenu: [
-            { label: "Properties", callback: (x, y) => this.openSceneProperties(x, y) },
-            { label: "viewport size", callback: (x, y) => this.openSceneProperties(x, y) },
-            { label: "Background", callback: (x, y) => this.openSceneProperties(x, y) },
-            { label: "Weather settings", callback: (x, y) => this.openSceneProperties(x, y) },
-          ]
-        },
-        {
-          label: "Sprites",
-          subMenu: [
-            { label: "Add sprite", callback: (x, y) => this.spriteSetStartingPosition(x, y) },
-            { label: "Set Starting Position", callback: (x, y) => this.spriteSetStartingPosition(x, y) },
-            {
-              label: "Allow Movement",
-              type: "checkbox",
-              id: "sprite_active_checkbox",
-              initialValue: true,
-              callback: (checked) => this.spriteActiveToggle(checked),
-            }
-          ]
-        },
-        {
-          label: "Tools",
-          subMenu: [
-            { label: "Terrain Editor", callback: () => this.openTerrainEditor() },
-            { label: "Tileset Manager", callback: () => this.openTilesetManager() },
-            { label: "Sprites Manager", callback: () => this.openTerrainEditor() },
-            { label: "Scene Debugging", callback: () => this.openTerrainEditor() },
-            { label: "Map Generator", callback: () => this.openMapGenerator() },
-          ]
-        },
-{
-  label: "Editor",
-  subMenu: [
-    {
-      label: "Grid",
-      type: "checkbox",
-      id: "toggle_grid_checkbox", 
-      initialValue: true,
-      callback: (checked) => this.utilsToggleGrid(checked),
-    },
-    {
-      label: "Perspective",
-      subMenu: [
-        {
-          label: "2D View",
-          callback: () => {
-            editor_window.renderMode = '2d';
-            this.contextMenuElement.classList.add('hidden');
-          }
-        },
-        {
-          label: "Isometric View",
-          callback: () => {
-            editor_window.renderMode = 'isometric';
-            this.contextMenuElement.classList.add('hidden');
-          }
-        }
-      ]
-    },
-    {
-      label: "Day/Time",
-      callback: () => this.openTerrainEditor()
-    },
-    {
-      label: "Manual Camera",
-      type: "checkbox",
-      id: "manual_camera_checkbox",
-      initialValue: true,
-      callback: (checked) => this.cameraManualToggle(checked),
-    }
-  ]
-}
-      ];
+      this.currentClickedObject = null;
+      this.currentMenuConfig = JSON.parse(JSON.stringify(this.menuItemsConfig.scene));
     }
   },
-
-  rotateObject(obj) {
-    if (!obj) return;
-    editor_window.pushToUndoStack();
-    if (editor_window.renderMode === 'isometric') {
-      obj.flipHorizontal = !obj.flipHorizontal;
-    } else {
-      obj.rotation = (obj.rotation || 0) + (Math.PI / 2);
-    }
-    console.log("Rotated object:", obj);
-    this.contextMenuElement.classList.add('hidden');
-  },
-
-  deleteObject(obj) {
-    if (!obj) return;
-    editor_window.pushToUndoStack();
-    game.roomData.items = game.roomData.items.filter(item => item !== obj);
-    editor_window.selectedObjects = editor_window.selectedObjects.filter(item => item !== obj);
-    console.log("Deleted object:", obj.id);
-    this.contextMenuElement.classList.add('hidden');
-  },
-
-  moveObjectToLayer(obj, layerId) {
-    console.log("Moving object", obj.id, "to layer", layerId);
-    if (obj) {
-      obj.layer_id = layerId;
-    }
-    this.contextMenuElement.classList.add('hidden');
-  },
-
   getSelectedObject(clientX, clientY) {
     const rect = game.canvas.getBoundingClientRect();
     const mouseX = (clientX - rect.left) / game.zoomLevel + camera.cameraX;
@@ -381,50 +305,55 @@ editor_context_menu = {
       return mouseX >= minX && mouseX <= maxX && mouseY >= minY && mouseY <= maxY;
     });
   },
-
-  editObject(selectedObject) {
-    if (!selectedObject) return;
-    const uniqueId = selectedObject.id;
-    plugin.load('tileset_item_editor_window', {
+  rotateObject(obj) {
+    if (!obj) return;
+    editor_window.pushToUndoStack();
+    if (editor_window.renderMode === 'isometric') {
+      obj.flipHorizontal = !obj.flipHorizontal;
+    } else {
+      obj.rotation = (obj.rotation || 0) + (Math.PI / 2);
+    }
+    console.log("Rotated object:", obj);
+    this.contextMenuElement.classList.add('hidden');
+  },
+  deleteObject(obj) {
+    if (!obj) return;
+    editor_window.pushToUndoStack();
+    game.roomData.items = game.roomData.items.filter(item => item !== obj);
+    editor_window.selectedObjects = editor_window.selectedObjects.filter(item => item !== obj);
+    console.log("Deleted object:", obj.id);
+    this.contextMenuElement.classList.add('hidden');
+  },
+  moveObjectToLayer(obj, layerId) {
+    console.log("Moving object", obj.id, "to layer", layerId);
+    if (obj) {
+      obj.layer_id = layerId;
+    }
+    this.contextMenuElement.classList.add('hidden');
+  },
+  editLighting(obj) {
+    console.log("Edit Lighting for", obj);
+    this.contextMenuElement.classList.add('hidden');
+  },
+  editScripting(obj) {
+    console.log("Edit Scripting for", obj);
+    this.contextMenuElement.classList.add('hidden');
+  },
+  editCollision(obj) {
+    console.log("Edit Collision for", obj);
+    this.contextMenuElement.classList.add('hidden');
+  },
+  openSceneProperties(x, y) {
+    plugin.load('scene_properties', {
+      path: 'editor',
       ext: 'njk',
-      name: 'Item Editor',
+      name: 'Scene Properties',
       drag: true,
-      reload: true,
+      reload: true
     });
     this.contextMenuElement.classList.add('hidden');
   },
-
-  cameraSnapToggle(checked) {
-    console.log("cameraSnapToggle:", checked);
-  },
-
-  cameraManualToggle(checked) {
-    if (checked) {
-      camera.lerpEnabled = false;
-      camera.manual = true;
-      console.log("Manual Camera Enabled");
-    } else {
-      camera.lerpEnabled = true;
-      camera.manual = false;
-      console.log("Manual Camera Disabled");
-    }
-  },
-
-  spriteActiveToggle(checked) {
-    if (checked) {
-      camera.lerpEnabled = false;
-      camera.manual = true;
-      game.allowControls = true;
-      console.log("Sprite Enabled");
-    } else {
-      camera.lerpEnabled = true;
-      camera.manual = false;
-      game.allowControls = false;
-      console.log("Sprite Disabled");
-    }
-  },
-
-  spriteSetStartingPosition() {
+  spriteSetStartingPosition(x, y) {
     if (this.initialClickX === null || this.initialClickY === null) {
       console.error("Initial click position is not set.");
       return;
@@ -439,7 +368,6 @@ editor_context_menu = {
     this.initialClickX = null;
     this.initialClickY = null;
   },
-
   updateStartingPosition(gx, gy) {
     const sceneId = game.sceneid;
     if (!sceneId) {
@@ -449,7 +377,7 @@ editor_context_menu = {
     fetch('/api/editor/scene/position', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sceneId: sceneId, startingX: gx, startingY: gy }),
+      body: JSON.stringify({ sceneId: sceneId, startingX: gx, startingY: gy })
     })
       .then((response) => response.json())
       .then((data) => {
@@ -472,70 +400,54 @@ editor_context_menu = {
         alert('An error occurred.');
       });
   },
-
-  openSceneProperties(x, y) {
-    plugin.load('scene_properties', {
-      path: 'editor',
-      ext: 'njk',
-      name: 'Scene Properties',
-      drag: true,
-      reload: true,
-    });
-    this.contextMenuElement.classList.add('hidden');
-  },
-
   openTerrainEditor() {
     console.log("Open Terrain Editor...");
     this.contextMenuElement.classList.add('hidden');
   },
-
   openMapGenerator() {
-    console.log("Open Terrain Editor...");
+    console.log("Open Map Generator...");
     this.contextMenuElement.classList.add('hidden');
     plugin.load('map_generator', {
       path: 'editor',
       ext: 'html',
       drag: true,
-      reload: true,
+      reload: true
     });
   },
-
   openTilesetManager() {
     plugin.load('tileset_manager', {
       ext: 'njk',
       drag: true,
-      reload: false,
+      reload: false
     });
   },
-
-  advancedOption1() {
-    console.log("Advanced Option 1 triggered");
+  cameraManualToggle(checked) {
+    if (checked) {
+      camera.lerpEnabled = false;
+      camera.manual = true;
+      console.log("Manual Camera Enabled");
+    } else {
+      camera.lerpEnabled = true;
+      camera.manual = false;
+      console.log("Manual Camera Disabled");
+    }
   },
-
-  nestedOption1() {
-    console.log("Nested Option 1 triggered");
+  spriteActiveToggle(checked, obj) {
+    if (checked) {
+      camera.lerpEnabled = false;
+      camera.manual = true;
+      game.allowControls = true;
+      console.log("Sprite Enabled for", obj);
+    } else {
+      camera.lerpEnabled = true;
+      camera.manual = false;
+      game.allowControls = false;
+      console.log("Sprite Disabled for", obj);
+    }
   },
-
-  deepNestedOption1() {
-    console.log("Deep Nested Option 1 triggered");
-  },
-
-  deepNestedOption2() {
-    console.log("Deep Nested Option 2 triggered");
-  },
-
-  effectsConsoleToggle(checked) {
-    console.log("Console toggled =>", checked);
-  },
-
-  effectsBrushSize(val) {
-    console.log("Brush Size =>", val);
-  },
-
   utilsToggleGrid(checked) {
     this.toggleGrid(checked);
   },
-
   toggleGrid(checked) {
     this.isGridEnabled = checked;
     if (checked) {
@@ -545,18 +457,20 @@ editor_context_menu = {
       console.log("Grid disabled.");
     }
   },
-
-  setRenderMode(mode) {
-  editor_window.renderMode = mode;
-  if (this.isGridEnabled) {
-    if (mode === 'isometric') {
-      this.renderIsometricGrid();
-    } else {
-      this.render2dGrid();
+  switchTo2d(checked) {
+    if (checked) {
+      editor_window.renderMode = '2d';
+      this.contextMenuElement.classList.add('hidden');
+      console.log("Switched to 2D view.");
     }
-  }
-},
-
+  },
+  switchToIsometric(checked) {
+    if (checked) {
+      editor_window.renderMode = 'isometric';
+      this.contextMenuElement.classList.add('hidden');
+      console.log("Switched to Isometric view.");
+    }
+  },
   render2dGrid() {
     if (!this.isGridEnabled) return;
     const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.1)';
@@ -578,7 +492,6 @@ editor_context_menu = {
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
-
   renderIsometricGrid() {
     if (!this.isGridEnabled) return;
     const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.1)';
@@ -604,7 +517,6 @@ editor_context_menu = {
     game.ctx.lineWidth = 1;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
   },
-
   utilsToggleNightFilter(checked) {
     this.isNightfilterEnabled = checked;
     if (checked) {
@@ -618,5 +530,13 @@ editor_context_menu = {
       console.log("Night filter disabled.");
     }
   },
+
+    onRenderBackground() {
+    if (editor_window.renderMode == 'isometric') {
+      this.renderIsometricGrid();
+    } else {
+      this.render2dGrid();
+    }
+  }
 };
 </script>

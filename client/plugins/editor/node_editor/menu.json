@@ -1,0 +1,49 @@
+{
+    "scene": [
+      {
+        "label": "Lighting",
+        "subMenu": [
+          {
+            "label": "Lighting",
+            "callback": "node_editor.createNewNode",
+            "type": "lighting"
+          },
+          {
+            "label": "Color",
+            "callback": "node_editor.createNewNode",
+            "type": "color"
+          }
+        ]
+      },
+      {
+        "label": "Input",
+        "subMenu": [
+          {
+            "label": "Gamepad",
+            "callback": "node_editor.createNewNode",
+            "type": "gamepad"
+          }
+        ]
+      },
+      {
+        "label": "Logic",
+        "subMenu": [
+          {
+            "label": "Condition",
+            "callback": "node_editor.createNewNode",
+            "type": "condition"
+          }
+        ]
+      },
+      {
+        "label": "Gameplay",
+        "subMenu": [
+          {
+            "label": "Scene",
+            "callback": "node_editor.createNewNode",
+            "type": "scene"
+          }
+        ]
+      }
+    ]
+  }

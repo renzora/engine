@@ -1,0 +1,103 @@
+{
+    "object": [
+      {
+        "label": "",
+        "subMenu": [
+          { "label": "Properties", "callback": "editor_context_menu.editLighting" },
+          { "label": "Lighting", "callback": "editor_context_menu.editLighting" },
+          { "label": "Scripting", "callback": "editor_context_menu.editScripting" },
+          { "label": "Collision", "callback": "editor_context_menu.editCollision" },
+          { "label": "Stacking", "callback": "editor_context_menu.editCollision" },
+          { "label": "Animation", "callback": "editor_context_menu.editLighting" },
+          { "label": "Effects", "callback": "editor_context_menu.editLighting" }
+        ]
+      },
+      {
+        "label": "move to layer",
+        "subMenu": []
+      },
+      {
+        "label": "Rotate",
+        "callback": "editor_context_menu.rotateObject"
+      },
+      {
+        "label": "Delete",
+        "callback": "editor_context_menu.deleteObject"
+      }
+    ],
+    "scene": [
+      {
+        "label": "Scene",
+        "subMenu": [
+          { "label": "Properties", "callback": "editor_context_menu.openSceneProperties" },
+          { "label": "viewport size", "callback": "editor_context_menu.openSceneProperties" },
+          { "label": "Background", "callback": "editor_context_menu.openSceneProperties" },
+          { "label": "Weather settings", "callback": "editor_context_menu.openSceneProperties" }
+        ]
+      },
+      {
+        "label": "Sprites",
+        "subMenu": [
+          { "label": "Add sprite", "callback": "editor_context_menu.spriteSetStartingPosition" },
+          { "label": "Set Starting Position", "callback": "editor_context_menu.spriteSetStartingPosition" },
+          {
+            "label": "Allow Movement",
+            "type": "checkbox",
+            "id": "sprite_active_checkbox",
+            "initialValue": true,
+            "callback": "spriteActiveToggle"
+          }
+        ]
+      },
+      {
+        "label": "Tools",
+        "subMenu": [
+          { "label": "Terrain Editor", "callback": "editor_context_menu.openTerrainEditor" },
+          { "label": "Tileset Manager", "callback": "editor_context_menu.openTilesetManager" },
+          { "label": "Sprites Manager", "callback": "editor_context_menu.openTerrainEditor" },
+          { "label": "Scene Debugging", "callback": "editor_context_menu.openTerrainEditor" },
+          { "label": "Map Generator", "callback": "editor_context_menu.openMapGenerator" }
+        ]
+      },
+      {
+        "label": "Editor",
+        "subMenu": [
+          {
+            "label": "Grid",
+            "type": "checkbox",
+            "id": "toggle_grid_checkbox",
+            "initialValue": true,
+            "callback": "editor_context_menu.utilsToggleGrid"
+          },
+          {
+            "label": "Perspective",
+            "subMenu": [
+              {
+                "label": "2D View",
+                "type": "checkbox",
+                "id": "perspective_2d",
+                "initialValue": false,
+                "callback": "editor_context_menu.switchTo2d"
+              },
+              {
+                "label": "Isometric View",
+                "type": "checkbox",
+                "id": "perspective_iso",
+                "initialValue": false,
+                "callback": "editor_context_menu.switchToIsometric"
+              }
+            ]
+          },
+          { "label": "Day/Time", "callback": "editor_context_menu.openTerrainEditor" },
+          {
+            "label": "Manual Camera",
+            "type": "checkbox",
+            "id": "manual_camera_checkbox",
+            "initialValue": true,
+            "callback": "editor_context_menu.cameraManualToggle"
+          }
+        ]
+      }
+    ]
+  }
+  

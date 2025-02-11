@@ -19,6 +19,7 @@ export interface IScene extends Document {
   snow?: number;
   order?: number;
   editorLayers?: any;
+  nodeData?: { [key: string]: { nodes: any[], connections: any[] } };
 }
 
 const sceneSchema = new Schema<IScene>({
@@ -48,6 +49,14 @@ const sceneSchema = new Schema<IScene>({
     type: Array,
     default: [], 
   },
+  nodeData: {
+    type: Map,
+    of: {
+      nodes: [{ type: Object }],
+      connections: [{ type: Object }]
+    },
+    default: {}
+  }
 });
 
 export const Scene =

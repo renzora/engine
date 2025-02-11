@@ -1,0 +1,555 @@
+<div class="window text-white" style="width: 100%; height: 100%;overflow: hidden;">
+    <div id="node-canvas" class="relative w-full h-full"></div>
+</div>
+
+<script>
+node_editor = {
+    draggedNode: null,
+    connections: [],
+    dragOffset: { x: 0, y: 0 },
+    nodeCount: 1,
+    currentConnection: null,
+    svg: null,
+    tempPath: null,
+    currentLayerId: null,
+
+    start() {
+        assets.preload([
+            { name: "nodesConfig", path: "/plugins/editor/node_editor/node_list.json", noCache: true },
+            { name: "editor_nodesMenu", path: "/plugins/editor/node_editor/menu.json", noCache: true }
+        ], () => {
+            node_editor.nodeConfig = assets.use('nodesConfig');
+            node_editor.createNewNode('initial');
+            node_editor.setupDragging();
+            node_editor.setupConnections();
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close Node Editor';
+            closeBtn.className = 'absolute top-2 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-red-500 hover:bg-red-600 rounded text-white font-medium';
+            closeBtn.onclick = () => {
+                this.saveNodeData();
+                plugin.minimize('node_editor');
+                editor_context_menu.menuItemsConfig = assets.use('editor_context_menu');
+            };
+            document.getElementById('node-canvas').appendChild(closeBtn);
+        });
+    },
+
+    setupNodeCreation() {
+        const addButton = document.getElementById('add-node');
+        addButton.addEventListener('click', () => {
+            const menu = document.createElement('div');
+            menu.className = 'absolute bg-gray-800 rounded shadow-lg';
+            menu.style.top = '40px';
+            menu.style.left = '10px';
+            menu.style.zIndex = '1000';
+            this.nodeTypes.forEach(type => {
+                const option = document.createElement('div');
+                option.className = 'px-4 py-2 hover:bg-gray-700 cursor-pointer';
+                option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                option.onclick = () => {
+                    this.createNewNode(type);
+                    menu.remove();
+                };
+                menu.appendChild(option);
+            });
+            document.body.appendChild(menu);
+            const closeMenu = (e) => {
+                if (!menu.contains(e.target) && e.target !== addButton) {
+                    menu.remove();
+                    document.removeEventListener('click', closeMenu);
+                }
+            };
+            setTimeout(() => {
+                document.addEventListener('click', closeMenu);
+            }, 0);
+        });
+    },
+
+    createNewNode(type = 'default') {
+        const config = this.nodeConfig[type];
+    if (!config) return;
+    const node = document.createElement('div');
+    node.className = 'node absolute rounded-md';
+    node.style.width = '250px';
+    node.style.background = '#383838';
+    const canvas = document.getElementById('node-canvas');
+    const canvasRect = canvas.getBoundingClientRect();
+    let x, y;
+    if (type === 'initial') {
+        x = (canvasRect.width - 250) / 2;
+        y = (canvasRect.height - 150) / 2;
+    } else {
+        const existingNodes = canvas.querySelectorAll('.node');
+        x = 50;
+        y = 50;
+        if (existingNodes.length > 0) {
+            const lastNode = existingNodes[existingNodes.length - 1];
+            const lastLeft = parseInt(lastNode.style.left);
+            const lastTop = parseInt(lastNode.style.top);
+            x = lastLeft + 30;
+            y = lastTop + 30;
+            if (x + 250 > canvasRect.width) {
+                x = 50;
+                y = lastTop + 30;
+            }
+            if (y + 150 > canvasRect.height) {
+                y = 50;
+            }
+        }
+    }
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    node.dataset.nodeId = `node_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    node.dataset.nodeType = type;
+    let title = config.title;
+    if (type === 'initial' && this.currentLayerId) {
+        const layerInfo = editor_layers.findNodeById(this.currentLayerId);
+        if (layerInfo && layerInfo.node) {
+            title = `${layerInfo.node.name} object`;
+        }
+    }
+    let deleteButtonHtml = '';
+    if (type !== 'initial') {
+        deleteButtonHtml = `<button class="delete-node px-2 py-0.5 bg-red-500 hover:bg-red-600 rounded text-sm">×</button>`;
+    }
+    const headerContent = `
+        <div class="p-2 rounded-t-md flex justify-between items-center cursor-move" style="background: ${config.bg || '#4a4a4a'}">
+            <span>${title}</span>
+            ${deleteButtonHtml}
+        </div>`;
+    let nodeContent = '<div class="p-2 relative">';
+    if (config.fields) {
+        config.fields.forEach((field, index) => {
+            nodeContent += this.createField(field, index);
+        });
+    }
+    if (config.outputs) {
+        config.outputs.forEach((output) => {
+            nodeContent += `
+                <div class="my-2 pr-4 relative flex items-center justify-end">
+                    <span class="mr-2">${output}</span>
+                    <div 
+                        class="node-output absolute w-3 h-3 rounded-full cursor-pointer" 
+                        data-output="${output}"
+                        style="background: #6eafd1; right: -6px; top: 50%; transform: translateY(-50%);"
+                    ></div>
+                </div>`;
+        });
+    }
+    nodeContent += '</div>';
+    node.innerHTML = headerContent + nodeContent;
+    if (type !== 'initial') {
+        const deleteBtn = node.querySelector('.delete-node');
+        deleteBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const inputs = node.querySelectorAll('.node-input');
+            const outputs = node.querySelectorAll('.node-output');
+            inputs.forEach(input => this.deleteConnectionsFromPoint(input));
+            outputs.forEach(output => this.deleteConnectionsFromPoint(output));
+            node.remove();
+            this.saveNodeData();
+        });
+    }
+    node.querySelectorAll('input, select').forEach(input => {
+        input.addEventListener('change', () => {
+            this.saveNodeData();
+        });
+        if (input.type === 'range' || input.type === 'text' || input.type === 'color') {
+            input.addEventListener('input', () => {
+                this.saveNodeData();
+            });
+        }
+    });
+    canvas.appendChild(node);
+    editor_context_menu.contextMenuElement.classList.add('hidden');
+    this.saveNodeData();
+    return node;
+    },
+
+    createNodeFromData(data) {
+        const node = this.createNewNode(data.type);
+        if (node) {
+            node.dataset.nodeId = data.id;
+            node.dataset.nodeType = data.type;
+            node.style.left = `${data.x}px`;
+            node.style.top = `${data.y}px`;
+            if (data.fields) {
+                Object.entries(data.fields).forEach(([name, value]) => {
+                    const input = node.querySelector(`[name="${name}"]`);
+                    if (input) {
+                        input.value = value;
+                    }
+                });
+            }
+        }
+        return node;
+    },
+
+    loadNodeData(data) {
+        const canvas = document.getElementById('node-canvas');
+        canvas.innerHTML = '';
+        this.connections = [];
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.style.position = 'absolute';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.pointerEvents = 'none';
+        svg.style.zIndex = '1';
+        canvas.appendChild(svg);
+        this.svg = svg;
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Close Node Editor';
+        closeBtn.className = 'absolute top-2 left-1/2 transform -translate-x-1/2 px-4 py-2 bg-red-500 hover:bg-red-600 rounded text-white font-medium';
+        closeBtn.onclick = () => {
+            this.saveNodeData();
+            plugin.minimize('node_editor');
+            editor_context_menu.menuItemsConfig = assets.use('editor_context_menu');
+        };
+        canvas.appendChild(closeBtn);
+        if (!data.nodes || data.nodes.length === 0) {
+            this.createNewNode('initial');
+        } else {
+            data.nodes.forEach(nodeData => {
+                this.createNodeFromData(nodeData);
+            });
+            if (data.connections) {
+                data.connections.forEach(conn => {
+                    const startNode = document.querySelector(`[data-node-id="${conn.startNode}"]`);
+                    const endNode = document.querySelector(`[data-node-id="${conn.endNode}"]`);
+                    if (startNode && endNode) {
+                        const startPoint = startNode.querySelector(`[data-output="${conn.startOutput}"]`);
+                        const endPoint = endNode.querySelector(`[data-input="${conn.endInput}"]`);
+                        if (startPoint && endPoint) {
+                            this.createConnection(startPoint, endPoint);
+                        }
+                    }
+                });
+            }
+        }
+    },
+
+    saveNodeData() {
+        if (!this.currentLayerId) return;
+        const data = {
+            nodes: [],
+            connections: []
+        };
+        document.querySelectorAll('.node').forEach(node => {
+            data.nodes.push({
+                type: node.dataset.nodeType,
+                id: node.dataset.nodeId,
+                x: parseInt(node.style.left),
+                y: parseInt(node.style.top),
+                fields: this.getNodeFields(node)
+            });
+        });
+        this.connections.forEach(conn => {
+            data.connections.push({
+                startNode: conn.start.closest('.node').dataset.nodeId,
+                endNode: conn.end.closest('.node').dataset.nodeId,
+                startOutput: conn.start.dataset.output,
+                endInput: conn.end.dataset.input
+            });
+        });
+        if (!game.roomData.nodeData) {
+            game.roomData.nodeData = {};
+        }
+        game.roomData.nodeData[this.currentLayerId] = data;
+    },
+
+    getNodeFields(node) {
+        const fields = {};
+        node.querySelectorAll('input, select').forEach(input => {
+            fields[input.name] = input.value;
+        });
+        return fields;
+    },
+
+    createField(field, index) {
+    if (!field.type) {
+        return `
+            <div class="my-2 pl-4 relative flex items-center">
+                <div
+                    class="node-input absolute w-3 h-3 rounded-full cursor-pointer"
+                    data-input="${field.name}"
+                    style="background: #d16e6e; left: -6px; top: 50%; transform: translateY(-50%);"
+                ></div>
+                ${field.label ? `<span>${field.label}</span>` : ''}
+            </div>
+        `;
+    }
+    switch (field.type) {
+        case 'text':
+            return `
+                <div class="flex flex-col my-2">
+                    ${field.label ? `<span>${field.label}</span>` : ''}
+                    <input type="text"
+                        name="${field.name}"
+                        class="w-full bg-gray-700 rounded px-2 py-1"
+                        placeholder="${field.placeholder || ''}"
+                        value="${field.default || ''}">
+                </div>`;
+        case 'select':
+            return `
+                <div class="flex flex-col my-2">
+                    ${field.label ? `<span>${field.label}</span>` : ''}
+                    <select name="${field.name}" class="w-full bg-gray-700 rounded px-2 py-1">
+                        ${field.options.map(opt =>
+                            `<option value="${opt.value}">${opt.label}</option>`
+                        ).join('')}
+                    </select>
+                </div>`;
+        case 'range':
+            return `
+                <div class="flex flex-col my-2">
+                    ${field.label ? `<span>${field.label}</span>` : ''}
+                    <input type="range"
+                        name="${field.name}"
+                        class="w-full"
+                        min="${field.min || 0}"
+                        max="${field.max || 100}"
+                        step="${field.step || 1}"
+                        value="${field.default || 0}">
+                </div>`;
+        case 'number':
+            return `
+                <div class="flex flex-col my-2">
+                    ${field.label ? `<span>${field.label}</span>` : ''}
+                    <input type="number"
+                        name="${field.name}"
+                        class="w-full bg-gray-700 rounded px-2 py-1"
+                        placeholder="${field.placeholder || ''}"
+                        value="${field.default || ''}"
+                        ${field.min !== undefined ? `min="${field.min}"` : ''}
+                        ${field.max !== undefined ? `max="${field.max}"` : ''}
+                        step="${field.step || 'any'}">
+                </div>`;
+        case 'checkbox':
+            return `
+                <div class="flex items-center my-2">
+                    <input type="checkbox" name="${field.name}">
+                    <span class="ml-2">${field.label}</span>
+                </div>`;
+        case 'color':
+            return `
+                <div class="flex flex-col my-2">
+                    ${field.label ? `<span>${field.label}</span>` : ''}
+                    <input type="color" name="${field.name}" class="w-full bg-transparent h-8">
+                </div>`;
+        case 'input_only':
+            return `
+                <div class="my-2 pl-4 relative flex items-center">
+                    <div
+                        class="node-input absolute w-3 h-3 rounded-full cursor-pointer"
+                        data-input="${field.name}"
+                        style="background: #d16e6e; left: -6px; top: 50%; transform: translateY(-50%);"
+                    ></div>
+                    ${field.label ? `<span>${field.label}</span>` : ''}
+                </div>
+            `;
+        default:
+            return '';
+    }
+},
+
+    setupDragging() {
+        const canvas = document.getElementById('node-canvas');
+        canvas.addEventListener('mousedown', (e) => {
+            const header = e.target.closest('.rounded-t-md');
+            const node = e.target.closest('.node');
+            if (header && node && !e.target.classList.contains('delete-node')) {
+                e.preventDefault();
+                this.draggedNode = node;
+                const rect = node.getBoundingClientRect();
+                this.dragOffset = {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+            }
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (this.draggedNode) {
+                e.preventDefault();
+                const canvas = document.getElementById('node-canvas');
+                const canvasRect = canvas.getBoundingClientRect();
+                const nodeRect = this.draggedNode.getBoundingClientRect();
+                let x = e.clientX - canvasRect.left - this.dragOffset.x;
+                let y = e.clientY - canvasRect.top - this.dragOffset.y;
+                const maxX = canvasRect.width - nodeRect.width;
+                const maxY = canvasRect.height - nodeRect.height;
+                x = Math.max(0, Math.min(x, maxX));
+                y = Math.max(0, Math.min(y, maxY));
+                this.draggedNode.style.left = `${x}px`;
+                this.draggedNode.style.top = `${y}px`;
+                this.drawConnections();
+            }
+        });
+        document.addEventListener('mouseup', () => {
+            if (this.draggedNode) {
+                this.saveNodeData();
+                this.draggedNode = null;
+            }
+        });
+    },
+
+    setupConnections() {
+        const canvas = document.getElementById('node-canvas');
+        const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svg.style.position = 'absolute';
+        svg.style.width = '100%';
+        svg.style.height = '100%';
+        svg.style.pointerEvents = 'none';
+        svg.style.zIndex = '1';
+        canvas.appendChild(svg);
+        this.svg = svg;
+        canvas.addEventListener('contextmenu', (e) => {
+            if (e.target.classList.contains('node-input') || e.target.classList.contains('node-output')) {
+                e.preventDefault();
+                this.deleteConnectionsFromPoint(e.target);
+            }
+        });
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 2) return;
+            if (e.target.classList.contains('node-output')) {
+                this.currentConnection = {
+                    start: e.target,
+                    type: 'output'
+                };
+                this.tempPath = this.createPath();
+                this.tempPath.style.pointerEvents = 'none';
+                this.svg.appendChild(this.tempPath);
+            } else if (e.target.classList.contains('node-input')) {
+                this.currentConnection = {
+                    start: e.target,
+                    type: 'input'
+                };
+                this.tempPath = this.createPath();
+                this.tempPath.style.pointerEvents = 'none';
+                this.svg.appendChild(this.tempPath);
+            }
+        });
+        document.addEventListener('mousemove', (e) => {
+            if (this.currentConnection) {
+                const canvasRect = canvas.getBoundingClientRect();
+                const startRect = this.currentConnection.start.getBoundingClientRect();
+                const startX = startRect.left + startRect.width / 2 - canvasRect.left;
+                const startY = startRect.top + startRect.height / 2 - canvasRect.top;
+                const endX = e.clientX - canvasRect.left;
+                const endY = e.clientY - canvasRect.top;
+                if (this.currentConnection.type === 'output') {
+                    this.updatePath(this.tempPath, startX, startY, endX, endY);
+                } else {
+                    this.updatePath(this.tempPath, endX, endY, startX, startY);
+                }
+            }
+        });
+        document.addEventListener('mouseup', (e) => {
+            if (this.currentConnection) {
+                if (this.currentConnection.type === 'output' && e.target.classList.contains('node-input')) {
+                    this.createConnection(this.currentConnection.start, e.target);
+                } else if (this.currentConnection.type === 'input' && e.target.classList.contains('node-output')) {
+                    this.createConnection(e.target, this.currentConnection.start);
+                }
+                if (this.tempPath) {
+                    this.svg.removeChild(this.tempPath);
+                    this.tempPath = null;
+                }
+                this.currentConnection = null;
+            }
+        });
+        this.svg.addEventListener('contextmenu', (e) => {
+            const path = e.target;
+            if (path.tagName === 'path') {
+                e.preventDefault();
+                this.deleteConnection(path);
+            }
+        });
+    },
+
+    createPath() {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('stroke', '#6eafd1');
+        path.setAttribute('stroke-width', '2');
+        path.setAttribute('fill', 'none');
+        path.style.pointerEvents = 'all';
+        return path;
+    },
+
+    updatePath(path, x1, y1, x2, y2) {
+        const dx = Math.abs(x2 - x1) * 0.5;
+        const d = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+        path.setAttribute('d', d);
+    },
+
+    createConnection(start, end) {
+        if (start === end) return;
+        if (start.closest('.node') === end.closest('.node')) return;
+        const duplicateConnection = this.connections.some(conn =>
+            (conn.start === start && conn.end === end) ||
+            (conn.start === end && conn.end === start)
+        );
+        if (duplicateConnection) return;
+        const inputPoint = start.classList.contains('node-input') ? start : end;
+        const outputPoint = start.classList.contains('node-output') ? start : end;
+        const hasExistingConnection = this.connections.some(conn =>
+            conn.start === inputPoint || conn.end === inputPoint
+        );
+        if (hasExistingConnection) return;
+        const targetNode = inputPoint.closest('.node');
+        const hasSameOutputToNode = this.connections.some(conn => {
+            const connOutput = conn.start.classList.contains('node-output') ? conn.start : conn.end;
+            const connInput = conn.start.classList.contains('node-input') ? conn.start : conn.end;
+            return connOutput === outputPoint && connInput.closest('.node') === targetNode;
+        });
+        if (hasSameOutputToNode) return;
+        const connection = {
+            start: start,
+            end: end,
+            path: this.createPath()
+        };
+        this.connections.push(connection);
+        this.svg.appendChild(connection.path);
+        this.drawConnections();
+        this.saveNodeData();
+    },
+
+    drawConnections() {
+        const canvasRect = this.svg.getBoundingClientRect();
+        this.connections.forEach(conn => {
+            const startRect = conn.start.getBoundingClientRect();
+            const endRect = conn.end.getBoundingClientRect();
+            const startX = startRect.left + startRect.width / 2 - canvasRect.left;
+            const startY = startRect.top + startRect.height / 2 - canvasRect.top;
+            const endX = endRect.left + endRect.width / 2 - canvasRect.left;
+            const endY = endRect.top + endRect.height / 2 - canvasRect.top;
+            this.updatePath(conn.path, startX, startY, endX, endY);
+        });
+    },
+
+    deleteConnection(path) {
+        const connectionIndex = this.connections.findIndex(conn => conn.path === path);
+        if (connectionIndex !== -1) {
+            this.svg.removeChild(path);
+            this.connections.splice(connectionIndex, 1);
+            this.saveNodeData();
+        }
+    },
+
+    deleteConnectionsFromPoint(point) {
+        const connectionsToRemove = this.connections.filter(conn =>
+            conn.start === point || conn.end === point
+        );
+        connectionsToRemove.forEach(conn => {
+            this.svg.removeChild(conn.path);
+            const index = this.connections.indexOf(conn);
+            if (index !== -1) {
+                this.connections.splice(index, 1);
+            }
+        });
+        if (connectionsToRemove.length > 0) {
+            this.saveNodeData();
+        }
+    }
+}
+</script>
