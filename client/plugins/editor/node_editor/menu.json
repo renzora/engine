@@ -12,6 +12,11 @@
             "label": "Color",
             "callback": "node_editor.createNewNode",
             "type": "color"
+          },
+          {
+            "label": "Color Transition",
+            "callback": "node_editor.createNewNode",
+            "type": "colortransition"
           }
         ]
       },
@@ -22,6 +27,11 @@
             "label": "Gamepad",
             "callback": "node_editor.createNewNode",
             "type": "gamepad"
+          },
+          {
+            "label": "Direction",
+            "callback": "node_editor.createNewNode",
+            "type": "direction"
           }
         ]
       },
@@ -32,6 +42,16 @@
             "label": "Condition",
             "callback": "node_editor.createNewNode",
             "type": "condition"
+          },
+          {
+            "label": "Timer",
+            "callback": "node_editor.createNewNode",
+            "type": "timer"
+          },
+          {
+            "label": "Switch",
+            "callback": "node_editor.createNewNode",
+            "type": "switch"
           }
         ]
       },
@@ -42,6 +62,11 @@
             "label": "Scene",
             "callback": "node_editor.createNewNode",
             "type": "scene"
+          },
+          {
+            "label": "Move Object",
+            "callback": "node_editor.createNewNode",
+            "type": "move"
           }
         ]
       }

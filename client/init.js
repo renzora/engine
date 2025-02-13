@@ -45,8 +45,8 @@ assets.preload(
     const playerSprite = sprite.create({
       id: "player1",
       isPlayer: true,
-      speed: 70,
-      topSpeed: 70,
+      speed: 85,
+      topSpeed: 85,
       currentAnimation: "idle",
       type: "female-01",
     });

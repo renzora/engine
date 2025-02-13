@@ -280,6 +280,16 @@ node_editor = {
         `;
     }
     switch (field.type) {
+        case 'button':
+            return `
+                <div class="flex flex-col my-2">
+                    <button 
+                        type="button"
+                        name="${field.name}"
+                        class="w-full bg-blue-500 hover:bg-blue-600 text-white rounded px-2 py-1"
+                        data-action="${field.action || ''}"
+                    >${field.label}</button>
+                </div>`;
         case 'text':
             return `
                 <div class="flex flex-col my-2">

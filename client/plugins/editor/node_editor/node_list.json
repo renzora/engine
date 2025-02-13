@@ -89,18 +89,18 @@
   },
   "lighting": {
     "title": "Lighting",
-    "inputs": ["color"],
+    "inputs": ["input", "color"],
     "bg": "#4a4a4a",
     "hasOutput": false,
     "fields": [
+      {"name": "input", "label": "Input"},
       {"name": "color", "label": "color"},
-      {"type": "range", "name": "x", "label": "X:", "min": "0", "max": "500", "default": "50", "width": "24"},
-      {"type": "range", "name": "y", "label": "Y:", "min": "0", "max": "500", "default": "50", "width": "24"},
+      {"type": "range", "name": "x", "label": "X:", "min": "0", "max": "200", "default": "50", "width": "24"},
+      {"type": "range", "name": "y", "label": "Y:", "min": "0", "max": "200", "default": "50", "width": "24"},
       {"type": "range", "name": "radius", "label": "Radius:", "min": "0", "max": "500", "default": "100", "width": "24"},
       {"type": "range", "name": "intensity", "label": "Intensity:", "min": "0", "max": "1", "step": "0.1", "default": "1", "width": "24"},
-      {"type": "checkbox", "name": "flicker", "label": "Flicker"},
-      {"type": "range", "name": "speed", "label": "Speed:", "min": "0", "max": "0.5", "step": "0.1", "default": "0", "width": "24"},
-      {"type": "range", "name": "amount", "label": "Amount:", "min": "0", "max": "0.5", "step": "0.1", "default": "0", "width": "24"}
+      {"type": "range", "name": "speed", "label": "Flicker Speed:", "min": "0", "max": "1", "step": "0.005", "default": "0", "width": "24"},
+      {"type": "range", "name": "amount", "label": "Flicker Amount:", "min": "0", "max": "1", "step": "0.005", "default": "0", "width": "24"}
     ]
   },
   "color": {
@@ -114,13 +114,27 @@
       {"type": "color", "name": "color", "default": "#FFFFFF", "width": "24"}
     ]
   },
+"colortransition": {
+    "title": "Color Transition",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+        {"name": "input", "label": "input"},
+        {"type": "color", "name": "color0", "label": "Color 1", "default": "#FFFFFF"},
+        {"type": "color", "name": "color1", "label": "Color 2", "default": "#FFA500"},
+        {"type": "range", "name": "speed", "label": "Speed:", "min": "0", "max": "1", "step": "0.01", "default": "0.1"}
+    ]
+},
   "condition": {
     "title": "Condition",
-    "inputs": ["input"],
+    "inputs": ["input", "variable"],
     "outputs": ["true", "false"],
     "bg": "#4a4a4a",
     "hasOutput": true,
     "fields": [
+      {"name": "input", "label": "Input"},
       {"type": "text", "name": "variable", "label": "Variable:", "placeholder": "Variable name", "width": "24"},
       {
         "type": "select",
@@ -138,5 +152,60 @@
       },
       {"type": "text", "name": "value", "label": "Value:", "placeholder": "Compare value", "width": "24"}
     ]
-  }
+  },
+  "timer": {
+    "title": "Timer",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+        {"name": "input", "label": "input"},
+        {"type": "number", "name": "delay", "label": "Delay (seconds)", "min": "0", "step": "0.1", "default": "1", "width": "24"},
+        {"type": "checkbox", "name": "loop", "label": "Loop"}
+    ]
+},
+"switch": {
+    "title": "Switch",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+        {"name": "input", "label": "input"},
+        {"type": "checkbox", "name": "initialState", "label": "Start On"}
+    ]
+},
+"move": {
+  "title": "Move Object",
+  "inputs": ["input", "direction"],
+  "outputs": ["output"],
+  "bg": "#4a4a4a",
+  "hasOutput": true,
+  "fields": [
+    {"name": "input", "label": "input"},
+    {"name": "direction", "label": "direction"},
+    {"type": "number", "name": "speed", "label": "Speed (pixels/sec):", "min": "0", "max": "500", "default": "100", "width": "24"}
+  ]
+},
+"direction": {
+    "title": "Direction Input",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+        {"name": "input", "label": "input"},
+        {
+            "type": "select",
+            "name": "input_type",
+            "label": "Input Type:",
+            "width": "24",
+            "options": [
+                {"value": "dpad", "label": "D-Pad"},
+                {"value": "leftstick", "label": "Left Stick"}
+            ]
+        }
+    ]
+}
 }

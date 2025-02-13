@@ -471,52 +471,94 @@ buildMenu(parentUl, items) {
       console.log("Switched to Isometric view.");
     }
   },
-  render2dGrid() {
+render2dGrid() {
     if (!this.isGridEnabled) return;
     const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.1)';
-    game.ctx.strokeStyle = gridColor;
+    const subGridColor = 'rgba(255,255,255,0.2)';
     game.ctx.lineWidth = 1;
-    for (let x = 0; x < game.worldWidth; x += 16) {
+    
+    const subDivisions = 2;
+    const mainGridSize = 16;
+    const subGridSize = mainGridSize / subDivisions;
+
+    game.ctx.strokeStyle = gridColor;
+    for (let x = 0; x < game.worldWidth; x += mainGridSize) {
       game.ctx.beginPath();
       game.ctx.moveTo(x, 0);
       game.ctx.lineTo(x, game.worldHeight);
       game.ctx.stroke();
     }
-    for (let y = 0; y < game.worldHeight; y += 16) {
+    for (let y = 0; y < game.worldHeight; y += mainGridSize) {
       game.ctx.beginPath();
       game.ctx.moveTo(0, y);
       game.ctx.lineTo(game.worldWidth, y);
       game.ctx.stroke();
     }
+
+    game.ctx.setLineDash([2, 2]);
+    game.ctx.strokeStyle = subGridColor;
+    for (let x = subGridSize; x < game.worldWidth; x += mainGridSize) {
+      if (x % mainGridSize !== 0) {
+        game.ctx.beginPath();
+        game.ctx.moveTo(x, 0);
+        game.ctx.lineTo(x, game.worldHeight);
+        game.ctx.stroke();
+      }
+    }
+    for (let y = subGridSize; y < game.worldHeight; y += mainGridSize) {
+      if (y % mainGridSize !== 0) {
+        game.ctx.beginPath();
+        game.ctx.moveTo(0, y);
+        game.ctx.lineTo(game.worldWidth, y);
+        game.ctx.stroke();
+      }
+    }
+
+    game.ctx.setLineDash([]);
     game.ctx.strokeStyle = gridColor;
     game.ctx.lineWidth = 2;
     game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
-  },
-  renderIsometricGrid() {
-    if (!this.isGridEnabled) return;
-    const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.1)';
-    const tileWidth = 32;
-    const tileHeight = 16;
-    const maxY = game.worldHeight;
-    const minY = -game.worldHeight;
-    game.ctx.strokeStyle = gridColor;
-    game.ctx.lineWidth = 1;
-    for (let y = minY; y <= maxY; y += tileHeight) {
+},
+renderIsometricGrid() {
+  if (!this.isGridEnabled) return;
+  
+  const gridColor = game.sceneBg === null ? 'rgba(255,255,255,0.2)' : 'rgba(0, 0, 0, 0.2)';
+  const subGridColor = 'rgba(255,255,255,0.4)';
+  const tileWidth = 32;
+  const tileHeight = 16;
+  const subDivisions = 2;
+  const subTileHeight = tileHeight / subDivisions;
+  const maxY = game.worldHeight;
+  const minY = -game.worldHeight;
+
+  const drawLines = (startX, endX, yOffset, color, lineWidth, dashPattern = []) => {
+    game.ctx.setLineDash(dashPattern);
+    game.ctx.strokeStyle = color;
+    game.ctx.lineWidth = lineWidth;
+    
+    const step = dashPattern.length ? subTileHeight : tileHeight;
+    
+    for (let y = minY; y <= maxY; y += step) {
+      if (dashPattern.length && y % tileHeight === 0) continue;
+      
       game.ctx.beginPath();
-      game.ctx.moveTo(0, game.worldHeight / 2 + y);
-      game.ctx.lineTo(game.worldWidth, game.worldHeight / 2 + y - game.worldWidth / 2);
+      game.ctx.moveTo(startX, game.worldHeight / 2 + y);
+      game.ctx.lineTo(endX, game.worldHeight / 2 + y + yOffset);
       game.ctx.stroke();
     }
-    for (let y = minY; y <= maxY; y += tileHeight) {
-      game.ctx.beginPath();
-      game.ctx.moveTo(game.worldWidth, game.worldHeight / 2 + y);
-      game.ctx.lineTo(0, game.worldHeight / 2 + y - game.worldWidth / 2);
-      game.ctx.stroke();
-    }
-    game.ctx.strokeStyle = gridColor;
-    game.ctx.lineWidth = 1;
-    game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
-  },
+  };
+
+  drawLines(0, game.worldWidth, -game.worldWidth / 2, gridColor, 0.5);
+  drawLines(game.worldWidth, 0, -game.worldWidth / 2, gridColor, 0.5);
+  
+  drawLines(0, game.worldWidth, -game.worldWidth / 2, subGridColor, 0.25, [2, 2]);
+  drawLines(game.worldWidth, 0, -game.worldWidth / 2, subGridColor, 0.25, [2, 2]);
+
+  game.ctx.setLineDash([]);
+  game.ctx.strokeStyle = gridColor;
+  game.ctx.lineWidth = 0.5;
+  game.ctx.strokeRect(0, 0, game.worldWidth, game.worldHeight);
+},
   utilsToggleNightFilter(checked) {
     this.isNightfilterEnabled = checked;
     if (checked) {

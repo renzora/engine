@@ -1,7 +1,7 @@
 {% if auth %}
 <div
   id="editor_toolbar_buttons"
-  class="fixed top-2 bg-black/80 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-visible"
+  class="fixed top-2 bg-black/60 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-visible"
 >
   <button
     type="button"
@@ -36,13 +36,6 @@
     id="save_button"
     class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition relative"
     onclick="editor_window.toggleSaveDropdown(event)"
-  >
-  </button>
-  <button
-    type="button"
-    id="rotate_button"
-    class="mode-button shadow flex items-center justify-center hover:bg-gray-700 hover:rounded transition"
-    onclick="editor_window.rotateObjects()"
   >
   </button>
   <button

@@ -3,7 +3,7 @@ time = {
     minutes: 0,
     seconds: 0,
     days: 0,
-    speedMultiplier: 100,
+    speedMultiplier: 10,
     active: true,
     daysOfWeek: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
 
