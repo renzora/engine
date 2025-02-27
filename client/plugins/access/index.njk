@@ -1,0 +1,195 @@
+{% if not perm('is_beta') %}
+<div class="window window_bg text-white">
+    <div class="window_title p-2">
+        <span>Beta Access</span>
+    </div>
+    <div class="container window_body text-center p-2">
+        <p>Please enter your beta access code</p>
+        <div class="mt-3">
+            <input type="text" id="accessCode" class="form-control" placeholder="Enter code here">
+        </div>
+        <div id="errorMessage" class="text-danger mb-2" style="min-height: 20px;"></div>
+        <button id="submitBtn" class="white_button p-2 rounded mb-2">Submit</button>
+    </div>
+</div>
+
+<style>
+.form-control {
+    background-color: rgba(255,255,255,0.1);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.2);
+    padding: 8px 12px;
+    border-radius: 4px;
+    width: 80%;
+    margin: 0 auto;
+    font-size: 1.2rem;
+    text-align: center;
+    letter-spacing: 2px;
+}
+.white_button {
+    background-color: rgba(255,255,255,0.2);
+    border: none;
+    transition: background-color 0.3s;
+    min-width: 120px;
+}
+.white_button:hover {
+    background-color: rgba(255,255,255,0.3);
+}
+.text-danger {
+    color: #ff6b6b;
+}
+.text-success {
+    color: #4cff4c;
+}
+</style>
+
+<script>
+access = {
+    id: 'game-access-verification',
+    
+    start() {
+        console.log(`Plugin started: ${this.id}`);
+        this.setupEventListeners();
+    },
+
+    unmount() {
+        console.log(`Plugin unmounted: ${this.id}`);
+    },
+
+    setupEventListeners() {
+        document.getElementById('submitBtn').addEventListener('click', this.verifyCode.bind(this));
+        document.getElementById('accessCode').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.verifyCode();
+            }
+        });
+    },
+
+    verifyCode() {
+        const codeInput = document.getElementById('accessCode');
+        const enteredCode = codeInput.value.trim();
+        const errorMsg = document.getElementById('errorMessage');
+        
+        if (!enteredCode) {
+            errorMsg.textContent = 'Please enter an access code';
+            errorMsg.className = 'text-danger mb-2';
+            return;
+        }
+        
+        // Show loading state
+        const submitBtn = document.getElementById('submitBtn');
+        const originalBtnText = submitBtn.textContent;
+        submitBtn.textContent = 'Verifying...';
+        submitBtn.disabled = true;
+        
+        // Send the code to the server for verification
+        fetch('/api/access/verify', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ code: enteredCode })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                errorMsg.textContent = 'Access granted! Loading game...';
+                errorMsg.className = 'text-success mb-2';
+                codeInput.disabled = true;
+                
+                // Reload the page after a short delay to apply new permissions
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1500);
+            } else {
+                errorMsg.textContent = data.message || 'Invalid access code. Please try again.';
+                errorMsg.className = 'text-danger mb-2';
+                codeInput.value = '';
+                submitBtn.textContent = originalBtnText;
+                submitBtn.disabled = false;
+            }
+        })
+        .catch(error => {
+            console.error('Access verification error:', error);
+            errorMsg.textContent = 'Server error. Please try again later.';
+            errorMsg.className = 'text-danger mb-2';
+            submitBtn.textContent = originalBtnText;
+            submitBtn.disabled = false;
+        });
+    }
+};
+</script>
+{% else %}
+<script>
+assets.preload(
+  [
+    { name: "female-01", path: "assets/img/sprites/characters/female-01.png", noCache: true },
+    { name: "objectData", path: "assets/json/objectData.json", noCache: true },
+    { name: "spriteData", path: "assets/json/spritesData.json", noCache: true },
+  ],
+  () => {
+    input.assign("keydown+shift+e", () => {
+      plugin.load("console_window", {
+        path: "editor",
+        ext: "njk",
+        drag: false,
+        reload: true,
+        before: function () {
+          plugin.hideAll();
+        },
+        after: function () {
+          plugin.load("editor_window", { path: "editor", ext: "njk" });
+        },
+      });
+    });
+
+    input.assign("keydown+shift+f", () => {
+      plugin.ui.fullScreen();
+    });
+
+    plugin.preload([
+      { id: 'audio', path: 'core' },
+      { id: "time", path: "core" },
+      { id: "notif", path: "core", ext: "html", after: function () {
+          notif.show("remove_messages", "edit init.js to remove these messages", "danger");
+          notif.show("access_editor", "press shift + e to access editor");
+        },
+      },
+      { id: "auth", ext: "njk" },
+      { id: 'lighting', path: 'core' },
+      { id: 'collision', path: 'core' },
+      { id: 'pathfinding' },
+      { id: 'debug', path: 'core', ext: 'html' },
+      { id: 'ui', path: 'core' },
+      { id: 'gamepad' },
+      { id: 'actions' },
+      { id: "mainMenu", ext: "html" },
+      { id: "pie_menu", ext: "html" },
+      { id: "network" },
+    ]);
+
+    const playerSprite = sprite.create({
+      id: "player1",
+      isPlayer: true,
+      speed: 85,
+      topSpeed: 85,
+      currentAnimation: "idle",
+      type: "female-01",
+    });
+
+    game.create({
+      objectData: assets.use("objectData"),
+      spriteData: assets.use("spriteData"),
+      player: playerSprite,
+      after: function () {
+        game.scene(
+          localStorage.getItem("sceneid") || "678ec2d7433aae2deee168ee"
+        );
+        sprite.init();
+        plugin.time.hours = 7;
+      },
+    });
+  }
+);
+</script>
+{% endif %}

@@ -1,4 +1,4 @@
-{% if auth %}
+{% if perm('can_view_editor') %}
 <div
   id="editor_toolbar_buttons"
   class="fixed top-2 bg-black/60 text-white rounded-lg shadow-lg p-2 flex gap-2 overflow-visible"

@@ -1,3 +1,4 @@
+{% if perm('manage_sprite_creator') %}
 <!-- SPRITE EDITOR ROOT CONTAINER -->
 <div class="bg-gray-800 text-white w-full h-screen flex flex-col" id="sprite_editor_root">
   <!-- TOP BAR -->
@@ -1269,3 +1270,4 @@ sprite_creator = {
   }
 };
 </script>
+{% endif %}

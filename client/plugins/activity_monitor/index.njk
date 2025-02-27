@@ -1,0 +1,219 @@
+<div class="window pixel-corners bg-gray-800 shadow-lg rounded-lg overflow-hidden fixed bottom-8 right-5"
+     style="width: 400px; height: 300px;">
+  <div data-part="handle" class="window_title bg-gray-800 text-gray-100 font-semibold flex justify-between items-center px-2 py-1">
+    <div class="flex items-center space-x-2">
+      <div data-part="title" class="title_bg">
+        Activity Monitor
+      </div>
+
+      <select id="refreshRateSelect" class="bg-gray-700 text-gray-100 rounded px-2 py-1 text-sm">
+        <option value="0">Real Time</option>
+        <option value="50">50ms</option>
+        <option value="100">100ms</option>
+        <option value="200" selected>200ms</option>
+        <option value="250">250ms</option>
+        <option value="500">500ms</option>
+        <option value="1000">1s</option>
+        <option value="2000">2s</option>
+        <option value="5000">5s</option>
+        <option value="10000">10s</option>
+      </select>
+    </div>
+
+    <div class="float-right">
+      <button
+        class="icon close_dark mr-1 hint--left text-gray-100"
+        aria-label="Close (ESC)"
+        data-close
+      >&times;</button>
+    </div>
+  </div>
+
+  <div class="p-2 bg-gray-800">
+    <div id="fpsMonitorContainer" class="w-full h-48 bg-gray-800 rounded-md">
+      <canvas id="fpsChart" class="w-full" style="height: 280px;"></canvas>
+    </div>
+  </div>
+
+  <div class="resize-handle"></div>
+</div>
+
+<script>
+activity_monitor = {
+  dpr: 1,
+  hiddenFunctions: {},
+  lastRenderTime: 0,
+  refreshRate: 200,
+
+  start() {
+    this.setupCanvas();
+    this.initRefreshRateSelect();
+    window.addEventListener('resize', this.onResize.bind(this));
+  },
+
+  initRefreshRateSelect() {
+    const selectEl = document.getElementById('refreshRateSelect');
+    if (!selectEl) return;
+
+    selectEl.addEventListener('change', (e) => {
+      this.refreshRate = parseInt(e.target.value);
+    });
+  },
+
+  onRender() {
+    const now = performance.now();
+    if (this.refreshRate === 0) {
+      this.renderChart();
+    } else if (now - this.lastRenderTime >= this.refreshRate) {
+      this.lastRenderTime = now;
+      this.renderChart();
+    }
+  },
+
+  setupCanvas() {
+    const canvas = document.getElementById('fpsChart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    this.dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.offsetWidth * this.dpr;
+    canvas.height = canvas.offsetHeight * this.dpr;
+    ctx.scale(this.dpr, this.dpr);
+
+    canvas.addEventListener('click', this.handleCanvasClick.bind(this));
+    this.renderChart();
+  },
+
+  onResize() {
+    this.setupCanvas();
+  },
+
+  handleCanvasClick(event) {
+    const canvas = event.target;
+    const rect = canvas.getBoundingClientRect();
+    const x = (event.clientX - rect.left) * this.dpr;
+    const y = (event.clientY - rect.top) * this.dpr;
+
+    let functionCalls = {};
+    if (plugin.exists('debug') && window.debug && window.debug.functionCalls) {
+      functionCalls = window.debug.functionCalls;
+    }
+
+    const trackedFunctions = Object.keys(functionCalls);
+    const labelArea = 15;
+
+    trackedFunctions.forEach((functionName, index) => {
+      const labelY = 20 + index * labelArea;
+      if (y > labelY - 10 && y < labelY + 5) {
+        this.hiddenFunctions[functionName] = !this.hiddenFunctions[functionName];
+        this.renderChart();
+      }
+    });
+  },
+
+  renderChart() {
+    const canvas = document.getElementById('fpsChart');
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = this.dpr;
+
+    let functionCalls = {};
+    if (plugin.exists('debug') && window.debug && window.debug.functionCalls) {
+      functionCalls = window.debug.functionCalls;
+    }
+
+    const trackedFunctions = Object.keys(functionCalls).filter((fnName) => {
+      const { countHistory, valueHistory } = functionCalls[fnName];
+      if (!countHistory || !valueHistory) return false;
+      const latestCount = countHistory[countHistory.length - 1] || 0;
+      const latestValue = valueHistory[valueHistory.length - 1] || 0;
+      return !(latestCount === 0 && latestValue === 0);
+    });
+
+    let globalMaxValue = 0;
+    trackedFunctions.forEach((fnName) => {
+      const { countHistory, valueHistory } = functionCalls[fnName];
+      const localMax = Math.max(...countHistory, ...valueHistory);
+      if (localMax > globalMaxValue) globalMaxValue = localMax;
+    });
+    const maxValue = Math.ceil(globalMaxValue * 1.1);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    ctx.font = '12px Arial';
+
+    const padding = 30;
+    const chartHeight = canvas.height / dpr - 2 * padding;
+    const chartWidth = canvas.width / dpr - 2 * padding;
+    const numberOfLabels = 5;
+    const formatMetric = (num) => (Number.isInteger(num) ? num : num.toFixed(2));
+
+    for (let i = 0; i <= numberOfLabels; i++) {
+      const value = Math.round((i / numberOfLabels) * maxValue);
+      const y = canvas.height / dpr - padding - (value / maxValue) * chartHeight;
+      ctx.textAlign = 'left';
+      ctx.fillText(value, 5, y + 4);
+      ctx.textAlign = 'right';
+      ctx.fillText(value, (canvas.width / dpr) - 5, y + 4);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+      ctx.beginPath();
+      ctx.moveTo(padding, y);
+      ctx.lineTo(canvas.width / dpr - padding, y);
+      ctx.stroke();
+    }
+
+    trackedFunctions.forEach((fnName, index) => {
+      const { countHistory, valueHistory } = functionCalls[fnName];
+      if (this.hiddenFunctions[fnName]) return;
+
+      const length = countHistory.length;
+      const baseColor = `hsl(${(index / trackedFunctions.length) * 360}, 70%, 60%)`;
+
+      ctx.strokeStyle = baseColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      countHistory.forEach((count, i) => {
+        const x = padding + (i / (length - 1)) * chartWidth;
+        const y = canvas.height / dpr - padding - (count / maxValue) * chartHeight;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(${parseInt((index / trackedFunctions.length) * 255)}, 255, 255, 0.7)`;
+      ctx.beginPath();
+      valueHistory.forEach((val, i) => {
+        const x = padding + (i / (length - 1)) * chartWidth;
+        const y = canvas.height / dpr - padding - (val / maxValue) * chartHeight;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+
+    trackedFunctions.forEach((fnName, index) => {
+      const { countHistory, valueHistory } = functionCalls[fnName];
+      const latestCount = countHistory[countHistory.length - 1] || 0;
+      const latestValue = valueHistory[valueHistory.length - 1];
+      const displayMetric = (typeof latestValue === 'number' ? latestValue : latestCount) || 0;
+      const baseColor = `hsl(${(index / trackedFunctions.length) * 360}, 70%, 60%)`;
+      const labelX = padding + 5;
+      const labelY = 20 + index * 15;
+      const labelText = `${fnName}: ${formatMetric(displayMetric)}`;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+      ctx.textAlign = 'left';
+      const textWidth = ctx.measureText(labelText).width;
+      const textHeight = 12;
+      ctx.fillRect(labelX - 2, labelY - textHeight + 2, textWidth + 4, textHeight + 4);
+      ctx.fillStyle = baseColor;
+      ctx.fillText(labelText, labelX, labelY);
+
+      if (this.hiddenFunctions[fnName]) {
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(labelX, labelY - 5);
+        ctx.lineTo(labelX + textWidth, labelY - 5);
+        ctx.stroke();
+      }
+    });
+  }
+};
+</script>

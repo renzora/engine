@@ -1,0 +1,159 @@
+{% if perm('manage_permissions') %}
+<div class="p-4">
+    <div class="mb-4">
+        <input type="text" id="permission_key" class="w-full bg-[#2a2a2a] border border-[#333] text-white p-2 rounded mb-2" placeholder="Permission Key (e.g., view_admin)">
+        <textarea id="permission_description" class="w-full bg-[#2a2a2a] border border-[#333] text-white p-2 rounded h-20" placeholder="Permission Description"></textarea>
+    </div>
+
+    <div class="flex space-x-2 mb-4">
+        <button id="add_permission" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Add Permission</button>
+        <button id="edit_permission" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Update Selected</button>
+        <button id="delete_permission" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete Selected</button>
+    </div>
+
+    <select id="permissions_list" size="10" class="w-full bg-[#2a2a2a] border border-[#333] text-white p-2 rounded">
+    </select>
+</div>
+
+<script>
+permissions = {
+    async start() {
+        this.loadPermissions()
+        this.setupEventListeners()
+    },
+
+    async loadPermissions() {
+        try {
+            const response = await fetch('/api/permissions/list')
+            const permissions = await response.json()
+            
+            const select = document.getElementById('permissions_list')
+            select.innerHTML = ''
+            
+            permissions.forEach(perm => {
+                const option = document.createElement('option')
+                option.value = perm.key
+                option.textContent = `${perm.key} - ${perm.description}`
+                select.appendChild(option)
+            })
+        } catch (error) {
+            console.error('Failed to load permissions:', error)
+        }
+    },
+
+    setupEventListeners() {
+        document.getElementById('add_permission').addEventListener('click', () => this.addPermission())
+        document.getElementById('edit_permission').addEventListener('click', () => this.editPermission())
+        document.getElementById('delete_permission').addEventListener('click', () => this.deletePermission())
+        
+        document.getElementById('permissions_list').addEventListener('change', (e) => {
+            this.loadPermissionDetails(e.target.value)
+        })
+    },
+
+    async addPermission() {
+        const key = document.getElementById('permission_key').value
+        const description = document.getElementById('permission_description').value
+
+        if (!key || !description) {
+            alert('Please fill in all fields')
+            return
+        }
+
+        try {
+            const response = await fetch('/api/permissions/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key, description })
+            })
+
+            if (response.ok) {
+                this.loadPermissions()
+                document.getElementById('permission_key').value = ''
+                document.getElementById('permission_description').value = ''
+            } else {
+                const error = await response.json()
+                alert(error.message)
+            }
+        } catch (error) {
+            console.error('Failed to add permission:', error)
+        }
+    },
+
+    async loadPermissionDetails(key) {
+        try {
+            const response = await fetch(`/api/permissions/${key}`)
+            const permission = await response.json()
+            
+            document.getElementById('permission_key').value = permission.key
+            document.getElementById('permission_description').value = permission.description
+        } catch (error) {
+            console.error('Failed to load permission details:', error)
+        }
+    },
+
+    async editPermission() {
+        const select = document.getElementById('permissions_list')
+        const originalKey = select.value
+        
+        if (!originalKey) {
+            alert('Please select a permission to edit')
+            return
+        }
+
+        const key = document.getElementById('permission_key').value
+        const description = document.getElementById('permission_description').value
+
+        try {
+            const response = await fetch(`/api/permissions/${originalKey}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key, description })
+            })
+
+            if (response.ok) {
+                this.loadPermissions()
+            } else {
+                const error = await response.json()
+                alert(error.message)
+            }
+        } catch (error) {
+            console.error('Failed to edit permission:', error)
+        }
+    },
+
+    async deletePermission() {
+        const select = document.getElementById('permissions_list')
+        const key = select.value
+        
+        if (!key) {
+            alert('Please select a permission to delete')
+            return
+        }
+
+        if (!confirm(`Are you sure you want to delete the permission "${key}"?`)) {
+            return
+        }
+
+        try {
+            const response = await fetch(`/api/permissions/${key}`, {
+                method: 'DELETE'
+            })
+
+            if (response.ok) {
+                this.loadPermissions()
+                document.getElementById('permission_key').value = ''
+                document.getElementById('permission_description').value = ''
+            } else {
+                const error = await response.json()
+                alert(error.message)
+            }
+        } catch (error) {
+            console.error('Failed to delete permission:', error)
+        }
+    }
+}
+
+permissions.start()
+</script>
+{% endif %}

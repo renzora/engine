@@ -1,3 +1,4 @@
+{% if perm('can_view_editor') %}
 <div data-close="false">
   <div id="editor_context_menu" class="absolute z-50 hidden flex flex-col items-start space-y-2">
     <div id="editor_menu_container" class="bg-black text-white rounded-lg shadow-lg" style="width: 220px; align-self: flex-start;">
@@ -582,3 +583,4 @@ renderIsometricGrid() {
   }
 };
 </script>
+{% endif %}

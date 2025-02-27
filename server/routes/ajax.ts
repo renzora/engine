@@ -1,3 +1,4 @@
+// ajax.ts
 import path from 'path';
 import fs from 'fs';
 import nunjucks from 'nunjucks';
@@ -25,13 +26,18 @@ export async function ajaxRoutes(fastify: FastifyInstance) {
           console.log(`✅ [REDIS] Fetched template "${filePath}" from cache`);
         } else {
           templateContent = fs.readFileSync(resolvedPath, 'utf8');
-          //await redis.set(`njk:${filePath}`, templateContent);
-          console.log(`🔵 [DISK] Loaded template "${filePath}" from disk, stored in Redis cache`);
+          console.log(`🔵 [DISK] Loaded template "${filePath}" from disk`);
         }
 
         const rendered = nunjucks.renderString(templateContent, {
-          auth: (request as any).auth,
+          auth: request.auth,
+          perm: (permission: string) => {
+            if (!request.auth) return false;
+            if (!permission) return true;
+            return request.user?.permissions.includes(permission);
+          }
         });
+        
         return reply.type('text/html').send(rendered);
       } catch (err: any) {
         fastify.log.error('Template rendering failed:', err.message);

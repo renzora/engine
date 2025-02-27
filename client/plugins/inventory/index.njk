@@ -1,4 +1,4 @@
-{% if auth %}
+{% if perm('view_inventory') %}
 <div data-close="false" class="fixed bottom-8 left-1/2 transform -translate-x-1/2 z-10 flex flex-col items-center space-y-0">
   <div id="ui_inventory_window" class="window_body flex space-x-2 bg-[#0a0d14]/90 p-2 shadow-inner hover:shadow-lg">
     <div class="flex space-x-2" id="ui_quick_items_container"></div>

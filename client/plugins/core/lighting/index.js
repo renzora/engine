@@ -15,13 +15,40 @@ lighting = {
     compositeOperation: 'multiply',
     brightness: 2.0,
     saturation: 2.0,
+    dayBrightness: 1.0,    // Add these new properties
+    daySaturation: 1.0,    // for daytime filter strength
     manualColor: { r: 0, g: 0, b: 155 }
   },
+
+  colorSchemes: {
+    normal: {
+        dayColor: { r: 255, g: 255, b: 255 },
+        nightColor: { r: 0, g: 0, b: 155 },
+        dayBrightness: 1.0,
+        daySaturation: 1.0
+    },
+    dystopian: {
+        dayColor: { r: 140, g: 110, b: 90 },
+        nightColor: { r: 0, g: 0, b: 155 },
+        dayBrightness: 2,
+        daySaturation: 3
+    }
+},
+  currentScheme: 'dystopian',
   timeBasedUpdatesEnabled: true,
   useManualRGB: true,
-  lightIntensityMultiplier: 0,
+  lightIntensityMultiplier: 1,
   lastBaseNightFilterColor: null,
   lastProcessedNightFilterColor: null,
+
+  setColorScheme(schemeName) {
+    if (this.colorSchemes[schemeName]) {
+      this.currentScheme = schemeName;
+      const scheme = this.colorSchemes[schemeName];
+      this.nightFilter.dayColor = scheme.dayColor;
+      this.nightFilter.nightColor = scheme.nightColor;
+    }
+  },
 
   addLight(id, x, y, radius, color, maxIntensity, type, flicker = false, flickerSpeed = 0.1, flickerAmount = 0.05, shape = null) {
     if (!this.lightsActive) return;
@@ -57,7 +84,6 @@ lighting = {
     }
     if (playerLight) {
       this.lights.push(playerLight);
-      console.log('Preserved player light:', playerLight);
     }
   },
 
@@ -69,9 +95,6 @@ lighting = {
     this.updateLights();
     this.renderLights();
     if (!this.nightFilterActive) return;
-    if (this.timeBasedUpdatesEnabled && this.lightIntensityMultiplier === 0) {
-      return;
-    }
     const { maskCanvas, maskCtx } = this.createBaseNightFilter();
     this.renderLightsOnFilter(maskCtx);
     this.renderFinalOverlay(game.ctx, maskCanvas);
@@ -79,26 +102,22 @@ lighting = {
 
   renderLights() {
     this.lights.forEach(light => {
-        const inViewport = (
-            light.x >= game.viewportXStart * 16 &&
-            light.x < game.viewportXEnd * 16 &&
-            light.y >= game.viewportYStart * 16 &&
-            light.y < game.viewportYEnd * 16
-        );
+      const inViewport = (
+        light.x >= game.viewportXStart * 16 &&
+        light.x < game.viewportXEnd * 16 &&
+        light.y >= game.viewportYStart * 16 &&
+        light.y < game.viewportYEnd * 16
+      );
 
-        const dh = plugin.time.hours + plugin.time.minutes / 60;
-        const { nightStart, dayStart } = this.config;
-        const isNight = (dh >= nightStart || dh < dayStart);
-
-        if (!inViewport || !isNight) {
-            this.lights = this.lights.filter(l => l.id !== light.id);
-        }
+      if (!inViewport) {
+        this.lights = this.lights.filter(l => l.id !== light.id);
+      }
     });
-},
+  },
 
   updateLights() {
     if (!this.lightsActive) return;
-    const applyFlicker = this.timeBasedUpdatesEnabled || !this.useManualRGB;
+    const applyFlicker = true;
     this.lights.forEach(light => {
       if (light.flicker && applyFlicker) {
         const flickerDelta = Math.sin((performance.now() + light.flickerOffset) * light.flickerSpeed) * light.flickerAmount;
@@ -130,27 +149,26 @@ lighting = {
   },
 
   createBaseNightFilter() {
-    if (this.timeBasedUpdatesEnabled && this.lightIntensityMultiplier === 0) {
-      const maskCanvas = document.createElement('canvas');
-      maskCanvas.width = game.canvas.width;
-      maskCanvas.height = game.canvas.height;
-      const maskCtx = maskCanvas.getContext('2d');
-      maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-      return { maskCanvas, maskCtx };
-    }
-    const { dayColor, nightColor, brightness, saturation, manualColor } = this.nightFilter;
+    const scheme = this.colorSchemes[this.currentScheme];
+    const { brightness, saturation, dayBrightness, daySaturation } = this.nightFilter;
+    
     let newColor;
+    let useNightSettings = true;
+
     if (this.timeBasedUpdatesEnabled) {
       const t = this.lightIntensityMultiplier;
-      newColor = this.lerpColor(dayColor, nightColor, t);
-    } else {
-      if (this.useManualRGB) {
-        newColor = { ...manualColor };
+      if (t === 0) {
+        // It's daytime - use day settings
+        useNightSettings = false;
+        newColor = {...scheme.dayColor};
       } else {
-        const t = this.lightIntensityMultiplier;
-        newColor = this.lerpColor(dayColor, nightColor, t);
+        newColor = this.lerpColor(scheme.dayColor, scheme.nightColor, t);
       }
+    } else {
+      newColor = scheme.dayColor;
+      useNightSettings = false;
     }
+
     let finalColor;
     if (
       this.lastBaseNightFilterColor &&
@@ -160,10 +178,15 @@ lighting = {
     ) {
       finalColor = this.lastProcessedNightFilterColor;
     } else {
-      finalColor = this.applyBrightnessSaturation(newColor, brightness, saturation);
+      // Use appropriate brightness/saturation based on time of day
+      const useBrightness = useNightSettings ? brightness : (scheme.dayBrightness || dayBrightness);
+      const useSaturation = useNightSettings ? saturation : (scheme.daySaturation || daySaturation);
+      
+      finalColor = this.applyBrightnessSaturation(newColor, useBrightness, useSaturation);
       this.lastBaseNightFilterColor = { ...newColor };
       this.lastProcessedNightFilterColor = { ...finalColor };
     }
+
     const maskCanvas = document.createElement('canvas');
     maskCanvas.width = game.canvas.width;
     maskCanvas.height = game.canvas.height;

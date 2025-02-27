@@ -67,7 +67,12 @@
             "label": "Move Object",
             "callback": "node_editor.createNewNode",
             "type": "move"
-          }
+          },
+          {
+            "label": "Load Plugin",
+            "callback": "node_editor.createNewNode", 
+            "type": "plugin"
+        }
         ]
       }
     ]

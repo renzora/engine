@@ -161,6 +161,8 @@ actions = {
                 return this.executeDirectionNode(node, inputs);
             case 'move':
                 return this.executeMoveNode(node, inputs, item);
+            case 'plugin':
+                return this.executePluginNode(node, inputs);
             default:
                 return null;
         }
@@ -546,6 +548,29 @@ actions = {
         item.y = positions.map(p => p.y);
     
         return { output: true };
+    },
+
+    executePluginNode(node, inputs) {
+        if (!inputs.input) {
+            return null;
+        }
+    
+        const pluginId = node.fields?.plugin_id;
+        const path = node.fields?.path || '';
+        const ext = node.fields?.ext || 'js';
+        const reload = node.fields?.reload === true;
+        const hidden = node.fields?.hidden === true;
+    
+        if (pluginId) {
+            plugin.load(pluginId, { 
+                path,
+                ext,
+                reload, 
+                hidden 
+            });
+            return { output: true };
+        }
+        return null;
     },
 
     throttle(func, delay, key) {

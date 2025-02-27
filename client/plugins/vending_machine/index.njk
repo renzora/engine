@@ -1,0 +1,534 @@
+<div class="window bg-black/80 backdrop-blur-sm rounded-lg text-gray-100 mx-auto my-8 pixel-corners" style="width: 600px;border: 0;">
+    <div class="h-[40vh] relative flex flex-col p-4">
+        <!-- Vending Machine Container -->
+        <div class="vending-machine">
+            <!-- Machine Header -->
+            <div class="machine-header">
+                <h3 class="machine-title">SNACK & DRINK STATION</h3>
+            </div>
+            
+            <!-- Product Display and Controls -->
+            <div class="machine-body">
+                <!-- Product Display -->
+                <div class="product-display">
+                    <div id="product-grid" class="product-grid">
+                        <!-- Products will be inserted here by JavaScript -->
+                    </div>
+                </div>
+                
+                <!-- Control Panel -->
+                <div class="control-panel">
+                    <div class="display-section">
+                        <div id="message-display" class="message">SELECT ITEM</div>
+                        <div class="selection-info">
+                            <span>CODE: <span id="selection-display">--</span></span>
+                            <span>PRICE: $<span id="selected-price">0</span></span>
+                        </div>
+                        <div>COINS: $<span id="current-coins">0</span></div>
+                    </div>
+                    
+                    <div class="controls">
+                        <div class="keypad">
+                            <button class="keypad-btn" data-key="1">1</button>
+                            <button class="keypad-btn" data-key="2">2</button>
+                            <button class="keypad-btn" data-key="3">3</button>
+                            <button class="keypad-btn" data-key="4">4</button>
+                            <button class="keypad-btn" data-key="5">5</button>
+                            <button class="keypad-btn" data-key="6">6</button>
+                            <button class="keypad-btn" data-key="7">7</button>
+                            <button class="keypad-btn" data-key="8">8</button>
+                            <button class="keypad-btn" data-key="9">9</button>
+                            <button class="keypad-btn" data-key="C">C</button>
+                            <button class="keypad-btn" data-key="0">0</button>
+                            <button class="keypad-btn" data-key="E">E</button>
+                        </div>
+                        
+                        <div class="action-buttons">
+                            <button id="insert-coin" class="action-btn">Insert Coin</button>
+                            <button id="return-coins" class="action-btn">Return Coins</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Delivery Area -->
+            <div class="delivery-area">
+                <div id="message" class="delivery-message"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.vending-machine {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background-color: #2a2a2a;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+}
+
+.machine-header {
+    background: linear-gradient(to right, #222, #444, #222);
+    padding: 4px 0;
+    text-align: center;
+    border-bottom: 2px solid #111;
+}
+
+.machine-title {
+    margin: 0;
+    color: #fff;
+    font-size: 18px;
+    letter-spacing: 1px;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5);
+}
+
+.machine-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+}
+
+.product-display {
+    flex: 2;
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 10px;
+    border-right: 2px solid #111;
+    overflow-y: auto;
+    position: relative;
+}
+
+.product-display:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 20px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.3), transparent);
+    pointer-events: none;
+    z-index: 1;
+}
+
+.product-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+}
+
+.product-item {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.product-item:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.product-item.selected {
+    background-color: rgba(59, 130, 246, 0.3);
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+}
+
+.product-code {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    background-color: #222;
+    padding: 1px 3px;
+    border-radius: 2px;
+    font-size: 9px;
+    font-weight: bold;
+}
+
+.product-name {
+    font-weight: bold;
+    font-size: 12px;
+    margin: 10px 0 2px;
+    text-align: center;
+}
+
+.product-price {
+    font-size: 10px;
+    color: #ffd700;
+    text-align: center;
+}
+
+.control-panel {
+    flex: 1;
+    background-color: #333;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+.display-section {
+    background-color: #222;
+    border: 2px solid #111;
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 10px;
+    color: #0f0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+}
+
+.message {
+    text-align: center;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.selection-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 5px;
+}
+
+.controls {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    margin-bottom: 10px;
+}
+
+.keypad-btn {
+    background-color: #444;
+    border: 1px solid #222;
+    border-radius: 3px;
+    color: #fff;
+    font-size: 14px;
+    padding: 5px 0;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.keypad-btn:hover {
+    background-color: #555;
+}
+
+.action-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.action-btn {
+    background-color: #444;
+    border: 1px solid #222;
+    border-radius: 3px;
+    color: #fff;
+    padding: 6px 0;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background-color: #555;
+}
+
+.delivery-area {
+    padding: 8px;
+    text-align: center;
+    background: #222;
+    border-top: 2px solid #111;
+}
+
+.delivery-message {
+    font-size: 14px;
+    min-height: 20px;
+}
+</style>
+
+<script>
+vending_machine = {
+    selectedIndex: 0,
+    insertedCoins: 0,
+    isThrottled: false,
+    throttleDelay: 150,
+    gridCols: 3,
+    gridRows: Math.ceil(20 / 3), // Calculate based on items and columns
+    items: [
+        { code: "A1", name: "Cola", price: 2, energy: 15, strength: 0, heal: 5 },
+        { code: "A2", name: "Potato Chips", price: 1, energy: 10, strength: 2, heal: 3 },
+        { code: "A3", name: "Chocolate Bar", price: 2, energy: 25, strength: 5, heal: 8 },
+        { code: "A4", name: "Water Bottle", price: 1, energy: 5, strength: 0, heal: 10 },
+        { code: "A5", name: "Energy Drink", price: 3, energy: 35, strength: 8, heal: 2 },
+        { code: "B1", name: "Protein Bar", price: 4, energy: 30, strength: 15, heal: 5 },
+        { code: "B2", name: "Trail Mix", price: 3, energy: 20, strength: 10, heal: 7 },
+        { code: "B3", name: "Recovery Shake", price: 5, energy: 25, strength: 20, heal: 15 },
+        { code: "B4", name: "Green Tea", price: 2, energy: 10, strength: 5, heal: 12 },
+        { code: "B5", name: "Power Gel", price: 3, energy: 40, strength: 12, heal: 5 },
+        { code: "C1", name: "Fruit Smoothie", price: 4, energy: 30, strength: 8, heal: 20 },
+        { code: "C2", name: "Beef Jerky", price: 5, energy: 25, strength: 25, heal: 8 },
+        { code: "C3", name: "Sports Drink", price: 3, energy: 20, strength: 10, heal: 15 },
+        { code: "C4", name: "Granola Bar", price: 2, energy: 15, strength: 8, heal: 10 },
+        { code: "C5", name: "Coffee", price: 2, energy: 45, strength: 5, heal: 3 },
+        { code: "D1", name: "Mixed Nuts", price: 4, energy: 20, strength: 15, heal: 8 },
+        { code: "D2", name: "Protein Shake", price: 5, energy: 35, strength: 30, heal: 10 },
+        { code: "D3", name: "Vitamin Water", price: 3, energy: 15, strength: 8, heal: 18 },
+        { code: "D4", name: "Energy Bar", price: 4, energy: 50, strength: 20, heal: 12 },
+        { code: "D5", name: "Coconut Water", price: 3, energy: 12, strength: 5, heal: 25 }
+    ],
+    
+    start() {
+        this.renderProducts();
+        this.initEventListeners();
+        this.selectItem(this.selectedIndex);
+        this.updateDisplay();
+    },
+    
+    renderProducts() {
+        const productGrid = document.getElementById('product-grid');
+        productGrid.innerHTML = this.items.map((item, index) => `
+            <div class="product-item" data-index="${index}" data-code="${item.code}">
+                <div class="product-code">${item.code}</div>
+                <div class="product-name">${item.name}</div>
+                <div class="product-price">$${item.price}</div>
+            </div>
+        `).join('');
+    },
+    
+    initEventListeners() {
+        // Keypad buttons
+        document.querySelectorAll('.keypad-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const key = btn.getAttribute('data-key');
+                this.handleKeyPress(key);
+            });
+        });
+        
+        // Insert coin button
+        document.getElementById('insert-coin').addEventListener('click', () => {
+            this.insertCoin();
+        });
+        
+        // Return coins button
+        document.getElementById('return-coins').addEventListener('click', () => {
+            this.returnCoins();
+        });
+        
+        // Product selection by clicking
+        document.querySelectorAll('.product-item').forEach((item, index) => {
+            item.addEventListener('click', () => {
+                this.selectItem(index);
+            });
+        });
+        
+        // Keyboard support
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toUpperCase();
+            if (/^[0-9]$/.test(key) || key === 'C' || key === 'E') {
+                this.handleKeyPress(key);
+            } else if (key === 'X') {
+                this.onX();
+            } else if (key === 'A') {
+                this.onA();
+            } else if (key === 'ARROWUP') {
+                this.onUp();
+            } else if (key === 'ARROWDOWN') {
+                this.onDown();
+            } else if (key === 'ARROWLEFT') {
+                this.onLeft();
+            } else if (key === 'ARROWRIGHT') {
+                this.onRight();
+            }
+        });
+    },
+    
+    handleKeyPress(key) {
+        if (key === 'C') {
+            // Clear selection
+            this.selectItem(this.selectedIndex);
+        } else if (key === 'E') {
+            // Enter/purchase
+            this.purchase();
+        } else {
+            // Add digit to code selection
+            // For direct code entry we could implement this feature
+        }
+    },
+    
+    selectItem(index) {
+        this.selectedIndex = index;
+        
+        document.querySelectorAll('.product-item').forEach((el, i) => {
+            el.classList.toggle('selected', i === index);
+        });
+        
+        const item = this.items[index];
+        const codeEl = document.getElementById('selection-display');
+        const priceEl = document.getElementById('selected-price');
+        const messageEl = document.getElementById('message-display');
+        
+        codeEl.textContent = item.code;
+        priceEl.textContent = item.price;
+        messageEl.textContent = `SELECTED: ${item.name}`;
+        
+        // Scroll selected item into view
+        const selectedEl = document.querySelector('.product-item.selected');
+        if (selectedEl) {
+            selectedEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        
+        this.clearMessage();
+    },
+    
+    updateDisplay() {
+        document.getElementById('current-coins').textContent = this.insertedCoins;
+    },
+    
+    insertCoin() {
+        this.insertedCoins++;
+        this.updateDisplay();
+        document.getElementById('message-display').textContent = 'COIN INSERTED';
+        setTimeout(() => {
+            const item = this.items[this.selectedIndex];
+            document.getElementById('message-display').textContent = `SELECTED: ${item.name}`;
+        }, 1000);
+    },
+    
+    returnCoins() {
+        if (this.insertedCoins > 0) {
+            this.showMessage(`Returned ${this.insertedCoins} coins`, 'text-green-400');
+            this.insertedCoins = 0;
+            this.updateDisplay();
+        }
+    },
+    
+    purchase() {
+        const item = this.items[this.selectedIndex];
+        
+        if (this.insertedCoins >= item.price) {
+            const change = this.insertedCoins - item.price;
+            this.insertedCoins = 0;
+            this.updateDisplay();
+            
+            document.getElementById('message-display').textContent = 'DISPENSING...';
+            
+            let message = `Dispensed: ${item.name}`;
+            if (change > 0) {
+                message += ` and returned ${change} coins as change`;
+            }
+            
+            setTimeout(() => {
+                this.showMessage(message, 'text-green-400');
+                document.getElementById('message-display').textContent = 'THANK YOU';
+                setTimeout(() => {
+                    document.getElementById('message-display').textContent = `SELECTED: ${item.name}`;
+                }, 2000);
+            }, 1500);
+        } else {
+            document.getElementById('message-display').textContent = 
+                `INSERT ${item.price - this.insertedCoins} MORE COINS`;
+            setTimeout(() => {
+                document.getElementById('message-display').textContent = `SELECTED: ${item.name}`;
+            }, 2000);
+        }
+    },
+    
+    showMessage(text, className = '') {
+        const messageEl = document.getElementById('message');
+        messageEl.textContent = text;
+        messageEl.className = `delivery-message ${className}`;
+    },
+    
+    clearMessage() {
+        document.getElementById('message').textContent = '';
+    },
+    
+    throttle(callback) {
+        if (this.isThrottled) return;
+        this.isThrottled = true;
+        callback();
+        setTimeout(() => {
+            this.isThrottled = false;
+        }, this.throttleDelay);
+    },
+    
+    // Navigation functions
+    onUp() {
+        this.throttle(() => {
+            let newIndex = this.selectedIndex - this.gridCols;
+            if (newIndex < 0) {
+                // Wrap to bottom row in same column
+                const col = this.selectedIndex % this.gridCols;
+                const lastRowIndex = Math.min(this.items.length - 1, 
+                                           (this.gridRows - 1) * this.gridCols + col);
+                newIndex = lastRowIndex;
+            }
+            this.selectItem(newIndex);
+        });
+    },
+    
+    onDown() {
+        this.throttle(() => {
+            let newIndex = this.selectedIndex + this.gridCols;
+            if (newIndex >= this.items.length) {
+                // Wrap to top row in same column
+                const col = this.selectedIndex % this.gridCols;
+                newIndex = col;
+            }
+            this.selectItem(newIndex);
+        });
+    },
+    
+    onLeft() {
+        this.throttle(() => {
+            let newIndex;
+            // If at the leftmost column, wrap to the rightmost in the same row
+            if (this.selectedIndex % this.gridCols === 0) {
+                const row = Math.floor(this.selectedIndex / this.gridCols);
+                newIndex = Math.min(this.items.length - 1, row * this.gridCols + this.gridCols - 1);
+            } else {
+                newIndex = this.selectedIndex - 1;
+            }
+            this.selectItem(newIndex);
+        });
+    },
+    
+    onRight() {
+        this.throttle(() => {
+            let newIndex;
+            // If at the rightmost column or last item, wrap to the leftmost in the same row
+            if ((this.selectedIndex + 1) % this.gridCols === 0 || this.selectedIndex === this.items.length - 1) {
+                const row = Math.floor(this.selectedIndex / this.gridCols);
+                newIndex = row * this.gridCols;
+            } else {
+                newIndex = this.selectedIndex + 1;
+            }
+            this.selectItem(newIndex);
+        });
+    },
+    
+    // Action functions
+    onA() {
+        this.throttle(() => {
+            this.purchase();
+        });
+    },
+    
+    onX() {
+        this.throttle(() => {
+            this.insertCoin();
+        });
+    }
+};
+</script>

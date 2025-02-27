@@ -1,0 +1,542 @@
+<div class="window bg-gradient-to-br from-[#3f7d9b] to-[#250049] shadow-xl rounded-xl" style="width: 950px; height: 60vh;">
+   <div class="backdrop-blur-sm cursor-move">
+       <h1 class="window_title px-4 pt-2 font-bold text-white text-center">
+           Online Market
+       </h1>
+   </div>
+   
+   <div class="h-[calc(100%-4rem)] overflow-hidden window_body" id="content-area">
+       <div class="flex h-full">
+           <aside class="w-72 flex flex-col">
+               <div class="p-2 space-y-3">
+                                   <div class="text-center gap-2 bg-yellow-400 p-2 rounded-lg shadow">
+                       <span class="text-lg font-bold text-yellow-900" id="coinBalance">
+                           0 coins
+                       </span>
+                   </div>
+                   <input type="text" 
+                          id="itemSearchFilter" 
+                          placeholder="Search items..." 
+                          class="w-full p-2 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-white/30 transition duration-200">
+               </div>
+               
+               <nav class="flex-1 overflow-y-auto p-4 space-y-1" id="categoryList">
+
+               </nav>
+           </aside>
+
+           <main class="flex-1 flex flex-col">
+               <div class="flex-1 overflow-y-auto p-4">
+                   <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3" id="itemsList">
+
+                   </div>
+               </div>
+           </main>
+       </div>
+   </div>
+</div>
+
+<style>
+::-webkit-scrollbar {
+   width: 6px;
+}
+
+::-webkit-scrollbar-track {
+   background: rgba(255, 255, 255, 0.1);
+}
+
+::-webkit-scrollbar-thumb {
+   background: rgba(255, 255, 255, 0.2);
+   border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+   background: rgba(255, 255, 255, 0.25);
+}
+</style>
+
+<script>
+const store = {
+    itemData: null,
+    
+async start() {
+    this.itemData = assets.use('objectData');
+    this.loadContent();
+    this.setupEventListeners();
+    
+    // Add this style to the document
+    const style = document.createElement('style');
+    style.textContent = `
+        .category-btn.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+        }
+    `;
+    document.head.appendChild(style);
+},
+
+    async loadContent() {
+        await this.loadCategories();
+        await this.loadItems();
+        await this.updateCoinBalance();
+    },
+
+displayItems(items) {
+    const itemsList = document.getElementById('itemsList');
+    itemsList.innerHTML = '';
+    
+    items.forEach(item => {
+        if (item.active) {
+            const div = document.createElement('div');
+            div.className = 'bg-white/10 rounded-lg border border-white/20 overflow-hidden hover:bg-white/15 transition duration-200 relative';
+            
+            const canvas = document.createElement('canvas');
+            const objectData = this.itemData[item.objectDataId][0];
+            this.renderItemPreview(canvas, objectData);
+            
+            const priceBadge = document.createElement('div');
+            priceBadge.className = 'absolute top-2 right-2 px-3 py-1.5 bg-yellow-400 rounded-full text-yellow-900 font-bold text-sm shadow-lg transform hover:scale-105 transition-transform duration-200 flex items-center gap-1';
+            priceBadge.innerHTML = `${item.price} coins`;
+            
+            const previewContainer = document.createElement('div');
+            previewContainer.className = 'h-40 bg-gradient-to-br from-blue-500/20 to-purple-500/20 p-4 flex items-center justify-center';
+            previewContainer.appendChild(canvas);
+
+            const contentContainer = document.createElement('div');
+            contentContainer.className = 'p-4 space-y-3';
+            contentContainer.innerHTML = `
+                <div class="flex items-center">
+                    <h3 class="font-bold text-white">${item.name}</h3>
+                </div>
+                <p class="text-white/70 text-sm">${item.description}</p>
+                <button onclick="store.buyItem('${item._id}')" 
+                        class="w-full py-2.5 bg-green-700 hover:bg-green-600 text-white rounded-lg font-bold transition duration-200 flex items-center justify-center gap-2">
+                        Buy
+                </button>
+            `;
+
+            div.appendChild(priceBadge);
+            div.appendChild(previewContainer);
+            div.appendChild(contentContainer);
+            itemsList.appendChild(div);
+        }
+    });
+},
+
+    setupEventListeners() {
+        document.getElementById('itemSearchFilter')?.addEventListener('input', () => {
+            this.filterItems();
+        });
+    },
+
+async loadCategories() {
+    try {
+        const response = await fetch('/api/market/categories');
+        const categories = await response.json();
+        
+        const categoryList = document.getElementById('categoryList');
+        const emojis = ['🎮', '⚔️', '🛡️', '🎭', '🎪', '🎨', '🎲', '🎯'];
+        
+        const defaultTabs = `
+            <button class="w-full text-left px-3 py-1.5 rounded-lg text-white/80 hover:bg-white/10 active:bg-white/20 transition-all text-base category-btn" data-category="coins">
+                💰 Buy Coins
+            </button>
+
+            <button class="w-full text-left px-3 py-1.5 rounded-lg text-white/80 hover:bg-white/10 active:bg-white/20 transition-all text-base category-btn" data-category="voucher">
+                🎫 Redeem Voucher
+            </button>
+
+            <button class="w-full text-left px-3 py-1.5 rounded-lg text-white/80 hover:bg-white/10 active:bg-white/20 transition-all text-base category-btn" data-category="packs">
+                📦 Packs
+            </button>
+
+            <button class="w-full text-left px-3 py-1.5 rounded-lg text-white/80 hover:bg-white/10 active:bg-white/20 transition-all text-base category-btn" data-category="popular">
+                ⭐ Popular
+            </button>
+
+            <button class="w-full text-left px-3 py-1.5 rounded-lg text-white hover:bg-white/10 active:bg-white/20 transition-all text-base mb-2 category-btn active" data-category="all">
+                🎯 All Items
+            </button>
+
+            <div class="border-b border-white/10 my-2"></div>
+        `;
+        
+        categoryList.innerHTML = defaultTabs;
+        
+        categories.forEach((category, index) => {
+            if (category.active) {
+                const button = document.createElement('button');
+                button.className = 'w-full text-left px-3 py-1.5 rounded-lg text-white/80 hover:bg-white/10 active:bg-white/20 transition-all text-base category-btn';
+                button.setAttribute('data-category', category._id);
+                button.textContent = `${emojis[index % emojis.length]} ${category.name}`;
+                categoryList.appendChild(button);
+            }
+        });
+
+        const categoryButtons = document.querySelectorAll('.category-btn');
+        categoryButtons.forEach(button => {
+            button.addEventListener('click', async () => {
+                categoryButtons.forEach(btn => btn.classList.remove('active', 'bg-white/10'));
+                button.classList.add('active', 'bg-white/10');
+                
+                const category = button.getAttribute('data-category');
+                await this.handleCategoryChange(category);
+            });
+        });
+
+    } catch (error) {
+        console.error('Error loading categories:', error);
+    }
+},
+
+async handleCategoryChange(category) {
+    const itemsList = document.getElementById('itemsList');
+    
+    switch(category) {
+        case 'coins':
+            itemsList.innerHTML = `
+                <div class="col-span-full p-6 text-center">
+                    <h2 class="text-2xl font-bold text-white mb-4">Buy Coins</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-white/10 rounded-lg p-4">
+                            <h3 class="text-xl font-bold text-white mb-2">1000 Coins</h3>
+                            <p class="text-yellow-400 text-2xl font-bold mb-4">$9.99</p>
+                            <button class="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-white font-bold">Purchase</button>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-4">
+                            <h3 class="text-xl font-bold text-white mb-2">2500 Coins</h3>
+                            <p class="text-yellow-400 text-2xl font-bold mb-4">$19.99</p>
+                            <button class="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-white font-bold">Purchase</button>
+                        </div>
+                        <div class="bg-white/10 rounded-lg p-4">
+                            <h3 class="text-xl font-bold text-white mb-2">5000 Coins</h3>
+                            <p class="text-yellow-400 text-2xl font-bold mb-4">$39.99</p>
+                            <button class="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-white font-bold">Purchase</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            break;
+            
+        case 'voucher':
+            itemsList.innerHTML = `
+                <div class="col-span-full p-6 text-center">
+                    <h2 class="text-2xl font-bold text-white mb-4">Redeem Voucher</h2>
+                    <div class="max-w-md mx-auto">
+                        <input type="text" 
+                               id="voucherCode"
+                               placeholder="Enter your voucher code" 
+                               class="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 mb-4">
+                        <button onclick="store.redeemVoucher()" class="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg text-white font-bold">
+                            Redeem Code
+                        </button>
+                    </div>
+                </div>
+            `;
+            break;
+            
+ case 'packs':
+    itemsList.innerHTML = `
+        <div class="col-span-full p-6 text-center">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="bg-gradient-to-br from-green-900/20 to-green-600/10 rounded-lg p-4 relative overflow-hidden border border-green-500/20">
+                    <h3 class="text-xl font-bold text-white mb-2">Basic Pack</h3>
+                    <p class="text-white/70 mb-2">20 random items<br>5% chance of rare items</p>
+                    <div class="my-4">
+                        <span class="text-yellow-400 text-2xl font-bold">300 Coins</span>
+                    </div>
+                    <button onclick="store.openPack('basic')" class="w-full py-2 bg-green-600 hover:bg-green-500 rounded-lg text-white font-bold">Open Pack</button>
+                </div>
+
+                <div class="bg-gradient-to-br from-blue-900/20 to-blue-600/10 rounded-lg p-4 relative overflow-hidden border border-blue-500/20">
+                    <h3 class="text-xl font-bold text-white mb-2">Elite Pack</h3>
+                    <p class="text-white/70 mb-2">20 random items<br>15% chance of rare items<br>3% chance of epic items</p>
+                    <div class="my-4">
+                        <span class="text-yellow-400 text-2xl font-bold">800 Coins</span>
+                    </div>
+                    <button onclick="store.openPack('elite')" class="w-full py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white font-bold">Open Pack</button>
+                </div>
+
+                <div class="bg-gradient-to-br from-yellow-900/20 to-yellow-600/10 rounded-lg p-4 relative overflow-hidden border border-yellow-500/20">
+                    <h3 class="text-xl font-bold text-white mb-2">Legendary Pack</h3>
+                    <p class="text-white/70 mb-2">20 random items<br>Guaranteed 1 rare item<br>30% chance of epic items<br>2% chance of legendary items</p>
+                    <div class="my-4">
+                        <span class="text-yellow-400 text-2xl font-bold">1500 Coins</span>
+                    </div>
+                    <button onclick="store.openPack('legendary')" class="w-full py-2 bg-yellow-600 hover:bg-yellow-500 rounded-lg text-white font-bold">Open Pack</button>
+                </div>
+            </div>
+        </div>
+    `;
+    break;
+            
+        case 'popular':
+            await this.filterByCategory('popular');
+            break;
+            
+        case 'all':
+            await this.loadItems();
+            break;
+            
+        default:
+            await this.filterByCategory(category);
+    }
+},
+
+    async loadItems() {
+        try {
+            const response = await fetch('/api/market/items');
+            const items = await response.json();
+            this.displayItems(items);
+        } catch (error) {
+            console.error('Error loading items:', error);
+        }
+    },
+
+    renderItemPreview(canvas, itemData) {
+        const ctx = canvas.getContext('2d');
+        const tileSize = 16;
+        const tilesPerRow = 150;
+        
+        const maxCol = itemData.a;
+        const maxRow = itemData.b;
+        canvas.width = (maxCol + 1) * tileSize;
+        canvas.height = (maxRow + 1) * tileSize;
+        
+        ctx.imageSmoothingEnabled = false;
+        
+        let framesToRender = [];
+        if (itemData.d && Array.isArray(itemData.i[0])) {
+            framesToRender = itemData.i[0];
+        } else if (Array.isArray(itemData.i[0])) {
+            framesToRender = item.i.flat();
+        } else {
+            framesToRender = itemData.i.map(frame => {
+                if (typeof frame === 'string' && frame.includes('-')) {
+                    return game.parseRange(frame);
+                }
+                return [frame];
+            }).flat();
+        }
+
+        const img = assets.use(itemData.t);
+        if (!img) return;
+
+        framesToRender.forEach((frame, index) => {
+            const srcX = (frame % tilesPerRow) * tileSize;
+            const srcY = Math.floor(frame / tilesPerRow) * tileSize;
+            const destX = (index % (maxCol + 1)) * tileSize;
+            const destY = Math.floor(index / (maxCol + 1)) * tileSize;
+            ctx.drawImage(img, srcX, srcY, tileSize, tileSize, destX, destY, tileSize, tileSize);
+        });
+
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        canvas.style.objectFit = 'contain';
+    },
+
+    async buyItem(itemId) {
+        try {
+            const response = await fetch(`/api/market/items/${itemId}/buy`, {
+                method: 'POST'
+            });
+
+            if (response.ok) {
+                await this.updateCoinBalance();
+                const notification = document.createElement('div');
+                notification.className = 'fixed bottom-4 right-4 bg-green-400 text-white px-4 py-3 rounded-lg shadow-lg transform transition-all';
+                notification.innerHTML = '🎉 Item purchased successfully!';
+                document.body.appendChild(notification);
+                setTimeout(() => notification.remove(), 3000);
+            } else {
+                throw new Error('Failed to purchase item');
+            }
+        } catch (error) {
+            console.error('Error purchasing item:', error);
+            alert('❌ Failed to purchase item. Please try again.');
+        }
+    },
+
+    async updateCoinBalance() {
+        try {
+            const response = await fetch('/api/market/balance');
+            const data = await response.json();
+            document.getElementById('coinBalance').textContent = `${data.coins} coins`;
+        } catch (error) {
+            console.error('Error updating coin balance:', error);
+        }
+    },
+
+async openPack(packType) {
+    try {
+        const response = await fetch('/api/market/packs/open', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ packType })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.error || 'Failed to open pack');
+            return;
+        }
+
+        const { items, newBalance } = await response.json();
+        
+        // Update coin balance
+        const coinBalance = document.getElementById('coinBalance');
+        if (coinBalance) {
+            coinBalance.textContent = `${newBalance} coins`;
+        }
+        
+        const rarityOrder = {
+            'Legendary': 0,
+            'Epic': 1,
+            'Rare': 2,
+            'Uncommon': 3,
+            'Common': 4
+        };
+
+        const sortedItems = items.sort((a, b) => 
+            rarityOrder[a.rarity] - rarityOrder[b.rarity]
+        );
+
+        const rarityBackgrounds = {
+            Common: 'bg-gray-900/40 border-gray-500/20',
+            Uncommon: 'bg-green-900/40 border-green-500/20',
+            Rare: 'bg-blue-900/40 border-blue-500/20',
+            Epic: 'bg-purple-900/40 border-purple-500/20',
+            Legendary: 'bg-yellow-900/40 border-yellow-500/20'
+        };
+
+        const rarityColors = {
+            Common: 'text-gray-100 font-medium',
+            Uncommon: 'text-green-400 font-bold',
+            Rare: 'text-blue-400 font-bold',
+            Epic: 'text-purple-400 font-bold',
+            Legendary: 'text-yellow-400 font-bold'
+        };
+
+        const itemsList = document.getElementById('itemsList');
+        itemsList.innerHTML = `
+            <div class="col-span-full p-2 text-center">
+                <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4" id="packResults">
+                    ${sortedItems.map((item, index) => `
+                        <div class="${rarityBackgrounds[item.rarity]} rounded-lg p-4 opacity-0 transform scale-0 transition-all duration-500 border shadow-sm" 
+                             style="animation: revealItem 0.5s ease-out ${index * 0.2}s forwards">
+                            <div class="h-40 bg-black/20 backdrop-blur-sm p-4 flex items-center justify-center mb-4 rounded-lg">
+                                <canvas id="itemPreview_${index}" class="w-full h-full object-contain"></canvas>
+                            </div>
+                            <h3 class="text-xl font-bold text-white">${item.name}</h3>
+                            <div class="text-lg ${rarityColors[item.rarity]}">${item.rarity}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                <button onclick="store.handleCategoryChange('packs')" 
+                        class="mt-8 px-6 py-3 bg-white/10 hover:bg-white/20 rounded-lg text-white font-bold transition-all">
+                    Open Another Pack
+                </button>
+            </div>
+        `;
+
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes revealItem {
+                0% {
+                    opacity: 0;
+                    transform: scale(0) rotate(-10deg);
+                }
+                70% {
+                    transform: scale(1.1) rotate(5deg);
+                }
+                100% {
+                    opacity: 1;
+                    transform: scale(1) rotate(0);
+                }
+            }
+        `;
+        document.head.appendChild(style);
+
+        sortedItems.forEach((item, index) => {
+            const canvas = document.getElementById(`itemPreview_${index}`);
+            if (canvas && this.itemData[item.objectDataId]) {
+                this.renderItemPreview(canvas, this.itemData[item.objectDataId][0]);
+            }
+        });
+
+    } catch (error) {
+        console.error('Error opening pack:', error);
+        alert('Failed to open pack. Please try again.');
+    }
+},
+
+async redeemVoucher() {
+    const codeInput = document.getElementById('voucherCode');
+    const code = codeInput.value.trim();
+    
+    if (!code) {
+        alert('Please enter a voucher code');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/market/vouchers/redeem', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ code })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            await this.updateCoinBalance();
+            const notification = document.createElement('div');
+            notification.className = 'fixed bottom-4 right-4 bg-green-400 text-white px-4 py-3 rounded-lg shadow-lg transform transition-all';
+            notification.innerHTML = `🎉 Successfully redeemed ${data.coinsAdded} coins!`;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+            codeInput.value = '';
+        } else {
+            throw new Error(data.error || 'Failed to redeem voucher');
+        }
+    } catch (error) {
+        console.error('Error redeeming voucher:', error);
+        alert(`❌ ${error.message || 'Failed to redeem voucher. Please try again.'}`);
+    }
+},
+
+    async filterByCategory(categoryId) {
+        try {
+            const response = await fetch(`/api/market/items${categoryId ? `?category=${categoryId}` : ''}`);
+            const items = await response.json();
+            this.displayItems(items);
+        } catch (error) {
+            console.error('Error filtering items:', error);
+        }
+    },
+
+    filterItems() {
+        const searchTerm = document.getElementById('itemSearchFilter').value.toLowerCase();
+        const items = document.querySelectorAll('#itemsList > div');
+        
+        items.forEach(item => {
+            const name = item.querySelector('h3').textContent.toLowerCase();
+            if (name.includes(searchTerm)) {
+                item.style.display = '';
+            } else {
+                item.style.display = 'none';
+            }
+        });
+    },
+
+    unmount() {
+        this.itemData = null;
+    }
+};
+
+store.start();
+</script>

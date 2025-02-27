@@ -1,3 +1,4 @@
+{% if perm('can_view_editor') %}
 <div id="layersPanel" class="fixed top-0 right-0 w-72 bg-gray-800 text-white rounded shadow-lg h-full flex flex-col transition-transform duration-300">
   <div id="slideTab" class="absolute -left-4 top-2 w-4 h-6 bg-gray-700 text-white flex items-center justify-center cursor-pointer rounded-l shadow-lg z-20">
     <svg id="slideTabIcon" xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2285,3 +2286,4 @@ toggleObjectPanel() {
 }
 };
 </script>
+{% endif %}

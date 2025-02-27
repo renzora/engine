@@ -207,5 +207,31 @@
             ]
         }
     ]
+},
+
+"plugin": {
+    "title": "Load Plugin",
+    "inputs": ["input"],
+    "outputs": ["output"],
+    "bg": "#4a4a4a",
+    "hasOutput": true,
+    "fields": [
+        {"name": "input", "label": "input"},
+        {"type": "text", "name": "plugin_id", "label": "Plugin ID:", "placeholder": "Plugin ID", "width": "24"},
+        {"type": "text", "name": "path", "label": "Path:", "placeholder": "Optional path", "width": "24"},
+        {
+            "type": "select",
+            "name": "ext",
+            "label": "Extension:",
+            "width": "24",
+            "options": [
+                {"value": "js", "label": "JavaScript (js)"},
+                {"value": "html", "label": "HTML"},
+                {"value": "njk", "label": "Nunjucks (njk)"}
+            ]
+        },
+        {"type": "checkbox", "name": "reload", "label": "Force Reload"},
+        {"type": "checkbox", "name": "hidden", "label": "Load Hidden"}
+    ]
 }
 }
