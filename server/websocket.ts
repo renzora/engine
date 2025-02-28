@@ -1,6 +1,3 @@
-// websocket.ts
-import { handleChatMessage } from './live/chat';
-
 interface WSClient {
   ws: WebSocket;
   state?: Record<string, any>;
@@ -12,24 +9,19 @@ export function initializeWebSocket() {
   const wss = Bun.serve({
     port: 3001,
     fetch(req, server) {
-      console.log('WS Connection attempt:', req.url);
-      
-      try {
-        if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
-          const success = server.upgrade(req);
-          if (success) {
-            console.log('WebSocket upgrade successful');
-          } else {
-            console.log('WebSocket upgrade failed');
-          }
-          return success;
-        }
-      } catch (err) {
-        console.error('Error during WebSocket upgrade:', err);
+      if (
+        req.headers.get('upgrade')?.toLowerCase() === 'websocket' &&
+        new URL(req.url).pathname === '/ws'
+      ) {
+        return server.upgrade({
+          data: {
+          },
+        });
       }
-      
+
       return new Response('Not found', { status: 404 });
     },
+
     websocket: {
       open(ws) {
         console.log('WebSocket client connected');
@@ -49,10 +41,12 @@ export function initializeWebSocket() {
 
                 for (const [_, client] of wsClients) {
                   if (client.ws.readyState === ws.OPEN) {
-                    client.ws.send(JSON.stringify({
-                      command: 'playerStateUpdate',
-                      data: data.data,
-                    }));
+                    client.ws.send(
+                      JSON.stringify({
+                        command: 'playerStateUpdate',
+                        data: data.data,
+                      })
+                    );
                   }
                 }
               }
@@ -61,7 +55,9 @@ export function initializeWebSocket() {
             case 'reloadData':
               for (const [_, client] of wsClients) {
                 if (client.ws.readyState === ws.OPEN) {
-                  client.ws.send(JSON.stringify({ command: 'reloadData' }));
+                  client.ws.send(
+                    JSON.stringify({ command: 'reloadData' })
+                  );
                 }
               }
               break;
@@ -72,17 +68,28 @@ export function initializeWebSocket() {
 
                 for (const [_, client] of wsClients) {
                   if (client.ws.readyState === ws.OPEN) {
-                    client.ws.send(JSON.stringify({
-                      command: 'playerDisconnected',
-                      data: { id: data.data.id },
-                    }));
+                    client.ws.send(
+                      JSON.stringify({
+                        command: 'playerDisconnected',
+                        data: { id: data.data.id },
+                      })
+                    );
                   }
                 }
               }
               break;
 
             case 'chatMessage':
-              handleChatMessage(data, wsClients, ws);
+              for (const [_, client] of wsClients) {
+                if (client.ws.readyState === ws.OPEN) {
+                  client.ws.send(
+                    JSON.stringify({
+                      command: 'chatMessage',
+                      data: data.data,
+                    })
+                  );
+                }
+              }
               break;
 
             default:
@@ -102,10 +109,12 @@ export function initializeWebSocket() {
 
             for (const [_, otherClient] of wsClients) {
               if (otherClient.ws.readyState === ws.OPEN) {
-                otherClient.ws.send(JSON.stringify({
-                  command: 'playerDisconnected',
-                  data: { id },
-                }));
+                otherClient.ws.send(
+                  JSON.stringify({
+                    command: 'playerDisconnected',
+                    data: { id },
+                  })
+                );
               }
             }
             break;
@@ -115,6 +124,5 @@ export function initializeWebSocket() {
     },
   });
 
-  console.log(`WebSocket server running on port ${wss.port}`);
   return wss;
 }

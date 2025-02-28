@@ -15,11 +15,6 @@ import { serversRoutes } from './routes/servers.ts';
 import { tilesetManagerRoutes } from './routes/tileset_manager.ts';
 import { pluginRoutes } from './routes/plugins.ts';
 import { editorRoutes } from './routes/editor.ts';
-import { terminalRoutes } from './routes/terminal.ts';
-import { permissionRoutes } from './routes/permissions.ts';
-import { staffRoutes } from './routes/staff.ts';
-import { marketRoutes } from './routes/market.ts';
-import { accessRoutes } from './routes/access.ts';
 import { redis } from './redis.js';
 
 const fastify = Fastify({ logger: false });
@@ -67,11 +62,6 @@ fastify.register(serversRoutes, { prefix: '/api/servers' });
 fastify.register(tilesetManagerRoutes, { prefix: '/api/tileset_manager' });
 fastify.register(pluginRoutes, { prefix: '/api/plugins' });
 fastify.register(editorRoutes, { prefix: '/api/editor' });
-fastify.register(terminalRoutes, { prefix: '/api/terminal' });
-fastify.register(permissionRoutes, { prefix: '/api/permissions' });
-fastify.register(staffRoutes, { prefix: '/api/staff' });
-fastify.register(marketRoutes, { prefix: '/api/market' });
-fastify.register(accessRoutes, { prefix: '/api/access' });
 
 async function startServer() {
   try {

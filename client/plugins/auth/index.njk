@@ -153,7 +153,6 @@ login() {
     .then(response => {
         if (response.message === 'login_complete') {
             plugin.notif.show("auth_login_success", "Hey " + username + "! You are now signed in!");
-            plugin.load('access', { ext: 'njk' });
             plugin.close('auth');
         } else {
             switch(response.message) {
@@ -193,7 +192,6 @@ login() {
     .then(response => {
         if (response.message === 'registration_complete') {
             plugin.notif.show("auth_register_success", "Hey " + username + "! You are now registered!");
-            plugin.load('access', { ext: 'njk' });
             plugin.close('auth');
         } else {
             switch(response.message) {
@@ -238,9 +236,5 @@ login() {
     }
 
 };
-</script>
-{% else %}
-<script>
-plugin.load('access', { ext: 'njk' });
 </script>
 {% endif %}
