@@ -26,16 +26,12 @@ function TopBarMenu() {
   const { setTransformMode, updateViewportSettings } = actions.editor;
   const currentProject = projectManager.getCurrentProject();
 
-  // Window controls for Electron
   useEffect(() => {
     const electronCheck = window.electronAPI?.isElectron || false;
     setIsElectron(electronCheck);
 
     if (electronCheck && window.windowAPI) {
-      // Check initial maximized state
       window.windowAPI.isMaximized().then(setIsMaximized);
-
-      // Poll for maximized state changes
       const interval = setInterval(() => {
         window.windowAPI.isMaximized().then(setIsMaximized);
       }, 500);
@@ -80,7 +76,6 @@ function TopBarMenu() {
     }
   };
 
-  // Project sync status logic (moved from ProjectIndicator)
   useEffect(() => {
     const storedProject = projectManager.getCurrentProjectFromStorage()
     if (storedProject?.lastAccessed) {
@@ -126,7 +121,6 @@ function TopBarMenu() {
     }
   }
 
-  // Tool definitions from the old vertical toolbar
   const tools = [
     { id: 'select', icon: Icons.MousePointer || Icons.Select, title: 'Select' },
     { id: 'move', icon: Icons.Move, title: 'Move' },
@@ -140,7 +134,6 @@ function TopBarMenu() {
     { id: 'redo', icon: Icons.Redo, title: 'Redo' },
   ];
 
-  // Get effective selected tool (matches the old logic)
   const getEffectiveSelectedTool = () => {
     if (['select', 'move', 'rotate', 'scale'].includes(transformMode)) {
       return transformMode;
@@ -150,7 +143,6 @@ function TopBarMenu() {
 
   const handleToolSelect = (toolId) => {
     if (toolId === 'undo' || toolId === 'redo') {
-      // Flash effect for action buttons
       setFlashingTool(toolId);
       setTimeout(() => setFlashingTool(null), 200);
       console.log(`${toolId} action triggered`);
@@ -256,13 +248,10 @@ function TopBarMenu() {
     } else if (['new', 'open', 'export'].includes(item.id)) {
       setShowProjectManager(true);
     } else if (item.id === 'subdivision') {
-      // Handle subdivision surface
       actions.editor.addConsoleMessage('Subdivision Surface applied to selected object', 'success');
     } else if (item.id === 'mirror') {
-      // Handle mirror modifier
       actions.editor.addConsoleMessage('Mirror Modifier applied to selected object', 'success');
     } else if (item.id === 'settings') {
-      // Handle settings
       actions.editor.addConsoleMessage('Settings functionality removed', 'info');
     } else {
       console.log('Menu item clicked:', item.id);
@@ -273,7 +262,6 @@ function TopBarMenu() {
 
   return (
     <>
-      {/* Top Bar Menu */}
       <div 
         className="relative w-full h-8 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 flex items-center px-2"
         style={{ 
@@ -287,7 +275,6 @@ function TopBarMenu() {
                 onClick={(e) => handleMenuClick(menuName, e)}
                 onMouseEnter={(e) => {
                   console.log('Hovering over menu:', menuName, 'Current active menu:', activeMenu);
-                  // If any menu is open, switch to this menu on hover
                   if (activeMenu) {
                     console.log('Switching from', activeMenu, 'to', menuName);
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -310,10 +297,8 @@ function TopBarMenu() {
           ))}
         </div>
         
-        {/* Right side info */}
         <div className="flex-1" />
         <div className="flex items-center gap-3 text-xs text-gray-500">
-          {/* Project sync status - Always show to prevent hydration mismatch */}
           <div className="flex items-center gap-2">
             <span className="text-gray-400">
               {currentProject?.name || 'Renzora Engine v1.0.0'}
@@ -334,7 +319,6 @@ function TopBarMenu() {
             )}
           </div>
           
-          {/* Version and Renderer dropdown */}
           {currentProject?.name && (
             <div className="flex items-center gap-2">
               <span className="text-gray-600">•</span>
@@ -361,7 +345,7 @@ function TopBarMenu() {
                       setRendererDropdownPosition(null);
                     } else {
                       const rect = e.currentTarget.getBoundingClientRect();
-                      const dropdownWidth = 128; // w-32 = 128px
+                      const dropdownWidth = 128;
                       setRendererDropdownPosition({
                         left: rect.right - dropdownWidth,
                         top: rect.bottom + 4
@@ -387,7 +371,6 @@ function TopBarMenu() {
           )}
         </div>
 
-        {/* Window Controls for Electron */}
         {isElectron && (
           <div className="flex items-center ml-2" style={{ WebkitAppRegion: 'no-drag' }}>
             <button
@@ -427,14 +410,12 @@ function TopBarMenu() {
         )}
       </div>
       
-      {/* Fixed Position Dropdown - Outside container hierarchy */}
       {activeMenu && menuPosition && (
         <>
-          {/* Backdrop - exclude top menu bar area */}
           <div 
             className="fixed z-[100]"
             style={{
-              top: '32px', // Start below the menu bar (h-8 = 32px)
+              top: '32px',
               left: 0,
               right: 0,
               bottom: 0,
@@ -446,7 +427,6 @@ function TopBarMenu() {
             }}
           />
           
-          {/* Menu Panel */}
           <div 
             className="fixed w-56 bg-gradient-to-br from-gray-900/98 to-gray-950/98 backdrop-blur-sm rounded-lg shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] overflow-hidden z-[110] border border-gray-700/50"
             style={{
@@ -486,10 +466,8 @@ function TopBarMenu() {
         </>
       )}
       
-      {/* Renderer Dropdown - Fixed positioned */}
       {showRendererDropdown && rendererDropdownPosition && (
         <>
-          {/* Backdrop */}
           <div 
             className="fixed inset-0 z-[200]" 
             onClick={() => {
@@ -497,7 +475,6 @@ function TopBarMenu() {
               setRendererDropdownPosition(null);
             }}
           />
-          {/* Dropdown panel */}
           <div 
             className="fixed w-32 bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-600/50 z-[210]"
             style={{
@@ -527,7 +504,6 @@ function TopBarMenu() {
         </>
       )}
 
-      {/* Project Manager Modal */}
       {showProjectManager && (
         <ProjectManager
           onProjectLoad={(name, path) => {

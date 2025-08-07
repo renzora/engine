@@ -8,8 +8,6 @@ export default function CameraHelpers() {
   const cameraRef = useRef(null);
   const { camera, viewport, settings } = useSnapshot(globalStore.editor);
   const { setCameraSpeed, setCameraSensitivity, setRenderMode } = actions.editor;
-  
-  // Camera settings
   const cameraSpeed = camera.speed || 5;
   const mouseSensitivity = camera.mouseSensitivity || 0.002;
   const renderMode = viewport.renderMode || 'solid';
@@ -28,7 +26,6 @@ export default function CameraHelpers() {
     { value: 20, label: 'Very Fast' }
   ];
 
-  // Handle click outside to close camera panel
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (cameraRef.current && !cameraRef.current.contains(event.target)) {
@@ -47,7 +44,6 @@ export default function CameraHelpers() {
 
   return (
     <div className="relative group" ref={cameraRef}>
-      {/* Camera Settings Button */}
       <button
         className={`pl-2 pr-1 py-1 text-xs rounded transition-colors cursor-pointer ${
           isExpanded
@@ -64,17 +60,14 @@ export default function CameraHelpers() {
           </svg>
         </div>
         
-        {/* Tooltip */}
         <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
           Camera Settings
           <div className="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-gray-900/95" />
         </div>
       </button>
       
-      {/* Camera Settings Panel */}
       {isExpanded && (
         <div className="absolute top-full right-0 mt-2 w-64 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg shadow-xl space-y-4 text-white text-xs pointer-events-auto z-50 p-4">
-          {/* Camera Speed */}
           <div>
             <label className="block font-medium text-gray-300 mb-2">
               Camera Speed: {cameraSpeed}
@@ -105,7 +98,6 @@ export default function CameraHelpers() {
             />
           </div>
           
-          {/* Mouse Sensitivity */}
           <div>
             <label className="block font-medium text-gray-300 mb-2">
               Mouse Sensitivity: {(mouseSensitivity * 1000).toFixed(1)}
@@ -121,7 +113,6 @@ export default function CameraHelpers() {
             />
           </div>
           
-          {/* Rendering Mode */}
           <div>
             <label className="block font-medium text-gray-300 mb-2">
               Render Mode

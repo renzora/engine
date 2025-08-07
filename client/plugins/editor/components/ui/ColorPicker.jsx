@@ -16,7 +16,6 @@ const CustomColorPicker = ({
   const isDraggingRef = useRef({ satLight: false, hue: false });
   const isUserInteractingRef = useRef(false);
 
-  // Convert hex to HSL
   const hexToHsl = useCallback((hex) => {
     const r = parseInt(hex.slice(1, 3), 16) / 255;
     const g = parseInt(hex.slice(3, 5), 16) / 255;
@@ -27,7 +26,7 @@ const CustomColorPicker = ({
     let h, s, l = (max + min) / 2;
 
     if (max === min) {
-      h = s = 0; // achromatic
+      h = s = 0;
     } else {
       const d = max - min;
       s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
@@ -42,7 +41,6 @@ const CustomColorPicker = ({
     return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
   }, []);
 
-  // Convert HSL to hex
   const hslToHex = useCallback((h, s, l) => {
     h /= 360;
     s /= 100;
@@ -59,7 +57,7 @@ const CustomColorPicker = ({
 
     let r, g, b;
     if (s === 0) {
-      r = g = b = l; // achromatic
+      r = g = b = l;
     } else {
       const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
       const p = 2 * l - q;
@@ -76,7 +74,6 @@ const CustomColorPicker = ({
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }, []);
 
-  // Initialize HSL from color prop and update when color prop changes (only when not interacting)
   useEffect(() => {
     if (color && color !== hex && !isUserInteractingRef.current) {
       const [h, s, l] = hexToHsl(color);
@@ -86,9 +83,8 @@ const CustomColorPicker = ({
       setHex(color);
       console.log('🎨 ColorPicker: Updated from external color:', color, 'HSL:', h, s, l);
     }
-  }, [color, hexToHsl]); // Removed 'hex' from dependencies to avoid conflicts
+  }, [color, hexToHsl]);
 
-  // Update hex when HSL changes (only when user interacts, not from external changes)
   useEffect(() => {
     const newHex = hslToHex(hue, saturation, lightness);
     if (newHex !== hex && newHex !== color) {
@@ -110,7 +106,6 @@ const CustomColorPicker = ({
     setSaturation(Math.round(x * 100));
     setLightness(Math.round((1 - y) * 100));
     
-    // Define temporary handlers for this drag session
     const tempHandleMouseMove = (e) => {
       if (isDraggingRef.current.satLight) {
         const rect = satLightRef.current.getBoundingClientRect();
@@ -130,18 +125,14 @@ const CustomColorPicker = ({
     const tempHandleMouseUp = () => {
       isDraggingRef.current.satLight = false;
       isDraggingRef.current.hue = false;
-      
-      // Remove listeners immediately
       document.removeEventListener('mousemove', tempHandleMouseMove, { capture: true });
       document.removeEventListener('mouseup', tempHandleMouseUp, { capture: true });
       
-      // Set a small delay before allowing external updates again
       setTimeout(() => {
         isUserInteractingRef.current = false;
       }, 100);
     };
     
-    // Add listeners dynamically
     document.addEventListener('mousemove', tempHandleMouseMove, { capture: true });
     document.addEventListener('mouseup', tempHandleMouseUp, { capture: true });
   }, []);
@@ -156,7 +147,6 @@ const CustomColorPicker = ({
     const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
     setHue(Math.round(y * 360));
     
-    // Define temporary handlers for this drag session
     const tempHandleMouseMove = (e) => {
       if (isDraggingRef.current.satLight) {
         const rect = satLightRef.current.getBoundingClientRect();
@@ -176,34 +166,27 @@ const CustomColorPicker = ({
     const tempHandleMouseUp = () => {
       isDraggingRef.current.satLight = false;
       isDraggingRef.current.hue = false;
-      
-      // Remove listeners immediately
       document.removeEventListener('mousemove', tempHandleMouseMove, { capture: true });
       document.removeEventListener('mouseup', tempHandleMouseUp, { capture: true });
       
-      // Set a small delay before allowing external updates again
       setTimeout(() => {
         isUserInteractingRef.current = false;
       }, 100);
     };
     
-    // Add listeners dynamically
     document.addEventListener('mousemove', tempHandleMouseMove, { capture: true });
     document.addEventListener('mouseup', tempHandleMouseUp, { capture: true });
   }, []);
 
-  // Cleanup on unmount - ensure no lingering states
   useEffect(() => {
     return () => {
       console.log('🧹 ColorPicker unmounting, ensuring complete cleanup');
-      // Ensure all drag states are reset on cleanup
       isDraggingRef.current.satLight = false;
       isDraggingRef.current.hue = false;
       isUserInteractingRef.current = false;
     };
   }, []);
 
-  // Close on escape key
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
@@ -226,7 +209,6 @@ const CustomColorPicker = ({
         setHue(h);
         setSaturation(s);
         setLightness(l);
-        // Allow external updates after a delay
         setTimeout(() => {
           isUserInteractingRef.current = false;
         }, 100);
@@ -243,7 +225,6 @@ const CustomColorPicker = ({
         width: '280px'
       }}
     >
-      {/* Header */}
       <div className="flex justify-between items-center mb-3">
         <h3 className="text-sm font-medium text-gray-200">Color Picker</h3>
         <button
@@ -258,7 +239,6 @@ const CustomColorPicker = ({
       </div>
 
       <div className="flex gap-3">
-        {/* Saturation/Lightness Area */}
         <div className="relative w-48 h-48 rounded cursor-crosshair">
           <div
             ref={satLightRef}
@@ -274,7 +254,6 @@ const CustomColorPicker = ({
                 background: 'linear-gradient(to bottom, transparent, #000000)',
               }}
             >
-              {/* Crosshair indicator */}
               <div
                 className="absolute w-3 h-3 border-2 border-white rounded-full transform -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                 style={{
@@ -287,7 +266,6 @@ const CustomColorPicker = ({
           </div>
         </div>
 
-        {/* Hue Slider */}
         <div className="relative w-6 h-48 rounded cursor-pointer">
           <div
             ref={hueRef}
@@ -297,7 +275,6 @@ const CustomColorPicker = ({
             }}
             onMouseDown={handleHueMouseDown}
           >
-            {/* Hue indicator */}
             <div
               className="absolute w-full h-1 border border-white transform -translate-y-1/2 pointer-events-none"
               style={{
@@ -310,7 +287,6 @@ const CustomColorPicker = ({
         </div>
       </div>
 
-      {/* Color Preview and Hex Input */}
       <div className="flex items-center gap-3 mt-3">
         <div
           className="w-8 h-8 rounded border border-gray-600"
@@ -326,7 +302,6 @@ const CustomColorPicker = ({
         />
       </div>
 
-      {/* HSL Values (for reference) */}
       <div className="text-xs text-gray-400 mt-2">
         HSL({hue}, {saturation}%, {lightness}%)
       </div>

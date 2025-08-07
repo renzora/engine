@@ -5,11 +5,9 @@ export default function DevelopmentDisclaimer({ onDismiss }) {
   const [isClosing, setIsClosing] = useState(false)
 
   useEffect(() => {
-    // Check if user has already dismissed the disclaimer
     const hasBeenDismissed = localStorage.getItem('dev-disclaimer-dismissed')
     
     if (!hasBeenDismissed) {
-      // Show disclaimer after a brief delay to allow UI to load
       const timer = setTimeout(() => {
         setIsVisible(true)
       }, 1000)
@@ -20,11 +18,8 @@ export default function DevelopmentDisclaimer({ onDismiss }) {
 
   const handleDismiss = () => {
     setIsClosing(true)
-    
-    // Store dismissal in localStorage
     localStorage.setItem('dev-disclaimer-dismissed', 'true')
     
-    // Fade out animation
     setTimeout(() => {
       setIsVisible(false)
       onDismiss?.()
@@ -41,7 +36,6 @@ export default function DevelopmentDisclaimer({ onDismiss }) {
         isClosing ? 'scale-95 opacity-0' : 'scale-100 opacity-100'
       }`}>
         
-        {/* Warning Icon */}
         <div className="flex items-center gap-3 mb-4">
           <div className="w-8 h-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
             <svg className="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
@@ -51,7 +45,6 @@ export default function DevelopmentDisclaimer({ onDismiss }) {
           <h3 className="text-lg font-semibold text-yellow-400">Development Version</h3>
         </div>
 
-        {/* Disclaimer Text */}
         <div className="space-y-3 mb-6">
           <p className="text-gray-200 text-sm leading-relaxed">
             <strong>This is an early development version</strong> of Renzora Engine and is intended for 
@@ -78,7 +71,6 @@ export default function DevelopmentDisclaimer({ onDismiss }) {
           </ul>
         </div>
 
-        {/* Dismiss Button */}
         <div className="flex justify-end">
           <button
             onClick={handleDismiss}

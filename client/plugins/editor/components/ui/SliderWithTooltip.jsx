@@ -37,7 +37,7 @@ const SliderWithTooltip = ({ label, min, max, step, defaultValue, onChange }) =>
       const maxVal = parseFloat(target.max);
       const val = parseFloat(target.value);
       const percentage = (val - minVal) / (maxVal - minVal);
-      const thumbWidth = 16; // Approximate thumb width
+      const thumbWidth = 16;
       const trackWidth = target.offsetWidth - thumbWidth;
       const thumbPosition = percentage * trackWidth + thumbWidth / 2;
       setTooltipPosition(thumbPosition);

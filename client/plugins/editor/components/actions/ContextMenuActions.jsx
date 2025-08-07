@@ -1,4 +1,3 @@
-// Context menu action handlers
 import { Icons } from '@/plugins/editor/components/Icons';
 
 export const useContextMenuActions = (editorActions) => {
@@ -8,10 +7,8 @@ export const useContextMenuActions = (editorActions) => {
     unpackMesh, packMesh
   } = editorActions;
 
-  // Context menu item generators
   const getContextMenuItems = (item, context) => {
     if (item) {
-      // Scene object context menu - different items based on object type
       const baseItems = [
         { label: 'Rename', action: () => handleRename(item.id), icon: <Icons.Pencil className="w-4 h-4" /> },
         { separator: true },
@@ -22,7 +19,6 @@ export const useContextMenuActions = (editorActions) => {
         { separator: true },
       ];
 
-      // Type-specific menu items
       const typeSpecificItems = [];
       
       if (item.type === 'model' || item.type === 'mesh') {
@@ -31,7 +27,6 @@ export const useContextMenuActions = (editorActions) => {
           { label: 'Add Script', action: () => handleAddScript(item.id), icon: <Icons.CodeBracket className="w-4 h-4" /> },
         );
 
-        // Add unpack/pack mesh options for objects that have child meshes
         if (item.hasChildMeshes) {
           typeSpecificItems.push(
             { separator: true },
@@ -64,7 +59,6 @@ export const useContextMenuActions = (editorActions) => {
 
       return [...baseItems, ...typeSpecificItems, ...colorItems];
     } else {
-      // General context menu for empty space
       const baseGeneralItems = [
         { label: 'Create Object', action: () => {}, icon: <Icons.PlusCircle className="w-4 h-4" />, submenu: [
           { label: 'Cube', action: () => handleCreateObject('cube'), icon: <Icons.Cube className="w-4 h-4" /> },
@@ -83,7 +77,6 @@ export const useContextMenuActions = (editorActions) => {
       ];
 
       if (context === 'viewport') {
-        // Viewport-specific context menu
         return [
           ...baseGeneralItems,
           { separator: true },
@@ -96,7 +89,6 @@ export const useContextMenuActions = (editorActions) => {
           { label: 'Right View', action: () => handleSetView('right'), icon: <Icons.ArrowDown className="w-4 h-4" /> },
         ];
       } else {
-        // Scene panel context menu
         return [
           ...baseGeneralItems,
           { separator: true },
@@ -108,21 +100,17 @@ export const useContextMenuActions = (editorActions) => {
     }
   };
 
-  // Action handlers
   const handleRename = (itemId) => {
-    // Trigger rename mode in Scene.jsx
     const event = new CustomEvent('contextMenuRename', { detail: { itemId } });
     document.dispatchEvent(event);
   };
 
   const handleCopy = (itemId) => {
     console.log('Copy', itemId);
-    // TODO: Implement copy functionality
   };
 
   const handleDuplicate = (itemId) => {
     console.log('Duplicate', itemId);
-    // TODO: Implement duplicate functionality
   };
 
   const handleDelete = (itemId) => {
@@ -148,34 +136,30 @@ export const useContextMenuActions = (editorActions) => {
 
   const handlePaintTexture = (itemId) => {
     console.log('Paint Texture', itemId);
-    // setSelectedTool('paint'); // TODO: Add this to editor actions
   };
 
   const handleColorCode = (itemId, color) => {
     console.log('Color Code', itemId, color);
-    // TODO: Implement color coding functionality
   };
 
   const handleCreateObject = (type) => {
     const newObject = {
       name: type.charAt(0).toUpperCase() + type.slice(1),
       type: 'mesh',
-      position: [Math.random() * 4 - 2, 0, Math.random() * 4 - 2], // Random position
+      position: [Math.random() * 4 - 2, 0, Math.random() * 4 - 2],
       rotation: [0, 0, 0],
       scale: [1, 1, 1],
       geometry: type === 'cube' ? 'box' : type,
       material: { 
-        color: `hsl(${Math.random() * 360}, 70%, 50%)` // Random color
+        color: `hsl(${Math.random() * 360}, 70%, 50%)`
       },
       visible: true
     };
     
     const objectWithId = addSceneObject(newObject);
-    // Select the newly created object and show move gizmo
     setSelectedEntity(objectWithId.id);
     setTransformMode('move');
     
-    // Restore focus to canvas after object creation
     setTimeout(() => {
       const canvas = document.querySelector('canvas');
       if (canvas) {
@@ -186,52 +170,42 @@ export const useContextMenuActions = (editorActions) => {
 
   const handlePaste = () => {
     console.log('Paste');
-    // TODO: Implement paste functionality
   };
 
   const handleUndo = () => {
     console.log('Undo');
-    // TODO: Implement undo functionality
   };
 
   const handleRedo = () => {
     console.log('Redo');
-    // TODO: Implement redo functionality
   };
 
   const handleSelectAll = () => {
     console.log('Select All');
-    // TODO: Implement select all functionality
   };
 
   const handleFocusSelected = () => {
     console.log('Focus Selected');
-    // TODO: Implement focus selected functionality
   };
 
   const handleFrameAll = () => {
     console.log('Frame All');
-    // TODO: Implement frame all functionality
   };
 
   const handleResetView = () => {
     console.log('Reset View');
-    // TODO: Implement reset view functionality
   };
 
   const handleSetView = (view) => {
     console.log('Set View', view);
-    // TODO: Implement set view functionality
   };
 
   const handleExpandAll = () => {
     console.log('Expand All');
-    // TODO: Implement expand all functionality
   };
 
   const handleCollapseAll = () => {
     console.log('Collapse All');
-    // TODO: Implement collapse all functionality
   };
 
   const handleUnpackMesh = (itemId) => {
@@ -245,7 +219,6 @@ export const useContextMenuActions = (editorActions) => {
   };
 
   const handleAddToNewFolder = (itemId) => {
-    // Trigger add to new folder in Scene.jsx
     const event = new CustomEvent('contextMenuAddToNewFolder', { detail: { itemId } });
     document.dispatchEvent(event);
   };

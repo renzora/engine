@@ -618,7 +618,6 @@ export const actions = {
       globalStore.editor.ui.scenePropertiesHeight = height
     },
     
-    // Console actions
     setContextMenuHandler: (handler) => {
       globalStore.editor.console.contextMenuHandler = handler
     },
@@ -631,7 +630,6 @@ export const actions = {
       })
     },
     
-    // Viewport actions
     setShowGrid: (show) => {
       globalStore.editor.viewport.showGrid = show
     },
@@ -644,7 +642,6 @@ export const actions = {
       globalStore.editor.viewport.renderMode = mode
     },
     
-    // Viewport camera actions (editor navigation)
     setCameraSpeed: (speed) => {
       globalStore.editor.viewportCamera.speed = speed
     },
@@ -661,17 +658,14 @@ export const actions = {
       Object.assign(globalStore.editor.viewportCamera, settings)
     },
     
-    // Transform actions
     setTransformMode: (mode) => {
       globalStore.editor.selection.transformMode = mode
     },
     
-    // Grid actions
     updateGridSettings: (settings) => {
       Object.assign(globalStore.editor.settings.grid, settings)
     },
     
-    // Viewport tab actions
     setActiveViewportTab: (tabId) => {
       globalStore.editor.viewport.activeTabId = tabId
     },
@@ -691,18 +685,15 @@ export const actions = {
         isActive: true
       };
       
-      // Check if a node editor for this object already exists
       const existingTab = globalStore.editor.viewport.tabs.find(
         t => t.type === 'node-editor' && t.objectId === objectId
       );
       
       if (existingTab) {
-        // Switch to existing tab instead of creating new one
         globalStore.editor.viewport.activeTabId = existingTab.id;
         return existingTab;
       }
       
-      // Add new tab and make it active
       globalStore.editor.viewport.tabs.push(tab);
       globalStore.editor.viewport.activeTabId = tabId;
       
@@ -717,7 +708,6 @@ export const actions = {
       }
     },
 
-    // Node Editor actions
     getNodeGraph: (objectId) => {
       return globalStore.editor.nodeEditor.graphs[objectId] || null
     },
@@ -741,39 +731,32 @@ export const actions = {
 
       const nodeToDelete = graph.nodes.find(n => n.id === nodeId);
       
-      // If deleting an output node, cascade delete all connected input nodes
       if (nodeToDelete?.type === 'output') {
         console.log('Deleting output node - cascading to connected nodes');
         
-        // Find all nodes connected TO this output node
         const connectedInputNodes = graph.connections
           .filter(conn => conn.to.nodeId === nodeId)
           .map(conn => conn.from.nodeId);
         
-        // Delete all connected input nodes first (recursive)
         connectedInputNodes.forEach(inputNodeId => {
           actions.editor.deleteNodeAndCleanupProperties(objectId, inputNodeId);
         });
       }
 
-      // Find all connections that will be removed when this node is deleted
       const connectionsToRemove = graph.connections.filter(c => 
         c.from.nodeId === nodeId || c.to.nodeId === nodeId
       );
 
-      // Remove the node and its connections
       const updatedNodes = graph.nodes.filter(n => n.id !== nodeId);
       const updatedConnections = graph.connections.filter(c => 
         c.from.nodeId !== nodeId && c.to.nodeId !== nodeId
       );
 
-      // Update the node graph
       Object.assign(graph, {
         nodes: updatedNodes,
         connections: updatedConnections
       });
 
-      // Clean up properties based on what was removed
       const objectProps = globalStore.editor.objectProperties.objects[objectId];
       if (objectProps && nodeToDelete?.type === 'output') {
         if (nodeToDelete.title === 'Material Output' && objectProps.material) {
@@ -787,9 +770,7 @@ export const actions = {
         }
       }
 
-      // Clean up object properties that were controlled by this node
       if (objectProps && objectProps.nodeBindings) {
-        // Remove any property bindings that were controlled by the deleted node
         const updatedBindings = {};
         Object.keys(objectProps.nodeBindings).forEach(propertyPath => {
           const binding = objectProps.nodeBindings[propertyPath];
@@ -828,7 +809,6 @@ export const actions = {
     addConnectionToGraph: (objectId, connection) => {
       const graph = globalStore.editor.nodeEditor.graphs[objectId]
       if (graph) {
-        // Remove existing connection to the same input port
         graph.connections = graph.connections.filter(c => 
           !(c.to.nodeId === connection.to.nodeId && c.to.portId === connection.to.portId)
         )
@@ -840,25 +820,18 @@ export const actions = {
       const graph = globalStore.editor.nodeEditor.graphs[objectId];
       if (!graph) return;
 
-      // First add the connection
       actions.editor.addConnectionToGraph(objectId, connection);
-
-      // Find the nodes involved in the connection
       const fromNode = graph.nodes.find(n => n.id === connection.from.nodeId);
       const toNode = graph.nodes.find(n => n.id === connection.to.nodeId);
 
       console.log('Connection created between:', fromNode?.title, '->', toNode?.title);
 
-      // Generate properties based on OUTPUT NODE types - but only create the connected property
       if (fromNode && toNode) {
-        // If connecting TO a Material Output node
         if (toNode.type === 'output' && toNode.title === 'Material Output') {
           console.log('Updating material properties for Material Output connection');
           
-          // Get or create material section
           let materialProps = actions.editor.initializeObjectProperties(objectId).material || {};
           
-          // Only add the specific property that was connected
           const inputPort = toNode.inputs.find(input => input.id === connection.to.portId);
           if (inputPort) {
             switch (inputPort.name) {
@@ -877,14 +850,11 @@ export const actions = {
           actions.editor.addPropertySection(objectId, 'material', materialProps);
         }
 
-        // If connecting TO a Transform Output node
         if (toNode.type === 'output' && toNode.title === 'Transform Output') {
           console.log('Updating transform properties for Transform Output connection');
           
-          // Get or create transform section
           let transformProps = actions.editor.initializeObjectProperties(objectId).transform || {};
           
-          // Only add the specific property that was connected
           const inputPort = toNode.inputs.find(input => input.id === connection.to.portId);
           if (inputPort) {
             switch (inputPort.name) {
@@ -904,20 +874,16 @@ export const actions = {
         }
       }
 
-      // Update the actual Babylon.js object
       actions.editor.updateBabylonObjectFromProperties(objectId);
     },
 
     removeConnectionFromGraph: (objectId, connectionId) => {
       const graph = globalStore.editor.nodeEditor.graphs[objectId]
       if (graph) {
-        // Find the connection before removing it
+
         const connectionToRemove = graph.connections.find(c => c.id === connectionId);
-        
-        // Remove the connection
         graph.connections = graph.connections.filter(c => c.id !== connectionId)
-        
-        // Clean up properties if this was the last connection involving certain node types
+
         if (connectionToRemove) {
           actions.editor.cleanupPropertiesAfterConnectionRemoval(objectId, connectionToRemove);
         }
@@ -930,7 +896,6 @@ export const actions = {
       
       if (!graph || !objectProps) return;
 
-      // Find the nodes involved in the removed connection
       const fromNode = graph.nodes.find(n => n.id === removedConnection.from.nodeId);
       const toNode = graph.nodes.find(n => n.id === removedConnection.to.nodeId);
 
@@ -938,13 +903,10 @@ export const actions = {
 
       console.log('Cleaning up properties after connection removal:', fromNode?.title, '<-X->', toNode?.title);
 
-      // Check if this was a connection TO an output node
       if (toNode.type === 'output') {
-        // Find which specific input was disconnected
         const inputPort = toNode.inputs.find(input => input.id === removedConnection.to.portId);
         
         if (toNode.title === 'Material Output' && inputPort && objectProps.material) {
-          // Remove the specific material property that was disconnected
           switch (inputPort.name) {
             case 'Base Color':
               delete objectProps.material.baseColor;
@@ -957,14 +919,12 @@ export const actions = {
               break;
           }
           
-          // If no material properties left, remove the entire section
           if (Object.keys(objectProps.material).length === 0) {
             delete objectProps.material;
           }
         }
         
         if (toNode.title === 'Transform Output' && inputPort && objectProps.transform) {
-          // Remove the specific transform property that was disconnected
           switch (inputPort.name) {
             case 'Position':
               delete objectProps.transform.position;
@@ -977,33 +937,27 @@ export const actions = {
               break;
           }
           
-          // If no transform properties left, remove the entire section
           if (Object.keys(objectProps.transform).length === 0) {
             delete objectProps.transform;
           }
         }
       }
 
-      // Update the Babylon.js object after cleanup
       actions.editor.updateBabylonObjectFromProperties(objectId);
     },
 
-    // Object Properties actions
     initializeObjectProperties: (objectId) => {
       if (!globalStore.editor.objectProperties.objects[objectId]) {
         globalStore.editor.objectProperties.objects[objectId] = {
-          // Start empty - properties will be created when output nodes are connected
-          nodeBindings: {} // Maps property paths to node outputs
+          nodeBindings: {}
         }
       }
       return globalStore.editor.objectProperties.objects[objectId]
     },
 
-    // Ensure all objects have default Transform and Scripting components
     ensureDefaultComponents: (objectId) => {
       const objectProps = actions.editor.initializeObjectProperties(objectId);
       
-      // Always add Transform component with default values
       if (!objectProps.transform) {
         objectProps.transform = {
           position: [0, 0, 0],
@@ -1012,7 +966,6 @@ export const actions = {
         };
       }
       
-      // Always add Components section with Scripting component
       if (!objectProps.components) {
         objectProps.components = {};
       }
@@ -1066,7 +1019,6 @@ export const actions = {
       return globalStore.editor.objectProperties.objects[objectId] || null
     },
     
-    // Toolbar actions
     setToolbarTabOrder: (order) => {
       globalStore.editor.ui.toolbarTabOrder = order
     },
@@ -1075,19 +1027,14 @@ export const actions = {
       globalStore.editor.ui.toolbarBottomTabOrder = order
     },
     
-    // Bottom tabs actions
     setBottomTabOrder: (order) => {
       globalStore.editor.ui.bottomTabOrder = order
     },
     
-    // Local storage hydration
     hydrateFromLocalStorage: () => {
-      // This would load saved UI state from localStorage
-      // For now, just a placeholder function
       console.log('Hydrating from localStorage...')
     },
     
-    // Stats actions
     toggleStats: () => {
       globalStore.editor.settings.editor.showStats = !globalStore.editor.settings.editor.showStats
     },
@@ -1096,7 +1043,6 @@ export const actions = {
       Object.assign(globalStore.editor.settings.editor, settings)
     },
     
-    // Scene metadata actions
     updateSceneMetadata: (metadata) => {
       Object.assign(globalStore.editor.scene, metadata)
     },
@@ -1105,7 +1051,6 @@ export const actions = {
       globalStore.editor.scene.name = name
     },
     
-    // Scene object management actions
     selectSceneObject: (objectId) => {
       console.log('🏪 Store - selectSceneObject called:', {
         'old value': globalStore.editor.scene.selectedObjectId,
@@ -1116,43 +1061,34 @@ export const actions = {
     },
     
     updateSceneObjectProperty: (objectId, property, value) => {
-      // Update the actual Babylon.js object first
       const scene = babylonScene.current
       if (scene && property === 'visible') {
         const babylonObject = [...(scene.meshes || []), ...(scene.transformNodes || []), ...(scene.lights || []), ...(scene.cameras || [])]
           .find(obj => (obj.uniqueId || obj.name) === objectId)
         
         if (babylonObject) {
-          // Handle visibility for different object types
           if (babylonObject.getClassName() === 'TransformNode') {
-            // TransformNodes: toggle visibility of all child meshes
             babylonObject.getChildMeshes().forEach(childMesh => {
               childMesh.isVisible = value
             })
           } else if ('isVisible' in babylonObject) {
-            // Meshes, cameras, etc.
             babylonObject.isVisible = value
           } else if ('setEnabled' in babylonObject) {
-            // Lights
             babylonObject.setEnabled(value)
           }
         }
       }
       
-      // Then update the store metadata
       const meshes = globalStore.editor.scene.objects.meshes
       const transformNodes = globalStore.editor.scene.objects.transformNodes || []
       const lights = globalStore.editor.scene.objects.lights
       const cameras = globalStore.editor.scene.objects.cameras
-      
       const allObjects = [...meshes, ...transformNodes, ...lights, ...cameras]
       const object = allObjects.find(obj => obj.id === objectId)
       
       if (object && property in object) {
-        // Update the store - this will trigger Valtio reactivity automatically
         object[property] = value
         
-        // Also update the hierarchy data to reflect the change
         const updateHierarchyVisibility = (nodes) => {
           nodes.forEach(node => {
             if (node.id === objectId) {
@@ -1170,7 +1106,6 @@ export const actions = {
     
     refreshSceneData: () => {
       console.log('🔄 Store - Refreshing scene data manually triggered');
-      // Re-sync from Babylon.js scene
       syncSceneToStore(babylonScene.current)
       console.log('✅ Store - Scene data refresh completed');
     },
@@ -1187,9 +1122,7 @@ export const actions = {
         children: []
       };
       
-      // Add to hierarchy
       if (parentId) {
-        // Find parent and add as child
         const findAndAddToParent = (nodes) => {
           for (let node of nodes) {
             if (node.id === parentId) {
@@ -1205,15 +1138,12 @@ export const actions = {
         };
         
         if (!findAndAddToParent(globalStore.editor.scene.hierarchy)) {
-          // Parent not found, add to root
           globalStore.editor.scene.hierarchy[0].children.push(newFolder);
         }
       } else {
-        // Add to root level
         globalStore.editor.scene.hierarchy[0].children.push(newFolder);
       }
       
-      // Trigger reactivity
       globalStore.editor.scene.hierarchy = [...globalStore.editor.scene.hierarchy];
       
       console.log(`✅ Store - Created folder: ${folderName}`);
@@ -1225,7 +1155,6 @@ export const actions = {
       
       let movedItem = null;
       
-      // Find and remove the object from its current location
       const findAndRemoveObject = (nodes) => {
         for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i];
@@ -1240,7 +1169,6 @@ export const actions = {
         return false;
       };
       
-      // Find the target folder and add the object
       const findAndAddToFolder = (nodes) => {
         for (let node of nodes) {
           if (node.id === folderId) {
@@ -1257,7 +1185,6 @@ export const actions = {
       
       if (findAndRemoveObject(globalStore.editor.scene.hierarchy) && movedItem) {
         if (findAndAddToFolder(globalStore.editor.scene.hierarchy)) {
-          // Trigger reactivity
           globalStore.editor.scene.hierarchy = [...globalStore.editor.scene.hierarchy];
           console.log(`✅ Store - Moved ${objectId} to folder ${folderId}`);
           return true;
@@ -1274,7 +1201,6 @@ export const actions = {
     renameObject: (objectId, newName) => {
       console.log(`✏️ Store - Renaming object: ${objectId} to ${newName}`);
       
-      // Find and rename in hierarchy
       const findAndRename = (nodes) => {
         for (let node of nodes) {
           if (node.id === objectId) {
@@ -1291,7 +1217,6 @@ export const actions = {
       const renamed = findAndRename(globalStore.editor.scene.hierarchy);
       
       if (renamed) {
-        // Also rename in Babylon.js scene if it's not a folder
         const scene = babylonScene?.current;
         if (scene) {
           const allObjects = [
@@ -1311,7 +1236,6 @@ export const actions = {
           }
         }
         
-        // Trigger reactivity
         globalStore.editor.scene.hierarchy = [...globalStore.editor.scene.hierarchy];
         
         console.log(`✅ Store - Renamed object: ${objectId} to ${newName}`);
@@ -1326,7 +1250,6 @@ export const actions = {
       console.log(`🔄 Store - Reordering ${draggedId} ${position} ${targetId}`);
       
       try {
-        // Find the objects in the current hierarchy
         const findObjectInHierarchy = (nodes, objectId) => {
           for (let i = 0; i < nodes.length; i++) {
             const node = nodes[i];
@@ -1357,15 +1280,11 @@ export const actions = {
           return actions.editor.moveObjectToFolder(draggedId, targetId);
         }
 
-        // Check if they're at the same level (same parent container)
         if (draggedResult.parent !== targetResult.parent) {
           console.log('Objects are at different hierarchy levels, moving to same parent first');
           
-          // Remove from old parent
           const draggedNode = draggedResult.node;
           draggedResult.parent.splice(draggedResult.index, 1);
-          
-          // Add to new parent at the right position
           const targetParent = targetResult.parent;
           const targetIndex = targetResult.index;
           
@@ -1376,29 +1295,24 @@ export const actions = {
           
           targetParent.splice(insertIndex, 0, draggedNode);
         } else {
-          // Same parent - just reorder
           const draggedNode = draggedResult.node;
           const parent = draggedResult.parent;
-          
-          // Remove from current position
+        
           parent.splice(draggedResult.index, 1);
           
-          // Calculate new index (adjust for removal)
           let newIndex = targetResult.index;
           if (draggedResult.index < targetResult.index) {
-            newIndex--; // Target shifted left after removal
+            newIndex--;
           }
           if (position === 'below') {
             newIndex++;
           }
           
-          // Insert at new position
           parent.splice(Math.max(0, newIndex), 0, draggedNode);
         }
 
         console.log(`✅ Store - Reordered ${draggedId} successfully`);
         
-        // Trigger Valtio reactivity by creating a new array reference
         globalStore.editor.scene.hierarchy = [...globalStore.editor.scene.hierarchy];
         
         return true;
@@ -1412,7 +1326,6 @@ export const actions = {
     unpackMesh: (objectId) => {
       console.log('📦 Store - Unpacking mesh:', objectId);
       
-      // Recursively find ALL containers that have child meshes (not just direct children)
       const scene = babylonScene?.current;
       if (!scene) return;
       
@@ -1420,15 +1333,12 @@ export const actions = {
         const containersToUnpack = [];
         const allObjects = [...(scene.meshes || []), ...(scene.transformNodes || [])];
         
-        // Avoid infinite loops
         if (processedIds.has(parentId)) return containersToUnpack;
         processedIds.add(parentId);
         
-        // Find the parent object
         const parentObject = allObjects.find(obj => (obj.uniqueId || obj.name) === parentId);
         if (!parentObject) return containersToUnpack;
         
-        // Get all direct children of this parent
         const directChildren = allObjects.filter(obj => {
           const objParentId = obj.parent ? (obj.parent.uniqueId || obj.parent.name) : null;
           return objParentId === parentId;
@@ -1436,29 +1346,24 @@ export const actions = {
         
         console.log(`📦 Store - Found ${directChildren.length} direct children of ${parentId}`);
         
-        // For each direct child, determine if it should be shown as a logical group
         directChildren.forEach(child => {
           const childId = child.uniqueId || child.name;
           const childMeshes = child.getChildMeshes ? child.getChildMeshes() : [];
           
           if (childMeshes.length > 0) {
-            // This is a container with child meshes
             console.log(`📦 Store - Container ${childId} has ${childMeshes.length} child meshes`);
             
-            // Check if this container has further nested containers (not just final meshes)
             const hasNestedContainers = directChildren.some(grandChild => {
               const grandChildParentId = grandChild.parent ? (grandChild.parent.uniqueId || grandChild.parent.name) : null;
               return grandChildParentId === childId && grandChild.getChildMeshes && grandChild.getChildMeshes().length > 0;
             });
             
             if (hasNestedContainers) {
-              // This container has nested containers - unpack it and recurse deeper
               console.log(`📦 Store - Container ${childId} has nested containers - unpacking and recursing`);
               containersToUnpack.push(childId);
               const nestedContainers = findLogicalContainers(childId, processedIds);
               containersToUnpack.push(...nestedContainers);
             } else {
-              // This container only has final meshes - show it as a logical group (don't recurse further)
               console.log(`📦 Store - Container ${childId} has only final meshes - showing as logical group`);
               containersToUnpack.push(childId);
             }
@@ -1470,11 +1375,9 @@ export const actions = {
         return containersToUnpack;
       };
       
-      // Get logical containers (stops at meaningful groups, doesn't expose all individual meshes)
       const containersToUnpack = findLogicalContainers(objectId);
       console.log('📦 Store - Logical containers to unpack:', containersToUnpack);
       
-      // Add the main object and all containers with child meshes
       if (!globalStore.editor.scene.unpackedObjects.includes(objectId)) {
         globalStore.editor.scene.unpackedObjects.push(objectId);
       }
@@ -1485,28 +1388,23 @@ export const actions = {
         }
       });
       
-      // Refresh scene to show child meshes
       syncSceneToStore(babylonScene.current);
     },
 
     packMesh: (objectId) => {
       console.log('📦 Store - Packing mesh:', objectId);
-      
-      // Find all related containers that were unpacked with this object
       const scene = babylonScene?.current;
       if (!scene) return;
       
       const findRelatedContainers = (parentId) => {
-        const containersToRemove = [parentId]; // Always include the main object
+        const containersToRemove = [parentId];
         const allObjects = [...(scene.meshes || []), ...(scene.transformNodes || [])];
-        
-        // Find all direct children that might have been unpacked
+    
         const directChildren = allObjects.filter(obj => {
           const objParentId = obj.parent ? (obj.parent.uniqueId || obj.parent.name) : null;
           return objParentId === parentId;
         });
         
-        // Add any child containers that were unpacked
         directChildren.forEach(child => {
           const childId = child.uniqueId || child.name;
           if (globalStore.editor.scene.unpackedObjects.includes(childId)) {
@@ -1517,11 +1415,9 @@ export const actions = {
         return containersToRemove;
       };
       
-      // Get containers to remove from unpacked list
       const containersToRemove = findRelatedContainers(objectId);
       console.log('📦 Store - Containers to pack:', containersToRemove);
       
-      // Remove all related containers from unpacked objects
       containersToRemove.forEach(id => {
         const index = globalStore.editor.scene.unpackedObjects.indexOf(id);
         if (index > -1) {
@@ -1529,7 +1425,6 @@ export const actions = {
         }
       });
       
-      // Refresh scene to hide child meshes
       syncSceneToStore(babylonScene.current);
     },
 
@@ -1550,7 +1445,6 @@ export const actions = {
 
       console.log('🔧 Store - Object properties to apply:', objectProps);
 
-      // Find the Babylon.js object (include transformNodes!)
       const allObjects = [...(scene.meshes || []), ...(scene.transformNodes || []), ...(scene.lights || []), ...(scene.cameras || [])];
       const babylonObject = allObjects.find(obj => 
         (obj.uniqueId || obj.name) === objectId
@@ -1568,7 +1462,6 @@ export const actions = {
         id: babylonObject.uniqueId || babylonObject.name
       });
 
-      // Update transform properties
       if (objectProps.transform) {
         console.log('🔧 Store - Updating transform properties:', objectProps.transform);
         
@@ -1592,17 +1485,13 @@ export const actions = {
         }
       }
 
-      // Update material properties
       if (objectProps.material) {
         console.log('🎨 Store - Processing material properties:', objectProps.material);
         
-        // Simple approach: each object in the hierarchy can be selected individually
-        // Apply material properties directly to the selected object
         if (babylonObject.material) {
           console.log(`🎨 Store - Updating material for object "${babylonObject.name}" with material "${babylonObject.material.name}"`);
 
           if (objectProps.material.baseColor) {
-            // Convert hex color to Babylon Color3
             const hex = objectProps.material.baseColor.replace('#', '');
             const r = parseInt(hex.substr(0, 2), 16) / 255;
             const g = parseInt(hex.substr(2, 2), 16) / 255;
@@ -1642,7 +1531,6 @@ export const actions = {
       console.log('✅ Store - updateBabylonObjectFromProperties completed successfully for:', objectId);
     },
 
-    // Hierarchy actions
     toggleHierarchyNode: (nodeId) => {
       const toggleNodeInHierarchy = (nodes) => {
         for (let node of nodes) {
@@ -1660,9 +1548,7 @@ export const actions = {
       toggleNodeInHierarchy(globalStore.editor.scene.hierarchy)
     },
 
-    // Asset cache actions
     setAssetsProject: (projectName) => {
-      // Clear cache if project changed
       if (globalStore.editor.assets.currentProject !== projectName) {
         globalStore.editor.assets.currentProject = projectName
         globalStore.editor.assets.folderTree = null
@@ -1733,7 +1619,6 @@ export const actions = {
   }
 }
 
-// Setup devtools in browser
 if (typeof window !== 'undefined') {
   try {
     devtools(globalStore, {
@@ -1742,7 +1627,6 @@ if (typeof window !== 'undefined') {
     })
     console.log('✅ Valtio devtools enabled')
     
-    // Expose for debugging
     window.globalStore = globalStore
     window.actions = actions
     

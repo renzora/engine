@@ -47,7 +47,6 @@ const ProjectSplashScreen = ({ onCreateProject, onSelectProject, onClose }) => {
       return;
     }
 
-    // Validate project name
     const validNamePattern = /^[a-zA-Z0-9_-]+$/;
     if (!validNamePattern.test(projectName.trim())) {
       setError('Project name can only contain letters, numbers, underscores, and hyphens');
@@ -85,7 +84,6 @@ const ProjectSplashScreen = ({ onCreateProject, onSelectProject, onClose }) => {
   return (
     <div className="fixed inset-0 bg-gray-900 flex items-center justify-center z-50">
       <div className="bg-slate-800 rounded-lg shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-700">
           <div className="flex items-center gap-3">
             <Icons.Folder className="w-6 h-6 text-blue-400" />
@@ -107,11 +105,9 @@ const ProjectSplashScreen = ({ onCreateProject, onSelectProject, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
           {showCreateForm ? (
             <>
-              {/* Create Project Form */}
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Project Name
@@ -121,7 +117,7 @@ const ProjectSplashScreen = ({ onCreateProject, onSelectProject, onClose }) => {
                   value={projectName}
                   onChange={(e) => {
                     setProjectName(e.target.value);
-                    setError(''); // Clear error when typing
+                    setError('');
                   }}
                   onKeyPress={handleKeyPress}
                   placeholder="Enter project name"
@@ -157,7 +153,6 @@ const ProjectSplashScreen = ({ onCreateProject, onSelectProject, onClose }) => {
             </>
           ) : (
             <>
-              {/* Project List */}
               {existingProjects.length > 0 ? (
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -202,7 +197,6 @@ const ProjectSplashScreen = ({ onCreateProject, onSelectProject, onClose }) => {
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t border-slate-700">
           <div>
             {!showCreateForm && (

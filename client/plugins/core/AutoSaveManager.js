@@ -1,4 +1,3 @@
-// Central auto-save coordinator that works with the project system
 import { subscribe } from 'valtio'
 
 class AutoSaveManager {
@@ -6,43 +5,35 @@ class AutoSaveManager {
     this.pluginStores = new Map()
     this.saveTimeout = null
     this.isEnabled = true
-    this.debounceTime = 1000 // 1 second debounce
+    this.debounceTime = 1000
     this.projectManager = null
-    this.lastSavedData = null // Store last saved data for comparison
+    this.lastSavedData = null
   }
 
-  // Set the project manager instance for saving
   setProjectManager(projectManager) {
-    // Prevent duplicate connections
     if (this.projectManager === projectManager) {
       return
     }
     
     this.projectManager = projectManager
-    // AutoSaveManager connected to ProjectManager
   }
 
-  // Register a plugin store for auto-saving
   registerStore(pluginName, store, options = {}) {
     const config = {
       store,
-      // Function to extract data that should be saved
       extractSaveData: options.extractSaveData || (() => ({ ...store })),
-      // Function to restore data from project
       restoreData: options.restoreData || ((data) => Object.assign(store, data)),
       ...options
     }
 
     this.pluginStores.set(pluginName, config)
 
-    // Subscribe to store changes for auto-save
     subscribe(store, () => {
       if (!this.isEnabled) {
         console.log(`🔇 Auto-save disabled for ${pluginName}`)
         return
       }
       
-      // Skip auto-save during panel resizing to prevent loading screen triggers
       if (pluginName === 'editor' && store.panels?.isResizingPanels) {
         console.log('⏸️ Skipping auto-save during panel resize')
         return
@@ -56,13 +47,11 @@ class AutoSaveManager {
     return config
   }
 
-  // Remove a plugin store
   unregisterStore(pluginName) {
     this.pluginStores.delete(pluginName)
     console.log(`🔌 Unregistered ${pluginName} store`)
   }
 
-  // Schedule an auto-save (debounced)
   scheduleAutoSave() {
     console.log('⏰ Scheduling auto-save with debounce')
     if (this.saveTimeout) {
@@ -71,12 +60,10 @@ class AutoSaveManager {
     }
 
     this.saveTimeout = setTimeout(() => {
-      // Auto-save timeout fired
       this.performAutoSave()
     }, this.debounceTime)
   }
 
-  // Cancel any pending auto-save
   cancelPendingAutoSave() {
     if (this.saveTimeout) {
       console.log('🚫 Canceling pending auto-save')
@@ -85,9 +72,8 @@ class AutoSaveManager {
     }
   }
 
-  // Compare two data objects to check if they're different
   hasDataChanged(currentData, lastData) {
-    if (!lastData) return true // First save
+    if (!lastData) return true
     
     try {
       const currentStr = JSON.stringify(currentData)
@@ -95,11 +81,10 @@ class AutoSaveManager {
       return currentStr !== lastStr
     } catch (error) {
       console.warn('Error comparing save data:', error)
-      return true // Safe default - save if comparison fails
+      return true
     }
   }
 
-  // Perform auto-save using project system
   async performAutoSave() {
     console.log('🚀 AutoSaveManager.performAutoSave() called')
     
@@ -108,7 +93,6 @@ class AutoSaveManager {
       return
     }
 
-    // Check if panels are currently being resized
     const editorStore = this.pluginStores.get('editor')
     if (editorStore && editorStore.store.panels?.isResizingPanels) {
       console.log('⏸️ Skipping auto-save - panels are being resized')
@@ -116,22 +100,17 @@ class AutoSaveManager {
     }
 
     try {
-      // Get current data from all stores
       console.log('📊 Getting current store data')
       const currentData = this.getAllStoreData()
       
-      // Check if data has actually changed
       if (!this.hasDataChanged(currentData, this.lastSavedData)) {
-        // No changes detected, skipping save
         return
       }
 
       console.log('💾 Data changed, calling ProjectManager.autoSaveCurrentProject()')
-      // Use the project manager's existing auto-save functionality
       await this.projectManager.autoSaveCurrentProject()
       
-      // Store the saved data for future comparisons
-      this.lastSavedData = JSON.parse(JSON.stringify(currentData)) // Deep copy
+      this.lastSavedData = JSON.parse(JSON.stringify(currentData))
       
       console.log('✅ Auto-save completed via project system')
     } catch (error) {
@@ -139,10 +118,8 @@ class AutoSaveManager {
     }
   }
 
-  // Load data from project into all registered stores
   loadFromProject(projectData) {
     console.log('🔄 AutoSaveManager loadFromProject called with:', projectData)
-    // Registered stores for auto-saving
     
     if (!projectData) {
       console.warn('❌ No project data provided to loadFromProject')
@@ -151,10 +128,8 @@ class AutoSaveManager {
 
     for (const [pluginName, config] of this.pluginStores) {
       try {
-        // Look for plugin data in the project
         let pluginData = null
         
-        // Check different possible locations for plugin data
         if (projectData[pluginName]) {
           pluginData = projectData[pluginName]
           console.log(`📂 Found ${pluginName} data directly:`, pluginData)
@@ -181,14 +156,11 @@ class AutoSaveManager {
       }
     }
     
-    // After loading, store the current data as our baseline for change detection
     setTimeout(() => {
       this.lastSavedData = JSON.parse(JSON.stringify(this.getAllStoreData()))
-      // Baseline data set for change detection
-    }, 100) // Small delay to ensure all stores have been restored
+    }, 100)
   }
 
-  // Get current state from all stores (used by project manager)
   getAllStoreData() {
     const storeData = {}
     
@@ -203,7 +175,6 @@ class AutoSaveManager {
     return storeData
   }
 
-  // Manual save trigger
   async saveNow() {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout)
@@ -212,7 +183,6 @@ class AutoSaveManager {
     await this.performAutoSave()
   }
 
-  // Enable/disable auto-save
   enable() {
     this.isEnabled = true
     console.log('✅ Auto-save enabled')
@@ -227,7 +197,6 @@ class AutoSaveManager {
     console.log('❌ Auto-save disabled')
   }
 
-  // Check if there are unsaved changes
   hasUnsavedChanges() {
     try {
       const currentData = this.getAllStoreData()
@@ -238,7 +207,6 @@ class AutoSaveManager {
     }
   }
 
-  // Get save status
   getSaveStatus() {
     return {
       isEnabled: this.isEnabled,
@@ -250,10 +218,8 @@ class AutoSaveManager {
   }
 }
 
-// Create global auto-save manager instance
 export const autoSaveManager = new AutoSaveManager()
 
-// Expose globally for debugging
 if (typeof window !== 'undefined') {
   window.autoSaveManager = autoSaveManager
   console.log('AutoSaveManager exposed globally: window.autoSaveManager')

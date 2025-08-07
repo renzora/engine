@@ -13,14 +13,12 @@ export const usePanelResize = (editorActions) => {
     setSelectedTool: setSelectedRightTool
   } = editorActions;
 
-  // Bottom panel resize handlers
   const handleBottomResizeStart = useCallback(() => {
     console.log('🔵 Bottom panel resize START');
     setIsResizingBottom(true);
     setResizingPanels(true);
     document.body.classList.add('dragging-vertical');
     
-    // Cancel any pending auto-saves
     import('@/plugins/core/AutoSaveManager.js').then(({ autoSaveManager }) => {
       autoSaveManager.cancelPendingAutoSave()
     })
@@ -31,9 +29,9 @@ export const usePanelResize = (editorActions) => {
     e.preventDefault();
     
     const newHeight = window.innerHeight - e.clientY;
-    const maxHeight = window.innerHeight * 0.85; // Allow up to 85% of viewport height
-    const snapThreshold = 80; // Snap to hidden when within 80px of bottom edge
-    const openThreshold = 120; // Snap to open when dragged up 120px
+    const maxHeight = window.innerHeight * 0.85;
+    const snapThreshold = 80;
+    const openThreshold = 120;
     
     if (!isAssetPanelOpen && newHeight > openThreshold) {
       setAssetPanelOpen(true);
@@ -56,14 +54,12 @@ export const usePanelResize = (editorActions) => {
     document.body.classList.remove('dragging-vertical');
   }, [setResizingPanels]);
 
-  // Right panel resize handlers
   const handleRightResizeStart = useCallback(() => {
     console.log('🟡 Right panel resize START');
     setIsResizingRight(true);
     setResizingPanels(true);
     document.body.classList.add('dragging-horizontal');
     
-    // Cancel any pending auto-saves
     import('@/plugins/core/AutoSaveManager.js').then(({ autoSaveManager }) => {
       autoSaveManager.cancelPendingAutoSave()
     })
@@ -72,24 +68,23 @@ export const usePanelResize = (editorActions) => {
   const handleRightResizeMove = useCallback((e, { isScenePanelOpen, isLeftPanel = false }) => {
     if (!isResizingRight) return;
     
-    // Calculate width based on panel position
     const newWidth = isLeftPanel 
-      ? e.clientX // For left panel, width increases as mouse moves right
-      : window.innerWidth - e.clientX; // For right panel, width increases as mouse moves left
+      ? e.clientX
+      : window.innerWidth - e.clientX;
     
-    const snapThreshold = 100; // Snap to hidden when within 100px of edge
-    const openThreshold = 150; // Snap to open when dragged 150px
+    const snapThreshold = 100;
+    const openThreshold = 150;
     
     if (!isScenePanelOpen && newWidth > openThreshold) {
       setScenePanelOpen(true);
       setRightPanelWidth(Math.max(200, newWidth));
-      setSelectedRightTool('scene'); // Activate scene tab when opening via resize
+      setSelectedRightTool('scene');
     } else if (isScenePanelOpen && newWidth < snapThreshold) {
       setScenePanelOpen(false);
       setIsResizingRight(false);
       setResizingPanels(false);
       document.body.classList.remove('dragging-horizontal');
-      setSelectedRightTool('select'); // Deactivate menu when closing via resize
+      setSelectedRightTool('select');
     } else if (isScenePanelOpen) {
       setRightPanelWidth(Math.max(200, Math.min(600, newWidth)));
     }

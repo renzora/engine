@@ -9,7 +9,6 @@ const ScriptCreationDialog = ({
   const [scriptName, setScriptName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Reset form when dialog opens
   useEffect(() => {
     if (isOpen) {
       setScriptName('');
@@ -46,7 +45,6 @@ const ScriptCreationDialog = ({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full mx-4">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <div className="flex items-center gap-3">
             <Icons.FileText className="w-5 h-5 text-blue-400" />
@@ -64,7 +62,6 @@ const ScriptCreationDialog = ({
           </button>
         </div>
 
-        {/* Content */}
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -85,7 +82,6 @@ const ScriptCreationDialog = ({
             </div>
           </div>
 
-          {/* Footer */}
           <div className="flex items-center justify-end gap-3 pt-2">
             <button
               type="button"

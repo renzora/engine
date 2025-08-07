@@ -32,7 +32,6 @@ export const Icons = {
           <stop offset="100%" stopColor="#10B981" />
         </linearGradient>
       </defs>
-      {/* 3D Model Icon */}
       <path
         d="M12 3L3 8v8l9 5 9-5V8l-9-5z"
         fill="url(#model-gradient)"
@@ -51,7 +50,6 @@ export const Icons = {
         strokeWidth="1"
         strokeLinecap="round"
       />
-      {/* Wireframe overlay */}
       <path
         d="M12 3L8 5.5v3l4-2V3z"
         fill="none"
@@ -883,7 +881,6 @@ Check: (props) => (
   </svg>
 ),
 
-// Additional icons for new UI components
 MousePointer: (props) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/>
@@ -1142,12 +1139,6 @@ Timeline: (props) => (
   </svg>
 ),
 
-
-
-
-
-
-
 Outline: (props) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
@@ -1161,8 +1152,6 @@ SparkMini: (props) => (
     <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0L9.937 15.5Z"/>
   </svg>
 ),
-
-
 
 Video: (props) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
@@ -1357,7 +1346,6 @@ DocumentText: (props) => (
   </svg>
 ),
 
-// Photo Editor Specific Icons
 Lasso: (props) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <path d="M3 12c2-4 6-6 9-6s7 2 9 6c-2 4-6 6-9 6s-7-2-9-6z"/>
@@ -1545,8 +1533,6 @@ LayerMask: (props) => (
   </svg>
 ),
 
-
-
 Table: (props) => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
     <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -1619,5 +1605,5 @@ QueueList: (props) => (
     <line x1="3" y1="12" x2="3.01" y2="12"/>
     <line x1="3" y1="18" x2="3.01" y2="18"/>
   </svg>
-),
+)
 };

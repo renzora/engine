@@ -12,7 +12,6 @@ function Settings() {
   const { updateViewportSettings } = actions.editor;
   const [webGPUSupported, setWebGPUSupported] = useState(false);
 
-  // Check WebGPU support on component mount
   useEffect(() => {
     const checkWebGPUSupport = async () => {
       if (!navigator.gpu) {
@@ -69,7 +68,6 @@ function Settings() {
       <div>
         <CollapsibleSection title="Viewport" defaultOpen={true} index={1}>
           <div className="space-y-4">
-            {/* Rendering Engine */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Rendering Engine</label>
               <Select
@@ -77,8 +75,6 @@ function Settings() {
                 onChange={(e) => {
                   const newEngine = e.target.value;
                   updateViewportSettings({ renderingEngine: newEngine });
-                  
-                  // Trigger viewport refresh with new rendering engine
                   actions.editor.addConsoleMessage(`Switching to ${newEngine.toUpperCase()} rendering...`, 'info');
                 }}
                 options={[
@@ -97,7 +93,6 @@ function Settings() {
               )}
             </div>
 
-            {/* Background Color */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Background Color</label>
               <div className="flex items-center gap-2">
@@ -113,7 +108,6 @@ function Settings() {
               </div>
             </div>
 
-            {/* Quick Background Presets */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Quick Presets</label>
               <div className="grid grid-cols-4 gap-2">
@@ -148,7 +142,6 @@ function Settings() {
 
         <CollapsibleSection title="Interface" defaultOpen={false} index={2}>
           <div className="space-y-4">
-            {/* Panel Position */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Panel Position</label>
               <Select
@@ -173,7 +166,6 @@ function Settings() {
         
         <CollapsibleSection title="Performance" defaultOpen={false} index={3}>
           <div className="space-y-4">
-            {/* Stats.js Toggle */}
             <div className="flex items-center justify-between p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
               <div>
                 <label className="text-xs font-medium text-gray-300">Performance Stats</label>

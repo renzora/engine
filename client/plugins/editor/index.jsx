@@ -38,14 +38,11 @@ const EditorPlugin = () => {
   const panelResize = usePanelResize(actions.editor);
   const contextMenuActions = useContextMenuActions(actions.editor);
 
-  // Tab key shortcut to open node editor for selected object
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Tab key when object is selected opens node editor
       if (e.key === 'Tab' && selectedObject && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         e.preventDefault();
         
-        // Get object name from Babylon.js scene for better tab naming
         const scene = babylonScene?.current;
         let objectName = selectedObject;
         
@@ -74,7 +71,6 @@ const EditorPlugin = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedObject, createNodeEditorTab]);
 
-  // This function is no longer needed since we use the unified selectObject action
   const handleObjectSelect = (objectId) => {
     console.log('🎮 Editor.jsx - handleObjectSelect called (using unified selectObject):', objectId);
     actions.editor.selectObject(objectId);

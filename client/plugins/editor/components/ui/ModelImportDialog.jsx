@@ -63,7 +63,6 @@ const ModelImportDialog = ({
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-slate-800 rounded-lg shadow-2xl max-w-md w-full mx-4 max-h-[90vh] overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <div className="flex items-center gap-3">
             <Icons.Cube3D className="w-5 h-5 text-blue-400" />
@@ -80,9 +79,7 @@ const ModelImportDialog = ({
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-4 space-y-4 max-h-[60vh] overflow-y-auto">
-          {/* Model Analysis */}
           {modelAnalysis && (
             <div className="bg-slate-900/50 rounded-lg p-3 text-sm">
               <div className="text-gray-300 mb-2">Model Analysis:</div>
@@ -101,7 +98,6 @@ const ModelImportDialog = ({
             </div>
           )}
 
-          {/* Import Mode */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Import Mode:</label>
             <div className="space-y-2">
@@ -129,7 +125,6 @@ const ModelImportDialog = ({
             </div>
           </div>
 
-          {/* Smart Mode Settings */}
           {importMode === 'smart' && (
             <div className="space-y-3">
               <div>
@@ -170,7 +165,6 @@ const ModelImportDialog = ({
             </div>
           )}
 
-          {/* Basic Options */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">Options:</label>
             <div className="space-y-2">
@@ -213,7 +207,6 @@ const ModelImportDialog = ({
             </div>
           </div>
 
-          {/* Advanced Toggle */}
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 transition-colors"
@@ -222,18 +215,15 @@ const ModelImportDialog = ({
             Advanced Options
           </button>
 
-          {/* Advanced Options */}
           {showAdvanced && (
             <div className="bg-slate-900/30 rounded-lg p-3 space-y-2">
               <div className="text-xs text-gray-400">
                 Advanced settings for fine-tuning import behavior
               </div>
-              {/* Add more advanced options here if needed */}
             </div>
           )}
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-3 p-4 border-t border-slate-700">
           <button
             onClick={onClose}

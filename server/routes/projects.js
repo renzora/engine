@@ -6,21 +6,13 @@ import chokidar from 'chokidar'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-
-// Projects directory relative to server root
 const PROJECTS_DIR = path.join(__dirname, '../../projects')
-
-// Store active watchers for cleanup
 const assetWatchers = new Map()
-// Store SSE connections by project
 const projectSSEConnections = new Map()
-// Store server log connections
 const serverLogConnections = new Set()
-// Store server logs in memory (last 100 logs)
 const serverLogs = []
 const MAX_LOGS = 100
 
-// Function to ensure assets directory exists for a project
 async function ensureAssetsDirectory(projectPath) {
   const assetsPath = path.join(projectPath, 'assets')
   try {
@@ -35,7 +27,6 @@ async function ensureAssetsDirectory(projectPath) {
   }
 }
 
-// Function to broadcast message to all SSE clients watching a project
 function broadcastToProject(projectName, message) {
   const connections = projectSSEConnections.get(projectName)
   if (connections && connections.size > 0) {
@@ -47,31 +38,27 @@ function broadcastToProject(projectName, message) {
         }
       } catch (error) {
         console.warn(`Failed to send SSE message to ${projectName}:`, error)
-        // Remove dead connection
         connections.delete(reply)
       }
     })
   }
 }
 
-// Function to add server log and broadcast to console clients
 function addServerLog(level, source, message, data = null) {
   const logEntry = {
     id: Date.now() + Math.random(),
     timestamp: new Date().toISOString(),
-    level, // 'info', 'warn', 'error', 'debug'
-    source, // 'Server', 'FileWatcher', 'Projects', 'Assets', etc.
+    level,
+    source,
     message,
-    data // Optional additional data
+    data
   }
 
-  // Add to in-memory logs
   serverLogs.push(logEntry)
   if (serverLogs.length > MAX_LOGS) {
-    serverLogs.shift() // Remove oldest log
+    serverLogs.shift()
   }
 
-  // Broadcast to all server log connections
   const messageStr = `data: ${JSON.stringify(logEntry)}\n\n`
   serverLogConnections.forEach(reply => {
     try {
@@ -79,13 +66,11 @@ function addServerLog(level, source, message, data = null) {
         reply.raw.write(messageStr)
       }
     } catch (error) {
-      // Remove dead connection
       serverLogConnections.delete(reply)
     }
   })
 }
 
-// Override console methods to capture server logs
 const originalConsole = {
   log: console.log,
   warn: console.warn,
@@ -117,17 +102,14 @@ console.info = (...args) => {
   originalConsole.info(...args)
 }
 
-// Function to start watching a project directory for changes
 function startProjectWatcher(projectPath) {
   const projectName = path.basename(projectPath)
   
-  // Ensure we're only watching within the projects directory
   if (!projectPath.includes('/projects/')) {
     console.warn(`Skipping watcher for invalid project path: ${projectPath}`)
     return
   }
   
-  // Clean up existing watcher if any
   if (assetWatchers.has(projectName)) {
     assetWatchers.get(projectName).close()
   }
@@ -135,21 +117,20 @@ function startProjectWatcher(projectPath) {
   console.log(`Starting file watcher for project: ${projectPath}`)
   const watcher = chokidar.watch(projectPath, {
     ignored: [
-      /(^|[\/\\])\../, // ignore dotfiles
-      '**/node_modules/**', // ignore node_modules
-      '**/.git/**', // ignore git
-      '**/.vscode/**', // ignore vscode
-      '**/dist/**', // ignore build outputs
-      '**/build/**' // ignore build outputs
+      /(^|[\/\\])\../,
+      '**/node_modules/**',
+      '**/.git/**',
+      '**/.vscode/**',
+      '**/dist/**',
+      '**/build/**'
     ],
     persistent: true,
-    ignoreInitial: true, // don't emit events for initial scan
-    depth: 3, // limit recursion depth
-    usePolling: false, // use native events for better performance
-    atomic: true // wait for write operations to complete
+    ignoreInitial: true,
+    depth: 3,
+    usePolling: false,
+    atomic: true
   })
 
-  // Handle file/directory changes
   watcher.on('add', (filePath) => {
     const relativePath = path.relative(projectPath, filePath)
     addServerLog('info', 'FileWatcher', `File added: ${relativePath}`)
@@ -194,7 +175,6 @@ function startProjectWatcher(projectPath) {
     const relativePath = path.relative(projectPath, deletedPath)
     console.log(`Directory deleted: ${relativePath}`)
     
-    // Special handling for assets directory
     if (relativePath === 'assets') {
       console.log(`Assets directory deleted, recreating: ${deletedPath}`)
       await ensureAssetsDirectory(projectPath)
@@ -216,11 +196,9 @@ function startProjectWatcher(projectPath) {
   return watcher
 }
 
-// Function to cleanup all watchers and connections
 function cleanupAllWatchers() {
   console.log('Cleaning up all file watchers and SSE connections...')
   
-  // Close all SSE connections
   let sseConnectionCount = 0
   projectSSEConnections.forEach((connections, projectName) => {
     sseConnectionCount += connections.size
@@ -230,7 +208,7 @@ function cleanupAllWatchers() {
           reply.raw.end()
         }
       } catch (error) {
-        // Ignore errors when closing connections
+
       }
     })
     connections.clear()
@@ -251,18 +229,15 @@ function cleanupAllWatchers() {
   assetWatchers.forEach((watcher, projectName) => {
     console.log(`Closing watcher for project: ${projectName}`)
     
-    // Create a promise that resolves when watcher is closed
     const cleanupPromise = new Promise((resolve) => {
       watcher.on('close', resolve)
       watcher.close()
-      // Force resolve after timeout to prevent hanging
       setTimeout(resolve, 1000)
     })
     
     cleanupPromises.push(cleanupPromise)
   })
   
-  // Wait for all watchers to close or timeout
   Promise.allSettled(cleanupPromises).then(() => {
     assetWatchers.clear()
     console.log('✅ All file watchers cleaned up')
@@ -270,7 +245,6 @@ function cleanupAllWatchers() {
   })
 }
 
-// Handle process cleanup
 process.on('SIGINT', () => {
   console.log('\n🛑 Received SIGINT, shutting down gracefully...')
   cleanupAllWatchers()
@@ -281,7 +255,6 @@ process.on('SIGTERM', () => {
   cleanupAllWatchers()
 })
 
-// Ensure projects directory exists
 async function ensureProjectsDir() {
   try {
     await fs.access(PROJECTS_DIR)
@@ -294,24 +267,20 @@ export default async function projectRoutes(fastify, options = {}) {
   const isElectron = options.isElectron || false;
   
   console.log(`🔧 Project routes loaded - Electron mode: ${isElectron}`);
-  // Register multipart plugin for file uploads
   await fastify.register(import('@fastify/multipart'), {
     limits: {
-      fileSize: 1024 * 1024 * 1024 * 5 // 1GB limit
+      fileSize: 1024 * 1024 * 1024 * 5
     }
   })
 
-  // Ensure projects directory exists on startup
   await ensureProjectsDir()
 
-  // Start watchers for existing projects (re-enabled with restrictions)
   try {
     const entries = await fs.readdir(PROJECTS_DIR, { withFileTypes: true })
     for (const entry of entries) {
       if (entry.isDirectory()) {
         const projectPath = path.join(PROJECTS_DIR, entry.name)
         await ensureAssetsDirectory(projectPath)
-        // Only watch if it's clearly within projects directory and not near node_modules
         if (projectPath.includes('/projects/') && !projectPath.includes('node_modules')) {
           startProjectWatcher(projectPath)
         }
@@ -321,13 +290,11 @@ export default async function projectRoutes(fastify, options = {}) {
     console.warn('Error initializing project watchers:', error)
   }
 
-  // Server-Sent Events endpoint for real-time project updates
   fastify.get('/api/projects/:projectName/watch', async (request, reply) => {
     try {
       const { projectName } = request.params
       console.log(`SSE connection established for project: ${projectName}`)
       
-      // Check if project exists
       const projectPath = path.join(PROJECTS_DIR, projectName)
       try {
         await fs.access(projectPath)
@@ -336,7 +303,6 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(404).send({ error: 'Project not found' })
       }
       
-      // Set SSE headers
       reply.raw.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
@@ -345,13 +311,11 @@ export default async function projectRoutes(fastify, options = {}) {
         'Access-Control-Allow-Headers': 'Cache-Control'
       })
     
-    // Add connection to project connections
     if (!projectSSEConnections.has(projectName)) {
       projectSSEConnections.set(projectName, new Set())
     }
     projectSSEConnections.get(projectName).add(reply)
     
-    // Send initial connection success message
     const initialMessage = `data: ${JSON.stringify({
       type: 'connected',
       project: projectName,
@@ -359,7 +323,6 @@ export default async function projectRoutes(fastify, options = {}) {
     })}\n\n`
     reply.raw.write(initialMessage)
     
-    // Handle connection close
     request.raw.on('close', () => {
       console.log(`SSE connection closed for project: ${projectName}`)
       const connections = projectSSEConnections.get(projectName)
@@ -371,7 +334,6 @@ export default async function projectRoutes(fastify, options = {}) {
       }
     })
     
-    // Keep connection alive with periodic heartbeat
     const heartbeat = setInterval(() => {
       try {
         if (!reply.sent) {
@@ -384,7 +346,6 @@ export default async function projectRoutes(fastify, options = {}) {
       }
     }, 30000)
     
-    // Don't end the response - keep it open for streaming
     return reply
     } catch (error) {
       console.error('SSE endpoint error:', error)
@@ -392,11 +353,9 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Server-Sent Events endpoint for server logs
   fastify.get('/api/server/logs', async (request, reply) => {
     console.log('Server logs SSE connection established')
     
-    // Set SSE headers
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -405,29 +364,24 @@ export default async function projectRoutes(fastify, options = {}) {
       'Access-Control-Allow-Headers': 'Cache-Control'
     })
     
-    // Add connection to server log connections
     serverLogConnections.add(reply)
     
-    // Send initial connection success message
     const initialMessage = `data: ${JSON.stringify({
       type: 'connected',
       timestamp: Date.now()
     })}\n\n`
     reply.raw.write(initialMessage)
     
-    // Send existing logs
     serverLogs.forEach(log => {
       const messageStr = `data: ${JSON.stringify(log)}\n\n`
       reply.raw.write(messageStr)
     })
     
-    // Handle connection close
     request.raw.on('close', () => {
       console.log('Server logs SSE connection closed')
       serverLogConnections.delete(reply)
     })
     
-    // Keep connection alive with periodic heartbeat
     const heartbeat = setInterval(() => {
       try {
         if (!reply.sent) {
@@ -440,11 +394,9 @@ export default async function projectRoutes(fastify, options = {}) {
       }
     }, 30000)
     
-    // Don't end the response - keep it open for streaming
     return reply
   })
 
-  // Console command execution endpoint
   fastify.post('/api/console/command', async (request, reply) => {
     try {
       const { command, args = [] } = request.body
@@ -501,14 +453,12 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Command handlers
   async function handleServerRestart() {
     addServerLog('warn', 'Server', 'Server restart initiated by console command')
     
-    // Schedule restart after a short delay to allow response to be sent
     setTimeout(() => {
       addServerLog('warn', 'Server', 'Restarting server...')
-      process.exit(0) // Let process manager (nodemon, pm2, etc.) restart
+      process.exit(0)
     }, 1000)
     
     return {
@@ -539,7 +489,7 @@ export default async function projectRoutes(fastify, options = {}) {
 
   function handleClearLogs() {
     const clearedCount = serverLogs.length
-    serverLogs.length = 0 // Clear the array
+    serverLogs.length = 0
     
     return {
       success: true,
@@ -601,7 +551,6 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   }
 
-  // Create new project
   fastify.post('/api/projects/create', async (request, reply) => {
     try {
       const { projectName } = request.body
@@ -610,19 +559,16 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(400).send({ error: 'Project name is required' })
       }
 
-      // Sanitize project name
       const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_')
       const projectPath = path.join(PROJECTS_DIR, safeName)
 
-      // Check if project already exists
       try {
         await fs.access(projectPath)
         return reply.code(409).send({ error: 'Project already exists' })
       } catch {
-        // Project doesn't exist, continue
+
       }
 
-      // Create project directory structure
       await fs.mkdir(projectPath, { recursive: true })
       await fs.mkdir(path.join(projectPath, 'assets'), { recursive: true })
       await fs.mkdir(path.join(projectPath, 'assets', 'models'), { recursive: true })
@@ -634,7 +580,6 @@ export default async function projectRoutes(fastify, options = {}) {
       await fs.mkdir(path.join(projectPath, 'assets', 'media'), { recursive: true })
       await fs.mkdir(path.join(projectPath, 'scenes'), { recursive: true })
 
-      // Create default project metadata
       const projectInfo = {
         name: projectName,
         version: '1.0.0',
@@ -648,7 +593,6 @@ export default async function projectRoutes(fastify, options = {}) {
         JSON.stringify(projectInfo, null, 2)
       )
 
-      // Create default scene
       const defaultScene = {
         entities: {
           "1": {
@@ -687,7 +631,6 @@ export default async function projectRoutes(fastify, options = {}) {
         JSON.stringify(defaultScene, null, 2)
       )
 
-      // Start watching the new project (re-enabled with restrictions)
       if (projectPath.includes('/projects/') && !projectPath.includes('node_modules')) {
         startProjectWatcher(projectPath)
       }
@@ -704,26 +647,22 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Load project
   fastify.get('/api/projects/:projectName', async (request, reply) => {
     try {
       const { projectName } = request.params
       const projectPath = path.join(PROJECTS_DIR, projectName)
 
-      // Check if project directory exists
       try {
         await fs.access(projectPath)
       } catch {
         return reply.code(404).send({ error: 'Project not found' })
       }
 
-      // Ensure assets directory exists and start watching if not already (re-enabled with restrictions)
       await ensureAssetsDirectory(projectPath)
       if (!assetWatchers.has(projectName) && projectPath.includes('/projects/') && !projectPath.includes('node_modules')) {
         startProjectWatcher(projectPath)
       }
 
-      // Read project metadata
       const projectInfoPath = path.join(projectPath, 'project.json')
       let projectInfo
       try {
@@ -732,34 +671,30 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(404).send({ error: 'Project metadata not found' })
       }
 
-      // Read main scene
       const mainScenePath = path.join(projectPath, 'scenes', 'main.json')
       let sceneData = {}
       try {
         sceneData = JSON.parse(await fs.readFile(mainScenePath, 'utf8'))
       } catch {
-        // Scene file doesn't exist, use empty scene
+
       }
 
-      // Read editor settings
       const editorSettingsPath = path.join(projectPath, 'editor-settings.json')
       let editorData = {}
       try {
         editorData = JSON.parse(await fs.readFile(editorSettingsPath, 'utf8'))
       } catch {
-        // Editor settings don't exist, use empty object
+
       }
 
-      // Read render settings
       const renderSettingsPath = path.join(projectPath, 'render-settings.json')
       let renderData = {}
       try {
         renderData = JSON.parse(await fs.readFile(renderSettingsPath, 'utf8'))
       } catch {
-        // Render settings don't exist, use empty object
+
       }
 
-      // Read other plugin settings
       const pluginData = {}
       try {
         const files = await fs.readdir(projectPath)
@@ -778,7 +713,6 @@ export default async function projectRoutes(fastify, options = {}) {
         console.warn('Failed to read plugin settings:', error)
       }
 
-      // TODO: Read assets manifest
       const assets = {}
 
       reply.send({
@@ -788,7 +722,7 @@ export default async function projectRoutes(fastify, options = {}) {
         render: renderData,
         assets: assets,
         projectPath: projectName,
-        ...pluginData // Include any other plugin data
+        ...pluginData
       })
 
     } catch (error) {
@@ -797,21 +731,16 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Save project data
   fastify.post('/api/projects/:projectName/save', async (request, reply) => {
     try {
       const { projectName } = request.params
-      // Handle both old format {scene, editor, assets} and new format {editor, render, scene}
       const { scene, editor, assets, render, ...otherPlugins } = request.body
       const projectPath = path.join(PROJECTS_DIR, projectName)
-
-      // Update project metadata
       const projectInfoPath = path.join(projectPath, 'project.json')
       let projectInfo = {}
       try {
         projectInfo = JSON.parse(await fs.readFile(projectInfoPath, 'utf8'))
       } catch {
-        // Create default if doesn't exist
         projectInfo = {
           name: projectName,
           version: '1.0.0',
@@ -823,25 +752,21 @@ export default async function projectRoutes(fastify, options = {}) {
       projectInfo.lastModified = new Date().toISOString()
       await fs.writeFile(projectInfoPath, JSON.stringify(projectInfo, null, 2))
 
-      // Save scene data
       if (scene) {
         const mainScenePath = path.join(projectPath, 'scenes', 'main.json')
         await fs.writeFile(mainScenePath, JSON.stringify(scene, null, 2))
       }
 
-      // Save editor settings (optional)
       if (editor) {
         const editorSettingsPath = path.join(projectPath, 'editor-settings.json')
         await fs.writeFile(editorSettingsPath, JSON.stringify(editor, null, 2))
       }
 
-      // Save render settings (optional)
       if (render) {
         const renderSettingsPath = path.join(projectPath, 'render-settings.json')
         await fs.writeFile(renderSettingsPath, JSON.stringify(render, null, 2))
       }
 
-      // Save other plugin data
       for (const [pluginName, pluginData] of Object.entries(otherPlugins)) {
         if (pluginData && typeof pluginData === 'object') {
           const pluginSettingsPath = path.join(projectPath, `${pluginName}-settings.json`)
@@ -849,9 +774,8 @@ export default async function projectRoutes(fastify, options = {}) {
         }
       }
 
-      // TODO: Handle assets
       if (assets) {
-        // Save assets to files
+
       }
 
       reply.send({ success: true })
@@ -862,13 +786,10 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Export project as .ren file
   fastify.get('/api/projects/:projectName/export', async (request, reply) => {
     try {
       const { projectName } = request.params
       const projectPath = path.join(PROJECTS_DIR, projectName)
-
-      // Read all project data
       const projectInfo = JSON.parse(
         await fs.readFile(path.join(projectPath, 'project.json'), 'utf8')
       )
@@ -879,13 +800,11 @@ export default async function projectRoutes(fastify, options = {}) {
           await fs.readFile(path.join(projectPath, 'scenes', 'main.json'), 'utf8')
         )
       } catch {
-        // Empty scene if file doesn't exist
+
       }
 
-      // TODO: Collect all assets and encode as base64
       const assets = await collectProjectAssets(projectPath)
 
-      // Create .ren file content
       const renData = {
         project: {
           ...projectInfo,
@@ -895,7 +814,6 @@ export default async function projectRoutes(fastify, options = {}) {
         assets: assets
       }
 
-      // Set headers for download
       reply.type('application/json')
       reply.header('Content-Disposition', `attachment; filename="${projectName}.ren"`)
       reply.send(JSON.stringify(renData, null, 2))
@@ -906,7 +824,6 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Import/extract .ren file
   fastify.post('/api/projects/import', async (request, reply) => {
     try {
       const { projectName, renData } = request.body
@@ -918,15 +835,13 @@ export default async function projectRoutes(fastify, options = {}) {
       const safeName = projectName.replace(/[^a-zA-Z0-9_-]/g, '_')
       const projectPath = path.join(PROJECTS_DIR, safeName)
 
-      // Check if project already exists
       try {
         await fs.access(projectPath)
         return reply.code(409).send({ error: 'Project already exists' })
       } catch {
-        // Project doesn't exist, continue
+
       }
 
-      // Create project directory structure
       await fs.mkdir(projectPath, { recursive: true })
       await fs.mkdir(path.join(projectPath, 'assets'), { recursive: true })
       await fs.mkdir(path.join(projectPath, 'assets', 'models'), { recursive: true })
@@ -938,7 +853,6 @@ export default async function projectRoutes(fastify, options = {}) {
       await fs.mkdir(path.join(projectPath, 'assets', 'media'), { recursive: true })
       await fs.mkdir(path.join(projectPath, 'scenes'), { recursive: true })
 
-      // Extract project data
       if (renData.project) {
         await fs.writeFile(
           path.join(projectPath, 'project.json'),
@@ -953,13 +867,9 @@ export default async function projectRoutes(fastify, options = {}) {
         )
       }
 
-      // Extract assets
       if (renData.assets) {
         await extractProjectAssets(projectPath, renData.assets)
       }
-
-      // Start watching the imported project (temporarily disabled)  
-      // startProjectWatcher(projectPath)
 
       reply.send({
         success: true,
@@ -973,7 +883,6 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // List all projects
   fastify.get('/api/projects', async (_, reply) => {
     try {
       const projects = []
@@ -991,7 +900,7 @@ export default async function projectRoutes(fastify, options = {}) {
               created: projectInfo.created
             })
           } catch {
-            // Skip invalid projects
+
           }
         }
       }
@@ -1004,10 +913,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Get assets list for a project (backward compatibility)
   fastify.get('/api/projects/:projectName/assets', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, file system is handled by main process
       const { folder = '' } = request.query
       return reply.send({ assets: [], currentFolder: folder })
     }
@@ -1017,7 +924,6 @@ export default async function projectRoutes(fastify, options = {}) {
       const { folder = '' } = request.query
       const projectPath = path.join(PROJECTS_DIR, projectName)
       
-      // Check if project exists
       try {
         await fs.access(projectPath)
       } catch {
@@ -1032,10 +938,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Get folder tree structure for a project
   fastify.get('/api/projects/:projectName/assets/tree', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, file system is handled by main process
       return reply.send({ tree: { name: 'assets', path: '', children: [], files: [] } })
     }
     
@@ -1043,7 +947,6 @@ export default async function projectRoutes(fastify, options = {}) {
       const { projectName } = request.params
       const projectPath = path.join(PROJECTS_DIR, projectName)
       
-      // Check if project exists
       try {
         await fs.access(projectPath)
       } catch {
@@ -1058,10 +961,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Get assets categorized by type
   fastify.get('/api/projects/:projectName/assets/categories', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, file system is handled by main process
       const emptyCategories = {
         '3d-models': { name: '3D Models', files: [] },
         'textures': { name: 'Textures', files: [] },
@@ -1079,7 +980,6 @@ export default async function projectRoutes(fastify, options = {}) {
       
       console.log(`📊 Getting asset categories for project: ${projectName}`)
       
-      // Check if project exists
       try {
         await fs.access(projectPath)
       } catch {
@@ -1096,16 +996,13 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   })
 
-  // Helper function to check allowed file types
   const isAllowedFileType = (filename) => {
     const allowedTypes = /\.(glb|gltf|obj|fbx|jpg|jpeg|png|bmp|tga|webp|mp3|wav|ogg|m4a|js|ts|json|xml|txt|md)$/i;
     return allowedTypes.test(filename);
   };
 
-  // Upload asset files
   fastify.post('/api/projects/:projectName/assets/upload', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, file uploads are handled by main process
       return reply.send({ message: 'File upload handled by Electron main process', filename: 'electron-handled' })
     }
     
@@ -1113,17 +1010,14 @@ export default async function projectRoutes(fastify, options = {}) {
       const { projectName } = request.params;
       const projectPath = path.join(PROJECTS_DIR, projectName);
       
-      // Check if project exists
       try {
         await fs.access(projectPath);
       } catch {
         return reply.code(404).send({ error: 'Project not found' });
       }
 
-      // Ensure assets directory exists
       await ensureAssetsDirectory(projectPath);
       
-      // Handle multipart form data
       const data = await request.file();
       if (!data) {
         return reply.code(400).send({ error: 'No file provided' });
@@ -1131,23 +1025,17 @@ export default async function projectRoutes(fastify, options = {}) {
 
       const filename = data.filename;
       
-      // Check if file type is allowed
       if (!isAllowedFileType(filename)) {
         return reply.code(400).send({ error: 'File type not allowed' });
       }
       
       const buffer = await data.toBuffer();
-      
-      // Get folder path from headers - if specified, use exactly that path
       const folderPath = request.headers['x-folder-path'];
       const ext = path.extname(filename).toLowerCase();
-      
-      // Use the exact folder path specified, or root if none specified
-      const baseTargetPath = folderPath || ''; // Empty string means root assets directory
+      const baseTargetPath = folderPath || '';
       const targetDirPath = path.join(projectPath, 'assets', baseTargetPath);
       await fs.mkdir(targetDirPath, { recursive: true });
       
-      // Generate unique filename if file already exists
       let finalFilename = filename;
       let counter = 1;
       while (await fs.access(path.join(targetDirPath, finalFilename)).then(() => true).catch(() => false)) {
@@ -1173,10 +1061,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   });
 
-  // Create script file endpoint
   fastify.post('/api/projects/:projectName/assets/create-script', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, script creation is handled by main process
       return reply.send({ success: true, message: 'Script creation handled by Electron main process' })
     }
     
@@ -1188,28 +1074,23 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(400).send({ error: 'Script name and content are required' });
       }
       
-      // Validate script name
       if (!scriptName.match(/^[a-zA-Z0-9_.-]+\.(js|ts|jsx|tsx)$/)) {
         return reply.code(400).send({ error: 'Invalid script name. Must end with .js, .ts, .jsx, or .tsx' });
       }
       
       const projectPath = path.join(PROJECTS_DIR, projectName);
       
-      // Check if project exists
       try {
         await fs.access(projectPath);
       } catch {
         return reply.code(404).send({ error: 'Project not found' });
       }
 
-      // Ensure assets directory exists
       await ensureAssetsDirectory(projectPath);
       
       const assetsPath = path.join(projectPath, 'assets');
       const fullTargetPath = targetPath ? path.join(assetsPath, targetPath) : assetsPath;
       const scriptFilePath = path.join(fullTargetPath, scriptName);
-      
-      // Security check - ensure the path is within the assets directory
       const normalizedAssetsPath = path.resolve(assetsPath);
       const normalizedScriptPath = path.resolve(scriptFilePath);
       
@@ -1217,18 +1098,15 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(403).send({ error: 'Access denied' });
       }
       
-      // Ensure target directory exists
       await fs.mkdir(fullTargetPath, { recursive: true });
       
-      // Check if script already exists
       try {
         await fs.access(scriptFilePath);
         return reply.code(409).send({ error: `Script "${scriptName}" already exists in this location` });
       } catch {
-        // Script doesn't exist, continue
+
       }
       
-      // Write the script file
       await fs.writeFile(scriptFilePath, scriptContent, 'utf8');
       
       const relativePath = path.relative(assetsPath, scriptFilePath).replace(/\\/g, '/');
@@ -1248,10 +1126,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   });
 
-  // Create folder in assets directory
   fastify.post('/api/projects/:projectName/assets/folder', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, folder creation is handled by main process
       return reply.send({ success: true, message: 'Folder creation handled by Electron main process' })
     }
     
@@ -1263,7 +1139,6 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(400).send({ error: 'Folder name is required' });
       }
       
-      // Sanitize folder name
       const safeFolderName = folderName.replace(/[^a-zA-Z0-9_-\s]/g, '_').trim();
       if (!safeFolderName) {
         return reply.code(400).send({ error: 'Invalid folder name' });
@@ -1271,21 +1146,16 @@ export default async function projectRoutes(fastify, options = {}) {
       
       const projectPath = path.join(PROJECTS_DIR, projectName);
       
-      // Check if project exists
       try {
         await fs.access(projectPath);
       } catch {
         return reply.code(404).send({ error: 'Project not found' });
       }
 
-      // Ensure assets directory exists
       await ensureAssetsDirectory(projectPath);
       
-      // Construct the full folder path
       const assetsPath = path.join(projectPath, 'assets');
       const targetFolderPath = path.join(assetsPath, parentPath, safeFolderName);
-      
-      // Security check - ensure the path is within the assets directory
       const normalizedAssetsPath = path.resolve(assetsPath);
       const normalizedTargetPath = path.resolve(targetFolderPath);
       
@@ -1293,15 +1163,13 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(403).send({ error: 'Access denied' });
       }
       
-      // Check if folder already exists
       try {
         await fs.access(targetFolderPath);
         return reply.code(409).send({ error: 'Folder already exists' });
       } catch {
-        // Folder doesn't exist, continue
+
       }
       
-      // Create the folder
       await fs.mkdir(targetFolderPath, { recursive: true });
       
       const relativePath = path.relative(assetsPath, targetFolderPath).replace(/\\/g, '/');
@@ -1320,10 +1188,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   });
 
-  // Delete folder or file from assets directory
   fastify.delete('/api/projects/:projectName/assets/delete', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, asset deletion is handled by main process
       return reply.send({ success: true, message: 'Asset deletion handled by Electron main process' })
     }
     
@@ -1337,7 +1203,6 @@ export default async function projectRoutes(fastify, options = {}) {
       
       const projectPath = path.join(PROJECTS_DIR, projectName);
       
-      // Check if project exists
       try {
         await fs.access(projectPath);
       } catch {
@@ -1346,8 +1211,6 @@ export default async function projectRoutes(fastify, options = {}) {
       
       const assetsPath = path.join(projectPath, 'assets');
       const targetItemPath = path.join(assetsPath, itemPath);
-      
-      // Security check - ensure the path is within the assets directory
       const normalizedAssetsPath = path.resolve(assetsPath);
       const normalizedTargetPath = path.resolve(targetItemPath);
       
@@ -1355,22 +1218,18 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(403).send({ error: 'Access denied' });
       }
       
-      // Check if item exists
       try {
         await fs.access(targetItemPath);
       } catch {
         return reply.code(404).send({ error: 'Item not found' });
       }
       
-      // Get item stats to determine if it's a file or directory
       const stats = await fs.stat(targetItemPath);
       
       if (stats.isDirectory()) {
-        // Remove directory and all contents
         await fs.rm(targetItemPath, { recursive: true, force: true });
         console.log(`🗑️ Folder deleted: ${itemPath}`);
       } else {
-        // Remove file
         await fs.unlink(targetItemPath);
         console.log(`🗑️ File deleted: ${itemPath}`);
       }
@@ -1387,7 +1246,6 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   });
 
-  // Rename folder or file in assets directory
   fastify.put('/api/projects/:projectName/assets/rename', async (request, reply) => {
     try {
       const { projectName } = request.params;
@@ -1397,7 +1255,6 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(400).send({ error: 'Old path and new name are required' });
       }
       
-      // Sanitize new name
       const safeNewName = newName.replace(/[^a-zA-Z0-9_.-\s]/g, '_').trim();
       if (!safeNewName) {
         return reply.code(400).send({ error: 'Invalid new name' });
@@ -1405,7 +1262,6 @@ export default async function projectRoutes(fastify, options = {}) {
       
       const projectPath = path.join(PROJECTS_DIR, projectName);
       
-      // Check if project exists
       try {
         await fs.access(projectPath);
       } catch {
@@ -1415,8 +1271,6 @@ export default async function projectRoutes(fastify, options = {}) {
       const assetsPath = path.join(projectPath, 'assets');
       const oldItemPath = path.join(assetsPath, oldPath);
       const newItemPath = path.join(path.dirname(oldItemPath), safeNewName);
-      
-      // Security checks
       const normalizedAssetsPath = path.resolve(assetsPath);
       const normalizedOldPath = path.resolve(oldItemPath);
       const normalizedNewPath = path.resolve(newItemPath);
@@ -1426,22 +1280,19 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(403).send({ error: 'Access denied' });
       }
       
-      // Check if old item exists
       try {
         await fs.access(oldItemPath);
       } catch {
         return reply.code(404).send({ error: 'Item not found' });
       }
       
-      // Check if new name already exists
       try {
         await fs.access(newItemPath);
         return reply.code(409).send({ error: 'An item with that name already exists' });
       } catch {
-        // New name doesn't exist, continue
+
       }
       
-      // Rename the item
       await fs.rename(oldItemPath, newItemPath);
       
       const newRelativePath = path.relative(assetsPath, newItemPath).replace(/\\/g, '/');
@@ -1461,10 +1312,8 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   });
 
-  // Move folder or file to a new location
   fastify.put('/api/projects/:projectName/assets/move', async (request, reply) => {
     if (isElectron) {
-      // In Electron mode, asset moving is handled by main process
       return reply.send({ success: true, message: 'Asset move handled by Electron main process' })
     }
     
@@ -1478,7 +1327,6 @@ export default async function projectRoutes(fastify, options = {}) {
       
       const projectPath = path.join(PROJECTS_DIR, projectName);
       
-      // Check if project exists
       try {
         await fs.access(projectPath);
       } catch {
@@ -1488,8 +1336,6 @@ export default async function projectRoutes(fastify, options = {}) {
       const assetsPath = path.join(projectPath, 'assets');
       const sourceItemPath = path.join(assetsPath, sourcePath);
       const targetItemPath = path.join(assetsPath, targetPath);
-      
-      // Security checks
       const normalizedAssetsPath = path.resolve(assetsPath);
       const normalizedSourcePath = path.resolve(sourceItemPath);
       const normalizedTargetPath = path.resolve(targetItemPath);
@@ -1499,31 +1345,26 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(403).send({ error: 'Access denied' });
       }
       
-      // Check if source exists
       try {
         await fs.access(sourceItemPath);
       } catch {
         return reply.code(404).send({ error: 'Source item not found' });
       }
       
-      // Check if target directory exists
       const targetDir = path.dirname(targetItemPath);
       try {
         await fs.access(targetDir);
       } catch {
-        // Create target directory if it doesn't exist
         await fs.mkdir(targetDir, { recursive: true });
       }
       
-      // Check if target already exists
       try {
         await fs.access(targetItemPath);
         return reply.code(409).send({ error: 'Target already exists' });
       } catch {
-        // Target doesn't exist, continue
+
       }
       
-      // Move the item
       await fs.rename(sourceItemPath, targetItemPath);
       
       console.log(`📁 Item moved: ${sourcePath} → ${targetPath}`);
@@ -1540,15 +1381,12 @@ export default async function projectRoutes(fastify, options = {}) {
     }
   });
 
-  // Serve individual asset files
   fastify.get('/api/projects/:projectName/assets/file/*', async (request, reply) => {
     try {
       const { projectName } = request.params
-      const assetPath = request.params['*'] // Get the wildcard path
+      const assetPath = request.params['*']
       const projectPath = path.join(PROJECTS_DIR, projectName)
       const fullAssetPath = path.join(projectPath, 'assets', assetPath)
-      
-      // Security check - ensure the path is within the project assets directory
       const normalizedProjectPath = path.resolve(projectPath)
       const normalizedAssetPath = path.resolve(fullAssetPath)
       
@@ -1556,33 +1394,28 @@ export default async function projectRoutes(fastify, options = {}) {
         return reply.code(403).send({ error: 'Access denied' })
       }
       
-      // Check if file exists
       try {
         await fs.access(fullAssetPath)
       } catch {
         return reply.code(404).send({ error: 'Asset not found' })
       }
       
-      // Get file stats and determine content type
       const stats = await fs.stat(fullAssetPath)
       const ext = path.extname(assetPath).toLowerCase()
       const mimeType = getMimeType(ext)
       
-      // Set appropriate headers
       reply.header('Content-Type', mimeType)
       reply.header('Content-Length', stats.size)
-      reply.header('Cache-Control', 'public, max-age=3600') // Cache for 1 hour
+      reply.header('Cache-Control', 'public, max-age=3600')
       reply.header('Access-Control-Allow-Origin', '*')
       reply.header('Access-Control-Allow-Methods', 'GET')
       reply.header('Access-Control-Allow-Headers', 'Content-Type')
       
-      // If this is a download request (e.g., drag to desktop), add download headers
       if (request.query.download === 'true') {
         const filename = path.basename(assetPath)
         reply.header('Content-Disposition', `attachment; filename="${filename}"`)
       }
       
-      // Stream the file
       const fileStream = fsSync.createReadStream(fullAssetPath)
       
       fileStream.on('error', (error) => {
@@ -1604,7 +1437,6 @@ export default async function projectRoutes(fastify, options = {}) {
   })
 }
 
-// Helper function to build hierarchical folder structure
 async function buildFolderTree(projectPath) {
   const assetsPath = path.join(projectPath, 'assets')
   
@@ -1621,18 +1453,15 @@ async function buildFolderTree(projectPath) {
       const entries = await fs.readdir(dirPath, { withFileTypes: true })
       
       for (const entry of entries) {
-        // Skip hidden files/directories
         if (entry.name.startsWith('.') || entry.name === 'Thumbs.db') continue
         
         const fullPath = path.join(dirPath, entry.name)
         const relativeFilePath = path.join(relativePath, entry.name).replace(/\\/g, '/')
         
         if (entry.isDirectory()) {
-          // Recursively build subtree for directories
           const subtree = await buildTree(fullPath, relativeFilePath)
           tree.children.push(subtree)
         } else {
-          // Add file to current directory
           let stats
           try {
             stats = await fs.stat(fullPath)
@@ -1657,7 +1486,6 @@ async function buildFolderTree(projectPath) {
         }
       }
       
-      // Sort children and files alphabetically
       tree.children.sort((a, b) => a.name.localeCompare(b.name))
       tree.files.sort((a, b) => a.fileName.localeCompare(b.fileName))
       
@@ -1671,12 +1499,10 @@ async function buildFolderTree(projectPath) {
   return await buildTree(assetsPath)
 }
 
-// Helper function to categorize assets by type
 async function categorizeAssetsByType(projectPath) {
   const assetsPath = path.join(projectPath, 'assets')
   console.log(`📊 Categorizing assets in: ${assetsPath}`)
   
-  // Ensure assets directory exists
   try {
     await fs.access(assetsPath)
   } catch (error) {
@@ -1715,7 +1541,6 @@ async function categorizeAssetsByType(projectPath) {
           
           const ext = path.extname(entry.name).toLowerCase()
           
-          // Find appropriate category
           let category = 'misc'
           for (const [categoryId, categoryData] of Object.entries(categories)) {
             if (categoryData.extensions.includes(ext)) {
@@ -1746,7 +1571,6 @@ async function categorizeAssetsByType(projectPath) {
   
   await categorizeFiles(assetsPath)
   
-  // Sort files in each category
   Object.values(categories).forEach(category => {
     category.files.sort((a, b) => a.fileName.localeCompare(b.fileName))
   })
@@ -1757,7 +1581,6 @@ async function categorizeAssetsByType(projectPath) {
   return categories
 }
 
-// Helper function to get folder contents (for backward compatibility)
 async function listProjectAssets(projectPath, folderPath = '') {
   const assetsPath = path.join(projectPath, 'assets', folderPath)
   const assetsList = []
@@ -1766,14 +1589,12 @@ async function listProjectAssets(projectPath, folderPath = '') {
     const entries = await fs.readdir(assetsPath, { withFileTypes: true })
     
     for (const entry of entries) {
-      // Skip hidden files/directories
       if (entry.name.startsWith('.') || entry.name === 'Thumbs.db') continue
       
       const fullPath = path.join(assetsPath, entry.name)
       const relativeFilePath = path.join(folderPath, entry.name).replace(/\\/g, '/')
       
       if (entry.isDirectory()) {
-        // Add folder entry
         assetsList.push({
           id: relativeFilePath.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
           name: entry.name,
@@ -1786,7 +1607,6 @@ async function listProjectAssets(projectPath, folderPath = '') {
           mimeType: 'folder'
         })
       } else {
-        // Add file entry
         let stats
         try {
           stats = await fs.stat(fullPath)
@@ -1811,7 +1631,6 @@ async function listProjectAssets(projectPath, folderPath = '') {
       }
     }
     
-    // Sort folders first, then files
     assetsList.sort((a, b) => {
       if (a.type === 'folder' && b.type === 'file') return -1
       if (a.type === 'file' && b.type === 'folder') return 1
@@ -1825,7 +1644,6 @@ async function listProjectAssets(projectPath, folderPath = '') {
   return assetsList
 }
 
-// Helper function to collect assets from project directory
 async function collectProjectAssets(projectPath) {
   const assets = {}
   const assetsPath = path.join(projectPath, 'assets')
@@ -1841,15 +1659,12 @@ async function collectProjectAssets(projectPath) {
         if (entry.isDirectory()) {
           await collectFromDir(fullPath, relativeFilePath)
         } else {
-          // Read file and encode based on type
           const fileData = await fs.readFile(fullPath)
           const ext = path.extname(entry.name).toLowerCase()
           
           if (['.js', '.json', '.txt', '.md'].includes(ext)) {
-            // Text files
             assets[relativeFilePath] = fileData.toString('utf8')
           } else {
-            // Binary files - encode as base64
             const mimeType = getMimeType(ext)
             assets[relativeFilePath] = `data:${mimeType};base64,${fileData.toString('base64')}`
           }
@@ -1865,7 +1680,6 @@ async function collectProjectAssets(projectPath) {
   return assets
 }
 
-// Helper function to extract assets to project directory
 async function extractProjectAssets(projectPath, assets) {
   const assetsPath = path.join(projectPath, 'assets')
   
@@ -1873,22 +1687,18 @@ async function extractProjectAssets(projectPath, assets) {
     const fullPath = path.join(assetsPath, relativePath)
     const dirPath = path.dirname(fullPath)
     
-    // Ensure directory exists
     await fs.mkdir(dirPath, { recursive: true })
     
     if (typeof content === 'string' && content.startsWith('data:')) {
-      // Base64 encoded binary file
       const base64Data = content.split(',')[1]
       const binaryData = Buffer.from(base64Data, 'base64')
       await fs.writeFile(fullPath, binaryData)
     } else {
-      // Text file
       await fs.writeFile(fullPath, content, 'utf8')
     }
   }
 }
 
-// Helper function to get MIME type from extension
 function getMimeType(ext) {
   const mimeTypes = {
     '.jpg': 'image/jpeg',

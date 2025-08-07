@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSnapshot } from 'valtio';
 import { globalStore, actions } from "@/store.js";
-import { Icons } from '@/plugins/editor/components/Icons';
 
 export default function GridHelpers() {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -12,7 +11,6 @@ export default function GridHelpers() {
   const gridSnapping = viewport.gridSnapping || false;
   const gridSettings = settings.grid;
 
-  // Handle click outside to close grid panel
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (gridRef.current && !gridRef.current.contains(event.target)) {
@@ -31,7 +29,6 @@ export default function GridHelpers() {
 
   return (
     <div ref={gridRef} className="relative group">
-      {/* Grid Settings Button */}
       <button
         className={`pl-2 pr-1 py-1 text-xs rounded transition-colors cursor-pointer ${
           isExpanded
@@ -54,14 +51,12 @@ export default function GridHelpers() {
           </svg>
         </div>
         
-        {/* Tooltip */}
         <div className="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
           Grid Settings
           <div className="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-gray-900/95" />
         </div>
       </button>
       
-      {/* Grid Settings Panel */}
       {isExpanded && (
         <div className="absolute top-full right-0 mt-2 w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg shadow-xl space-y-4 text-white text-xs pointer-events-auto z-50 p-4">
           <div>
@@ -69,7 +64,6 @@ export default function GridHelpers() {
               Grid Settings
             </label>
             <div className="space-y-3">
-              {/* Grid Toggle */}
               <div className="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700">
                 <label className="text-xs font-medium text-gray-300">Enable Grid</label>
                 <button
@@ -86,10 +80,8 @@ export default function GridHelpers() {
                 </button>
               </div>
 
-              {/* Grid Settings - show when enabled */}
               {gridSettings.enabled && (
                 <div className="space-y-3 pt-2 border-t border-gray-700">
-                  {/* Unit Selection */}
                   <div>
                     <label className="block text-xs text-gray-400 mb-1">Units</label>
                     <select
@@ -105,7 +97,6 @@ export default function GridHelpers() {
                     </select>
                   </div>
 
-                  {/* Grid Size and Cell Size */}
                   <div className="grid grid-cols-2 gap-2">
                     {!gridSettings.infiniteGrid && (
                       <div>
@@ -135,7 +126,6 @@ export default function GridHelpers() {
                     </div>
                   </div>
 
-                  {/* Grid Position */}
                   <div>
                     <label className="block text-xs text-gray-400 mb-1">Position</label>
                     <div className="grid grid-cols-3 gap-1">
@@ -184,7 +174,6 @@ export default function GridHelpers() {
                     </div>
                   </div>
 
-                  {/* Grid Colors */}
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="block text-xs text-gray-400 mb-1">Cell Color</label>
@@ -216,7 +205,6 @@ export default function GridHelpers() {
                     </div>
                   </div>
 
-                  {/* Infinite Grid and Grid Snapping */}
                   <div className="grid grid-cols-2 gap-2">
                     <div className="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700">
                       <label className="text-xs font-medium text-gray-300">Infinite</label>

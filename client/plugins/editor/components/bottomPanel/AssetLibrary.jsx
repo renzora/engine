@@ -3,15 +3,14 @@ import { Icons } from '@/plugins/editor/components/Icons';
 import { useSnapshot } from 'valtio';
 import { globalStore, actions } from "@/store.js";
 import { projectManager } from '@/plugins/projects/projectManager.js';
-// Using simple on-demand loading instead of complex asset manager
 import ContextMenu from '@/plugins/editor/components/ui/ContextMenu.jsx';
 import ScriptCreationDialog from '@/plugins/editor/components/ui/ScriptCreationDialog.jsx';
 import { useContextMenuActions } from '@/plugins/editor/components/actions/ContextMenuActions.jsx';
 import { useAssetAPI } from '@/plugins/editor/hooks/useAssetAPI.js';
 
 function AssetLibrary() {
-  const [viewMode, setViewMode] = useState('folder'); // 'folder' or 'type'
-  const [layoutMode, setLayoutMode] = useState('grid'); // 'grid' or 'list'
+  const [viewMode, setViewMode] = useState('folder');
+  const [layoutMode, setLayoutMode] = useState('grid');
   const [currentPath, setCurrentPath] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('3d-models');
   const [searchQuery, setSearchQuery] = useState('');
@@ -37,34 +36,23 @@ function AssetLibrary() {
   const [showScriptDialog, setShowScriptDialog] = useState(false);
   const fileInputRef = useRef(null);
   const folderInputRef = useRef(null);
-  
-  // Using store-based cache instead of component-level cache
-  
   const { ui, assets: assetCache } = useSnapshot(globalStore.editor);
   const { assetsLibraryWidth: treePanelWidth } = ui;
   const { setAssetsLibraryWidth: setTreePanelWidth } = actions.editor;
-  
-  // Get context menu actions
   const { handleCreateObject } = useContextMenuActions(actions.editor);
-
-  // Asset API abstraction (Electron vs Server)
   const assetAPI = useAssetAPI();
-
-  // Helper function to get file extension icon and color
   const getExtensionStyle = (extension) => {
-    const ext = extension?.toLowerCase() || '';
+  const ext = extension?.toLowerCase() || '';
     
-    // 3D Models - Purple theme
     if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) {
       return {
-        icon: null, // No icon in badge for 3D models
+        icon: null,
         bgColor: 'bg-purple-600',
         hoverColor: 'hover:bg-purple-700',
         textColor: 'text-white'
       };
     }
     
-    // Images/Textures - Green theme  
     if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) {
       return {
         icon: <Icons.Photo className="w-3 h-3" />,
@@ -74,7 +62,6 @@ function AssetLibrary() {
       };
     }
     
-    // Audio - Orange theme
     if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
       return {
         icon: <Icons.Audio className="w-3 h-3" />,
@@ -84,17 +71,15 @@ function AssetLibrary() {
       };
     }
     
-    // Scripts - Blue theme
     if (['.js', '.ts', '.jsx', '.tsx'].includes(ext)) {
       return {
-        icon: null, // No icon in badge for scripts
+        icon: null,
         bgColor: 'bg-blue-600',
         hoverColor: 'hover:bg-blue-700',
         textColor: 'text-white'
       };
     }
     
-    // Data files - Indigo theme
     if (['.json', '.xml', '.txt', '.md'].includes(ext)) {
       return {
         icon: <Icons.DocumentText className="w-3 h-3" />,
@@ -104,7 +89,6 @@ function AssetLibrary() {
       };
     }
     
-    // Default - Gray theme
     return {
       icon: <Icons.Document className="w-3 h-3" />,
       bgColor: 'bg-gray-600',
@@ -113,27 +97,22 @@ function AssetLibrary() {
     };
   };
 
-  // Helper function to check if file is a script
   const isScriptFile = (extension) => {
     const ext = extension?.toLowerCase() || '';
     return ['.js', '.ts', '.jsx', '.tsx'].includes(ext);
   };
 
-  // Helper function to check if file is a 3D model
   const is3DModelFile = (extension) => {
     const ext = extension?.toLowerCase() || '';
     return ['.glb', '.gltf', '.obj', '.fbx'].includes(ext);
   };
 
-  // Cache management using store
   const clearCacheIfProjectChanged = (currentProject) => {
     actions.editor.setAssetsProject(currentProject.name);
   };
 
-  // Cached folder tree fetcher
   const fetchFolderTree = async (currentProject) => {
     if (assetCache.folderTree && actions.editor.isCacheValid(assetCache.folderTreeTimestamp)) {
-      // Using cached folder tree
       setFolderTree(assetCache.folderTree);
       return;
     }
@@ -148,13 +127,9 @@ function AssetLibrary() {
     }
   };
 
-  // Cached asset categories fetcher
   const fetchAssetCategories = async (currentProject) => {
     if (assetCache.categories && actions.editor.isCacheValid(assetCache.categoriesTimestamp)) {
-      // Using cached asset categories
       setAssetCategories(assetCache.categories);
-      
-      // Set initial assets for the selected category
       const categoryAssets = assetCache.categories[selectedCategory]?.files || [];
       setAssets(categoryAssets);
       setLoading(false);
@@ -165,8 +140,6 @@ function AssetLibrary() {
       const categories = await assetAPI.fetchAssetCategories(currentProject);
       actions.editor.setAssetCategories(categories);
       setAssetCategories(categories);
-      
-      // Set initial assets for the selected category
       const categoryAssets = categories[selectedCategory]?.files || [];
       setAssets(categoryAssets);
       setLoading(false);
@@ -177,11 +150,9 @@ function AssetLibrary() {
     }
   };
 
-  // Cached assets fetcher by path
   const fetchAssets = async (currentProject, path = currentPath) => {
     const cachedAssets = actions.editor.getAssetsForPath(path);
     if (cachedAssets) {
-      // Using cached assets
       setAssets(cachedAssets);
       setLoading(false);
       return;
@@ -190,10 +161,7 @@ function AssetLibrary() {
     try {
       setLoading(true);
       setError(null);
-
       const newAssets = await assetAPI.fetchAssets(currentProject, path);
-      
-      // Cache the result in store
       actions.editor.setAssetsForPath(path, newAssets);
       
       setAssets(newAssets);
@@ -206,19 +174,15 @@ function AssetLibrary() {
     }
   };
 
-  // Fetch data based on view mode
   useEffect(() => {
     const currentProject = projectManager.getCurrentProject();
     
     if (!currentProject?.name) {
-      // Set loading state and wait for project to be available
       setLoading(true);
       setError(null);
       
-      // Add a loading listener to be notified when projects are loaded
       const handleProjectLoaded = ({ progress, operation, isLoading }) => {
         if (!isLoading && progress === 0) {
-          // Loading finished, check if project is now available
           const newProject = projectManager.getCurrentProject();
           if (newProject?.name) {
             setError(null);
@@ -234,7 +198,6 @@ function AssetLibrary() {
       
       projectManager.addLoadingListener(handleProjectLoaded);
       
-      // Also try a simple retry mechanism as fallback
       let retryCount = 0;
       const maxRetries = 5;
       
@@ -254,7 +217,6 @@ function AssetLibrary() {
           if (retryCount < maxRetries) {
             setTimeout(retryProjectLoad, 500 * retryCount);
           } else {
-            // Final check - if project manager says it's initialized but no project, show appropriate error
             if (projectManager.initialized) {
               setError('Project loading failed');
             } else {
@@ -265,41 +227,30 @@ function AssetLibrary() {
         }
       };
       
-      // Start retry process after a brief delay
       setTimeout(retryProjectLoad, 200);
       
-      // Clean up the loading listener
       return () => {
         projectManager.removeLoadingListener(handleProjectLoaded);
       };
     }
 
     clearCacheIfProjectChanged(currentProject);
-    
-    // Clear any previous errors when switching views
     setError(null);
 
     if (viewMode === 'folder') {
       fetchFolderTree(currentProject);
       fetchAssets(currentProject);
     } else {
-      // Type view - always fetch categories first
       setLoading(true);
       fetchAssetCategories(currentProject);
     }
 
-    // Handle real-time file changes
     const handleFileChange = (changeData) => {
       console.log('🔄 AssetLibrary: File change detected:', changeData);
-      
-      // Clear all asset cache when files change
       actions.editor.clearAllAssetCache();
-      
-      // Add a small delay to ensure file operations are complete
       setTimeout(() => {
         console.log('🔄 AssetLibrary: Refreshing asset data...');
         
-        // Refresh data based on current view mode
         if (viewMode === 'folder') {
           fetchFolderTree(currentProject);
           fetchAssets(currentProject, currentPath);
@@ -309,14 +260,10 @@ function AssetLibrary() {
       }, 200);
     };
 
-    // Add file change listener (uses appropriate API based on Electron/Browser)
     const removeListener = assetAPI.addFileChangeListener(handleFileChange);
-
-    // Cleanup on unmount
     return removeListener;
   }, [currentPath, viewMode, selectedCategory]);
 
-  // Handle currentPath changes for folder view
   useEffect(() => {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject.name || viewMode !== 'folder') return;
@@ -324,13 +271,8 @@ function AssetLibrary() {
     fetchAssets(currentProject, currentPath);
   }, [currentPath]);
 
-  // Optimized asset loading using asset manager
-  const queueAssetForLoading = (asset) => {
-    // Simple on-demand loading - assets loaded by Babylon.js when needed
-    // Asset available for loading
-  };
+  const queueAssetForLoading = (asset) => {};
 
-  // Generate breadcrumb navigation (folder view only)
   const breadcrumbs = React.useMemo(() => {
     if (viewMode !== 'folder') return [];
     if (!currentPath) return [{ name: 'assets', path: '' }];
@@ -359,7 +301,6 @@ function AssetLibrary() {
     return iconMap[categoryId] || Icons.Folder;
   };
 
-  // Generate asset type categories for type view
   const categoryList = React.useMemo(() => {
     if (!assetCategories) return [];
     
@@ -371,11 +312,9 @@ function AssetLibrary() {
     }));
   }, [assetCategories]);
 
-  // Global search across all assets
   const [globalSearchResults, setGlobalSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
   
-  // Perform global search when search query changes
   useEffect(() => {
     if (!searchQuery.trim()) {
       setGlobalSearchResults([]);
@@ -396,7 +335,6 @@ function AssetLibrary() {
         setGlobalSearchResults(results);
       } catch (error) {
         console.warn('Search API error, falling back to client-side search:', error);
-        // Fallback: search through cached data
         performClientSideGlobalSearch();
       } finally {
         setIsSearching(false);
@@ -407,7 +345,6 @@ function AssetLibrary() {
       const searchResults = [];
       const searchLower = searchQuery.toLowerCase();
       
-      // Search through cached assets by path
       cacheRef.current.assetsByPath.forEach((pathData, path) => {
         pathData.assets.forEach(asset => {
           if (asset.name.toLowerCase().includes(searchLower) || 
@@ -420,13 +357,11 @@ function AssetLibrary() {
         });
       });
       
-      // Search through categories if available
       if (cacheRef.current.categories) {
         Object.values(cacheRef.current.categories).forEach(category => {
           category.files?.forEach(asset => {
             if (asset.name.toLowerCase().includes(searchLower) || 
                 asset.fileName?.toLowerCase().includes(searchLower)) {
-              // Avoid duplicates
               if (!searchResults.find(r => r.id === asset.id)) {
                 searchResults.push(asset);
               }
@@ -438,21 +373,17 @@ function AssetLibrary() {
       setGlobalSearchResults(searchResults);
     };
 
-    // Debounce search to avoid too many requests
     const searchTimeout = setTimeout(performGlobalSearch, 300);
     return () => clearTimeout(searchTimeout);
   }, [searchQuery]);
 
-  // Filter assets by search query - use global results if searching, otherwise current directory
   const filteredAssets = React.useMemo(() => {
     if (!searchQuery) return assets;
     
-    // If we have global search results, use them
     if (globalSearchResults.length > 0) {
       return globalSearchResults;
     }
     
-    // Fallback to local filtering of current directory
     return assets.filter(asset => {
       const matchesSearch = asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                            asset.fileName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -460,7 +391,6 @@ function AssetLibrary() {
     });
   }, [assets, searchQuery, globalSearchResults]);
 
-  // Get current category assets when in type view
   useEffect(() => {
     if (viewMode === 'type' && assetCategories) {
       const categoryAssets = assetCategories[selectedCategory]?.files || [];
@@ -469,36 +399,30 @@ function AssetLibrary() {
     }
   }, [viewMode, selectedCategory, assetCategories]);
 
-  // Simple asset state management for UI feedback
   useEffect(() => {
     if (assets.length === 0) return;
 
-    // Initialize with empty state for all assets - they'll be loaded on-demand
     const newLoadedAssets = [];
     const newFailedAssets = [];
     const newPreloadingAssets = [];
     
-    // Update state with initial empty arrays
     setLoadedAssets(newLoadedAssets);
     setFailedAssets(newFailedAssets);
     setPreloadingAssets(newPreloadingAssets);
   }, [assets]);
 
-  // Show loading bar only when actually uploading files
   useEffect(() => {
     setShowLoadingBar(isUploading);
   }, [isUploading]);
-
-  // Auto-mark assets as loaded when they appear (simplified loading system)
+ 
   useEffect(() => {
     if (filteredAssets.length > 0) {
-      // Mark all file assets as loaded by default (they're already available if they appear in the list)
       const newLoadedAssets = filteredAssets
         .filter(asset => asset.type === 'file')
         .map(asset => asset.id);
       
       setLoadedAssets(newLoadedAssets);
-      setShowLoadingBar(false); // Hide loading bar when assets are loaded
+      setShowLoadingBar(false);
     }
   }, [filteredAssets]);
 
@@ -530,10 +454,9 @@ function AssetLibrary() {
     }
   }, [isResizing]);
 
-  // Handle file upload
   const uploadFiles = async (files) => {
     setIsUploading(true);
-    setError(null); // Clear any previous errors
+    setError(null);
     
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject.name) {
@@ -551,26 +474,19 @@ function AssetLibrary() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         console.log(`Uploading file ${i + 1}/${files.length}: ${file.name}`);
-        
         const formData = new FormData();
         formData.append('file', file);
-        
-        // Upload to current folder path (don't force categorization)
-        let targetFolderPath = currentPath; // Use current folder as default
+        let targetFolderPath = currentPath;
         
         if (file.webkitRelativePath) {
-          // This is a folder upload - preserve directory structure relative to current path
           const pathParts = file.webkitRelativePath.split('/');
           if (pathParts.length > 1) {
-            // Remove the filename, keep the directory structure
             const relativePath = pathParts.slice(0, -1).join('/');
             targetFolderPath = currentPath ? `${currentPath}/${relativePath}` : relativePath;
           }
         }
         
         const headers = {};
-        
-        // Always send folder path header - empty string means root directory
         headers['X-Folder-Path'] = targetFolderPath;
         
         const response = await fetch(`/api/projects/${currentProject.name}/assets/upload`, {
@@ -587,7 +503,6 @@ function AssetLibrary() {
         const result = await response.json();
         console.log(`Successfully uploaded: ${result.filename}`);
         
-        // File uploaded successfully - collect upload info for efficient refresh
         uploadResults.push({
           filename: result.filename,
           path: result.path,
@@ -596,26 +511,20 @@ function AssetLibrary() {
       }
       
       console.log(`All ${files.length} files uploaded successfully. Refreshing cache...`);
-      
-      // Efficiently refresh only affected parts of the cache
       const affectedPaths = new Set();
       
       uploadResults.forEach(result => {
-        // Files were uploaded to specific target folders
         affectedPaths.add(result.targetFolder || '');
       });
       
-      // Only invalidate affected folder caches
       actions.editor.invalidateAssetPaths(Array.from(affectedPaths));
       
-      // Always refresh categories cache if in type view (since files could be in any category)
       if (viewMode === 'type') {
         actions.editor.invalidateCategories();
         await fetchAssetCategories(currentProject);
       } else {
-        // For folder view, refresh folder tree if new folders might have been created
         const needsFolderTreeRefresh = uploadResults.some(result => 
-          result.targetFolder && result.targetFolder.includes('/') // New nested folders might have been created
+          result.targetFolder && result.targetFolder.includes('/')
         );
         
         if (needsFolderTreeRefresh) {
@@ -623,7 +532,6 @@ function AssetLibrary() {
           await fetchFolderTree(currentProject);
         }
         
-        // Always refresh current folder view since files were uploaded here
         await fetchAssets(currentProject, currentPath);
       }
       
@@ -638,12 +546,10 @@ function AssetLibrary() {
     }
   };
 
-  // Handle drag and drop events for external file uploads
   const handleDragOver = (e) => {
     e.preventDefault();
     e.stopPropagation();
     
-    // Only show upload overlay for external drags (not internal asset drags)
     if (!isInternalDrag && !isDragOver) {
       setIsDragOver(true);
     }
@@ -653,7 +559,6 @@ function AssetLibrary() {
     e.preventDefault();
     e.stopPropagation();
     
-    // Only show upload overlay for external drags (not internal asset drags)
     if (!isInternalDrag) {
       setIsDragOver(true);
     }
@@ -662,7 +567,6 @@ function AssetLibrary() {
   const handleDragLeave = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only hide drag over if we're leaving the asset grid area
     if (!e.currentTarget.contains(e.relatedTarget)) {
       setIsDragOver(false);
     }
@@ -673,7 +577,6 @@ function AssetLibrary() {
     e.stopPropagation();
     setIsDragOver(false);
     
-    // Only handle external file uploads, not internal asset drags
     if (!isInternalDrag) {
       const files = Array.from(e.dataTransfer.files);
       if (files.length > 0) {
@@ -682,7 +585,6 @@ function AssetLibrary() {
     }
   };
 
-  // Handle context menu
   const handleContextMenu = (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -756,7 +658,6 @@ function AssetLibrary() {
     });
   };
 
-  // Handle file picker
   const handleUploadClick = () => {
     fileInputRef.current?.click();
   };
@@ -770,7 +671,6 @@ function AssetLibrary() {
     if (files.length > 0) {
       uploadFiles(files);
     }
-    // Reset input so same file can be selected again
     e.target.value = '';
   };
 
@@ -779,11 +679,9 @@ function AssetLibrary() {
     if (files.length > 0) {
       uploadFiles(files);
     }
-    // Reset input so same folder can be selected again
     e.target.value = '';
   };
 
-  // Close context menu when clicking elsewhere
   useEffect(() => {
     const handleClickOutside = () => {
       setContextMenu(null);
@@ -795,7 +693,6 @@ function AssetLibrary() {
     }
   }, [contextMenu]);
 
-  // Handle moving folders and files
   const handleMoveItem = async (sourcePath, targetFolderPath) => {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject.name) {
@@ -808,21 +705,16 @@ function AssetLibrary() {
 
     try {
       await assetAPI.moveAsset(currentProject, sourcePath, targetPath);
-      // Item moved successfully
-      
-      // The file watcher will automatically refresh the assets list
     } catch (error) {
       console.error('Error moving item:', error);
       setError(`Failed to move item: ${error.message}`);
     }
   };
 
-  // Handle script creation
   const handleCreateScript = () => {
     setShowScriptDialog(true);
   };
 
-  // Handle script creation with dialog
   const handleConfirmCreateScript = async (scriptName) => {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject.name) {
@@ -831,7 +723,6 @@ function AssetLibrary() {
       return;
     }
 
-    // Clean up the script name and add .js extension if not present
     let cleanScriptName = scriptName.trim();
     if (!cleanScriptName.endsWith('.js') && !cleanScriptName.endsWith('.ts') && 
         !cleanScriptName.endsWith('.jsx') && !cleanScriptName.endsWith('.tsx')) {
@@ -839,7 +730,6 @@ function AssetLibrary() {
     }
 
     try {
-      // Create the script content template
       const scriptContent = `// ${cleanScriptName}
 // Created on ${new Date().toLocaleDateString()}
 
@@ -867,13 +757,10 @@ class Script {
 export default Script;
 `;
 
-      // Determine target path - use current folder in folder view, root in type view
       const targetPath = viewMode === 'folder' ? currentPath : '';
       const fullPath = targetPath ? `${targetPath}/${cleanScriptName}` : cleanScriptName;
 
-      // Check if we're running in Electron or server environment
       if (window.electronAPI) {
-        // Electron environment
         const result = await window.electronAPI.createScript({
           projectName: currentProject.name,
           scriptName: cleanScriptName,
@@ -887,7 +774,6 @@ export default Script;
           throw new Error(result.error || 'Failed to create script');
         }
       } else {
-        // Server environment - use fetch API
         const response = await fetch(`/api/projects/${currentProject.name}/assets/create-script`, {
           method: 'POST',
           headers: {
@@ -909,22 +795,17 @@ export default Script;
         console.log(`Script created successfully: ${result.filePath}`);
       }
 
-      // Clear any previous errors
       setError(null);
 
-      // Refresh the asset list to show the new script
       if (viewMode === 'folder') {
-        // Invalidate the current folder cache and refresh
         actions.editor.invalidateAssetPaths([targetPath]);
         await fetchAssets(currentProject, currentPath);
         
-        // Also refresh folder tree if we might have created a new folder
         if (targetPath.includes('/')) {
           actions.editor.invalidateFolderTree();
           await fetchFolderTree(currentProject);
         }
       } else {
-        // Type view - invalidate categories and refresh
         actions.editor.invalidateCategories();
         await fetchAssetCategories(currentProject);
       }
@@ -932,11 +813,10 @@ export default Script;
     } catch (error) {
       console.error('Error creating script:', error);
       setError(`Failed to create script: ${error.message}`);
-      throw error; // Re-throw so dialog can handle it
+      throw error;
     }
   };
 
-  // Handle folder creation
   const handleCreateFolder = async () => {
     const folderName = prompt('Enter folder name:');
     if (!folderName || !folderName.trim()) {
@@ -951,16 +831,12 @@ export default Script;
 
     try {
       await assetAPI.createFolder(currentProject, folderName.trim(), viewMode === 'folder' ? currentPath : '');
-      // Folder created successfully
-      
-      // The file watcher will automatically refresh the assets list
     } catch (error) {
       console.error('Error creating folder:', error);
       setError(`Failed to create folder: ${error.message}`);
     }
   };
 
-  // Handle folder navigation
   const handleFolderClick = (folderPath) => {
     setCurrentPath(folderPath);
   };
@@ -979,14 +855,12 @@ export default Script;
     setCurrentPath(path);
   };
 
-  // Handle double-click on folder items in the grid
   const handleAssetDoubleClick = (asset) => {
     if (asset.type === 'folder') {
       setCurrentPath(asset.path);
     }
   };
 
-  // Render folder tree recursively
   const renderFolderTree = (node, depth = 0) => {
     if (!node) return null;
 
@@ -1032,7 +906,6 @@ export default Script;
               try {
                 const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
                 if (dragData.type === 'asset' && dragData.path !== node.path) {
-                  // Don't allow dropping a folder into itself or its children
                   if (dragData.assetType === 'folder' && node.path.startsWith(dragData.path)) {
                     console.warn('Cannot move folder into itself or its children');
                     return;
@@ -1085,37 +958,25 @@ export default Script;
     );
   };
 
-  // Define view action handlers
-  const handleFrameAll = () => {
-    // TODO: Implement frame all functionality
-  };
+  const handleFrameAll = () => {};
 
-  const handleFocusSelected = () => {
-    // TODO: Implement focus selected functionality
-  };
+  const handleFocusSelected = () => {};
 
-  const handleResetView = () => {
-    // TODO: Implement reset view functionality
-  };
+  const handleResetView = () => {};
 
-  const handleSetView = (view) => {
-    // TODO: Implement set view functionality
-  };
+  const handleSetView = (view) => {};
 
 
   return (
     <div className="h-full flex bg-slate-800 no-select">
-      {/* Directory Tree Panel */}
       <div 
         className="bg-slate-900 border-r border-slate-700 flex flex-col relative"
         style={{ width: treePanelWidth }}
       >
-        {/* Resize Handle */}
         <div
           className={`absolute right-0 top-0 bottom-0 w-0.5 resize-handle cursor-col-resize ${isResizing ? 'dragging' : ''}`}
           onMouseDown={handleResizeMouseDown}
         />
-        {/* Fixed Header */}
         <div className="px-2 py-2 border-b border-slate-700">
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-medium text-gray-300">Project Assets</div>
@@ -1164,10 +1025,8 @@ export default Script;
           </div>
         </div>
         
-        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin">
           {viewMode === 'folder' ? (
-            // Folder Tree View
             folderTree ? (
               <div className="py-1">
                 {renderFolderTree(folderTree)}
@@ -1178,7 +1037,6 @@ export default Script;
               </div>
             )
           ) : (
-            // Asset Type Categories View
             categoryList.length > 0 ? (
               <div className="space-y-0.5 p-1">
                 {categoryList.map((category) => (
@@ -1214,17 +1072,13 @@ export default Script;
         </div>
       </div>
       
-      {/* Asset Grid - More Compact */}
       <div 
         className={`flex-1 flex flex-col transition-all duration-200 relative ${
           isDragOver ? 'bg-blue-900/30 border-2 border-blue-400 border-dashed' : 'bg-slate-800'
         }`}
       >
-        {/* Fixed Header with controls inline with directory tree */}
         <div className="bg-slate-800 flex-shrink-0 border-b border-slate-700">
-          {/* Top row with breadcrumb and controls */}
           <div className="flex items-center justify-between px-3 py-2">
-            {/* Breadcrumb Navigation - Top Left */}
             <div className="flex items-center text-xs">
               {viewMode === 'folder' && breadcrumbs.length > 0 ? (
                 breadcrumbs.map((crumb, index) => (
@@ -1264,7 +1118,6 @@ export default Script;
                           try {
                             const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
                             if (dragData.type === 'asset' && dragData.path !== crumb.path) {
-                              // Don't allow dropping a folder into itself or its children
                               if (dragData.assetType === 'folder' && crumb.path.startsWith(dragData.path)) {
                                 console.warn('Cannot move folder into itself or its children');
                                 return;
@@ -1285,7 +1138,6 @@ export default Script;
                   </React.Fragment>
                 ))
               ) : (
-                // Show category name when in type view mode
                 <span className="text-gray-400 px-2 py-1">
                   {viewMode === 'type' && assetCategories && assetCategories[selectedCategory] 
                     ? assetCategories[selectedCategory].name 
@@ -1295,12 +1147,10 @@ export default Script;
               )}
             </div>
             
-            {/* Controls - Top Right */}
             <div className="flex items-center gap-3">
               <span className="text-xs text-gray-400">{filteredAssets.length} items</span>
               
               {isUploading && (
-                /* Upload progress indicator */
                 <div className="flex items-center gap-2 transition-all duration-300 opacity-100">
                   <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '100%' }} />
@@ -1309,7 +1159,6 @@ export default Script;
                 </div>
               )}
               
-              {/* Grid/List Toggle */}
               <div className="flex bg-slate-700 rounded overflow-hidden">
                 <button
                   onClick={() => setLayoutMode('grid')}
@@ -1335,15 +1184,12 @@ export default Script;
                 </button>
               </div>
               
-              {/* Upload status indicator */}
               {isUploading ? (
-                /* Uploading state */
                 <div className="flex items-center gap-1.5 text-blue-400/80 bg-blue-400/10 px-2 py-1 rounded-md border border-blue-400/20">
                   <div className="w-2 h-2 bg-blue-400 rounded-full animate-spin" />
                   <span className="text-xs font-medium">Uploading...</span>
                 </div>
               ) : filteredAssets.length > 0 ? (
-                /* Normal state - show synced */
                 <div className="flex items-center gap-1.5 text-green-400/80">
                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
                   <span className="text-xs font-medium">Synced</span>
@@ -1353,7 +1199,6 @@ export default Script;
           </div>
         </div>
         
-        {/* Scrollable Content area */}
         <div 
           className="flex-1 p-3 overflow-y-auto scrollbar-thin"
           onDragOver={handleDragOver}
@@ -1402,7 +1247,6 @@ export default Script;
         {!loading && !error && !isUploading && (
           <>
             {filteredAssets.length === 0 ? (
-              /* Empty folder state - responsive vertical spacing */
               <div className="flex flex-col items-center justify-center min-h-[200px] h-[calc(100vh-500px)] max-h-[400px] py-4 sm:py-6 lg:py-8 text-center">
                 <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 border-2 border-gray-600 border-dashed rounded-xl flex items-center justify-center bg-gray-800/30">
                   <Icons.FolderOpen className="w-8 h-8 sm:w-10 sm:h-10 text-gray-500" />
@@ -1457,10 +1301,8 @@ export default Script;
                 onMouseLeave={() => setHoveredItem(null)}
                 onClick={(e) => {
                   if (asset.type === 'file') {
-                    // If asset failed to load, retry on click
                     if (failedAssets.includes(asset.id)) {
                       e.preventDefault();
-                      // Remove from failed set and retry with high priority
                       setFailedAssets(prev => {
                         return prev.filter(id => id !== asset.id);
                       });
@@ -1470,13 +1312,9 @@ export default Script;
                 }}
                 onDoubleClick={() => handleAssetDoubleClick(asset)}
                 onDragStart={(e) => {
-                  // Mark this as an internal drag (originating from within the page)
                   setIsInternalDrag(true);
                   
-                  // Handle both files and folders
                   if (asset.type === 'file') {
-                    
-                    // Determine category based on file extension
                     const getAssetCategory = (extension) => {
                       const ext = extension?.toLowerCase() || '';
                       if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) return '3d-models';
@@ -1500,19 +1338,13 @@ export default Script;
                     
                     e.dataTransfer.setData('application/json', JSON.stringify(dragData));
                     e.dataTransfer.setData('text/plain', asset.name);
-                    // Add a custom type to identify this as an asset drag (for viewport)
                     e.dataTransfer.setData('application/x-asset-drag', 'true');
-                    
-                    // Add download URL for dragging to desktop
                     const currentProject = projectManager.getCurrentProject();
                     const downloadUrl = `/api/projects/${currentProject.name}/assets/file/${encodeURIComponent(asset.path)}?download=true`;
                     e.dataTransfer.setData('text/uri-list', downloadUrl);
                     e.dataTransfer.setData('DownloadURL', `${asset.mimeType || 'application/octet-stream'}:${asset.name}:${downloadUrl}`);
-                    
-                    // Files can be copied to viewport or moved to folders
                     e.dataTransfer.effectAllowed = 'copyMove';
                     
-                    // Create drag image for file
                     const dragImage = document.createElement('div');
                     const getFileIcon = (extension) => {
                       if (['.glb', '.gltf', '.obj', '.fbx'].includes(extension)) return '🧊';
@@ -1540,10 +1372,8 @@ export default Script;
                     dragImage.style.position = 'absolute';
                     dragImage.style.top = '-1000px';
                     document.body.appendChild(dragImage);
-                    
                     e.dataTransfer.setDragImage(dragImage, 50, 20);
                     
-                    // Clean up drag image after drag ends
                     setTimeout(() => {
                       document.body.removeChild(dragImage);
                     }, 0);
@@ -1560,11 +1390,8 @@ export default Script;
                     
                     e.dataTransfer.setData('application/json', JSON.stringify(dragData));
                     e.dataTransfer.setData('text/plain', asset.name);
-                    
-                    // Folders can only be moved to other folders
                     e.dataTransfer.effectAllowed = 'move';
-                    
-                    // Create drag image for folder
+            
                     const dragImage = document.createElement('div');
                     dragImage.innerHTML = `
                       <div style="
@@ -1584,17 +1411,14 @@ export default Script;
                     dragImage.style.position = 'absolute';
                     dragImage.style.top = '-1000px';
                     document.body.appendChild(dragImage);
-                    
                     e.dataTransfer.setDragImage(dragImage, 50, 20);
                     
-                    // Clean up drag image after drag ends
                     setTimeout(() => {
                       document.body.removeChild(dragImage);
                     }, 0);
                   }
                 }}
                 onDragEnd={() => {
-                  // Reset all drag states when drag ends
                   setIsInternalDrag(false);
                   setDragOverFolder(null);
                   setDragOverTreeFolder(null);
@@ -1620,7 +1444,6 @@ export default Script;
                     try {
                       const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
                       if (dragData.type === 'asset' && dragData.path !== asset.path) {
-                        // Don't allow dropping a folder into itself or its children
                         if (dragData.assetType === 'folder' && asset.path.startsWith(dragData.path)) {
                           console.warn('Cannot move folder into itself or its children');
                           return;
@@ -1633,9 +1456,7 @@ export default Script;
                   }
                 }}
               >
-                {/* Asset Item Container */}
                 <div className="relative">
-                  {/* Preview or folder icon */}
                   <div className="w-full h-16 mb-2 flex items-center justify-center relative">
                     {asset.type === 'folder' ? (
                       <Icons.Folder className="w-12 h-12 text-yellow-400 group-hover:scale-110 transition-all" />
@@ -1657,7 +1478,6 @@ export default Script;
                       </div>
                     )}
                     
-                    {/* Extension Badge - Top right over the cube (files only) */}
                     {asset.type === 'file' && asset.extension && (() => {
                       const style = getExtensionStyle(asset.extension);
                       return (
@@ -1668,30 +1488,25 @@ export default Script;
                       );
                     })()}
 
-                    {/* Loading/Status Indicator - Bottom right (files only) */}
                     {asset.type === 'file' && (
                       <div className="absolute -bottom-1 -right-1">
                         {preloadingAssets.includes(asset.id) ? (
-                          // Loading spinner
                           <div className="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
                             <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                           </div>
                         ) : failedAssets.includes(asset.id) ? (
-                          // Error cross
                           <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center" title={`Failed to load ${asset.name}`}>
                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           </div>
                         ) : loadedAssets.includes(asset.id) ? (
-                          // Success tick
                           <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                             <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                             </svg>
                           </div>
                         ) : (
-                          // Not loaded indicator
                           <div className="w-6 h-6 bg-gray-500 rounded-full flex items-center justify-center">
                             <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
                           </div>
@@ -1701,7 +1516,6 @@ export default Script;
                   </div>
                 </div>
                 
-                {/* Asset Name */}
                 <div className="text-xs text-gray-300 group-hover:text-white transition-colors truncate text-center" title={asset.name}>
                   {asset.name}
                 </div>
@@ -1709,7 +1523,6 @@ export default Script;
                 ))}
               </div>
             ) : (
-              /* List View */
               <div className="space-y-0">
                 {filteredAssets.map((asset, index) => (
                   <div
@@ -1726,10 +1539,8 @@ export default Script;
                     onMouseLeave={() => setHoveredItem(null)}
                     onClick={(e) => {
                       if (asset.type === 'file') {
-                        // If asset failed to load, retry on click
                         if (failedAssets.includes(asset.id)) {
                           e.preventDefault();
-                          // Remove from failed set and retry with high priority
                           setFailedAssets(prev => {
                             return prev.filter(id => id !== asset.id);
                           });
@@ -1739,13 +1550,10 @@ export default Script;
                     }}
                     onDoubleClick={() => handleAssetDoubleClick(asset)}
                     onDragStart={(e) => {
-                      // Mark this as an internal drag (originating from within the page)
                       setIsInternalDrag(true);
                       
-                      // Handle both files and folders
                       if (asset.type === 'file') {
                         
-                        // Determine category based on file extension
                         const getAssetCategory = (extension) => {
                           const ext = extension?.toLowerCase() || '';
                           if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) return '3d-models';
@@ -1769,19 +1577,13 @@ export default Script;
                         
                         e.dataTransfer.setData('application/json', JSON.stringify(dragData));
                         e.dataTransfer.setData('text/plain', asset.name);
-                        // Add a custom type to identify this as an asset drag (for viewport)
                         e.dataTransfer.setData('application/x-asset-drag', 'true');
-                        
-                        // Add download URL for dragging to desktop
                         const currentProject = projectManager.getCurrentProject();
                         const downloadUrl = `/api/projects/${currentProject.name}/assets/file/${encodeURIComponent(asset.path)}?download=true`;
                         e.dataTransfer.setData('text/uri-list', downloadUrl);
                         e.dataTransfer.setData('DownloadURL', `${asset.mimeType || 'application/octet-stream'}:${asset.name}:${downloadUrl}`);
-                        
-                        // Files can be copied to viewport or moved to folders
                         e.dataTransfer.effectAllowed = 'copyMove';
                         
-                        // Create drag image for file
                         const dragImage = document.createElement('div');
                         const getFileIcon = (extension) => {
                           if (['.glb', '.gltf', '.obj', '.fbx'].includes(extension)) return '🧊';
@@ -1809,10 +1611,8 @@ export default Script;
                         dragImage.style.position = 'absolute';
                         dragImage.style.top = '-1000px';
                         document.body.appendChild(dragImage);
-                        
                         e.dataTransfer.setDragImage(dragImage, 50, 20);
                         
-                        // Clean up drag image after drag ends
                         setTimeout(() => {
                           document.body.removeChild(dragImage);
                         }, 0);
@@ -1829,11 +1629,8 @@ export default Script;
                         
                         e.dataTransfer.setData('application/json', JSON.stringify(dragData));
                         e.dataTransfer.setData('text/plain', asset.name);
-                        
-                        // Folders can only be moved to other folders
                         e.dataTransfer.effectAllowed = 'move';
                         
-                        // Create drag image for folder
                         const dragImage = document.createElement('div');
                         dragImage.innerHTML = `
                           <div style="
@@ -1856,14 +1653,12 @@ export default Script;
                         
                         e.dataTransfer.setDragImage(dragImage, 50, 20);
                         
-                        // Clean up drag image after drag ends
                         setTimeout(() => {
                           document.body.removeChild(dragImage);
                         }, 0);
                       }
                     }}
                     onDragEnd={() => {
-                      // Reset all drag states when drag ends
                       setIsInternalDrag(false);
                       setDragOverFolder(null);
                       setDragOverTreeFolder(null);
@@ -1889,7 +1684,6 @@ export default Script;
                         try {
                           const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
                           if (dragData.type === 'asset' && dragData.path !== asset.path) {
-                            // Don't allow dropping a folder into itself or its children
                             if (dragData.assetType === 'folder' && asset.path.startsWith(dragData.path)) {
                               console.warn('Cannot move folder into itself or its children');
                               return;
@@ -1902,7 +1696,6 @@ export default Script;
                       }
                     }}
                   >
-                    {/* Icon/Preview */}
                     <div className="w-8 h-8 flex items-center justify-center flex-shrink-0 relative">
                       {asset.type === 'folder' ? (
                         <Icons.Folder className="w-6 h-6 text-yellow-400" />
@@ -1924,7 +1717,6 @@ export default Script;
                         </div>
                       )}
 
-                      {/* Status Indicator */}
                       {asset.type === 'file' && (
                         <div className="absolute -bottom-1 -right-1">
                           {preloadingAssets.includes(asset.id) ? (
@@ -1952,7 +1744,6 @@ export default Script;
                       )}
                     </div>
                     
-                    {/* Asset Details */}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-gray-300 group-hover:text-white transition-colors truncate">
                         {asset.name}
@@ -1964,7 +1755,6 @@ export default Script;
                       )}
                     </div>
 
-                    {/* Extension Badge */}
                     {asset.type === 'file' && asset.extension && (() => {
                       const style = getExtensionStyle(asset.extension);
                       return (
@@ -1990,7 +1780,6 @@ export default Script;
           </div>
         )}
         
-        {/* Hidden file input for upload */}
         <input
           ref={fileInputRef}
           type="file"
@@ -2000,7 +1789,6 @@ export default Script;
           style={{ display: 'none' }}
         />
         
-        {/* Hidden folder input for upload */}
         <input
           ref={folderInputRef}
           type="file"
@@ -2010,7 +1798,6 @@ export default Script;
           style={{ display: 'none' }}
         />
         
-        {/* Context Menu */}
         {contextMenu && (
           <ContextMenu
             items={contextMenu.items}
@@ -2019,7 +1806,6 @@ export default Script;
           />
         )}
 
-        {/* Script Creation Dialog */}
         <ScriptCreationDialog
           isOpen={showScriptDialog}
           onClose={() => setShowScriptDialog(false)}

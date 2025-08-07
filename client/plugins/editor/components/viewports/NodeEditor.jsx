@@ -3,7 +3,6 @@ import { useSnapshot } from 'valtio';
 import { globalStore, actions, babylonScene } from '@/store.js';
 import { NodeLibrary, PortTypeColors, NodeTypeColors } from './NodeLibrary.jsx';
 
-// Node Editor Component with Cable Connections
 const NodeEditor = ({ tab, objectId }) => {
   const { nodeEditor } = useSnapshot(globalStore.editor);
   const { 
@@ -15,13 +14,12 @@ const NodeEditor = ({ tab, objectId }) => {
   const containerRef = useRef(null);
   const dragStateRef = useRef({
     isDragging: false,
-    dragType: null, // 'node' | 'cable'
+    dragType: null,
     dragData: null,
     startPos: { x: 0, y: 0 },
     offset: { x: 0, y: 0 }
   });
 
-  // Get object name from Babylon scene
   const getObjectName = useCallback(() => {
     const scene = babylonScene?.current;
     if (!scene) return objectId;
@@ -40,14 +38,12 @@ const NodeEditor = ({ tab, objectId }) => {
     return babylonObject ? (babylonObject.name || objectId) : objectId;
   }, [objectId]);
 
-  // Initialize or get existing node graph
   const initializeGraph = useCallback(() => {
     const existingGraph = getNodeGraph(objectId);
     if (existingGraph) {
       return existingGraph;
     }
 
-    // Create empty graph - no default nodes
     const defaultGraph = {
       nodes: [],
       connections: [],
@@ -55,14 +51,11 @@ const NodeEditor = ({ tab, objectId }) => {
     };
 
     setNodeGraph(objectId, defaultGraph);
-    
-    // Initialize basic object properties (but empty - no sections until output nodes are connected)
     initializeObjectProperties(objectId);
     
     return defaultGraph;
   }, [objectId, getNodeGraph, setNodeGraph]);
 
-  // Get current graph data
   const currentGraph = useMemo(() => {
     return nodeEditor.graphs[objectId] || initializeGraph();
   }, [nodeEditor.graphs, objectId, initializeGraph]);
@@ -75,8 +68,6 @@ const NodeEditor = ({ tab, objectId }) => {
   const [contextMenu, setContextMenu] = useState(null);
   const [activeSubmenu, setActiveSubmenu] = useState(null);
   const [submenuPosition, setSubmenuPosition] = useState({ top: 0 });
-
-  // Get viewport dimensions
   const [viewportSize, setViewportSize] = useState({ width: 800, height: 600 });
 
   useEffect(() => {
@@ -92,7 +83,6 @@ const NodeEditor = ({ tab, objectId }) => {
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  // Convert screen coordinates to node editor coordinates
   const screenToWorld = useCallback((screenX, screenY) => {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return { x: screenX, y: screenY };
@@ -102,7 +92,6 @@ const NodeEditor = ({ tab, objectId }) => {
     return { x, y };
   }, [viewTransform]);
 
-  // Get port position in world coordinates
   const getPortPosition = useCallback((nodeId, portId, isInput = false) => {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return { x: 0, y: 0 };
@@ -124,7 +113,6 @@ const NodeEditor = ({ tab, objectId }) => {
     return { x: portX, y: portY };
   }, [nodes]);
 
-  // Generate SVG path for connection
   const getConnectionPath = useCallback((from, to) => {
     const startX = from.x;
     const startY = from.y;
@@ -136,9 +124,8 @@ const NodeEditor = ({ tab, objectId }) => {
     return `M ${startX} ${startY} C ${midX} ${startY}, ${midX} ${endY}, ${endX} ${endY}`;
   }, []);
 
-  // Add new node at position
   const addNode = useCallback((nodeType, position) => {
-    console.log('Adding node:', nodeType, 'at position:', position); // Debug log
+    console.log('Adding node:', nodeType, 'at position:', position);
     
     const template = NodeLibrary[nodeType];
     if (!template) {
@@ -155,24 +142,17 @@ const NodeEditor = ({ tab, objectId }) => {
       outputs: template.outputs ? template.outputs.map(output => ({ ...output, id: `${output.id}-${Date.now()}` })) : undefined
     };
 
-    console.log('Created new node:', newNode); // Debug log
-
+    console.log('Created new node:', newNode);
     const updatedNodes = [...nodes, newNode];
-    console.log('Updated nodes array:', updatedNodes); // Debug log
-    
+    console.log('Updated nodes array:', updatedNodes);
     updateNodeGraph(objectId, { nodes: updatedNodes });
-
-    // Initialize object properties if not already done (but don't auto-create property sections)
     initializeObjectProperties(objectId);
 
   }, [nodes, objectId, updateNodeGraph, initializeObjectProperties, addPropertySection]);
 
-  // Handle right click for context menu
   const handleContextMenu = useCallback((e) => {
     e.preventDefault();
     const worldPos = screenToWorld(e.clientX, e.clientY);
-    
-    // Get container bounds to calculate relative position
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     
@@ -184,30 +164,26 @@ const NodeEditor = ({ tab, objectId }) => {
       worldPosition: worldPos
     };
     
-    console.log('Setting context menu:', menuData); // Debug log
+    console.log('Setting context menu:', menuData);
     setContextMenu(menuData);
   }, [screenToWorld]);
 
-  // Handle mouse events
   const handleMouseDown = useCallback((e) => {
-    // Don't handle clicks on context menu elements
     if (e.target.closest('.context-menu')) {
       console.log('Click on context menu element, ignoring');
       return;
     }
     
-    // Close context menu on any click outside
     if (contextMenu) {
       console.log('Closing context menu - clicked outside');
       setContextMenu(null);
       setActiveSubmenu(null);
-      return; // Don't process other mouse events when closing menu
+      return;
     }
     
     const target = e.target;
     const worldPos = screenToWorld(e.clientX, e.clientY);
 
-    // Check if clicking on a port
     if (target.classList.contains('node-port')) {
       const nodeId = target.dataset.nodeId;
       const portId = target.dataset.portId;
@@ -229,7 +205,6 @@ const NodeEditor = ({ tab, objectId }) => {
       return;
     }
 
-    // Check if clicking on a node
     const nodeElement = target.closest('.node');
     if (nodeElement) {
       const nodeId = nodeElement.dataset.nodeId;
@@ -249,7 +224,6 @@ const NodeEditor = ({ tab, objectId }) => {
           offset
         };
 
-        // Handle node selection
         if (!e.ctrlKey && !e.metaKey) {
           setSelectedNodes(new Set([nodeId]));
         } else {
@@ -267,7 +241,6 @@ const NodeEditor = ({ tab, objectId }) => {
       return;
     }
 
-    // Background click - start pan
     dragStateRef.current = {
       isDragging: true,
       dragType: 'pan',
@@ -284,8 +257,6 @@ const NodeEditor = ({ tab, objectId }) => {
       const worldPos = screenToWorld(e.clientX, e.clientY);
       const newX = worldPos.x - dragState.offset.x;
       const newY = worldPos.y - dragState.offset.y;
-
-      // Update node position in store
       const updatedNodes = nodes.map(node => 
         node.id === dragState.dragData.nodeId
           ? { ...node, position: { x: newX, y: newY } }
@@ -323,17 +294,13 @@ const NodeEditor = ({ tab, objectId }) => {
         const targetNodeId = target.dataset.nodeId;
         const targetPortId = target.dataset.portId;
         const targetIsInput = target.dataset.isInput === 'true';
-        
         const source = dragState.dragData;
         
-        // Validate connection (output to input only)
         if (source.isInput !== targetIsInput) {
           const fromNode = source.isInput ? targetNodeId : source.nodeId;
           const fromPort = source.isInput ? targetPortId : source.portId;
           const toNode = source.isInput ? source.nodeId : targetNodeId;
           const toPort = source.isInput ? source.portId : targetPortId;
-          
-          // Add new connection via store action
           const newConnection = {
             id: `conn-${Date.now()}`,
             from: { nodeId: fromNode, portId: fromPort },
@@ -353,7 +320,6 @@ const NodeEditor = ({ tab, objectId }) => {
     };
   }, []);
 
-  // Handle wheel for zoom
   const handleWheel = useCallback((e) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
@@ -379,7 +345,6 @@ const NodeEditor = ({ tab, objectId }) => {
     updateNodeGraph(objectId, { viewTransform: newTransform });
   }, [viewTransform, objectId, updateNodeGraph]);
 
-  // Handle escape key to close context menu
   const handleKeyDown = useCallback((e) => {
     if (e.key === 'Escape' && contextMenu) {
       console.log('Closing context menu - Escape key');
@@ -388,7 +353,6 @@ const NodeEditor = ({ tab, objectId }) => {
     }
   }, [contextMenu]);
 
-  // Setup event listeners
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -410,7 +374,6 @@ const NodeEditor = ({ tab, objectId }) => {
     };
   }, [handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleContextMenu, handleKeyDown]);
 
-  // Render node component
   const renderNode = (node) => {
     const isSelected = selectedNodes.has(node.id);
     const nodeWidth = 200;
@@ -421,7 +384,6 @@ const NodeEditor = ({ tab, objectId }) => {
 
     return (
       <g key={node.id}>
-        {/* Node Body */}
         <rect
           className="node"
           data-node-id={node.id}
@@ -436,7 +398,6 @@ const NodeEditor = ({ tab, objectId }) => {
           style={{ cursor: 'move' }}
         />
         
-        {/* Node Title Bar */}
         <rect
           x={node.position.x}
           y={node.position.y}
@@ -455,7 +416,6 @@ const NodeEditor = ({ tab, objectId }) => {
           style={{ pointerEvents: 'none' }}
         />
         
-        {/* Node Title */}
         <text
           x={node.position.x + nodeWidth / 2}
           y={node.position.y + 20}
@@ -468,7 +428,6 @@ const NodeEditor = ({ tab, objectId }) => {
           {node.title}
         </text>
 
-        {/* Close/Delete Button (show for all nodes now) */}
         <g>
           <circle
             cx={node.position.x + nodeWidth - 12}
@@ -498,7 +457,6 @@ const NodeEditor = ({ tab, objectId }) => {
           </text>
         </g>
 
-        {/* Input Ports */}
         {node.inputs?.map((input, index) => {
           const portColor = PortTypeColors[input.type] || '#6b7280';
           return (
@@ -529,7 +487,6 @@ const NodeEditor = ({ tab, objectId }) => {
           );
         })}
 
-        {/* Output Ports */}
         {node.outputs?.map((output, index) => {
           const portColor = PortTypeColors[output.type] || '#6b7280';
           return (
@@ -564,7 +521,6 @@ const NodeEditor = ({ tab, objectId }) => {
     );
   };
 
-  // Render connections
   const renderConnections = () => {
     return connections.map(conn => {
       const fromPos = getPortPosition(conn.from.nodeId, conn.from.portId, false);
@@ -579,8 +535,7 @@ const NodeEditor = ({ tab, objectId }) => {
           strokeWidth={3}
           fill="none"
           style={{ pointerEvents: 'stroke', cursor: 'pointer' }}
-          onClick={() => {
-            // Remove connection on click
+          onClick={() => {        
             removeConnectionFromGraph(objectId, conn.id);
           }}
         />
@@ -601,7 +556,6 @@ const NodeEditor = ({ tab, objectId }) => {
         className="absolute inset-0"
       >
         <g transform={`translate(${viewTransform.x}, ${viewTransform.y}) scale(${viewTransform.scale})`}>
-          {/* Grid */}
           <defs>
             <pattern
               id="grid"
@@ -626,10 +580,7 @@ const NodeEditor = ({ tab, objectId }) => {
             fill="url(#grid)"
           />
 
-          {/* Connections */}
           {renderConnections()}
-
-          {/* Temporary connection while dragging */}
           {tempConnection && (
             <path
               d={getConnectionPath(tempConnection.from, tempConnection.to)}
@@ -641,12 +592,10 @@ const NodeEditor = ({ tab, objectId }) => {
             />
           )}
 
-          {/* Nodes */}
           {nodes.map(renderNode)}
         </g>
       </svg>
 
-      {/* UI Overlay */}
       <div className="absolute top-4 left-4 flex gap-2">
         <button
           onClick={() => updateNodeGraph(objectId, { viewTransform: { x: 0, y: 0, scale: 1 } })}
@@ -665,7 +614,6 @@ const NodeEditor = ({ tab, objectId }) => {
         <div>Connections: {connections.length}</div>
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
         <div 
           className="fixed z-50 context-menu"
@@ -675,18 +623,16 @@ const NodeEditor = ({ tab, objectId }) => {
             pointerEvents: 'auto'
           }}
         >
-          {/* Main Menu */}
           <div className="relative bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-2 min-w-48 context-menu" style={{ pointerEvents: 'auto' }}>
             <div className="px-3 py-1 text-gray-300 text-sm font-semibold border-b border-gray-600 mb-1">
               Add Node
             </div>
             
-            {/* Category Menu Items - Simplified */}
             <div
               className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700 text-sm flex items-center justify-between cursor-pointer relative"
               onMouseEnter={() => {
                 setActiveSubmenu('input');
-                setSubmenuPosition({ top: 40 }); // Header height + this item's position
+                setSubmenuPosition({ top: 40 });
               }}
             >
               <div className="flex items-center gap-2">
@@ -700,7 +646,7 @@ const NodeEditor = ({ tab, objectId }) => {
               className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700 text-sm flex items-center justify-between cursor-pointer relative"
               onMouseEnter={() => {
                 setActiveSubmenu('math');
-                setSubmenuPosition({ top: 76 }); // Header + first item height
+                setSubmenuPosition({ top: 76 });
               }}
             >
               <div className="flex items-center gap-2">
@@ -714,7 +660,7 @@ const NodeEditor = ({ tab, objectId }) => {
               className="w-full px-3 py-2 text-left text-gray-200 hover:bg-gray-700 text-sm flex items-center justify-between cursor-pointer relative"
               onMouseEnter={() => {
                 setActiveSubmenu('output');
-                setSubmenuPosition({ top: 112 }); // Header + 2 items
+                setSubmenuPosition({ top: 112 });
               }}
             >
               <div className="flex items-center gap-2">
@@ -725,12 +671,11 @@ const NodeEditor = ({ tab, objectId }) => {
             </div>
           </div>
 
-          {/* Submenu - positioned outside the main menu */}
           {activeSubmenu && (
             <div 
               className="absolute bg-gray-800 border border-gray-600 rounded-lg shadow-lg py-2 min-w-48 max-h-64 overflow-y-auto z-10 context-menu"
               style={{
-                left: 192, // Width of main menu
+                left: 192,
                 top: submenuPosition.top,
                 pointerEvents: 'auto'
               }}
@@ -744,7 +689,7 @@ const NodeEditor = ({ tab, objectId }) => {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('Context menu button clicked for node:', key); // Debug log
+                      console.log('Context menu button clicked for node:', key);
                       console.log('Button element:', e.target);
                       addNode(key, contextMenu.worldPosition);
                       setContextMenu(null);

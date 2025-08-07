@@ -11,23 +11,20 @@ const projectRoot = join(__dirname, '..');
 const port = process.env.PORT || 3000;
 
 console.log('🚀 Starting Electron development mode...');
-
-// Start the Vite dev server
 console.log('📦 Starting Vite dev server...');
+
 const viteProcess = spawn('npm', ['run', 'dev'], {
   cwd: projectRoot,
   stdio: 'inherit',
   shell: true
 });
 
-// Wait for server to be ready, then start Electron
 const waitForServer = async () => {
   console.log('⏳ Waiting 5 seconds for server to start...');
   await new Promise(resolve => setTimeout(resolve, 5000));
   
   console.log('✅ Starting Electron...');
   
-  // Start Electron
   const electronProcess = spawn('electron', ['.'], {
     cwd: projectRoot,
     stdio: 'inherit',
@@ -44,7 +41,6 @@ const waitForServer = async () => {
   });
 };
 
-// Handle cleanup
 process.on('SIGINT', () => {
   console.log('🔴 Stopping development servers...');
   viteProcess.kill();
@@ -56,5 +52,4 @@ process.on('SIGTERM', () => {
   process.exit(0);
 });
 
-// Start waiting for server
 waitForServer();

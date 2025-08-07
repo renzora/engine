@@ -201,7 +201,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       }
     } catch (error) {
       console.error(`Failed to create ${renderingEngine} engine:`, error)
-      // Last resort fallback to WebGL if we're not already using it
       if (renderingEngine === 'webgpu') {
         try {
           actions.editor.updateViewportSettings({ renderingEngine: 'webgl' })
@@ -227,7 +226,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
     let center, size
     
     if (targetObject.getClassName() === 'TransformNode') {
-      // For TransformNodes (like GLB assets), get bounding info from all child meshes
       const childMeshes = targetObject.getChildMeshes()
       
       if (childMeshes.length === 0) {
@@ -235,7 +233,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
         return
       }
       
-      // Calculate combined bounding box of all child meshes
       let min = new BABYLON.Vector3(Infinity, Infinity, Infinity)
       let max = new BABYLON.Vector3(-Infinity, -Infinity, -Infinity)
       
@@ -252,7 +249,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       center = min.add(max).scale(0.5)
       size = max.subtract(min)
     } else {
-      // For regular meshes, use their own bounding info
       targetObject.computeWorldMatrix(true)
       const boundingInfo = targetObject.getBoundingInfo()
       
@@ -261,53 +257,43 @@ function Viewport({ children, style = {}, onContextMenu }) {
     }
     
     const maxSize = Math.max(size.x, size.y, size.z)
-    
-    // Calculate distance to fit the object in view (add some padding)
-    const distance = Math.max(maxSize * 3, 10) // Minimum distance of 10
+    const distance = Math.max(maxSize * 3, 10)
     
     console.log(`Focusing on: ${targetObject.name}`)
     console.log('Center:', center)
     console.log('Size:', size)
     console.log('Distance:', distance)
     
-    // Calculate camera position to view the object from a good angle
     const currentForward = camera.getForwardRay().direction.normalize()
     const cameraPosition = center.subtract(currentForward.scale(distance))
-    
-    // Make sure camera is above ground level
     cameraPosition.y = Math.max(cameraPosition.y, center.y + distance * 0.3)
     
     console.log('Flying camera to position:', cameraPosition)
     
-    // Animate camera position to the calculated position (faster)
     BABYLON.Animation.CreateAndStartAnimation(
       'flyCameraPosition',
       camera,
       'position',
-      60, // 60 FPS
-      15, // 15 frames = 0.25 seconds (was 30 frames)
+      60,
+      15,
       camera.position.clone(),
       cameraPosition,
       BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT,
       null,
       () => {
-        // After position animation completes, smoothly look at the object
         const lookDirection = center.subtract(camera.position).normalize()
         const targetRotation = BABYLON.Vector3.Zero()
         
-        // Calculate pitch (X rotation)
         targetRotation.x = Math.asin(-lookDirection.y)
         
-        // Calculate yaw (Y rotation) 
         targetRotation.y = Math.atan2(lookDirection.x, lookDirection.z)
         
-        // Animate rotation to look at object (faster)
         BABYLON.Animation.CreateAndStartAnimation(
           'flyCameraRotation',
           camera,
           'rotation',
-          60, // 60 FPS
-          8, // 8 frames = 0.13 seconds (was 15 frames)
+          60,
+          8,
           camera.rotation.clone(),
           targetRotation,
           BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
@@ -318,23 +304,21 @@ function Viewport({ children, style = {}, onContextMenu }) {
 
   const createScene = (engine) => {
     const scene = new BABYLON.Scene(engine)
-    scene.clearColor = new BABYLON.Color3(0.3, 0.6, 1.0); // Sky blue background
+    scene.clearColor = new BABYLON.Color3(0.3, 0.6, 1.0);
 
     var gizmoManager = new BABYLON.GizmoManager(scene)
     gizmoManager.positionGizmoEnabled = true
     gizmoManager.rotationGizmoEnabled = false
     gizmoManager.scaleGizmoEnabled = false
-    scene.shadowsEnabled =
+    scene.shadowsEnabled = true
     
-    // Improve gizmo responsiveness and visibility
-    gizmoManager.thickness = 30.0 // Make gizmo lines much thicker for easier selection
-    gizmoManager.scaleRatio = 2.5 // Smaller base size to prevent oversized gizmos when zoomed out
+    gizmoManager.thickness = 30.0
+    gizmoManager.scaleRatio = 2.5
     
-    // Configure individual gizmos for better interaction and visibility
     if (gizmoManager.gizmos.positionGizmo) {
-      gizmoManager.gizmos.positionGizmo.sensitivity = 100 // More sensitive to mouse
+      gizmoManager.gizmos.positionGizmo.sensitivity = 100
       gizmoManager.gizmos.positionGizmo.updateGizmoRotationToMatchAttachedMesh = false
-      // Make position gizmo arrows thicker
+
       if (gizmoManager.gizmos.positionGizmo.xGizmo) {
         gizmoManager.gizmos.positionGizmo.xGizmo.thickness = 40.0
       }
@@ -346,7 +330,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       }
     }
     
-    // Configure rotation gizmo for better visibility
     if (gizmoManager.gizmos.rotationGizmo) {
       gizmoManager.gizmos.rotationGizmo.sensitivity = 100
       if (gizmoManager.gizmos.rotationGizmo.xGizmo) {
@@ -360,7 +343,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       }
     }
     
-    // Configure scale gizmo for better visibility
     if (gizmoManager.gizmos.scaleGizmo) {
       gizmoManager.gizmos.scaleGizmo.sensitivity = 100
       if (gizmoManager.gizmos.scaleGizmo.xGizmo) {
@@ -374,13 +356,10 @@ function Viewport({ children, style = {}, onContextMenu }) {
       }
     }
     
-    // Store gizmo manager reference for later use
     scene._gizmoManager = gizmoManager
     
-    // Helper function to ensure gizmo thickness when attached to objects
     const ensureGizmoThickness = () => {
       setTimeout(() => {
-        // Configure position gizmo thickness
         if (gizmoManager.gizmos.positionGizmo) {
           ['xGizmo', 'yGizmo', 'zGizmo'].forEach(axis => {
             if (gizmoManager.gizmos.positionGizmo[axis]) {
@@ -389,7 +368,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           })
         }
         
-        // Configure rotation gizmo thickness  
         if (gizmoManager.gizmos.rotationGizmo) {
           ['xGizmo', 'yGizmo', 'zGizmo'].forEach(axis => {
             if (gizmoManager.gizmos.rotationGizmo[axis]) {
@@ -398,7 +376,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           })
         }
         
-        // Configure scale gizmo thickness
         if (gizmoManager.gizmos.scaleGizmo) {
           ['xGizmo', 'yGizmo', 'zGizmo'].forEach(axis => {
             if (gizmoManager.gizmos.scaleGizmo[axis]) {
@@ -406,13 +383,11 @@ function Viewport({ children, style = {}, onContextMenu }) {
             }
           })
         }
-      }, 100) // Small delay to ensure gizmos are created
+      }, 100)
     }
     
-    // Store the thickness helper for later use
     scene._ensureGizmoThickness = ensureGizmoThickness
     
-    // Create highlight layer for selected objects
     const highlightLayer = new BABYLON.HighlightLayer("highlight", scene)
     highlightLayer.outerGlow = true
     highlightLayer.innerGlow = false
@@ -425,65 +400,46 @@ function Viewport({ children, style = {}, onContextMenu }) {
     );
     camera.setTarget(BABYLON.Vector3.Zero());
     
-    // Set up proper field of view and aspect ratio handling
-    camera.fov = Math.PI / 3; // 60 degrees
+    camera.fov = Math.PI / 3;
     
-    // Force initial aspect ratio calculation
     if (canvasRef.current) {
       const canvas = canvasRef.current
       const aspectRatio = canvas.clientWidth / canvas.clientHeight
-      // The engine will handle aspect ratio automatically, but we ensure it's set up properly
-      camera.getProjectionMatrix(true) // Force recalculation
+      camera.getProjectionMatrix(true)
     }
     
-    // Create skybox
     const skybox = BABYLON.MeshBuilder.CreateSphere("skybox", {diameter: 200}, scene);
     const skyMaterial = new BABYLON.StandardMaterial("skyMaterial", scene);
-    skyMaterial.emissiveColor = new BABYLON.Color3(0.3, 0.6, 1.0); // Sky blue as emissive
+    skyMaterial.emissiveColor = new BABYLON.Color3(0.3, 0.6, 1.0);
     skyMaterial.diffuseColor = BABYLON.Color3.Black();
     skyMaterial.specularColor = BABYLON.Color3.Black();
-    skyMaterial.disableLighting = true; // Make it unlit so it appears evenly colored
+    skyMaterial.disableLighting = true;
     skyMaterial.backFaceCulling = false;
     skybox.material = skyMaterial;
     skybox.infiniteDistance = true;
     skybox.isPickable = false;
-
-    // Create directional light (sun)
     const sunLight = new BABYLON.DirectionalLight("sunLight", new BABYLON.Vector3(-1, -1, -1), scene);
-    sunLight.diffuse = new BABYLON.Color3(1, 0.95, 0.8); // Warm sunlight
+    sunLight.diffuse = new BABYLON.Color3(1, 0.95, 0.8);
     sunLight.specular = new BABYLON.Color3(1, 1, 1);
     sunLight.intensity = 2;
-
-    // Create ambient light for softer shadows
     const ambientLight = new BABYLON.HemisphericLight("ambientLight", new BABYLON.Vector3(0, 1, 0), scene);
-    ambientLight.diffuse = new BABYLON.Color3(0.4, 0.6, 1); // Sky color
+    ambientLight.diffuse = new BABYLON.Color3(0.4, 0.6, 1);
     ambientLight.specular = BABYLON.Color3.Black();
     ambientLight.intensity = 0.3;
-
-    // Create ground/floor (solid plane) - 20x20 meters (realistic studio/room size)
     const floorSize = globalStore.editor.settings.scene?.floorSize || 20;
     const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: floorSize, height: floorSize}, scene);
     const groundMaterial = new BABYLON.StandardMaterial("groundMaterial", scene);
     
-    // Simple solid ground material
-    groundMaterial.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.3); // Dark gray
+    groundMaterial.diffuseColor = new BABYLON.Color3(0.3, 0.3, 0.3);
     groundMaterial.specularColor = BABYLON.Color3.Black();
     ground.material = groundMaterial;
-    ground.isPickable = false; // Make ground non-selectable
-  
-    // Disable default camera controls - we'll implement custom Unreal-style controls
+    ground.isPickable = false;
     camera.attachControl(canvasRef.current, false)
-    
-    // Store camera reference for focus functionality
     scene._camera = camera
-
-    // Camera controller will be initialized via hook in the component
-    // We'll store the reference here after the hook is called
     
-    // Add render mode functionality
     scene._applyRenderMode = (mode) => {
       scene.meshes.forEach(mesh => {
-        if (mesh.name === 'skybox' || mesh.name === 'ground') return; // Skip skybox and ground
+        if (mesh.name === 'skybox' || mesh.name === 'ground') return;
         if (!mesh.material) return;
         
         switch (mode) {
@@ -492,15 +448,12 @@ function Viewport({ children, style = {}, onContextMenu }) {
             break;
           case 'solid':
             mesh.material.wireframe = false;
-            // Reset to default material properties for solid mode
             break;
           case 'material':
             mesh.material.wireframe = false;
-            // Material mode shows materials as they are (default)
             break;
           case 'rendered':
             mesh.material.wireframe = false;
-            // Rendered mode with full lighting (default)
             break;
         }
       });
@@ -509,15 +462,11 @@ function Viewport({ children, style = {}, onContextMenu }) {
     scene.onPointerObservable.add((pointerInfo) => {
       switch (pointerInfo.type) {
         case BABYLON.PointerEventTypes.POINTERDOWN:
-          // Let camera controller handle this, but we track for selection
           break
-          
         case BABYLON.PointerEventTypes.POINTERMOVE:
-          // Camera controller handles this
           break
           
         case BABYLON.PointerEventTypes.POINTERUP:
-          // Only handle selection on click (not drag) and not when doing camera controls
           const isDragging = cameraController.getIsDragging()
           const mouseDownPos = cameraController.getMouseDownPos()
           const keysPressed = cameraController.getKeysPressed()
@@ -528,7 +477,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
             if (pickInfo?.hit) {
               let targetMesh = pickInfo.pickedMesh
               
-              // If we picked an internal mesh, find its parent container
               if (targetMesh && targetMesh._isInternalMesh) {
                 let parent = targetMesh.parent
                 while (parent && (parent._isInternalMesh || parent._isInternalNode)) {
@@ -540,23 +488,19 @@ function Viewport({ children, style = {}, onContextMenu }) {
               }
               
               if (targetMesh) {
-                // Use unified selection function that handles all gizmo, highlighting, and store updates
                 const objectId = targetMesh.uniqueId || targetMesh.name
                 console.log('🎯 3D Viewport - Selecting object:', targetMesh.name, 'ID:', objectId);
                 actions.editor.selectObject(objectId)
               } else {
-                // Clicked on empty space or default objects - clear selection
                 console.log('🎯 3D Viewport - Clearing selection (no valid target)');
                 actions.editor.selectObject(null)
               }
             } else {
-              // Clicked on empty space - clear selection
               console.log('🎯 3D Viewport - Clearing selection (no hit)');
               actions.editor.selectObject(null)
             }
           }
           
-          // Reset drag state in camera controller
           cameraController.resetDragState()
           break
       }
@@ -570,17 +514,13 @@ function Viewport({ children, style = {}, onContextMenu }) {
     if (!targetObject || !scene) return
     
     console.log('Snapping object to nearest surface:', targetObject.name)
-    
-    // Get the object's current position and bounding box
     targetObject.computeWorldMatrix(true)
     
     let boundingInfo, objectBottom, objectCenter;
     
     if (targetObject.getClassName() === 'TransformNode') {
-      // For TransformNodes, get bounding info from child meshes
       const childMeshes = targetObject.getChildMeshes();
       if (childMeshes.length > 0) {
-        // Calculate combined bounding box from all child meshes
         let minX = Infinity, minY = Infinity, minZ = Infinity;
         let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
         
@@ -601,43 +541,37 @@ function Viewport({ children, style = {}, onContextMenu }) {
         objectBottom = minY;
         objectCenter = new BABYLON.Vector3((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2);
       } else {
-        // No child meshes, use the transform node position
         objectBottom = targetObject.position.y;
         objectCenter = targetObject.position.clone();
       }
     } else {
-      // For direct meshes (legacy support)
       boundingInfo = targetObject.getBoundingInfo();
       objectBottom = boundingInfo.boundingBox.minimumWorld.y;
       objectCenter = boundingInfo.boundingBox.centerWorld;
     }
     
-    // Try multiple rays to find the closest surface in different directions
     const rayDirections = [
-      { dir: new BABYLON.Vector3(0, -1, 0), name: "down" },   // Down (primary)
-      { dir: new BABYLON.Vector3(0, 1, 0), name: "up" },     // Up
-      { dir: new BABYLON.Vector3(1, 0, 0), name: "right" },  // Right
-      { dir: new BABYLON.Vector3(-1, 0, 0), name: "left" },  // Left
-      { dir: new BABYLON.Vector3(0, 0, 1), name: "forward" }, // Forward
-      { dir: new BABYLON.Vector3(0, 0, -1), name: "back" }   // Back
+      { dir: new BABYLON.Vector3(0, -1, 0), name: "down" },
+      { dir: new BABYLON.Vector3(0, 1, 0), name: "up" },
+      { dir: new BABYLON.Vector3(1, 0, 0), name: "right" },
+      { dir: new BABYLON.Vector3(-1, 0, 0), name: "left" },
+      { dir: new BABYLON.Vector3(0, 0, 1), name: "forward" },
+      { dir: new BABYLON.Vector3(0, 0, -1), name: "back" }
     ]
     
     let closestHit = null
     let closestDistance = Infinity
     let hitDirection = null
     
-    // Cast rays in all directions to find the nearest surface
     rayDirections.forEach(({ dir, name }) => {
-      // Start ray from object center and cast outward to find surfaces
       const ray = new BABYLON.Ray(objectCenter, dir)
       
       const hit = scene.pickWithRay(ray, (mesh) => {
-        // Hit all visible meshes except the object itself and internal/UI meshes
         return mesh !== targetObject && 
                !mesh._isInternalMesh && 
                mesh.isVisible &&
-               !mesh.name.startsWith('__') && // Skip internal meshes with __ prefix
-               mesh.geometry // Only hit meshes with actual geometry
+               !mesh.name.startsWith('__') &&
+               mesh.geometry
       })
       
       if (hit.hit && hit.distance < closestDistance) {
@@ -651,39 +585,32 @@ function Viewport({ children, style = {}, onContextMenu }) {
     if (closestHit && closestHit.pickedPoint) {
       const hitPoint = closestHit.pickedPoint
       
-      // Handle different snap directions
       switch (hitDirection) {
         case "down":
-          // Snap bottom of object to surface
           const heightDifference = objectBottom - targetObject.position.y
           targetObject.position.y = hitPoint.y - heightDifference
           break
         case "up":
-          // Snap top of object to surface
           const objectTop = boundingInfo.boundingBox.maximumWorld.y
           const topHeightDiff = objectTop - targetObject.position.y
           targetObject.position.y = hitPoint.y - topHeightDiff
           break
         case "right":
-          // Snap left side of object to surface
           const objectLeft = boundingInfo.boundingBox.minimumWorld.x
           const leftDiff = objectLeft - targetObject.position.x
           targetObject.position.x = hitPoint.x - leftDiff
           break
         case "left":
-          // Snap right side of object to surface
           const objectRight = boundingInfo.boundingBox.maximumWorld.x
           const rightDiff = objectRight - targetObject.position.x
           targetObject.position.x = hitPoint.x - rightDiff
           break
         case "forward":
-          // Snap back of object to surface
           const objectBack = boundingInfo.boundingBox.minimumWorld.z
           const backDiff = objectBack - targetObject.position.z
           targetObject.position.z = hitPoint.z - backDiff
           break
         case "back":
-          // Snap front of object to surface
           const objectFront = boundingInfo.boundingBox.maximumWorld.z
           const frontDiff = objectFront - targetObject.position.z
           targetObject.position.z = hitPoint.z - frontDiff
@@ -692,25 +619,18 @@ function Viewport({ children, style = {}, onContextMenu }) {
       
       console.log(`Snapped ${targetObject.name} to ${hitDirection} surface at distance: ${closestDistance.toFixed(2)}`)
       actions.editor.addConsoleMessage(`Snapped ${targetObject.name} to ${hitDirection} surface`, 'success')
-      
-      // Refresh scene data to update UI
       actions.editor.refreshSceneData()
     } else {
-      // Fallback: snap to Y = 0 (ground level) considering object's bottom
       const heightDifference = objectBottom - targetObject.position.y
       targetObject.position.y = -heightDifference
-      
       console.log(`Snapped ${targetObject.name} to default ground level`)
       actions.editor.addConsoleMessage(`Snapped ${targetObject.name} to ground level`, 'success')
-      
-      // Refresh scene data to update UI
       actions.editor.refreshSceneData()
     }
   }
 
   const initializeViewport = async () => {
     try {
-      // Clean up any existing engine/scene first
       if (engineRef.current) {
         try {
           engineRef.current.dispose()
@@ -729,18 +649,14 @@ function Viewport({ children, style = {}, onContextMenu }) {
         sceneRef.current = null
       }
       
-      // Create engine based on current setting
       const engine = await createEngine(settings.viewport.renderingEngine || 'webgl')
       if (!engine) return
       
-      // Add error handling for engine
       engine.onDisposeObservable.add(() => {
         console.log('Engine disposed')
         engineRef.current = null
         
-        // Clear any pending environment texture operations
         if (window.cancelIdleCallback) {
-          // Cancel any pending idle callbacks that might be related to texture processing
           for (let i = 1; i < 1000; i++) {
             window.cancelIdleCallback(i)
           }
@@ -749,32 +665,27 @@ function Viewport({ children, style = {}, onContextMenu }) {
       
       engineRef.current = engine
       
-      // Create scene
       const scene = createScene(engine)
       if (!scene) {
         engine.dispose()
         return
       }
       
-      // Add error handling for scene
       scene.onDisposeObservable.add(() => {
         console.log('Scene disposed')
         sceneRef.current = null
       })
       
       sceneRef.current = scene
-      setSceneInstance(scene) // Update state to trigger camera controller reinitialization
+      setSceneInstance(scene)
 
-      // Notify editor that scene is ready
       actions.editor.updateBabylonScene(scene)
 
-      // Start render loop with stats integration
       engine.runRenderLoop(() => {
         if (statsRef.current) {
           statsRef.current.begin()
         }
         
-        // Handle keyboard movement every frame
         if (cameraController) {
           cameraController.handleKeyboardMovement()
         }
@@ -786,76 +697,57 @@ function Viewport({ children, style = {}, onContextMenu }) {
         }
       })
 
-      // Handle resize with better detection for dynamic layouts
       const handleResize = () => {
         if (canvasRef.current && engine) {
-          // Force engine to recalculate viewport size
           engine.resize()
           
-          // Update camera aspect ratio to prevent squashing
           if (scene._camera) {
             const canvas = canvasRef.current
             const aspectRatio = canvas.clientWidth / canvas.clientHeight
             
-            // For UniversalCamera, we need to set the field of view based on aspect ratio
             if (scene._camera.fov) {
-              // Maintain consistent field of view regardless of aspect ratio
-              scene._camera.fov = Math.PI / 3 // 60 degrees
+              scene._camera.fov = Math.PI / 3
             }
           }
         }
       }
       
-      // Listen for window resize
       window.addEventListener('resize', handleResize)
       
-      // Use ResizeObserver to detect when the canvas container changes size
-      // This is crucial for dynamic panel layouts
       let resizeObserver = null
       if (canvasRef.current && window.ResizeObserver) {
         resizeObserver = new ResizeObserver((entries) => {
-          // Debounce resize calls to avoid excessive updates
           clearTimeout(window._resizeTimeout)
           window._resizeTimeout = setTimeout(() => {
             handleResize()
-          }, 16) // ~60fps
+          }, 16)
         })
         
-        // Observe the canvas element itself
         resizeObserver.observe(canvasRef.current)
         
-        // Also observe the parent container in case that's what's changing
         if (canvasRef.current.parentElement) {
           resizeObserver.observe(canvasRef.current.parentElement)
         }
       }
 
-      // Store cleanup function
       return () => {
         window.removeEventListener('resize', handleResize)
         
-        // Clean up ResizeObserver
         if (resizeObserver) {
           resizeObserver.disconnect()
         }
         
-        // Clear any pending resize timeout
         if (window._resizeTimeout) {
           clearTimeout(window._resizeTimeout)
         }
         
-        // Notify editor that scene is being disposed
         actions.editor.updateBabylonScene(null)
         
-        // Clean up stats
         if (statsRef.current && statsRef.current.dom.parentElement) {
           statsRef.current.dom.parentElement.removeChild(statsRef.current.dom)
           statsRef.current = null
         }
         
-        // Camera controller cleanup is handled by the hook automatically
-        
-        // Dispose scene first, then engine
         if (scene && !scene.isDisposed) {
           try {
             scene.dispose()
@@ -881,15 +773,13 @@ function Viewport({ children, style = {}, onContextMenu }) {
   useEffect(() => {
     if (!canvasRef.current) return
     
-    // Set initial canvas instance
     setCanvasInstance(canvasRef.current)
     
-    // Add global error handler for Babylon.js async errors
     const handleUnhandledRejection = (event) => {
       if (event.reason && event.reason.message && 
           event.reason.message.includes('postProcessManager')) {
         console.warn('Caught Babylon.js environment texture error:', event.reason.message)
-        event.preventDefault() // Prevent error from propagating
+        event.preventDefault()
       }
     }
     
@@ -900,7 +790,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       cleanup = cleanupFn
     })
 
-    // Add global keyboard listener for F, Delete, S, R keys
     const handleKeyDown = (e) => {
       if (e.key.toLowerCase() === 'f' && sceneRef.current) {
         console.log('F key pressed!')
@@ -924,27 +813,21 @@ function Viewport({ children, style = {}, onContextMenu }) {
         const attachedMesh = scene._gizmoManager?.attachedMesh
         
         if (attachedMesh && attachedMesh.name !== 'ground' && attachedMesh.name !== 'skybox') {
-          // Delete the selected object
           attachedMesh.dispose()
           
-          // Clear gizmo and highlight
           scene._gizmoManager.attachToMesh(null)
           if (scene._highlightLayer) {
             scene._highlightLayer.removeAllMeshes()
           }
           
-          // Clear selection in store
           actions.editor.setSelectedEntity(null)
           actions.editor.selectSceneObject(null)
-          
-          // Refresh scene data
           actions.editor.refreshSceneData()
           
           console.log('Deleted object:', attachedMesh.name)
           e.preventDefault()
         }
       } else if (e.key.toLowerCase() === 's' && sceneRef.current) {
-        // Switch to scale gizmo
         const scene = sceneRef.current
         if (scene._gizmoManager?.attachedMesh) {
           scene._gizmoManager.positionGizmoEnabled = false
@@ -954,7 +837,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           e.preventDefault()
         }
       } else if (e.key.toLowerCase() === 'r' && sceneRef.current) {
-        // Switch to rotation gizmo
         const scene = sceneRef.current
         if (scene._gizmoManager?.attachedMesh) {
           scene._gizmoManager.positionGizmoEnabled = false
@@ -964,7 +846,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           e.preventDefault()
         }
       } else if (e.key.toLowerCase() === 'g' && sceneRef.current) {
-        // Switch to position/grab gizmo
         const scene = sceneRef.current
         if (scene._gizmoManager?.attachedMesh) {
           scene._gizmoManager.positionGizmoEnabled = true
@@ -974,12 +855,10 @@ function Viewport({ children, style = {}, onContextMenu }) {
           e.preventDefault()
         }
       } else if (e.ctrlKey && e.key.toLowerCase() === 'c' && sceneRef.current) {
-        // Copy selected object
         const scene = sceneRef.current
         const attachedMesh = scene._gizmoManager?.attachedMesh
         
         if (attachedMesh) {
-          // Store copy data
           copiedObjectRef.current = {
             name: attachedMesh.name,
             position: attachedMesh.position.clone(),
@@ -992,7 +871,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           e.preventDefault()
         }
       } else if (e.ctrlKey && e.key.toLowerCase() === 'v' && sceneRef.current) {
-        // Paste copied object
         const scene = sceneRef.current
         const copiedData = copiedObjectRef.current
         
@@ -1001,14 +879,11 @@ function Viewport({ children, style = {}, onContextMenu }) {
             let newObject = null
             
             if (copiedData.className === 'TransformNode') {
-              // Clone TransformNode and all its children
               newObject = copiedData.babylonObject.createInstance(copiedData.name + '_copy')
               if (!newObject) {
-                // If createInstance doesn't work, try cloning
                 newObject = copiedData.babylonObject.clone(copiedData.name + '_copy', null)
               }
             } else {
-              // Clone regular meshes
               newObject = copiedData.babylonObject.createInstance(copiedData.name + '_copy')
               if (!newObject) {
                 newObject = copiedData.babylonObject.clone(copiedData.name + '_copy', null)
@@ -1016,7 +891,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
             }
             
             if (newObject) {
-              // Offset position slightly so it doesn't overlap
               newObject.position = copiedData.position.add(new BABYLON.Vector3(2, 0, 2))
               if (copiedData.rotation && newObject.rotation) {
                 newObject.rotation = copiedData.rotation.clone()
@@ -1025,7 +899,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
                 newObject.scaling = copiedData.scaling.clone()
               }
               
-              // Refresh scene data to show new object in hierarchy
               actions.editor.refreshSceneData()
               
               console.log('Pasted object:', newObject.name)
@@ -1037,7 +910,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
         }
         e.preventDefault()
       } else if (e.ctrlKey && e.key.toLowerCase() === 'd' && sceneRef.current) {
-        // Duplicate selected object (copy + paste in one step)
         const scene = sceneRef.current
         const attachedMesh = scene._gizmoManager?.attachedMesh
         
@@ -1046,32 +918,26 @@ function Viewport({ children, style = {}, onContextMenu }) {
             let newObject = null
             
             console.log('Duplicating object:', attachedMesh.name, 'Type:', attachedMesh.getClassName())
-            
-            // Deep clone with ALL properties, materials, and children
             newObject = attachedMesh.clone(attachedMesh.name + '_duplicate', null, false, true)
             console.log('Deep cloned object with all properties:', newObject)
-            
-            // Recursively copy all properties from original to clone
+        
             const copyAllProperties = (original, clone) => {
-              // Copy material properties
               if (original.material && clone.material) {
                 if (original.material.clone) {
                   clone.material = original.material.clone(original.material.name + '_duplicate')
                 } else {
-                  // For materials that can't be cloned, copy properties manually
                   Object.keys(original.material).forEach(key => {
                     if (typeof original.material[key] !== 'function' && key !== 'name') {
                       try {
                         clone.material[key] = original.material[key]
                       } catch (e) {
-                        // Skip read-only properties
+
                       }
                     }
                   })
                 }
               }
               
-              // Copy all mesh properties
               const propertiesToCopy = [
                 'visibility', 'isVisible', 'renderingGroupId', 'alphaIndex',
                 'infiniteDistance', 'isPickable', 'showBoundingBox',
@@ -1098,7 +964,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
                 }
               })
               
-              // Copy light properties if it's a light
               if (original.getClassName && original.getClassName().includes('Light')) {
                 const lightProps = ['intensity', 'range', 'innerAngle', 'outerAngle', 'shadowEnabled']
                 lightProps.forEach(prop => {
@@ -1107,7 +972,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
                   }
                 })
                 
-                // Copy color properties
                 if (original.diffuse && clone.diffuse) {
                   clone.diffuse = original.diffuse.clone()
                 }
@@ -1115,13 +979,11 @@ function Viewport({ children, style = {}, onContextMenu }) {
                   clone.specular = original.specular.clone()
                 }
                 
-                // Ensure light is enabled
                 if (clone.setEnabled) {
                   clone.setEnabled(true)
                 }
               }
               
-              // Recursively copy properties for all children
               if (original.getChildren && clone.getChildren) {
                 const originalChildren = original.getChildren()
                 const clonedChildren = clone.getChildren()
@@ -1133,17 +995,13 @@ function Viewport({ children, style = {}, onContextMenu }) {
                 })
               }
               
-              // Special handling for objects with associated RectAreaLights (like boxlights)
               if (scene) {
-                // Find any RectAreaLight that's parented to the original object
                 const associatedLights = scene.lights.filter(light => 
                   light.parent === original && light.getClassName() === 'RectAreaLight'
                 )
                 
                 if (associatedLights.length > 0) {
                   console.log('Found', associatedLights.length, 'associated RectAreaLight(s) for object:', original.name)
-                  
-                  // First, remove any cloned lights that Babylon.js automatically created
                   const clonedLights = scene.lights.filter(light => 
                     light.parent === clone && light.getClassName() === 'RectAreaLight'
                   )
@@ -1152,26 +1010,22 @@ function Viewport({ children, style = {}, onContextMenu }) {
                     light.dispose()
                   })
                   
-                  // Create new lights for each associated light
                   associatedLights.forEach(associatedLight => {
-                    // Create a new RectAreaLight for the cloned object with proper naming
                     const newLightName = associatedLight.name + '_duplicate'
                     
                     const newLight = new BABYLON.RectAreaLight(
                       newLightName,
-                      new BABYLON.Vector3(0, 0, 0), // Position relative to parent
+                      new BABYLON.Vector3(0, 0, 0),
                       associatedLight.width || 6,
                       associatedLight.height || 6,
                       scene
                     )
                     
-                    // Copy all light properties
                     newLight.parent = clone
                     newLight.specular = associatedLight.specular ? associatedLight.specular.clone() : BABYLON.Color3.White()
                     newLight.diffuse = associatedLight.diffuse ? associatedLight.diffuse.clone() : BABYLON.Color3.White()
                     newLight.intensity = associatedLight.intensity || 0.7
                     
-                    // Copy additional light properties if they exist
                     if (associatedLight.range !== undefined) newLight.range = associatedLight.range
                     if (associatedLight.shadowEnabled !== undefined) newLight.shadowEnabled = associatedLight.shadowEnabled
                     
@@ -1181,16 +1035,12 @@ function Viewport({ children, style = {}, onContextMenu }) {
               }
             }
             
-            // Apply comprehensive property copying
             copyAllProperties(attachedMesh, newObject)
             
             if (newObject) {
               console.log('New object created successfully:', newObject.name, 'ID:', newObject.uniqueId)
               
-              // Make sure the new object is at root level (no parent)
               newObject.parent = null
-              
-              // Offset position slightly so it doesn't overlap
               newObject.position = attachedMesh.position.add(new BABYLON.Vector3(2, 0, 2))
               if (attachedMesh.rotation && newObject.rotation) {
                 newObject.rotation = attachedMesh.rotation.clone()
@@ -1202,38 +1052,30 @@ function Viewport({ children, style = {}, onContextMenu }) {
               console.log('New object position set to:', newObject.position)
               console.log('New object parent:', newObject.parent)
               
-              // Select the new duplicated object
               const objectId = newObject.uniqueId || newObject.name
               
-              // Clear previous highlight and gizmo
               if (scene._highlightLayer) {
                 scene._highlightLayer.removeAllMeshes()
               }
               
-              // Attach gizmo to new object
               scene._gizmoManager.attachToMesh(newObject)
               
-              // Add yellow outline to new object (with error handling)
               if (scene._highlightLayer) {
                 try {
                   scene._highlightLayer.addMesh(newObject, BABYLON.Color3.Yellow())
                 } catch (highlightError) {
                   console.warn('Could not add highlight to duplicated object:', highlightError)
-                  // Continue without highlight - not critical
                 }
               }
               
-              // Update selection in store
               actions.editor.setSelectedEntity(objectId)
               actions.editor.selectSceneObject(objectId)
               
-              // Check if the object is properly added to the scene
               console.log('Scene meshes count:', scene.meshes.length)
               console.log('Scene transform nodes count:', scene.transformNodes.length)
               console.log('New object in scene meshes:', scene.meshes.includes(newObject))
               console.log('New object in scene transform nodes:', scene.transformNodes.includes(newObject))
               
-              // Add a small delay before refreshing to ensure the object is fully registered
               setTimeout(() => {
                 actions.editor.refreshSceneData()
                 console.log('Scene data refreshed after duplication')
@@ -1248,7 +1090,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
         }
         e.preventDefault()
       } else if (e.key === 'End' && sceneRef.current) {
-        // Snap selected object to ground/nearest surface
         const scene = sceneRef.current
         const attachedMesh = scene._gizmoManager?.attachedMesh
         
@@ -1268,7 +1109,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
     }
   }, [settings.viewport.renderingEngine])
 
-  // Update background color when it changes
   useEffect(() => {
     if (sceneRef.current) {
       const bgColor = BABYLON.Color3.FromHexString(settings.viewport.backgroundColor || '#1a202c')
@@ -1276,7 +1116,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
     }
   }, [settings.viewport.backgroundColor])
 
-  // Handle render mode changes
   useEffect(() => {
     if (sceneRef.current && sceneRef.current._applyRenderMode) {
       const renderMode = viewport.renderMode || 'solid'
@@ -1284,26 +1123,22 @@ function Viewport({ children, style = {}, onContextMenu }) {
     }
   }, [viewport.renderMode])
 
-  // Handle stats visibility toggle and recreation after engine changes
   useEffect(() => {
     if (!canvasRef.current) return
 
     if (settings.editor.showStats && !statsRef.current) {
-      // Create and show stats
       const stats = new Stats()
-      stats.showPanel(0) // 0: fps, 1: ms, 2: mb, 3+: custom
+      stats.showPanel(0)
       stats.dom.style.position = 'absolute'
       stats.dom.style.left = '10px'
       stats.dom.style.bottom = '10px'
       stats.dom.style.top = 'auto'
       stats.dom.style.zIndex = '1000'
       
-      // Find the viewport container and append stats
       const viewportContainer = canvasRef.current.parentElement
       viewportContainer.appendChild(stats.dom)
       statsRef.current = stats
     } else if (!settings.editor.showStats && statsRef.current) {
-      // Hide and cleanup stats
       if (statsRef.current.dom.parentElement) {
         statsRef.current.dom.parentElement.removeChild(statsRef.current.dom)
       }
@@ -1316,25 +1151,16 @@ function Viewport({ children, style = {}, onContextMenu }) {
       return BABYLON.Vector3.Zero()
     }
     
-    // Get canvas bounds
     const canvas = canvasRef.current
     const rect = canvas.getBoundingClientRect()
-    
-    // Calculate mouse coordinates relative to canvas
     const x = event.clientX - rect.left
     const y = event.clientY - rect.top
-    
-    // Create a ray from camera through mouse position
     const ray = scene.createPickingRay(x, y, BABYLON.Matrix.Identity(), scene._camera)
-    
-    // Raycast against all meshes to find drop position
     const hit = scene.pickWithRay(ray)
     if (hit.hit && hit.pickedPoint) {
-      // If we hit something, place it slightly above the hit point
       return hit.pickedPoint.add(new BABYLON.Vector3(0, 0.5, 0))
     }
     
-    // Fallback: project to ground plane at Y=0
     const groundPlane = BABYLON.Plane.FromPositionAndNormal(
       BABYLON.Vector3.Zero(), 
       new BABYLON.Vector3(0, 1, 0)
@@ -1346,13 +1172,11 @@ function Viewport({ children, style = {}, onContextMenu }) {
       return worldPoint
     }
     
-    // Final fallback
     return BABYLON.Vector3.Zero()
   }
 
   const handleDragOver = (e) => {
     e.preventDefault()
-    // Check if this is an asset drag
     if (e.dataTransfer.types.includes('application/x-asset-drag')) {
       e.dataTransfer.dropEffect = 'copy'
     }
@@ -1361,14 +1185,12 @@ function Viewport({ children, style = {}, onContextMenu }) {
   const handleDrop = async (e) => {
     e.preventDefault()
     
-    // Check if this is an asset drag
     if (e.dataTransfer.types.includes('application/x-asset-drag')) {
       try {
         const assetData = JSON.parse(e.dataTransfer.getData('application/json'))
         console.log('Asset dropped in viewport:', assetData)
         
         if (assetData.type === 'asset' && assetData.assetType === 'file') {
-          // Show loading tooltip at drop position
           setLoadingTooltip({
             isVisible: true,
             message: `Loading ${assetData.name}...`,
@@ -1376,32 +1198,26 @@ function Viewport({ children, style = {}, onContextMenu }) {
             progress: 0
           })
           
-          // Get mouse position for placement
           const dropPosition = getWorldPositionFromMouse(e, sceneRef.current)
           await loadAssetIntoScene(assetData, dropPosition)
         }
       } catch (error) {
         console.error('Error handling asset drop:', error)
         actions.editor.addConsoleMessage(`Failed to load asset: ${error.message}`, 'error')
-        // Hide tooltip on error
         setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
       }
     }
   }
 
-  // Function to analyze a GLB/GLTF model before import
   const analyzeModel = async (assetUrl) => {
     try {
-      // Check if engine is available and valid
       if (!engineRef.current || engineRef.current.isDisposed) {
         console.warn('Engine not available for model analysis')
         return null
       }
       
-      // Load the model in a temporary scene to analyze it
       const tempScene = new BABYLON.Scene(engineRef.current)
       
-      // Add error handling for the temp scene
       let result
       try {
         result = await BABYLON.SceneLoader.ImportMeshAsync("", "", assetUrl, tempScene)
@@ -1424,7 +1240,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
         maxDepth: calculateHierarchyDepth(result.meshes, result.transformNodes || [])
       }
       
-      // Clean up temp scene safely
       try {
         tempScene.dispose()
       } catch (disposeError) {
@@ -1438,7 +1253,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
     }
   }
 
-  // Helper function to calculate hierarchy depth
   const calculateHierarchyDepth = (meshes, transformNodes) => {
     const allObjects = [...meshes, ...transformNodes]
     let maxDepth = 0
@@ -1456,7 +1270,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       return depth
     }
     
-    // Check root objects (no parent)
     allObjects.filter(obj => !obj.parent).forEach(rootObj => {
       maxDepth = Math.max(maxDepth, getDepth(rootObj, 1))
     })
@@ -1464,36 +1277,27 @@ function Viewport({ children, style = {}, onContextMenu }) {
     return maxDepth
   }
 
-  // Process imported model based on import settings
   const processImportedModel = async (result, assetData, position, importSettings) => {
     const baseModelName = assetData.name.replace('.glb', '').replace('.gltf', '')
     
     if (!importSettings || importSettings.mode === 'smart') {
-      // Smart mode: Auto-group similar objects and limit hierarchy depth
       await processSmartImport(result, baseModelName, position, importSettings)
     } else if (importSettings.mode === 'simplified') {
-      // Simplified mode: Combine objects by material type
       await processSimplifiedImport(result, baseModelName, position, importSettings)
     } else if (importSettings.mode === 'individual') {
-      // Individual mode: Keep all objects separate
       await processIndividualImport(result, baseModelName, position, importSettings)
     } else if (importSettings.mode === 'single') {
-      // Single mesh mode: Merge everything into one object
       await processSingleMeshImport(result, baseModelName, position, importSettings)
     }
     
-    // Refresh the scene data in the store so UI updates with new objects
     actions.editor.refreshSceneData()
     actions.editor.addConsoleMessage(`Successfully imported: ${assetData.name} (${importSettings?.mode || 'smart'} mode)`, 'success')
   }
 
-  // Smart import mode implementation
   const processSmartImport = async (result, baseModelName, position, importSettings) => {
-    // Find the root transform node or use the first mesh as the main container
     let mainContainer = null
     
     if (result.transformNodes && result.transformNodes.length > 0) {
-      // Use the first root transform node as main container
       const rootTransforms = result.transformNodes.filter(node => node.parent === null)
       if (rootTransforms.length > 0) {
         mainContainer = rootTransforms[0]
@@ -1501,34 +1305,25 @@ function Viewport({ children, style = {}, onContextMenu }) {
         mainContainer = result.transformNodes[0]
       }
     } else {
-      // No transform nodes, use first mesh
       mainContainer = result.meshes[0]
     }
     
-    // Rename the main container to the asset name
     mainContainer.name = baseModelName
     
-    // Set position
     if (position) {
       mainContainer.position = position
     } else {
       mainContainer.position = BABYLON.Vector3.Zero()
     }
     
-    // Remove parent so it appears at root level in hierarchy
     mainContainer.parent = null
     
-    // Apply smart grouping based on hierarchy depth and max objects settings
     const maxObjects = importSettings?.maxObjects || 50
     const hierarchyDepth = importSettings?.hierarchyDepth || 3
-    
-    // Group objects intelligently
     const allObjects = [...result.meshes, ...(result.transformNodes || [])]
     let objectsToShow = [mainContainer]
     
-    // If we have too many objects, group them by depth level
     if (allObjects.length > maxObjects) {
-      // Mark deeper objects as internal
       const markObjectsAsInternal = (obj, currentDepth = 0) => {
         if (currentDepth > hierarchyDepth && obj !== mainContainer) {
           if (obj.getClassName() === 'Mesh') {
@@ -1538,7 +1333,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           }
         }
         
-        // Process children
         allObjects.filter(child => child.parent === obj).forEach(child => {
           markObjectsAsInternal(child, currentDepth + 1)
         })
@@ -1546,7 +1340,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       
       markObjectsAsInternal(mainContainer, 0)
     } else {
-      // Mark all other objects as internal except those within hierarchy depth
       allObjects.forEach(obj => {
         if (obj !== mainContainer) {
           const depth = getObjectDepth(obj, allObjects)
@@ -1562,7 +1355,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
     }
   }
 
-  // Get depth of an object in the hierarchy
   const getObjectDepth = (obj, allObjects) => {
     let depth = 0
     let current = obj
@@ -1573,9 +1365,7 @@ function Viewport({ children, style = {}, onContextMenu }) {
     return depth
   }
 
-  // Simplified import mode implementation
   const processSimplifiedImport = async (result, baseModelName, position, importSettings) => {
-    // Group objects by material type
     const materialGroups = new Map()
     
     result.meshes.forEach(mesh => {
@@ -1586,35 +1376,27 @@ function Viewport({ children, style = {}, onContextMenu }) {
       materialGroups.get(materialKey).push(mesh)
     })
     
-    // Create parent containers for each material group
     materialGroups.forEach((meshes, materialName) => {
       if (meshes.length > 1) {
-        // Create a parent transform node for this material group
         const groupNode = new BABYLON.TransformNode(`${baseModelName}_${materialName}`, sceneRef.current)
         groupNode.position = position || BABYLON.Vector3.Zero()
         
-        // Parent all meshes with this material to the group node
         meshes.forEach(mesh => {
           mesh.parent = groupNode
         })
       } else {
-        // Single mesh, just position it
         meshes[0].position = position || BABYLON.Vector3.Zero()
         meshes[0].parent = null
       }
     })
   }
 
-  // Individual import mode implementation  
   const processIndividualImport = async (result, baseModelName, position, importSettings) => {
-    // Keep all objects separate at root level
     const allObjects = [...result.meshes, ...(result.transformNodes || [])]
     
     allObjects.forEach((obj, index) => {
-      // Remove parent to make them all root level
       obj.parent = null
       
-      // Spread them out in a grid if there are many
       if (position) {
         const gridSize = Math.ceil(Math.sqrt(allObjects.length))
         const spacing = 2
@@ -1630,24 +1412,19 @@ function Viewport({ children, style = {}, onContextMenu }) {
         obj.position = new BABYLON.Vector3(index * 2, 0, 0)
       }
       
-      // Give meaningful names
       if (!obj.name || obj.name.includes('primitive')) {
         obj.name = `${baseModelName}_${obj.getClassName()}_${index}`
       }
     })
   }
 
-  // Single mesh import mode implementation
   const processSingleMeshImport = async (result, baseModelName, position, importSettings) => {
-    // Create a single parent transform node
     const singleContainer = new BABYLON.TransformNode(baseModelName, sceneRef.current)
     singleContainer.position = position || BABYLON.Vector3.Zero()
     
-    // Parent all objects to this single container
     const allObjects = [...result.meshes, ...(result.transformNodes || [])]
     allObjects.forEach(obj => {
       obj.parent = singleContainer
-      // Mark as internal so only the main container shows
       if (obj.getClassName() === 'Mesh') {
         obj._isInternalMesh = true
       } else {
@@ -1656,12 +1433,9 @@ function Viewport({ children, style = {}, onContextMenu }) {
     })
   }
 
-  // Handle model import from dialog
   const handleModelImport = async (importSettings) => {
-    // Close the dialog first
     setImportDialog(prev => ({ ...prev, isOpen: false }))
     
-    // Show loading tooltip again
     setLoadingTooltip({
       isVisible: true,
       message: `Importing ${importDialog.modelName} with ${importSettings.mode} mode...`,
@@ -1669,7 +1443,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       progress: 0
     })
     
-    // Call loadAssetIntoScene with the import settings
     await loadAssetIntoScene(importDialog.assetData, importDialog.position, importSettings)
   }
 
@@ -1700,19 +1473,14 @@ function Viewport({ children, style = {}, onContextMenu }) {
     try {
       actions.editor.addConsoleMessage(`Loading asset: ${assetData.name}`, 'info')
       
-      // Handle different asset types
       const extension = assetData.extension?.toLowerCase()
       
       if (['.glb', '.gltf'].includes(extension)) {
-        // For GLB/GLTF models, show import dialog first if no import settings provided
         if (!importSettings) {
-          // Hide loading tooltip first
           setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
           
-          // Analyze the model first
           const modelAnalysis = await analyzeModel(assetUrl)
           
-          // Show import dialog
           setImportDialog({
             isOpen: true,
             modelName: assetData.name,
@@ -1721,17 +1489,15 @@ function Viewport({ children, style = {}, onContextMenu }) {
             modelAnalysis: modelAnalysis
           })
           
-          return // Stop here - the import dialog will call this function again with settings
+          return
         }
         
-        // Load GLTF/GLB models with progress tracking
         const result = await BABYLON.SceneLoader.ImportMeshAsync(
           "", 
           "", 
           assetUrl, 
           scene,
           (progress) => {
-            // Update progress tooltip
             if (progress.lengthComputable) {
               const progressPercent = progress.loaded / progress.total
               setLoadingTooltip(prev => ({ ...prev, progress: progressPercent }))
@@ -1739,7 +1505,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
           }
         )
         
-        // Stop any animations that might have started automatically
         if (result.animationGroups && result.animationGroups.length > 0) {
           result.animationGroups.forEach(animGroup => {
             animGroup.stop()
@@ -1748,18 +1513,15 @@ function Viewport({ children, style = {}, onContextMenu }) {
         }
         
         if (result.meshes.length > 0) {
-          // Process the import based on import settings
           await processImportedModel(result, assetData, position, importSettings)
         }
       } else if (['.obj'].includes(extension)) {
-        // Load OBJ models with progress tracking
         const { meshes } = await BABYLON.SceneLoader.ImportMeshAsync(
           "", 
           "", 
           assetUrl, 
           scene,
           (progress) => {
-            // Update progress tooltip
             if (progress.lengthComputable) {
               const progressPercent = progress.loaded / progress.total
               setLoadingTooltip(prev => ({ ...prev, progress: progressPercent }))
@@ -1770,22 +1532,17 @@ function Viewport({ children, style = {}, onContextMenu }) {
         if (meshes.length > 0) {
           const rootMesh = meshes[0]
           rootMesh.position = position || BABYLON.Vector3.Zero()
-          
-          // Refresh the scene data in the store so UI updates with new objects
           actions.editor.refreshSceneData()
-          
           actions.editor.addConsoleMessage(`Successfully loaded: ${assetData.name}`, 'success')
           console.log('Loaded meshes:', meshes)
         }
       } else if (['.fbx'].includes(extension)) {
-        // Load FBX models with progress tracking
         const { meshes } = await BABYLON.SceneLoader.ImportMeshAsync(
           "", 
           "", 
           assetUrl, 
           scene,
           (progress) => {
-            // Update progress tooltip
             if (progress.lengthComputable) {
               const progressPercent = progress.loaded / progress.total
               setLoadingTooltip(prev => ({ ...prev, progress: progressPercent }))
@@ -1796,38 +1553,28 @@ function Viewport({ children, style = {}, onContextMenu }) {
         if (meshes.length > 0) {
           const rootMesh = meshes[0]
           rootMesh.position = position || BABYLON.Vector3.Zero()
-          
-          // Refresh the scene data in the store so UI updates with new objects
           actions.editor.refreshSceneData()
-          
           actions.editor.addConsoleMessage(`Successfully loaded: ${assetData.name}`, 'success')
           console.log('Loaded meshes:', meshes)
         }
       } else if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(extension)) {
-        // Load textures - create a plane with the texture
         const plane = BABYLON.MeshBuilder.CreatePlane(assetData.name, { size: 2 }, scene)
         const material = new BABYLON.StandardMaterial(assetData.name + "_material", scene)
         const texture = new BABYLON.Texture(assetUrl, scene)
-        
         material.diffuseTexture = texture
         plane.material = material
         plane.position = position || BABYLON.Vector3.Zero()
-        
-        // Refresh the scene data in the store so UI updates with new objects
         actions.editor.refreshSceneData()
-        
         actions.editor.addConsoleMessage(`Successfully loaded texture: ${assetData.name}`, 'success')
       } else {
         actions.editor.addConsoleMessage(`Unsupported asset type: ${extension}`, 'warning')
       }
       
-      // Hide loading tooltip on success
       setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
       
     } catch (error) {
       console.error('Error loading asset:', error)
       actions.editor.addConsoleMessage(`Failed to load ${assetData.name}: ${error.message}`, 'error')
-      // Hide loading tooltip on error
       setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
     }
   }
@@ -1846,7 +1593,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
       }}
       onContextMenu={(e) => {
         e.preventDefault()
-        // Context menu disabled for 3D viewport
       }}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
@@ -1862,14 +1608,13 @@ function Viewport({ children, style = {}, onContextMenu }) {
           minHeight: 0,
           maxWidth: '100%',
           maxHeight: '100%',
-          objectFit: 'contain' // Maintain aspect ratio when container changes
+          objectFit: 'contain'
         }}
         tabIndex={0}
       />
       
       {children}
       
-      {/* Loading tooltip for model drops */}
       <LoadingTooltip
         isVisible={loadingTooltip.isVisible}
         message={loadingTooltip.message}
@@ -1877,7 +1622,6 @@ function Viewport({ children, style = {}, onContextMenu }) {
         progress={loadingTooltip.progress}
       />
       
-      {/* Model import dialog */}
       <ModelImportDialog
         isOpen={importDialog.isOpen}
         onClose={() => setImportDialog(prev => ({ ...prev, isOpen: false }))}
@@ -1894,7 +1638,6 @@ export default function RenderPlugin({ children, embedded = false, style = {}, o
     return <Viewport style={style} onContextMenu={onContextMenu}>{children}</Viewport>
   }
 
-  // Use custom viewport bounds if provided, otherwise default to full screen
   const defaultStyle = viewportBounds ? {
     position: 'fixed',
     top: viewportBounds.top || 0,

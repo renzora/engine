@@ -1,24 +1,13 @@
-/**
- * Unified Project Creation Service
- * Handles project creation for both Electron and server environments
- */
-
 class ProjectCreationService {
   constructor() {
     this.isElectron = (typeof window !== 'undefined' && window.electronAPI?.isElectron) || false;
   }
 
-  /**
-   * Create a new project
-   * @param {string} projectName - Name of the project to create
-   * @returns {Promise<{success: boolean, projectPath: string, projectName: string}>}
-   */
   async createProject(projectName) {
     if (!projectName || typeof projectName !== 'string') {
       throw new Error('Project name is required');
     }
 
-    // Validate project name
     const validNamePattern = /^[a-zA-Z0-9_-]+$/;
     if (!validNamePattern.test(projectName.trim())) {
       throw new Error('Project name can only contain letters, numbers, underscores, and hyphens');
@@ -33,11 +22,6 @@ class ProjectCreationService {
     }
   }
 
-  /**
-   * Create project using Electron's direct file system access
-   * @param {string} projectName - Sanitized project name
-   * @returns {Promise<{success: boolean, projectPath: string, projectName: string}>}
-   */
   async createProjectElectron(projectName) {
     try {
       console.log(`Creating project via Electron: ${projectName}`);
@@ -67,11 +51,6 @@ class ProjectCreationService {
     }
   }
 
-  /**
-   * Create project using server API
-   * @param {string} projectName - Sanitized project name
-   * @returns {Promise<{success: boolean, projectPath: string, projectName: string}>}
-   */
   async createProjectServer(projectName) {
     try {
       console.log(`Creating project via server: ${projectName}`);
@@ -103,10 +82,6 @@ class ProjectCreationService {
     }
   }
 
-  /**
-   * List available projects
-   * @returns {Promise<Array>} List of projects
-   */
   async listProjects() {
     console.log(`Listing projects in ${this.getEnvironment()} environment`);
     
@@ -121,7 +96,6 @@ class ProjectCreationService {
       }
     }
 
-    // Fallback to server API
     try {
       console.log('Using server API to list projects');
       const response = await fetch('/api/projects');
@@ -137,11 +111,6 @@ class ProjectCreationService {
     return [];
   }
 
-  /**
-   * Check if a project exists
-   * @param {string} projectName - Name of the project to check
-   * @returns {Promise<boolean>} True if project exists
-   */
   async projectExists(projectName) {
     try {
       const projects = await this.listProjects();
@@ -152,16 +121,11 @@ class ProjectCreationService {
     }
   }
 
-  /**
-   * Get the current environment
-   * @returns {string} 'electron' or 'server'
-   */
   getEnvironment() {
     return this.isElectron ? 'electron' : 'server';
   }
 }
 
-// Export lazy-loaded singleton instance
 let _instance = null;
 export const projectCreationService = {
   getInstance() {
@@ -171,7 +135,6 @@ export const projectCreationService = {
     return _instance;
   },
   
-  // Proxy methods to the instance
   async createProject(projectName) {
     return this.getInstance().createProject(projectName);
   },

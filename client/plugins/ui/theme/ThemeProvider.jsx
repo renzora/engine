@@ -4,54 +4,54 @@ const ThemeContext = createContext();
 
 const defaultTheme = {
   colors: {
-    primary: 'rgb(59 130 246)', // blue-500
-    primaryHover: 'rgb(29 78 216)', // blue-700
-    primaryRing: 'rgba(59, 130, 246, 0.5)', // blue-500/50
+    primary: 'rgb(59 130 246)',
+    primaryHover: 'rgb(29 78 216)',
+    primaryRing: 'rgba(59, 130, 246, 0.5)',
     
     background: {
-      primary: 'rgb(30 41 59)', // slate-800
-      secondary: 'rgb(15 23 42)', // slate-900
-      hover: 'rgb(51 65 85)', // slate-700
-      surface: 'rgba(30, 41, 59, 0.8)', // slate-800/80
+      primary: 'rgb(30 41 59)',
+      secondary: 'rgb(15 23 42)',
+      hover: 'rgb(51 65 85)',
+      surface: 'rgba(30, 41, 59, 0.8)',
       panel: 'linear-gradient(to bottom, rgba(30, 41, 59, 0.95), rgba(15, 23, 42, 0.98))',
     },
     
     border: {
-      primary: 'rgb(71 85 105)', // slate-600
-      secondary: 'rgba(71, 85, 105, 0.5)', // slate-600/50
-      focus: 'rgb(59 130 246)', // blue-500
+      primary: 'rgb(71 85 105)',
+      secondary: 'rgba(71, 85, 105, 0.5)',
+      focus: 'rgb(59 130 246)',
     },
     
     text: {
-      primary: 'rgb(255 255 255)', // white
-      secondary: 'rgb(203 213 225)', // slate-300
-      muted: 'rgb(156 163 175)', // gray-400
-      disabled: 'rgb(107 114 128)', // gray-500
+      primary: 'rgb(255 255 255)',
+      secondary: 'rgb(203 213 225)',
+      muted: 'rgb(156 163 175)',
+      disabled: 'rgb(107 114 128)',
     },
     
     semantic: {
-      success: 'rgb(34 197 94)', // green-500
-      warning: 'rgb(251 191 36)', // amber-400
-      error: 'rgb(239 68 68)', // red-500
-      info: 'rgb(59 130 246)', // blue-500
+      success: 'rgb(34 197 94)',
+      warning: 'rgb(251 191 36)',
+      error: 'rgb(239 68 68)',
+      info: 'rgb(59 130 246)',
     }
   },
   
   spacing: {
-    xs: '0.125rem', // 2px
-    sm: '0.25rem',  // 4px
-    md: '0.5rem',   // 8px
-    lg: '0.75rem',  // 12px
-    xl: '1rem',     // 16px
-    '2xl': '1.5rem', // 24px
-    '3xl': '2rem',   // 32px
+    xs: '0.125rem',
+    sm: '0.25rem',
+    md: '0.5rem',
+    lg: '0.75rem',
+    xl: '1rem', 
+    '2xl': '1.5rem',
+    '3xl': '2rem',
   },
   
   borderRadius: {
-    sm: '0.375rem', // 6px
-    md: '0.5rem',   // 8px
-    lg: '0.75rem',  // 12px
-    xl: '1rem',     // 16px
+    sm: '0.375rem',
+    md: '0.5rem',
+    lg: '0.75rem',
+    xl: '1rem',
   },
   
   shadows: {

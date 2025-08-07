@@ -1,6 +1,5 @@
 import { useEffect, useCallback, Suspense, lazy } from 'react'
 
-// Lazy load heavy components to reduce initial bundle size
 const EditorPlugin = lazy(() => import('@/plugins/editor/index.jsx'))
 const ProjectsPlugin = lazy(() => import('@/plugins/projects/index.jsx'))
 const LoadingProvider = lazy(() => import('@/plugins/projects/components/LoadingProvider.jsx'))
@@ -44,7 +43,6 @@ export default function Index() {
         </Suspense>
       </Suspense>
       
-      {/* Development Disclaimer */}
       <Suspense fallback={null}>
         <DevelopmentDisclaimer />
       </Suspense>

@@ -1,10 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { projectManager } from '@/plugins/projects/projectManager.js';
 
-/**
- * Custom hook that provides asset management API abstraction
- * Uses direct file system access in Electron, falls back to server API in browser
- */
 export function useAssetAPI() {
   const [isElectron, setIsElectron] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -13,7 +9,6 @@ export function useAssetAPI() {
     const electronCheck = window.electronAPI?.isElectron || false;
     setIsElectron(electronCheck);
     
-    // Initialize project path in Electron
     if (electronCheck && window.fileSystemAPI) {
       const currentProject = projectManager.getCurrentProject();
       if (currentProject?.path) {
@@ -24,7 +19,7 @@ export function useAssetAPI() {
           })
           .catch(error => {
             console.error('Failed to initialize file system API:', error);
-            setIsInitialized(true); // Still set to true to allow fallback
+            setIsInitialized(true);
           });
       } else {
         console.log('No project path available for file system API, using server fallback');
@@ -35,7 +30,6 @@ export function useAssetAPI() {
     }
   }, []);
 
-  // Folder tree API
   const fetchFolderTree = useCallback(async (currentProject) => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -46,7 +40,6 @@ export function useAssetAPI() {
       }
     }
     
-    // Fallback to server API
     const response = await fetch(`/api/projects/${currentProject.name}/assets/tree`);
     if (!response.ok) {
       throw new Error('Failed to fetch folder tree');
@@ -55,7 +48,6 @@ export function useAssetAPI() {
     return data.tree;
   }, [isElectron]);
 
-  // Asset categories API
   const fetchAssetCategories = useCallback(async (currentProject) => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -66,7 +58,6 @@ export function useAssetAPI() {
       }
     }
     
-    // Fallback to server API
     const response = await fetch(`/api/projects/${currentProject.name}/assets/categories`);
     if (!response.ok) {
       throw new Error('Failed to fetch asset categories');
@@ -75,7 +66,6 @@ export function useAssetAPI() {
     return data.categories;
   }, [isElectron]);
 
-  // Assets in folder API
   const fetchAssets = useCallback(async (currentProject, path = '') => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -85,8 +75,7 @@ export function useAssetAPI() {
         console.error('Electron file system error, falling back to server:', error);
       }
     }
-    
-    // Fallback to server API
+
     const response = await fetch(`/api/projects/${currentProject.name}/assets?folder=${encodeURIComponent(path)}`);
     if (!response.ok) {
       throw new Error('Failed to fetch assets');
@@ -95,7 +84,6 @@ export function useAssetAPI() {
     return data.assets || [];
   }, [isElectron]);
 
-  // Search API
   const searchAssets = useCallback(async (currentProject, query) => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -106,7 +94,6 @@ export function useAssetAPI() {
       }
     }
     
-    // Fallback to server API
     try {
       const response = await fetch(`/api/projects/${currentProject.name}/assets/search?q=${encodeURIComponent(query)}`);
       if (response.ok) {
@@ -119,7 +106,6 @@ export function useAssetAPI() {
     return [];
   }, [isElectron]);
 
-  // Create folder API
   const createFolder = useCallback(async (currentProject, folderName, parentPath = '') => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -130,7 +116,6 @@ export function useAssetAPI() {
       }
     }
     
-    // Fallback to server API
     const response = await fetch(`/api/projects/${currentProject.name}/assets/folder`, {
       method: 'POST',
       headers: {
@@ -150,7 +135,6 @@ export function useAssetAPI() {
     return await response.json();
   }, [isElectron]);
 
-  // Move asset API
   const moveAsset = useCallback(async (currentProject, sourcePath, targetPath) => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -161,7 +145,6 @@ export function useAssetAPI() {
       }
     }
     
-    // Fallback to server API
     const response = await fetch(`/api/projects/${currentProject.name}/assets/move`, {
       method: 'PUT',
       headers: {
@@ -181,7 +164,6 @@ export function useAssetAPI() {
     return await response.json();
   }, [isElectron]);
 
-  // Delete asset API
   const deleteAsset = useCallback(async (currentProject, assetPath) => {
     if (isElectron && window.fileSystemAPI) {
       try {
@@ -192,7 +174,6 @@ export function useAssetAPI() {
       }
     }
     
-    // Fallback to server API
     const response = await fetch(`/api/projects/${currentProject.name}/assets/${encodeURIComponent(assetPath)}`, {
       method: 'DELETE'
     });
@@ -205,14 +186,12 @@ export function useAssetAPI() {
     return await response.json();
   }, [isElectron]);
 
-  // File change listener
   const addFileChangeListener = useCallback((callback) => {
     if (isElectron && window.fileSystemAPI) {
       window.fileSystemAPI.onFileChanged(callback);
       return () => window.fileSystemAPI.removeFileChangeListener();
     }
     
-    // Fallback: use project manager for server-based file changes
     projectManager.addFileChangeListener(callback);
     return () => projectManager.removeFileChangeListener(callback);
   }, [isElectron]);

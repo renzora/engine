@@ -7,11 +7,10 @@ function ConsolePanel() {
   const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [command, setCommand] = useState('');
-  const [logCategory, setLogCategory] = useState('all'); // 'all', 'client', 'server'
+  const [logCategory, setLogCategory] = useState('all');
   const [showSuggestions, setShowSuggestions] = useState(false);
   const consoleEndRef = useRef(null);
   
-  // Available commands for autocompletion
   const availableCommands = [
     'help',
     'restart',
@@ -25,7 +24,6 @@ function ConsolePanel() {
     'version'
   ];
 
-  // Add file change notifications to console
   useEffect(() => {
     const handleFileChange = (changeData) => {
       const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
@@ -81,7 +79,6 @@ function ConsolePanel() {
     };
   }, []);
 
-  // Connect to server logs SSE
   useEffect(() => {
     const eventSource = new EventSource('/api/server/logs');
     
@@ -89,10 +86,8 @@ function ConsolePanel() {
       try {
         const serverLog = JSON.parse(event.data);
         
-        // Skip connection messages
         if (serverLog.type === 'connected') return;
         
-        // Convert server log format to client log format
         const clientLog = {
           id: serverLog.id,
           type: serverLog.level === 'warn' ? 'warning' : serverLog.level,
@@ -128,7 +123,6 @@ function ConsolePanel() {
   const executeCommand = async () => {
     if (!command.trim()) return;
     
-    // Add command to log
     const commandLog = {
       id: Date.now() + Math.random(),
       type: 'command',
@@ -140,13 +134,11 @@ function ConsolePanel() {
     
     setLogs(prev => [...prev, commandLog]);
     
-    // Parse command and arguments
     const parts = command.trim().split(' ');
     const cmd = parts[0];
     const args = parts.slice(1);
     
     try {
-      // Send command to server
       const response = await fetch('/api/console/command', {
         method: 'POST',
         headers: {
@@ -156,8 +148,6 @@ function ConsolePanel() {
       });
       
       const result = await response.json();
-      
-      // Add result to log
       const resultLog = {
         id: Date.now() + Math.random() + 1,
         type: result.success ? 'info' : 'error',
@@ -170,7 +160,6 @@ function ConsolePanel() {
       setLogs(prev => [...prev, resultLog]);
       
     } catch (error) {
-      // Add error to log
       const errorLog = {
         id: Date.now() + Math.random() + 2,
         type: 'error',
@@ -190,12 +179,11 @@ function ConsolePanel() {
     setLogs([]);
   };
 
-  // Get command suggestions based on current input
   const getCommandSuggestions = () => {
     if (!command.trim()) return [];
     return availableCommands.filter(cmd => 
       cmd.toLowerCase().startsWith(command.toLowerCase())
-    ).slice(0, 5); // Show max 5 suggestions
+    ).slice(0, 5);
   };
 
   const handleCommandChange = (e) => {
@@ -249,13 +237,10 @@ function ConsolePanel() {
 
   return (
     <div className="h-full flex flex-col bg-slate-800">
-      {/* Console Header */}
       <div className="p-3 border-b border-slate-700 bg-slate-900/50">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-sm font-medium text-white">Console</h3>
-            
-            {/* Category Toggle */}
             <div className="flex items-center gap-1">
               {['all', 'client', 'server'].map((category) => (
                 <button
@@ -277,7 +262,6 @@ function ConsolePanel() {
               ))}
             </div>
             
-            {/* Log Level Filter */}
             <div className="flex items-center gap-1">
               {['all', 'info', 'warning', 'error'].map((filterType) => (
                 <button
@@ -321,7 +305,6 @@ function ConsolePanel() {
         </div>
       </div>
       
-      {/* Console Output */}
       <div className="flex-1 overflow-y-auto scrollbar-thin font-mono">
         <div className="p-2 space-y-1">
           {filteredLogs.map((log) => (
@@ -346,7 +329,6 @@ function ConsolePanel() {
         </div>
       </div>
       
-      {/* Command Input */}
       <div className="border-t border-slate-700 p-2 bg-slate-900/50">
         <div className="relative">
           <div className="flex items-center gap-2">
@@ -369,7 +351,6 @@ function ConsolePanel() {
             </button>
           </div>
           
-          {/* Command suggestions dropdown */}
           {showSuggestions && getCommandSuggestions().length > 0 && (
             <div className="absolute bottom-full left-0 right-0 mb-1 bg-slate-800 border border-slate-600 rounded shadow-lg z-50">
               {getCommandSuggestions().map((suggestion, index) => (

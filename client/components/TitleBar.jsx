@@ -5,21 +5,16 @@ const TitleBar = () => {
   const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
-    // Check if running in Electron
     const electronCheck = window.electronAPI?.isElectron || false;
     setIsElectron(electronCheck);
 
     if (electronCheck && window.windowAPI) {
-      // Check initial maximized state
       window.windowAPI.isMaximized().then(setIsMaximized);
 
-      // Listen for maximize/unmaximize events (if available)
-      // Note: We'll need to poll or add event listeners for this
       const checkMaximized = () => {
         window.windowAPI.isMaximized().then(setIsMaximized);
       };
 
-      // Poll every 500ms to check maximized state
       const interval = setInterval(checkMaximized, 500);
       return () => clearInterval(interval);
     }
@@ -34,7 +29,6 @@ const TitleBar = () => {
   const handleMaximize = () => {
     if (window.windowAPI) {
       window.windowAPI.maximize().then(() => {
-        // Update state after a short delay
         setTimeout(() => {
           window.windowAPI.isMaximized().then(setIsMaximized);
         }, 100);
@@ -48,7 +42,6 @@ const TitleBar = () => {
     }
   };
 
-  // Don't render if not in Electron
   if (!isElectron) {
     return null;
   }
@@ -65,19 +58,16 @@ const TitleBar = () => {
         zIndex: 10000
       }}
     >
-      {/* App Title */}
       <div className="flex items-center px-4">
         <span className="text-sm text-gray-300 font-medium">
           Renzora Engine
         </span>
       </div>
 
-      {/* Window Controls */}
       <div 
         className="flex"
         style={{ WebkitAppRegion: 'no-drag' }}
       >
-        {/* Minimize Button */}
         <button
           onClick={handleMinimize}
           className="w-12 h-8 flex items-center justify-center hover:bg-slate-700 transition-colors group"
@@ -92,14 +82,12 @@ const TitleBar = () => {
           </svg>
         </button>
 
-        {/* Maximize/Restore Button */}
         <button
           onClick={handleMaximize}
           className="w-12 h-8 flex items-center justify-center hover:bg-slate-700 transition-colors group"
           title={isMaximized ? "Restore" : "Maximize"}
         >
           {isMaximized ? (
-            // Restore icon (two overlapping squares)
             <svg 
               width="10" 
               height="10" 
@@ -109,7 +97,6 @@ const TitleBar = () => {
               <rect x="0" y="0" width="6" height="6" stroke="currentColor" strokeWidth="1" fill="none" />
             </svg>
           ) : (
-            // Maximize icon (single square)
             <svg 
               width="10" 
               height="10" 
@@ -120,7 +107,6 @@ const TitleBar = () => {
           )}
         </button>
 
-        {/* Close Button */}
         <button
           onClick={handleClose}
           className="w-12 h-8 flex items-center justify-center hover:bg-red-600 transition-colors group"

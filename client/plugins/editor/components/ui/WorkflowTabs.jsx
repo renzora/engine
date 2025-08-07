@@ -53,13 +53,8 @@ function WorkflowTabs() {
   const handleWorkflowChange = (workflowId) => {
     setActiveWorkflow(workflowId);
     const workflow = workflows[workflowId];
-    
-    // Configure UI for the selected workflow
     actions.editor.setWorkflowMode(workflowId);
     actions.editor.addConsoleMessage(`Switched to ${workflow.name} workflow`, 'info');
-    
-    // You could also automatically open/close relevant panels here
-    // based on workflow.panels array
     console.log(`Switched to ${workflow.name} workflow`);
     console.log('Recommended panels:', workflow.panels);
     console.log('Available tools:', workflow.tools);
@@ -81,7 +76,6 @@ function WorkflowTabs() {
     <div className="relative w-full h-9 bg-gray-800/95 backdrop-blur-sm border-b border-gray-700 flex items-center">
       <div className="flex items-center h-full w-full px-4">
         
-        {/* Workflow Tabs */}
         <div className="flex items-center">
           {Object.entries(workflows).map(([workflowId, workflow]) => {
             const isActive = activeWorkflow === workflowId;
@@ -99,12 +93,10 @@ function WorkflowTabs() {
                 <workflow.icon className="w-4 h-4" />
                 <span>{workflow.name}</span>
                 
-                {/* Blue bottom border for active tab */}
                 {isActive && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
                 )}
 
-                {/* Tooltip for inactive tabs */}
                 {!isActive && (
                   <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900/95 text-white text-xs px-3 py-2 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 max-w-xs">
                     <div className="font-medium">{workflow.name}</div>
@@ -117,10 +109,8 @@ function WorkflowTabs() {
           })}
         </div>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Workflow-specific quick actions */}
         <div className="flex items-center gap-2">
           {activeWorkflow === 'modeling' && (
             <>
@@ -155,7 +145,6 @@ function WorkflowTabs() {
             </>
           )}
 
-          {/* Workflow settings */}
           <button className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-slate-800 rounded transition-colors">
             {Icons.Settings ? <Icons.Settings className="w-4 h-4" /> : <Icons.Cog className="w-4 h-4" />}
           </button>

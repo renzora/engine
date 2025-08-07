@@ -10,23 +10,20 @@ const useCustomDragPreview = () => {
     const element = document.createElement('div');
     element.id = 'custom-drag-preview';
     element.textContent = name;
-
-    // Apply styles
     element.style.position = 'fixed';
     element.style.pointerEvents = 'none';
     element.style.zIndex = '1000';
-    element.style.backgroundColor = '#3B82F6'; // Blue background
+    element.style.backgroundColor = '#3B82F6';
     element.style.color = 'white';
     element.style.padding = '4px 12px';
     element.style.borderRadius = '6px';
-    element.style.fontSize = '14px'; // Larger font size
+    element.style.fontSize = '14px';
     element.style.boxShadow = '0 5px 15px rgba(0, 0, 0, 0.3)';
     element.style.opacity = '0.95';
-    element.style.border = 'none'; // No border
+    element.style.border = 'none';
 
     document.body.appendChild(element);
 
-    // Position it
     const rect = element.getBoundingClientRect();
     element.style.left = `${x - rect.width / 2}px`;
     element.style.top = `${y - rect.height / 2}px`;

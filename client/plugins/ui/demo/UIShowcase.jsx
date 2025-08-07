@@ -52,7 +52,6 @@ const UIShowcase = () => {
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             
-            {/* Form Components */}
             <Section title="Form Components" defaultOpen={true} variant="accent">
               <div className="space-y-4">
                 <Field 
@@ -89,7 +88,6 @@ const UIShowcase = () => {
               </div>
             </Section>
 
-            {/* Interactive Components */}
             <Section title="Interactive Components" defaultOpen={true} variant="subtle">
               <div className="space-y-4">
                 <Toggle
@@ -127,7 +125,6 @@ const UIShowcase = () => {
               </div>
             </Section>
 
-            {/* Sections Demo */}
             <Section title="Section Variants" defaultOpen={true}>
               <div className="space-y-4">
                 <Section title="Default Section" index={0} defaultOpen={false}>
@@ -148,7 +145,6 @@ const UIShowcase = () => {
               </div>
             </Section>
 
-            {/* Forum Component */}
             <Section title="Forum Component" defaultOpen={true}>
               <div className="h-96">
                 <Forum

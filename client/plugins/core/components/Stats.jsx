@@ -11,20 +11,16 @@ export default function StatsMonitor() {
 
   useEffect(() => {
     if (showStats && !statsRef.current) {
-      // Create stats instance
       const stats = new Stats()
       
-      // Configure stats
-      stats.showPanel(0) // 0: fps, 1: ms, 2: mb, 3+: custom
+      stats.showPanel(0)
       
-      // Style the stats panel
       stats.dom.style.position = 'fixed'
       stats.dom.style.top = '10px'
       stats.dom.style.left = '10px'
       stats.dom.style.zIndex = '9999'
       stats.dom.style.opacity = '0.8'
       
-      // Add to DOM
       if (containerRef.current) {
         containerRef.current.appendChild(stats.dom)
       } else {
@@ -33,11 +29,9 @@ export default function StatsMonitor() {
       
       statsRef.current = stats
       
-      // Animation loop
       function animate() {
         if (statsRef.current) {
           statsRef.current.begin()
-          // Your render code here
           statsRef.current.end()
           requestAnimationFrame(animate)
         }
@@ -48,7 +42,6 @@ export default function StatsMonitor() {
     }
     
     if (!showStats && statsRef.current) {
-      // Remove stats
       if (statsRef.current.dom.parentNode) {
         statsRef.current.dom.parentNode.removeChild(statsRef.current.dom)
       }
@@ -57,7 +50,6 @@ export default function StatsMonitor() {
     }
   }, [showStats])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (statsRef.current && statsRef.current.dom.parentNode) {

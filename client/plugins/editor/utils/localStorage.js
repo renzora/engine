@@ -1,28 +1,26 @@
-// UI Settings localStorage utility
 const UI_SETTINGS_KEY = 'engine-ui-settings';
 
-// Default UI settings
 const defaultUISettings = {
   panels: {
-    rightPanelWidth: 304, // 256 + 48 for toolbar
-    bottomPanelHeight: 256, // Main bottom asset panel height
-    scenePropertiesHeight: 300, // Scene panel properties section height
+    rightPanelWidth: 304,
+    bottomPanelHeight: 256,
+    scenePropertiesHeight: 300,
     assetsLibraryWidth: 250,
-    rightPropertiesMenuPosition: 'right', // 'right' | 'bottom'
+    rightPropertiesMenuPosition: 'right',
   },
   settings: {
     gridSettings: {
       enabled: true,
       size: 100,
       cellSize: 1,
-      cellThickness: 1.0, // Increased from 0.5 for better visibility and less aliasing
+      cellThickness: 1.0,
       cellColor: '#6B7280',
       sectionSize: 10,
-      sectionThickness: 2.0, // Increased from 1 for clearer section lines
+      sectionThickness: 2.0,
       sectionColor: '#9CA3AF',
       position: [0, -1, 0],
-      fadeDistance: 50, // Reduced from 100 to keep lines crisp longer
-      fadeStrength: 0.5, // Reduced from 1 for more gradual fade
+      fadeDistance: 50,
+      fadeStrength: 0.5,
       infiniteGrid: true
     },
     viewportSettings: {
@@ -30,7 +28,7 @@ const defaultUISettings = {
     }
   },
   bottomTabs: {
-    selectedTab: 'assets', // 'assets' | 'console' | 'timeline' | etc
+    selectedTab: 'assets',
     tabOrder: [
       'assets', 'scripts', 'animation', 'node-editor', 'timeline', 'console',
       'materials', 'terrain', 'lighting', 'physics', 'audio', 'effects'
@@ -46,17 +44,15 @@ const defaultUISettings = {
     ]
   },
   topLeftMenu: {
-    selectedItem: null // Will store the selected top-left menu item
+    selectedItem: null
   }
 };
 
-// Load UI settings from localStorage
 export const loadUISettings = () => {
   try {
     const stored = localStorage.getItem(UI_SETTINGS_KEY);
     if (stored) {
       const parsed = JSON.parse(stored);
-      // Merge with defaults to ensure all properties exist
       return mergeDeep(defaultUISettings, parsed);
     }
   } catch (error) {
@@ -65,7 +61,6 @@ export const loadUISettings = () => {
   return defaultUISettings;
 };
 
-// Save UI settings to localStorage
 export const saveUISettings = (settings) => {
   try {
     localStorage.setItem(UI_SETTINGS_KEY, JSON.stringify(settings));
@@ -74,7 +69,6 @@ export const saveUISettings = (settings) => {
   }
 };
 
-// Update specific UI setting
 export const updateUISetting = (path, value) => {
   const settings = loadUISettings();
   const updated = setNestedProperty(settings, path, value);
@@ -82,13 +76,11 @@ export const updateUISetting = (path, value) => {
   return updated;
 };
 
-// Get specific UI setting
 export const getUISetting = (path, fallback = null) => {
   const settings = loadUISettings();
   return getNestedProperty(settings, path) ?? fallback;
 };
 
-// Deep merge utility function
 const mergeDeep = (target, source) => {
   const output = { ...target };
   
@@ -109,12 +101,10 @@ const mergeDeep = (target, source) => {
   return output;
 };
 
-// Check if value is an object
 const isObject = (item) => {
   return item && typeof item === 'object' && !Array.isArray(item);
 };
 
-// Set nested property using dot notation (e.g., 'panels.rightPanelWidth')
 const setNestedProperty = (obj, path, value) => {
   const keys = path.split('.');
   const result = { ...obj };
@@ -134,14 +124,12 @@ const setNestedProperty = (obj, path, value) => {
   return result;
 };
 
-// Get nested property using dot notation
 const getNestedProperty = (obj, path) => {
   return path.split('.').reduce((current, key) => {
     return current && current[key] !== undefined ? current[key] : undefined;
   }, obj);
 };
 
-// Clear all UI settings (reset to defaults)
 export const clearUISettings = () => {
   try {
     localStorage.removeItem(UI_SETTINGS_KEY);
@@ -151,5 +139,4 @@ export const clearUISettings = () => {
   return defaultUISettings;
 };
 
-// Export default settings for reference
 export { defaultUISettings };

@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 
 const PanelResizer = ({ 
-  type, // 'bottom' or 'right'
+  type,
   isResizing,
   onResizeStart,
   onResizeEnd,
   onResize,
   position,
   className = '',
-  isLeftPanel = false // New prop to indicate if panel is on left
+  isLeftPanel = false
 }) => {
   useEffect(() => {
     if (!isResizing) return;

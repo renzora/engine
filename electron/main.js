@@ -8,7 +8,6 @@ import { createReadStream } from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Keep a global reference of the window object
 let mainWindow;
 let serverProcess;
 
@@ -16,7 +15,6 @@ const isDev = process.env.NODE_ENV === 'development';
 const port = process.env.PORT || 3000;
 
 function createWindow() {
-  // Create the browser window
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
@@ -31,24 +29,21 @@ function createWindow() {
       allowRunningInsecureContent: false,
       experimentalFeatures: false
     },
-    icon: join(__dirname, '../assets/icon.png'), // You can add an icon later
-    titleBarStyle: 'hiddenInset', // Hidden but draggable area available
-    frame: false, // Remove the window frame/menu bar
-    titleBarOverlay: false, // Disable overlay for custom controls
-    show: false, // Don't show until ready
+    icon: join(__dirname, '../assets/icon.png'),
+    titleBarStyle: 'hiddenInset',
+    frame: false,
+    titleBarOverlay: false,
+    show: false,
   });
 
-  // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     
-    // Open DevTools in development
     if (isDev) {
       mainWindow.webContents.openDevTools();
     }
   });
 
-  // Load the app - detect HTTPS vs HTTP based on certificates
   const keyPath = join(__dirname, '../localhost+2-key.pem');
   const certPath = join(__dirname, '../localhost+2.pem');
   const hasSSL = existsSync(keyPath) && existsSync(certPath);
@@ -61,14 +56,11 @@ function createWindow() {
   console.log(`Loading Electron app from: ${startUrl}`);
   mainWindow.loadURL(startUrl);
 
-  // Handle window closed
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 
-  // Handle external links
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    // Open external links in default browser
     if (url.startsWith('http://') || url.startsWith('https://')) {
       require('electron').shell.openExternal(url);
       return { action: 'deny' };
@@ -79,7 +71,6 @@ function createWindow() {
 
 function startServer() {
   return new Promise((resolve, reject) => {
-    // In production, use the original server.js file (not the built one)
     const serverPath = join(__dirname, '../server.js');
     
     if (!existsSync(serverPath)) {
@@ -89,7 +80,6 @@ function startServer() {
 
     console.log('Starting server process...');
     
-    // Start the Fastify server process
     serverProcess = spawn('node', [serverPath], {
       cwd: join(__dirname, '..'),
       env: {
@@ -101,12 +91,10 @@ function startServer() {
       stdio: ['pipe', 'pipe', 'pipe']
     });
 
-    // Handle server output
     serverProcess.stdout.on('data', (data) => {
       const output = data.toString();
       console.log('[Server Output]', output.trim());
       
-      // Check if server is ready - look for the actual message from server.js
       if (output.includes('Server running') || output.includes('🚀 Server running')) {
         console.log('Server is ready!');
         resolve();
@@ -117,7 +105,6 @@ function startServer() {
       const error = data.toString();
       console.error('[Server Error]', error.trim());
       
-      // If we get an error before resolution, reject
       if (!hasResolved && error.includes('Error')) {
         reject(new Error(`Server startup error: ${error.trim()}`));
       }
@@ -132,7 +119,6 @@ function startServer() {
     serverProcess.on('exit', (code, signal) => {
       console.log(`Server process exited with code ${code}, signal: ${signal}`);
       
-      // Any exit before successful resolution is an error
       if (!hasResolved) {
         if (code === 0) {
           reject(new Error(`Server exited unexpectedly (code 0) - likely a startup issue`));
@@ -144,10 +130,8 @@ function startServer() {
       }
     });
 
-    // Backup timeout in case we don't see the ready message
     setTimeout(() => {
       if (!hasResolved) {
-        // Try to check if server is responding
         checkServerHealth()
           .then(() => {
             hasResolved = true;
@@ -157,9 +141,8 @@ function startServer() {
             reject(new Error('Server failed to start within timeout'));
           });
       }
-    }, 15000); // Increased timeout to 15 seconds
+    }, 15000);
     
-    // Prevent multiple resolves
     const originalResolve = resolve;
     resolve = (...args) => {
       if (!hasResolved) {
@@ -181,7 +164,7 @@ async function checkServerHealth() {
         return true;
       }
     } catch (error) {
-      // Server not ready yet
+
     }
     
     retries++;
@@ -196,7 +179,6 @@ function stopServer() {
     console.log('Stopping server process...');
     serverProcess.kill('SIGTERM');
     
-    // Force kill after 5 seconds if not stopped gracefully
     setTimeout(() => {
       if (serverProcess && !serverProcess.killed) {
         console.log('Force killing server process...');
@@ -208,24 +190,18 @@ function stopServer() {
   }
 }
 
-// App event handlers
 app.whenReady().then(async () => {
   try {
-    // In development, the server is already running via the dev script
-    // In production, we need to start our own server
     if (!isDev) {
       await startServer();
     } else {
-      // In development, just wait a moment for the dev server to be ready
       console.log('Development mode - using existing dev server');
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
     
-    // Then create the window
     createWindow();
     
     app.on('activate', () => {
-      // On macOS, re-create window when dock icon is clicked
       if (BrowserWindow.getAllWindows().length === 0) {
         createWindow();
       }
@@ -237,7 +213,6 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  // On macOS, keep app running even when all windows are closed
   if (process.platform !== 'darwin') {
     stopServer();
     app.quit();
@@ -252,14 +227,11 @@ app.on('will-quit', () => {
   stopServer();
 });
 
-// File system watchers and project path tracking
 let fileWatchers = new Map();
 let currentProjectPath = null;
 
-// Helper functions for file system operations
 function isValidPath(filePath) {
   if (!filePath || typeof filePath !== 'string') return false;
-  // Basic security check - no path traversal
   const normalizedPath = resolve(filePath);
   return !normalizedPath.includes('..');
 }
@@ -326,7 +298,6 @@ async function buildFolderTree(folderPath, basePath = folderPath) {
       }
     }
 
-    // Sort children and files
     tree.children.sort((a, b) => a.name.localeCompare(b.name));
     tree.files.sort((a, b) => a.name.localeCompare(b.name));
 
@@ -370,7 +341,6 @@ async function getAssetsInFolder(folderPath, basePath) {
       }
     }
 
-    // Sort folders first, then files
     assets.sort((a, b) => {
       if (a.type !== b.type) {
         return a.type === 'folder' ? -1 : 1;
@@ -385,9 +355,7 @@ async function getAssetsInFolder(folderPath, basePath) {
   }
 }
 
-// File system IPC handlers
 ipcMain.handle('fs-set-project-path', async (event, projectPath) => {
-  // If projectPath is just a name (not a full path), resolve it to the projects directory
   let fullProjectPath = projectPath;
   if (!projectPath.includes('/') && !projectPath.includes('\\')) {
     fullProjectPath = join(__dirname, '../projects', projectPath);
@@ -399,13 +367,11 @@ ipcMain.handle('fs-set-project-path', async (event, projectPath) => {
   
   console.log(`Setting Electron project path: ${projectPath} -> ${fullProjectPath}`);
   
-  // Clear existing watchers
   fileWatchers.forEach(watcher => watcher.close());
   fileWatchers.clear();
   
   currentProjectPath = fullProjectPath;
   
-  // Set up file watcher for the project assets folder
   const assetsPath = join(fullProjectPath, 'assets');
   if (existsSync(assetsPath)) {
     try {
@@ -413,9 +379,7 @@ ipcMain.handle('fs-set-project-path', async (event, projectPath) => {
         if (filename) {
           console.log(`File watcher detected: ${eventType} - ${filename}`);
           
-          // Debounce rapid file changes
           setTimeout(() => {
-            // Notify renderer of file changes
             if (mainWindow) {
               mainWindow.webContents.send('fs-file-changed', {
                 type: eventType,
@@ -424,7 +388,7 @@ ipcMain.handle('fs-set-project-path', async (event, projectPath) => {
                 timestamp: Date.now()
               });
             }
-          }, 100); // 100ms delay to debounce rapid changes
+          }, 100);
         }
       });
       
@@ -449,7 +413,6 @@ ipcMain.handle('fs-get-project-assets-tree', async (event) => {
   
   const assetsPath = join(currentProjectPath, 'assets');
   if (!existsSync(assetsPath)) {
-    // Create assets folder if it doesn't exist
     await fs.mkdir(assetsPath, { recursive: true });
   }
   
@@ -483,7 +446,6 @@ ipcMain.handle('fs-get-asset-categories', async (event) => {
     await fs.mkdir(assetsPath, { recursive: true });
   }
   
-  // Build categories by scanning all files
   const categories = {
     '3d-models': { name: '3D Models', files: [] },
     'textures': { name: 'Textures', files: [] },
@@ -518,7 +480,6 @@ ipcMain.handle('fs-get-asset-categories', async (event) => {
           lastModified: stat.mtime.toISOString()
         };
         
-        // Categorize by extension
         if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) {
           categories['3d-models'].files.push(file);
         } else if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) {
@@ -538,7 +499,6 @@ ipcMain.handle('fs-get-asset-categories', async (event) => {
   
   await categorizeFiles(assetsPath, assetsPath);
   
-  // Sort files in each category
   Object.values(categories).forEach(category => {
     category.files.sort((a, b) => a.name.localeCompare(b.name));
   });
@@ -663,14 +623,12 @@ ipcMain.handle('fs-get-asset-content', async (event, assetPath) => {
     throw new Error('Cannot read directory as file');
   }
   
-  // For small text files, return content directly
   const ext = extname(fullPath).toLowerCase();
   if (['.txt', '.md', '.json', '.js', '.ts', '.xml'].includes(ext) && stat.size < 1024 * 1024) {
     const content = await fs.readFile(fullPath, 'utf8');
     return { type: 'text', content };
   }
   
-  // For binary files, return file URL
   return { 
     type: 'binary', 
     url: `file:///${fullPath.replace(/\\/g, '/')}`,
@@ -679,7 +637,6 @@ ipcMain.handle('fs-get-asset-content', async (event, assetPath) => {
   };
 });
 
-// Script creation handler
 ipcMain.handle('create-script', async (event, scriptData) => {
   const { projectName, scriptName, scriptContent, targetPath } = scriptData;
   
@@ -687,13 +644,11 @@ ipcMain.handle('create-script', async (event, scriptData) => {
     throw new Error('Missing required parameters');
   }
   
-  // Validate script name
   if (!scriptName.match(/^[a-zA-Z0-9_.-]+\.(js|ts|jsx|tsx)$/)) {
     throw new Error('Invalid script name. Must end with .js, .ts, .jsx, or .tsx');
   }
   
   try {
-    // Determine full path
     const projectPath = join(__dirname, '../projects', projectName);
     if (!existsSync(projectPath)) {
       throw new Error('Project not found');
@@ -707,15 +662,12 @@ ipcMain.handle('create-script', async (event, scriptData) => {
     const fullTargetPath = targetPath ? join(assetsPath, targetPath) : assetsPath;
     const scriptFilePath = join(fullTargetPath, scriptName);
     
-    // Ensure target directory exists
     await fs.mkdir(fullTargetPath, { recursive: true });
     
-    // Check if file already exists
     if (existsSync(scriptFilePath)) {
       throw new Error(`Script "${scriptName}" already exists in this location`);
     }
     
-    // Write the script file
     await fs.writeFile(scriptFilePath, scriptContent, 'utf8');
     
     console.log(`Created script: ${scriptFilePath}`);
@@ -734,29 +686,24 @@ ipcMain.handle('create-script', async (event, scriptData) => {
   }
 });
 
-// Project creation handlers
 ipcMain.handle('fs-create-project', async (event, projectName) => {
   if (!projectName || typeof projectName !== 'string') {
     throw new Error('Invalid project name');
   }
   
-  // Sanitize project name
   const sanitizedName = projectName.replace(/[^a-zA-Z0-9_-]/g, '');
   if (!sanitizedName) {
     throw new Error('Invalid project name');
   }
   
-  // Create project in projects directory
   const projectsDir = join(__dirname, '../projects');
   const projectPath = join(projectsDir, sanitizedName);
   
-  // Check if project already exists
   if (existsSync(projectPath)) {
     throw new Error('Project already exists');
   }
   
   try {
-    // Create project directory structure
     await fs.mkdir(projectPath, { recursive: true });
     await fs.mkdir(join(projectPath, 'assets'), { recursive: true });
     await fs.mkdir(join(projectPath, 'assets', 'textures'), { recursive: true });
@@ -764,7 +711,6 @@ ipcMain.handle('fs-create-project', async (event, projectName) => {
     await fs.mkdir(join(projectPath, 'assets', 'audio'), { recursive: true });
     await fs.mkdir(join(projectPath, 'assets', 'scripts'), { recursive: true });
     
-    // Create project.json file
     const projectData = {
       name: sanitizedName,
       version: '1.0.0',
@@ -780,7 +726,6 @@ ipcMain.handle('fs-create-project', async (event, projectName) => {
       'utf8'
     );
     
-    // Create empty scene.json file
     const sceneData = {
       entities: {},
       components: {},
@@ -798,13 +743,12 @@ ipcMain.handle('fs-create-project', async (event, projectName) => {
     
     return {
       success: true,
-      projectPath: sanitizedName, // Return relative path for consistency
+      projectPath: sanitizedName,
       fullPath: projectPath
     };
   } catch (error) {
     console.error('Error creating project:', error);
     
-    // Clean up on failure
     try {
       if (existsSync(projectPath)) {
         await fs.rmdir(projectPath, { recursive: true });
@@ -821,7 +765,6 @@ ipcMain.handle('fs-list-projects', async (event) => {
   const projectsDir = join(__dirname, '../projects');
   
   try {
-    // Ensure projects directory exists
     if (!existsSync(projectsDir)) {
       await fs.mkdir(projectsDir, { recursive: true });
       return { projects: [] };
@@ -835,7 +778,6 @@ ipcMain.handle('fs-list-projects', async (event) => {
       const stat = await fs.stat(itemPath);
       
       if (stat.isDirectory()) {
-        // Try to read project.json
         const projectJsonPath = join(itemPath, 'project.json');
         let projectInfo = {
           name: item,
@@ -861,7 +803,6 @@ ipcMain.handle('fs-list-projects', async (event) => {
       }
     }
     
-    // Sort by last modified (newest first)
     projects.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
     
     return { projects };
@@ -880,20 +821,16 @@ ipcMain.handle('fs-load-project', async (event, projectName) => {
   const projectPath = join(projectsDir, projectName);
   
   try {
-    // Check if project exists
     if (!existsSync(projectPath)) {
       throw new Error('Project not found');
     }
     
-    // Read project.json
     const projectJsonPath = join(projectPath, 'project.json');
     if (!existsSync(projectJsonPath)) {
       throw new Error('Project configuration not found');
     }
     
     const projectData = JSON.parse(await fs.readFile(projectJsonPath, 'utf8'));
-    
-    // Read scene.json
     const sceneJsonPath = join(projectPath, 'scene.json');
     let sceneData = { entities: {}, components: {}, entityCounter: 0, sceneRoot: null };
     
@@ -924,7 +861,6 @@ ipcMain.handle('fs-load-project', async (event, projectName) => {
   }
 });
 
-// IPC handlers
 ipcMain.handle('get-app-info', () => {
   return {
     name: app.getName(),
@@ -943,7 +879,6 @@ ipcMain.handle('open-external', (event, url) => {
   require('electron').shell.openExternal(url);
 });
 
-// Window control handlers
 ipcMain.handle('window-minimize', () => {
   if (mainWindow) {
     mainWindow.minimize();
@@ -970,12 +905,10 @@ ipcMain.handle('window-is-maximized', () => {
   return mainWindow ? mainWindow.isMaximized() : false;
 });
 
-// Security: Prevent navigation to external URLs
 app.on('web-contents-created', (event, contents) => {
   contents.on('will-navigate', (navigationEvent, navigationUrl) => {
     const parsedUrl = new URL(navigationUrl);
     
-    // Allow both HTTP and HTTPS on localhost/127.0.0.1
     const allowedOrigins = [
       `http://localhost:${port}`,
       `https://localhost:${port}`,
@@ -989,7 +922,6 @@ app.on('web-contents-created', (event, contents) => {
   });
 });
 
-// Handle certificate errors for self-signed certificates in development only
 if (isDev) {
   app.commandLine.appendSwitch('ignore-certificate-errors');
   app.commandLine.appendSwitch('ignore-ssl-errors');

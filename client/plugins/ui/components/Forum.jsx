@@ -69,7 +69,6 @@ const Forum = ({
   if (activeThread) {
     return (
       <div className={`h-full flex flex-col bg-slate-900/50 ${className}`} {...props}>
-        {/* Thread Header */}
         <div className="p-4 border-b border-slate-700">
           <div className="flex items-center gap-2 mb-2">
             <button
@@ -89,9 +88,7 @@ const Forum = ({
           </div>
         </div>
 
-        {/* Thread Content */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* Original Post */}
           <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
@@ -106,7 +103,6 @@ const Forum = ({
             <p className="text-xs text-gray-200">{activeThread.content}</p>
           </div>
 
-          {/* Replies */}
           {activeThread.replies?.map((reply) => (
             <div key={reply.id} className="bg-slate-800/20 rounded-lg p-3 border border-slate-700/30 ml-4">
               <div className="flex items-center gap-2 mb-2">
@@ -124,7 +120,6 @@ const Forum = ({
           ))}
         </div>
 
-        {/* Reply Form */}
         <div className="p-4 border-t border-slate-700">
           <div className="space-y-2">
             <textarea
@@ -157,7 +152,6 @@ const Forum = ({
 
   return (
     <div className={`h-full flex flex-col bg-slate-900/50 ${className}`} {...props}>
-      {/* Forum Header */}
       <div className="p-4 border-b border-slate-700">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-medium text-white">Forum</h2>
@@ -173,7 +167,6 @@ const Forum = ({
         </div>
       </div>
 
-      {/* New Thread Form */}
       {showNewThreadForm && (
         <div className="p-4 border-b border-slate-700 bg-slate-800/20">
           <div className="space-y-3">
@@ -214,7 +207,6 @@ const Forum = ({
         </div>
       )}
 
-      {/* Thread List */}
       <div className="flex-1 overflow-y-auto">
         {threads.length === 0 ? (
           <div className="p-8 text-center">

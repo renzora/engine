@@ -42,7 +42,6 @@ const ViewportTabs = () => {
   };
 
   const handleAddViewport = (type) => {
-    // Don't pass a custom name, let the store generate the appropriate instance name
     addViewportTab(type);
     setIsAddDropdownOpen(false);
   };
@@ -116,7 +115,7 @@ const ViewportTabs = () => {
               actions.editor.suspendTab(tab.id);
             }
           },
-          disabled: tab.id === activeTabId // Can't suspend the active tab
+          disabled: tab.id === activeTabId
         },
         { divider: true },
         {
@@ -160,7 +159,7 @@ const ViewportTabs = () => {
   };
 
   const handleMiddleClick = (e, tabId) => {
-    if (e.button === 1) { // Middle mouse button
+    if (e.button === 1) {
       e.preventDefault();
       closeViewportTab(tabId);
     }
@@ -169,7 +168,6 @@ const ViewportTabs = () => {
   return (
     <>
       <div className="flex items-center h-8 bg-gray-900/95 border-b border-gray-800">
-        {/* Tab Bar with Plus Button Inline */}
         <div className="flex items-center min-w-0 flex-1 overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = getViewportIcon(tab.type);
@@ -188,10 +186,8 @@ const ViewportTabs = () => {
                 onMouseDown={(e) => handleMiddleClick(e, tab.id)}
                 title={tab.name}
               >
-                {/* Tab Icon */}
                 <Icon className="w-4 h-4 flex-shrink-0" />
                 
-                {/* Tab Name - Editable */}
                 {editingTab === tab.id ? (
                   <input
                     type="text"
@@ -209,22 +205,18 @@ const ViewportTabs = () => {
                   </span>
                 )}
                 
-                {/* Suspended Indicator */}
                 {(suspendedTabs || []).includes(tab.id) && (
                   <Icons.Pause className="w-3 h-3 text-gray-500 flex-shrink-0" title="Tab Suspended" />
                 )}
                 
-                {/* Pinned Indicator */}
                 {tab.isPinned && (
                   <Icons.Star className="w-3 h-3 text-yellow-500 flex-shrink-0" />
                 )}
                 
-                {/* Unsaved Changes Indicator */}
                 {tab.hasUnsavedChanges && (
                   <div className="w-2 h-2 bg-orange-500 rounded-full flex-shrink-0" />
                 )}
                 
-                {/* Close Button */}
                 {tabs.length > 1 && (
                   <button
                     onClick={(e) => handleTabClose(e, tab.id)}
@@ -238,13 +230,12 @@ const ViewportTabs = () => {
             );
           })}
 
-          {/* Add Tab Button - Inline with tabs */}
           <div className="relative flex-shrink-0">
             <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 setDropdownPosition({
-                  x: Math.min(rect.left, window.innerWidth - 280), // Prevent overflow
+                  x: Math.min(rect.left, window.innerWidth - 280),
                   y: rect.bottom + 4
                 });
                 setIsAddDropdownOpen(!isAddDropdownOpen);
@@ -255,16 +246,13 @@ const ViewportTabs = () => {
               <Icons.Plus className="w-4 h-4" />
             </button>
 
-            {/* Add Viewport Dropdown - Positioned relative to plus button */}
             {isAddDropdownOpen && (
               <>
-                {/* Backdrop */}
                 <div 
                   className="fixed inset-0 z-40"
                   onClick={() => setIsAddDropdownOpen(false)}
                 />
                 
-                {/* Dropdown Menu - Fixed position using stored coordinates */}
                 <div 
                   className="fixed w-64 bg-gray-900/98 backdrop-blur-sm border border-gray-700/50 rounded-lg shadow-xl z-50"
                   style={{
@@ -298,7 +286,6 @@ const ViewportTabs = () => {
           </div>
         </div>
 
-        {/* Viewport Controls */}
         <div className="flex items-center gap-1 px-2 border-l border-gray-700 flex-shrink-0">
           <button
             className="p-1 text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded transition-colors"
@@ -315,16 +302,13 @@ const ViewportTabs = () => {
         </div>
       </div>
 
-      {/* Context Menu */}
       {contextMenu && (
         <>
-          {/* Backdrop */}
           <div 
             className="fixed inset-0 z-50"
             onClick={() => setContextMenu(null)}
           />
           
-          {/* Context Menu */}
           <div
             className="fixed z-60 bg-gray-900/98 backdrop-blur-sm border border-gray-700/50 rounded-lg shadow-xl min-w-48"
             style={{ 

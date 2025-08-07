@@ -5,7 +5,7 @@ import useCustomDragPreview from './useCustomDragPreview';
 const useSceneDnD = (hierarchyData) => {
   const [draggedItem, setDraggedItem] = useState(null);
   const [dragOverItem, setDragOverItem] = useState(null);
-  const [dropPosition, setDropPosition] = useState(null); // 'above', 'below', 'inside'
+  const [dropPosition, setDropPosition] = useState(null);
   const { createPreview, updatePreviewPosition, removePreview } = useCustomDragPreview();
 
   const handleDragStart = useCallback((e, item) => {
@@ -16,7 +16,6 @@ const useSceneDnD = (hierarchyData) => {
     createPreview(e.currentTarget, e.clientX, e.clientY);
     document.body.style.cursor = 'grabbing';
 
-    // Hide default drag preview
     const emptyImg = document.createElement('img');
     emptyImg.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs=';
     e.dataTransfer.setDragImage(emptyImg, 0, 0);

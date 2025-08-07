@@ -47,7 +47,6 @@ const ContextMenu = ({ items, position, onClose }) => {
   const handleItemMouseEnter = (index, item, e) => {
     setHoveredItem(index);
     
-    // Clear any pending hide timeout
     if (hideSubmenuTimeout.current) {
       clearTimeout(hideSubmenuTimeout.current);
       hideSubmenuTimeout.current = null;
@@ -56,18 +55,13 @@ const ContextMenu = ({ items, position, onClose }) => {
     if (item.submenu && item.submenu.length > 0) {
       const rect = e.currentTarget.getBoundingClientRect();
       const { innerWidth, innerHeight } = window;
-      
-      // Position submenu to the right by default
       let submenuX = rect.right + 2;
       let submenuY = rect.top;
-      
-      // Check if submenu would go off screen and adjust
       const estimatedSubmenuWidth = 180;
       if (submenuX + estimatedSubmenuWidth > innerWidth) {
         submenuX = rect.left - estimatedSubmenuWidth - 2;
       }
       
-      // Ensure submenu doesn't go below viewport
       const estimatedSubmenuHeight = item.submenu.length * 32;
       if (submenuY + estimatedSubmenuHeight > innerHeight) {
         submenuY = innerHeight - estimatedSubmenuHeight - 10;
@@ -90,8 +84,7 @@ const ContextMenu = ({ items, position, onClose }) => {
   };
 
   const handleItemMouseLeave = () => {
-    // Keep submenu open when moving to submenu
-    // Only clear if we're not hovering over an item with submenu
+
   };
 
   if (!items || items.length === 0) {
@@ -152,7 +145,6 @@ const ContextMenu = ({ items, position, onClose }) => {
       
     </div>
     
-    {/* Submenu rendered separately to avoid nesting issues */}
     {submenuItems && submenuPosition && (
       <div
         ref={submenuRef}
@@ -164,7 +156,6 @@ const ContextMenu = ({ items, position, onClose }) => {
           zIndex: 999999
         }}
         onMouseEnter={() => {
-          // Clear hide timeout when entering submenu
           if (hideSubmenuTimeout.current) {
             clearTimeout(hideSubmenuTimeout.current);
             hideSubmenuTimeout.current = null;

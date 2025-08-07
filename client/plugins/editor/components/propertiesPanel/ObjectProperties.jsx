@@ -153,7 +153,6 @@ const ObjectProperties = ({ objectId }) => {
 
   return (
     <div className="p-4 space-y-4">
-      {/* Transform Section - Always available */}
       {objectProps.transform && (
         <div>
           <h3 className="text-sm font-semibold text-white mb-3 border-b border-gray-600 pb-2">
@@ -165,7 +164,6 @@ const ObjectProperties = ({ objectId }) => {
         </div>
       )}
 
-      {/* Material Section */}
       {objectProps.material && (
         <div>
           <h3 className="text-sm font-semibold text-white mb-3 border-b border-gray-600 pb-2">
@@ -176,7 +174,6 @@ const ObjectProperties = ({ objectId }) => {
           {renderSliderInput('Metallic', objectProps.material.metallic, 'material.metallic')}
           {renderSliderInput('Alpha', objectProps.material.alpha, 'material.alpha')}
           
-          {/* Texture Slots */}
           {objectProps.material.textures && (
             <div className="mt-3">
               <h4 className="text-xs font-medium text-gray-300 mb-2">Textures</h4>
@@ -189,7 +186,6 @@ const ObjectProperties = ({ objectId }) => {
         </div>
       )}
 
-      {/* Rendering Section */}
       {objectProps.rendering && (
         <div>
           <h3 className="text-sm font-semibold text-white mb-3 border-b border-gray-600 pb-2">
@@ -219,14 +215,12 @@ const ObjectProperties = ({ objectId }) => {
         </div>
       )}
 
-      {/* Components Section */}
       {objectProps.components && (
         <div>
           <h3 className="text-sm font-semibold text-white mb-3 border-b border-gray-600 pb-2">
             Components
           </h3>
           
-          {/* Scripting Component */}
           {objectProps.components.scripting && (
             <div className="mb-4">
               <h4 className="text-xs font-medium text-gray-300 mb-2">Scripting</h4>
@@ -266,7 +260,6 @@ const ObjectProperties = ({ objectId }) => {
             </div>
           )}
 
-          {/* Physics Component */}
           {objectProps.components.physics && (
             <div className="mb-4">
               <h4 className="text-xs font-medium text-gray-300 mb-2">Physics</h4>

@@ -22,7 +22,6 @@ export default defineConfig({
     host: 'localhost',
     https: (() => {
       try {
-        // Try to load mkcert certificates
         const keyPath = resolve(import.meta.dirname, 'localhost+2-key.pem')
         const certPath = resolve(import.meta.dirname, 'localhost+2.pem')
         
@@ -57,9 +56,7 @@ export default defineConfig({
           }
           return 'assets/[name]-[hash][extname]'
         },
-        // Split chunks to reduce bundle size
         manualChunks: (id) => {
-          // Group all Babylon.js related modules together
           if (id.includes('@babylonjs/core') || id.includes('node_modules/@babylonjs/core')) {
             return 'babylon-core';
           }
@@ -70,7 +67,6 @@ export default defineConfig({
             return 'babylon-extensions';
           }
           
-          // Group React and related libraries
           if (id.includes('react') || id.includes('react-dom')) {
             return 'react-vendor';
           }
@@ -78,12 +74,10 @@ export default defineConfig({
             return 'react-router';
           }
           
-          // Group other vendor libraries
           if (id.includes('node_modules')) {
             return 'vendor';
           }
           
-          // Keep application code together
           if (id.includes('client/plugins')) {
             return 'app-plugins';
           }
@@ -92,9 +86,7 @@ export default defineConfig({
         entryFileNames: 'assets/[name]-[hash].js'
       }
     },
-    // Reduce chunk size warnings threshold
     chunkSizeWarningLimit: 800,
-    // Enable minification and tree shaking
     minify: 'terser',
     terserOptions: {
       compress: {
@@ -102,7 +94,6 @@ export default defineConfig({
         drop_debugger: true
       }
     },
-    // Optimize dependencies
     commonjsOptions: {
       include: [/node_modules/]
     }

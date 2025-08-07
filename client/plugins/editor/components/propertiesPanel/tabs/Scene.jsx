@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Icons } from '@/plugins/editor/components/Icons.jsx';
-// import CollapsibleSection from '@/plugins/editor/components/ui/CollapsibleSection.jsx';
 import { globalStore, actions, babylonScene } from "@/store.js";
 import { useSnapshot } from 'valtio';
 import useSceneDnD from '@/plugins/editor/hooks/useSceneDnD.js';
 
-// Improved CollapsibleSection component with chevron on left and no border conflicts
 const CollapsibleSection = ({ title, children, defaultOpen = true, index = 0 }) => {
   const [isOpen, setIsOpen] = useState(defaultOpen);
   
@@ -58,7 +56,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     setTimeout(() => setDroppedItemId(null), 500);
   };
 
-  // Get selected object data from Babylon.js scene using external reference
   const selectedObjectData = useMemo(() => {
     if (!selection.entity) {
       return null;
@@ -71,7 +68,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     
     const babylonObjects = [];
     
-    // Check meshes
     if (scene.meshes) {
       scene.meshes.forEach(mesh => {
         const meshId = mesh.uniqueId || mesh.name;
@@ -90,7 +86,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
       });
     }
     
-    // Check transform nodes
     if (scene.transformNodes) {
       scene.transformNodes.forEach(node => {
         const nodeId = node.uniqueId || node.name;
@@ -98,7 +93,7 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
           babylonObjects.push({
             id: node.uniqueId || node.name,
             name: node.name,
-            type: 'mesh', // Show transform nodes as meshes in UI
+            type: 'mesh',
             position: node.position ? [node.position.x, node.position.y, node.position.z] : [0, 0, 0],
             rotation: node.rotation ? [node.rotation.x, node.rotation.y, node.rotation.z] : [0, 0, 0],
             scale: node.scaling ? [node.scaling.x, node.scaling.y, node.scaling.z] : [1, 1, 1],
@@ -109,7 +104,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
       });
     }
     
-    // Check lights
     if (scene.lights) {
       scene.lights.forEach(light => {
         const lightId = light.uniqueId || light.name;
@@ -131,7 +125,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
       });
     }
     
-    // Check cameras
     if (scene.cameras) {
       scene.cameras.forEach(camera => {
         const cameraId = camera.uniqueId || camera.name;
@@ -156,7 +149,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     return babylonObjects.length > 0 ? babylonObjects[0] : null;
   }, [selection.entity, babylonScene]);
 
-  // Object Properties helper functions
   const handleAssetDrop = (e, propertyPath) => {
     e.preventDefault();
     const droppedData = e.dataTransfer.getData('text/plain');
@@ -300,25 +292,16 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     </div>
   );
 
-  // Scene hierarchy data
   const hierarchyData = useMemo(() => {
     return sceneData.hierarchy;
   }, [sceneData.hierarchy]);
 
-  // Container ref for resize functionality
   const containerRef = useRef(null);
-  
-  // State for expanded items
   const [expandedItems, setExpandedItems] = useState({});
-  
-  // Rename state
   const [renamingItemId, setRenamingItemId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
-  
-  // Folder creation counter
   const [folderCounter, setFolderCounter] = useState(1);
 
-  // Listen for context menu events
   useEffect(() => {
     const handleContextMenuRename = (event) => {
       const { itemId } = event.detail;
@@ -350,7 +333,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     };
   }, [sceneData.nodes, selection.entity, selectObject]);
   
-  // Expand/collapse functions
   const expandAll = () => {
     const expandAllNodes = (nodes) => {
       const newExpanded = {};
@@ -371,7 +353,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     setExpandedItems({});
   };
   
-  // Rename functions
   const startRename = (itemId, currentName) => {
     setRenamingItemId(itemId);
     setRenameValue(currentName);
@@ -390,7 +371,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     setRenameValue('');
   };
   
-  // Folder creation
   const handleCreateFolder = () => {
     const folderName = `New Folder ${folderCounter}`;
     const parentId = selection.entity && selection.entity !== 'scene-root' ? selection.entity : null;
@@ -402,7 +382,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     setTimeout(() => startRename(folderId, folderName), 100);
   };
   
-  // Add selected object to new folder
   const handleAddToNewFolder = () => {
     if (!selection.entity || selection.entity === 'scene-root') return;
     
@@ -419,7 +398,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     }, 50);
   };
   
-  // Keyboard event handler
   const handleKeyDown = (e, item) => {
     if (e.key === 'F2' && item && !renamingItemId) {
       e.preventDefault();
@@ -433,7 +411,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     }
   };
 
-  // Resizing logic
   const handleMouseDown = (e) => {
     e.preventDefault();
     setIsResizing(true);
@@ -457,7 +434,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Handle object deletion
   const handleDeleteObject = (objectId, e) => {
     e.stopPropagation();
     
@@ -480,7 +456,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     actions.editor.refreshSceneData();
   };
 
-  // Get icon for object type
   const getIcon = (type, lightType) => {
     switch (type) {
       case 'mesh': return Icons.Cube3D;
@@ -497,7 +472,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
     }
   };
 
-  // Render scene hierarchy item
   const renderSceneItem = (item, depth = 0, index = 0, parent = null) => {
     if (!item) return null;
     
@@ -557,12 +531,10 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
             onContextMenu(e, item, 'scene');
           }}
         >
-          {/* Selection indicator */}
           {isSelected && (
             <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-400 pointer-events-none" />
           )}
           
-          {/* Hierarchy lines */}
           {depth > 0 && (
             <div className="absolute left-0 top-0 bottom-0 pointer-events-none">
               <div
@@ -677,7 +649,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
         {hierarchyData.map((item, i) => renderSceneItem(item, 0, i, hierarchyData))}
       </div>
       
-      {/* Photoshop-style bottom toolbar */}
       <div className="flex items-center justify-between px-2 py-1 border-t border-slate-700/60 bg-gradient-to-b from-slate-800/50 to-slate-900/80">
         <div className="flex items-center gap-1">
           <button
@@ -819,7 +790,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                   {objectProps.components && (
                     <CollapsibleSection title="Scripting" defaultOpen={true} index={2}>
                       <div className="p-4">
-                        {/* Scripting Component */}
                         {objectProps.components.scripting && (
                           <div className="mb-4">
                             <div
@@ -831,10 +801,7 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                               onDrop={(e) => {
                                 e.preventDefault();
                                 setIsDragOverScript(false);
-                                
                                 console.log('Drop event triggered. Available types:', Array.from(e.dataTransfer.types));
-                                
-                                // Handle asset drops from asset library (JSON data)
                                 const jsonData = e.dataTransfer.getData('application/json');
                                 console.log('JSON data retrieved:', jsonData);
                                 if (jsonData) {
@@ -842,7 +809,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                     const data = JSON.parse(jsonData);
                                     if (data.type === 'asset' && data.path && data.path.match(/\.(js|ts|jsx|tsx)$/i)) {
                                       console.log('Dropping script asset:', data);
-                                      // Auto-enable scripting and add script to array
                                       const currentScripts = objectProps.components.scripting.scriptFiles || [];
                                       const newScript = {
                                         id: Date.now() + Math.random(),
@@ -851,7 +817,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                         enabled: true
                                       };
                                       
-                                      // Check if script is already added
                                       if (!currentScripts.some(script => script.path === data.path)) {
                                         updateObjectProperty(selection.entity, 'components.scripting.enabled', true);
                                         updateObjectProperty(selection.entity, 'components.scripting.scriptFiles', [...currentScripts, newScript]);
@@ -864,14 +829,12 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                   }
                                 }
                                 
-                                // Fallback: Handle asset drops from asset library (text/plain)
                                 const textData = e.dataTransfer.getData('text/plain');
                                 if (textData) {
                                   try {
                                     const data = JSON.parse(textData);
                                     if (data.type === 'asset' && data.path && data.path.match(/\.(js|ts|jsx|tsx)$/i)) {
                                       console.log('Dropping script asset (text fallback):', data);
-                                      // Auto-enable scripting and add script to array
                                       const currentScripts = objectProps.components.scripting.scriptFiles || [];
                                       const newScript = {
                                         id: Date.now() + Math.random(),
@@ -880,7 +843,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                         enabled: true
                                       };
                                       
-                                      // Check if script is already added
                                       if (!currentScripts.some(script => script.path === data.path)) {
                                         updateObjectProperty(selection.entity, 'components.scripting.enabled', true);
                                         updateObjectProperty(selection.entity, 'components.scripting.scriptFiles', [...currentScripts, newScript]);
@@ -889,16 +851,14 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                       return;
                                     }
                                   } catch (err) {
-                                    // Not JSON data, try file drops
+
                                   }
                                 }
                                 
-                                // Handle file drops from system
                                 const files = e.dataTransfer.files;
                                 if (files.length > 0) {
                                   const file = files[0];
                                   if (file.name.match(/\.(js|ts|jsx|tsx)$/)) {
-                                    // Auto-enable scripting and add script to array
                                     const currentScripts = objectProps.components.scripting.scriptFiles || [];
                                     const newScript = {
                                       id: Date.now() + Math.random(),
@@ -907,7 +867,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                       enabled: true
                                     };
                                     
-                                    // Check if script is already added
                                     if (!currentScripts.some(script => script.path === (file.path || file.name))) {
                                       updateObjectProperty(selection.entity, 'components.scripting.enabled', true);
                                       updateObjectProperty(selection.entity, 'components.scripting.scriptFiles', [...currentScripts, newScript]);
@@ -919,8 +878,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                               onDragOver={(e) => {
                                 e.preventDefault();
                                 setIsDragOverScript(true);
-                                
-                                // Debug: Check what data types are available
                                 console.log('Drag over script zone. Available types:', Array.from(e.dataTransfer.types));
                               }}
                               onDragLeave={(e) => {
@@ -933,7 +890,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                               </div>
                             </div>
                             
-                            {/* Scripts List */}
                             {objectProps.components.scripting.scriptFiles && objectProps.components.scripting.scriptFiles.length > 0 && (
                               <div className="mt-3 space-y-2">
                                 {objectProps.components.scripting.scriptFiles.map((script, index) => (
@@ -941,12 +897,10 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                     key={script.id || index}
                                     className="flex items-center gap-2 p-2 bg-slate-800/60 rounded-lg border border-slate-700/60 hover:border-slate-600 transition-colors group"
                                   >
-                                    {/* Script Icon */}
                                     <div className="flex-shrink-0">
                                       <Icons.Code className="w-4 h-4 text-blue-400" />
                                     </div>
                                     
-                                    {/* Script Name */}
                                     <div className="flex-1 min-w-0">
                                       <div className="text-xs text-gray-200 truncate font-medium">
                                         {script.name}
@@ -956,7 +910,6 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                       </div>
                                     </div>
                                     
-                                    {/* Enable/Disable Toggle */}
                                     <button
                                       onClick={() => {
                                         const updatedScripts = objectProps.components.scripting.scriptFiles.map((s, i) =>
@@ -979,13 +932,11 @@ function Scene({ selectedObject, onObjectSelect, onContextMenu }) {
                                       )}
                                     </button>
                                     
-                                    {/* Remove Script Button */}
                                     <button
                                       onClick={() => {
                                         const updatedScripts = objectProps.components.scripting.scriptFiles.filter((_, i) => i !== index);
                                         updateObjectProperty(selection.entity, 'components.scripting.scriptFiles', updatedScripts);
                                         
-                                        // Disable scripting if no scripts left
                                         if (updatedScripts.length === 0) {
                                           updateObjectProperty(selection.entity, 'components.scripting.enabled', false);
                                         }

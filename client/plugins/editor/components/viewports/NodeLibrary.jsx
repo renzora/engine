@@ -1,6 +1,4 @@
-// Minimal Node Library - Starting with essentials
 export const NodeLibrary = {
-  // Input/Constant nodes
   'vector3-constant': {
     type: 'input',
     title: 'Vector3',
@@ -39,7 +37,6 @@ export const NodeLibrary = {
     ]
   },
 
-  // Basic Math nodes
   'add': {
     type: 'math',
     title: 'Add',
@@ -66,7 +63,6 @@ export const NodeLibrary = {
     ]
   },
 
-  // Output nodes (these create property sections)
   'material-output': {
     type: 'output',
     title: 'Material Output',
@@ -90,24 +86,22 @@ export const NodeLibrary = {
   }
 };
 
-// Port type colors for visual distinction
 export const PortTypeColors = {
-  'float': '#3b82f6',      // Blue
-  'vector2': '#10b981',    // Green  
-  'vector3': '#06b6d4',    // Cyan
-  'color': '#f59e0b',      // Yellow
-  'texture': '#8b5cf6',    // Purple
-  'boolean': '#ef4444',    // Red
-  'material': '#ec4899',   // Pink
-  'matrix4': '#14b8a6'     // Teal
+  'float': '#3b82f6',
+  'vector2': '#10b981',
+  'vector3': '#06b6d4',
+  'color': '#f59e0b',
+  'texture': '#8b5cf6',
+  'boolean': '#ef4444',
+  'material': '#ec4899',
+  'matrix4': '#14b8a6'
 };
 
-// Node type colors
 export const NodeTypeColors = {
-  'input': '#10b981',      // Green
-  'math': '#f59e0b',       // Yellow
-  'vector': '#06b6d4',     // Cyan
-  'utility': '#84cc16',    // Lime
-  'output': '#ef4444',     // Red
-  'master': '#8b5cf6'      // Purple
+  'input': '#10b981',
+  'math': '#f59e0b',
+  'vector': '#06b6d4',
+  'utility': '#84cc16',
+  'output': '#ef4444',
+  'master': '#8b5cf6'
 };
