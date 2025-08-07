@@ -5,7 +5,7 @@
 
   <h1>Renzora Engine [Alpha] 0.1.0</h1>
 
-  Renzora Engine is a Javascript game engine for the web. Currently supporting BabylonJS with webgl + webgpu.
+  <h3>Renzora Engine is a cross-platform Javascript game engine with support for BabylonJS Webgl & Webgpu</h3>
 </dl>
 
 ![image](https://i.imgur.com/FIoVtMp.png)
