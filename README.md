@@ -24,7 +24,7 @@ This is a very early version of the engine and is only meant for evaluation and 
 # Features in development
 - 2D support
 - Physics Engine (Havok)
-- colisions
+- collisions
 - Terrain Editor
 - Scripting Api
 - Plugin/themes importing
