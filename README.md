@@ -8,7 +8,7 @@
   <h3>Renzora Engine is a cross-platform Javascript game engine with support for BabylonJS Webgl & Webgpu</h3>
 </dl>
 
-![image](https://i.imgur.com/FIoVtMp.png)
+![image](https://i.imgur.com/t2XufWb.png)
 
 # Notice
 This is a very early version of the engine and is only meant for evaluation and not for actual usage. Please expect things to break or not work. I will be actively developing the engine and you can join the discord server to discuss features, bugs and commits here: https://discord.gg/9UHUGUyDJv
