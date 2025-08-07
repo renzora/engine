@@ -21,6 +21,34 @@ This is a very early version of the engine and is only meant for evaluation and 
 - Scene Properties
 - Node Editor
 
+# Features in development
+- 2D support
+- Physics Engine (Havok)
+- colisions
+- Terrain Editor
+- Scripting Api
+- Plugin/themes importing
+- Adding new levels
+- Full Node editor
+- ui designer
+- Migrating from React to Preact
+- Code Editor
+- Cloud based assets/sync (google drive, dropbox)
+- Instancing/optimisations
+- Adding support for Tauri
+- Fbx to gltf/glb conversion
+- Draco Compression
+- Animation/rigging
+- Level Designer
+- Lighting System
+- Particle Editor
+- Shader Support
+- ThreeJS support
+- Post Processing
+- backend authentication
+- websocket management
+- auto updating
+
 # Installation
 `git clone https://github.com/renzora/engine`
 
