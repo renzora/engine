@@ -39,8 +39,9 @@ This is a very early version of the engine and is only meant for evaluation and 
 - Switching from webgl to webgpu will clear your scene (persistent state will be coming soon)
 - Node editor doesn't do anything yet
 - Some issues with file syncing not updating.
-- Scene object tree has minor issues with especially with dragging objects to folders
+- Scene object tree has minor issues especially with dragging objects to folders
 - webgpu should work, if it doesn't then run the .bat or ps1 tool to generate fake ssl certificate
+- issues with packing and building to electron. dev server works fine
 - some issues with camera movement
 - Software update doesn't work yet
 - Light's can't be positioned yet
