@@ -1,5 +1,14 @@
-# Renzora Engine [Alpha] 0.1.0
-Renzora Engine is a Javascript game engine for the web. Currently supporting BabylonJS with webgl + webgpu.
+<dl>
+  <p align="center">
+  <img width="150" height="150" src="https://i.imgur.com/tsOyrhG.png" title="Hazel Lockwood Is the Main Character of Renzora & Logo of Renzora Engine">
+  </p>
+
+  <h1>Renzora Engine [Alpha] 0.1.0</h1>
+
+  Renzora Engine is a Javascript game engine for the web. Currently supporting BabylonJS with webgl + webgpu.
+</dl>
+
+![image](https://i.imgur.com/FIoVtMp.png)
 
 # Notice
 This is a very early version of the engine and is only meant for evaluation and not for actual usage. Please expect things to break or not work. I will be actively developing the engine and you can join the discord server to discuss features, bugs and commits here: https://discord.gg/9UHUGUyDJv
