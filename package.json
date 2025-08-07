@@ -1,0 +1,154 @@
+{
+  "name": "renzora",
+  "version": "1.0.0",
+  "description": "Game Engine",
+  "author": "PianoJames",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "node server.js --dev",
+    "start": "NODE_ENV=production node server.js",
+    "build": "cross-env NODE_ENV=production vite build && node scripts/post-build.js",
+    "lint": "oxlint",
+    "electron": "BUN_ENV=development electron .",
+    "electron:dev": "bun electron/dev.js",
+    "electron:pack": "bun run build && NODE_ENV=production electron .",
+    "electron:dist": "bun run build && electron-builder",
+    "electron:dist-mac": "bun run build && electron-builder --mac",
+    "electron:dist-win": "bun run build && electron-builder --win",
+    "electron:dist-linux": "bun run build && electron-builder --linux"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^8.20.0",
+    "@babylonjs/inspector": "^8.20.0",
+    "@babylonjs/loaders": "^8.20.0",
+    "@babylonjs/materials": "^8.20.0",
+    "@babylonjs/post-processes": "^8.20.0",
+    "@babylonjs/procedural-textures": "^8.20.0",
+    "@babylonjs/serializers": "^8.20.0",
+    "@fastify/multipart": "^9.0.3",
+    "@fastify/one-line-logger": "^2.0.2",
+    "@fastify/react": "^1.1.0",
+    "@fastify/vite": "^8.1.2",
+    "@fastify/websocket": "^11.2.0",
+    "@preact/preset-vite": "^2.10.2",
+    "@tailwindcss/vite": "^4.1.11",
+    "@unhead/react": "^2.0.8",
+    "chokidar": "^4.0.3",
+    "cross-env": "^10.0.0",
+    "fastify": "^5.2.2",
+    "history": "^5.3.0",
+    "minipass": "^7.1.2",
+    "preact": "^10.27.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.5.0",
+    "stats.js": "^0.17.0",
+    "valtio": "^2.1.4",
+    "vite-plugin-inspect": "^11.3.2"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react-oxc": "^0.3.0",
+    "concurrently": "^9.2.0",
+    "electron": "^37.2.4",
+    "electron-builder": "^26.0.12",
+    "oxlint": "^0.16.6",
+    "postcss": "^8.5.3",
+    "postcss-preset-env": "^10.1.5",
+    "tailwindcss": "^4.1.11",
+    "vite": "npm:rolldown-vite@latest",
+    "wait-on": "^8.0.4"
+  },
+  "build": {
+    "appId": "com.renzora.engine",
+    "productName": "Renzora Engine",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "server.js",
+      "server/**/*",
+      "client/dist/**/*",
+      "projects/**/*",
+      "package.json",
+      "node_modules/**/*",
+      "!node_modules/**/{README.md,readme.md,CHANGELOG.md,changelog.md}",
+      "!node_modules/**/test/**/*",
+      "!node_modules/**/__tests__/**/*",
+      "!node_modules/**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "projects",
+        "to": "projects",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Development"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

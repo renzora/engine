@@ -1,0 +1,51 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="engineGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#f093fb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5576c;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="240" fill="url(#bgGradient)" stroke="#ffffff" stroke-width="8"/>
+  
+  <!-- Engine gear icon -->
+  <g transform="translate(256,256)">
+    <!-- Main gear -->
+    <circle r="80" fill="url(#engineGradient)" stroke="#ffffff" stroke-width="4"/>
+    <circle r="40" fill="#ffffff" opacity="0.9"/>
+    
+    <!-- Gear teeth -->
+    <g stroke="#ffffff" stroke-width="3" fill="url(#engineGradient)">
+      <rect x="-8" y="-100" width="16" height="20" rx="2"/>
+      <rect x="-8" y="80" width="16" height="20" rx="2"/>
+      <rect x="-100" y="-8" width="20" height="16" rx="2"/>
+      <rect x="80" y="-8" width="20" height="16" rx="2"/>
+      
+      <!-- Diagonal teeth -->
+      <rect x="-70" y="-75" width="16" height="20" rx="2" transform="rotate(45)"/>
+      <rect x="54" y="-75" width="16" height="20" rx="2" transform="rotate(45)"/>
+      <rect x="-70" y="55" width="16" height="20" rx="2" transform="rotate(45)"/>
+      <rect x="54" y="55" width="16" height="20" rx="2" transform="rotate(45)"/>
+    </g>
+    
+    <!-- Center hub -->
+    <circle r="20" fill="#ffffff"/>
+    <circle r="12" fill="url(#engineGradient)"/>
+  </g>
+  
+  <!-- Small accent gears -->
+  <g transform="translate(160,160)">
+    <circle r="30" fill="#ffffff" opacity="0.8" stroke="url(#engineGradient)" stroke-width="2"/>
+    <circle r="15" fill="url(#engineGradient)" opacity="0.6"/>
+  </g>
+  
+  <g transform="translate(352,352)">
+    <circle r="25" fill="#ffffff" opacity="0.8" stroke="url(#engineGradient)" stroke-width="2"/>
+    <circle r="12" fill="url(#engineGradient)" opacity="0.6"/>
+  </g>
+</svg>

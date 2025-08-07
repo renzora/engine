@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #4B5563 transparent;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 4px;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 4px;
+    border: 1px solid #334155;
+  }
+  
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #64748B;
+  }
+
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+  }
+
+  .resize-handle {
+    cursor: col-resize;
+    background: rgba(71, 85, 105, 0.3);
+    transition: background-color 0.2s;
+  }
+
+  .resize-handle:hover,
+  .resize-handle.dragging {
+    background: #60a5fa;
+  }
+
+  .resize-handle.dragging {
+    cursor: col-resize !important;
+  }
+
+  .resize-handle-vertical {
+    cursor: row-resize;
+    background: rgba(71, 85, 105, 0.3);
+    transition: background-color 0.2s;
+  }
+
+  .resize-handle-vertical:hover,
+  .resize-handle-vertical.dragging {
+    background: #60a5fa;
+  }
+
+  .resize-handle-vertical.dragging {
+    cursor: row-resize !important;
+  }
+
+  body.dragging-horizontal {
+    cursor: col-resize !important;
+  }
+
+  body.dragging-vertical {
+    cursor: row-resize !important;
+  }
+}
