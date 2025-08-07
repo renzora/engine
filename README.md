@@ -63,6 +63,7 @@ This is a very early version of the engine and is only meant for evaluation and 
 `npm run electron:dev`
 
 # Issues/bugs
+- undo/redo not implemented yet
 - Cannot save projects or make levels yet
 - Switching from webgl to webgpu will clear your scene (persistent state will be coming soon)
 - Node editor doesn't do anything yet
