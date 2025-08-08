@@ -13,6 +13,19 @@
 # Notice
 This is a very early version of the engine and is only meant for evaluation and not for actual usage. Please expect things to break or not work. I will be actively developing the engine and you can join the discord server to discuss features, bugs and commits here: https://discord.gg/9UHUGUyDJv
 
+# Installation
+`git clone https://github.com/renzora/engine`
+
+`cd engine`
+
+`npm install`
+
+# Dev server
+`npm run dev` then visit `https://localhost:3000`
+
+# Electron dev server
+`npm run electron:dev`
+
 # Current Features
 - Project creation
 - Directory Sync
@@ -49,19 +62,6 @@ This is a very early version of the engine and is only meant for evaluation and 
 - websocket management
 - auto updating
 
-# Installation
-`git clone https://github.com/renzora/engine`
-
-`cd engine`
-
-`npm install`
-
-# Dev server
-`npm run dev` then visit `https://localhost:3000`
-
-# Electron dev server
-`npm run electron:dev`
-
 # Issues/bugs
 - undo/redo not implemented yet
 - Cannot save projects or make levels yet
@@ -73,7 +73,7 @@ This is a very early version of the engine and is only meant for evaluation and 
 - issues with packing and building to electron. dev server works fine
 - some issues with camera movement
 - Software update doesn't work yet
-- Light's can't be positioned yet
+- Lights can't be positioned yet
 - Scene background cannot be changed yet
 - Scripting API not implemented yet
 - Top Menu items don't work
