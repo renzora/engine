@@ -13,7 +13,7 @@ import '@babylonjs/core/Events/keyboardEvents'
 import '@babylonjs/core/Layers/highlightLayer'
 import { actions, globalStore } from '@/store.js'
 import { useSnapshot } from 'valtio'
-import { projectManager } from '@/plugins/projects/projectManager.js'
+import { projectManager } from '@/services/ProjectManager'
 import Stats from 'stats.js'
 import LoadingTooltip from '@/plugins/editor/components/ui/LoadingTooltip.jsx'
 

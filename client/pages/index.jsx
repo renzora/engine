@@ -1,8 +1,6 @@
 import { useEffect, useCallback, Suspense, lazy } from 'react'
 
 const EditorPlugin = lazy(() => import('@/plugins/editor/index.jsx'))
-const ProjectsPlugin = lazy(() => import('@/plugins/projects/index.jsx'))
-const LoadingProvider = lazy(() => import('@/plugins/projects/components/LoadingProvider.jsx'))
 const EngineLoader = lazy(() => import('@/plugins/core/SimpleEngineLoader.jsx'))
 const ProjectSplashManager = lazy(() => import('@/components/ProjectSplashManager.jsx'))
 const DevelopmentDisclaimer = lazy(() => import('@/components/DevelopmentDisclaimer.jsx'))
@@ -30,13 +28,8 @@ export default function Index() {
         }>
           <ProjectSplashManager onProjectReady={handleLoadComplete}>
             <EngineLoader onLoadComplete={handleLoadComplete}>
-              <Suspense fallback={<div className="text-white">Loading project system...</div>}>
-                <LoadingProvider>
-                  <Suspense fallback={<div className="text-white">Loading editor...</div>}>
-                    <EditorPlugin />
-                    <ProjectsPlugin />
-                  </Suspense>
-                </LoadingProvider>
+              <Suspense fallback={<div className="text-white">Loading editor...</div>}>
+                <EditorPlugin />
               </Suspense>
             </EngineLoader>
           </ProjectSplashManager>

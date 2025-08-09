@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Icons } from '@/plugins/editor/components/Icons';
-import { projectManager } from '@/plugins/projects/projectManager.js';
+import { projectManager } from '@/services/ProjectManager';
 
 function ConsolePanel() {
   const [logs, setLogs] = useState([]);

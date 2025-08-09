@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '@/plugins/editor/components/Icons';
 import { useSnapshot } from 'valtio';
 import { globalStore, actions } from "@/store.js";
-import { projectManager } from '@/plugins/projects/projectManager.js';
+import { projectManager } from '@/services/ProjectManager';
 import ContextMenu from '@/plugins/editor/components/ui/ContextMenu.jsx';
 import ScriptCreationDialog from '@/plugins/editor/components/ui/ScriptCreationDialog.jsx';
 import { useContextMenuActions } from '@/plugins/editor/components/actions/ContextMenuActions.jsx';

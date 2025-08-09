@@ -3,8 +3,8 @@ import { Icons } from '@/plugins/editor/components/Icons';
 import { useSnapshot } from 'valtio';
 import { globalStore, actions } from "@/store.js";
 import { autoSaveManager } from '@/plugins/core/AutoSaveManager.js';
-import { projectManager } from '@/plugins/projects/projectManager.js';
-import ProjectManager from '@/plugins/projects/components/ProjectManager.jsx';
+import { projectManager } from '@/services/ProjectManager';
+// ProjectManager component removed - projects plugin doesn't exist
 
 function TopBarMenu() {
   const [activeMenu, setActiveMenu] = useState(null);

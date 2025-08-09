@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ProjectSplashScreen from './ProjectSplashScreen';
 import { projectCreationService } from '@/services/ProjectCreationService';
-import { projectManager } from '@/plugins/projects/projectManager';
+import { projectManager } from '@/services/ProjectManager';
 
 const ProjectSplashManager = ({ children, onProjectReady }) => {
   const [showSplash, setShowSplash] = useState(false);

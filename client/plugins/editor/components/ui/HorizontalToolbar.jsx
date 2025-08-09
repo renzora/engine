@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Icons } from '@/plugins/editor/components/Icons';
 import { useSnapshot } from 'valtio';
 import { globalStore, actions, babylonScene } from "@/store.js";
-import ProjectManager from '@/plugins/projects/components/ProjectManager.jsx';
+// ProjectManager component removed - projects plugin doesn't exist
 import CameraHelpers from './CameraHelpers.jsx';
 import GridHelpers from './GridHelpers.jsx';
 import * as BABYLON from '@babylonjs/core';

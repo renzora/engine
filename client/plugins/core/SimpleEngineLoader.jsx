@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { projectManager } from '@/plugins/projects/projectManager.js'
-import AssetLoader from '@/plugins/projects/components/AssetLoader.jsx'
+import { projectManager } from '@/services/ProjectManager'
+// AssetLoader component removed - projects plugin doesn't exist
 
 const loadAssetRegistryWithRetry = async (projectName, maxRetries = 3) => {
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -53,8 +53,13 @@ export default function EngineLoader({ children, onLoadComplete }) {
         setProgress(20)
         
         try {
-          await projectManager.initializeDefaultProject()
-          console.log('✅ Project system initialized')
+          // Check if a project was already loaded from splash screen
+          if (!projectManager.isInitialized()) {
+            await projectManager.initializeDefaultProject()
+            console.log('✅ Default project initialized')
+          } else {
+            console.log('✅ Project already loaded:', projectManager.getCurrentProject()?.name)
+          }
         } catch (error) {
           console.warn('⚠️ Project system initialization failed:', error)
         }
@@ -120,12 +125,20 @@ export default function EngineLoader({ children, onLoadComplete }) {
     <div data-engine-loader="true">
       {children}
       
-      <AssetLoader
-        isVisible={isLoading}
-        progress={progress}
-        currentAsset={currentSystem}
-        onComplete={() => {}}
-      />
+      {isLoading && (
+        <div className="fixed inset-0 bg-gray-900 bg-opacity-90 flex items-center justify-center z-50">
+          <div className="text-white text-center">
+            <div className="text-lg mb-2">{currentSystem}</div>
+            <div className="w-64 bg-gray-700 rounded-full h-2 mb-2">
+              <div 
+                className="bg-blue-500 h-2 rounded-full transition-all duration-300" 
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+            <div className="text-sm text-gray-400">{progress}%</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

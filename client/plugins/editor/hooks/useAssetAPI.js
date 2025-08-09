@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { projectManager } from '@/plugins/projects/projectManager.js';
+import { projectManager } from '@/services/ProjectManager';
 
 export function useAssetAPI() {
   const [isElectron, setIsElectron] = useState(false);
