@@ -1,6 +1,6 @@
 class ProjectCreationService {
   constructor() {
-    this.isElectron = (typeof window !== 'undefined' && window.electronAPI?.isElectron) || false;
+    // Removed Electron support
   }
 
   async createProject(projectName) {
@@ -14,42 +14,9 @@ class ProjectCreationService {
     }
 
     const sanitizedName = projectName.trim();
-
-    if (this.isElectron) {
-      return this.createProjectElectron(sanitizedName);
-    } else {
-      return this.createProjectServer(sanitizedName);
-    }
+    return this.createProjectServer(sanitizedName);
   }
 
-  async createProjectElectron(projectName) {
-    try {
-      console.log(`Creating project via Electron: ${projectName}`);
-      
-      if (typeof window === 'undefined' || !window.fileSystemAPI?.createProject) {
-        throw new Error('Electron file system API not available');
-      }
-
-      const result = await window.fileSystemAPI.createProject(projectName);
-      
-      if (!result.success) {
-        throw new Error('Failed to create project via Electron');
-      }
-
-      console.log(`✅ Electron project created: ${result.projectPath}`);
-      
-      return {
-        success: true,
-        projectPath: result.projectPath,
-        projectName: projectName,
-        fullPath: result.fullPath
-      };
-
-    } catch (error) {
-      console.error('Electron project creation failed:', error);
-      throw new Error(`Electron project creation failed: ${error.message}`);
-    }
-  }
 
   async createProjectServer(projectName) {
     try {
@@ -83,25 +50,10 @@ class ProjectCreationService {
   }
 
   async listProjects() {
-    console.log(`Listing projects in ${this.getEnvironment()} environment`);
-    
-    if (this.isElectron && typeof window !== 'undefined' && window.fileSystemAPI?.listProjects) {
-      try {
-        console.log('Using Electron file system API to list projects');
-        const result = await window.fileSystemAPI.listProjects();
-        console.log('Electron projects result:', result);
-        return result.projects || [];
-      } catch (error) {
-        console.warn('Failed to list projects via Electron, falling back to server:', error);
-      }
-    }
-
     try {
-      console.log('Using server API to list projects');
       const response = await fetch('/api/projects');
       if (response.ok) {
         const data = await response.json();
-        console.log('Server projects result:', data);
         return data.projects || [];
       }
     } catch (error) {
@@ -122,7 +74,7 @@ class ProjectCreationService {
   }
 
   getEnvironment() {
-    return this.isElectron ? 'electron' : 'server';
+    return 'server';
   }
 }
 

@@ -264,9 +264,7 @@ async function ensureProjectsDir() {
 }
 
 export default async function projectRoutes(fastify, options = {}) {
-  const isElectron = options.isElectron || false;
-  
-  console.log(`🔧 Project routes loaded - Electron mode: ${isElectron}`);
+  console.log('🔧 Project routes loaded');
   await fastify.register(import('@fastify/multipart'), {
     limits: {
       fileSize: 1024 * 1024 * 1024 * 5
@@ -914,11 +912,6 @@ export default async function projectRoutes(fastify, options = {}) {
   })
 
   fastify.get('/api/projects/:projectName/assets', async (request, reply) => {
-    if (isElectron) {
-      const { folder = '' } = request.query
-      return reply.send({ assets: [], currentFolder: folder })
-    }
-    
     try {
       const { projectName } = request.params
       const { folder = '' } = request.query
@@ -939,10 +932,6 @@ export default async function projectRoutes(fastify, options = {}) {
   })
 
   fastify.get('/api/projects/:projectName/assets/tree', async (request, reply) => {
-    if (isElectron) {
-      return reply.send({ tree: { name: 'assets', path: '', children: [], files: [] } })
-    }
-    
     try {
       const { projectName } = request.params
       const projectPath = path.join(PROJECTS_DIR, projectName)
@@ -962,18 +951,6 @@ export default async function projectRoutes(fastify, options = {}) {
   })
 
   fastify.get('/api/projects/:projectName/assets/categories', async (request, reply) => {
-    if (isElectron) {
-      const emptyCategories = {
-        '3d-models': { name: '3D Models', files: [] },
-        'textures': { name: 'Textures', files: [] },
-        'audio': { name: 'Audio', files: [] },
-        'scripts': { name: 'Scripts', files: [] },
-        'data': { name: 'Data Files', files: [] },
-        'misc': { name: 'Miscellaneous', files: [] }
-      }
-      return reply.send({ categories: emptyCategories })
-    }
-    
     try {
       const { projectName } = request.params
       const projectPath = path.join(PROJECTS_DIR, projectName)
@@ -1002,10 +979,6 @@ export default async function projectRoutes(fastify, options = {}) {
   };
 
   fastify.post('/api/projects/:projectName/assets/upload', async (request, reply) => {
-    if (isElectron) {
-      return reply.send({ message: 'File upload handled by Electron main process', filename: 'electron-handled' })
-    }
-    
     try {
       const { projectName } = request.params;
       const projectPath = path.join(PROJECTS_DIR, projectName);
@@ -1062,10 +1035,6 @@ export default async function projectRoutes(fastify, options = {}) {
   });
 
   fastify.post('/api/projects/:projectName/assets/create-script', async (request, reply) => {
-    if (isElectron) {
-      return reply.send({ success: true, message: 'Script creation handled by Electron main process' })
-    }
-    
     try {
       const { projectName } = request.params;
       const { scriptName, scriptContent, targetPath = '' } = request.body;
@@ -1127,10 +1096,6 @@ export default async function projectRoutes(fastify, options = {}) {
   });
 
   fastify.post('/api/projects/:projectName/assets/folder', async (request, reply) => {
-    if (isElectron) {
-      return reply.send({ success: true, message: 'Folder creation handled by Electron main process' })
-    }
-    
     try {
       const { projectName } = request.params;
       const { folderName, parentPath = '' } = request.body;
@@ -1189,10 +1154,6 @@ export default async function projectRoutes(fastify, options = {}) {
   });
 
   fastify.delete('/api/projects/:projectName/assets/delete', async (request, reply) => {
-    if (isElectron) {
-      return reply.send({ success: true, message: 'Asset deletion handled by Electron main process' })
-    }
-    
     try {
       const { projectName } = request.params;
       const { itemPath } = request.body;
@@ -1313,10 +1274,6 @@ export default async function projectRoutes(fastify, options = {}) {
   });
 
   fastify.put('/api/projects/:projectName/assets/move', async (request, reply) => {
-    if (isElectron) {
-      return reply.send({ success: true, message: 'Asset move handled by Electron main process' })
-    }
-    
     try {
       const { projectName } = request.params;
       const { sourcePath, targetPath } = request.body;

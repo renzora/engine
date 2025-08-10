@@ -4,7 +4,6 @@ import { useSnapshot } from 'valtio';
 import { globalStore, actions } from "@/store.js";
 import { autoSaveManager } from '@/plugins/core/AutoSaveManager.js';
 import { projectManager } from '@/services/ProjectManager';
-// ProjectManager component removed - projects plugin doesn't exist
 
 function TopBarMenu() {
   const [activeMenu, setActiveMenu] = useState(null);
@@ -17,49 +16,12 @@ function TopBarMenu() {
   const [selectedTool, setSelectedTool] = useState('select');
   const [flashingTool, setFlashingTool] = useState(null);
   const [menuPosition, setMenuPosition] = useState(null);
-  const [isMaximized, setIsMaximized] = useState(false);
-  const [isElectron, setIsElectron] = useState(false);
   const [showRendererDropdown, setShowRendererDropdown] = useState(false);
   const [rendererDropdownPosition, setRendererDropdownPosition] = useState(null);
   const { ui, selection, settings } = useSnapshot(globalStore.editor);
   const { transformMode } = selection;
   const { setTransformMode, updateViewportSettings } = actions.editor;
   const currentProject = projectManager.getCurrentProject();
-
-  useEffect(() => {
-    const electronCheck = window.electronAPI?.isElectron || false;
-    setIsElectron(electronCheck);
-
-    if (electronCheck && window.windowAPI) {
-      window.windowAPI.isMaximized().then(setIsMaximized);
-      const interval = setInterval(() => {
-        window.windowAPI.isMaximized().then(setIsMaximized);
-      }, 500);
-      return () => clearInterval(interval);
-    }
-  }, []);
-
-  const handleMinimize = () => {
-    if (window.windowAPI) {
-      window.windowAPI.minimize();
-    }
-  };
-
-  const handleMaximize = () => {
-    if (window.windowAPI) {
-      window.windowAPI.maximize().then(() => {
-        setTimeout(() => {
-          window.windowAPI.isMaximized().then(setIsMaximized);
-        }, 100);
-      });
-    }
-  };
-
-  const handleClose = () => {
-    if (window.windowAPI) {
-      window.windowAPI.close();
-    }
-  };
 
   const handleSave = async () => {
     if (isSaving) return;
@@ -264,11 +226,8 @@ function TopBarMenu() {
     <>
       <div 
         className="relative w-full h-8 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 flex items-center px-2"
-        style={{ 
-          WebkitAppRegion: isElectron ? 'drag' : 'auto'
-        }}
       >
-        <div style={{ WebkitAppRegion: isElectron ? 'no-drag' : 'auto' }}>
+        <div>
           {Object.entries(menuStructure).map(([menuName, items]) => (
             <div key={menuName} className="relative inline-block">
               <button
@@ -354,7 +313,6 @@ function TopBarMenu() {
                     }
                   }}
                   className="text-blue-400 font-medium hover:text-blue-300 transition-colors px-2 py-1 rounded hover:bg-gray-700/50 flex items-center gap-1"
-                  style={{ WebkitAppRegion: 'no-drag' }}
                 >
                   {(settings.viewport.renderingEngine || 'webgl').toUpperCase()}
                   <svg 
@@ -371,43 +329,6 @@ function TopBarMenu() {
           )}
         </div>
 
-        {isElectron && (
-          <div className="flex items-center ml-2" style={{ WebkitAppRegion: 'no-drag' }}>
-            <button
-              onClick={handleMinimize}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors"
-              title="Minimize"
-            >
-              <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
-                <rect width="10" height="1" />
-              </svg>
-            </button>
-            <button
-              onClick={handleMaximize}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-700/50 transition-colors"
-              title={isMaximized ? "Restore" : "Maximize"}
-            >
-              {isMaximized ? (
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                  <path d="M2.5,2.5 L2.5,0.5 L10,0.5 L10,8 L8,8 L8,2.5 L2.5,2.5 Z M0,2 L0,10 L8,10 L8,8 L2,8 L2,2 L0,2 Z" />
-                </svg>
-              ) : (
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                  <rect width="10" height="10" fill="none" stroke="currentColor" strokeWidth="1" />
-                </svg>
-              )}
-            </button>
-            <button
-              onClick={handleClose}
-              className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-red-600/80 transition-colors"
-              title="Close"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
-                <path d="M0.7,0 L5,4.3 L9.3,0 L10,0.7 L5.7,5 L10,9.3 L9.3,10 L5,5.7 L0.7,10 L0,9.3 L4.3,5 L0,0.7 L0.7,0 Z" />
-              </svg>
-            </button>
-          </div>
-        )}
       </div>
       
       {activeMenu && menuPosition && (
@@ -513,7 +434,6 @@ function TopBarMenu() {
           onClose={() => setShowProjectManager(false)}
         />
       )}
-
       
     </>
   );

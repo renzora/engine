@@ -1,9 +1,7 @@
 node_modules
 projects
 dist/
-dist-electron/
 client/dist/
-client/electron-dist/
 .DS_Store
 .DS_Store?
 ._*
@@ -14,3 +12,7 @@ Thumbs.db
 .claude
 localhost+2.pem
 localhost+2-key.pem
+
+# Tauri
+src-tauri/target/
+src-tauri/Cargo.lock

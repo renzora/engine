@@ -21,10 +21,11 @@ This is a very early version of the engine and is only meant for evaluation and 
 `npm install`
 
 # Dev server
-`npm run dev` then visit `https://localhost:3000`
+`npm run dev` then visit `http://localhost:3000`
 
-# Electron dev server
-`npm run electron:dev`
+# Tauri Desktop App
+`npm run tauri:dev`
+
 
 # Current Features
 - Project creation
@@ -69,8 +70,6 @@ This is a very early version of the engine and is only meant for evaluation and 
 - Node editor doesn't do anything yet
 - Some issues with file syncing not updating.
 - Scene object tree has minor issues especially with dragging objects to folders
-- webgpu should work, if it doesn't then run the .bat or ps1 tool to generate fake ssl certificate
-- issues with packing and building to electron. dev server works fine
 - some issues with camera movement
 - Software update doesn't work yet
 - Lights can't be positioned yet

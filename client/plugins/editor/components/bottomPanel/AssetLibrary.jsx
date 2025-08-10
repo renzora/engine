@@ -40,7 +40,7 @@ function AssetLibrary() {
   const { assetsLibraryWidth: treePanelWidth } = ui;
   const { setAssetsLibraryWidth: setTreePanelWidth } = actions.editor;
   const { handleCreateObject } = useContextMenuActions(actions.editor);
-  const assetAPI = useAssetAPI();
+  const { isInitialized, fetchFolderTree, fetchAssetCategories, fetchAssets, searchAssets, createFolder, moveAsset, deleteAsset, addFileChangeListener } = useAssetAPI();
   const getExtensionStyle = (extension) => {
   const ext = extension?.toLowerCase() || '';
     
@@ -111,14 +111,14 @@ function AssetLibrary() {
     actions.editor.setAssetsProject(currentProject.name);
   };
 
-  const fetchFolderTree = async (currentProject) => {
+  const fetchFolderTreeWithCache = async (currentProject) => {
     if (assetCache.folderTree && actions.editor.isCacheValid(assetCache.folderTreeTimestamp)) {
       setFolderTree(assetCache.folderTree);
       return;
     }
 
     try {
-      const tree = await assetAPI.fetchFolderTree(currentProject);
+      const tree = await fetchFolderTree(currentProject);
       actions.editor.setFolderTree(tree);
       setFolderTree(tree);
     } catch (err) {
@@ -127,7 +127,7 @@ function AssetLibrary() {
     }
   };
 
-  const fetchAssetCategories = async (currentProject) => {
+  const fetchAssetCategoriesWithCache = async (currentProject) => {
     if (assetCache.categories && actions.editor.isCacheValid(assetCache.categoriesTimestamp)) {
       setAssetCategories(assetCache.categories);
       const categoryAssets = assetCache.categories[selectedCategory]?.files || [];
@@ -137,7 +137,7 @@ function AssetLibrary() {
     }
 
     try {
-      const categories = await assetAPI.fetchAssetCategories(currentProject);
+      const categories = await fetchAssetCategories(currentProject);
       actions.editor.setAssetCategories(categories);
       setAssetCategories(categories);
       const categoryAssets = categories[selectedCategory]?.files || [];
@@ -150,7 +150,7 @@ function AssetLibrary() {
     }
   };
 
-  const fetchAssets = async (currentProject, path = currentPath) => {
+  const fetchAssetsWithCache = async (currentProject, path = currentPath) => {
     const cachedAssets = actions.editor.getAssetsForPath(path);
     if (cachedAssets) {
       setAssets(cachedAssets);
@@ -161,7 +161,7 @@ function AssetLibrary() {
     try {
       setLoading(true);
       setError(null);
-      const newAssets = await assetAPI.fetchAssets(currentProject, path);
+      const newAssets = await fetchAssets(currentProject, path);
       actions.editor.setAssetsForPath(path, newAssets);
       
       setAssets(newAssets);
@@ -187,10 +187,10 @@ function AssetLibrary() {
           if (newProject?.name) {
             setError(null);
             if (viewMode === 'folder') {
-              fetchFolderTree(newProject);
-              fetchAssets(newProject);
+              fetchFolderTreeWithCache(newProject);
+              fetchAssetsWithCache(newProject);
             } else {
-              fetchAssetCategories(newProject);
+              fetchAssetCategoriesWithCache(newProject);
             }
           }
         }
@@ -207,10 +207,10 @@ function AssetLibrary() {
         if (retryProject?.name) {
           setError(null);
           if (viewMode === 'folder') {
-            fetchFolderTree(retryProject);
-            fetchAssets(retryProject);
+            fetchFolderTreeWithCache(retryProject);
+            fetchAssetsWithCache(retryProject);
           } else {
-            fetchAssetCategories(retryProject);
+            fetchAssetCategoriesWithCache(retryProject);
           }
         } else {
           retryCount++;
@@ -238,11 +238,11 @@ function AssetLibrary() {
     setError(null);
 
     if (viewMode === 'folder') {
-      fetchFolderTree(currentProject);
-      fetchAssets(currentProject);
+      fetchFolderTreeWithCache(currentProject);
+      fetchAssetsWithCache(currentProject);
     } else {
       setLoading(true);
-      fetchAssetCategories(currentProject);
+      fetchAssetCategoriesWithCache(currentProject);
     }
 
     const handleFileChange = (changeData) => {
@@ -252,15 +252,15 @@ function AssetLibrary() {
         console.log('🔄 AssetLibrary: Refreshing asset data...');
         
         if (viewMode === 'folder') {
-          fetchFolderTree(currentProject);
-          fetchAssets(currentProject, currentPath);
+          fetchFolderTreeWithCache(currentProject);
+          fetchAssetsWithCache(currentProject, currentPath);
         } else {
-          fetchAssetCategories(currentProject);
+          fetchAssetCategoriesWithCache(currentProject);
         }
       }, 200);
     };
 
-    const removeListener = assetAPI.addFileChangeListener(handleFileChange);
+    const removeListener = addFileChangeListener(handleFileChange);
     return removeListener;
   }, [currentPath, viewMode, selectedCategory]);
 
@@ -268,7 +268,7 @@ function AssetLibrary() {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject.name || viewMode !== 'folder') return;
 
-    fetchAssets(currentProject, currentPath);
+    fetchAssetsWithCache(currentProject, currentPath);
   }, [currentPath]);
 
   const queueAssetForLoading = (asset) => {};
@@ -331,7 +331,7 @@ function AssetLibrary() {
       }
 
       try {
-        const results = await assetAPI.searchAssets(currentProject, searchQuery);
+        const results = await searchAssets(currentProject, searchQuery);
         setGlobalSearchResults(results);
       } catch (error) {
         console.warn('Search API error, falling back to client-side search:', error);
@@ -521,7 +521,7 @@ function AssetLibrary() {
       
       if (viewMode === 'type') {
         actions.editor.invalidateCategories();
-        await fetchAssetCategories(currentProject);
+        await fetchAssetCategoriesWithCache(currentProject);
       } else {
         const needsFolderTreeRefresh = uploadResults.some(result => 
           result.targetFolder && result.targetFolder.includes('/')
@@ -529,10 +529,10 @@ function AssetLibrary() {
         
         if (needsFolderTreeRefresh) {
           actions.editor.invalidateFolderTree();
-          await fetchFolderTree(currentProject);
+          await fetchFolderTreeWithCache(currentProject);
         }
         
-        await fetchAssets(currentProject, currentPath);
+        await fetchAssetsWithCache(currentProject, currentPath);
       }
       
       console.log('Cache refresh completed');
@@ -704,7 +704,7 @@ function AssetLibrary() {
     const targetPath = targetFolderPath ? `${targetFolderPath}/${sourceFileName}` : sourceFileName;
 
     try {
-      await assetAPI.moveAsset(currentProject, sourcePath, targetPath);
+      await moveAsset(currentProject, sourcePath, targetPath);
     } catch (error) {
       console.error('Error moving item:', error);
       setError(`Failed to move item: ${error.message}`);
@@ -760,54 +760,39 @@ export default Script;
       const targetPath = viewMode === 'folder' ? currentPath : '';
       const fullPath = targetPath ? `${targetPath}/${cleanScriptName}` : cleanScriptName;
 
-      if (window.electronAPI) {
-        const result = await window.electronAPI.createScript({
-          projectName: currentProject.name,
+      const response = await fetch(`/api/projects/${currentProject.name}/assets/create-script`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           scriptName: cleanScriptName,
           scriptContent: scriptContent,
           targetPath: targetPath
-        });
+        })
+      });
 
-        if (result.success) {
-          console.log(`Script created successfully: ${result.filePath}`);
-        } else {
-          throw new Error(result.error || 'Failed to create script');
-        }
-      } else {
-        const response = await fetch(`/api/projects/${currentProject.name}/assets/create-script`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            scriptName: cleanScriptName,
-            scriptContent: scriptContent,
-            targetPath: targetPath
-          })
-        });
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          throw new Error(`Failed to create script: ${errorText}`);
-        }
-
-        const result = await response.json();
-        console.log(`Script created successfully: ${result.filePath}`);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to create script: ${errorText}`);
       }
+
+      const result = await response.json();
+      console.log(`Script created successfully: ${result.filePath}`);
 
       setError(null);
 
       if (viewMode === 'folder') {
         actions.editor.invalidateAssetPaths([targetPath]);
-        await fetchAssets(currentProject, currentPath);
+        await fetchAssetsWithCache(currentProject, currentPath);
         
         if (targetPath.includes('/')) {
           actions.editor.invalidateFolderTree();
-          await fetchFolderTree(currentProject);
+          await fetchFolderTreeWithCache(currentProject);
         }
       } else {
         actions.editor.invalidateCategories();
-        await fetchAssetCategories(currentProject);
+        await fetchAssetCategoriesWithCache(currentProject);
       }
 
     } catch (error) {
@@ -830,7 +815,7 @@ export default Script;
     }
 
     try {
-      await assetAPI.createFolder(currentProject, folderName.trim(), viewMode === 'folder' ? currentPath : '');
+      await createFolder(currentProject, folderName.trim(), viewMode === 'folder' ? currentPath : '');
     } catch (error) {
       console.error('Error creating folder:', error);
       setError(`Failed to create folder: ${error.message}`);

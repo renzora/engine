@@ -29,7 +29,7 @@ if (existsSync(indexHtmlSrc)) {
   let htmlContent = readFileSync(indexHtmlSrc, 'utf8');
   
   if (!htmlContent.includes('Content-Security-Policy')) {
-    const cspPolicy = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; worker-src 'self' blob:;">`;
+    const cspPolicy = `<meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; connect-src * 'unsafe-inline'; img-src * data: blob:; style-src * 'unsafe-inline';">`;
     
     htmlContent = htmlContent.replace(
       '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
