@@ -1,0 +1,24 @@
+{
+  "name": "vite-solid-starter",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "vite build --outDir dist/client",
+    "build:server": "vite build --ssr src/entry-server.jsx --outDir dist/server",
+    "preview": "cross-env NODE_ENV=production node server"
+  },
+  "dependencies": {
+    "@fastify/compress": "^8.1.0",
+    "@fastify/static": "^8.2.0",
+    "babylonjs": "^8.22.2",
+    "fastify": "^5.4.0",
+    "solid-js": "^1.9.7"
+  },
+  "devDependencies": {
+    "vite": "npm:rolldown-vite@latest",
+    "vite-plugin-solid": "^2.11.8"
+  }
+}
