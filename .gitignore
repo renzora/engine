@@ -5,24 +5,16 @@ dist
 .netlify
 .vinxi
 app.config.timestamp_*.js
-
-# Environment
 .env
 .env*.local
-
-# dependencies
 /node_modules
-
-# IDEs and editors
+src-tauri/target
 /.idea
 .project
 .classpath
 *.launch
 .settings/
-
-# Temp
 gitignore
-
-# System Files
 .DS_Store
 Thumbs.db
+.claude
