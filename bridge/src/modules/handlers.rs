@@ -7,6 +7,7 @@ use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, Create
 use crate::project_manager::{list_projects, list_directory_contents, create_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
 use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
+use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 
 pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
     let method = req.method().clone();
@@ -82,6 +83,27 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::GET, "/health") => handle_health_check(),
         (&Method::POST, "/restart") => handle_restart_bridge(),
         (&Method::POST, "/clear-cache") => handle_clear_cache(),
+        (&Method::GET, "/update/check") => {
+            handle_check_updates().await
+        },
+        (&Method::POST, "/update/channel") => {
+            match &body {
+                Some(body_content) => handle_set_update_channel(body_content),
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
+        (&Method::GET, "/update/config") => handle_get_update_config(),
+        (&Method::POST, "/update/apply") => {
+            error_response(StatusCode::NOT_IMPLEMENTED, "Async endpoint - use web interface")
+        },
+        (&Method::POST, "/update/download") => {
+            match &body {
+                Some(_body_content) => {
+                    error_response(StatusCode::NOT_IMPLEMENTED, "Async endpoint - use web interface")
+                },
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
         _ => error_response(StatusCode::NOT_FOUND, "Not Found"),
     };
     
@@ -329,3 +351,60 @@ fn handle_clear_cache() -> Response<Full<Bytes>> {
     };
     json_response(&response)
 }
+
+
+fn handle_set_update_channel(body: &str) -> Response<Full<Bytes>> {
+    #[derive(serde::Deserialize)]
+    struct ChannelRequest {
+        channel: String,
+    }
+    
+    let channel_req: ChannelRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(_) => return error_response(StatusCode::BAD_REQUEST, "Invalid JSON"),
+    };
+    
+    let channel = match channel_req.channel.as_str() {
+        "stable" => Channel::Stable,
+        "dev" => Channel::Dev,
+        _ => return error_response(StatusCode::BAD_REQUEST, "Invalid channel. Must be 'stable' or 'dev'"),
+    };
+    
+    // Update the channel in the static config
+    match set_update_channel(channel.clone()) {
+        Ok(_) => {
+            let response = ApiResponse {
+                success: true,
+                content: Some(format!("Update channel set to {}", channel)),
+                error: None,
+            };
+            json_response(&response)
+        }
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+    }
+}
+
+fn handle_get_update_config() -> Response<Full<Bytes>> {
+    let config = get_current_config();
+    json_response(&config)
+}
+
+async fn handle_check_updates() -> Response<Full<Bytes>> {
+    // First check if we have a cached result from startup
+    if let Some(cached_result) = get_last_update_check() {
+        // If we have a cached result, return it immediately
+        // and trigger a new check in the background
+        tokio::spawn(async {
+            let _ = check_for_updates().await;
+        });
+        return json_response(&cached_result);
+    }
+    
+    // Otherwise, do a fresh check
+    match check_for_updates().await {
+        Ok(result) => json_response(&result),
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+    }
+}
+
+

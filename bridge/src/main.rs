@@ -8,6 +8,7 @@ use tokio::net::TcpListener;
 
 mod modules;
 use modules::*;
+use modules::update_manager::check_for_updates;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -44,6 +45,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initialize file watcher
     initialize_file_watcher(projects_path.clone())?;
+    
+    // Check for updates on startup
+    println!("🔄 Checking for updates...");
+    tokio::spawn(async {
+        match check_for_updates().await {
+            Ok(result) => {
+                if result.update_available {
+                    println!("🎉 Update available!");
+                    match result.channel {
+                        modules::update_manager::Channel::Stable => {
+                            if let Some(version) = result.latest_stable_version {
+                                println!("   Latest stable version: {}", version);
+                            }
+                        }
+                        modules::update_manager::Channel::Dev => {
+                            if let Some(version) = result.latest_dev_version {
+                                println!("   Latest dev version: {}", version);
+                            }
+                        }
+                    }
+                    if let Some(url) = result.download_url {
+                        println!("   Download: {}", url);
+                    }
+                } else {
+                    println!("✅ You're running the latest version!");
+                }
+            }
+            Err(e) => {
+                println!("⚠️  Failed to check for updates: {}", e);
+            }
+        }
+    });
 
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
     let listener = TcpListener::bind(addr).await?;
