@@ -9,12 +9,21 @@ projects/
 # Tauri build artifacts
 src-tauri/target
 src-tauri/gen
+*.app
+*.dmg
+*.deb
+*.rpm
+*.msi
+*.exe
 
 # Rust build artifacts
-rspack-bridge/target
 server/target
+bridge/target
+target/
 *.dll
 *.node
+*.so
+*.dylib
 
 # IDE
 /.idea
