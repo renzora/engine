@@ -13,6 +13,9 @@
 # Notice
 This is a very early version of the engine and is only meant for evaluation and not for actual usage. Please expect things to break or not work. I will be actively developing the engine and you can join the discord server to discuss features, bugs and commits here: https://discord.gg/9UHUGUyDJv
 
+# Development
+The development repo is at https://github.com/renzora/engine/tree/dev This repo is always ahead of main and is used for the next version of renzora engine. All your code changes and bug fixes should be made here.
+
 # Installation
 `git clone https://github.com/renzora/engine`
 
