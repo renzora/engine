@@ -1,29 +1,43 @@
 {
-  "name": "vite-solid-starter",
+  "name": "renzora-engine",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "node server",
-    "build": "npm run build:client && npm run build:server",
-    "build:client": "vite build --outDir dist/client",
-    "build:server": "vite build --ssr src/entry-server.jsx --outDir dist/server",
-    "preview": "cross-env NODE_ENV=production node server",
-    "tauri": "tauri",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "web": "bun run kill && concurrently \"bun run bridge\" \"npx rspack serve\"",
+    "app": "bun run kill && npx tauri dev",
+    "bridge": "bun run kill && cargo run --manifest-path bridge/Cargo.toml --bin bridge-server",
+    "build:bridge": "bun run kill && cargo build --release --manifest-path bridge/Cargo.toml --bin bridge-server",
+    "build:web": "bun run kill && bun run build:bridge && npx rspack build --mode production",
+    "serve": "bun run kill && concurrently \"bun run bridge\" \"npx serve dist -p 3000\"",
+    "build:app": "bun run kill && npx tauri build",
+    "kill": "npx kill-port 3000 3001 || (taskkill /F /IM node.exe 2>nul || pkill -f \"rspack\\|tauri\" 2>/dev/null || echo \"Ports cleared\")",
+    "clean": "bun run kill && rm -rf dist bridge/target src-tauri/target",
+    "lint": "oxlint"
   },
   "dependencies": {
-    "@fastify/compress": "^8.1.0",
-    "@fastify/static": "^8.2.0",
-    "babylonjs": "^8.22.2",
-    "fastify": "^5.4.0",
-    "solid-js": "^1.9.7"
+    "@babylonjs/core": "^8.20.0",
+    "@babylonjs/loaders": "^8.20.0",
+    "@babylonjs/materials": "^8.20.0",
+    "@babylonjs/post-processes": "^8.20.0",
+    "@babylonjs/procedural-textures": "^8.20.0",
+    "@babylonjs/serializers": "^8.20.0",
+    "@tabler/icons-solidjs": "^3.34.1",
+    "solid-js": "^1.9.7",
+    "stats.js": "^0.17.0"
   },
   "devDependencies": {
+    "@rspack/cli": "^1.4.11",
+    "@rspack/core": "^1.4.11",
+    "@tailwindcss/postcss": "^4.1.12",
     "@tauri-apps/api": "^2.7.0",
     "@tauri-apps/cli": "^2.7.1",
-    "vite": "npm:rolldown-vite@latest",
-    "vite-plugin-solid": "^2.11.8"
+    "autoprefixer": "^10.4.21",
+    "babel-loader": "^10.0.0",
+    "babel-preset-solid": "^1.9.9",
+    "concurrently": "^8.2.2",
+    "postcss": "^8.5.6",
+    "postcss-loader": "^8.1.1",
+    "tailwindcss": "^4.1.12"
   }
 }

@@ -1,0 +1,97 @@
+/* Title Bar Styles */
+.title-bar {
+  display: flex;
+  height: 32px;
+  background: #2a2a2a;
+  border-bottom: 1px solid #3a3a3a;
+  user-select: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  width: 100%;
+}
+
+.title-bar-drag-region {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  background: transparent;
+  cursor: default;
+  -webkit-app-region: drag;
+}
+
+.title-bar-title {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.title-bar-controls {
+  display: flex;
+  height: 100%;
+}
+
+.title-bar-button {
+  width: 46px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: #ffffff;
+  opacity: 0.8;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 1;
+}
+
+.minimize-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.maximize-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.close-button:hover {
+  background: #e81123;
+  color: #ffffff;
+}
+
+.close-button:active {
+  background: #bf0f1f;
+}
+
+/* Adjust main content to account for title bar in Tauri */
+.tauri-app {
+  padding-top: 32px;
+}
+
+/* Ensure main content doesn't overlap with title bar */
+.tauri-app #root {
+  height: calc(100vh - 32px);
+}
+
+/* No longer need body padding - using existing top bar */
+
+/* Dark theme integration */
+@media (prefers-color-scheme: dark) {
+  .title-bar {
+    background: #1e1e1e;
+    border-bottom-color: #333;
+  }
+  
+  .title-bar-title {
+    color: #cccccc;
+  }
+}

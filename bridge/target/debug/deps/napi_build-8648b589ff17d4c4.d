@@ -1,0 +1,11 @@
+C:\Users\james\solid\bridge\target\debug\deps\napi_build-8648b589ff17d4c4.d: C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\lib.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\android.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\macos.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\wasi.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\windows.rs
+
+C:\Users\james\solid\bridge\target\debug\deps\libnapi_build-8648b589ff17d4c4.rlib: C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\lib.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\android.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\macos.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\wasi.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\windows.rs
+
+C:\Users\james\solid\bridge\target\debug\deps\libnapi_build-8648b589ff17d4c4.rmeta: C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\lib.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\android.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\macos.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\wasi.rs C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\windows.rs
+
+C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\lib.rs:
+C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\android.rs:
+C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\macos.rs:
+C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\wasi.rs:
+C:\Users\james\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\napi-build-2.2.3\src\windows.rs:

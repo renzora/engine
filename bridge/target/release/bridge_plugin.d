@@ -1,0 +1,1 @@
+C:\Users\james\solid\bridge\target\release\bridge_plugin.dll: C:\Users\james\solid\bridge\build.rs C:\Users\james\solid\bridge\src\file_ops\mod.rs C:\Users\james\solid\bridge\src\lib.rs C:\Users\james\solid\bridge\src\project_ops\mod.rs C:\Users\james\solid\bridge\src\types\mod.rs C:\Users\james\solid\bridge\src\watcher\mod.rs

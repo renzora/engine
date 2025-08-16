@@ -1,0 +1,2 @@
+StreamBody<tokio_stream::adapters::Map<IntervalStream, {closure@src\modules\handlers.rs:251:43: 251:51}>>
+Box<StreamBody<tokio_stream::adapters::Map<IntervalStream, {closure@src\modules\handlers.rs:251:43: 251:51}>>>

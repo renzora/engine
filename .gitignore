@@ -1,20 +1,31 @@
 dist
-.wrangler
-.output
-.vercel
-.netlify
-.vinxi
-app.config.timestamp_*.js
 .env
 .env*.local
 /node_modules
+
+# Project data
+projects/
+
+# Tauri build artifacts
 src-tauri/target
+src-tauri/gen
+
+# Rust build artifacts
+rspack-bridge/target
+server/target
+*.dll
+*.node
+
+# IDE
 /.idea
 .project
 .classpath
 *.launch
 .settings/
-gitignore
+
+# OS
 .DS_Store
 Thumbs.db
+
+# Claude
 .claude

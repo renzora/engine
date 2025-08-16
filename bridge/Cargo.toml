@@ -1,0 +1,28 @@
+[package]
+name = "bridge-server"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "bridge-server"
+path = "src/main.rs"
+
+[dependencies]
+# Battle-tested HTTP server with hyper
+tokio = { version = "1", features = ["rt-multi-thread", "net", "fs", "sync", "time", "macros", "io-util"] }
+hyper = { version = "1.0", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+http-body-util = "0.1"
+bytes = "1.0"
+tokio-stream = { version = "0.1", features = ["sync", "time"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.21"
+notify = "6.1"
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
