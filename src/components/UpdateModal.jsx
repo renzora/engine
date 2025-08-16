@@ -10,7 +10,7 @@ export function UpdateModal(props) {
   const [isDownloading, setIsDownloading] = createSignal(false);
   const [error, setError] = createSignal(null);
   const [releases, setReleases] = createSignal([]);
-  const [currentVersion] = createSignal('r1'); // Current version
+  const [currentVersion] = createSignal('Current Build'); // Current version is determined by bridge startup
 
   // Load initial config
   onMount(async () => {
@@ -52,56 +52,62 @@ export function UpdateModal(props) {
       const config = updateConfig();
       if (!config) return;
 
-      // Get releases from GitHub
+      // Get bridge startup time
+      const bridgeResponse = await fetch('http://localhost:3001/startup-time');
+      if (!bridgeResponse.ok) {
+        throw new Error('Failed to get bridge startup time');
+      }
+      const { startup_time_ms } = await bridgeResponse.json();
+
+      // Get latest commit from appropriate branch
       const branch = config.update_channel === 'dev' ? 'dev' : 'main';
-      const url = `https://api.github.com/repos/${config.github_owner}/${config.github_repo}/releases`;
+      const commitsUrl = `https://api.github.com/repos/${config.github_owner}/${config.github_repo}/commits?sha=${branch}&per_page=1`;
       
-      const response = await fetch(url, {
+      const commitsResponse = await fetch(commitsUrl, {
         headers: {
           'Accept': 'application/vnd.github.v3+json',
           'User-Agent': 'Renzora-Engine-Update-Client'
         }
       });
 
-      if (!response.ok) {
-        throw new Error(`GitHub API error: ${response.status}`);
+      if (!commitsResponse.ok) {
+        throw new Error(`GitHub API error: ${commitsResponse.status}`);
       }
 
-      const allReleases = await response.json();
-      
-      // Filter releases based on channel
-      const stableReleases = allReleases.filter(release => !release.prerelease && !release.tag_name.includes('.'));
-      const devReleases = allReleases.filter(release => release.prerelease || release.tag_name.includes('.'));
-      
-      const filteredReleases = config.update_channel === 'stable' ? stableReleases : devReleases;
-      
-      // Console log current versions
-      const latestStable = stableReleases.length > 0 ? stableReleases[0].tag_name : 'No stable releases';
-      const latestDev = devReleases.length > 0 ? devReleases[0].tag_name : 'No dev releases';
-      
-      console.log('🔄 Update Check Results:');
-      console.log(`Current version: ${currentVersion()}`);
-      console.log(`Latest stable version: ${latestStable}`);
-      console.log(`Latest dev version: ${latestDev}`);
-      console.log(`Active channel: ${config.update_channel}`);
-      
-      const currentLatest = config.update_channel === 'stable' ? latestStable : latestDev;
-      const isLatest = currentLatest === currentVersion();
-      console.log(`Is current version latest? ${isLatest}`);
+      const commits = await commitsResponse.json();
+      if (!commits || commits.length === 0) {
+        throw new Error('No commits found');
+      }
 
-      setReleases(filteredReleases);
+      const latestCommit = commits[0];
+      const latestCommitTime = new Date(latestCommit.commit.author.date).getTime();
+      
+      // Check if update is available (commit is newer than bridge startup)
+      const isUpdateAvailable = latestCommitTime > startup_time_ms;
+      
+      console.log('🔄 Update Check Results (Timestamp-based):');
+      console.log(`Bridge started at: ${new Date(startup_time_ms).toISOString()}`);
+      console.log(`Latest commit at: ${new Date(latestCommitTime).toISOString()}`);
+      console.log(`Active channel: ${config.update_channel} (${branch} branch)`);
+      console.log(`Update available: ${isUpdateAvailable}`);
+      console.log(`Latest commit: ${latestCommit.sha.substring(0, 8)} by ${latestCommit.commit.author.name}`);
 
-      // Find latest version
-      if (filteredReleases.length > 0) {
-        const latest = filteredReleases[0]; // Releases are sorted by date
-        setLatestVersion({
-          tag_name: latest.tag_name,
-          name: latest.name,
-          body: latest.body,
-          published_at: latest.published_at,
-          html_url: latest.html_url,
-          assets: latest.assets
-        });
+      // Create a mock "release" structure for the UI using commit data
+      const mockRelease = {
+        tag_name: `${branch}-${latestCommit.sha.substring(0, 8)}`,
+        name: `${config.update_channel === 'dev' ? 'Dev' : 'Stable'} Update - ${latestCommit.commit.message.split('\n')[0]}`,
+        body: latestCommit.commit.message,
+        published_at: latestCommit.commit.author.date,
+        html_url: `https://github.com/${config.github_owner}/${config.github_repo}/commit/${latestCommit.sha}`,
+        assets: [] // No assets for commits
+      };
+
+      setReleases([mockRelease]); // Set as array for UI compatibility
+      
+      if (isUpdateAvailable) {
+        setLatestVersion(mockRelease);
+      } else {
+        setLatestVersion(null); // No update available
       }
     } catch (err) {
       setError(`Failed to check for updates: ${err.message}`);
@@ -140,27 +146,19 @@ export function UpdateModal(props) {
     setError(null);
 
     try {
-      // Find a suitable asset (exe, msi, or zip)
-      const asset = latest.assets?.find(a => 
-        a?.name && (
-          a.name.endsWith('.exe') || 
-          a.name.endsWith('.msi') || 
-          a.name.endsWith('.zip')
-        )
-      );
-
-      if (!asset || !asset.browser_download_url) {
-        setError('No downloadable assets found for this release');
-        return;
-      }
-
-      // Open download in new tab
-      window.open(asset.browser_download_url, '_blank');
+      // For timestamp-based updates, open the commit page
+      // In a real implementation, this could trigger a git pull or download
+      window.open(latest.html_url, '_blank');
       
-      // Show success message
-      alert(`Update download started! File: ${asset.name}\n\nThe download will open in your browser. After downloading, close Renzora Engine and run the installer.`);
+      // Show instruction message
+      const config = updateConfig();
+      const instructions = config.update_channel === 'dev' 
+        ? 'To update: Run `git pull origin dev` in your local repository, then restart the bridge.'
+        : 'To update: Run `git pull origin main` in your local repository, then restart the bridge.';
+        
+      alert(`Update information opened in browser!\n\n${instructions}`);
     } catch (err) {
-      setError(`Download failed: ${err.message}`);
+      setError(`Failed to open update: ${err.message}`);
     } finally {
       setIsDownloading(false);
     }
@@ -175,13 +173,9 @@ export function UpdateModal(props) {
   };
 
   const isUpdateAvailable = () => {
-    const latest = latestVersion();
-    if (!latest) return false;
-    
-    // Simple version comparison - extract number from tag
-    const currentNum = parseFloat(currentVersion().substring(1));
-    const latestNum = parseFloat(latest.tag_name.substring(1));
-    return latestNum > currentNum;
+    // Update availability is now determined in checkForUpdates
+    // If latestVersion is set, then an update is available
+    return latestVersion() !== null;
   };
 
   const getChannelBadgeColor = (channel) => {

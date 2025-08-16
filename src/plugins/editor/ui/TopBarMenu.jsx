@@ -12,6 +12,7 @@ import { bridgeService } from "@/plugins/core/bridge";
 import { BridgeStatus } from "@/plugins/core/bridge";
 import { topMenuItems } from "@/plugins/core/engine";
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { UpdateModal } from "@/components/UpdateModal";
 
 function TopBarMenu() {
   const [activeMenu, setActiveMenu] = createSignal(null);
@@ -21,6 +22,7 @@ function TopBarMenu() {
   const [showSyncTooltip, setShowSyncTooltip] = createSignal(false);
   const [showUpdateTooltip, setShowUpdateTooltip] = createSignal(false);
   const [showProjectManager, setShowProjectManager] = createSignal(false);
+  const [showUpdateModal, setShowUpdateModal] = createSignal(false);
   const [selectedTool, setSelectedTool] = createSignal('select');
   const [flashingTool, setFlashingTool] = createSignal(null);
   const [menuPosition, setMenuPosition] = createSignal(null);
@@ -393,6 +395,7 @@ function TopBarMenu() {
                 class="text-orange-400 text-xs font-medium flex items-center gap-1 cursor-pointer relative"
                 onMouseEnter={() => setShowUpdateTooltip(true)}
                 onMouseLeave={() => setShowUpdateTooltip(false)}
+                onClick={() => setShowUpdateModal(true)}
               >
                 Renzora Engine r1
                 <IconArrowDown class="w-3 h-3" />
@@ -566,6 +569,11 @@ function TopBarMenu() {
           </div>
         </div>
       </Show>
+
+      <UpdateModal 
+        show={showUpdateModal()} 
+        onClose={() => setShowUpdateModal(false)} 
+      />
     </>
   );
 }

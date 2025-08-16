@@ -3,11 +3,20 @@ use hyper::header::{CONTENT_TYPE, ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_AL
 use http_body_util::{BodyExt, Full};
 use bytes::Bytes;
 use std::convert::Infallible;
+use std::sync::OnceLock;
+use std::time::{SystemTime, UNIX_EPOCH};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
 use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
+
+// Static variable to store startup time
+static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
+
+pub fn set_startup_time(timestamp: u64) {
+    STARTUP_TIME.set(timestamp).ok();
+}
 
 pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
     let method = req.method().clone();
@@ -81,6 +90,7 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
             }
         }
         (&Method::GET, "/health") => handle_health_check(),
+        (&Method::GET, "/startup-time") => handle_get_startup_time(),
         (&Method::POST, "/restart") => handle_restart_bridge(),
         (&Method::POST, "/clear-cache") => handle_clear_cache(),
         (&Method::GET, "/update/check") => {
@@ -328,6 +338,23 @@ fn handle_health_check() -> Response<Full<Bytes>> {
     });
     
     json_response(&health_data)
+}
+
+fn handle_get_startup_time() -> Response<Full<Bytes>> {
+    let startup_time = STARTUP_TIME.get().copied().unwrap_or_else(|| {
+        // Fallback: return current time if not set
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    });
+    
+    let startup_data = serde_json::json!({
+        "startup_time": startup_time,
+        "startup_time_ms": startup_time * 1000 // Also provide milliseconds for JavaScript
+    });
+    
+    json_response(&startup_data)
 }
 
 fn handle_restart_bridge() -> Response<Full<Bytes>> {

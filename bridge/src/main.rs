@@ -1,6 +1,8 @@
 use std::fs;
 use std::env;
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
@@ -10,8 +12,34 @@ mod modules;
 use modules::*;
 use modules::update_manager::check_for_updates;
 
+// Shared application state
+#[derive(Clone, Debug)]
+pub struct AppState {
+    pub startup_time: u64, // Unix timestamp when bridge started
+}
+
+// Global state instance
+use std::sync::OnceLock;
+static APP_STATE: OnceLock<Arc<AppState>> = OnceLock::new();
+
+pub fn get_app_state() -> Arc<AppState> {
+    APP_STATE.get().expect("App state not initialized").clone()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize application state with startup time
+    let startup_time = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
+    
+    let state = Arc::new(AppState { startup_time });
+    APP_STATE.set(state.clone()).expect("Failed to set app state");
+    
+    // Also set startup time in handlers module
+    set_startup_time(startup_time);
+    
     let port = env::var("BRIDGE_PORT").unwrap_or_else(|_| "3001".to_string());
     let base_path = get_base_path();
     let projects_path = get_projects_path();
@@ -20,6 +48,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("📂 Base path: {}", base_path.display());
     println!("📂 Projects path: {}", projects_path.display());
     println!("🔌 Running on: http://localhost:{}", port);
+    println!("⏰ Bridge started at: {} (Unix timestamp)", startup_time);
     
     if !projects_path.exists() {
         fs::create_dir_all(&projects_path)?;
