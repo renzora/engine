@@ -1,0 +1,12 @@
+{
+  "github_owner": "renzora",
+  "github_repo": "engine",
+  "current_version": {
+    "major": 1,
+    "minor": null,
+    "channel": "stable"
+  },
+  "update_channel": "stable",
+  "auto_update": false,
+  "check_interval_hours": 24
+}

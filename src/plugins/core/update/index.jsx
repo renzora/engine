@@ -1,0 +1,1 @@
+export { UpdatePlugin } from './UpdatePlugin';
