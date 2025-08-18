@@ -4,7 +4,7 @@ import AssetLibrary from '@/pages/editor/AssetLibrary.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
-import { createPanelResize } from '@/pages/editor/hooks/usePanelResize';
+import { createPanelResize } from '@/ui/hooks/usePanelResize';
 
 const BottomPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);

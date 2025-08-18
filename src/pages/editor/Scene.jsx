@@ -1,7 +1,6 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show } from 'solid-js';
 import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Trash, Edit, Code, X } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
-// CLEAN SCENE: Access global scene reference
 const getBabylonScene = () => window._cleanBabylonScene;
 import { viewportActions, objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
 import useSceneDnD from '@/ui/hooks/useSceneDnD.jsx';

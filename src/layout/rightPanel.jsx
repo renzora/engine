@@ -1,10 +1,10 @@
-import Toolbar from '@/components/Toolbars/Toolbar.jsx';
+import Toolbar from '@/layout/VerticalToolbar.jsx';
 import Settings from '@/pages/editor/Settings.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import PanelToggleButton from '@/ui/PanelToggleButton.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
-import { createPanelResize } from '@/pages/editor/hooks/usePanelResize';
+import { createPanelResize } from '@/ui/hooks/usePanelResize';
 import { Show, createMemo, createSignal } from 'solid-js';
 
 const RightPanel = () => {

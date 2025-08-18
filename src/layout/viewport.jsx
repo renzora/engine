@@ -3,7 +3,6 @@ import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { Settings, X } from '@/ui/icons';
 import ViewportTabs from './ViewportTabs.jsx';
 import { RenderProvider } from '@/plugins/core/render';
-import NodeEditor from '@/pages/editor/nodeEditor/index.jsx';
 import { viewportTypes, propertiesPanelVisible, bottomPanelVisible } from "@/api/plugin";
 import { Show, createMemo, createSignal } from 'solid-js';
 
@@ -81,36 +80,6 @@ const Viewport = () => {
     console.log('🎯 Rendering overlay panel for tab type:', tab.type);
     
     switch (tab.type) {
-      case 'node-editor':
-        return (
-          <div className="absolute inset-0 bg-gray-900 flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-gray-800">
-              <div className="flex items-center gap-2">
-                <Settings class="w-4 h-4 text-gray-400" />
-                <span className="text-sm font-medium text-white">{tab.name}</span>
-              </div>
-              <button
-                onClick={() => {
-                  const threeDTab = viewportStore.tabs.find(t => t.type === '3d-viewport');
-                  if (threeDTab) {
-                    viewportActions.setActiveViewportTab(threeDTab.id);
-                  }
-                }}
-                className="p-1 hover:bg-gray-700 rounded transition-colors"
-                title="Close overlay (return to 3D view)"
-              >
-                <X class="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-hidden">
-              <NodeEditor 
-                tab={tab}
-                objectId={tab.objectId}
-              />
-            </div>
-          </div>
-        );
         
       default:
         // Check if this is a plugin viewport type

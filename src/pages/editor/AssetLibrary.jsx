@@ -10,15 +10,12 @@ import { bridgeService, bridgeService as projects } from '@/plugins/core/bridge'
 import { modelThumbnailGenerator } from '@/plugins/core/render/utils/modelThumbnailGenerator';
 
 const getProjectManager = () => {
-  // Use the actual projects singleton
   return projects;
 };
 
 function AssetLibrary({ onContextMenu }) {
-  // Use persistent store for view preferences
   const viewMode = () => assetsStore.viewMode;
   const setViewMode = (mode) => assetsActions.setViewMode(mode);
-  
   const [layoutMode, setLayoutMode] = createSignal('grid');
   const [currentPath, setCurrentPath] = createSignal('');
   const selectedCategory = () => assetsStore.selectedCategory;
@@ -30,8 +27,6 @@ function AssetLibrary({ onContextMenu }) {
   const [folderTree, setFolderTree] = createSignal(null);
   const [currentProject, setCurrentProject] = createSignal(null);
   const [assetCategories, setAssetCategories] = createSignal(null);
-  
-  // Use persistent store for expanded folders
   const expandedFolders = () => assetsStore.expandedFolders;
   const toggleFolderExpansion = (folderPath) => assetsActions.toggleFolderExpansion(folderPath);
   const [loading, setLoading] = createSignal(true);
@@ -48,12 +43,8 @@ function AssetLibrary({ onContextMenu }) {
   const [dragOverBreadcrumb, setDragOverBreadcrumb] = createSignal(null);
   const [isInternalDrag, setIsInternalDrag] = createSignal(false);
   const [showScriptDialog, setShowScriptDialog] = createSignal(false);
-  
-  // Multi-selection state
   const [selectedAssets, setSelectedAssets] = createSignal(new Set());
   const [lastSelectedAsset, setLastSelectedAsset] = createSignal(null);
-  
-  // Drag selection state
   const [isSelecting, setIsSelecting] = createSignal(false);
   const [selectionStart, setSelectionStart] = createSignal(null);
   const [selectionEnd, setSelectionEnd] = createSignal(null);
@@ -64,13 +55,11 @@ function AssetLibrary({ onContextMenu }) {
   let fileInputRef;
   let assetGridRef;
 
-  // Multi-selection functions
   const toggleAssetSelection = (asset, ctrlKey = false, shiftKey = false) => {
     const currentSelected = selectedAssets();
     const newSelected = new Set(currentSelected);
     
     if (shiftKey && lastSelectedAsset()) {
-      // Range selection
       const currentAssets = filteredAssets();
       const lastIndex = currentAssets.findIndex(a => a.id === lastSelectedAsset().id);
       const currentIndex = currentAssets.findIndex(a => a.id === asset.id);
@@ -84,7 +73,6 @@ function AssetLibrary({ onContextMenu }) {
         }
       }
     } else if (ctrlKey) {
-      // Toggle single selection
       if (newSelected.has(asset.id)) {
         newSelected.delete(asset.id);
       } else {
@@ -92,7 +80,6 @@ function AssetLibrary({ onContextMenu }) {
         setLastSelectedAsset(asset);
       }
     } else {
-      // Single selection
       newSelected.clear();
       newSelected.add(asset.id);
       setLastSelectedAsset(asset);
@@ -110,29 +97,24 @@ function AssetLibrary({ onContextMenu }) {
     return selectedAssets().has(assetId);
   };
 
-  // Drag selection functions
   const startDragSelection = (e) => {
     const target = e.target;
     
-    // Don't start drag selection on interactive elements
     const isInteractiveElement = target.closest('button, input, a, select, textarea');
     if (isInteractiveElement) {
       return;
     }
     
-    // Don't start drag selection on asset elements or their children
     const isAssetElement = target.closest('[data-asset-id]');
     if (isAssetElement) {
       return;
     }
     
-    // Don't start on draggable elements
     const isDraggableElement = target.closest('[draggable="true"]');
     if (isDraggableElement) {
       return;
     }
     
-    // Only start on the container itself or safe child elements
     const rect = e.currentTarget.getBoundingClientRect();
     const startPos = {
       x: e.clientX - rect.left,
@@ -141,14 +123,12 @@ function AssetLibrary({ onContextMenu }) {
     
     setSelectionStart(startPos);
     setSelectionEnd(startPos);
-    // Don't set isSelecting true immediately - wait for mouse movement
     
     if (!e.ctrlKey && !e.metaKey) {
       clearSelection();
     }
   };
 
-  // Store reference to the main content container
   let mainContentRef;
 
   const updateDragSelection = (e) => {
@@ -160,27 +140,21 @@ function AssetLibrary({ onContextMenu }) {
       y: e.clientY - containerRect.top
     };
     
-    // Constrain the selection to the container bounds
-    const containerPadding = 12; // Account for padding
+    const containerPadding = 12;
     currentPos.x = Math.max(0, Math.min(currentPos.x, containerRect.width));
     currentPos.y = Math.max(0, Math.min(currentPos.y, containerRect.height));
-    
-    // Get scroll information
+  
     const scrollTop = mainContentRef.scrollTop;
     const scrollHeight = mainContentRef.scrollHeight;
     const clientHeight = mainContentRef.clientHeight;
-    
-    // Adjust for scroll position and constrain to content bounds
     const maxContentY = scrollHeight - containerPadding;
     const adjustedY = currentPos.y + scrollTop;
     const constrainedY = Math.max(0, Math.min(adjustedY, maxContentY));
-    
-    // Convert back to container coordinates
+  
     currentPos.y = constrainedY - scrollTop;
     
     setSelectionEnd(currentPos);
     
-    // Calculate selection rectangle with bounds checking
     const start = selectionStart();
     let selectionBox = {
       x: Math.min(start.x, currentPos.x),
@@ -189,7 +163,6 @@ function AssetLibrary({ onContextMenu }) {
       height: Math.abs(currentPos.y - start.y)
     };
     
-    // Ensure selection box doesn't exceed container bounds
     selectionBox.x = Math.max(0, selectionBox.x);
     selectionBox.y = Math.max(0, selectionBox.y);
     selectionBox.width = Math.min(selectionBox.width, containerRect.width - selectionBox.x);
@@ -197,14 +170,12 @@ function AssetLibrary({ onContextMenu }) {
     
     setSelectionRect(selectionBox);
     
-    // Find assets within selection rectangle (works for both grid and list)
     const assetElements = mainContentRef.querySelectorAll('[data-asset-id]');
     const newSelected = new Set(e.ctrlKey || e.metaKey ? selectedAssets() : []);
     
     assetElements?.forEach(element => {
       const elementRect = element.getBoundingClientRect();
       
-      // Convert to container-relative coordinates
       const relativeRect = {
         x: elementRect.left - containerRect.left,
         y: elementRect.top - containerRect.top,
@@ -212,7 +183,6 @@ function AssetLibrary({ onContextMenu }) {
         height: elementRect.height
       };
       
-      // Check if selection rectangle intersects with asset element
       if (selectionBox.x < relativeRect.x + relativeRect.width &&
           selectionBox.x + selectionBox.width > relativeRect.x &&
           selectionBox.y < relativeRect.y + relativeRect.height &&
@@ -232,15 +202,12 @@ function AssetLibrary({ onContextMenu }) {
     setSelectionStart(null);
   };
 
-  // Keyboard event handling
   const handleKeyDown = (e) => {
-    // Clear selection on Escape
     if (e.key === 'Escape') {
       clearSelection();
       return;
     }
     
-    // Select all on Ctrl+A
     if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       const allAssets = filteredAssets();
@@ -252,25 +219,20 @@ function AssetLibrary({ onContextMenu }) {
       return;
     }
     
-    // Delete selected assets on Delete key (you might want to implement this)
     if (e.key === 'Delete' && selectedAssets().size > 0) {
       console.log('Delete key pressed with', selectedAssets().size, 'selected assets');
-      // TODO: Implement delete functionality if needed
     }
   };
 
-  // Global mouse event handlers for drag selection
   const handleGlobalMouseMove = (e) => {
-    // If we have a selection start position but haven't started selecting yet
     if (selectionStart() && !isSelecting()) {
       const startPos = selectionStart();
       const deltaX = Math.abs(e.clientX - (startPos.x + (mainContentRef?.getBoundingClientRect().left || 0)));
       const deltaY = Math.abs(e.clientY - (startPos.y + (mainContentRef?.getBoundingClientRect().top || 0)));
       
-      // Start drag selection if mouse moved more than 3 pixels (threshold to prevent accidental activation)
       if (deltaX > 3 || deltaY > 3) {
         setIsSelecting(true);
-        e.preventDefault(); // Prevent text selection once we start
+        e.preventDefault();
       }
     }
     
@@ -281,12 +243,10 @@ function AssetLibrary({ onContextMenu }) {
     if (isSelecting()) {
       endDragSelection();
     } else if (selectionStart()) {
-      // Clear selection start if we never started selecting
       setSelectionStart(null);
     }
   };
 
-  // Add event listeners
   onMount(() => {
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('mousemove', handleGlobalMouseMove);
@@ -297,9 +257,6 @@ function AssetLibrary({ onContextMenu }) {
     document.removeEventListener('keydown', handleKeyDown);
     document.removeEventListener('mousemove', handleGlobalMouseMove);
     document.removeEventListener('mouseup', handleGlobalMouseUp);
-    // Note: We don't dispose the thumbnail generator here since it's a singleton
-    // and may be used by other components. Only clear cache if needed.
-    // modelThumbnailGenerator.clearCache();
   });
   let folderInputRef;
   
@@ -402,7 +359,6 @@ function AssetLibrary({ onContextMenu }) {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject?.name) return null;
     
-    // Construct the path to the asset in the assets directory
     const assetPath = asset.path || asset.name;
     return bridgeService.getFileUrl(`projects/${currentProject.name}/assets/${assetPath}`);
   };
@@ -419,8 +375,6 @@ function AssetLibrary({ onContextMenu }) {
       try {
         setIsLoading(true);
         
-        // Request thumbnail from Rust bridge
-        // Use asset.name for the path since we want just the filename
         const assetPath = asset.name || asset.path;
         console.log(`🎯 Requesting thumbnail for: assets/${assetPath} (original path: ${asset.path})`);
         
@@ -550,14 +504,12 @@ function AssetLibrary({ onContextMenu }) {
     }
   };
 
-  // Auto-load project if none is currently loaded
   const ensureProjectLoaded = async () => {
     let project = projectManager.getCurrentProject();
     if (!project) {
       try {
         const allProjects = await bridgeService.getProjects();
         if (allProjects.length > 0) {
-          // Prefer test-project if available, otherwise use first project
           const preferredProject = allProjects.find(p => p.name === 'test-project') || allProjects[0];
           const projectData = {
             name: preferredProject.name,
@@ -632,22 +584,17 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   onMount(async () => {
-    // Reset panel width to minimum on mount
     setTreePanelWidth(200);
     
     let currentProject = projectManager.getCurrentProject();
     
-    // If no project is loaded, try to load test-project as fallback
     if (!currentProject?.name) {
       console.log('🦀 No current project, using test-project as fallback');
       currentProject = { name: 'test-project', path: 'test-project' };
-      projectManager.current = currentProject; // Set it so other parts can use it
+      projectManager.current = currentProject;
     }
     
     console.log('🦀 AssetLibrary mounting with project:', currentProject?.name || 'undefined');
-
-    // Project already exists and is loaded by ProjectManager
-    // No need to check or create it
 
     clearCacheIfProjectChanged(currentProject);
     setError(null);
@@ -675,7 +622,6 @@ function AssetLibrary({ onContextMenu }) {
       }, 200);
     };
 
-    // Listen for file system changes via WebSocket
     const handleWebSocketMessage = (event) => {
       try {
         const message = JSON.parse(event.data);
@@ -684,11 +630,10 @@ function AssetLibrary({ onContextMenu }) {
           handleFileChange(message.data);
         }
       } catch (error) {
-        // Ignore non-JSON messages
+
       }
     };
 
-    // Connect to dev server WebSocket for file change notifications
     if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
@@ -702,7 +647,6 @@ function AssetLibrary({ onContextMenu }) {
           ws.addEventListener('message', handleWebSocketMessage);
           
           ws.addEventListener('close', () => {
-            // Reconnect after 1 second
             reconnectTimer = setTimeout(connectWebSocket, 1000);
           });
         } catch (error) {
@@ -810,8 +754,6 @@ function AssetLibrary({ onContextMenu }) {
     }
     
     const parts = currentPath() ? currentPath().split('/') : [];
-    
-    // Start with project name as root
     const crumbs = [{ name: project.name, path: '' }];
     
     let currentBreadcrumbPath = '';
@@ -848,13 +790,11 @@ function AssetLibrary({ onContextMenu }) {
   });
 
   const filteredAssets = createMemo(() => {
-    // Filter out folders - only show files in the right panel
     const fileAssets = assets().filter(asset => asset.type === 'file');
     
     if (!searchQuery()) return fileAssets;
     
     if (globalSearchResults().length > 0) {
-      // Also filter folders from global search results
       return globalSearchResults().filter(asset => asset.type === 'file');
     }
     
@@ -865,7 +805,6 @@ function AssetLibrary({ onContextMenu }) {
     });
   });
 
-  // Handle view mode changes - fetch categories when switching to type view
   createEffect(() => {
     if (viewMode() === 'type') {
       const currentProject = projectManager.getCurrentProject();
@@ -957,7 +896,6 @@ function AssetLibrary({ onContextMenu }) {
         
         const targetPath = targetFolderPath ? `projects/${currentProject.name}/assets/${targetFolderPath}/${file.name}` : `projects/${currentProject.name}/assets/${file.name}`;
         
-        // Check if this is a text file or binary file
         const isTextFile = file.type.startsWith('text/') || 
                           file.name.match(/\.(js|jsx|ts|tsx|json|xml|txt|md|css|html|yml|yaml|csv|log|ini|conf|cfg|properties)$/i);
         
@@ -968,7 +906,6 @@ function AssetLibrary({ onContextMenu }) {
                             file.name.match(/\.(png|jpg|jpeg|gif|webp|bmp|tga|tiff|ico|svg|mp3|wav|ogg|m4a|aac|flac|mp4|avi|mov|mkv|webm|wmv|glb|gltf|obj|fbx|dae|3ds|blend|max|ma|mb|stl|ply|x3d)$/i);
         
         if (isTextFile) {
-          // Handle text files (JS, TS, JSX, TSX, JSON, etc.)
           console.log(`Uploading text file: ${file.name}`);
           const textContent = await new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -978,14 +915,13 @@ function AssetLibrary({ onContextMenu }) {
           });
           await bridgeService.writeFile(targetPath, textContent);
         } else if (isBinaryFile) {
-          // Handle binary files (images, audio, video, 3D models, etc.)
           console.log(`Uploading binary file: ${file.name} (type: ${file.type})`);
           const base64Content = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
               const result = reader.result;
               if (typeof result === 'string' && result.includes(',')) {
-                resolve(result.split(',')[1]); // Remove data:mime;base64, prefix
+                resolve(result.split(',')[1]);
               } else {
                 reject(new Error('Invalid base64 data'));
               }
@@ -995,14 +931,13 @@ function AssetLibrary({ onContextMenu }) {
           });
           await bridgeService.writeBinaryFile(targetPath, base64Content);
         } else {
-          // Fallback: treat unknown files as binary
           console.log(`Uploading unknown file type as binary: ${file.name} (type: ${file.type})`);
           const base64Content = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
               const result = reader.result;
               if (typeof result === 'string' && result.includes(',')) {
-                resolve(result.split(',')[1]); // Remove data:mime;base64, prefix
+                resolve(result.split(',')[1]);
               } else {
                 reject(new Error('Invalid base64 data'));
               }
@@ -1225,19 +1160,15 @@ function AssetLibrary({ onContextMenu }) {
       }
     }
 
-    // Invalidate cache for all affected directories
     const affectedPaths = Array.from(sourceDirectories).concat(targetFolderPath ? [targetFolderPath] : []);
     assetsActions.invalidateAssetPaths(affectedPaths);
     
-    // Refresh the current view
     await fetchAssetsWithCache(currentProject, currentPath());
     
-    // Clear selection after successful moves
     if (successCount > 0) {
       clearSelection();
     }
 
-    // Show status message
     if (failCount === 0) {
       console.log(`🎉 Successfully moved ${successCount} files`);
     } else {
@@ -1364,7 +1295,6 @@ export default Script;
   };
 
   const handleAssetDoubleClick = (asset) => {
-    // Files don't have double-click behavior since folders are only in the left tree
     console.log('🦀 File double-clicked:', asset.name);
   };
 
@@ -1425,7 +1355,6 @@ export default Script;
                 const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
                 
                 if (dragData.type === 'multiple-assets') {
-                  // Handle multiple asset drop
                   const validAssets = dragData.assets.filter(asset => {
                     if (asset.assetType === 'folder' && node.path.startsWith(asset.path)) {
                       console.warn(`Cannot move folder ${asset.name} into itself or its children`);
@@ -1438,7 +1367,6 @@ export default Script;
                     handleMoveMultipleItems(validAssets, node.path);
                   }
                 } else if (dragData.type === 'asset' && dragData.path !== node.path) {
-                  // Handle single asset drop (backward compatibility)
                   if (dragData.assetType === 'folder' && node.path.startsWith(dragData.path)) {
                     console.warn('Cannot move folder into itself or its children');
                     return;
@@ -1527,13 +1455,11 @@ export default Script;
     const startDrag = (e, asset) => {
       setIsInternalDrag(true);
       
-      // If the asset being dragged is not selected, select only it
       if (!isAssetSelected(asset.id)) {
         setSelectedAssets(new Set([asset.id]));
         setLastSelectedAsset(asset);
       }
       
-      // Get all selected assets for dragging
       const selectedAssetIds = Array.from(selectedAssets());
       const allAssets = filteredAssets();
       const selectedAssetObjects = allAssets.filter(a => selectedAssetIds.includes(a.id));
@@ -1551,7 +1477,6 @@ export default Script;
           category: getAssetCategory(a.extension),
           fileType: getAssetCategory(a.extension) === 'scripts' ? 'script' : getAssetCategory(a.extension)
         })),
-        // Keep single asset format for backward compatibility
         ...(selectedAssetObjects.length === 1 ? {
           id: asset.id,
           name: asset.name,
@@ -1569,7 +1494,6 @@ export default Script;
       e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
       e.dataTransfer.effectAllowed = 'move';
       
-      // Create custom drag image showing count
       if (selectedAssetObjects.length > 1) {
         const dragImage = document.createElement('div');
         dragImage.className = 'fixed top-[-1000px] bg-blue-600 text-white px-3 py-2 rounded-lg font-medium shadow-lg';
@@ -1933,7 +1857,6 @@ export default Script;
                               const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
                               
                               if (dragData.type === 'multiple-assets') {
-                                // Handle multiple asset drop
                                 const validAssets = dragData.assets.filter(asset => {
                                   if (asset.assetType === 'folder' && crumb.path.startsWith(asset.path)) {
                                     console.warn(`Cannot move folder ${asset.name} into itself or its children`);
@@ -1946,7 +1869,6 @@ export default Script;
                                   handleMoveMultipleItems(validAssets, crumb.path);
                                 }
                               } else if (dragData.type === 'asset' && dragData.path !== crumb.path) {
-                                // Handle single asset drop (backward compatibility)
                                 if (dragData.assetType === 'folder' && crumb.path.startsWith(dragData.path)) {
                                   console.warn('Cannot move folder into itself or its children');
                                   return;
@@ -2183,7 +2105,6 @@ export default Script;
             onConfirm={handleConfirmCreateScript}
           />
           
-          {/* Selection Rectangle Overlay for entire panel */}
           <Show when={isSelecting() && selectionRect()}>
             <div
               class="absolute border-2 border-blue-500 bg-blue-500/10 pointer-events-none z-20"

@@ -1,44 +1,41 @@
 import { onMount, onCleanup } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
-import { Camera, Grid3x3, Settings as SettingsIcon, Maximize } from '@/ui/icons';
+import { Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder } from '@/ui/icons';
 import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
 import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
 
-// Import content components (these go INTO the layout)
 import Scene from './Scene.jsx';
 import SettingsComponent from './Settings.jsx';
 import AssetLibrary from './AssetLibrary.jsx';
 
-
 export default function EditorPage() {
   onMount(() => {
-    const pluginAPI = usePluginAPI();
+    console.log('[EditorPage] Initializing editor components...');
+    const api = usePluginAPI();
     
-    // Register content components into layout regions
-    pluginAPI.registerPropertyTab('scene', {
+    api.tab('scene', {
       title: 'Scene',
       component: Scene,
-      icon: () => <div>🎬</div>,
+      icon: Video,
       order: 10
     });
 
-    pluginAPI.registerPropertyTab('settings', {
+    api.tab('settings', {
       title: 'Settings',
       component: SettingsComponent,
       icon: SettingsIcon,
       order: 20
     });
 
-    pluginAPI.registerBottomPanelTab('assets', {
+    api.panel('assets', {
       title: 'Assets',
       component: AssetLibrary,
-      icon: () => <div>📁</div>,
+      icon: Folder,
       order: 10,
       defaultHeight: 300
     });
     
-    // Register toolbar buttons
-    pluginAPI.registerToolbarButton('camera-helper', {
+    api.button('camera-helper', {
       title: 'Camera Options',
       icon: Camera,
       section: 'right',
@@ -48,7 +45,7 @@ export default function EditorPage() {
       dropdownWidth: 256
     });
     
-    pluginAPI.registerToolbarButton('grid-helper', {
+    api.button('grid-helper', {
       title: 'Grid Options',
       icon: Grid3x3,
       section: 'right',
@@ -58,18 +55,17 @@ export default function EditorPage() {
       dropdownWidth: 256
     });
     
-    pluginAPI.registerToolbarButton('settings-button', {
+    api.button('settings-button', {
       title: 'Settings',
       icon: SettingsIcon,
       section: 'right',
       order: 30,
       onClick: () => {
-        // Switch to settings tab in properties panel
-        console.log('Switch to settings tab');
+        console.log('[EditorPage] Settings button clicked');
       }
     });
     
-    pluginAPI.registerToolbarButton('fullscreen-button', {
+    api.button('fullscreen-button', {
       title: 'Toggle Fullscreen',
       icon: Maximize,
       section: 'right',
@@ -77,19 +73,20 @@ export default function EditorPage() {
       onClick: () => {
         if (!document.fullscreenElement) {
           document.documentElement.requestFullscreen().catch(err => {
-            console.error('Error attempting to enable fullscreen:', err);
+            console.error('[EditorPage] Error attempting to enable fullscreen:', err);
           });
         } else {
           document.exitFullscreen();
         }
       }
     });
+
+    console.log('[EditorPage] Editor components registered');
     
     onCleanup(() => {
-      // Cleanup when page unmounts
-      // TODO: Add unregister methods to plugin API
+      console.log('[EditorPage] Cleaning up editor components...');
     });
   });
 
-  return null; // This component just registers content with the plugin API
+  return null;
 }
