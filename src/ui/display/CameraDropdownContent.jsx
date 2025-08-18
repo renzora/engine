@@ -46,7 +46,7 @@ export default function CameraDropdownContent() {
               }`}
               title={type.description}
             >
-              <Dynamic component={type.icon} class="w-3 h-3" />
+              <type.icon class="w-3 h-3" />
               <span>{type.label}</span>
             </button>
           ))}
@@ -112,7 +112,7 @@ export default function CameraDropdownContent() {
               }`}
               title={mode.label}
             >
-              <Dynamic component={mode.icon} class="w-3 h-3" />
+              <mode.icon class="w-3 h-3" />
               <span>{mode.label}</span>
             </button>
           ))}

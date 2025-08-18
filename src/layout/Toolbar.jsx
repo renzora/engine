@@ -23,7 +23,7 @@ import '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import '@babylonjs/core/Meshes/Builders/planeBuilder';
 
-function HorizontalToolbar() {
+function Toolbar() {
   const [showProjectManager, setShowProjectManager] = createSignal(false);
   const [flashingTool, setFlashingTool] = createSignal(null);
   const [showLightDropdown, setShowLightDropdown] = createSignal(false);
@@ -788,4 +788,4 @@ function HorizontalToolbar() {
   );
 }
 
-export default HorizontalToolbar;
+export default Toolbar;

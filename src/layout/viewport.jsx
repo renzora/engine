@@ -4,8 +4,8 @@ import { Settings, X } from '@/ui/icons';
 import ViewportTabs from './ViewportTabs.jsx';
 import { RenderProvider } from '@/plugins/core/render';
 import NodeEditor from '@/pages/editor/nodeEditor/index.jsx';
-import { viewportTypes } from "@/api/plugin";
-import { Show, createMemo } from 'solid-js';
+import { viewportTypes, propertiesPanelVisible, bottomPanelVisible } from "@/api/plugin";
+import { Show, createMemo, createSignal } from 'solid-js';
 
 const PersistentRenderViewport = (props) => {
   return (
@@ -17,7 +17,50 @@ const PersistentRenderViewport = (props) => {
   );
 };
 
-const Viewport = (props) => {
+const Viewport = () => {
+  const [contextMenu, setContextMenu] = createSignal(null);
+  
+  // Get reactive store values
+  const ui = () => editorStore.ui;
+  const settings = () => editorStore.settings;
+  const rightPanelWidth = () => editorStore.ui.rightPanelWidth;
+  const bottomPanelHeight = () => editorStore.ui.bottomPanelHeight;
+  
+  const isScenePanelOpen = () => {
+    return propertiesPanelVisible() && editorStore.panels.isScenePanelOpen;
+  };
+  
+  const isAssetPanelOpen = () => {
+    return bottomPanelVisible() && editorStore.panels.isAssetPanelOpen;
+  };
+  
+  const panelPosition = () => settings().editor.panelPosition || 'right';
+  const isLeftPanel = () => panelPosition() === 'left';
+
+  const handleContextMenu = (e, item, context = 'scene') => {
+    if (!e) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+
+    const { clientX: x, clientY: y } = e;
+    setContextMenu({
+      position: { x, y },
+      items: [
+        { label: 'Create Object', action: () => console.log('Create object') },
+        { label: 'Delete', action: () => console.log('Delete') }
+      ],
+    });
+  };
+  
+  const getViewportPositioning = () => {
+    const top = '0px';
+    const left = isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
+    const right = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
+    const bottom = isAssetPanelOpen() ? `${bottomPanelHeight()}px` : (bottomPanelVisible() ? '40px' : '0px');
+    
+    return { top, left, right, bottom };
+  };
   
   const activeTab = createMemo(() => {
     const tab = viewportStore.tabs.find(tab => tab.id === viewportStore.activeTabId);
@@ -132,20 +175,25 @@ const Viewport = (props) => {
   };
 
   return (
-    <div className="w-full h-full flex flex-col bg-gray-900">
-      <ViewportTabs />
-      <div 
-        className="flex-1 relative overflow-hidden"
-        onContextMenu={(e) => e.preventDefault()}
-      >
-        <PersistentRenderViewport
-          contextMenuHandler={props.contextMenuHandler}
-          showGrid={props.showGrid}
-        />
-        
-        <Show when={isOverlayActive()}>
-          {renderOverlayPanel(activeTab())}
-        </Show>
+    <div 
+      class="absolute pointer-events-auto viewport-container"
+      style={getViewportPositioning()}
+    >
+      <div className="w-full h-full flex flex-col bg-gray-900">
+        <ViewportTabs />
+        <div 
+          className="flex-1 relative overflow-hidden"
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <PersistentRenderViewport
+            contextMenuHandler={() => handleContextMenu}
+            showGrid={true}
+          />
+          
+          <Show when={isOverlayActive()}>
+            {renderOverlayPanel(activeTab())}
+          </Show>
+        </div>
       </div>
     </div>
   );

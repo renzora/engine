@@ -1,5 +1,5 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show } from 'solid-js';
-import { IconChevronRight, IconBox, IconBulb, IconCamera, IconFolder, IconLayersLinked, IconEye, IconEyeOff, IconTrash, IconPencil, IconCode, IconX } from '@tabler/icons-solidjs';
+import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Trash, Edit, Code, X } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 // CLEAN SCENE: Access global scene reference
 const getBabylonScene = () => window._cleanBabylonScene;
@@ -362,17 +362,17 @@ function Scene(props) {
 
   const getIcon = (type, lightType) => {
     switch (type) {
-      case 'mesh': return IconBox;
+      case 'mesh': return Box;
       case 'light': 
         switch (lightType) {
-          case 'directional': return IconBulb;
-          case 'point': return IconBulb;
-          case 'spot': return IconBulb;
-          default: return IconBulb;
+          case 'directional': return Lightbulb;
+          case 'point': return Lightbulb;
+          case 'spot': return Lightbulb;
+          default: return Lightbulb;
         }
-      case 'camera': return IconCamera;
-      case 'folder': return IconFolder;
-      default: return IconLayersLinked;
+      case 'camera': return Camera;
+      case 'folder': return Folder;
+      default: return Circle;
     }
   };
 
@@ -460,7 +460,7 @@ function Scene(props) {
                 setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
               }}
             >
-              <IconChevronRight class={`w-3 h-3 transition-all duration-200 ${
+              <ChevronRight class={`w-3 h-3 transition-all duration-200 ${
                 isExpanded() 
                   ? 'rotate-90 text-blue-400' 
                   : 'text-gray-500 group-hover:text-gray-300'
@@ -483,9 +483,9 @@ function Scene(props) {
           >
             <Show 
               when={item.visible}
-              fallback={<IconEyeOff className="w-4 h-4 text-gray-600 hover:text-gray-400" />}
+              fallback={<EyeOff className="w-4 h-4 text-gray-600 hover:text-gray-400" />}
             >
-              <IconEye className="w-4 h-4 text-gray-400 hover:text-gray-200" />
+              <Eye className="w-4 h-4 text-gray-400 hover:text-gray-200" />
             </Show>
           </button>
           
@@ -530,7 +530,7 @@ function Scene(props) {
             onClick={(e) => handleDeleteObject(item, e)}
             title="Delete object"
           >
-            <IconTrash className="w-4 h-4 text-gray-300 hover:text-red-400" />
+            <Trash className="w-4 h-4 text-gray-300 hover:text-red-400" />
           </button>
         </div>
         
@@ -571,7 +571,7 @@ function Scene(props) {
             className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95"
             title="Create Folder"
           >
-            <IconFolder className="w-4 h-4" />
+            <Folder className="w-4 h-4" />
           </button>
           
           <div className="w-px h-4 bg-slate-600/60 mx-1" />
@@ -597,7 +597,7 @@ function Scene(props) {
             className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
             title="Rename Selected (F2)"
           >
-            <IconPencil className="w-4 h-4" />
+            <Edit className="w-4 h-4" />
           </button>
         </div>
         
@@ -607,7 +607,7 @@ function Scene(props) {
             className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95"
             title="Expand All"
           >
-            <IconChevronRight className="w-4 h-4 rotate-90" />
+            <ChevronRight className="w-4 h-4 rotate-90" />
           </button>
           
           <button
@@ -615,7 +615,7 @@ function Scene(props) {
             className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95"
             title="Collapse All"
           >
-            <IconChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </div>
@@ -730,7 +730,7 @@ function Scene(props) {
                                         }}
                                         className="w-3 h-3"
                                       />
-                                      <IconCode className="w-3 h-3 text-gray-400" />
+                                      <Code className="w-3 h-3 text-gray-400" />
                                       <span className="text-xs text-gray-300">{script.name}</span>
                                     </div>
                                     <button
@@ -740,7 +740,7 @@ function Scene(props) {
                                       }}
                                       className="p-0.5 hover:bg-gray-700 rounded"
                                     >
-                                      <IconX className="w-3 h-3 text-gray-400 hover:text-red-400" />
+                                      <X className="w-3 h-3 text-gray-400 hover:text-red-400" />
                                     </button>
                                   </div>
                                 )}

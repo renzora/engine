@@ -1,47 +1,64 @@
-import { Show, createEffect, createMemo, Switch, Match } from 'solid-js';
+import { Show, createEffect, createMemo, Switch, Match, createSignal } from 'solid-js';
 import BottomTabs from './BottomTabs.jsx';
 import AssetLibrary from '@/pages/editor/AssetLibrary.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
-import { editorStore } from '@/layout/stores/EditorStore';
+import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
+import { createPanelResize } from '@/pages/editor/hooks/usePanelResize';
 
-const BottomPanel = ({
-  activeTab,
-  isAssetPanelOpen,
-  bottomPanelHeight,
-  rightPanelWidth,
-  isScenePanelOpen,
-  panelResize,
-  onTabChange,
-  onToggleAssetPanel,
-  onContextMenu,
-  style = {}
-}) => {
+const BottomPanel = () => {
+  const [contextMenu, setContextMenu] = createSignal(null);
+  
+  // Get reactive store values
+  const ui = () => editorStore.ui;
   const settings = () => editorStore.settings;
+  const activeTab = () => ui().selectedBottomTab;
+  const rightPanelWidth = () => editorStore.ui.rightPanelWidth;
+  const bottomPanelHeight = () => editorStore.ui.bottomPanelHeight;
+  
+  const isAssetPanelOpen = () => {
+    return bottomPanelVisible() && editorStore.panels.isAssetPanelOpen;
+  };
+  
+  const isScenePanelOpen = () => {
+    return propertiesPanelVisible() && editorStore.panels.isScenePanelOpen;
+  };
+  
   const panelPosition = () => settings().editor.panelPosition || 'right';
   const isLeftPanel = () => panelPosition() === 'left';
+
+  const {
+    setSelectedBottomTab: setActiveTab,
+    setAssetPanelOpen
+  } = editorActions;
+
+  const panelResize = createPanelResize(editorActions);
+
+  const handleContextMenu = (e, item, context = 'scene') => {
+    if (!e) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+
+    const { clientX: x, clientY: y } = e;
+    setContextMenu({
+      position: { x, y },
+      items: [
+        { label: 'Create Object', action: () => console.log('Create object') },
+        { label: 'Delete', action: () => console.log('Delete') }
+      ],
+    });
+  };
   
-  
-  // Get the active tab from the store directly for reactivity
-  const currentActiveTab = () => editorStore.ui.selectedBottomTab;
+  const currentActiveTab = () => activeTab();
   
   const getPanelHeight = () => {
-    const height = typeof bottomPanelHeight === 'function' ? bottomPanelHeight() : bottomPanelHeight;
-    const assetPanelOpen = typeof isAssetPanelOpen === 'function' ? isAssetPanelOpen() : isAssetPanelOpen;
-    const finalHeight = assetPanelOpen ? height : 40;
-    return finalHeight;
+    return isAssetPanelOpen() ? bottomPanelHeight() : 40;
   };
   
-  const getRightWidth = () => {
-    const width = typeof rightPanelWidth === 'function' ? rightPanelWidth() : rightPanelWidth;
-    const scenePanelOpen = typeof isScenePanelOpen === 'function' ? isScenePanelOpen() : isScenePanelOpen;
-    return width;
-  };
-
   const getPositioning = () => {
-    const scenePanelOpen = typeof isScenePanelOpen === 'function' ? isScenePanelOpen() : isScenePanelOpen;
-    const leftPos = isLeftPanel() && scenePanelOpen && propertiesPanelVisible() ? `${getRightWidth()}px` : '0';
-    const rightPos = !isLeftPanel() && scenePanelOpen && propertiesPanelVisible() ? `${getRightWidth()}px` : '0';
+    const leftPos = isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0';
+    const rightPos = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0';
     const heightVal = `${getPanelHeight()}px`;
     
     return { left: leftPos, right: rightPos, height: heightVal };
@@ -51,10 +68,7 @@ const BottomPanel = ({
     <Show when={bottomPanelVisible()}>
       <div 
         class="absolute bottom-0 pointer-events-auto no-select z-[60]"
-        style={{
-          ...getPositioning(),
-          ...style
-        }}
+        style={getPositioning()}
       >
       <Show when={panelResize}>
         <PanelResizer
@@ -75,26 +89,29 @@ const BottomPanel = ({
       </Show>
       
       <BottomTabs 
-        activeTab={activeTab}
+        activeTab={activeTab()}
         onTabChange={(tabId) => {
-          onTabChange(tabId);
-          const assetPanelOpen = typeof isAssetPanelOpen === 'function' ? isAssetPanelOpen() : isAssetPanelOpen;
-          if (!assetPanelOpen) {
-            onToggleAssetPanel(true);
+          setActiveTab(tabId);
+          if (!isAssetPanelOpen()) {
+            setAssetPanelOpen(true);
           }
         }}
-        isAssetPanelOpen={typeof isAssetPanelOpen === 'function' ? isAssetPanelOpen() : isAssetPanelOpen}
-        onToggleAssetPanel={onToggleAssetPanel}
-        rightPanelWidth={rightPanelWidth}
-        isScenePanelOpen={typeof isScenePanelOpen === 'function' ? isScenePanelOpen() : isScenePanelOpen}
+        isAssetPanelOpen={isAssetPanelOpen()}
+        onToggleAssetPanel={(newState) => {
+          const currentState = isAssetPanelOpen();
+          const targetState = newState !== undefined ? newState : !currentState;
+          setAssetPanelOpen(targetState);
+        }}
+        rightPanelWidth={rightPanelWidth()}
+        isScenePanelOpen={isScenePanelOpen()}
         panelResize={panelResize}
       />
       
-      <Show when={typeof isAssetPanelOpen === 'function' ? isAssetPanelOpen() : isAssetPanelOpen}>
+      <Show when={isAssetPanelOpen()}>
         <div class="flex-1 bg-gray-900 overflow-hidden" style={{ height: `${getPanelHeight() - 40}px` }}>
           <Switch>
             <Match when={currentActiveTab() === 'assets'}>
-              <AssetLibrary onContextMenu={onContextMenu} />
+              <AssetLibrary onContextMenu={handleContextMenu} />
             </Match>
             <Match when={bottomPanelTabs().get(currentActiveTab())}>
               {(() => {

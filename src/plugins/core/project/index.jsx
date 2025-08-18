@@ -1,7 +1,22 @@
 import { createPlugin } from '@/api/plugin';
 import { bridgeService } from '@/plugins/core/bridge';
-import { Folder, FolderPlus, History, Database } from '@/ui/icons';
+import { Folder, FolderPlus, History, Database, Camera, Grid3x3, Settings as SettingsIcon, Maximize } from '@/ui/icons';
 import { createSignal, onMount, For } from 'solid-js';
+
+// Import editor components  
+import Scene from '@/pages/editor/Scene.jsx';
+import SettingsComponent from '@/pages/editor/Settings.jsx';
+import AssetLibrary from '@/pages/editor/AssetLibrary.jsx';
+import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
+import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
+
+function SceneIcon() {
+  return <div>🎬</div>;
+}
+
+function AssetsIcon() {
+  return <div>📁</div>;
+}
 
 function ProjectManagementViewport() {
   const [projects, setProjects] = createSignal([]);
@@ -149,6 +164,82 @@ export default createPlugin({
 
   async onStart(api) {
     console.log('[ProjectPlugin] Starting project management plugin...');
+    
+    // Register editor UI components
+    console.log('[ProjectPlugin] Registering editor components...');
+    
+    // Register property tabs (right panel)
+    api.tab('scene', {
+      title: 'Scene',
+      component: Scene,
+      icon: SceneIcon,
+      order: 10
+    });
+
+    api.tab('settings', {
+      title: 'Settings',
+      component: SettingsComponent,
+      icon: SettingsIcon,
+      order: 20
+    });
+
+    // Register bottom panel tabs
+    api.panel('assets', {
+      title: 'Assets',
+      component: AssetLibrary,
+      icon: AssetsIcon,
+      order: 10,
+      defaultHeight: 300
+    });
+    
+    // Register toolbar buttons (right side of horizontal toolbar)
+    api.button('camera-helper', {
+      title: 'Camera Options',
+      icon: Camera,
+      section: 'right',
+      order: 10,
+      hasDropdown: true,
+      dropdownComponent: CameraDropdownContent,
+      dropdownWidth: 256
+    });
+    
+    api.button('grid-helper', {
+      title: 'Grid Options',
+      icon: Grid3x3,
+      section: 'right',
+      order: 20,
+      hasDropdown: true,
+      dropdownComponent: GridDropdownContent,
+      dropdownWidth: 256
+    });
+    
+    api.button('settings-button', {
+      title: 'Settings',
+      icon: SettingsIcon,
+      section: 'right',
+      order: 30,
+      onClick: () => {
+        console.log('[ProjectPlugin] Settings button clicked');
+      }
+    });
+    
+    api.button('fullscreen-button', {
+      title: 'Toggle Fullscreen',
+      icon: Maximize,
+      section: 'right',
+      order: 40,
+      onClick: () => {
+        if (!document.fullscreenElement) {
+          document.documentElement.requestFullscreen().catch(err => {
+            console.error('[ProjectPlugin] Error attempting to enable fullscreen:', err);
+          });
+        } else {
+          document.exitFullscreen();
+        }
+      }
+    });
+
+    console.log('[ProjectPlugin] Editor components registered');
     
     // Listen to project events
     api.on('project-selected', (data) => {
