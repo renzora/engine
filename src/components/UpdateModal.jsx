@@ -1,7 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For } from 'solid-js';
-import Button from './ui/Button';
-import Select from './ui/Select';
-import LoadingSpinner from './ui/LoadingSpinner';
+import { Button, Select, LoadingSpinner } from '@/ui';
 
 export function UpdateModal(props) {
   const [updateConfig, setUpdateConfig] = createSignal(null);

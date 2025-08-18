@@ -1,7 +1,6 @@
 import { createSignal } from 'solid-js'
 import { Engine } from '@babylonjs/core/Engines/engine'
 import { WebGPUEngine } from '@babylonjs/core/Engines/webgpuEngine'
-import { editorActions } from '@/plugins/editor/stores/EditorStore'
 
 export const useEngineManager = (canvasRefSignal, settings) => {
   const [engineInstance, setEngineInstance] = createSignal(null);

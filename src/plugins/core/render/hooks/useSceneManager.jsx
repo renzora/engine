@@ -1,10 +1,9 @@
-import { createSignal } from 'solid-js'
+import { createSignal, createEffect } from 'solid-js'
 import { Scene } from '@babylonjs/core/scene'
 import { Color3 } from '@babylonjs/core/Maths/math.color'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
-import { GizmoManager } from '@babylonjs/core/Gizmos/gizmoManager'
-import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer'
 import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera'
+import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight'
@@ -12,190 +11,159 @@ import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight'
 import '@babylonjs/core/Layers/effectLayerSceneComponent'
 import '@babylonjs/core/Meshes/Builders/sphereBuilder'
 import '@babylonjs/core/Meshes/Builders/groundBuilder'
-import { editorStore } from '@/plugins/editor/stores/EditorStore'
-import { sceneActions, babylonScene } from '../store'
+import { viewportStore } from '@/layout/stores/ViewportStore'
+window._cleanBabylonScene = null;
 
 export const useSceneManager = () => {
   const [sceneInstance, setSceneInstance] = createSignal(null)
   
+  const createCameraByType = (type, scene) => {
+    let camera;
+    
+    if (type === 'arcrotate') {
+      // Orbit camera that rotates around a target
+      camera = new ArcRotateCamera(
+        "camera",
+        Math.PI / 2,  // alpha (horizontal rotation)
+        Math.PI / 3,  // beta (vertical rotation) 
+        10,           // radius (distance from target)
+        Vector3.Zero(), // target
+        scene
+      );
+      camera.setTarget(Vector3.Zero());
+      camera.wheelPrecision = 50;
+      camera.pinchPrecision = 100;
+    } else {
+      // Universal camera for FPS-style fly controls (default)
+      camera = new UniversalCamera(
+        "camera",
+        new Vector3(5, 3, -10),  // Starting position
+        scene
+      );
+      camera.setTarget(Vector3.Zero());
+      
+      // Game development optimized settings for smooth flying
+      camera.speed = 0.5;                // Base movement speed
+      camera.angularSensibility = 2000;  // Mouse look sensitivity  
+      camera.inertia = 0.8;             // Movement smoothness
+    }
+    
+    camera.fov = Math.PI / 3;         // Field of view
+    return camera;
+  };
+  
   const createScene = async (engine) => {
+    // CLEAN SLATE - Basic scene with only essentials
     const scene = new Scene(engine)
-    scene.clearColor = new Color3(0.3, 0.6, 1.0)
+    scene.clearColor = new Color3(0.05, 0.05, 0.05) // Dark background
+    console.log('🎬 Clean Scene: Created fresh scene')
 
-    // Setup gizmo manager
-    var gizmoManager = new GizmoManager(scene)
-    gizmoManager.positionGizmoEnabled = true
-    gizmoManager.rotationGizmoEnabled = false
-    gizmoManager.scaleGizmoEnabled = false
-    scene.shadowsEnabled = true
-    
-    gizmoManager.thickness = 30.0
-    gizmoManager.scaleRatio = 2.5
-    
-    // Configure position gizmo
-    if (gizmoManager.gizmos.positionGizmo) {
-      gizmoManager.gizmos.positionGizmo.sensitivity = 100
-      gizmoManager.gizmos.positionGizmo.updateGizmoRotationToMatchAttachedMesh = false
-
-      if (gizmoManager.gizmos.positionGizmo.xGizmo) {
-        gizmoManager.gizmos.positionGizmo.xGizmo.thickness = 40.0
-      }
-      if (gizmoManager.gizmos.positionGizmo.yGizmo) {
-        gizmoManager.gizmos.positionGizmo.yGizmo.thickness = 40.0
-      }
-      if (gizmoManager.gizmos.positionGizmo.zGizmo) {
-        gizmoManager.gizmos.positionGizmo.zGizmo.thickness = 40.0
-      }
-    }
-    
-    // Configure rotation gizmo
-    if (gizmoManager.gizmos.rotationGizmo) {
-      gizmoManager.gizmos.rotationGizmo.sensitivity = 100
-      if (gizmoManager.gizmos.rotationGizmo.xGizmo) {
-        gizmoManager.gizmos.rotationGizmo.xGizmo.thickness = 40.0
-      }
-      if (gizmoManager.gizmos.rotationGizmo.yGizmo) {
-        gizmoManager.gizmos.rotationGizmo.yGizmo.thickness = 40.0
-      }
-      if (gizmoManager.gizmos.rotationGizmo.zGizmo) {
-        gizmoManager.gizmos.rotationGizmo.zGizmo.thickness = 40.0
-      }
-    }
-    
-    // Configure scale gizmo
-    if (gizmoManager.gizmos.scaleGizmo) {
-      gizmoManager.gizmos.scaleGizmo.sensitivity = 100
-      if (gizmoManager.gizmos.scaleGizmo.xGizmo) {
-        gizmoManager.gizmos.scaleGizmo.xGizmo.thickness = 40.0
-      }
-      if (gizmoManager.gizmos.scaleGizmo.yGizmo) {
-        gizmoManager.gizmos.scaleGizmo.yGizmo.thickness = 40.0
-      }
-      if (gizmoManager.gizmos.scaleGizmo.zGizmo) {
-        gizmoManager.gizmos.scaleGizmo.zGizmo.thickness = 40.0
-      }
-    }
-    
-    scene._gizmoManager = gizmoManager
-    
-    // Gizmo thickness ensurer
-    const ensureGizmoThickness = () => {
-      setTimeout(() => {
-        if (gizmoManager.gizmos.positionGizmo) {
-          ['xGizmo', 'yGizmo', 'zGizmo'].forEach(axis => {
-            if (gizmoManager.gizmos.positionGizmo[axis]) {
-              gizmoManager.gizmos.positionGizmo[axis].thickness = 40.0
-            }
-          })
-        }
-        
-        if (gizmoManager.gizmos.rotationGizmo) {
-          ['xGizmo', 'yGizmo', 'zGizmo'].forEach(axis => {
-            if (gizmoManager.gizmos.rotationGizmo[axis]) {
-              gizmoManager.gizmos.rotationGizmo[axis].thickness = 40.0
-            }
-          })
-        }
-        
-        if (gizmoManager.gizmos.scaleGizmo) {
-          ['xGizmo', 'yGizmo', 'zGizmo'].forEach(axis => {
-            if (gizmoManager.gizmos.scaleGizmo[axis]) {
-              gizmoManager.gizmos.scaleGizmo[axis].thickness = 40.0
-            }
-          })
-        }
-      }, 100)
-    }
-    
-    scene._ensureGizmoThickness = ensureGizmoThickness
-    
-    // Setup highlight layer
-    const highlightLayer = new HighlightLayer("highlight", scene)
-    highlightLayer.outerGlow = true
-    highlightLayer.innerGlow = false
-    scene._highlightLayer = highlightLayer
-
-    // Setup camera
-    var camera = new UniversalCamera(
-      "camera",
-      new Vector3(0, 5, -10),
-      scene
-    )
-    camera.setTarget(Vector3.Zero())
-    camera.fov = Math.PI / 3
+    // Basic camera
+    const camera = createCameraByType('universal', scene);
     scene._camera = camera
     
-    // Setup skybox
-    const skybox = MeshBuilder.CreateSphere("skybox", {diameter: 200}, scene)
-    const skyMaterial = new StandardMaterial("skyMaterial", scene)
-    skyMaterial.emissiveColor = new Color3(0.3, 0.6, 1.0)
-    skyMaterial.diffuseColor = Color3.Black()
-    skyMaterial.specularColor = Color3.Black()
-    skyMaterial.disableLighting = true
-    skyMaterial.backFaceCulling = false
-    skybox.material = skyMaterial
-    skybox.infiniteDistance = true
-    skybox.isPickable = false
-    
-    // Setup lighting
+    // Basic lighting
     const sunLight = new DirectionalLight("sunLight", new Vector3(-1, -1, -1), scene)
     sunLight.diffuse = new Color3(1, 0.95, 0.8)
-    sunLight.specular = new Color3(1, 1, 1)
     sunLight.intensity = 2
     
     const ambientLight = new HemisphericLight("ambientLight", new Vector3(0, 1, 0), scene)
     ambientLight.diffuse = new Color3(0.4, 0.6, 1)
-    ambientLight.specular = Color3.Black()
     ambientLight.intensity = 0.3
     
-    // Setup ground
-    const settings = editorStore.settings
-    const floorSize = settings.scene?.floorSize || 20
-    const ground = MeshBuilder.CreateGround("ground", {width: floorSize, height: floorSize}, scene)
-    const groundMaterial = new StandardMaterial("groundMaterial", scene)
-    groundMaterial.diffuseColor = new Color3(0.3, 0.3, 0.3)
-    groundMaterial.specularColor = Color3.Black()
-    ground.material = groundMaterial
-    ground.isPickable = false
+    // ONLY THE HARDCODED CUBE - nothing else
+    console.log('🧪 Creating ONLY hardcoded test cube...');
+    const testCube = MeshBuilder.CreateBox("hardcoded_test_cube", { size: 3 }, scene);
+    testCube.position = new Vector3(0, 1.5, 0);
     
-    // Apply render mode function
-    scene._applyRenderMode = (mode) => {
-      scene.meshes.forEach(mesh => {
-        if (mesh.name === 'skybox' || mesh.name === 'ground') return
-        if (!mesh.material) return
-        
-        switch (mode) {
-          case 'wireframe':
-            mesh.material.wireframe = true
-            break
-          case 'solid':
-            mesh.material.wireframe = false
-            break
-          case 'material':
-            mesh.material.wireframe = false
-            break
-          case 'rendered':
-            mesh.material.wireframe = false
-            break
-        }
-      })
-    }
+    const testMaterial = new StandardMaterial("hardcoded_test_material", scene);
+    testMaterial.diffuseColor = new Color3(1, 0, 0); // Bright red
+    testMaterial.emissiveColor = new Color3(0.5, 0, 0); // Red glow
+    testMaterial.backFaceCulling = false;
+    testCube.material = testMaterial;
     
-    scene.onDisposeObservable.add(() => {
-      console.log('Scene disposed')
-      setSceneInstance(null)
-    })
+    console.log('🧪 Hardcoded cube created in clean scene:', {
+      name: testCube.name,
+      position: testCube.position,
+      meshCount: scene.meshes.length
+    });
     
     setSceneInstance(scene)
-    sceneActions.updateBabylonScene(scene)
+    // CLEAN SCENE: Set global scene reference
+    window._cleanBabylonScene = scene;
     
-    console.log('Scene created and stored in render store:', {
-      sceneName: scene ? scene.constructor.name : 'null',
-      babylonSceneCurrent: babylonScene?.current ? babylonScene.current.constructor.name : 'null'
-    })
+    console.log('✅ Clean scene created with only hardcoded cube')
     
     return scene
   }
+
+  const switchCameraType = (newType) => {
+    const scene = sceneInstance();
+    if (!scene) return;
+
+    // Store current camera position and target for smooth transition
+    const currentCamera = scene._camera;
+    const currentPosition = currentCamera.position.clone();
+    const currentTarget = currentCamera.getTarget ? currentCamera.getTarget() : Vector3.Zero();
+
+    // Dispose current camera
+    if (currentCamera) {
+      currentCamera.dispose();
+    }
+
+    // Create new camera of requested type
+    const newCamera = createCameraByType(newType, scene);
+    
+    // Try to preserve position when switching
+    if (newType === 'arcrotate') {
+      // For orbit camera, calculate alpha/beta from current position
+      const distance = Vector3.Distance(currentPosition, currentTarget);
+      newCamera.setTarget(currentTarget);
+      newCamera.radius = Math.max(distance, 3); // Minimum distance of 3 units
+      
+      // Calculate spherical coordinates
+      const direction = currentPosition.subtract(currentTarget).normalize();
+      const alpha = Math.atan2(direction.x, direction.z);
+      const beta = Math.acos(direction.y);
+      
+      newCamera.alpha = alpha;
+      newCamera.beta = beta;
+    } else {
+      // For universal camera, just use the position directly
+      newCamera.position = currentPosition;
+      newCamera.setTarget(currentTarget);
+    }
+
+    // Attach controls to canvas if available
+    const canvas = scene.getEngine().getRenderingCanvas();
+    if (canvas) {
+      try {
+        if (typeof newCamera.attachControls === 'function') {
+          newCamera.attachControls(canvas);
+        }
+      } catch (error) {
+        console.warn('Could not attach camera controls:', error);
+      }
+    }
+
+    scene._camera = newCamera;
+    console.log(`🎥 Camera switched to ${newType}:`, newCamera.constructor.name);
+  };
+
+  // Watch for camera type changes in viewport store
+  createEffect(() => {
+    const scene = sceneInstance();
+    const currentType = viewportStore.camera.type;
+    
+    if (scene && scene._camera) {
+      const currentCameraType = scene._camera instanceof ArcRotateCamera ? 'arcrotate' : 'universal';
+      
+      if (currentType !== currentCameraType) {
+        console.log(`🔄 Camera type change detected: ${currentCameraType} → ${currentType}`);
+        switchCameraType(currentType);
+      }
+    }
+  });
   
   const disposeScene = () => {
     const scene = sceneInstance()

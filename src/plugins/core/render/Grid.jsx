@@ -4,14 +4,13 @@ import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import '@babylonjs/core/Meshes/Builders/linesBuilder';
-import { editorStore } from '@/plugins/editor/stores/EditorStore';
-import { viewportStore } from '@/plugins/editor/stores/ViewportStore';
+import { editorStore } from '@/layout/stores/EditorStore';
+import { viewportStore } from '@/layout/stores/ViewportStore';
 
-export function useGrid(scene) {
+export function useGrid(sceneSignal) {
   const settings = () => editorStore.settings;
   const viewport = () => viewportStore;
   let gridRef = null;
-  // Babylon modules are now directly imported
   
   const getUnitScale = (unit) => {
     const scales = {
@@ -25,7 +24,11 @@ export function useGrid(scene) {
   };
 
   const createGrid = async (scene, gridSettings) => {
-    if (!scene || !gridSettings.enabled || !viewport().showGrid) return;
+    console.log('🔳 Grid: createGrid called', { scene: !!scene, gridSettings, showGrid: viewport().showGrid });
+    if (!scene || !gridSettings.enabled || !viewport().showGrid) {
+      console.log('🔳 Grid: Skipping grid creation - missing requirements');
+      return;
+    }
 
     const unitScale = getUnitScale(gridSettings.unit);
     const cellSize = gridSettings.cellSize * unitScale;
@@ -84,8 +87,8 @@ export function useGrid(scene) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
-        regularGrid.material.alpha = 0.3;
-        regularGrid.color = Color3.FromHexString(gridSettings.cellColor || '#555555');
+        regularGrid.material.alpha = 0.15;
+        regularGrid.color = Color3.FromHexString(gridSettings.cellColor || '#334155');
       }
       
       if (sectionLines.length > 0) {
@@ -94,8 +97,8 @@ export function useGrid(scene) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
-        sectionGrid.material.alpha = 0.6;
-        sectionGrid.color = Color3.FromHexString(gridSettings.sectionColor || '#888888');
+        sectionGrid.material.alpha = 0.25;
+        sectionGrid.color = Color3.FromHexString(gridSettings.sectionColor || '#475569');
       }
     } else {
       const gridSize = gridSettings.size * unitScale;
@@ -141,8 +144,8 @@ export function useGrid(scene) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
-        regularGrid.material.alpha = 0.3;
-        regularGrid.color = Color3.FromHexString(gridSettings.cellColor || '#555555');
+        regularGrid.material.alpha = 0.15;
+        regularGrid.color = Color3.FromHexString(gridSettings.cellColor || '#334155');
       }
       
       if (sectionLines.length > 0) {
@@ -151,8 +154,8 @@ export function useGrid(scene) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
-        sectionGrid.material.alpha = 0.6;
-        sectionGrid.color = Color3.FromHexString(gridSettings.sectionColor || '#888888');
+        sectionGrid.material.alpha = 0.25;
+        sectionGrid.color = Color3.FromHexString(gridSettings.sectionColor || '#475569');
       }
     }
     
@@ -164,25 +167,53 @@ export function useGrid(scene) {
       gridSettings.position[2]
     );
 
+    console.log('🔳 Grid: Grid created successfully!', { 
+      position: gridContainer.position, 
+      childCount: gridContainer.getChildMeshes().length,
+      infinite: gridSettings.infiniteGrid
+    });
+
     return gridContainer;
   };
 
   const updateGrid = () => {
-    if (!scene) return;
+    const scene = sceneSignal();
+    if (!scene) {
+      console.log('🔳 Grid: No scene available for updateGrid');
+      return;
+    }
+
+    console.log('🔳 Grid: updateGrid called', { 
+      hasScene: !!scene, 
+      gridEnabled: settings().grid.enabled, 
+      showGrid: viewport().showGrid,
+      gridSettings: settings().grid
+    });
 
     if (gridRef) {
+      console.log('🔳 Grid: Disposing existing grid');
       gridRef.dispose();
       gridRef = null;
     }
 
     if (settings().grid.enabled && viewport().showGrid) {
+      console.log('🔳 Grid: Creating new grid...');
       createGrid(scene, settings().grid).then(grid => {
         gridRef = grid;
+        console.log('🔳 Grid: Grid assigned to gridRef', !!grid);
       });
+    } else {
+      console.log('🔳 Grid: Grid creation skipped - disabled or hidden');
     }
   };
 
   createEffect(() => {
+    // Track scene signal, grid settings, and viewport showGrid
+    const scene = sceneSignal();
+    const gridSettings = settings().grid;
+    const showGrid = viewport().showGrid;
+    
+    console.log('🔳 Grid: createEffect triggered', { hasScene: !!scene, gridEnabled: gridSettings.enabled, showGrid });
     updateGrid();
   });
 

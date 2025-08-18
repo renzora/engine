@@ -12,11 +12,14 @@
     "windows": [
       {
         "label": "main",
-        "title": "vite-solid-starter",
+        "title": "Renzora Engine",
         "resizable": true,
         "fullscreen": false,
         "decorations": false,
-        "maximized": true
+        "maximized": false,
+        "width": 1440,
+        "height": 810,
+        "center": true
       }
     ],
     "security": {

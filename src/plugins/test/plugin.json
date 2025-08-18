@@ -1,0 +1,17 @@
+{
+  "id": "test-plugin",
+  "name": "Test Plugin",
+  "version": "1.0.0",
+  "description": "A comprehensive test plugin demonstrating all plugin API features including menus, panels, toolbars and property tabs",
+  "author": "Renzora Engine Team",
+  "main": "index.jsx",
+  "priority": 1000,
+  "permissions": [
+    "ui-core",
+    "console-access",
+    "testing"
+  ],
+  "dependencies": [],
+  "category": "development",
+  "tags": ["test", "debug", "development", "demo"]
+}

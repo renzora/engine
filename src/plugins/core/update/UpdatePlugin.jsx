@@ -48,7 +48,7 @@ export function UpdatePlugin() {
       
       if (response.ok) {
         await loadConfig();
-        setUpdateCheck(null); // Clear previous check results
+        setUpdateCheck(null);
       } else {
         setError('Failed to update channel');
       }

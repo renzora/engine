@@ -5,8 +5,7 @@ import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
-import { editorActions } from '@/plugins/editor/stores/EditorStore'
-import { sceneActions } from '../store'
+import { editorActions } from '@/layout/stores/EditorStore'
 import { bridgeService as projects } from '@/plugins/core/bridge'
 
 export const useAssetLoader = (sceneInstance, canvasRef) => {
@@ -133,7 +132,7 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
         if (result.meshes.length > 0) {
           const rootMesh = result.meshes[0]
           rootMesh.position = position || Vector3.Zero()
-          sceneActions.refreshSceneData()
+          // CLEAN SCENE: No store refresh needed
           editorActions.addConsoleMessage(`Successfully loaded: ${assetData.name}`, 'success')
           console.log('Loaded meshes:', result.meshes)
         }
@@ -149,7 +148,7 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
         material.diffuseTexture = texture
         plane.material = material
         plane.position = position || Vector3.Zero()
-        sceneActions.refreshSceneData()
+        // CLEAN SCENE: No store refresh needed
         editorActions.addConsoleMessage(`Successfully loaded texture: ${assetData.name}`, 'success')
       } else {
         editorActions.addConsoleMessage(`Unsupported asset type: ${extension}`, 'warning')

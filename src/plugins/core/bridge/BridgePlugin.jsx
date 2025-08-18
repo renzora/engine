@@ -1,11 +1,11 @@
 import { onMount } from 'solid-js';
-import { useEngineAPI } from '@/plugins/core/engine';
+import { usePluginAPI } from '@/api/plugin';
 import { IconServer } from '@tabler/icons-solidjs';
 import BridgeViewport from './BridgeViewport.jsx';
 import BridgeStatus from './BridgeStatus.jsx';
 
 export default function BridgePlugin() {
-  const api = useEngineAPI();
+  const api = usePluginAPI();
 
   onMount(() => {
     // Register the bridge plugin

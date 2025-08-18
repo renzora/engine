@@ -1,6 +1,5 @@
 import { PointerEventTypes } from '@babylonjs/core/Events/pointerEvents'
-import { sceneActions } from '../store'
-import { editorActions } from '@/plugins/editor/stores/EditorStore'
+import { editorActions } from '@/layout/stores/EditorStore'
 
 export const useViewportInteraction = (sceneInstance, cameraController) => {
   
@@ -37,19 +36,16 @@ export const useViewportInteraction = (sceneInstance, cameraController) => {
               if (targetMesh) {
                 const objectId = targetMesh.uniqueId || targetMesh.name;
                 console.log('🎯 3D Viewport - Selecting object:', targetMesh.name, 'ID:', objectId);
-                sceneActions.selectObject(objectId);
-                // Sync with editor store
+                // CLEAN SCENE: Removed sceneActions.selectObject(objectId);
                 editorActions.selectEntity(objectId);
               } else {
                 console.log('🎯 3D Viewport - Clearing selection (no valid target)');
-                sceneActions.selectObject(null);
-                // Sync with editor store
+                // CLEAN SCENE: Removed sceneActions.selectObject(null);
                 editorActions.selectEntity(null);
               }
             } else {
               console.log('🎯 3D Viewport - Clearing selection (no hit)');
-              sceneActions.selectObject(null);
-              // Sync with editor store
+              // CLEAN SCENE: Removed sceneActions.selectObject(null);
               editorActions.selectEntity(null);
             }
           }

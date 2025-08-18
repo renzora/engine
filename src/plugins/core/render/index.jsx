@@ -1,7 +1,7 @@
 import { createSignal, createContext, useContext } from 'solid-js';
+import { createPlugin } from '@/api/plugin';
 import ViewportCanvas from './components/ViewportCanvas';
 
-// Engine context - moved from engine folder to render plugin where it belongs
 const EngineContext = createContext();
 
 export const useEngine = () => {
@@ -14,7 +14,6 @@ export const useEngine = () => {
   return context;
 };
 
-// Backward compatibility
 export const useEngineReady = () => {
   const { isEngineReady } = useEngine();
   return { isEngineReady };
@@ -24,8 +23,35 @@ function Viewport(props) {
   return <ViewportCanvas {...props} />
 }
 
-export default function RenderPlugin(props) {
-  // Provide engine context at the render plugin level
+export default createPlugin({
+  id: 'core-render-plugin',
+  name: 'Core Render Plugin',
+  version: '1.0.0',
+  description: 'Core rendering functionality for Renzora Engine',
+  author: 'Renzora Engine Team',
+
+  async onInit() {
+    console.log('[RenderPlugin] Initializing core render plugin...');
+  },
+
+  async onStart() {
+    console.log('[RenderPlugin] Starting core render plugin...');
+  },
+
+  onUpdate() {
+    // Render loop updates if needed
+  },
+
+  async onStop() {
+    console.log('[RenderPlugin] Stopping core render plugin...');
+  },
+
+  async onDispose() {
+    console.log('[RenderPlugin] Disposing core render plugin...');
+  }
+});
+
+export function RenderProvider(props) {
   const [isReady, setIsReady] = createSignal(true);
   const [isLoading, setIsLoading] = createSignal(false);
   const [error, setError] = createSignal(null);

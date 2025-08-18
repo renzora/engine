@@ -10,17 +10,11 @@ export class UpdatePluginClass {
 
   init() {
     console.log('🔄 Update Manager Plugin initialized');
-    
-    // Add update menu item to system menu
     this.addUpdateMenuItem();
-    
-    // Check for updates on startup (optional)
     this.checkForUpdatesOnStartup();
   }
 
   addUpdateMenuItem() {
-    // This would integrate with your existing menu system
-    // For now, just log that we're ready
     console.log('📋 Update menu item available');
   }
 
@@ -36,7 +30,6 @@ export class UpdatePluginClass {
         
         if (updateCheck.update_available) {
           console.log(`🆕 Update available: ${updateCheck.latest_version}`);
-          // You could show a notification here
         }
       }
     } catch (error) {
@@ -64,9 +57,7 @@ export class UpdatePluginClass {
   }
 
   openUpdateManager() {
-    // This would open the update manager UI
     console.log('🔄 Opening Update Manager...');
-    // You could emit an event or call a global function to show the update UI
   }
 
   async quickUpdateCheck() {

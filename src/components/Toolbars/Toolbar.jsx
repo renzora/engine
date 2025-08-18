@@ -1,0 +1,485 @@
+import { createSignal, createEffect, createMemo, For } from 'solid-js';
+import { Cube, Plus, Settings, Maximize } from '@/ui/icons';
+import { editorStore, editorActions } from '@/layout/stores/EditorStore';
+import { viewportStore } from '@/layout/stores/ViewportStore';
+import { propertyTabs, toolbarButtons } from '@/api/plugin';
+
+const defaultTools = [
+  { id: 'scene', icon: Cube, title: 'Scene' }
+];
+
+const defaultBottomTools = [
+  { id: 'settings', icon: Settings, title: 'Settings' }
+];
+
+const workflowTools = {
+  '3d-viewport': [
+    'scene'
+  ],
+  'daw-editor': [
+    'scene'
+  ],
+  'material-editor': [
+    'scene'
+  ],
+  'node-editor': [
+    'scene'
+  ],
+  'animation-editor': [
+    'scene'
+  ],
+  'text-editor': [
+    'scene'
+  ],
+  'video-editor': [
+    'scene'
+  ],
+  'photo-editor': [
+    'scene'
+  ],
+  'model-preview': [
+    'scene'
+  ],
+  'default': [
+    'scene'
+  ]
+};
+
+function Toolbar(props) {
+  const [tools, setTools] = createSignal(() => getOrderedTools());
+  
+  createEffect(() => {
+    propertyTabs();
+    toolbarButtons();
+    const newTools = getOrderedTools();
+    setTools(newTools);
+  });
+  const [bottomTools, setBottomTools] = createSignal(() => getOrderedBottomTools());
+  
+  const [dragState, setDragState] = createSignal({
+    isDragging: false,
+    draggedTool: null,
+    dragOverTool: null,
+    draggedFromBottom: false
+  });
+
+  const settings = createMemo(() => editorStore.settings);
+  const panelPosition = createMemo(() => settings().editor.panelPosition || 'right');
+  const isPanelOnLeft = createMemo(() => panelPosition() === 'left');
+  const shouldTooltipGoRight = createMemo(() => isPanelOnLeft());
+
+  const viewport = createMemo(() => viewportStore);
+  const ui = createMemo(() => editorStore.ui);
+  const getCurrentWorkflow = () => {
+    const viewportData = viewport();
+    if (!viewportData.tabs || viewportData.tabs.length === 0) {
+      return 'default';
+    }
+    const activeTabData = viewportData.tabs.find(tab => tab.id === viewportData.activeTabId);
+    return activeTabData?.type || 'default';
+  };
+  
+  function getOrderedTools() {
+    const currentWorkflow = getCurrentWorkflow();
+    const allowedToolIds = workflowTools[currentWorkflow] || workflowTools['default'];
+    const pluginTabs = Array.from(propertyTabs().values())
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map(tab => ({
+        id: tab.id,
+        icon: tab.icon,
+        title: tab.title
+      }));
+    
+    const pluginButtons = Array.from(toolbarButtons().values())
+      .filter(button => button.section === 'main')
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map(button => ({
+        id: button.id,
+        icon: button.icon,
+        title: button.title,
+        onClick: button.onClick,
+        isPluginButton: true
+      }));
+    
+    const allTools = [...defaultTools, ...pluginTabs, ...pluginButtons];
+    
+    const toolsMap = allTools.reduce((map, tool) => {
+      map[tool.id] = tool;
+      return map;
+    }, {});
+    
+    let currentTabOrder = ui().toolbarTabOrder || [];
+    const missingTools = allTools
+      .filter(tool => !currentTabOrder.includes(tool.id))
+      .map(tool => tool.id);
+    
+    if (missingTools.length > 0) {
+      currentTabOrder = [...currentTabOrder, ...missingTools];
+      editorActions.setToolbarTabOrder(currentTabOrder);
+    }
+    
+    if (!currentTabOrder || !Array.isArray(currentTabOrder)) {
+      return allTools.filter(tool => 
+        allowedToolIds.includes(tool.id) || 
+        propertyTabs().has(tool.id)
+      );
+    }
+    
+    const workflowFilteredTools = currentTabOrder
+      .filter(id => allowedToolIds.includes(id) || propertyTabs().has(id))
+      .map(id => toolsMap[id])
+      .filter(Boolean);
+    
+    return workflowFilteredTools;
+  }
+  
+  function getOrderedBottomTools() {
+    const pluginBottomButtons = Array.from(toolbarButtons().values())
+      .filter(button => button.section === 'bottom')
+      .sort((a, b) => (a.order || 0) - (b.order || 0))
+      .map(button => ({
+        id: button.id,
+        icon: button.icon,
+        title: button.title,
+        onClick: button.onClick,
+        isPluginButton: true
+      }));
+
+    const allBottomTools = [...defaultBottomTools, ...pluginBottomButtons];
+    
+    const toolbarBottomTabOrder = ui().toolbarBottomTabOrder;
+    if (!toolbarBottomTabOrder || !Array.isArray(toolbarBottomTabOrder)) {
+      return allBottomTools;
+    }
+    const toolsMap = allBottomTools.reduce((map, tool) => {
+      map[tool.id] = tool;
+      return map;
+    }, {});
+    
+    const orderedTools = toolbarBottomTabOrder.map(id => toolsMap[id]).filter(Boolean);
+    const existingIds = new Set(toolbarBottomTabOrder);
+    const newTools = allBottomTools.filter(tool => !existingIds.has(tool.id));
+    
+    return [...orderedTools, ...newTools];
+  }
+
+  createEffect(() => {
+    const orderedTools = getOrderedTools();
+    setTools(orderedTools);
+  });
+  
+  createEffect(() => {
+    toolbarButtons();
+    const newBottomTools = getOrderedBottomTools();
+    setBottomTools(newBottomTools);
+  });
+
+  const handleDragStart = (e, tool, isFromBottom = false) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', '');
+    
+    const dragElement = e.currentTarget.cloneNode(true);
+    dragElement.style.position = 'absolute';
+    dragElement.style.top = '-1000px';
+    dragElement.style.left = '-1000px';
+    dragElement.style.background = 'linear-gradient(to bottom, rgb(51 65 85 / 0.95), rgb(15 23 42 / 0.98))';
+    dragElement.style.border = '1px solid rgb(148 163 184 / 0.5)';
+    dragElement.style.borderRadius = '8px';
+    dragElement.style.padding = '8px';
+    dragElement.style.boxShadow = '0 25px 50px -12px rgb(0 0 0 / 0.5)';
+    dragElement.style.transform = 'scale(1.1)';
+    dragElement.style.pointerEvents = 'none';
+    dragElement.style.zIndex = '9999';
+    
+    const icon = dragElement.querySelector('svg');
+    if (icon) {
+      icon.style.color = '#e2e8f0';
+    }
+    
+    document.body.appendChild(dragElement);
+    e.dataTransfer.setDragImage(dragElement, 24, 24);
+    
+    setTimeout(() => {
+      if (document.body.contains(dragElement)) {
+        document.body.removeChild(dragElement);
+      }
+    }, 100);
+    
+    setDragState({
+      isDragging: true,
+      draggedTool: tool,
+      dragOverTool: null,
+      draggedFromBottom: isFromBottom
+    });
+  };
+
+  const handleDragOver = (e, tool, isBottomArea = false) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    if (dragState().draggedTool && dragState().draggedTool.id !== tool.id) {
+      setDragState(prev => ({ ...prev, dragOverTool: tool }));
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const { clientX, clientY } = e;
+    
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+      setDragState(prev => ({ ...prev, dragOverTool: null }));
+    }
+  };
+
+  const handleDrop = (e, dropTool, isBottomArea = false) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const currentDragState = dragState();
+    if (!currentDragState.draggedTool || currentDragState.draggedTool.id === dropTool.id) {
+      setDragState({
+        isDragging: false,
+        draggedTool: null,
+        dragOverTool: null,
+        draggedFromBottom: false
+      });
+      return;
+    }
+
+    const sourceArray = currentDragState.draggedFromBottom ? bottomTools() : tools();
+    const targetArray = isBottomArea ? bottomTools() : tools();
+    const setSourceArray = currentDragState.draggedFromBottom ? setBottomTools : setTools;
+    const setTargetArray = isBottomArea ? setBottomTools : setTools;
+
+    if (currentDragState.draggedFromBottom !== isBottomArea) {
+      const newSourceArray = sourceArray.filter(tool => tool.id !== currentDragState.draggedTool.id);
+      setSourceArray(newSourceArray);
+      
+      const dropIndex = targetArray.findIndex(tool => tool.id === dropTool.id);
+      const newTargetArray = [...targetArray];
+      newTargetArray.splice(dropIndex, 0, currentDragState.draggedTool);
+      setTargetArray(newTargetArray);
+      
+      if (currentDragState.draggedFromBottom) {
+        editorActions.setToolbarBottomTabOrder(newSourceArray.map(tool => tool.id));
+        editorActions.setToolbarTabOrder(newTargetArray.map(tool => tool.id));
+      } else {
+        editorActions.setToolbarTabOrder(newSourceArray.map(tool => tool.id));
+        editorActions.setToolbarBottomTabOrder(newTargetArray.map(tool => tool.id));
+      }
+    } else {
+      const draggedIndex = sourceArray.findIndex(tool => tool.id === currentDragState.draggedTool.id);
+      const dropIndex = sourceArray.findIndex(tool => tool.id === dropTool.id);
+      
+      if (draggedIndex !== -1 && dropIndex !== -1 && draggedIndex !== dropIndex) {
+        const newArray = [...sourceArray];
+        const [removed] = newArray.splice(draggedIndex, 1);
+        newArray.splice(dropIndex, 0, removed);
+        setSourceArray(newArray);
+        
+        const newOrder = newArray.map(tool => tool.id);
+        if (isBottomArea) {
+          editorActions.setToolbarBottomTabOrder(newOrder);
+        } else {
+          editorActions.setToolbarTabOrder(newOrder);
+        }
+      }
+    }
+
+    setDragState({
+      isDragging: false,
+      draggedTool: null,
+      dragOverTool: null,
+      draggedFromBottom: false
+    });
+  };
+
+  const handleDragEnd = () => {
+    setDragState({
+      isDragging: false,
+      draggedTool: null,
+      dragOverTool: null,
+      draggedFromBottom: false
+    });
+  };
+
+  const handleToolClick = (tool) => {
+    if (!dragState().isDragging) {
+      if (tool.isPluginButton && tool.onClick) {
+        tool.onClick();
+        return;
+      }
+      
+      const currentWorkflow = getCurrentWorkflow();
+      
+      if (!props.scenePanelOpen) {
+        props.onScenePanelToggle();
+      }
+      props.onToolSelect(tool.id);
+    }
+  };
+
+
+  return (
+    <div class="relative w-12 h-full bg-gradient-to-b from-slate-800/95 to-slate-900/98 backdrop-blur-md border-l border-slate-700/80 shadow-2xl shadow-black/30 flex flex-col py-2 pointer-events-auto no-select">
+      <div class="flex flex-col space-y-1 px-1">
+        <For each={tools()}>
+          {(tool) => {
+            const isDragged = () => dragState().draggedTool?.id === tool.id;
+            const isDragOver = () => dragState().dragOverTool?.id === tool.id;
+            
+            return (
+              <button
+                draggable
+                onClick={() => handleToolClick(tool)}
+                onDragStart={(e) => handleDragStart(e, tool, false)}
+                onDragOver={(e) => handleDragOver(e, tool, false)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, tool, false)}
+                onDragEnd={handleDragEnd}
+                class={`p-2 rounded-lg transition-all duration-200 group relative select-none ${
+                  isDragged() 
+                    ? 'opacity-50 cursor-grabbing scale-95' 
+                    : props.selectedTool === tool.id 
+                      ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-600/40 scale-105 cursor-grab' 
+                      : 'text-slate-400 hover:text-white hover:bg-gradient-to-b hover:from-slate-700/80 hover:to-slate-800/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
+                }`}
+                title={tool.title}
+              >
+                <tool.icon class="w-6 h-6" />
+                
+                {isDragOver() && (
+                  <div class="absolute inset-x-0 top-0 h-0.5 bg-blue-500 rounded-full"></div>
+                )}
+                
+                {!dragState().isDragging && (
+                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-slate-900/95 backdrop-blur-sm border border-slate-600 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
+                       style={{ 'z-index': 999999 }}>
+                    {tool.title}
+                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-slate-900' : 'border-l-4 border-l-slate-900'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
+                  </div>
+                )}
+              </button>
+            );
+          }}
+        </For>
+      </div>
+      
+      <div 
+        class="flex-1 flex items-center justify-center cursor-col-resize"
+        onMouseDown={(e) => {
+          if (!props.panelResize) return;
+          e.preventDefault();
+          props.panelResize.handleRightResizeStart();
+          
+          const handleMouseMove = (e) => {
+            e.preventDefault();
+            props.panelResize.handleRightResizeMove(e, { 
+              isScenePanelOpen: typeof props.scenePanelOpen === 'function' ? props.scenePanelOpen : () => props.scenePanelOpen,
+              isLeftPanel: props.isLeftPanel,
+              selectedRightTool: props.selectedTool
+            });
+          };
+
+          const handleMouseUp = (e) => {
+            e.preventDefault();
+            props.panelResize.handleRightResizeEnd();
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+          };
+
+          document.addEventListener('mousemove', handleMouseMove);
+          document.addEventListener('mouseup', handleMouseUp);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (dragState().draggedTool) {
+            e.dataTransfer.dropEffect = 'move';
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          const currentDragState = dragState();
+          if (currentDragState.draggedTool) {
+            const sourceArray = currentDragState.draggedFromBottom ? bottomTools() : tools();
+            const setSourceArray = currentDragState.draggedFromBottom ? setBottomTools : setTools;
+            const targetArray = currentDragState.draggedFromBottom ? tools() : bottomTools();
+            const setTargetArray = currentDragState.draggedFromBottom ? setTools : setBottomTools;
+            const newSourceArray = sourceArray.filter(tool => tool.id !== currentDragState.draggedTool.id);
+            setSourceArray(newSourceArray);
+            
+            const newTargetArray = [...targetArray, currentDragState.draggedTool];
+            setTargetArray(newTargetArray);
+            
+            if (currentDragState.draggedFromBottom) {
+              editorActions.setToolbarBottomTabOrder(newSourceArray.map(tool => tool.id));
+              editorActions.setToolbarTabOrder(newTargetArray.map(tool => tool.id));
+            } else {
+              editorActions.setToolbarTabOrder(newSourceArray.map(tool => tool.id));
+              editorActions.setToolbarBottomTabOrder(newTargetArray.map(tool => tool.id));
+            }
+            
+            setDragState({
+              isDragging: false,
+              draggedTool: null,
+              dragOverTool: null,
+              draggedFromBottom: false
+            });
+          }
+        }}
+      >
+        {dragState().isDragging && (
+          <div class="w-8 h-0.5 bg-blue-500/50 rounded-full opacity-50 transition-opacity">
+          </div>
+        )}
+      </div>
+      
+      <div class="flex flex-col space-y-1 px-1">
+        <For each={bottomTools()}>
+          {(tool) => {
+            const isDragged = () => dragState().draggedTool?.id === tool.id;
+            const isDragOver = () => dragState().dragOverTool?.id === tool.id;
+            
+            return (
+              <button
+                draggable
+                onClick={() => handleToolClick(tool)}
+                onDragStart={(e) => handleDragStart(e, tool, true)}
+                onDragOver={(e) => handleDragOver(e, tool, true)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, tool, true)}
+                onDragEnd={handleDragEnd}
+                class={`p-2 rounded-lg transition-all duration-200 group relative select-none ${
+                  isDragged() 
+                    ? 'opacity-50 cursor-grabbing scale-95' 
+                    : props.selectedTool === tool.id
+                      ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-600/40 scale-105 cursor-grab' 
+                      : 'text-slate-400 hover:text-white hover:bg-gradient-to-b hover:from-slate-700/80 hover:to-slate-800/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
+                }`}
+                title={tool.title}
+              >
+                <tool.icon class="w-6 h-6" />
+                
+                {isDragOver() && (
+                  <div class="absolute inset-x-0 top-0 h-0.5 bg-blue-500 rounded-full"></div>
+                )}
+                
+                {!dragState().isDragging && (
+                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-slate-900/95 backdrop-blur-sm border border-slate-600 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
+                       style={{ 'z-index': 999999 }}>
+                    {tool.title}
+                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-slate-900' : 'border-l-4 border-l-slate-900'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
+                  </div>
+                )}
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </div>
+  );
+}
+
+export default Toolbar;

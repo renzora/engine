@@ -1,6 +1,6 @@
 import { createEffect, onCleanup } from 'solid-js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import { viewportStore } from '@/plugins/editor/stores/ViewportStore';
+import { viewportStore } from '@/layout/stores/ViewportStore';
 
 export function useCameraController(camera, canvas, scene) {
   const cameraSettings = () => viewportStore.camera;
@@ -16,7 +16,6 @@ export function useCameraController(camera, canvas, scene) {
   let currentFov = Math.PI / 4;
   let targetFov = Math.PI / 4;
   let fovAnimationId = null;
-  // Babylon modules are now directly imported
   
   const cameraSpeed = () => cameraSettings()?.speed || 5;
   const mouseSensitivity = () => cameraSettings()?.mouseSensitivity || 0.002;
@@ -31,37 +30,20 @@ export function useCameraController(camera, canvas, scene) {
   const applyKeyboardMovement = () => {
     if (!camera()) return;
 
+    const speedMultiplier = keysPressed.has('shift') ? 3.0 : keysPressed.has('control') ? 0.3 : 1.0;
+    const speed = moveSpeed() * speedMultiplier;
     const forward = camera().getForwardRay().direction.normalize();
-    const right = Vector3.Cross(Vector3.Up(), forward).normalize()
-    const fovSpeedMultiplier = camera().fov / (Math.PI / 4);
-    const precisionMultiplier = keysPressed.has('control') ? 0.2 : 1.0;
-    const adjustedMoveSpeed = moveSpeed() * fovSpeedMultiplier * precisionMultiplier;
+    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
+    const up = Vector3.Up();
+    
     let moveVector = Vector3.Zero();
 
-    if (keysPressed.has('w')) moveVector = moveVector.add(forward.scale(adjustedMoveSpeed));
-    if (keysPressed.has('s')) moveVector = moveVector.add(forward.scale(-adjustedMoveSpeed));
-    if (keysPressed.has('a')) moveVector = moveVector.add(right.scale(-adjustedMoveSpeed));
-    if (keysPressed.has('d')) moveVector = moveVector.add(right.scale(adjustedMoveSpeed));
-    if (keysPressed.has('e')) moveVector = moveVector.add(Vector3.Up().scale(adjustedMoveSpeed));
-    if (keysPressed.has('q')) moveVector = moveVector.add(Vector3.Up().scale(-adjustedMoveSpeed));
-
-    if (keysPressed.has('c')) {
-      const newFov = Math.min(Math.PI * 0.8, targetFov + fovSpeed);
-      if (newFov !== targetFov) {
-        targetFov = newFov;
-        camera().fov = targetFov;
-        currentFov = targetFov;
-      }
-    }
-    if (keysPressed.has('z')) {
-      const newFov = Math.max(0.1, targetFov - fovSpeed);
-      if (newFov !== targetFov) {
-        targetFov = newFov;
-        camera().fov = targetFov;
-        currentFov = targetFov;
-      }
-    }
-
+    if (keysPressed.has('w')) moveVector = moveVector.add(forward.scale(speed));
+    if (keysPressed.has('s')) moveVector = moveVector.add(forward.scale(-speed));
+    if (keysPressed.has('a')) moveVector = moveVector.add(right.scale(-speed));
+    if (keysPressed.has('d')) moveVector = moveVector.add(right.scale(speed));
+    if (keysPressed.has('e')) moveVector = moveVector.add(up.scale(speed));
+    if (keysPressed.has('q')) moveVector = moveVector.add(up.scale(-speed));
     if (moveVector.length() > 0) {
       camera().position = camera().position.add(moveVector);
     }
@@ -222,6 +204,17 @@ export function useCameraController(camera, canvas, scene) {
 
     console.log('Camera controller: Setting up event listeners on canvas:', canvas());
     
+    if (camera()) {
+      try {
+        if (typeof camera().attachControls === 'function') {
+          camera().attachControls(canvas());
+          console.log('🎮 UniversalCamera controls attached to canvas');
+        }
+      } catch (error) {
+        console.warn('🎮 Could not attach camera controls:', error);
+      }
+    }
+    
     const handleContextMenu = (e) => e.preventDefault();
     canvas().addEventListener('contextmenu', handleContextMenu);
     canvas().addEventListener('pointerdown', handleMouseDown);
@@ -233,6 +226,18 @@ export function useCameraController(camera, canvas, scene) {
 
     onCleanup(() => {
       console.log('Camera controller: Cleaning up event listeners from canvas:', canvas());
+      
+      if (camera()) {
+        try {
+          if (typeof camera().detachControls === 'function') {
+            camera().detachControls();
+            console.log('🎮 Camera controls detached');
+          }
+        } catch (error) {
+          console.warn('🎮 Could not detach camera controls:', error);
+        }
+      }
+      
       canvas().removeEventListener('contextmenu', handleContextMenu);
       canvas().removeEventListener('pointerdown', handleMouseDown);
       canvas().removeEventListener('pointermove', handleMouseMove);
@@ -258,7 +263,7 @@ export function useCameraController(camera, canvas, scene) {
 
   createEffect(() => {
     const interval = setInterval(() => {
-      if (isLeftMouseDown || isMiddleMouseDown || isRightMouseDown) {
+      if (keysPressed.size > 0) {
         applyKeyboardMovement();
       }
     }, 16);

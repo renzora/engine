@@ -2,8 +2,7 @@ import { createEffect, onCleanup } from 'solid-js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Animation } from '@babylonjs/core/Animations/animation'
 import { Ray } from '@babylonjs/core/Culling/ray'
-import { editorActions } from '@/plugins/editor/stores/EditorStore'
-import { sceneActions } from '../store'
+import { editorActions } from '@/layout/stores/EditorStore'
 
 export const useKeyboardControls = (sceneInstance, cameraController) => {
   let copiedObjectRef = null
@@ -199,13 +198,13 @@ export const useKeyboardControls = (sceneInstance, cameraController) => {
       
       console.log(`Snapped ${targetObject.name} to ${hitDirection} surface at distance: ${closestDistance.toFixed(2)}`)
       editorActions.addConsoleMessage(`Snapped ${targetObject.name} to ${hitDirection} surface`, 'success')
-      sceneActions.refreshSceneData()
+      // CLEAN SCENE: No store refresh needed
     } else {
       const heightDifference = objectBottom - targetObject.position.y
       targetObject.position.y = -heightDifference
       console.log(`Snapped ${targetObject.name} to default ground level`)
       editorActions.addConsoleMessage(`Snapped ${targetObject.name} to ground level`, 'success')
-      sceneActions.refreshSceneData()
+      // CLEAN SCENE: No store refresh needed
     }
   }
   
@@ -245,7 +244,7 @@ export const useKeyboardControls = (sceneInstance, cameraController) => {
       } else if (e.key === 'Delete' && scene) {
         const attachedMesh = scene._gizmoManager?.attachedMesh
         
-        if (attachedMesh && attachedMesh.name !== 'ground' && attachedMesh.name !== 'skybox') {
+        if (attachedMesh && attachedMesh.name !== '__grid_container__' && !attachedMesh.name.startsWith('__grid_')) {
           attachedMesh.dispose()
           
           scene._gizmoManager.attachToMesh(null)
@@ -254,8 +253,8 @@ export const useKeyboardControls = (sceneInstance, cameraController) => {
           }
           
           editorActions.selectEntity(null)
-          sceneActions.selectSceneObject(null)
-          sceneActions.refreshSceneData()
+          // CLEAN SCENE: No store selection needed
+          // CLEAN SCENE: No store refresh needed
           
           console.log('Deleted object:', attachedMesh.name)
           e.preventDefault()
@@ -327,7 +326,7 @@ export const useKeyboardControls = (sceneInstance, cameraController) => {
                 newObject.scaling = copiedData.scaling.clone()
               }
               
-              sceneActions.refreshSceneData()
+              // CLEAN SCENE: No store refresh needed
               
               console.log('Pasted object:', newObject.name)
             }
@@ -340,7 +339,7 @@ export const useKeyboardControls = (sceneInstance, cameraController) => {
       } else if (e.key === 'End' && scene) {
         const attachedMesh = scene._gizmoManager?.attachedMesh
         
-        if (attachedMesh && attachedMesh.name !== 'ground' && attachedMesh.name !== 'skybox') {
+        if (attachedMesh && attachedMesh.name !== '__grid_container__' && !attachedMesh.name.startsWith('__grid_')) {
           snapObjectToGround(attachedMesh, scene)
           e.preventDefault()
         }

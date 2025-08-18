@@ -1,18 +1,16 @@
 import { createSignal, createEffect, onCleanup } from 'solid-js';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
-import { editorStore } from '@/plugins/editor/stores/EditorStore';
-import { viewportStore } from '@/plugins/editor/stores/ViewportStore';
-import { sceneActions, babylonScene } from '../store';
+import { editorStore } from '@/layout/stores/EditorStore';
+import { viewportStore } from '@/layout/stores/ViewportStore';
 import { useCameraController } from '../CameraController';
-import { useGrid } from '../Grid';
 import { useEngineManager } from '../hooks/useEngineManager';
 import { useSceneManager } from '../hooks/useSceneManager';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { useAssetLoader } from '../hooks/useAssetLoader';
 import { useViewportInteraction } from '../hooks/useViewportInteraction';
 import Stats from 'stats.js';
-import LoadingTooltip from '@/plugins/editor/ui/LoadingTooltip';
-import ModelImportDialog from '@/plugins/editor/ui/ModelImportDialog';
+import { LoadingTooltip } from '@/ui';
+import ModelImportDialog from '@/../components/ModelImportDialog.jsx';
 import { useEngineReady } from '../index';
 
 function ViewportCanvas(props) {
@@ -41,7 +39,7 @@ function ViewportCanvas(props) {
     sceneInstance
   );
   
-  useGrid(sceneInstance());
+  // DISABLED FOR CLEAN SCENE: useGrid(sceneInstance);
   useKeyboardControls(sceneInstance, cameraController);
   
   const { loadingTooltip, handleDragOver, handleDrop } = useAssetLoader(sceneInstance, canvasRef);
@@ -62,7 +60,7 @@ const initializeViewport = async () => {
     }
 
     const scene = await createScene(engine);
-    sceneActions.updateBabylonScene(scene);
+    // CLEAN SCENE: No store updates needed
     scene._camera.attachControl(canvas, false);
 
     await setupPointerEvents(scene);
@@ -142,7 +140,7 @@ const initializeViewport = async () => {
         disposeScene();
         disposeEngine();
         
-        sceneActions.updateBabylonScene(null);
+        // CLEAN SCENE: No store updates needed
       };
     } catch (error) {
       console.error('Failed to initialize viewport:', error);

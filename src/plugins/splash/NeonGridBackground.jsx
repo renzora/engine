@@ -18,16 +18,16 @@ export default function NeonGridBackground() {
         speed: 0.3 + Math.random() * 0.7,
         direction: Math.random() * 360,
         color: [
-          '#00ffff', // electric cyan
-          '#ff00ff', // electric magenta
-          '#ffff00', // electric yellow
-          '#ff3300', // electric red
-          '#00ff66', // electric green
-          '#6600ff', // electric purple
-          '#ff0099', // electric pink
-          '#99ff00', // electric lime
-          '#ff6600', // electric orange
-          '#0099ff'  // electric blue
+          '#00ffff',
+          '#ff00ff',
+          '#ffff00',
+          '#ff3300',
+          '#00ff66',
+          '#6600ff',
+          '#ff0099',
+          '#99ff00',
+          '#ff6600',
+          '#0099ff'
         ][i % 10],
         opacity: 0.6 + Math.random() * 0.4,
         rotation: 0,
@@ -43,7 +43,6 @@ export default function NeonGridBackground() {
       let newX = shape.x + Math.cos(shape.direction * Math.PI / 180) * shape.speed;
       let newY = shape.y + Math.sin(shape.direction * Math.PI / 180) * shape.speed;
       
-      // Bounce off edges
       if (newX < -5 || newX > 105) {
         shape.direction = 180 - shape.direction;
         newX = Math.max(-5, Math.min(105, newX));
@@ -148,7 +147,6 @@ export default function NeonGridBackground() {
       class="absolute inset-0 w-full h-full overflow-hidden"
       style={{ 'z-index': 1 }}
     >
-      {/* Animated Grid Background */}
       <div 
         class="absolute inset-0 w-full h-full"
         style={{
@@ -168,7 +166,6 @@ export default function NeonGridBackground() {
         }}
       />
       
-      {/* Grid Lines with Glow */}
       <div 
         class="absolute inset-0 w-full h-full"
         style={{
@@ -183,12 +180,10 @@ export default function NeonGridBackground() {
         }}
       />
 
-      {/* Moving Shapes */}
       <div class="absolute inset-0 w-full h-full">
         {shapes().map(renderShape)}
       </div>
 
-      {/* Simplified overlay gradient */}
       <div 
         class="absolute inset-0 w-full h-full"
         style={{
@@ -199,8 +194,6 @@ export default function NeonGridBackground() {
           animation: 'overlayMove 20s linear infinite'
         }}
       />
-      
-      {/* No vignette for maximum clarity */}
 
       <style>{`
         @keyframes gridMove {

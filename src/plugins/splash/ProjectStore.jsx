@@ -1,18 +1,15 @@
 import { createSignal, createContext, useContext } from 'solid-js';
 
-// Project Store Context
 const ProjectContext = createContext();
 
-export function ProjectProvider(props) {
+export function Project(props) {
   const [currentProject, setCurrentProject] = createSignal(null);
   const [isProjectLoaded, setIsProjectLoaded] = createSignal(false);
 
   const projectStore = {
-    // State
     currentProject,
     isProjectLoaded,
     
-    // Actions
     setCurrentProject: (project) => {
       setCurrentProject(project);
       setIsProjectLoaded(true);
