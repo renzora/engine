@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 const spinnerSizes = {
   sm: 'w-4 h-4',
   md: 'w-6 h-6', 
@@ -12,12 +10,12 @@ export default function Spinner({
   class: className = '',
   ...props 
 }) {
-  const { themed, combine } = useThemedClasses();
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
   
-  const classes = combine(
+  const classes = combineClasses(
     spinnerSizes[size],
     'border-2 border-t-transparent rounded-full animate-spin',
-    `border-[rgb(var(--primary))]`,
+    'border-blue-500',
     className
   );
   

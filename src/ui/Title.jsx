@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 const titleSizes = {
   xs: 'text-lg',
   sm: 'text-xl', 
@@ -24,13 +22,13 @@ export default function Title({
   class: className = '',
   ...props 
 }) {
-  const { themed, combine } = useThemedClasses();
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
   
-  const baseClasses = combine(
+  const baseClasses = combineClasses(
     titleSizes[size],
     titleWeights[weight],
     'tracking-tight',
-    gradient ? 'text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400' : themed.text.primary,
+    gradient ? 'text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400' : 'text-gray-100',
     className
   );
   

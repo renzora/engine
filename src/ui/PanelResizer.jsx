@@ -46,8 +46,8 @@ const PanelResizer = ({
     <div
       class={`absolute pointer-events-auto z-50 ${cursorClass} ${dimensionClass} ${
         resizing 
-          ? 'bg-blue-500/75 opacity-100 transition-none' 
-          : 'bg-slate-700/30 opacity-30 hover:opacity-100 hover:bg-blue-500/75 transition-all duration-200'
+          ? 'bg-primary/75 opacity-100 transition-none' 
+          : 'bg-base-300/30 opacity-30 hover:opacity-100 hover:bg-primary/75 transition-all duration-200'
       } ${className}`}
       style={position}
       onMouseDown={handleMouseDown}

@@ -3,6 +3,7 @@ import { usePluginAPI } from '@/api/plugin';
 import { Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder } from '@/ui/icons';
 import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
 import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
+import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
 import Scene from './Scene.jsx';
 import SettingsComponent from './Settings.jsx';
@@ -55,14 +56,12 @@ export default function EditorPage() {
       dropdownWidth: 256
     });
     
-    api.button('settings-button', {
-      title: 'Settings',
-      icon: SettingsIcon,
+    api.button('theme-switcher', {
+      title: 'Theme',
       section: 'right',
       order: 30,
-      onClick: () => {
-        console.log('[EditorPage] Settings button clicked');
-      }
+      isCustomComponent: true,
+      customComponent: ThemeSwitcher
     });
     
     api.button('fullscreen-button', {

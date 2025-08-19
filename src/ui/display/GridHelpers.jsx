@@ -39,8 +39,8 @@ export default function GridHelpers() {
       <button
         class={`pl-2 pr-1 py-1 text-xs rounded transition-colors cursor-pointer ${
           isExpanded()
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-400 hover:text-gray-200 hover:bg-slate-800'
+            ? 'bg-primary text-primary-content'
+            : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
         }`}
         onClick={() => setIsExpanded(!isExpanded())}
         title="Grid Settings"
@@ -58,25 +58,25 @@ export default function GridHelpers() {
           </svg>
         </div>
         
-        <div class="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+        <div class="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-base-300/95 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
           Grid Settings
-          <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-gray-900/95" />
+          <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-base-300/95" />
         </div>
       </button>
       
       {isExpanded() && (
-        <div class="absolute top-full right-0 mt-2 w-72 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg shadow-xl space-y-4 text-white text-xs pointer-events-auto z-50 p-4">
+        <div class="absolute top-full right-0 mt-2 w-72 bg-base-300/95 backdrop-blur-sm border border-base-300 rounded-lg shadow-xl space-y-4 text-base-content text-xs pointer-events-auto z-50 p-4">
           <div>
-            <label class="block font-medium text-gray-300 mb-2">
+            <label class="block font-medium text-base-content/80 mb-2">
               Grid Settings
             </label>
             <div class="space-y-3">
-              <div class="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700">
-                <label class="text-xs font-medium text-gray-300">Enable Grid</label>
+              <div class="flex items-center justify-between p-2 bg-base-200/50 rounded border border-base-300">
+                <label class="text-xs font-medium text-base-content/70">Enable Grid</label>
                 <button
                   onClick={() => updateGridSettings({ enabled: !gridSettings().enabled })}
                   class={`relative inline-flex h-5 w-9 items-center rounded-full transition-all duration-200 ${
-                    gridSettings().enabled ? 'bg-blue-500 shadow-lg shadow-blue-500/30' : 'bg-gray-600'
+                    gridSettings().enabled ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-base-content/40'
                   }`}
                 >
                   <span
@@ -88,13 +88,13 @@ export default function GridHelpers() {
               </div>
 
               {gridSettings().enabled && (
-                <div class="space-y-3 pt-2 border-t border-gray-700">
+                <div class="space-y-3 pt-2 border-t border-base-300">
                   <div>
-                    <label class="block text-xs text-gray-400 mb-1">Units</label>
+                    <label class="block text-xs text-base-content/60 mb-1">Units</label>
                     <select
                       value={gridSettings().unit || 'meters'}
                       onChange={(e) => updateGridSettings({ unit: e.target.value })}
-                      class="w-full bg-gray-800 border border-gray-600 text-white text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                     >
                       <option value="meters">Meters (m)</option>
                       <option value="centimeters">Centimeters (cm)</option>
@@ -107,7 +107,7 @@ export default function GridHelpers() {
                   <div class="grid grid-cols-2 gap-2">
                     {!gridSettings().infiniteGrid && (
                       <div>
-                        <label class="block text-xs text-gray-400 mb-1">Size ({gridSettings().unit || 'meters'})</label>
+                        <label class="block text-xs text-base-content/60 mb-1">Size ({gridSettings().unit || 'meters'})</label>
                         <input
                           type="number"
                           step={gridSettings().unit === 'millimeters' ? "100" : gridSettings().unit === 'centimeters' ? "10" : gridSettings().unit === 'inches' ? "12" : "1"}
@@ -115,12 +115,12 @@ export default function GridHelpers() {
                           max={gridSettings().unit === 'millimeters' ? "50000" : gridSettings().unit === 'centimeters' ? "5000" : gridSettings().unit === 'inches' ? "600" : "100"}
                           value={gridSettings().size}
                           onChange={(e) => updateGridSettings({ size: parseInt(e.target.value) || (gridSettings().unit === 'millimeters' ? 20000 : gridSettings().unit === 'centimeters' ? 2000 : gridSettings().unit === 'inches' ? 240 : 20) })}
-                          class="w-full bg-gray-800 border border-gray-600 text-white text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                         />
                       </div>
                     )}
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Cell Size ({gridSettings().unit || 'meters'})</label>
+                      <label class="block text-xs text-base-content/60 mb-1">Cell Size ({gridSettings().unit || 'meters'})</label>
                       <input
                         type="number"
                         step={gridSettings().unit === 'millimeters' ? "10" : gridSettings().unit === 'centimeters' ? "1" : gridSettings().unit === 'inches' ? "1" : "0.1"}
@@ -128,16 +128,16 @@ export default function GridHelpers() {
                         max={gridSettings().unit === 'millimeters' ? "5000" : gridSettings().unit === 'centimeters' ? "500" : gridSettings().unit === 'inches' ? "60" : "10"}
                         value={gridSettings().cellSize}
                         onChange={(e) => updateGridSettings({ cellSize: parseFloat(e.target.value) || (gridSettings().unit === 'millimeters' ? 1000 : gridSettings().unit === 'centimeters' ? 100 : gridSettings().unit === 'inches' ? 12 : 1) })}
-                        class="w-full bg-gray-800 border border-gray-600 text-white text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label class="block text-xs text-gray-400 mb-1">Position</label>
+                    <label class="block text-xs text-base-content/60 mb-1">Position</label>
                     <div class="grid grid-cols-3 gap-1">
                       <div class="relative">
-                        <span class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-gray-300 pointer-events-none font-medium bg-gray-700 border-t border-l border-b border-r border-gray-600 rounded-l">X</span>
+                        <span class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium bg-base-300 border-t border-l border-b border-r border-base-300 rounded-l">X</span>
                         <input
                           type="number"
                           step="0.1"
@@ -147,11 +147,11 @@ export default function GridHelpers() {
                             newPos[0] = parseFloat(e.target.value) || 0;
                             updateGridSettings({ position: newPos });
                           }}
-                          class="w-full bg-gray-800 border border-gray-600 text-white text-xs p-1.5 pl-7 pr-1.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                          class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 pl-7 pr-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary text-center"
                         />
                       </div>
                       <div class="relative">
-                        <span class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-gray-300 pointer-events-none font-medium bg-gray-700 border-t border-l border-b border-r border-gray-600 rounded-l">Y</span>
+                        <span class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium bg-base-300 border-t border-l border-b border-r border-base-300 rounded-l">Y</span>
                         <input
                           type="number"
                           step="0.1"
@@ -161,11 +161,11 @@ export default function GridHelpers() {
                             newPos[1] = parseFloat(e.target.value) || 0;
                             updateGridSettings({ position: newPos });
                           }}
-                          class="w-full bg-gray-800 border border-gray-600 text-white text-xs p-1.5 pl-7 pr-1.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                          class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 pl-7 pr-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary text-center"
                         />
                       </div>
                       <div class="relative">
-                        <span class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-gray-300 pointer-events-none font-medium bg-gray-700 border-t border-l border-b border-r border-gray-600 rounded-l">Z</span>
+                        <span class="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium bg-base-300 border-t border-l border-b border-r border-base-300 rounded-l">Z</span>
                         <input
                           type="number"
                           step="0.1"
@@ -175,7 +175,7 @@ export default function GridHelpers() {
                             newPos[2] = parseFloat(e.target.value) || 0;
                             updateGridSettings({ position: newPos });
                           }}
-                          class="w-full bg-gray-800 border border-gray-600 text-white text-xs p-1.5 pl-7 pr-1.5 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 text-center"
+                          class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 pl-7 pr-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary text-center"
                         />
                       </div>
                     </div>
@@ -183,42 +183,42 @@ export default function GridHelpers() {
 
                   <div class="grid grid-cols-2 gap-2">
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Cell Color</label>
+                      <label class="block text-xs text-base-content/60 mb-1">Cell Color</label>
                       <div class="flex items-center gap-1">
                         <input
                           type="color"
                           value={gridSettings().cellColor}
                           onChange={(e) => updateGridSettings({ cellColor: e.target.value })}
-                          class="w-6 h-6 rounded border border-gray-600 bg-gray-800 cursor-pointer"
+                          class="w-6 h-6 rounded border border-base-300 bg-base-200 cursor-pointer"
                         />
-                        <div class="flex-1 bg-gray-800 border border-gray-600 rounded px-1.5 py-1">
-                          <div class="text-xs text-gray-300">{(gridSettings().cellColor || '#4a5568').toUpperCase()}</div>
+                        <div class="flex-1 bg-base-200 border border-base-300 rounded px-1.5 py-1">
+                          <div class="text-xs text-base-content/70">{(gridSettings().cellColor || '#4a5568').toUpperCase()}</div>
                         </div>
                       </div>
                     </div>
                     <div>
-                      <label class="block text-xs text-gray-400 mb-1">Section Color</label>
+                      <label class="block text-xs text-base-content/60 mb-1">Section Color</label>
                       <div class="flex items-center gap-1">
                         <input
                           type="color"
                           value={gridSettings().sectionColor}
                           onChange={(e) => updateGridSettings({ sectionColor: e.target.value })}
-                          class="w-6 h-6 rounded border border-gray-600 bg-gray-800 cursor-pointer"
+                          class="w-6 h-6 rounded border border-base-300 bg-base-200 cursor-pointer"
                         />
-                        <div class="flex-1 bg-gray-800 border border-gray-600 rounded px-1.5 py-1">
-                          <div class="text-xs text-gray-300">{(gridSettings().sectionColor || '#2d3748').toUpperCase()}</div>
+                        <div class="flex-1 bg-base-200 border border-base-300 rounded px-1.5 py-1">
+                          <div class="text-xs text-base-content/70">{(gridSettings().sectionColor || '#2d3748').toUpperCase()}</div>
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div class="grid grid-cols-2 gap-2">
-                    <div class="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700">
-                      <label class="text-xs font-medium text-gray-300">Infinite</label>
+                    <div class="flex items-center justify-between p-2 bg-base-200/50 rounded border border-base-300">
+                      <label class="text-xs font-medium text-base-content/70">Infinite</label>
                       <button
                         onClick={() => updateGridSettings({ infiniteGrid: !gridSettings().infiniteGrid })}
                         class={`relative inline-flex h-4 w-8 items-center rounded-full transition-all duration-200 ${
-                          gridSettings().infiniteGrid ? 'bg-blue-500 shadow-lg shadow-blue-500/30' : 'bg-gray-600'
+                          gridSettings().infiniteGrid ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-base-content/40'
                         }`}
                       >
                         <span
@@ -229,12 +229,12 @@ export default function GridHelpers() {
                       </button>
                     </div>
 
-                    <div class="flex items-center justify-between p-2 bg-gray-800/50 rounded border border-gray-700">
-                      <label class="text-xs font-medium text-gray-300">Snapping</label>
+                    <div class="flex items-center justify-between p-2 bg-base-200/50 rounded border border-base-300">
+                      <label class="text-xs font-medium text-base-content/70">Snapping</label>
                       <button
                         onClick={() => setGridSnapping(!gridSnapping())}
                         class={`relative inline-flex h-4 w-8 items-center rounded-full transition-all duration-200 ${
-                          gridSnapping() ? 'bg-yellow-500 shadow-lg shadow-yellow-500/30' : 'bg-gray-600'
+                          gridSnapping() ? 'bg-warning shadow-lg shadow-warning/30' : 'bg-base-content/40'
                         }`}
                       >
                         <span

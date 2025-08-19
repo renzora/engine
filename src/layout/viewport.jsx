@@ -94,22 +94,22 @@ const Viewport = () => {
           // Special handling for splash viewport - no header
           if (tab.type === 'splash-viewport') {
             return (
-              <div className="absolute inset-0 bg-gray-900">
+              <div className="absolute inset-0 bg-base-100">
                 <PluginComponent tab={tab} />
               </div>
             );
           }
           
           return (
-            <div className="absolute inset-0 bg-gray-900 flex flex-col">
-              <div className="flex items-center justify-between p-3 border-b border-gray-700 bg-gray-800">
+            <div className="absolute inset-0 bg-base-100 flex flex-col">
+              <div className="flex items-center justify-between p-3 border-b border-base-300 bg-base-200">
                 <div className="flex items-center gap-2">
-                  <Show when={pluginViewportType.icon} fallback={<Settings class="w-4 h-4 text-gray-400" />}>
-                    <div class="w-4 h-4 text-gray-400">
+                  <Show when={pluginViewportType.icon} fallback={<Settings class="w-4 h-4 text-base-content/60" />}>
+                    <div class="w-4 h-4 text-base-content/60">
                       <pluginViewportType.icon class="w-4 h-4" />
                     </div>
                   </Show>
-                  <span className="text-sm font-medium text-white">{tab.name}</span>
+                  <span className="text-sm font-medium text-base-content">{tab.name}</span>
                 </div>
                 <button
                   onClick={() => {
@@ -118,10 +118,10 @@ const Viewport = () => {
                       viewportActions.setActiveViewportTab(threeDTab.id);
                     }
                   }}
-                  className="p-1 hover:bg-gray-700 rounded transition-colors"
+                  className="p-1 hover:bg-base-300 rounded transition-colors"
                   title="Close overlay (return to 3D view)"
                 >
-                  <X class="w-4 h-4 text-gray-400" />
+                  <X class="w-4 h-4 text-base-content/60" />
                 </button>
               </div>
               
@@ -133,10 +133,10 @@ const Viewport = () => {
         }
         
         return (
-          <div className="absolute inset-0 bg-gray-900 flex items-center justify-center">
+          <div className="absolute inset-0 bg-base-100 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-lg text-gray-400 mb-2">Unknown Overlay</div>
-              <div className="text-sm text-gray-500">Overlay type "{tab.type}" not found</div>
+              <div className="text-lg text-base-content/60 mb-2">Unknown Overlay</div>
+              <div className="text-sm text-base-content/50">Overlay type "{tab.type}" not found</div>
             </div>
           </div>
         );
@@ -148,7 +148,7 @@ const Viewport = () => {
       class="absolute pointer-events-auto viewport-container"
       style={getViewportPositioning()}
     >
-      <div className="w-full h-full flex flex-col bg-gray-900">
+      <div className="w-full h-full flex flex-col bg-base-100">
         <ViewportTabs />
         <div 
           className="flex-1 relative overflow-hidden"

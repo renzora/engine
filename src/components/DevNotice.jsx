@@ -1,12 +1,9 @@
 import { createSignal, onMount, Show } from 'solid-js'
 import { usePluginAPI } from '@/api/plugin'
-import { useTheme } from '../../themes/Theme.jsx';
-import { ThemedButton, ThemedTreeView } from '../../themes/index.js';
 
 export default function DevNotice() {
   const [isVisible, setIsVisible] = createSignal(false)
   const api = usePluginAPI()
-  const { theme, toggleTheme } = useTheme()
 
   onMount(() => {
     const dismissed = localStorage.getItem('dev-disclaimer-dismissed')
@@ -22,14 +19,8 @@ export default function DevNotice() {
 
   return (
     <Show when={isVisible()}>
-      <div class="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-[100]" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-        <div 
-          class="border border-yellow-500/50 rounded-lg p-6 max-w-lg mx-4"
-          style={{ 
-            backgroundColor: 'var(--theme-panel)',
-            borderColor: 'rgba(234, 179, 8, 0.5)' 
-          }}
-        >
+      <div class="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-[100] bg-black/50">
+        <div class="bg-gray-900 border border-yellow-500/50 rounded-lg p-6 max-w-lg mx-4">
           <div class="flex items-center gap-3 mb-4">
             <div class="w-8 h-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
               <svg class="w-5 h-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
@@ -39,43 +30,27 @@ export default function DevNotice() {
             <h3 class="text-lg font-semibold text-yellow-400">Development Version</h3>
           </div>
 
-          <p class="text-sm leading-relaxed mb-4" style={{ color: 'var(--theme-fg)' }}>
+          <p class="text-sm text-gray-300 leading-relaxed mb-4">
             This is an early development version of Renzora Engine. Expect breaking changes, experimental features, and potential bugs.
           </p>
 
-          <div class="flex gap-2 flex-wrap mb-4">
-            {/* NEW: Themed buttons - zero styling needed! */}
-            <ThemedButton onClick={dismiss}>
-              I Understand (Themed)
-            </ThemedButton>
+          <div class="flex gap-2 flex-wrap">
+            <button 
+              onClick={dismiss}
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+            >
+              I Understand
+            </button>
             
-            <ThemedButton onClick={() => {
-              dismiss();
-              api.openViewport('test-viewport');
-            }}>
-              Try Engine API (Themed)
-            </ThemedButton>
-            
-            <ThemedButton onClick={toggleTheme} size="sm">
-              Theme: {theme()}
-            </ThemedButton>
-          </div>
-          
-          {/* Demo TreeView */}
-          <div class="mb-4">
-            <p class="text-xs mb-2" style={{ color: 'var(--theme-fg)' }}>Demo TreeView (auto-themed):</p>
-            <ThemedTreeView data={[
-              { 
-                name: 'Scene Objects',
-                children: [
-                  { name: 'Cube' },
-                  { name: 'Light' },
-                  { name: 'Camera' }
-                ]
-              },
-              { name: 'Assets' },
-              { name: 'Scripts' }
-            ]} />
+            <button
+              onClick={() => {
+                dismiss();
+                api.openViewport('test-viewport');
+              }}
+              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors"
+            >
+              Try Engine API
+            </button>
           </div>
         </div>
       </div>

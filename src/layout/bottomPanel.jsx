@@ -108,7 +108,7 @@ const BottomPanel = () => {
       />
       
       <Show when={isAssetPanelOpen()}>
-        <div class="flex-1 bg-gray-900 overflow-hidden" style={{ height: `${getPanelHeight() - 40}px` }}>
+        <div class="flex-1 bg-base-200 overflow-hidden" style={{ height: `${getPanelHeight() - 40}px` }}>
           <Switch>
             <Match when={currentActiveTab() === 'assets'}>
               <AssetLibrary onContextMenu={handleContextMenu} />
@@ -120,11 +120,11 @@ const BottomPanel = () => {
                   const Component = tab.component;
                   return <Component />;
                 }
-                return <div class="p-4 text-gray-400">Loading plugin content...</div>;
+                return <div class="p-4 text-base-content/60">Loading plugin content...</div>;
               })()}
             </Match>
             <Match when={true}>
-              <div class="p-4 text-gray-400">
+              <div class="p-4 text-base-content/60">
                 No content available for tab: {currentActiveTab()}
               </div>
             </Match>

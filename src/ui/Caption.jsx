@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 const captionSizes = {
   xs: 'text-xs',
   sm: 'text-sm',
@@ -12,14 +10,14 @@ export default function Caption({
   class: className = '',
   ...props 
 }) {
-  const { themed, combine } = useThemedClasses();
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
   
-  const classes = combine(
+  const classes = combineClasses(
     captionSizes[size],
     'font-semibold',
     'uppercase',
     'tracking-wider',
-    themed.text.disabled,
+    'text-gray-500',
     className
   );
   

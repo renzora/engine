@@ -204,12 +204,12 @@ function Scene(props) {
 
   const renderVector3Input = (label, value, propertyPath) => (
     <div className="mb-3">
-      <label className="block text-xs text-gray-400 mb-1">{label}</label>
+      <label className="block text-xs text-base-content/60 mb-1">{label}</label>
       <div className="grid grid-cols-3 gap-1">
         <For each={['X', 'Y', 'Z']}>
           {(axis, index) => (
             <div className="relative">
-              <span className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-gray-300 pointer-events-none font-medium bg-gray-700 border-t border-l border-b border-r border-gray-600 rounded-l">
+              <span className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium bg-base-300 border-t border-l border-b border-r border-base-300 rounded-l">
                 {axis}
               </span>
               <input
@@ -222,10 +222,10 @@ function Scene(props) {
                   updateObjectProperty(selection.entity, propertyPath, newValue);
                   editorActions.updateBabylonObjectFromProperties(selection.entity);
                 }}
-                className={`w-full text-xs p-1.5 pl-7 pr-1.5 rounded text-center focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                className={`w-full text-xs p-1.5 pl-7 pr-1.5 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary ${
                   isNodeControlled(`${propertyPath}.${index()}`) 
-                    ? 'border-blue-500 bg-blue-900/20 text-blue-200' 
-                    : 'border-gray-600 bg-gray-800 text-white'
+                    ? 'border-primary bg-primary/20 text-primary' 
+                    : 'border-base-300 bg-base-200 text-base-content'
                 } border`}
                 disabled={isNodeControlled(`${propertyPath}.${index()}`)}
               />
@@ -234,7 +234,7 @@ function Scene(props) {
         </For>
       </div>
       <Show when={isNodeControlled(propertyPath)}>
-        <div className="text-xs text-blue-400 mt-1">Controlled by node</div>
+        <div className="text-xs text-primary mt-1">Controlled by node</div>
       </Show>
     </div>
   );
@@ -392,19 +392,19 @@ function Scene(props) {
     return (
       <div className="select-none relative">
         <Show when={showTopDivider()}>
-          <div className="absolute top-0 left-0 right-0 h-0.5 bg-blue-500 z-10 pointer-events-none" />
+          <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none" />
         </Show>
         <div 
           className={`group flex items-center transition-all duration-200 text-xs relative overflow-hidden rounded ${
             isSelected() 
-              ? 'bg-blue-600/25 text-white shadow-sm' 
-              : 'hover:bg-slate-700/40 text-gray-300 hover:text-gray-100 active:bg-slate-700/60'
+              ? 'bg-primary/25 text-primary-content shadow-sm' 
+              : 'hover:bg-base-300/40 text-base-content/70 hover:text-base-content active:bg-base-300/60'
           } ${
             draggedItem?.id === item.id ? 'opacity-30' : ''
           } ${
-            isFolderDrop() ? 'border-2 border-blue-500' : ''
+            isFolderDrop() ? 'border-2 border-primary' : ''
           } ${
-            droppedItemId() === item.id ? 'bg-green-500/50' : ''
+            droppedItemId() === item.id ? 'bg-success/50' : ''
           }`}
           style={{ 
             'padding-left': `${8 + depth * 20}px`,
@@ -435,17 +435,17 @@ function Scene(props) {
           }}
         >
           <Show when={isSelected()}>
-            <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-400 pointer-events-none" />
+            <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary pointer-events-none" />
           </Show>
           
           <Show when={depth > 0}>
             <div className="absolute left-0 top-0 bottom-0 pointer-events-none">
               <div
-                className="absolute top-0 bottom-0 w-px bg-slate-600/40"
+                className="absolute top-0 bottom-0 w-px bg-base-content/25"
                 style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
               />
               <div
-                className="absolute top-1/2 w-3 h-px bg-slate-600/40"
+                className="absolute top-1/2 w-3 h-px bg-base-content/25"
                 style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
               />
             </div>
@@ -453,7 +453,7 @@ function Scene(props) {
           
           <Show when={hasChildren}>
             <button 
-              className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-slate-600/50"
+              className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
               onClick={(e) => {
                 e.stopPropagation();
                 setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
@@ -461,14 +461,14 @@ function Scene(props) {
             >
               <ChevronRight class={`w-3 h-3 transition-all duration-200 ${
                 isExpanded() 
-                  ? 'rotate-90 text-blue-400' 
-                  : 'text-gray-500 group-hover:text-gray-300'
+                  ? 'rotate-90 text-primary' 
+                  : 'text-base-content/50 group-hover:text-base-content/70'
               }`} />
             </button>
           </Show>
           
           <button 
-            className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-slate-600/50"
+            className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
             onClick={(e) => {
               e.stopPropagation();
               if (item.babylonObject) {
@@ -482,26 +482,26 @@ function Scene(props) {
           >
             <Show 
               when={item.visible}
-              fallback={<EyeOff className="w-4 h-4 text-gray-600 hover:text-gray-400" />}
+              fallback={<EyeOff className="w-4 h-4 text-base-content/40 hover:text-base-content/60" />}
             >
-              <Eye className="w-4 h-4 text-gray-400 hover:text-gray-200" />
+              <Eye className="w-4 h-4 text-base-content/60 hover:text-base-content/80" />
             </Show>
           </button>
           
           <button 
-            className="mr-2 p-0.5 rounded transition-colors opacity-70 hover:opacity-100 hover:bg-slate-600"
+            className="mr-2 p-0.5 rounded transition-colors opacity-70 hover:opacity-100 hover:bg-base-200"
             onClick={(e) => {
               e.stopPropagation();
               createNodeEditorTab(item.id, item.name);
             }}
             title="Open Node Editor"
           >
-            <Icon className="w-4 h-4 text-gray-400" />
+            <Icon className="w-4 h-4 text-base-content/60" />
           </button>
           
           <Show 
             when={renamingItemId() === item.id}
-            fallback={<span className="flex-1 text-gray-200 truncate">{item.name}</span>}
+            fallback={<span className="flex-1 text-base-content/80 truncate">{item.name}</span>}
           >
             <input
               type="text"
@@ -518,7 +518,7 @@ function Scene(props) {
                   cancelRename();
                 }
               }}
-              className="flex-1 bg-slate-700 text-gray-200 px-1 rounded text-xs border border-blue-400 focus:outline-none focus:border-blue-300"
+              className="flex-1 bg-base-300 text-base-content px-1 rounded text-xs border border-primary focus:outline-none focus:border-primary/80"
               autofocus
               onFocus={(e) => e.target.select()}
             />
@@ -529,7 +529,7 @@ function Scene(props) {
             onClick={(e) => handleDeleteObject(item, e)}
             title="Delete object"
           >
-            <Trash className="w-4 h-4 text-gray-300 hover:text-red-400" />
+            <Trash className="w-4 h-4 text-base-content/70 hover:text-error" />
           </button>
         </div>
         
@@ -542,7 +542,7 @@ function Scene(props) {
         </Show>
         
         <Show when={showBottomDivider()}>
-          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500 z-10 pointer-events-none" />
+          <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none" />
         </Show>
       </div>
     );
@@ -563,17 +563,17 @@ function Scene(props) {
         </For>
       </div>
       
-      <div className="flex items-center justify-between px-2 py-1 border-t border-slate-700/60 bg-gradient-to-b from-slate-800/50 to-slate-900/80">
+      <div className="flex items-center justify-between px-2 py-1 border-t border-base-300/60 bg-gradient-to-b from-base-200/50 to-base-300/80">
         <div className="flex items-center gap-1">
           <button
             onClick={handleCreateFolder}
-            className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95"
+            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95"
             title="Create Folder"
           >
             <Folder className="w-4 h-4" />
           </button>
           
-          <div className="w-px h-4 bg-slate-600/60 mx-1" />
+          <div className="w-px h-4 bg-base-content/40 mx-1" />
           
           <button
             onClick={() => {
@@ -593,7 +593,7 @@ function Scene(props) {
               }
             }}
             disabled={!selection.entity || selection.entity === 'scene-root'}
-            className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
             title="Rename Selected (F2)"
           >
             <Edit className="w-4 h-4" />
@@ -603,7 +603,7 @@ function Scene(props) {
         <div className="flex items-center gap-1">
           <button
             onClick={expandAll}
-            className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95"
+            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95"
             title="Expand All"
           >
             <ChevronRight className="w-4 h-4 rotate-90" />
@@ -611,7 +611,7 @@ function Scene(props) {
           
           <button
             onClick={collapseAll}
-            className="p-1.5 rounded hover:bg-slate-700/50 text-gray-400 hover:text-gray-200 transition-all duration-150 active:bg-slate-600/50 active:scale-95"
+            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95"
             title="Collapse All"
           >
             <ChevronRight className="w-4 h-4" />
@@ -622,7 +622,7 @@ function Scene(props) {
       <Show when={selection.entity}>
         <>
           <div
-            className={`h-1 cursor-row-resize transition-colors ${isResizing() ? 'bg-blue-500/75' : 'bg-slate-700/50 hover:bg-blue-500/75'}`}
+            className={`h-1 cursor-row-resize transition-colors ${isResizing() ? 'bg-primary/75' : 'bg-base-300/50 hover:bg-primary/75'}`}
             onMouseDown={handleMouseDown}
           />
           <div className="overflow-y-auto scrollbar-thin" style={{ height: `${bottomPanelHeight()}px` }}>
@@ -636,7 +636,7 @@ function Scene(props) {
               
               if (!objectProps) {
                 return (
-                  <div className="p-4 text-gray-500 text-sm">
+                  <div className="p-4 text-base-content/50 text-sm">
                     No object selected.
                   </div>
                 );
@@ -663,19 +663,19 @@ function Scene(props) {
                   <CollapsibleSection title="Scripts" defaultOpen={true} index={1}>
                     <div className="p-4">
                       <div className="mb-3">
-                        <label className="block text-xs text-gray-400 mb-2">Attached Scripts</label>
+                        <label className="block text-xs text-base-content/60 mb-2">Attached Scripts</label>
                         <div 
-                          className="min-h-[80px] border-2 border-dashed border-gray-600 rounded-lg p-3 text-center transition-colors hover:border-blue-500 hover:bg-blue-900/10"
+                          className="min-h-[80px] border-2 border-dashed border-base-300 rounded-lg p-3 text-center transition-colors hover:border-primary hover:bg-primary/10"
                           onDragOver={(e) => {
                             e.preventDefault();
-                            e.currentTarget.classList.add('border-blue-500', 'bg-blue-900/20');
+                            e.currentTarget.classList.add('border-primary', 'bg-primary/20');
                           }}
                           onDragLeave={(e) => {
-                            e.currentTarget.classList.remove('border-blue-500', 'bg-blue-900/20');
+                            e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
                           }}
                           onDrop={(e) => {
                             e.preventDefault();
-                            e.currentTarget.classList.remove('border-blue-500', 'bg-blue-900/20');
+                            e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
                             
                             const droppedData = e.dataTransfer.getData('text/plain');
                             try {
@@ -708,16 +708,16 @@ function Scene(props) {
                           <Show 
                             when={objectProps.scripts && objectProps.scripts.length > 0}
                             fallback={
-                              <div className="text-gray-500 text-xs">
+                              <div className="text-base-content/50 text-xs">
                                 <p>Drop script files here</p>
-                                <p className="text-gray-600 mt-1">(.js, .jsx, .ts, .tsx)</p>
+                                <p className="text-base-content/40 mt-1">(.js, .jsx, .ts, .tsx)</p>
                               </div>
                             }
                           >
                             <div className="space-y-2">
                               <For each={objectProps.scripts}>
                                 {(script, index) => (
-                                  <div className="flex items-center justify-between bg-gray-800 rounded px-2 py-1">
+                                  <div className="flex items-center justify-between bg-base-200 rounded px-2 py-1">
                                     <div className="flex items-center gap-2">
                                       <input
                                         type="checkbox"
@@ -729,17 +729,17 @@ function Scene(props) {
                                         }}
                                         className="w-3 h-3"
                                       />
-                                      <Code className="w-3 h-3 text-gray-400" />
-                                      <span className="text-xs text-gray-300">{script.name}</span>
+                                      <Code className="w-3 h-3 text-base-content/60" />
+                                      <span className="text-xs text-base-content/70">{script.name}</span>
                                     </div>
                                     <button
                                       onClick={() => {
                                         const updatedScripts = objectProps.scripts.filter((_, i) => i !== index());
                                         updateObjectProperty(selection.entity, 'scripts', updatedScripts);
                                       }}
-                                      className="p-0.5 hover:bg-gray-700 rounded"
+                                      className="p-0.5 hover:bg-base-300 rounded"
                                     >
-                                      <X className="w-3 h-3 text-gray-400 hover:text-red-400" />
+                                      <X className="w-3 h-3 text-base-content/60 hover:text-error" />
                                     </button>
                                   </div>
                                 )}
@@ -753,10 +753,10 @@ function Scene(props) {
 
                   <Show when={!objectProps.transform && !objectProps.material && !objectProps.components}>
                     <div className="p-4 text-center">
-                      <div className="text-gray-500 text-sm mb-2">
+                      <div className="text-base-content/50 text-sm mb-2">
                         No properties configured
                       </div>
-                      <div className="text-gray-600 text-xs">
+                      <div className="text-base-content/40 text-xs">
                         Open the node editor and connect nodes to output nodes to create property sections
                       </div>
                     </div>

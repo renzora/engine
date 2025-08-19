@@ -95,7 +95,7 @@ const RightPanel = () => {
       
       default:
         return (
-          <div class="p-4 text-center text-gray-400">
+          <div class="p-4 text-center text-base-content/60">
             <p>No properties panel available</p>
           </div>
         );
@@ -147,22 +147,22 @@ const RightPanel = () => {
             
             <div className="flex-1">
               <div 
-                className={`relative w-full h-full bg-gradient-to-b from-slate-800/95 to-slate-900/98 backdrop-blur-md border-l border-slate-700/80 shadow-2xl shadow-black/30 flex flex-col pointer-events-auto no-select`}
+                className={`relative w-full h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300 shadow-2xl shadow-black/30 flex flex-col pointer-events-auto no-select`}
               >
               <div className="px-3 py-2 relative">
-                <div className="text-xs text-gray-400 uppercase tracking-wide">
+                <div className="text-xs text-base-content/60 uppercase tracking-wide">
                   {getTabTitle()}
                 </div>
                 
                 <div className="absolute flex items-center" style={{ top: '4px', right: '-1px' }}>
                   <button
                     onClick={handleRightPanelToggle}
-                    className="w-6 h-6 text-gray-400 hover:text-blue-400 transition-colors flex items-center justify-center group relative"
+                    className="w-6 h-6 text-base-content/60 hover:text-primary transition-colors flex items-center justify-center group relative"
                     style={{ 
-                      'background-color': '#1e293b',
-                      'border-left': '1px solid #182236',
-                      'border-top': '1px solid #182236',
-                      'border-bottom': '1px solid #182236',
+                      'background-color': 'oklch(var(--b2))',
+                      'border-left': '1px solid oklch(var(--b3))',
+                      'border-top': '1px solid oklch(var(--b3))',
+                      'border-bottom': '1px solid oklch(var(--b3))',
                       'border-top-left-radius': '6px',
                       'border-bottom-left-radius': '6px'
                     }}
@@ -174,10 +174,10 @@ const RightPanel = () => {
                       </svg>
                     </div>
                     
-                    <div className="absolute right-full mr-1 top-1/2 -translate-y-1/2 bg-slate-900/95 backdrop-blur-sm border border-slate-600 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl" 
+                    <div className="absolute right-full mr-1 top-1/2 -translate-y-1/2 bg-base-200 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl" 
                          style={{ 'z-index': 50 }}>
                       Close panel
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 w-0 h-0 border-l-4 border-l-slate-900 border-t-4 border-t-transparent border-b-4 border-b-transparent"></div>
+                      <div className="absolute left-full top-1/2 -translate-y-1/2 w-0 h-0 border-l-4 border-l-base-200 border-t-4 border-t-transparent border-b-4 border-b-transparent"></div>
                     </div>
                   </button>
                 </div>

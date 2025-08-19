@@ -101,7 +101,7 @@ const ContextMenu = ({ items, position, onClose }) => {
     <>
       <div
         ref={menuRef}
-        class="bg-slate-800/95 backdrop-blur-md border border-slate-700 rounded-md shadow-xl py-1 pointer-events-auto"
+        class="bg-base-200/95 backdrop-blur-md border border-base-300 rounded-md shadow-xl py-1 pointer-events-auto"
         style={{ 
           position: 'fixed',
           top: `${menuPosition().top}px`, 
@@ -117,7 +117,7 @@ const ContextMenu = ({ items, position, onClose }) => {
           {items.map((item, index) => (
             <li>
               {item.separator ? (
-                <div class="border-t border-slate-700 my-1" />
+                <div class="border-t border-base-300 my-1" />
               ) : (
                 <button
                   onMouseEnter={(e) => handleItemMouseEnter(index, item, e)}
@@ -130,13 +130,13 @@ const ContextMenu = ({ items, position, onClose }) => {
                   }}
                   class={`flex items-center w-full px-3 py-1.5 text-xs text-left transition-all duration-200 ${
                     hoveredItem() === index 
-                      ? 'bg-blue-600 text-white' 
-                      : 'text-gray-300 hover:bg-blue-600/70 hover:text-white'
+                      ? 'bg-primary text-primary-content' 
+                      : 'text-base-content/70 hover:bg-primary/70 hover:text-primary-content'
                   }`}
                 >
                   {item.color && (
                     <div 
-                      class="w-3 h-3 rounded-full mr-2 border border-gray-600" 
+                      class="w-3 h-3 rounded-full mr-2 border border-base-300" 
                       style={{ 'background-color': item.color }}
                     />
                   )}
@@ -154,7 +154,7 @@ const ContextMenu = ({ items, position, onClose }) => {
       {submenuItems() && submenuPosition() && (
         <div
           ref={submenuRef}
-          class="bg-slate-800/95 backdrop-blur-md border border-slate-700 rounded-md shadow-xl py-1 pointer-events-auto min-w-[180px]"
+          class="bg-base-200/95 backdrop-blur-md border border-base-300 rounded-md shadow-xl py-1 pointer-events-auto min-w-[180px]"
           style={{ 
             position: 'fixed',
             top: `${submenuPosition().top}px`, 
@@ -175,7 +175,7 @@ const ContextMenu = ({ items, position, onClose }) => {
             {submenuItems().map((subItem, subIndex) => (
               <li>
                 {subItem.separator ? (
-                  <div class="border-t border-slate-700 my-1" />
+                  <div class="border-t border-base-300 my-1" />
                 ) : (
                   <button
                     onClick={(e) => {
@@ -189,11 +189,11 @@ const ContextMenu = ({ items, position, onClose }) => {
                         onClose();
                       }
                     }}
-                    class="flex items-center w-full px-3 py-1.5 text-xs text-left text-gray-300 transition-all duration-200 hover:bg-blue-600/70 hover:text-white"
+                    class="flex items-center w-full px-3 py-1.5 text-xs text-left text-base-content/70 transition-all duration-200 hover:bg-primary/70 hover:text-primary-content"
                   >
                     {subItem.color && (
                       <div 
-                        class="w-3 h-3 rounded-full mr-2 border border-gray-600" 
+                        class="w-3 h-3 rounded-full mr-2 border border-base-300" 
                         style={{ 'background-color': subItem.color }}
                       />
                     )}

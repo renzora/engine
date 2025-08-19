@@ -39,7 +39,7 @@ const [editorStore, setEditorStore] = createStore({
   
   settings: {
     viewport: {
-      backgroundColor: '#1a202c',
+      backgroundColor: 'theme',
       renderingEngine: 'webgl'
     },
     editor: {

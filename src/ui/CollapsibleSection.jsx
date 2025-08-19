@@ -14,15 +14,15 @@ function CollapsibleSection({
   const toggle = () => setIsOpen(!isOpen())
   
   return (
-    <div className={`border-b border-gray-700/60 ${className}`}>
+    <div className={`border-b border-base-300/60 ${className}`}>
       <button
         onClick={toggle}
         className={`
           w-full pl-2 pr-4 py-3 text-left font-semibold text-sm 
           transition-all duration-200 flex items-center gap-2 group
           ${isOpen() 
-            ? 'bg-slate-700/50 text-white' 
-            : 'text-gray-300 hover:bg-slate-700/30 hover:text-gray-100 active:bg-slate-700/60'
+            ? 'bg-base-300/50 text-base-content' 
+            : 'text-base-content/70 hover:bg-base-300/30 hover:text-base-content active:bg-base-300/60'
           }
           ${headerClassName}
         `}
@@ -31,8 +31,8 @@ function CollapsibleSection({
           class={`
             w-3.5 h-3.5 transition-all duration-200 
             ${isOpen() 
-              ? 'rotate-90 text-blue-400' 
-              : 'text-gray-400 group-hover:text-gray-300'
+              ? 'rotate-90 text-primary' 
+              : 'text-base-content/60 group-hover:text-base-content/80'
             }
           `} 
         />
@@ -40,7 +40,7 @@ function CollapsibleSection({
       </button>
       
       <Show when={isOpen()}>
-        <div className={`bg-slate-800/20 ${contentClassName}`}>
+        <div className={`bg-base-200/20 ${contentClassName}`}>
           {children}
         </div>
       </Show>

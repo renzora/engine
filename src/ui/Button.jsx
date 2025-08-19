@@ -1,5 +1,4 @@
 import { Show } from 'solid-js'
-import { useThemedClasses } from './hooks/useThemedClasses.js'
 
 const buttonSizes = {
   sm: 'px-2 py-1 text-sm',
@@ -20,7 +19,6 @@ function Button({
   onClick,
   ...props 
 }) {
-  const { themed, combine } = useThemedClasses()
   const isDisabled = () => disabled || loading
   
   const handleClick = (e) => {
@@ -32,22 +30,24 @@ function Button({
   const getVariantClasses = () => {
     const variants = {
       primary: 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105',
-      secondary: themed.button.secondary,
-      outline: themed.button.outline,
-      ghost: themed.button.ghost,
-      danger: themed.button.danger,
+      secondary: 'bg-gray-700 hover:bg-gray-600 text-gray-100',
+      outline: 'border border-gray-600 hover:border-gray-500 text-gray-100 hover:bg-gray-800',
+      ghost: 'text-gray-400 hover:text-gray-100 hover:bg-gray-800',
+      danger: 'bg-red-600 hover:bg-red-700 text-white',
       gradient: 'bg-gradient-to-br from-blue-500/20 to-purple-500/20 hover:from-blue-500/30 hover:to-purple-500/30 border-2 border-dashed border-white/15 hover:border-blue-400',
       success: 'bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white'
     };
-    return variants[variant] || themed.button.secondary;
+    return variants[variant] || variants.secondary;
   }
+  
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ')
   
   return (
     <button
-      class={combine(
+      class={combineClasses(
         'inline-flex items-center justify-center gap-2',
         'rounded-lg font-medium transition-all',
-        'focus:outline-none focus:ring-2 focus:ring-[rgb(var(--primary))]',
+        'focus:outline-none focus:ring-2 focus:ring-blue-500',
         'disabled:opacity-50 disabled:cursor-not-allowed',
         getVariantClasses(),
         buttonSizes[size],

@@ -25,6 +25,7 @@
     "@babylonjs/procedural-textures": "^8.20.0",
     "@babylonjs/serializers": "^8.20.0",
     "@tabler/icons-solidjs": "^3.34.1",
+    "daisyui": "^5.0.50",
     "solid-js": "^1.9.7",
     "stats.js": "^0.17.0"
   },

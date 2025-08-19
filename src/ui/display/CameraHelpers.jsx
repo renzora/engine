@@ -47,8 +47,8 @@ export default function CameraHelpers() {
       <button
         class={`pl-2 pr-1 py-1 text-xs rounded transition-colors cursor-pointer ${
           isExpanded()
-            ? 'bg-blue-600 text-white'
-            : 'text-gray-400 hover:text-gray-200 hover:bg-slate-800'
+            ? 'bg-primary text-primary-content'
+            : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
         }`}
         onClick={() => setIsExpanded(!isExpanded())}
         title="Camera Settings"
@@ -60,16 +60,16 @@ export default function CameraHelpers() {
           </svg>
         </div>
         
-        <div class="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+        <div class="absolute right-full mr-2 top-1/2 transform -translate-y-1/2 bg-base-300/95 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
           Camera Settings
-          <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-gray-900/95" />
+          <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-base-300/95" />
         </div>
       </button>
       
       {isExpanded() && (
-        <div class="absolute top-full right-0 mt-2 w-64 bg-gray-900/95 backdrop-blur-sm border border-gray-700 rounded-lg shadow-xl space-y-4 text-white text-xs pointer-events-auto z-50 p-4">
+        <div class="absolute top-full right-0 mt-2 w-64 bg-base-300/95 backdrop-blur-sm border border-base-300 rounded-lg shadow-xl space-y-4 text-base-content text-xs pointer-events-auto z-50 p-4">
           <div>
-            <label class="block font-medium text-gray-300 mb-2">
+            <label class="block font-medium text-base-content/80 mb-2">
               Camera Speed: {cameraSpeed()}
             </label>
             <div class="grid grid-cols-2 gap-1 mb-2">
@@ -78,8 +78,8 @@ export default function CameraHelpers() {
                   onClick={() => setCameraSpeed(preset.value)}
                   class={`px-2 py-1 text-xs rounded transition-colors ${
                     cameraSpeed() === preset.value
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-primary text-primary-content'
+                      : 'bg-base-200 text-base-content/70 hover:bg-base-300'
                   }`}
                 >
                   {preset.label}
@@ -93,12 +93,12 @@ export default function CameraHelpers() {
               step="0.5"
               value={cameraSpeed()}
               onInput={(e) => setCameraSpeed(parseFloat(e.target.value))}
-              class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+              class="w-full h-2 bg-base-200 rounded-lg appearance-none cursor-pointer slider"
             />
           </div>
           
           <div>
-            <label class="block font-medium text-gray-300 mb-2">
+            <label class="block font-medium text-base-content/80 mb-2">
               Mouse Sensitivity: {(mouseSensitivity() * 1000).toFixed(1)}
             </label>
             <input
@@ -108,12 +108,12 @@ export default function CameraHelpers() {
               step="0.0001"
               value={mouseSensitivity()}
               onInput={(e) => setCameraSensitivity(parseFloat(e.target.value))}
-              class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+              class="w-full h-2 bg-base-200 rounded-lg appearance-none cursor-pointer slider"
             />
           </div>
           
           <div>
-            <label class="block font-medium text-gray-300 mb-2">
+            <label class="block font-medium text-base-content/80 mb-2">
               Render Mode
             </label>
             <div class="grid grid-cols-2 gap-1">
@@ -122,8 +122,8 @@ export default function CameraHelpers() {
                   onClick={() => setRenderMode(mode.id)}
                   class={`flex items-center gap-2 px-2 py-2 text-xs rounded transition-colors ${
                     renderMode() === mode.id
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                      ? 'bg-primary text-primary-content'
+                      : 'bg-base-200 text-base-content/70 hover:bg-base-300'
                   }`}
                   title={mode.label}
                 >

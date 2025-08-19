@@ -1,8 +1,10 @@
-import { createSignal, createEffect, onCleanup, For } from 'solid-js';
+import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { horizontalMenuButtonsEnabled } from '@/api/plugin';
 import { Sun, Lightbulb, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle } from '@/ui/icons';
+import { Settings } from '@/ui/icons/development';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { toolbarButtons } from '@/api/plugin';
+import ThemeSwitcher from '@/ui/ThemeSwitcher';
 const getBabylonScene = () => window._cleanBabylonScene;
 import { viewportStore, viewportActions, objectPropertiesActions } from '@/layout/stores/ViewportStore';
 import CameraHelpers from '@/ui/display/CameraHelpers.jsx';
@@ -218,6 +220,7 @@ function Toolbar() {
       top: buttonRect.bottom + 4
     };
   };
+
 
   const handlePluginDropdownToggle = (e, button) => {
     if (activePluginDropdown() === button.id) {
@@ -616,7 +619,7 @@ function Toolbar() {
 
   return (
     <>
-      <div class="relative w-full h-10 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 flex items-center">
+      <div class="relative w-full h-10 bg-base-200/95 backdrop-blur-sm border-b border-base-300 flex items-center">
         <div class="flex items-center h-full px-4 gap-1">
           
           <For each={tools()}>
@@ -633,8 +636,8 @@ function Toolbar() {
                       onClick={handleLightDropdownToggle}
                       class={`toolbar-button w-8 h-8 flex items-center justify-center rounded transition-all relative group cursor-pointer ${
                         isActive
-                          ? 'bg-blue-600/90 text-white' 
-                          : 'text-gray-400 hover:text-gray-200 hover:bg-slate-800'
+                          ? 'bg-primary text-primary-content' 
+                          : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
                       }`}
                     >
                       <tool.icon class="w-4 h-4" />
@@ -642,9 +645,9 @@ function Toolbar() {
                         <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
                       </svg>
                       
-                      <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                      <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                         {tool.tooltip}
-                        <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900/95" />
+                        <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-200" />
                       </div>
                     </button>
                   ) : (
@@ -652,29 +655,29 @@ function Toolbar() {
                       onClick={() => isDisabled ? null : handleToolClick(tool.id)}
                       class={`w-8 h-8 flex items-center justify-center rounded transition-all relative group ${
                         isDisabled 
-                          ? 'text-gray-600 opacity-50'
+                          ? 'text-base-content/40 opacity-50'
                           : 'cursor-pointer'
                       } ${
                         isActive && !isDisabled
-                          ? 'bg-blue-600/90 text-white' 
+                          ? 'bg-primary text-primary-content' 
                           : !isDisabled
-                            ? 'text-gray-400 hover:text-gray-200 hover:bg-slate-800'
+                            ? 'text-base-content/60 hover:text-base-content hover:bg-base-300'
                             : ''
                       }`}
                     >
                       <tool.icon class="w-4 h-4" />
                       
                       {!isDisabled && (
-                        <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                        <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                           {tool.tooltip}
-                          <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900/95" />
+                          <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-200" />
                         </div>
                       )}
                     </button>
                   )}
                   
                   {showDivider && (
-                    <div class="w-px h-6 bg-gray-700 mx-1"></div>
+                    <div class="w-px h-6 bg-base-300 mx-1"></div>
                   )}
                   
                 </>
@@ -684,11 +687,21 @@ function Toolbar() {
 
         </div>
         
-        {/* Right side - Plugin buttons registered via API */}
+        {/* Right side - Plugin buttons */}
         <div class="absolute right-4 top-0 h-full flex items-center gap-1">
           <For each={Array.from(toolbarButtons().values()).filter(button => button.section === 'right').sort((a, b) => (a.order || 0) - (b.order || 0))}>
             {(button) => {
               const isEnabled = horizontalMenuButtonsEnabled();
+
+              // Handle custom component buttons
+              if (button.isCustomComponent && button.customComponent) {
+                const CustomComponent = button.customComponent;
+                return (
+                  <div class="flex items-center" title={button.title}>
+                    <CustomComponent />
+                  </div>
+                );
+              }
 
               if (button.hasDropdown && button.dropdownComponent) {
                 const isActive = activePluginDropdown() === button.id;
@@ -698,10 +711,10 @@ function Toolbar() {
                     disabled={!isEnabled}
                     class={`toolbar-button w-8 h-8 flex items-center justify-center rounded transition-all relative group ${
                       !isEnabled 
-                        ? 'cursor-not-allowed text-gray-600 opacity-50'
+                        ? 'cursor-not-allowed text-base-content/30 opacity-50'
                         : isActive
-                          ? 'bg-blue-600/90 text-white cursor-pointer' 
-                          : 'text-gray-400 hover:text-gray-200 hover:bg-slate-800 cursor-pointer'
+                          ? 'bg-primary text-primary-content cursor-pointer' 
+                          : 'text-base-content/60 hover:text-base-content hover:bg-base-300 cursor-pointer'
                     }`}
                   >
                     <button.icon class="w-4 h-4" />
@@ -709,9 +722,9 @@ function Toolbar() {
                       <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
                     </svg>
                     
-                    <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                    <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-300/95 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                       {button.title}
-                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900/95" />
+                      <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-300/95" />
                     </div>
                   </button>
                 );
@@ -723,15 +736,15 @@ function Toolbar() {
                   disabled={!isEnabled}
                   class={`toolbar-button w-8 h-8 flex items-center justify-center rounded transition-all relative group ${
                     !isEnabled
-                      ? 'cursor-not-allowed text-gray-600 opacity-50'
-                      : 'cursor-pointer text-gray-400 hover:text-gray-200 hover:bg-slate-800'
+                      ? 'cursor-not-allowed text-base-content/30 opacity-50'
+                      : 'cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300'
                   }`}
                 >
                   <button.icon class="w-4 h-4" />
                   
-                  <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-gray-900/95 text-white text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                  <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-300/95 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                     {button.title}
-                    <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900/95" />
+                    <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-300/95" />
                   </div>
                 </button>
               );
@@ -744,7 +757,7 @@ function Toolbar() {
       {/* Light dropdown */}
       {showLightDropdown() && lightDropdownPosition() && (
         <div 
-          class="dropdown-content fixed w-48 bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-600/50 z-[210]"
+          class="dropdown-content fixed w-48 bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 z-[210]"
           style={{
             left: `${lightDropdownPosition().left}px`,
             top: `${lightDropdownPosition().top}px`
@@ -754,7 +767,7 @@ function Toolbar() {
             {(lightType) => (
               <button
                 onClick={() => handleLightCreate(lightType.id)}
-                class="w-full px-3 py-2 text-left text-sm transition-colors flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg text-gray-300 hover:bg-gray-900/60 hover:text-white"
+                class="w-full px-3 py-2 text-left text-sm transition-colors flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg text-base-content hover:bg-base-300 hover:text-base-content"
               >
                 <lightType.icon class="w-4 h-4" />
                 {lightType.label}
@@ -764,10 +777,11 @@ function Toolbar() {
         </div>
       )}
 
+
       {/* Plugin dropdowns */}
       {activePluginDropdown() && pluginDropdownPosition() && (
         <div 
-          class="dropdown-content fixed bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-600/50 z-[210] text-white text-xs"
+          class="dropdown-content fixed bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 z-[210] text-base-content text-xs"
           style={{
             left: `${pluginDropdownPosition().left}px`,
             top: `${pluginDropdownPosition().top}px`

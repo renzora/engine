@@ -95,9 +95,6 @@ export function createPlugin(config) {
       button: (buttonId, config) => 
         api.registerToolbarButton(buttonId, { ...config, plugin: id }),
       
-      theme: (themeId, theme) => 
-        api.registerTheme(themeId, { ...theme, plugin: id }),
-
       open: (typeId, options = {}) => 
         api.createViewportTab(typeId, options),
 

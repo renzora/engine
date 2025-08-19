@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 const subtitleSizes = {
   sm: 'text-sm',
   md: 'text-base',
@@ -13,11 +11,11 @@ export default function Subtitle({
   class: className = '',
   ...props 
 }) {
-  const { themed, combine } = useThemedClasses();
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
   
-  const classes = combine(
+  const classes = combineClasses(
     subtitleSizes[size],
-    themed.text.secondary,
+    'text-gray-400',
     'leading-relaxed',
     className
   );

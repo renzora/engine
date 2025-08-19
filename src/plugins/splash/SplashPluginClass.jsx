@@ -71,21 +71,6 @@ export default createPlugin({
 
   async onInit(api) {
     console.log('[SplashPlugin] Initializing splash screen plugin...');
-    
-    api.theme('splash-theme', {
-      name: 'Splash Theme',
-      description: 'Clean theme for project selection',
-      colors: {
-        primary: '#3b82f6',
-        secondary: '#1e40af',
-        accent: '#60a5fa'
-      },
-      cssVariables: {
-        '--splash-primary': '#3b82f6',
-        '--splash-bg': '#0f172a'
-      }
-    });
-
     console.log('[SplashPlugin] Splash plugin initialized');
   },
 

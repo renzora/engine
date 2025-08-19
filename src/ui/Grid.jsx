@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 export default function Grid({ 
   children, 
   cols = 3,
@@ -7,7 +5,7 @@ export default function Grid({
   class: className = '',
   ...props 
 }) {
-  const { combine } = useThemedClasses();
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
   
   const colClasses = {
     1: 'grid-cols-1',
@@ -25,7 +23,7 @@ export default function Grid({
     xl: 'gap-8'
   };
   
-  const classes = combine(
+  const classes = combineClasses(
     'grid',
     colClasses[cols],
     gapClasses[gap],

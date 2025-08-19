@@ -1,6 +1,7 @@
 import { createSignal, onMount, Show } from 'solid-js';
 import { CollapsibleSection } from '@/ui';
 import { Select } from '@/ui';
+import ThemeSwitcher from '@/ui/ThemeSwitcher';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 
@@ -62,12 +63,12 @@ function Settings() {
   });
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-thin">
+    <div class="flex-1 overflow-y-auto scrollbar-thin">
       <div>
         <CollapsibleSection title="Viewport" defaultOpen={true} index={1}>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Rendering Engine</label>
+          <div class="space-y-4 p-4">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Rendering Engine</label>
               <Select
                 value={viewportSettings.renderingEngine || 'webgl'}
                 onChange={(e) => {
@@ -85,51 +86,55 @@ function Settings() {
                 size="sm"
               />
               <Show when={!webGPUSupported()}>
-                <div className="text-xs text-yellow-400 mt-1">
+                <div class="text-xs text-warning mt-1">
                   ⚠️ WebGPU is not available in this browser/environment
                 </div>
               </Show>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Background Color</label>
-              <div className="flex items-center gap-2">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Background Color</label>
+              <div class="flex items-center gap-2">
                 <input 
                   type="color" 
-                  value={viewportSettings.backgroundColor} 
+                  value={viewportSettings.backgroundColor === 'theme' ? '#1a202c' : viewportSettings.backgroundColor} 
                   onChange={(e) => updateViewportSettings({ backgroundColor: e.target.value })}
-                  className="w-10 h-10 rounded-lg border border-slate-600 bg-slate-800 cursor-pointer" 
+                  class="w-10 h-10 rounded-lg border border-base-300 bg-base-200 cursor-pointer" 
+                  disabled={viewportSettings.backgroundColor === 'theme'}
                 />
-                <div className="flex-1 bg-slate-800/80 border border-slate-600 rounded-lg p-2">
-                  <div className="text-xs text-gray-300">{viewportSettings.backgroundColor.toUpperCase()}</div>
+                <div class="flex-1 bg-base-200/80 border border-base-300 rounded-lg p-2">
+                  <div class="text-xs text-base-content/80">
+                    {viewportSettings.backgroundColor === 'theme' ? 'Using Current Theme' : viewportSettings.backgroundColor.toUpperCase()}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Quick Presets</label>
-              <div className="grid grid-cols-4 gap-2">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Quick Presets</label>
+              <div class="grid grid-cols-4 gap-2">
                 <button
-                  onClick={() => updateViewportSettings({ backgroundColor: '#1a202c' })}
-                  className="h-8 rounded-lg border border-slate-600 transition-all hover:scale-105 hover:border-blue-500"
-                  style={{ 'background-color': '#1a202c' }}
-                  title="Dark Blue"
-                />
+                  onClick={() => updateViewportSettings({ backgroundColor: 'theme' })}
+                  class="h-8 rounded-lg border-2 border-dashed border-primary text-xs text-primary transition-all hover:scale-105 hover:bg-primary/10 flex items-center justify-center font-medium"
+                  title="Use Current Theme"
+                >
+                  🎨
+                </button>
                 <button
                   onClick={() => updateViewportSettings({ backgroundColor: '#000000' })}
-                  className="h-8 rounded-lg border border-slate-600 transition-all hover:scale-105 hover:border-blue-500"
+                  class="h-8 rounded-lg border border-base-300 transition-all hover:scale-105 hover:border-primary"
                   style={{ 'background-color': '#000000' }}
                   title="Black"
                 />
                 <button
                   onClick={() => updateViewportSettings({ backgroundColor: '#374151' })}
-                  className="h-8 rounded-lg border border-slate-600 transition-all hover:scale-105 hover:border-blue-500"
+                  class="h-8 rounded-lg border border-base-300 transition-all hover:scale-105 hover:border-primary"
                   style={{ 'background-color': '#374151' }}
                   title="Gray"
                 />
                 <button
                   onClick={() => updateViewportSettings({ backgroundColor: '#ffffff' })}
-                  className="h-8 rounded-lg border border-slate-600 transition-all hover:scale-105 hover:border-blue-500"
+                  class="h-8 rounded-lg border border-base-300 transition-all hover:scale-105 hover:border-primary"
                   style={{ 'background-color': '#ffffff' }}
                   title="White"
                 />
@@ -139,9 +144,17 @@ function Settings() {
         </CollapsibleSection>
 
         <CollapsibleSection title="Interface" defaultOpen={false} index={2}>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-300 uppercase tracking-wide">Panel Position</label>
+          <div class="space-y-4 p-4">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Theme</label>
+              <ThemeSwitcher />
+              <div class="text-xs text-base-content/60 mt-1">
+                Choose your preferred visual theme for the editor interface
+              </div>
+            </div>
+            
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Panel Position</label>
               <Select
                 value={settings.editor.panelPosition || 'right'}
                 onChange={(e) => {
@@ -155,7 +168,7 @@ function Settings() {
                 ]}
                 size="sm"
               />
-              <div className="text-xs text-gray-400 mt-1">
+              <div class="text-xs text-base-content/60 mt-1">
                 Choose which side of the screen to display the properties panel
               </div>
             </div>
@@ -163,11 +176,11 @@ function Settings() {
         </CollapsibleSection>
         
         <CollapsibleSection title="Performance" defaultOpen={false} index={3}>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-slate-800/40 rounded-lg border border-slate-700/50">
+          <div class="space-y-4 p-4">
+            <div class="flex items-center justify-between p-3 bg-base-200/40 rounded-lg border border-base-300/50">
               <div>
-                <label className="text-xs font-medium text-gray-300">Performance Stats</label>
-                <p className="text-xs text-gray-500 mt-0.5">Show FPS, memory usage, and render statistics</p>
+                <label class="text-xs font-medium text-base-content/80">Performance Stats</label>
+                <p class="text-xs text-base-content/60 mt-0.5">Show FPS, memory usage, and render statistics</p>
               </div>
               <button
                 onClick={() => {
@@ -178,10 +191,10 @@ function Settings() {
                   
                   editorActions.addConsoleMessage(`Performance stats ${newValue ? 'enabled' : 'disabled'}`, 'success');
                 }}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.showStats ? 'bg-blue-500 shadow-lg shadow-blue-500/30' : 'bg-slate-600'}`}
+                class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.showStats ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-base-content/40'}`}
               >
                 <span
-                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.showStats ? 'translate-x-6' : 'translate-x-1'}`}
+                  class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.showStats ? 'translate-x-6' : 'translate-x-1'}`}
                 />
               </button>
             </div>

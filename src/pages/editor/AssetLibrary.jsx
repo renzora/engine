@@ -287,8 +287,8 @@ function AssetLibrary({ onContextMenu }) {
     if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) {
       return {
         icon: null,
-        bgColor: 'bg-purple-600',
-        hoverColor: 'hover:bg-purple-700',
+        bgColor: 'bg-secondary',
+        hoverColor: 'hover:bg-secondary/80',
         textColor: 'text-white'
       };
     }
@@ -296,8 +296,8 @@ function AssetLibrary({ onContextMenu }) {
     if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) {
       return {
         icon: <Photo class="w-3 h-3" />,
-        bgColor: 'bg-green-600', 
-        hoverColor: 'hover:bg-green-700',
+        bgColor: 'bg-success', 
+        hoverColor: 'hover:bg-success/80',
         textColor: 'text-white'
       };
     }
@@ -305,8 +305,8 @@ function AssetLibrary({ onContextMenu }) {
     if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
       return {
         icon: <Wave class="w-3 h-3" />,
-        bgColor: 'bg-orange-600',
-        hoverColor: 'hover:bg-orange-700', 
+        bgColor: 'bg-warning',
+        hoverColor: 'hover:bg-warning/80', 
         textColor: 'text-white'
       };
     }
@@ -314,8 +314,8 @@ function AssetLibrary({ onContextMenu }) {
     if (['.js', '.ts', '.jsx', '.tsx'].includes(ext)) {
       return {
         icon: null,
-        bgColor: 'bg-blue-600',
-        hoverColor: 'hover:bg-blue-700',
+        bgColor: 'bg-primary',
+        hoverColor: 'hover:bg-primary/80',
         textColor: 'text-white'
       };
     }
@@ -323,16 +323,16 @@ function AssetLibrary({ onContextMenu }) {
     if (['.json', '.xml', '.txt', '.md'].includes(ext)) {
       return {
         icon: <FileText class="w-3 h-3" />,
-        bgColor: 'bg-indigo-600',
-        hoverColor: 'hover:bg-indigo-700',
+        bgColor: 'bg-info',
+        hoverColor: 'hover:bg-info/80',
         textColor: 'text-white'
       };
     }
     
     return {
       icon: <File class="w-3 h-3" />,
-      bgColor: 'bg-gray-600',
-      hoverColor: 'hover:bg-gray-700',
+      bgColor: 'bg-neutral',
+      hoverColor: 'hover:bg-neutral/80',
       textColor: 'text-white'
     };
   };
@@ -412,18 +412,18 @@ function AssetLibrary({ onContextMenu }) {
     });
 
     return (
-      <div class={`${size} bg-gray-700 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
+      <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
         <Show when={!error()} fallback={
           <div class="w-full h-full flex items-center justify-center">
-            <Cube class="w-8 h-8 text-purple-500" />
+            <Cube class="w-8 h-8 text-secondary" />
           </div>
         }>
           <Show when={thumbnailUrl()} fallback={
             <div class="w-full h-full flex items-center justify-center">
               <Show when={isLoading()} fallback={
-                <Cube class="w-8 h-8 text-purple-500" />
+                <Cube class="w-8 h-8 text-secondary" />
               }>
-                <div class="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin"></div>
+                <div class="w-4 h-4 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
               </Show>
             </div>
           }>
@@ -445,17 +445,17 @@ function AssetLibrary({ onContextMenu }) {
     
     if (!thumbnailUrl) {
       return (
-        <div class={`${size} bg-gray-700 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
-          <Photo class="w-6 h-6 text-green-400" />
+        <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+          <Photo class="w-6 h-6 text-success" />
         </div>
       );
     }
     
     return (
-      <div class={`${size} bg-gray-700 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
+      <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
         <Show when={!imageError()} fallback={
           <div class="w-full h-full flex items-center justify-center">
-            <Photo class="w-6 h-6 text-green-400" />
+            <Photo class="w-6 h-6 text-success" />
           </div>
         }>
           <img 
@@ -471,8 +471,8 @@ function AssetLibrary({ onContextMenu }) {
             }}
           />
           <Show when={!imageLoaded() && !imageError()}>
-            <div class="absolute inset-0 flex items-center justify-center bg-gray-700">
-              <div class="w-3 h-3 border border-gray-400 border-t-blue-400 rounded-full animate-spin"></div>
+            <div class="absolute inset-0 flex items-center justify-center bg-base-300">
+              <div class="w-3 h-3 border border-base-content/40 border-t-primary rounded-full animate-spin"></div>
             </div>
           </Show>
         </Show>
@@ -1321,10 +1321,10 @@ export default Script;
         <div
           class={`flex items-center py-1 px-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${ 
             dragOverTreeFolder() === node.path 
-              ? 'bg-blue-600/30 border-2 border-blue-400 border-dashed rounded'
+              ? 'bg-primary/30 border-2 border-primary border-dashed rounded'
               : isSelected() 
-                ? 'bg-blue-600 text-white' 
-                : 'text-gray-300 hover:bg-slate-700 hover:text-white'
+                ? 'bg-primary text-primary-content' 
+                : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
           }`}
           style={{ 'padding-left': `${8 + depth * 20}px` }}
           onClick={() => handleFolderClick(node.path)}
@@ -1380,17 +1380,17 @@ export default Script;
           }}
         >
           <Show when={isSelected()}>
-            <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-blue-400 pointer-events-none" />
+            <div class="absolute left-0 top-0 bottom-0 w-0.5 bg-primary pointer-events-none" />
           </Show>
           
           <Show when={depth > 0}>
             <div class="absolute left-0 top-0 bottom-0 pointer-events-none">
               <div
-                class="absolute top-0 bottom-0 w-px bg-gray-500"
+                class="absolute top-0 bottom-0 w-px bg-base-content/30"
                 style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
               />
               <div
-                class="absolute top-1/2 w-3 h-px bg-gray-500"
+                class="absolute top-1/2 w-3 h-px bg-base-content/30"
                 style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
               />
             </div>
@@ -1402,13 +1402,13 @@ export default Script;
                 e.stopPropagation();
                 handleFolderToggle(node.path);
               }}
-              class="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-slate-600/50"
+              class="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
             >
               <ChevronRight 
                 class={`w-3 h-3 transition-all duration-200 ${
                   isExpanded() 
-                    ? 'rotate-90 text-blue-400' 
-                    : 'text-gray-500 hover:text-gray-300'
+                    ? 'rotate-90 text-primary' 
+                    : 'text-base-content/50 hover:text-base-content/70'
                 }`} 
               />
             </button>
@@ -1417,14 +1417,14 @@ export default Script;
             <div class="w-4 mr-1" />
           </Show>
           <Folder class={`w-4 h-4 mr-2 ${
-            isSelected() ? 'text-white' : 'text-yellow-400'
+            isSelected() ? 'text-primary-content' : 'text-warning'
           }`} />
-          <span class="flex-1 text-gray-200 truncate">{node.name}</span>
+          <span class="flex-1 text-base-content/80 truncate">{node.name}</span>
           <Show when={node.files && node.files.length > 0}>
             <span class={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${
               isSelected() 
-                ? 'text-white bg-blue-500' 
-                : 'text-gray-400 bg-slate-700'
+                ? 'text-primary-content bg-primary' 
+                : 'text-base-content/60 bg-base-300'
             }`}>
               {node.files.length}
             </span>
@@ -1496,7 +1496,7 @@ export default Script;
       
       if (selectedAssetObjects.length > 1) {
         const dragImage = document.createElement('div');
-        dragImage.className = 'fixed top-[-1000px] bg-blue-600 text-white px-3 py-2 rounded-lg font-medium shadow-lg';
+        dragImage.className = 'fixed top-[-1000px] bg-primary text-primary-content px-3 py-2 rounded-lg font-medium shadow-lg';
         dragImage.textContent = `Moving ${selectedAssetObjects.length} files`;
         document.body.appendChild(dragImage);
         e.dataTransfer.setDragImage(dragImage, 50, 25);
@@ -1509,10 +1509,10 @@ export default Script;
         <div
           class={`group cursor-pointer transition-all duration-200 p-2 flex items-center gap-3 ${
             isAssetSelected(asset.id)
-              ? 'bg-blue-600/20 border-l-2 border-blue-500 hover:bg-blue-600/30'
+              ? 'bg-primary/20 border-l-2 border-primary hover:bg-primary/30'
               : typeof index === 'function' && index() % 2 === 0 
-                ? 'bg-slate-800/50 hover:bg-slate-700/50' 
-                : 'bg-slate-900/30 hover:bg-slate-700/50'
+                ? 'bg-base-200/50 hover:bg-base-300/50' 
+                : 'bg-base-300/30 hover:bg-base-300/50'
           }`}
           data-asset-id={asset.id}
           draggable={true}
@@ -1534,7 +1534,7 @@ export default Script;
           <div class="w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
             <Show when={is3DModelFile(asset.extension)} fallback={
               <Show when={isImageFile(asset.extension)} fallback={
-                <div class={`w-full h-full bg-gray-700 rounded flex items-center justify-center ${
+                <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center ${
                     loadedAssets().includes(asset.id) 
                       ? 'opacity-100' 
                       : failedAssets().includes(asset.id) 
@@ -1542,9 +1542,9 @@ export default Script;
                         : 'opacity-60'
                   }`}>
                   {isScriptFile(asset.extension) ? (
-                    <Code class="w-5 h-5 text-blue-400" />
+                    <Code class="w-5 h-5 text-primary" />
                   ) : (
-                    <Photo class="w-5 h-5 text-gray-400" />
+                    <Photo class="w-5 h-5 text-base-content/60" />
                   )}
                 </div>
               }>
@@ -1556,17 +1556,17 @@ export default Script;
 
             <div class="absolute -bottom-1 -right-1">
               <Show when={preloadingAssets().includes(asset.id)}>
-                <div class="w-3 h-3 bg-yellow-500 rounded-full flex items-center justify-center">
+                <div class="w-3 h-3 bg-warning rounded-full flex items-center justify-center">
                   <div class="w-1.5 h-1.5 border border-white border-t-transparent rounded-full animate-spin"></div>
                 </div>
               </Show>
               <Show when={failedAssets().includes(asset.id)}>
-                <div class="w-3 h-3 bg-red-500 rounded-full flex items-center justify-center">
+                <div class="w-3 h-3 bg-error rounded-full flex items-center justify-center">
                   <X class="w-2 h-2 text-white" />
                 </div>
               </Show>
               <Show when={loadedAssets().includes(asset.id)}>
-                <div class="w-3 h-3 bg-green-500 rounded-full flex items-center justify-center">
+                <div class="w-3 h-3 bg-success rounded-full flex items-center justify-center">
                   <Check class="w-2 h-2 text-white" />
                 </div>
               </Show>
@@ -1574,10 +1574,10 @@ export default Script;
           </div>
           
           <div class="flex-1 min-w-0">
-            <div class="text-sm text-gray-300 group-hover:text-white transition-colors truncate">
+            <div class="text-sm text-base-content/70 group-hover:text-base-content transition-colors truncate">
               {asset.name}
             </div>
-            <div class="text-xs text-gray-500 truncate">
+            <div class="text-xs text-base-content/50 truncate">
               {asset.extension?.toUpperCase()} • {asset.size ? `${Math.round(asset.size / 1024)} KB` : 'Unknown size'}
             </div>
           </div>
@@ -1601,8 +1601,8 @@ export default Script;
 
     return (
       <div
-        class={`group cursor-pointer transition-all duration-200 p-2 rounded-lg hover:bg-slate-700/30 ${
-          isAssetSelected(asset.id) ? 'bg-blue-600/20 ring-2 ring-blue-500/50' : ''
+        class={`group cursor-pointer transition-all duration-200 p-2 rounded-lg hover:bg-base-300/30 ${
+          isAssetSelected(asset.id) ? 'bg-primary/20 ring-2 ring-primary/50' : ''
         }`}
         data-asset-id={asset.id}
         draggable={true}
@@ -1635,7 +1635,7 @@ export default Script;
           <div class="w-full aspect-square mb-2 flex items-center justify-center relative">
             <Show when={is3DModelFile(asset.extension)} fallback={
               <Show when={isImageFile(asset.extension)} fallback={
-                <div class={`w-full h-full bg-gray-700 rounded flex items-center justify-center transition-all group-hover:scale-105 ${
+                <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-105 ${
                     loadedAssets().includes(asset.id) 
                       ? 'opacity-100' 
                       : failedAssets().includes(asset.id) 
@@ -1643,9 +1643,9 @@ export default Script;
                         : 'opacity-60'
                   }`}>
                   {isScriptFile(asset.extension) ? (
-                    <Code class="w-8 h-8 text-blue-400" />
+                    <Code class="w-8 h-8 text-primary" />
                   ) : (
-                    <Photo class="w-8 h-8 text-gray-400" />
+                    <Photo class="w-8 h-8 text-base-content/60" />
                   )}
                 </div>
               }>
@@ -1669,17 +1669,17 @@ export default Script;
 
             <div class="absolute -bottom-1 -right-1">
               <Show when={preloadingAssets().includes(asset.id)}>
-                <div class="w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center">
+                <div class="w-6 h-6 bg-warning rounded-full flex items-center justify-center">
                   <div class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 </div>
               </Show>
               <Show when={failedAssets().includes(asset.id)}>
-                <div class="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center" title={`Failed to load ${asset.name}`}>
+                <div class="w-6 h-6 bg-error rounded-full flex items-center justify-center" title={`Failed to load ${asset.name}`}>
                   <X class="w-3 h-3 text-white" />
                 </div>
               </Show>
               <Show when={loadedAssets().includes(asset.id)}>
-                <div class="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                <div class="w-6 h-6 bg-success rounded-full flex items-center justify-center">
                   <Check class="w-3 h-3 text-white" />
                 </div>
               </Show>
@@ -1687,7 +1687,7 @@ export default Script;
           </div>
         </div>
         
-        <div class="text-xs text-gray-300 group-hover:text-white transition-colors truncate text-center leading-tight" title={asset.name}>
+        <div class="text-xs text-base-content/70 group-hover:text-base-content transition-colors truncate text-center leading-tight" title={asset.name}>
           {asset.name}
         </div>
       </div>
@@ -1695,26 +1695,26 @@ export default Script;
   };
 
   return (
-    <div class="h-full flex bg-slate-800 no-select">
+    <div class="h-full flex bg-base-200 no-select">
       <div 
-        class="bg-slate-900 border-r border-slate-700 flex flex-col relative"
+        class="bg-base-300 border-r border-base-300 flex flex-col relative"
         style={{ width: `${treePanelWidth()}px` }}
       >
         <div
           class={`absolute right-0 top-0 bottom-0 w-0.5 resize-handle cursor-col-resize ${isResizing() ? 'dragging' : ''}`}
           onMouseDown={handleResizeMouseDown}
         />
-        <div class="px-2 py-2 border-b border-slate-700">
+        <div class="px-2 py-2 border-b border-base-300">
           <div class="flex items-center justify-between mb-2">
-            <div class="text-xs font-medium text-gray-300">Project Assets</div>
+            <div class="text-xs font-medium text-base-content/70">Project Assets</div>
             <div class="flex items-center gap-2">
-              <div class="flex bg-slate-800 rounded overflow-hidden">
+              <div class="flex bg-base-200 rounded overflow-hidden">
                 <button
                   onClick={() => setViewMode('folder')}
                   class={`px-2 py-1 text-xs transition-colors ${
                     viewMode() === 'folder'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-slate-700'
+                      ? 'bg-primary text-primary-content'
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
                   }`}
                   title="Folder View"
                 >
@@ -1724,8 +1724,8 @@ export default Script;
                   onClick={() => setViewMode('type')}
                   class={`px-2 py-1 text-xs transition-colors ${
                     viewMode() === 'type'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-slate-700'
+                      ? 'bg-primary text-primary-content'
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
                   }`}
                   title="Asset Type View"
                 >
@@ -1736,10 +1736,10 @@ export default Script;
           </div>
           <div class="relative">
             <Show when={isSearching()} fallback={
-              <Search class="w-3 h-3 absolute left-2 top-1.5 text-gray-400" />
+              <Search class="w-3 h-3 absolute left-2 top-1.5 text-base-content/40" />
             }>
               <div class="w-3 h-3 absolute left-2 top-1.5 animate-spin">
-                <div class="w-3 h-3 border border-gray-400 border-t-blue-400 rounded-full"></div>
+                <div class="w-3 h-3 border border-base-content/40 border-t-primary rounded-full"></div>
               </div>
             </Show>
             <input
@@ -1747,7 +1747,7 @@ export default Script;
               placeholder="Search all assets..."
               value={searchQuery()}
               onInput={(e) => setSearchQuery(e.target.value)}
-              class="w-full pl-6 pr-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs text-white placeholder-gray-400 focus:outline-none focus:border-blue-500 transition-colors"
+              class="w-full pl-6 pr-2 py-1 bg-base-200 border border-base-300 rounded text-xs text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary transition-colors"
             />
           </div>
         </div>
@@ -1755,7 +1755,7 @@ export default Script;
         <div class="flex-1 overflow-y-auto scrollbar-thin">
           <Show when={viewMode() === 'folder'} fallback={
             <Show when={categoryList().length > 0} fallback={
-              <div class="p-4 text-center text-gray-500 text-xs">
+              <div class="p-4 text-center text-base-content/50 text-xs">
                 {error() ? error() : 'Loading asset categories...'}
               </div>
             }>
@@ -1764,22 +1764,22 @@ export default Script;
                   {(category) => (
                     <button
                       onClick={() => setSelectedCategory(category.id)}
-                      class={`w-full flex items-center justify-between px-2 py-1.5 text-left text-xs rounded hover:bg-slate-800 transition-colors ${
+                      class={`w-full flex items-center justify-between px-2 py-1.5 text-left text-xs rounded hover:bg-base-200 transition-colors ${
                         selectedCategory() === category.id 
-                          ? 'bg-blue-600 text-white' 
-                          : 'text-gray-300 hover:text-white'
+                          ? 'bg-primary text-primary-content' 
+                          : 'text-base-content/70 hover:text-base-content'
                       }`}
                     >
                       <span class="flex items-center">
                         <category.icon class={`w-3 h-3 mr-2 ${
-                          selectedCategory() === category.id ? 'text-white' : 'text-gray-400'
+                          selectedCategory() === category.id ? 'text-primary-content' : 'text-base-content/60'
                         }`} />
                         {category.label}
                       </span>
                       <span class={`text-[10px] px-1.5 py-0.5 rounded-full ${
                         selectedCategory() === category.id 
-                          ? 'text-white bg-blue-500' 
-                          : 'text-gray-400 bg-slate-700'
+                          ? 'text-primary-content bg-primary' 
+                          : 'text-base-content/60 bg-base-300'
                       }`}>{category.count}</span>
                     </button>
                   )}
@@ -1788,7 +1788,7 @@ export default Script;
             </Show>
           }>
             <Show when={folderTree()} fallback={
-              <div class="p-4 text-center text-gray-500 text-xs">
+              <div class="p-4 text-center text-base-content/50 text-xs">
                 {error() ? error() : 'Loading directory tree...'}
               </div>
             }>
@@ -1804,14 +1804,14 @@ export default Script;
       
       <div 
         class={`flex-1 flex flex-col transition-all duration-200 relative ${
-          isDragOver() ? 'bg-blue-900/30 border-2 border-blue-400 border-dashed' : 'bg-slate-800'
+          isDragOver() ? 'bg-primary/20 border-2 border-primary border-dashed' : 'bg-base-200'
         }`}
       >
-        <div class="bg-slate-800 flex-shrink-0 border-b border-slate-700">
+        <div class="bg-base-200 flex-shrink-0 border-b border-base-300">
           <div class="flex items-center justify-between px-3 py-2">
             <div class="flex items-center text-xs">
               <Show when={viewMode() === 'folder' && breadcrumbs().length > 0} fallback={
-                <span class="text-gray-400 px-2 py-1">
+                <span class="text-base-content/60 px-2 py-1">
                   {viewMode() === 'type' && assetCategories() && assetCategories()[selectedCategory()] 
                     ? assetCategories()[selectedCategory()].name 
                     : 'Assets'
@@ -1825,10 +1825,10 @@ export default Script;
                         onClick={() => handleBreadcrumbClick(crumb.path)}
                         class={`px-2 py-1 rounded transition-colors ${
                           dragOverBreadcrumb() === crumb.path
-                            ? 'bg-blue-600/30 border border-blue-400 border-dashed text-blue-200'
+                            ? 'bg-primary/30 border border-primary border-dashed text-primary'
                             : index() === breadcrumbs().length - 1 
-                              ? 'text-white font-medium hover:text-blue-400' 
-                              : 'text-gray-400 hover:text-blue-400'
+                              ? 'text-base-content font-medium hover:text-primary' 
+                              : 'text-base-content/60 hover:text-primary'
                         }`}
                         onDragOver={(e) => {
                           if (isInternalDrag()) {
@@ -1884,7 +1884,7 @@ export default Script;
                         {crumb.name}
                       </button>
                       <Show when={index() < breadcrumbs().length - 1}>
-                        <ChevronRight class="w-3 h-3 mx-1 text-gray-600" />
+                        <ChevronRight class="w-3 h-3 mx-1 text-base-content/40" />
                       </Show>
                     </>
                   )}
@@ -1894,28 +1894,28 @@ export default Script;
             
             <div class="flex items-center gap-3">
               <Show when={selectedAssets().size > 0}>
-                <span class="text-xs text-blue-400 font-medium bg-blue-900/30 px-2 py-1 rounded">
+                <span class="text-xs text-primary font-medium bg-primary/20 px-2 py-1 rounded">
                   {selectedAssets().size} selected
                 </span>
               </Show>
-              <span class="text-xs text-gray-400">{filteredAssets().length} items</span>
+              <span class="text-xs text-base-content/60">{filteredAssets().length} items</span>
               
               <Show when={isUploading()}>
                 <div class="flex items-center gap-2 transition-all duration-300 opacity-100">
-                  <div class="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
-                    <div class="h-full bg-blue-500 rounded-full animate-pulse" style={{ width: '100%' }} />
+                  <div class="w-20 h-1.5 bg-base-300 rounded-full overflow-hidden">
+                    <div class="h-full bg-primary rounded-full animate-pulse" style={{ width: '100%' }} />
                   </div>
-                  <span class="text-xs text-gray-400">Uploading...</span>
+                  <span class="text-xs text-base-content/60">Uploading...</span>
                 </div>
               </Show>
               
-              <div class="flex bg-slate-700 rounded overflow-hidden">
+              <div class="flex bg-base-300 rounded overflow-hidden">
                 <button
                   onClick={() => setLayoutMode('grid')}
                   class={`px-2 py-1 text-xs transition-colors ${
                     layoutMode() === 'grid'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-slate-600'
+                      ? 'bg-primary text-primary-content'
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200'
                   }`}
                   title="Grid View"
                 >
@@ -1925,8 +1925,8 @@ export default Script;
                   onClick={() => setLayoutMode('list')}
                   class={`px-2 py-1 text-xs transition-colors ${
                     layoutMode() === 'list'
-                      ? 'bg-blue-600 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-slate-600'
+                      ? 'bg-primary text-primary-content'
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200'
                   }`}
                   title="List View"
                 >
@@ -1938,8 +1938,8 @@ export default Script;
                 <Show when={filteredAssets().length > 0}>
                 </Show>
               }>
-                <div class="flex items-center gap-1.5 text-blue-400/80 bg-blue-400/10 px-2 py-1 rounded-md border border-blue-400/20">
-                  <div class="w-2 h-2 bg-blue-400 rounded-full animate-spin" />
+                <div class="flex items-center gap-1.5 text-primary/80 bg-primary/10 px-2 py-1 rounded-md border border-primary/20">
+                  <div class="w-2 h-2 bg-primary rounded-full animate-spin" />
                   <span class="text-xs font-medium">Uploading...</span>
                 </div>
               </Show>
@@ -1959,7 +1959,7 @@ export default Script;
         >
           <Show when={loading()}>
             <div class="flex-1 flex items-center justify-center">
-              <div class="text-center text-gray-400">
+              <div class="text-center text-base-content/60">
                 <p class="text-sm">Loading assets...</p>
               </div>
             </div>
@@ -1967,7 +1967,7 @@ export default Script;
           
           <Show when={error()}>
             <div class="flex-1 flex items-center justify-center">
-              <div class="text-center text-red-400">
+              <div class="text-center text-error">
                 <p class="text-sm">Error: {error()}</p>
               </div>
             </div>
@@ -1975,9 +1975,9 @@ export default Script;
           
           <Show when={isUploading()}>
             <div class="flex-1 flex items-center justify-center">
-              <div class="text-center text-blue-400">
+              <div class="text-center text-primary">
                 <div class="flex items-center justify-center gap-2">
-                  <div class="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                  <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                   <p class="text-sm">Uploading files...</p>
                 </div>
               </div>
@@ -1985,13 +1985,13 @@ export default Script;
           </Show>
           
           <Show when={isDragOver()}>
-            <div class="absolute inset-0 flex items-center justify-center bg-blue-900/20 backdrop-blur-sm z-10">
+            <div class="absolute inset-0 flex items-center justify-center bg-primary/20 backdrop-blur-sm z-10">
               <div class="text-center">
-                <div class="w-16 h-16 mx-auto mb-4 border-2 border-blue-400 border-dashed rounded-lg flex items-center justify-center">
-                  <Upload class="w-8 h-8 text-blue-400" />
+                <div class="w-16 h-16 mx-auto mb-4 border-2 border-primary border-dashed rounded-lg flex items-center justify-center">
+                  <Upload class="w-8 h-8 text-primary" />
                 </div>
-                <p class="text-lg font-medium text-blue-400">Drop files to upload</p>
-                <p class="text-sm text-blue-300">Supports 3D models, textures, audio, and more</p>
+                <p class="text-lg font-medium text-primary">Drop files to upload</p>
+                <p class="text-sm text-primary/80">Supports 3D models, textures, audio, and more</p>
               </div>
             </div>
           </Show>
@@ -2001,18 +2001,18 @@ export default Script;
               <div class="flex-1 flex items-center justify-center">
                 <Show when={searchQuery()} fallback={
                   <div class="text-center">
-                  <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 border-2 border-gray-600 border-dashed rounded-xl flex items-center justify-center bg-gray-800/30">
+                  <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 border-2 border-base-content/40 border-dashed rounded-xl flex items-center justify-center bg-base-200/30">
                     {(() => {
                       if (viewMode() === 'folder') {
-                        return <FolderOpen class="w-8 h-8 sm:w-10 sm:h-10 text-gray-500" />;
+                        return <FolderOpen class="w-8 h-8 sm:w-10 sm:h-10 text-base-content/50" />;
                       } else {
                         const CategoryIcon = getCategoryIcon(selectedCategory());
-                        return <CategoryIcon class="w-8 h-8 sm:w-10 sm:h-10 text-gray-500" />;
+                        return <CategoryIcon class="w-8 h-8 sm:w-10 sm:h-10 text-base-content/50" />;
                       }
                     })()}
                   </div>
                   
-                  <h3 class="text-base sm:text-lg font-medium text-gray-300 mb-2">
+                  <h3 class="text-base sm:text-lg font-medium text-base-content/70 mb-2">
                     {viewMode() === 'folder' 
                       ? 'Empty folder'
                       : `No ${assetCategories()?.[selectedCategory()]?.name?.toLowerCase() || 'assets'} found`
@@ -2024,7 +2024,7 @@ export default Script;
                     <div class="flex flex-col sm:flex-row gap-3 mb-3 sm:mb-4">
                       <button
                         onClick={() => fileInputRef?.click()}
-                        class="flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors min-w-[120px]"
+                        class="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/80 text-primary-content text-sm font-medium rounded-lg transition-colors min-w-[120px]"
                       >
                         <Upload class="w-4 h-4" />
                         Upload Files
@@ -2032,22 +2032,22 @@ export default Script;
                       
                       <button
                         onClick={() => folderInputRef?.click()}
-                        class="flex items-center justify-center gap-2 px-4 py-2 border border-gray-600 hover:border-gray-500 hover:bg-gray-800/50 text-gray-300 text-sm font-medium rounded-lg transition-colors min-w-[120px]"
+                        class="flex items-center justify-center gap-2 px-4 py-2 border border-base-300 hover:border-base-content/50 hover:bg-base-200/50 text-base-content/70 text-sm font-medium rounded-lg transition-colors min-w-[120px]"
                       >
                         <Folder class="w-4 h-4" />
                         Upload Folder
                       </button>
                     </div>
                     
-                    <p class="text-xs text-gray-500">
+                    <p class="text-xs text-base-content/50">
                       Or drag and drop files anywhere in this area
                     </p>
                   </Show>
                   </div>
                 }>
-                  <div class="text-center text-gray-500">
+                  <div class="text-center text-base-content/50">
                     <p class="text-sm">No assets found matching "{searchQuery()}"</p>
-                    <p class="text-xs text-gray-600 mt-2">Try adjusting your search or upload new assets</p>
+                    <p class="text-xs text-base-content/40 mt-2">Try adjusting your search or upload new assets</p>
                   </div>
                 </Show>
               </div>
@@ -2107,7 +2107,7 @@ export default Script;
           
           <Show when={isSelecting() && selectionRect()}>
             <div
-              class="absolute border-2 border-blue-500 bg-blue-500/10 pointer-events-none z-20"
+              class="absolute border-2 border-primary bg-primary/10 pointer-events-none z-20"
               style={{
                 left: `${selectionRect().x}px`,
                 top: `${selectionRect().y}px`,

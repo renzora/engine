@@ -304,7 +304,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
   const currentWorkflow = getCurrentWorkflow();
 
   return (
-    <div ref={containerRef} class="h-10 bg-slate-900 border-t border-slate-700 border-b border-slate-700 flex items-center relative z-50">
+    <div ref={containerRef} class="h-10 bg-base-200 border-t border-base-300 border-b border-base-300 flex items-center relative z-50">
       <div ref={tabsRef} class="flex flex-1 overflow-hidden">
         <For each={visibleTabs()}>
           {(tab) => {
@@ -324,9 +324,9 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                 classList={{
                   'relative flex items-center px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap select-none': true,
                   'opacity-50 cursor-grabbing': isDragged(),
-                  'hover:bg-slate-800 cursor-grab': !isDragged(),
-                  'text-blue-400': isActive(),
-                  'text-gray-400 hover:text-gray-200': !isActive()
+                  'hover:bg-base-300 cursor-grab': !isDragged(),
+                  'text-primary': isActive(),
+                  'text-base-content/60 hover:text-base-content': !isActive()
                 }}
                 style={{
                   transform: isDragged() ? 'scale(0.95)' : 'scale(1)',
@@ -336,11 +336,11 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                 {tab.label}
                 
                 <Show when={isActive()}>
-                  <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"></div>
+                  <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"></div>
                 </Show>
                 
                 <Show when={isDragOver()}>
-                  <div class="absolute inset-y-0 left-0 w-0.5 bg-blue-500 z-10"></div>
+                  <div class="absolute inset-y-0 left-0 w-0.5 bg-primary z-10"></div>
                 </Show>
               </button>
             );
@@ -412,16 +412,16 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
               }}
               classList={{
                 'relative flex items-center px-3 py-2.5 text-sm font-medium transition-colors': true,
-                'bg-blue-600/20 border border-blue-500': dragOverOverflowButton(),
-                'hover:bg-slate-800': !dragOverOverflowButton(),
-                'text-blue-400': overflowTabs().some(tab => tab.id === currentActiveTab()),
-                'text-gray-400 hover:text-gray-200': !overflowTabs().some(tab => tab.id === currentActiveTab())
+                'bg-primary/20 border border-primary': dragOverOverflowButton(),
+                'hover:bg-base-300': !dragOverOverflowButton(),
+                'text-primary': overflowTabs().some(tab => tab.id === currentActiveTab()),
+                'text-base-content/60 hover:text-base-content': !overflowTabs().some(tab => tab.id === currentActiveTab())
               }}
             >
               <Menu class="w-4 h-4" />
               
               <Show when={overflowTabs().some(tab => tab.id === currentActiveTab())}>
-                <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500"></div>
+                <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-theme-accent"></div>
               </Show>
             </button>
           </div>
@@ -451,7 +451,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
               document.addEventListener('mousemove', handleMouseMove);
               document.addEventListener('mouseup', handleMouseUp);
             }}
-            class="p-1.5 hover:bg-slate-800 rounded transition-colors text-gray-400 hover:text-white cursor-row-resize mr-1"
+            class="p-1.5 hover:bg-base-300 rounded transition-colors text-base-content/60 hover:text-base-content cursor-row-resize mr-1"
             title="Drag to resize panel"
           >
             <GripVertical class="w-4 h-4" />
@@ -464,7 +464,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
             const currentState = bottomPanelOpen();
             onToggleAssetPanel(!currentState);
           }}
-          class="p-1.5 hover:bg-slate-800 rounded transition-colors text-gray-400 hover:text-white"
+          class="p-1.5 hover:bg-base-300 rounded transition-colors text-base-content/60 hover:text-base-content"
           title={bottomPanelOpen() ? 'Hide panel' : 'Show panel'}
         >
           {bottomPanelOpen() ? (
@@ -477,7 +477,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
       
       <Show when={showDropdown() && overflowTabs().length > 0}>
         <div 
-          class="fixed bg-slate-800 border border-slate-700 rounded-lg shadow-2xl shadow-black/50 min-w-48 pointer-events-auto"
+          class="fixed bg-base-200 border border-base-300 rounded-lg shadow-2xl shadow-black/50 min-w-48 pointer-events-auto"
           data-dropdown="true"
           style={{
             left: `${dropdownPosition().x}px`,
@@ -504,9 +504,9 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                   classList={{
                     'w-full flex items-center px-3 py-2 text-sm font-medium transition-all first:rounded-t-lg last:rounded-b-lg select-none': true,
                     'opacity-50 cursor-grabbing': isDragged(),
-                    'hover:bg-slate-700 cursor-grab': !isDragged(),
-                    'text-blue-400 bg-slate-700/50': isActive(),
-                    'text-gray-300 hover:text-gray-200': !isActive()
+                    'hover:bg-base-300 cursor-grab': !isDragged(),
+                    'text-primary bg-base-300/50': isActive(),
+                    'text-base-content hover:text-base-content': !isActive()
                   }}
                   style={{
                     transform: isDragged() ? 'scale(0.95)' : 'scale(1)',
@@ -516,7 +516,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                   {tab.label}
                   
                   <Show when={isDragOver()}>
-                    <div class="absolute inset-y-0 left-0 w-0.5 bg-blue-500 z-10"></div>
+                    <div class="absolute inset-y-0 left-0 w-0.5 bg-primary z-10"></div>
                   </Show>
                 </button>
               );

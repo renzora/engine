@@ -31,8 +31,7 @@ export { default as EmptyState } from './EmptyState.jsx';
 export { default as IconContainer } from './IconContainer.jsx';
 export { default as ContextMenu } from './ContextMenu.jsx';
 
-// Export hooks and utilities
-export * from './hooks/useThemedClasses.js';
+// Export utilities
 export * from './utils/cn.js';
 
 // Export icons separately to avoid conflicts

@@ -182,8 +182,8 @@ function Toolbar(props) {
     dragElement.style.position = 'absolute';
     dragElement.style.top = '-1000px';
     dragElement.style.left = '-1000px';
-    dragElement.style.background = 'linear-gradient(to bottom, rgb(51 65 85 / 0.95), rgb(15 23 42 / 0.98))';
-    dragElement.style.border = '1px solid rgb(148 163 184 / 0.5)';
+    dragElement.style.background = 'oklch(var(--b2) / 0.95)';
+    dragElement.style.border = '1px solid oklch(var(--b3) / 0.5)';
     dragElement.style.borderRadius = '8px';
     dragElement.style.padding = '8px';
     dragElement.style.boxShadow = '0 25px 50px -12px rgb(0 0 0 / 0.5)';
@@ -193,7 +193,7 @@ function Toolbar(props) {
     
     const icon = dragElement.querySelector('svg');
     if (icon) {
-      icon.style.color = '#e2e8f0';
+      icon.style.color = 'oklch(var(--bc))';
     }
     
     document.body.appendChild(dragElement);
@@ -321,7 +321,7 @@ function Toolbar(props) {
 
 
   return (
-    <div class="relative w-12 h-full bg-gradient-to-b from-slate-800/95 to-slate-900/98 backdrop-blur-md border-l border-slate-700/80 shadow-2xl shadow-black/30 flex flex-col py-2 pointer-events-auto no-select">
+    <div class="relative w-12 h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300/80 shadow-2xl shadow-black/30 flex flex-col py-2 pointer-events-auto no-select">
       <div class="flex flex-col space-y-1 px-1">
         <For each={tools()}>
           {(tool) => {
@@ -341,22 +341,22 @@ function Toolbar(props) {
                   isDragged() 
                     ? 'opacity-50 cursor-grabbing scale-95' 
                     : props.selectedTool === tool.id 
-                      ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-600/40 scale-105 cursor-grab' 
-                      : 'text-slate-400 hover:text-white hover:bg-gradient-to-b hover:from-slate-700/80 hover:to-slate-800/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
+                      ? 'bg-gradient-to-b from-primary to-primary/80 text-primary-content shadow-lg shadow-primary/40 scale-105 cursor-grab' 
+                      : 'text-base-content/60 hover:text-base-content hover:bg-gradient-to-b hover:from-base-300/80 hover:to-base-200/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
                 }`}
                 title={tool.title}
               >
                 <tool.icon class="w-6 h-6" />
                 
                 {isDragOver() && (
-                  <div class="absolute inset-x-0 top-0 h-0.5 bg-blue-500 rounded-full"></div>
+                  <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>
                 )}
                 
                 {!dragState().isDragging && (
-                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-slate-900/95 backdrop-blur-sm border border-slate-600 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
+                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-base-300/95 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
                        style={{ 'z-index': 999999 }}>
                     {tool.title}
-                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-slate-900' : 'border-l-4 border-l-slate-900'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
+                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-base-300' : 'border-l-4 border-l-base-300'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
                   </div>
                 )}
               </button>
@@ -431,7 +431,7 @@ function Toolbar(props) {
         }}
       >
         {dragState().isDragging && (
-          <div class="w-8 h-0.5 bg-blue-500/50 rounded-full opacity-50 transition-opacity">
+          <div class="w-8 h-0.5 bg-primary/50 rounded-full opacity-50 transition-opacity">
           </div>
         )}
       </div>
@@ -455,22 +455,22 @@ function Toolbar(props) {
                   isDragged() 
                     ? 'opacity-50 cursor-grabbing scale-95' 
                     : props.selectedTool === tool.id
-                      ? 'bg-gradient-to-b from-blue-500 to-blue-700 text-white shadow-lg shadow-blue-600/40 scale-105 cursor-grab' 
-                      : 'text-slate-400 hover:text-white hover:bg-gradient-to-b hover:from-slate-700/80 hover:to-slate-800/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
+                      ? 'bg-gradient-to-b from-primary to-primary/80 text-primary-content shadow-lg shadow-primary/40 scale-105 cursor-grab' 
+                      : 'text-base-content/60 hover:text-base-content hover:bg-gradient-to-b hover:from-base-300/80 hover:to-base-200/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
                 }`}
                 title={tool.title}
               >
                 <tool.icon class="w-6 h-6" />
                 
                 {isDragOver() && (
-                  <div class="absolute inset-x-0 top-0 h-0.5 bg-blue-500 rounded-full"></div>
+                  <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>
                 )}
                 
                 {!dragState().isDragging && (
-                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-slate-900/95 backdrop-blur-sm border border-slate-600 text-white text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
+                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-base-300/95 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
                        style={{ 'z-index': 999999 }}>
                     {tool.title}
-                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-slate-900' : 'border-l-4 border-l-slate-900'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
+                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-base-300' : 'border-l-4 border-l-base-300'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
                   </div>
                 )}
               </button>

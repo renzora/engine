@@ -1,7 +1,10 @@
 import { createSignal, createEffect, onCleanup, createMemo, For, Show } from 'solid-js';
-import { ArrowDown, ArrowUp, Refresh, ChevronRight } from '@/ui/icons';
+import { ArrowDown, ArrowUp, Refresh, ChevronRight, Minimize, Maximize, X } from '@/ui/icons';
+import { Settings } from '@/ui/icons/development';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { topMenuItems } from '@/api/plugin';
+import ThemeSwitcher from '@/ui/ThemeSwitcher';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 function TopMenu() {
   const [activeMenu, setActiveMenu] = createSignal(null);
@@ -12,8 +15,39 @@ function TopMenu() {
   const [showUpdateTooltip, setShowUpdateTooltip] = createSignal(false);
   const [showProjectManager, setShowProjectManager] = createSignal(false);
   const [menuPosition, setMenuPosition] = createSignal(null);
-  const [showRendererDropdown, setShowRendererDropdown] = createSignal(false);
-  const [rendererDropdownPosition, setRendererDropdownPosition] = createSignal(null);
+
+  // Tauri window control functions
+  const handleMinimize = async () => {
+    try {
+      const window = getCurrentWindow();
+      await window.minimize();
+    } catch (error) {
+      console.error('Failed to minimize window:', error);
+    }
+  };
+
+  const handleMaximize = async () => {
+    try {
+      const window = getCurrentWindow();
+      const isMaximized = await window.isMaximized();
+      if (isMaximized) {
+        await window.unmaximize();
+      } else {
+        await window.maximize();
+      }
+    } catch (error) {
+      console.error('Failed to toggle maximize:', error);
+    }
+  };
+
+  const handleClose = async () => {
+    try {
+      const window = getCurrentWindow();
+      await window.close();
+    } catch (error) {
+      console.error('Failed to close window:', error);
+    }
+  };
 
   // Click outside detection for dropdowns
   createEffect(() => {
@@ -26,12 +60,10 @@ function TopMenu() {
         // Close all dropdowns and menus
         setActiveMenu(null);
         setMenuPosition(null);
-        setShowRendererDropdown(false);
-        setRendererDropdownPosition(null);
       }
     };
 
-    if (activeMenu() || showRendererDropdown()) {
+    if (activeMenu()) {
       document.addEventListener('mousedown', handleClickOutside);
       onCleanup(() => {
         document.removeEventListener('mousedown', handleClickOutside);
@@ -107,16 +139,6 @@ function TopMenu() {
     };
   });
 
-  const rendererOptions = [
-    { id: 'webgl', label: 'WebGL' },
-    { id: 'webgpu', label: 'WebGPU' }
-  ];
-
-  const handleRendererChange = (rendererId) => {
-    editorActions.updateViewportSettings({ renderingEngine: rendererId });
-    setShowRendererDropdown(false);
-    editorActions.addConsoleMessage(`Switched to ${rendererId.toUpperCase()} renderer`, 'success');
-  };
 
   // Create dynamic menu structure from plugin extensions only
   const menuStructure = createMemo(() => {
@@ -149,9 +171,6 @@ function TopMenu() {
       setMenuPosition(null);
     } else {
       console.log('Opening menu:', menuName);
-      // Close renderer dropdown if open
-      setShowRendererDropdown(false);
-      setRendererDropdownPosition(null);
       
       const rect = event.currentTarget.getBoundingClientRect();
       const position = calculateDropdownPosition(rect, 224); // Menu width is 224px (w-56)
@@ -179,7 +198,7 @@ function TopMenu() {
   return (
     <>
       <div 
-        class="relative w-full h-8 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800 flex items-center px-2"
+        class="relative w-full h-8 bg-base-200/95 backdrop-blur-sm border-b border-base-300 flex items-center px-2"
         data-tauri-drag-region
       >
         <div 
@@ -197,9 +216,6 @@ function TopMenu() {
                     console.log('Hovering over menu:', menuName, 'Current active menu:', activeMenu());
                     if (activeMenu()) {
                       console.log('Switching from', activeMenu(), 'to', menuName);
-                      // Close renderer dropdown if open
-                      setShowRendererDropdown(false);
-                      setRendererDropdownPosition(null);
                       
                       const rect = e.currentTarget.getBoundingClientRect();
                       const position = calculateDropdownPosition(rect, 224);
@@ -212,8 +228,8 @@ function TopMenu() {
                       console.log('No active menu, not switching');
                     }
                   }}
-                  class={`menu-button px-3 py-1 text-sm text-gray-300 hover:bg-gray-700/50 rounded transition-colors ${
-                    activeMenu() === menuName ? 'bg-gray-700/50' : ''
+                  class={`menu-button px-3 py-1 text-sm text-base-content hover:bg-base-300 rounded transition-colors ${
+                    activeMenu() === menuName ? 'bg-base-300' : ''
                   }`}
                 >
                   {menuName}
@@ -231,7 +247,7 @@ function TopMenu() {
           }}
         >
           <div class="flex items-center gap-2">
-            <span class="text-gray-400">
+            <span class="text-base-content/60">
               Renzora Engine v1.0.0
             </span>
             <div 
@@ -240,58 +256,55 @@ function TopMenu() {
               onMouseLeave={() => setShowSyncTooltip(false)}
             >
               <Show when={showSyncTooltip()}>
-                <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900/95 text-white text-xs rounded whitespace-nowrap z-[120]">
+                <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-base-200 text-base-content text-xs rounded whitespace-nowrap z-[120]">
                   {getSyncStatusInfo().tooltip}
-                  <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900/95" />
+                  <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-200" />
                 </div>
               </Show>
             </div>
           </div>
           
           <div class="flex items-center gap-2">
-            <span class="text-gray-600">•</span>
+            <span class="text-base-content/30">•</span>
             <span 
-              class="text-orange-400 text-xs font-medium flex items-center gap-1 cursor-pointer relative"
+              class="text-accent text-xs font-medium flex items-center gap-1 cursor-pointer relative"
               onMouseEnter={() => setShowUpdateTooltip(true)}
               onMouseLeave={() => setShowUpdateTooltip(false)}
             >
               Renzora Engine r1
               <ArrowDown class="w-3 h-3" />
               <Show when={showUpdateTooltip()}>
-                <div class="absolute right-full top-1/2 transform -translate-y-1/2 mr-2 px-2 py-1 bg-gray-900/95 text-white text-xs rounded whitespace-nowrap z-[120]">
+                <div class="absolute right-full top-1/2 transform -translate-y-1/2 mr-2 px-2 py-1 bg-base-200 text-base-content text-xs rounded whitespace-nowrap z-[120]">
                   Update to r2
-                  <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-gray-900/95" />
+                  <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-base-200" />
                 </div>
               </Show>
             </span>
-            <span class="text-gray-600">•</span>
-            <div class="relative">
+            {/* Tauri Window Controls */}
+            <div class="flex items-center ml-4">
               <button
-                onClick={(e) => {
-                  if (showRendererDropdown()) {
-                    setShowRendererDropdown(false);
-                    setRendererDropdownPosition(null);
-                  } else {
-                    // Close menu if open
-                    setActiveMenu(null);
-                    setMenuPosition(null);
-                    
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const position = calculateDropdownPosition(rect, 128);
-                    setRendererDropdownPosition(position);
-                    setShowRendererDropdown(true);
-                  }
-                }}
-                class="menu-button text-blue-400 font-medium hover:text-blue-300 transition-colors px-2 py-1 rounded hover:bg-gray-700/50 flex items-center gap-1"
+                onClick={handleMinimize}
+                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors"
+                title="Minimize"
+                style={{ '-webkit-app-region': 'no-drag' }}
               >
-                {(settings().viewport?.renderingEngine || 'webgl').toUpperCase()}
-                <svg 
-                  class={`w-3 h-3 transition-transform ${showRendererDropdown() ? 'rotate-180' : ''}`} 
-                  fill="currentColor" 
-                  viewBox="0 0 20 20"
-                >
-                  <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
-                </svg>
+                <Minimize class="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleMaximize}
+                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors"
+                title="Maximize"
+                style={{ '-webkit-app-region': 'no-drag' }}
+              >
+                <Maximize class="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleClose}
+                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-error hover:bg-error/10 rounded transition-colors"
+                title="Close"
+                style={{ '-webkit-app-region': 'no-drag' }}
+              >
+                <X class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -300,7 +313,7 @@ function TopMenu() {
       
       <Show when={activeMenu() && menuPosition()}>
         <div 
-          class="dropdown-content fixed w-56 bg-gradient-to-br from-gray-900/98 to-gray-950/98 backdrop-blur-sm rounded-lg shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] z-[110] border border-gray-700/50"
+          class="dropdown-content fixed w-56 bg-base-200 backdrop-blur-sm rounded-lg shadow-xl z-[110] border border-base-300"
           style={{
             left: menuPosition().left + 'px',
             top: menuPosition().top + 'px'
@@ -311,19 +324,19 @@ function TopMenu() {
               {(item, index) => (
                 <>
                   <Show when={item.divider}>
-                    <div class="border-t border-gray-700/50 my-1 mx-2" />
+                    <div class="border-t border-base-300 my-1 mx-2" />
                   </Show>
                   <Show when={!item.divider}>
                     <div class="relative group/item">
                       <button
-                        class="w-full px-3 py-1.5 text-left text-sm text-gray-300 hover:bg-gradient-to-r hover:from-blue-600/90 hover:to-blue-500/90 hover:text-white flex items-center justify-between transition-all duration-150 relative rounded-md hover:shadow-lg"
+                        class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center justify-between transition-all duration-150 relative rounded-md"
                         onClick={() => item.submenu ? null : handleItemClick(item)}
                       >
                         <div class="flex items-center gap-2">
                           <Show when={item.icon}>
-                            <span class="w-4 h-4 flex items-center justify-center text-gray-400 group-hover/item:text-white">
+                            <span class="w-4 h-4 flex items-center justify-center text-base-content/60 group-hover/item:text-primary-content">
                               <Show when={item.id === 'save' && isSaving()} fallback={<item.icon class="w-3.5 h-3.5" />}>
-                                <div class="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                                <div class="w-3 h-3 border-2 border-base-content/60 border-t-transparent rounded-full animate-spin" />
                               </Show>
                             </span>
                           </Show>
@@ -332,63 +345,63 @@ function TopMenu() {
                           </span>
                         </div>
                         <Show when={item.shortcut}>
-                          <span class="ml-auto text-xs text-gray-500 group-hover/item:text-gray-300">{item.shortcut}</span>
+                          <span class="ml-auto text-xs text-base-content/40 group-hover/item:text-primary-content/70">{item.shortcut}</span>
                         </Show>
                         <Show when={item.submenu}>
-                          <ChevronRight class="w-3 h-3 text-gray-400 group-hover/item:text-white ml-auto" />
+                          <ChevronRight class="w-3 h-3 text-base-content/60 group-hover/item:text-primary-content ml-auto" />
                         </Show>
                       </button>
                       
                       {/* Nested submenu - CSS hover activated */}
                       <Show when={item.submenu}>
-                        <div class="absolute left-full top-0 -ml-1 w-56 bg-gradient-to-br from-gray-900/98 to-gray-950/98 backdrop-blur-sm rounded-lg shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] border border-gray-700/50 opacity-0 invisible group-hover/item:opacity-100 group-hover/item:visible transition-all duration-200 z-[120] before:absolute before:inset-y-0 before:-left-1 before:w-2 before:content-['']">
+                        <div class="absolute left-full top-0 -ml-1 w-56 bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 opacity-0 invisible group-hover/item:opacity-100 group-hover/item:visible transition-all duration-200 z-[120] before:absolute before:inset-y-0 before:-left-1 before:w-2 before:content-['']">
                           <div class="p-1">
                             <For each={item.submenu}>
                               {(subItem) => (
                                 <>
                                   <Show when={subItem.divider}>
-                                    <div class="border-t border-gray-700/50 my-1 mx-2" />
+                                    <div class="border-t border-base-300 my-1 mx-2" />
                                   </Show>
                                   <Show when={!subItem.divider}>
                                     <div class="relative group/subitem">
                                       <button
-                                        class="w-full px-3 py-1.5 text-left text-sm text-gray-300 hover:bg-gradient-to-r hover:from-blue-600/90 hover:to-blue-500/90 hover:text-white flex items-center justify-between transition-all duration-150 rounded-md"
+                                        class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center justify-between transition-all duration-150 rounded-md"
                                         onClick={() => subItem.submenu ? null : handleItemClick(subItem)}
                                       >
                                         <div class="flex items-center gap-2">
                                           <Show when={subItem.icon}>
-                                            <span class="w-4 h-4 flex items-center justify-center text-gray-400 group-hover/subitem:text-white">
+                                            <span class="w-4 h-4 flex items-center justify-center text-base-content/60 group-hover/subitem:text-primary-content">
                                               <subItem.icon class="w-3.5 h-3.5" />
                                             </span>
                                           </Show>
                                           <span class="font-normal">{subItem.label}</span>
                                         </div>
                                         <Show when={subItem.shortcut}>
-                                          <span class="ml-auto text-xs text-gray-500 group-hover/subitem:text-gray-300">{subItem.shortcut}</span>
+                                          <span class="ml-auto text-xs text-base-content/40 group-hover/subitem:text-primary-content/70">{subItem.shortcut}</span>
                                         </Show>
                                         <Show when={subItem.submenu}>
-                                          <ChevronRight class="w-3 h-3 text-gray-400 group-hover/subitem:text-white ml-auto" />
+                                          <ChevronRight class="w-3 h-3 text-base-content/60 group-hover/subitem:text-primary-content ml-auto" />
                                         </Show>
                                       </button>
                                       
                                       {/* Third level submenu */}
                                       <Show when={subItem.submenu}>
-                                        <div class="absolute left-full top-0 -ml-1 w-56 bg-gradient-to-br from-gray-900/98 to-gray-950/98 backdrop-blur-sm rounded-lg shadow-[0_20px_25px_-5px_rgba(0,0,0,0.4)] border border-gray-700/50 opacity-0 invisible group-hover/subitem:opacity-100 group-hover/subitem:visible transition-all duration-200 z-[130] before:absolute before:inset-y-0 before:-left-1 before:w-2 before:content-['']">
+                                        <div class="absolute left-full top-0 -ml-1 w-56 bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 opacity-0 invisible group-hover/subitem:opacity-100 group-hover/subitem:visible transition-all duration-200 z-[130] before:absolute before:inset-y-0 before:-left-1 before:w-2 before:content-['']">
                                           <div class="p-1">
                                             <For each={subItem.submenu}>
                                               {(thirdItem) => (
                                                 <button
-                                                  class="w-full px-3 py-1.5 text-left text-sm text-gray-300 hover:bg-gradient-to-r hover:from-blue-600/90 hover:to-blue-500/90 hover:text-white flex items-center gap-2 transition-all duration-150 rounded-md"
+                                                  class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center gap-2 transition-all duration-150 rounded-md"
                                                   onClick={() => handleItemClick(thirdItem)}
                                                 >
                                                   <Show when={thirdItem.icon}>
-                                                    <span class="w-4 h-4 flex items-center justify-center text-gray-400">
+                                                    <span class="w-4 h-4 flex items-center justify-center text-base-content/60">
                                                       <thirdItem.icon class="w-3.5 h-3.5" />
                                                     </span>
                                                   </Show>
                                                   <span class="font-normal">{thirdItem.label}</span>
                                                   <Show when={thirdItem.shortcut}>
-                                                    <span class="ml-auto text-xs text-gray-500">{thirdItem.shortcut}</span>
+                                                    <span class="ml-auto text-xs text-base-content/40">{thirdItem.shortcut}</span>
                                                   </Show>
                                                 </button>
                                               )}
@@ -413,44 +426,15 @@ function TopMenu() {
         </div>
       </Show>
       
-      <Show when={showRendererDropdown() && rendererDropdownPosition()}>
-        <div 
-          class="dropdown-content fixed w-32 bg-gray-800/95 backdrop-blur-sm rounded-lg shadow-xl border border-gray-600/50 z-[210]"
-          style={{
-            left: rendererDropdownPosition().left + 'px',
-            top: rendererDropdownPosition().top + 'px'
-          }}
-        >
-          <For each={rendererOptions}>
-            {(option) => (
-              <button
-                onClick={() => handleRendererChange(option.id)}
-                class={`w-full px-3 py-2 text-left text-sm transition-colors flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg ${
-                  settings().viewport?.renderingEngine === option.id
-                    ? 'bg-green-600/90 text-white'
-                    : 'text-gray-300 hover:bg-gray-900/60 hover:text-white'
-                }`}
-              >
-                {option.label}
-                <Show when={settings().viewport?.renderingEngine === option.id}>
-                  <svg class="w-3 h-3 ml-auto" fill="currentColor" viewBox="0 0 20 20" stroke-width="2">
-                    <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" />
-                  </svg>
-                </Show>
-              </button>
-            )}
-          </For>
-        </div>
-      </Show>
 
       <Show when={showProjectManager()}>
         <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div class="bg-slate-800 p-6 rounded-xl">
-            <h2 class="text-white mb-4">Project Manager</h2>
-            <p class="text-gray-300 mb-4">Project manager coming soon...</p>
+          <div class="bg-base-200 p-6 rounded-xl">
+            <h2 class="text-base-content mb-4">Project Manager</h2>
+            <p class="text-base-content/80 mb-4">Project manager coming soon...</p>
             <button 
               onClick={() => setShowProjectManager(false)}
-              class="px-4 py-2 bg-blue-600 text-white rounded"
+              class="px-4 py-2 bg-primary text-primary-content rounded"
             >
               Close
             </button>

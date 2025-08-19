@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 export default function Card({ 
   children, 
   variant = 'default',
@@ -8,11 +6,9 @@ export default function Card({
   class: className = '',
   ...props 
 }) {
-  const { themed, combine } = useThemedClasses();
-  
   const variants = {
-    default: `${themed.bg.surface} border ${themed.border.surface}`,
-    panel: `${themed.bg.panel} border ${themed.border.panel}`,
+    default: 'bg-gray-800 border border-gray-700',
+    panel: 'bg-gray-900 border border-gray-800',
     glass: 'bg-black/90 backdrop-blur-xl border border-white/30',
     gradient: 'bg-gradient-to-br from-black/90 to-black/85 border border-blue-400/20'
   };
@@ -27,7 +23,9 @@ export default function Card({
   
   const hoverClasses = hoverable ? 'hover:shadow-xl transition-all duration-300 cursor-pointer' : '';
   
-  const classes = combine(
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
+  
+  const classes = combineClasses(
     'rounded-xl',
     variants[variant],
     paddings[padding],

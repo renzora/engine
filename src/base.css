@@ -1,69 +1,25 @@
 @import "tailwindcss";
+@plugin "daisyui" {
+  themes: all;
+}
 
 @layer base {
-  /* Default theme variables - will be overridden by ThemeProvider */
-  :root {
-    /* Dark theme defaults */
-    --background: 15 15 15;
-    --foreground: 245 245 245;
-    --panel: 25 25 25;
-    --panel-secondary: 30 30 30;
-    --panel-border: 45 45 45;
-    --surface: 35 35 35;
-    --surface-hover: 40 40 40;
-    --surface-border: 55 55 55;
-    --primary: 59 130 246;
-    --primary-hover: 37 99 235;
-    --primary-foreground: 255 255 255;
-    --secondary: 75 85 99;
-    --secondary-hover: 55 65 81;
-    --secondary-foreground: 245 245 245;
-    --accent: 168 85 247;
-    --accent-hover: 147 51 234;
-    --accent-foreground: 255 255 255;
-    --success: 34 197 94;
-    --success-hover: 22 163 74;
-    --warning: 251 146 60;
-    --warning-hover: 251 146 60;
-    --danger: 239 68 68;
-    --danger-hover: 220 38 38;
-    --info: 59 130 246;
-    --info-hover: 37 99 235;
-    --text-primary: 245 245 245;
-    --text-secondary: 163 163 163;
-    --text-disabled: 115 115 115;
-    --text-inverse: 15 15 15;
-    --input-bg: 30 30 30;
-    --input-border: 60 60 60;
-    --input-border-focus: 59 130 246;
-    --input-text: 245 245 245;
-    --input-placeholder: 115 115 115;
-    --scrollbar: 60 60 60;
-    --scrollbar-hover: 80 80 80;
-    --selection: 59 130 246 / 0.3;
-    --highlight: 251 191 36 / 0.2;
-    --shadow-sm: 0 0 0 / 0.3;
-    --shadow-md: 0 0 0 / 0.5;
-    --shadow-lg: 0 0 0 / 0.7;
-  }
-  
+
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    background-color: rgb(var(--background));
-    color: rgb(var(--foreground));
   }
   
   /* Selection colors */
   ::selection {
-    background-color: rgba(var(--selection));
-    color: rgb(var(--foreground));
+    background-color: rgba(59, 130, 246, 0.3);
+    color: var(--theme-onBackground);
   }
 }
 
 @layer components {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgb(var(--scrollbar)) transparent;
+    scrollbar-color: #3c3c3c transparent;
   }
   
   .scrollbar-thin::-webkit-scrollbar {
@@ -76,13 +32,13 @@
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: rgb(var(--scrollbar));
+    background: #3c3c3c;
     border-radius: 4px;
-    border: 1px solid rgb(var(--panel-border));
+    border: 1px solid #2d2d2d;
   }
   
   .scrollbar-thin::-webkit-scrollbar-thumb:hover {
-    background: rgb(var(--scrollbar-hover));
+    background: #505050;
   }
 
   .no-select {

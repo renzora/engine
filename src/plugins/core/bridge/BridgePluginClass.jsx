@@ -13,22 +13,6 @@ export default createPlugin({
 
   async onInit(api) {
     console.log('[BridgePlugin] Initializing bridge server connection...');
-    
-    // Register bridge theme
-    api.theme('bridge-theme', {
-      name: 'Bridge Connection Theme',
-      description: 'A theme optimized for bridge server communication',
-      colors: {
-        primary: '#0ea5e9',
-        secondary: '#06b6d4',
-        accent: '#22d3ee'
-      },
-      cssVariables: {
-        '--bridge-primary': '#0ea5e9',
-        '--bridge-secondary': '#06b6d4'
-      }
-    });
-
     console.log('[BridgePlugin] Bridge plugin initialized');
   },
 

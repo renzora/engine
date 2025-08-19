@@ -1,5 +1,3 @@
-import { useThemedClasses } from './hooks/useThemedClasses.js';
-
 export default function Stack({ 
   children, 
   direction = 'vertical',
@@ -9,7 +7,7 @@ export default function Stack({
   class: className = '',
   ...props 
 }) {
-  const { combine } = useThemedClasses();
+  const combineClasses = (...classes) => classes.filter(Boolean).join(' ');
   
   const directionClasses = {
     vertical: 'flex-col',
@@ -40,7 +38,7 @@ export default function Stack({
     around: 'justify-around'
   };
   
-  const classes = combine(
+  const classes = combineClasses(
     'flex',
     directionClasses[direction],
     gapClasses[gap],

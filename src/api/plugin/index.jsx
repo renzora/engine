@@ -19,8 +19,6 @@ const [propertyTabs, setPropertyTabs] = createSignal(new Map());
 const [bottomPanelTabs, setBottomPanelTabs] = createSignal(new Map());
 const [viewportTypes, setViewportTypes] = createSignal(new Map());
 const [toolbarButtons, setToolbarButtons] = createSignal(new Map());
-const [currentTheme, setCurrentTheme] = createSignal('dark');
-const [availableThemes, setAvailableThemes] = createSignal(new Map());
 const [registeredPlugins, setRegisteredPlugins] = createSignal(new Map());
 const [propertiesPanelVisible, setPropertiesPanelVisible] = createSignal(true);
 const [bottomPanelVisible, setBottomPanelVisible] = createSignal(true);
@@ -528,20 +526,6 @@ export class PluginAPI {
     return true;
   }
 
-  registerTheme(id, theme) {
-    const themeConfig = {
-      id,
-      name: theme.name,
-      description: theme.description,
-      colors: theme.colors || {},
-      cssVariables: theme.cssVariables || {},
-      plugin: theme.plugin || 'unknown'
-    };
-
-    setAvailableThemes(prev => new Map(prev.set(id, themeConfig)));
-    console.log(`[PluginAPI] Theme registered: ${id}`);
-    return true;
-  }
 
   registerLayoutComponent(region, component) {
     setLayoutComponents(prev => new Map(prev.set(region, component)));
@@ -588,7 +572,6 @@ export class PluginAPI {
   panel(id, config) { return this.registerBottomPanelTab(id, config); }
   viewport(id, config) { return this.registerViewportType(id, config); }
   button(id, config) { return this.registerToolbarButton(id, config); }
-  theme(id, config) { return this.registerTheme(id, config); }
   open(typeId, options) { return this.createViewportTab(typeId, options); }
 
   createViewportTab(typeId, options = {}) {
@@ -682,22 +665,6 @@ export class PluginAPI {
   showMenu(enabled = true) { return this.setHorizontalMenuButtonsEnabled(enabled); }
   hideMenu() { return this.setHorizontalMenuButtonsEnabled(false); }
 
-  setTheme(id) {
-    const theme = availableThemes().get(id);
-    if (!theme) {
-      console.error(`[PluginAPI] Theme not found: ${id}`);
-      return false;
-    }
-
-    const root = document.documentElement;
-    Object.entries(theme.cssVariables).forEach(([key, value]) => {
-      root.style.setProperty(key, value);
-    });
-
-    setCurrentTheme(id);
-    console.log(`[PluginAPI] Theme applied: ${id}`);
-    return true;
-  }
 
   getTopMenuItems() {
     return Array.from(topMenuItems().values()).sort((a, b) => a.order - b.order);
@@ -719,13 +686,6 @@ export class PluginAPI {
     return Array.from(toolbarButtons().values());
   }
 
-  getThemes() {
-    return Array.from(availableThemes().values());
-  }
-
-  getCurrentTheme() {
-    return currentTheme();
-  }
 
   getPlugins() {
     return Array.from(registeredPlugins().values());
@@ -775,9 +735,7 @@ export class PluginAPI {
       registeredTopMenuItems: topMenuItems().size,
       registeredPropertyTabs: propertyTabs().size,
       registeredBottomPanelTabs: bottomPanelTabs().size,
-      registeredThemes: availableThemes().size,
-      registeredPlugins: registeredPlugins().size,
-      currentTheme: currentTheme()
+      registeredPlugins: registeredPlugins().size
     };
   }
 }
@@ -836,8 +794,6 @@ export {
   bottomPanelTabs,
   viewportTypes,
   toolbarButtons,
-  currentTheme,
-  availableThemes,
   registeredPlugins,
   propertiesPanelVisible,
   bottomPanelVisible,
