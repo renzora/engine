@@ -6,6 +6,7 @@ import { viewportActions, objectPropertiesActions, objectPropertiesStore } from 
 import useSceneDnD from '@/ui/hooks/useSceneDnD.jsx';
 import { CollapsibleSection } from '@/ui';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import { getScriptRuntime } from '@/api/script';
 
 const buildHierarchyFromBabylon = (babylonObject, depth = 0) => {
   if (!babylonObject) return null;
@@ -673,7 +674,7 @@ function Scene(props) {
                           onDragLeave={(e) => {
                             e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
                           }}
-                          onDrop={(e) => {
+                          onDrop={async (e) => {
                             e.preventDefault();
                             e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
                             
@@ -691,12 +692,25 @@ function Scene(props) {
                                   
                                   const currentScripts = objectProps.scripts || [];
                                   if (!currentScripts.find(s => s.path === data.path)) {
-                                    const newScripts = [...currentScripts, { 
-                                      path: data.path, 
-                                      name: data.name,
-                                      enabled: true 
-                                    }];
-                                    updateObjectProperty(selection.entity, 'scripts', newScripts);
+                                    console.log('🔧 Attaching script via drag and drop:', data.path, 'to', selection.entity);
+                                    
+                                    // Use script runtime to attach the script
+                                    const runtime = getScriptRuntime();
+                                    const success = await runtime.attachScript(selection.entity, data.path);
+                                    
+                                    if (success) {
+                                      const newScripts = [...currentScripts, { 
+                                        path: data.path, 
+                                        name: data.name,
+                                        enabled: true 
+                                      }];
+                                      updateObjectProperty(selection.entity, 'scripts', newScripts);
+                                      editorActions.addConsoleMessage(`Script "${data.name}" attached successfully`, 'success');
+                                    } else {
+                                      editorActions.addConsoleMessage(`Failed to attach script "${data.name}"`, 'error');
+                                    }
+                                  } else {
+                                    console.log('🔧 Script already attached:', data.path);
                                   }
                                 }
                               }
@@ -734,8 +748,17 @@ function Scene(props) {
                                     </div>
                                     <button
                                       onClick={() => {
+                                        console.log('🔧 Removing script:', script.path, 'from', selection.entity);
+                                        
+                                        // Detach from runtime
+                                        const runtime = getScriptRuntime();
+                                        runtime.detachScript(selection.entity, script.path);
+                                        
+                                        // Update UI
                                         const updatedScripts = objectProps.scripts.filter((_, i) => i !== index());
                                         updateObjectProperty(selection.entity, 'scripts', updatedScripts);
+                                        
+                                        editorActions.addConsoleMessage(`Script "${script.name}" removed`, 'info');
                                       }}
                                       className="p-0.5 hover:bg-base-300 rounded"
                                     >

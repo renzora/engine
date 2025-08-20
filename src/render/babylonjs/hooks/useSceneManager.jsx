@@ -12,6 +12,7 @@ import '@babylonjs/core/Layers/effectLayerSceneComponent'
 import '@babylonjs/core/Meshes/Builders/sphereBuilder'
 import '@babylonjs/core/Meshes/Builders/groundBuilder'
 import { viewportStore } from '@/layout/stores/ViewportStore'
+import { initializeScriptRuntime } from '@/api/script'
 window._cleanBabylonScene = null;
 
 export const useSceneManager = () => {
@@ -91,6 +92,18 @@ export const useSceneManager = () => {
     setSceneInstance(scene)
     // CLEAN SCENE: Set global scene reference
     window._cleanBabylonScene = scene;
+    
+    // Initialize script runtime
+    try {
+      const runtime = initializeScriptRuntime(scene);
+      console.log('🔧 Script runtime initialized successfully');
+      console.log('🔧 Script runtime stats:', runtime.getStats());
+      
+      // Make runtime globally accessible for debugging
+      window._scriptRuntime = runtime;
+    } catch (error) {
+      console.error('🔧 Failed to initialize script runtime:', error);
+    }
     
     console.log('✅ Clean scene created with only hardcoded cube')
     

@@ -4,6 +4,7 @@ import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions } from '@/layout/stores/ViewportStore';
 import ScriptCreationDialog from './ScriptCreationDialog.jsx';
 import { bridgeService as projects } from '@/plugins/core/bridge';
+import { getScriptRuntime } from '@/api/script';
 
 function Scripts() {
   const [scripts, setScripts] = createSignal([]);
@@ -80,27 +81,37 @@ function Scripts() {
         body: JSON.stringify({ 
           name: scriptName,
           content: `// ${scriptName}.js
-// Template string below references BABYLON
+// Script API provides safe access to Babylon.js objects
 
 export default class ${scriptName} {
-  constructor(scene, object) {
+  constructor(scene, api) {
     this.scene = scene;
-    this.object = object;
+    this.api = api; // Use this.api to interact with the object
   }
 
   // Called when the script is attached to an object
   onStart() {
-    console.log('${scriptName} started on', this.object.name);
+    this.api.log('${scriptName} started!');
+    
+    // Example: Get object position
+    const pos = this.api.getPosition();
+    this.api.log('Object position:', pos);
   }
 
   // Called every frame
   onUpdate(deltaTime) {
-    // Add your update logic here
+    // Example: Rotate the object slowly
+    // this.api.rotateBy(0, deltaTime * 0.5, 0);
+    
+    // Example: Change color over time
+    // const time = this.api.getTime() / 1000;
+    // const r = (Math.sin(time) + 1) / 2;
+    // this.api.setColor(r, 0.5, 1 - r);
   }
 
   // Called when the script is removed from the object
   onDestroy() {
-    console.log('${scriptName} destroyed');
+    this.api.log('${scriptName} destroyed');
   }
 }
 `
@@ -168,18 +179,33 @@ export default class ${scriptName} {
 
     const currentScripts = selectedObjectScripts();
     const isAttached = currentScripts.includes(scriptPath);
+    const runtime = getScriptRuntime();
 
     if (isAttached) {
-      const newScripts = currentScripts.filter(s => s !== scriptPath);
-      objectPropertiesActions.updateObjectProperty(entityId, 'components.scripting.scriptFiles', newScripts);
-      setSelectedObjectScripts(newScripts);
-      editorActions.addConsoleMessage(`Removed script "${scriptPath}" from object`, 'info');
+      // Remove script using the runtime
+      const success = runtime.detachScript(entityId, scriptPath);
+      
+      if (success) {
+        const newScripts = currentScripts.filter(s => s !== scriptPath);
+        objectPropertiesActions.updateObjectProperty(entityId, 'components.scripting.scriptFiles', newScripts);
+        setSelectedObjectScripts(newScripts);
+        editorActions.addConsoleMessage(`Removed script "${scriptPath}" from object`, 'info');
+      } else {
+        editorActions.addConsoleMessage(`Failed to remove script "${scriptPath}"`, 'error');
+      }
     } else {
-      const newScripts = [...currentScripts, scriptPath];
-      objectPropertiesActions.updateObjectProperty(entityId, 'components.scripting.enabled', true);
-      objectPropertiesActions.updateObjectProperty(entityId, 'components.scripting.scriptFiles', newScripts);
-      setSelectedObjectScripts(newScripts);
-      editorActions.addConsoleMessage(`Attached script "${scriptPath}" to object`, 'success');
+      // Attach script using the runtime
+      const success = await runtime.attachScript(entityId, scriptPath);
+      
+      if (success) {
+        const newScripts = [...currentScripts, scriptPath];
+        objectPropertiesActions.updateObjectProperty(entityId, 'components.scripting.enabled', true);
+        objectPropertiesActions.updateObjectProperty(entityId, 'components.scripting.scriptFiles', newScripts);
+        setSelectedObjectScripts(newScripts);
+        editorActions.addConsoleMessage(`Attached script "${scriptPath}" to object`, 'success');
+      } else {
+        editorActions.addConsoleMessage(`Failed to attach script "${scriptPath}"`, 'error');
+      }
     }
   };
 
