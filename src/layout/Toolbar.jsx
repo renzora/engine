@@ -640,7 +640,7 @@ function Toolbar() {
                           : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
                       }`}
                     >
-                      <tool.icon class="w-4 h-4" />
+                      <tool.icon class="w-5 h-5" />
                       <svg class="w-2 h-2 ml-1" fill="currentColor" viewBox="0 0 20 20">
                         <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
                       </svg>
@@ -665,7 +665,7 @@ function Toolbar() {
                             : ''
                       }`}
                     >
-                      <tool.icon class="w-4 h-4" />
+                      <tool.icon class="w-5 h-5" />
                       
                       {!isDisabled && (
                         <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
@@ -717,7 +717,7 @@ function Toolbar() {
                           : 'text-base-content/60 hover:text-base-content hover:bg-base-300 cursor-pointer'
                     }`}
                   >
-                    <button.icon class="w-4 h-4" />
+                    <button.icon class="w-5 h-5" />
                     <svg class="w-2 h-2 ml-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
                     </svg>
@@ -740,7 +740,7 @@ function Toolbar() {
                       : 'cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300'
                   }`}
                 >
-                  <button.icon class="w-4 h-4" />
+                  <button.icon class="w-5 h-5" />
                   
                   <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-300/95 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
                     {button.title}
