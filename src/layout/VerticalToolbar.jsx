@@ -8,9 +8,7 @@ const defaultTools = [
   { id: 'scene', icon: Cube, title: 'Scene' }
 ];
 
-const defaultBottomTools = [
-  { id: 'settings', icon: Settings, title: 'Settings' }
-];
+const defaultBottomTools = [];
 
 const workflowTools = {
   '3d-viewport': [
