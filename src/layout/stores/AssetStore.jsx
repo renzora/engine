@@ -2,11 +2,15 @@ import { createStore } from 'solid-js/store';
 
 // Initial state for asset management
 const [assetsStore, setAssetsStore] = createStore({
-  viewMode: 'grid', // 'grid' or 'list'
+  viewMode: 'folder', // 'folder' or 'type' - default to folder view
+  layoutMode: 'grid', // 'grid' or 'list'
+  selectedCategory: '3d-models', // default category for type view
   expandedFolders: new Set(),
-  folderTree: [],
-  assetCategories: [],
-  assetsCache: new Map(),
+  folderTree: null,
+  categories: null,
+  assetsByPath: {},
+  categoriesTimestamp: null,
+  folderTreeTimestamp: null,
   currentProject: null,
 });
 
@@ -16,39 +20,53 @@ export const assetsActions = {
     setAssetsStore('viewMode', mode);
   },
   
+  setSelectedCategory: (category) => {
+    setAssetsStore('selectedCategory', category);
+  },
+  
   setAssetsProject: (projectName) => {
     setAssetsStore('currentProject', projectName);
   },
   
   setFolderTree: (tree) => {
     setAssetsStore('folderTree', tree);
+    setAssetsStore('folderTreeTimestamp', Date.now());
   },
   
   setAssetCategories: (categories) => {
-    setAssetsStore('assetCategories', categories);
+    setAssetsStore('categories', categories);
+    setAssetsStore('categoriesTimestamp', Date.now());
   },
   
   setAssetsForPath: (path, assets) => {
-    setAssetsStore('assetsCache', (cache) => {
-      const newCache = new Map(cache);
-      newCache.set(path, assets);
-      return newCache;
+    setAssetsStore('assetsByPath', path, {
+      assets,
+      timestamp: Date.now()
     });
   },
   
   getAssetsForPath: (path) => {
-    return assetsStore.assetsCache.get(path);
+    const pathData = assetsStore.assetsByPath[path];
+    return pathData && assetsActions.isCacheValid(pathData.timestamp) ? pathData.assets : null;
   },
   
-  invalidateAssetPath: (path) => {
-    setAssetsStore('assetsCache', (cache) => {
-      const newCache = new Map(cache);
-      newCache.delete(path);
-      return newCache;
+  invalidateAssetPaths: (paths) => {
+    paths.forEach(path => {
+      setAssetsStore('assetsByPath', path, undefined);
     });
   },
   
-  toggleFolderExpanded: (folderPath) => {
+  invalidateCategories: () => {
+    setAssetsStore('categories', null);
+    setAssetsStore('categoriesTimestamp', null);
+  },
+  
+  invalidateFolderTree: () => {
+    setAssetsStore('folderTree', null);
+    setAssetsStore('folderTreeTimestamp', null);
+  },
+  
+  toggleFolderExpansion: (folderPath) => {
     setAssetsStore('expandedFolders', (expanded) => {
       const newExpanded = new Set(expanded);
       if (newExpanded.has(folderPath)) {
@@ -60,11 +78,19 @@ export const assetsActions = {
     });
   },
   
+  isCacheValid: (timestamp) => {
+    if (!timestamp) return false;
+    const maxAge = 5 * 60 * 1000; // 5 minutes
+    return Date.now() - timestamp < maxAge;
+  },
+  
   clearAllAssetCache: () => {
-    setAssetsStore('assetsCache', new Map());
+    setAssetsStore('assetsByPath', {});
     setAssetsStore('expandedFolders', new Set());
-    setAssetsStore('folderTree', []);
-    setAssetsStore('assetCategories', []);
+    setAssetsStore('folderTree', null);
+    setAssetsStore('categories', null);
+    setAssetsStore('folderTreeTimestamp', null);
+    setAssetsStore('categoriesTimestamp', null);
   }
 };
 
