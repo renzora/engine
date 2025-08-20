@@ -1,5 +1,6 @@
 // Custom Theme Registry
 // Import all custom themes to make them available
+import './renzora.css';
 import './matrix.css';
 import './neon.css';
 import './ocean.css';

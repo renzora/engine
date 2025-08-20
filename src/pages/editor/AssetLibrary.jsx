@@ -1028,11 +1028,22 @@ function AssetLibrary({ onContextMenu }) {
     e.stopPropagation();
     setIsDragOver(false);
     
+    console.log('Drop event triggered:', {
+      isInternalDrag: isInternalDrag(),
+      filesLength: e.dataTransfer.files.length,
+      files: Array.from(e.dataTransfer.files).map(f => f.name)
+    });
+    
     if (!isInternalDrag()) {
       const files = Array.from(e.dataTransfer.files);
       if (files.length > 0) {
+        console.log('Starting upload for files:', files.map(f => f.name));
         uploadFiles(files);
+      } else {
+        console.log('No files found in drop event');
       }
+    } else {
+      console.log('Internal drag detected, skipping file upload');
     }
   };
 
