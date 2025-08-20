@@ -199,7 +199,7 @@ export function useGrid(sceneSignal) {
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
         regularGrid.material.alpha = 0.15;
-        regularGrid.color = Color3.FromHexString(gridSettings.cellColor || '#334155');
+        regularGrid.color = getDaisyUIColor('bc').scale(0.3); // Use theme border color, dimmed
       }
       
       if (sectionLines.length > 0) {
@@ -209,7 +209,7 @@ export function useGrid(sceneSignal) {
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
         sectionGrid.material.alpha = 0.25;
-        sectionGrid.color = Color3.FromHexString(gridSettings.sectionColor || '#475569');
+        sectionGrid.color = getDaisyUIColor('bc').scale(0.5); // Use theme border color, brighter for sections
       }
     } else {
       const gridSize = gridSettings.size * unitScale;
@@ -256,7 +256,7 @@ export function useGrid(sceneSignal) {
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
         regularGrid.material.alpha = 0.15;
-        regularGrid.color = Color3.FromHexString(gridSettings.cellColor || '#334155');
+        regularGrid.color = getDaisyUIColor('bc').scale(0.3); // Use theme border color, dimmed
       }
       
       if (sectionLines.length > 0) {
@@ -266,7 +266,7 @@ export function useGrid(sceneSignal) {
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
         sectionGrid.material.alpha = 0.25;
-        sectionGrid.color = Color3.FromHexString(gridSettings.sectionColor || '#475569');
+        sectionGrid.color = getDaisyUIColor('bc').scale(0.5); // Use theme border color, brighter for sections
       }
     }
     

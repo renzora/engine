@@ -8,6 +8,7 @@ import { useSceneManager } from '../hooks/useSceneManager';
 import { useKeyboardControls } from '../hooks/useKeyboardControls';
 import { useAssetLoader } from '../hooks/useAssetLoader';
 import { useViewportInteraction } from '../hooks/useViewportInteraction';
+import { useGrid } from '../Grid';
 import Stats from 'stats.js';
 import { LoadingTooltip } from '@/ui';
 import ModelImportDialog from '@/../components/ModelImportDialog.jsx';
@@ -158,7 +159,7 @@ function ViewportCanvas(props) {
     sceneInstance
   );
   
-  // DISABLED FOR CLEAN SCENE: useGrid(sceneInstance);
+  useGrid(sceneInstance);
   useKeyboardControls(sceneInstance, cameraController);
   
   const { loadingTooltip, handleDragOver, handleDrop } = useAssetLoader(sceneInstance, canvasRef);
