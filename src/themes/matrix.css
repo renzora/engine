@@ -1,0 +1,77 @@
+/* Matrix Theme - Inspired by The Matrix */
+[data-theme="matrix"] {
+  color-scheme: dark;
+  
+  /* Base colors */
+  --color-base-100: oklch(8% 0.05 120);      /* dark matrix green background */
+  --color-base-200: oklch(12% 0.06 120);     /* slightly lighter */
+  --color-base-300: oklch(16% 0.07 120);     /* medium dark */
+  --color-base-content: oklch(85% 0.15 120); /* bright green text */
+  
+  /* Primary colors */
+  --color-primary: oklch(70% 0.25 120);      /* bright matrix green */
+  --color-primary-content: oklch(15% 0.05 120); /* dark green content */
+  
+  /* Secondary colors */
+  --color-secondary: oklch(65% 0.20 140);    /* light green */
+  --color-secondary-content: oklch(15% 0.05 120); /* dark green content */
+  
+  /* Accent colors */
+  --color-accent: oklch(60% 0.18 160);       /* teal green */
+  --color-accent-content: oklch(90% 0.12 160); /* light teal content */
+  
+  /* Neutral colors */
+  --color-neutral: oklch(20% 0.04 120);      /* dark green-gray */
+  --color-neutral-content: oklch(80% 0.15 120); /* bright green */
+  
+  /* Functional colors */
+  --color-info: oklch(70% 0.25 180);         /* cyan */
+  --color-info-content: oklch(15% 0.05 180); /* dark cyan */
+  --color-success: oklch(65% 0.20 120);      /* green */
+  --color-success-content: oklch(15% 0.05 120); /* dark green */
+  --color-warning: oklch(75% 0.25 60);       /* yellow */
+  --color-warning-content: oklch(15% 0.05 60); /* dark yellow */
+  --color-error: oklch(65% 0.25 0);          /* red */
+  --color-error-content: oklch(15% 0.05 0);  /* dark red */
+  
+  /* Shape and sizing */
+  --radius-box: 0.25rem;
+  --radius-field: 0.125rem;
+  --radius-selector: 0.125rem;
+  --size-field: 2.5rem;
+  --size-selector: 1.25rem;
+  --border: 1px;
+}
+
+/* Matrix-specific styling */
+[data-theme="matrix"] {
+  --matrix-glow: 0 0 5px hsl(120 100% 50% / 0.5);
+  --matrix-text-shadow: 0 0 3px hsl(120 100% 50% / 0.8);
+}
+
+[data-theme="matrix"] body {
+  background: linear-gradient(135deg, hsl(120 30% 2%) 0%, hsl(120 30% 5%) 100%);
+  font-family: 'Courier New', monospace;
+}
+
+[data-theme="matrix"] .btn-primary {
+  box-shadow: var(--matrix-glow);
+  text-shadow: var(--matrix-text-shadow);
+}
+
+[data-theme="matrix"] .card {
+  background: linear-gradient(135deg, hsl(120 25% 6%) 0%, hsl(120 20% 8%) 100%);
+  border: 1px solid hsl(120 50% 20% / 0.3);
+  box-shadow: 0 0 10px hsl(120 100% 50% / 0.1);
+}
+
+[data-theme="matrix"] .input, [data-theme="matrix"] .textarea, [data-theme="matrix"] .select {
+  border: 1px solid hsl(120 50% 30% / 0.5);
+  background: hsl(120 30% 3%);
+  color: hsl(120 100% 80%);
+}
+
+[data-theme="matrix"] .input:focus, [data-theme="matrix"] .textarea:focus, [data-theme="matrix"] .select:focus {
+  border-color: hsl(120 100% 50%);
+  box-shadow: var(--matrix-glow);
+}

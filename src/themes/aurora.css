@@ -1,0 +1,153 @@
+/* Aurora Theme - Northern lights inspired with gradient colors */
+[data-theme="aurora"] {
+  color-scheme: dark;
+  
+  /* Base colors */
+  --color-base-100: oklch(7% 0.06 240);      /* very dark purple-blue */
+  --color-base-200: oklch(11% 0.05 240);     /* slightly lighter */
+  --color-base-300: oklch(16% 0.04 240);     /* medium dark */
+  --color-base-content: oklch(95% 0.18 280); /* very light purple */
+  
+  /* Primary colors */
+  --color-primary: oklch(75% 0.26 280);      /* purple-pink */
+  --color-primary-content: oklch(15% 0.05 280); /* dark purple content */
+  
+  /* Secondary colors */
+  --color-secondary: oklch(65% 0.16 160);    /* aurora green */
+  --color-secondary-content: oklch(15% 0.04 160); /* dark green content */
+  
+  /* Accent colors */
+  --color-accent: oklch(75% 0.20 200);       /* sky blue */
+  --color-accent-content: oklch(15% 0.05 200); /* dark blue content */
+  
+  /* Neutral colors */
+  --color-neutral: oklch(14% 0.04 240);      /* dark blue-purple */
+  --color-neutral-content: oklch(88% 0.16 280); /* light purple */
+  
+  /* Functional colors */
+  --color-info: oklch(75% 0.25 190);         /* bright cyan */
+  --color-info-content: oklch(15% 0.05 190); /* dark cyan */
+  --color-success: oklch(65% 0.16 140);      /* aurora green */
+  --color-success-content: oklch(15% 0.04 140); /* dark green */
+  --color-warning: oklch(75% 0.25 50);       /* golden */
+  --color-warning-content: oklch(15% 0.05 50); /* dark golden */
+  --color-error: oklch(70% 0.25 350);        /* pink-red */
+  --color-error-content: oklch(15% 0.05 350); /* dark pink */
+  
+  /* Shape and sizing - soft, rounded aurora style */
+  --radius-box: 1rem;
+  --radius-field: 0.75rem;
+  --radius-selector: 1rem;
+  --size-field: 2.5rem;
+  --size-selector: 1.25rem;
+  --border: 1px;
+}
+
+/* Aurora-specific styling */
+[data-theme="aurora"] {
+  --aurora-shimmer: 0 0 30px hsl(280 100% 65% / 0.4), 0 0 60px hsl(160 80% 55% / 0.3);
+  --aurora-glow: 0 0 20px currentColor;
+  --aurora-gradient: linear-gradient(
+    45deg,
+    hsl(280 100% 65% / 0.1) 0%,
+    hsl(200 100% 65% / 0.1) 25%,
+    hsl(160 80% 55% / 0.1) 50%,
+    hsl(280 100% 65% / 0.1) 75%,
+    hsl(200 100% 65% / 0.1) 100%
+  );
+  --aurora-animated: linear-gradient(
+    270deg,
+    hsl(280 100% 65% / 0.8) 0%,
+    hsl(200 100% 65% / 0.8) 25%,
+    hsl(160 80% 55% / 0.8) 50%,
+    hsl(280 100% 65% / 0.8) 75%,
+    hsl(200 100% 65% / 0.8) 100%
+  );
+}
+
+[data-theme="aurora"] body {
+  background: radial-gradient(
+    ellipse at top,
+    hsl(240 30% 8%) 0%,
+    hsl(240 30% 5%) 50%,
+    hsl(240 30% 3%) 100%
+  );
+  position: relative;
+  overflow-x: hidden;
+}
+
+[data-theme="aurora"] body::before {
+  content: '';
+  position: fixed;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: var(--aurora-gradient);
+  animation: aurora-dance 20s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes aurora-dance {
+  0% {
+    transform: rotate(0deg) scale(1);
+    opacity: 0.3;
+  }
+  33% {
+    transform: rotate(120deg) scale(1.1);
+    opacity: 0.5;
+  }
+  66% {
+    transform: rotate(240deg) scale(0.9);
+    opacity: 0.4;
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
+    opacity: 0.3;
+  }
+}
+
+[data-theme="aurora"] .btn-primary {
+  background: linear-gradient(135deg, hsl(280 100% 65%) 0%, hsl(280 100% 55%) 100%);
+  box-shadow: var(--aurora-shimmer);
+  border: 1px solid hsl(280 100% 75%);
+}
+
+[data-theme="aurora"] .btn-secondary {
+  background: linear-gradient(135deg, hsl(160 80% 55%) 0%, hsl(160 80% 45%) 100%);
+  box-shadow: 0 0 20px hsl(160 80% 55% / 0.4);
+  border: 1px solid hsl(160 80% 65%);
+}
+
+[data-theme="aurora"] .btn-accent {
+  background: linear-gradient(135deg, hsl(200 100% 65%) 0%, hsl(200 100% 55%) 100%);
+  box-shadow: 0 0 20px hsl(200 100% 65% / 0.4);
+  border: 1px solid hsl(200 100% 75%);
+}
+
+[data-theme="aurora"] .card {
+  background: linear-gradient(135deg, 
+    hsl(240 25% 6% / 0.9) 0%, 
+    hsl(240 20% 9% / 0.9) 50%, 
+    hsl(240 25% 7% / 0.9) 100%
+  );
+  border: 1px solid hsl(280 50% 35% / 0.4);
+  box-shadow: 0 8px 32px hsl(280 100% 65% / 0.2);
+  backdrop-filter: blur(10px);
+}
+
+[data-theme="aurora"] .input, [data-theme="aurora"] .textarea, [data-theme="aurora"] .select {
+  border: 1px solid hsl(280 40% 40% / 0.6);
+  background: linear-gradient(135deg, 
+    hsl(240 30% 4% / 0.8) 0%, 
+    hsl(240 30% 6% / 0.8) 100%
+  );
+  color: hsl(280 90% 90%);
+  backdrop-filter: blur(5px);
+}
+
+[data-theme="aurora"] .input:focus, [data-theme="aurora"] .textarea:focus, [data-theme="aurora"] .select:focus {
+  border-color: hsl(280 100% 65%);
+  box-shadow: var(--aurora-glow);
+}

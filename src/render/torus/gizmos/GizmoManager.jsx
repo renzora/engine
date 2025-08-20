@@ -1,4 +1,4 @@
-import { RaycastUtils } from '../math/RaycastUtils.js';
+import { RaycastUtils } from '../math/RaycastUtils.jsx';
 
 /**
  * Gizmo Manager - Handles 3D manipulation gizmos for Torus renderer

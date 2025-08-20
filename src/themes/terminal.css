@@ -1,0 +1,130 @@
+/* Terminal Theme - Classic terminal/console appearance */
+[data-theme="terminal"] {
+  color-scheme: dark;
+  
+  /* Base colors */
+  --color-base-100: oklch(0% 0 0);           /* pure black */
+  --color-base-200: oklch(4% 0 0);           /* very dark gray */
+  --color-base-300: oklch(8% 0 0);           /* dark gray */
+  --color-base-content: oklch(85% 0.15 120); /* light green text */
+  
+  /* Primary colors */
+  --color-primary: oklch(75% 0.25 120);      /* bright green */
+  --color-primary-content: oklch(10% 0.05 120); /* very dark green content */
+  
+  /* Secondary colors */
+  --color-secondary: oklch(80% 0.25 60);     /* bright yellow */
+  --color-secondary-content: oklch(15% 0.05 60); /* dark yellow content */
+  
+  /* Accent colors */
+  --color-accent: oklch(80% 0.25 300);       /* bright magenta */
+  --color-accent-content: oklch(15% 0.05 300); /* dark magenta content */
+  
+  /* Neutral colors */
+  --color-neutral: oklch(12% 0 0);           /* dark gray */
+  --color-neutral-content: oklch(85% 0.15 120); /* light green */
+  
+  /* Functional colors */
+  --color-info: oklch(75% 0.25 180);         /* bright cyan */
+  --color-info-content: oklch(15% 0.05 180); /* dark cyan */
+  --color-success: oklch(70% 0.25 120);      /* green */
+  --color-success-content: oklch(15% 0.05 120); /* dark green */
+  --color-warning: oklch(75% 0.25 60);       /* yellow */
+  --color-warning-content: oklch(15% 0.05 60); /* dark yellow */
+  --color-error: oklch(70% 0.25 0);          /* red */
+  --color-error-content: oklch(15% 0.05 0);  /* dark red */
+  
+  /* Shape and sizing - sharp, rectangular terminal style */
+  --radius-box: 0rem;
+  --radius-field: 0rem;
+  --radius-selector: 0rem;
+  --size-field: 2.5rem;
+  --size-selector: 1.25rem;
+  --border: 1px;
+}
+
+/* Terminal-specific styling */
+[data-theme="terminal"] {
+  --terminal-glow: 0 0 5px currentColor;
+  --terminal-text-shadow: 0 0 3px currentColor;
+  --terminal-scan-line: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 0, 0.03) 2px,
+    rgba(0, 255, 0, 0.03) 4px
+  );
+}
+
+[data-theme="terminal"] * {
+  font-family: 'Courier New', 'Monaco', 'Menlo', monospace !important;
+  letter-spacing: 0.05em;
+}
+
+[data-theme="terminal"] body {
+  background: #000000;
+  position: relative;
+}
+
+[data-theme="terminal"] body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--terminal-scan-line);
+  pointer-events: none;
+  z-index: 1000;
+  opacity: 0.7;
+}
+
+[data-theme="terminal"] .btn {
+  border: 1px solid currentColor;
+  background: transparent;
+  text-shadow: var(--terminal-text-shadow);
+  text-transform: uppercase;
+  font-weight: bold;
+  letter-spacing: 0.1em;
+}
+
+[data-theme="terminal"] .btn:hover {
+  box-shadow: var(--terminal-glow);
+  background: currentColor;
+  color: black;
+}
+
+[data-theme="terminal"] .card {
+  background: rgba(0, 255, 0, 0.05);
+  border: 1px solid hsl(120 100% 30%);
+  box-shadow: inset 0 0 0 1px hsl(120 100% 20% / 0.3);
+}
+
+[data-theme="terminal"] .input, [data-theme="terminal"] .textarea, [data-theme="terminal"] .select {
+  border: 1px solid hsl(120 100% 40%);
+  background: rgba(0, 0, 0, 0.8);
+  color: hsl(120 100% 80%);
+  font-family: 'Courier New', monospace;
+  text-shadow: var(--terminal-text-shadow);
+}
+
+[data-theme="terminal"] .input:focus, [data-theme="terminal"] .textarea:focus, [data-theme="terminal"] .select:focus {
+  border-color: hsl(120 100% 60%);
+  box-shadow: var(--terminal-glow);
+  outline: none;
+}
+
+[data-theme="terminal"] .dropdown-content {
+  background: rgba(0, 0, 0, 0.95);
+  border: 1px solid hsl(120 100% 40%);
+  box-shadow: var(--terminal-glow);
+}
+
+[data-theme="terminal"] .menu li > * {
+  text-shadow: var(--terminal-text-shadow);
+}
+
+[data-theme="terminal"] .menu li > *:hover {
+  background: rgba(0, 255, 0, 0.1);
+  box-shadow: inset var(--terminal-glow);
+}

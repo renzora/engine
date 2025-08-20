@@ -1,13 +1,13 @@
-import { IRenderAPI } from '../../api/IRenderAPI.js';
-import { WebGLContext } from './WebGLContext.js';
-import { ShaderManager } from '../shaders/ShaderManager.js';
-import { GeometryManager } from '../geometry/GeometryManager.js';
-import { MaterialManager } from '../materials/MaterialManager.js';
-import { SceneManager } from '../scene/SceneManager.js';
-import { CameraController } from '../camera/CameraController.js';
-import { GizmoManager } from '../gizmos/GizmoManager.js';
-import { RaycastUtils } from '../math/RaycastUtils.js';
-import { MathUtils } from '../math/MathUtils.js';
+import { IRenderAPI } from '../../api/render/IRenderAPI.jsx';
+import { WebGLContext } from './core/WebGLContext.jsx';
+import { ShaderManager } from './shaders/ShaderManager.jsx';
+import { GeometryManager } from './geometry/GeometryManager.jsx';
+import { MaterialManager } from './materials/MaterialManager.jsx';
+import { SceneManager } from './scene/SceneManager.jsx';
+import { CameraController } from './camera/CameraController.jsx';
+import { GizmoManager } from './gizmos/GizmoManager.jsx';
+import { RaycastUtils } from './math/RaycastUtils.jsx';
+import { MathUtils } from './math/MathUtils.jsx';
 
 /**
  * Torus - Modular WebGL2 Graphics Engine

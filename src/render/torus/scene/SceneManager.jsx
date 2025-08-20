@@ -1,4 +1,4 @@
-import { MathUtils } from '../math/MathUtils.js';
+import { MathUtils } from '../math/MathUtils.jsx';
 
 /**
  * Scene Manager - Handles cameras, lights, and scene rendering

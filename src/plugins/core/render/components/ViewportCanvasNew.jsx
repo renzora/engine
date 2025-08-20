@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onCleanup, onMount, Show } from 'solid-js';
 import { editorStore } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
-import { useRenderContext } from '@/api';
+import { useRenderContext } from '@/api/render';
 import Stats from 'stats.js';
 import { LoadingTooltip } from '@/ui';
 

@@ -1,4 +1,4 @@
-import { IRenderAPI, MaterialType, LightType, PrimitiveType } from '../api/IRenderAPI.js';
+import { IRenderAPI, MaterialType, LightType, PrimitiveType } from '../../api/render/IRenderAPI.jsx';
 import { Engine } from '@babylonjs/core/Engines/engine.js';
 import { WebGPUEngine } from '@babylonjs/core/Engines/webgpuEngine.js';
 import { Scene } from '@babylonjs/core/scene.js';
@@ -88,6 +88,9 @@ export class BabylonRenderer extends IRenderAPI {
       // Handle resize
       window.addEventListener('resize', this.handleResize);
       
+      // Create default scene and camera
+      this.createScene();
+      
       this.isInitialized = true;
     } catch (error) {
       console.error('[BabylonRenderer] Initialization failed:', error);
@@ -167,6 +170,27 @@ export class BabylonRenderer extends IRenderAPI {
     const bgColor = options.backgroundColor || { r: 0.1, g: 0.1, b: 0.15, a: 1 };
     this.scene.clearColor = new Color4(bgColor.r, bgColor.g, bgColor.b, bgColor.a);
     
+    // Create default camera if none exists
+    if (!this.scene.activeCamera) {
+      const defaultCamera = this.createCamera('perspective', {
+        position: { x: 0, y: 5, z: -10 },
+        target: { x: 0, y: 0, z: 0 }
+      });
+      this.setActiveCamera(defaultCamera);
+      
+      // Add default lighting
+      this.createLight(LightType.DIRECTIONAL, {
+        direction: { x: 0, y: -1, z: 0.5 },
+        position: { x: 10, y: 10, z: 5 },
+        intensity: 1
+      });
+      
+      this.createLight(LightType.HEMISPHERIC, {
+        direction: { x: 0, y: 1, z: 0 },
+        intensity: 0.4
+      });
+    }
+    
     // Enable default features
     if (options.enablePhysics) {
       // Physics would be initialized here
@@ -226,7 +250,8 @@ export class BabylonRenderer extends IRenderAPI {
         break;
         
       case 'arcRotate':
-        // Create ArcRotate camera and manually position it to match Three.js exactly
+      case 'perspective':
+        // Create ArcRotate camera with proper orientation to match other renderers
         const targetVec = new Vector3(target.x, target.y, target.z);
         
         // Calculate radius
@@ -236,23 +261,25 @@ export class BabylonRenderer extends IRenderAPI {
           Math.pow(position.z - target.z, 2)
         );
         
-        // Create camera with initial values, then set position manually
+        // Calculate alpha (horizontal angle) and beta (vertical angle) for proper orientation
+        const alpha = Math.atan2(position.x - target.x, position.z - target.z);
+        const beta = Math.acos((position.y - target.y) / radius);
+        
         camera = new ArcRotateCamera(
           'camera',
-          0, // alpha
-          0, // beta  
+          alpha,
+          beta,
           radius,
           targetVec,
           this.scene
         );
         
-        // Manually set position to match Three.js exactly
-        camera.setPosition(new Vector3(position.x, position.y, position.z));
-        
-        // Ensure up vector matches Three.js (Y-up)
+        // Ensure proper up vector (Y-up) and invert Y controls to match other renderers
         camera.upVector = new Vector3(0, 1, 0);
+        camera.invertRotation = false;
+        camera.inputs.attached.pointers.invertY = false;
         
-        console.log(`[BabylonRenderer] ArcRotate camera positioned at: (${position.x}, ${position.y}, ${position.z})`);
+        console.log(`[BabylonRenderer] ArcRotate camera positioned at: (${position.x}, ${position.y}, ${position.z}) with alpha: ${alpha}, beta: ${beta}`);
         break;
         
       case 'free':

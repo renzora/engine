@@ -1,12 +1,13 @@
 import { onMount } from 'solid-js'
 import './base.css'
+import './themes'
 import { Engine } from '@/api/plugin'
 import Layout from './layout'
 import DevNotice from './components/DevNotice'
 import EditorPage from './pages/editor'
 import NodeEditorPage from './pages/nodeEditor'
 import { Project } from './plugins/splash/ProjectStore'
-import { RenderProvider, RendererType } from '@/api'
+import { RenderProvider, RendererType } from '@/api/render'
 export default function App() {
     onMount(() => {
     console.log('🎮 Renzora Engine loaded successfully!')
