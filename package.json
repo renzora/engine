@@ -26,8 +26,12 @@
     "@babylonjs/serializers": "^8.20.0",
     "@tabler/icons-solidjs": "^3.34.1",
     "daisyui": "^5.0.50",
+    "phaser": "^3.90.0",
+    "pixi.js": "^8.12.0",
+    "playcanvas": "^2.10.6",
     "solid-js": "^1.9.7",
-    "stats.js": "^0.17.0"
+    "stats.js": "^0.17.0",
+    "three": "^0.179.1"
   },
   "bin": {
     "renzora": "./bin/renzora.js",

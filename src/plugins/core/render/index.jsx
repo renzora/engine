@@ -1,6 +1,6 @@
 import { createSignal, createContext, useContext } from 'solid-js';
 import { createPlugin } from '@/api/plugin';
-import ViewportCanvas from './components/ViewportCanvas';
+import ViewportCanvas from './components/ViewportCanvasNew';
 
 const EngineContext = createContext();
 

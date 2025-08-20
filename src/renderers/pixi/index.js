@@ -1,0 +1,1 @@
+export { PixiRenderer } from './PixiRenderer.js';

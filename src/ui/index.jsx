@@ -30,6 +30,7 @@ export { default as EmptyState } from './EmptyState.jsx';
 
 export { default as IconContainer } from './IconContainer.jsx';
 export { default as ContextMenu } from './ContextMenu.jsx';
+export { default as RendererSwitcher } from './RendererSwitcher.jsx';
 
 // Export utilities
 export * from './utils/cn.js';

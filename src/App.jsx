@@ -6,6 +6,7 @@ import DevNotice from './components/DevNotice'
 import EditorPage from './pages/editor'
 import NodeEditorPage from './pages/nodeEditor'
 import { Project } from './plugins/splash/ProjectStore'
+import { RenderProvider, RendererType } from '@/api'
 export default function App() {
     onMount(() => {
     console.log('🎮 Renzora Engine loaded successfully!')
@@ -15,12 +16,14 @@ export default function App() {
   return (
     <Engine>
       <Project>
-        <div class="w-full h-full">
-          <Layout />
-          <DevNotice />
-          <EditorPage />
-          <NodeEditorPage />
-        </div>
+        <RenderProvider defaultRenderer={RendererType.TORUS}>
+          <div class="w-full h-full">
+            <Layout />
+            <DevNotice />
+            <EditorPage />
+            <NodeEditorPage />
+          </div>
+        </RenderProvider>
       </Project>
     </Engine>
   );

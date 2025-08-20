@@ -4,6 +4,7 @@ import { Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder } fr
 import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
 import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
+import RendererSwitcher from '@/ui/RendererSwitcher';
 
 import Scene from './Scene.jsx';
 import SettingsComponent from './Settings.jsx';
@@ -54,6 +55,14 @@ export default function EditorPage() {
       hasDropdown: true,
       dropdownComponent: GridDropdownContent,
       dropdownWidth: 256
+    });
+    
+    api.button('renderer-switcher', {
+      title: 'Renderer',
+      section: 'right',
+      order: 25,
+      isCustomComponent: true,
+      customComponent: RendererSwitcher
     });
     
     api.button('theme-switcher', {
