@@ -1,20 +1,12 @@
 import { createSignal, For, Show } from 'solid-js';
-import { useRendererSwitcher, getRendererStatus } from '@/api/render';
-
-// Ensure renderers are registered by importing the registration module
-import '@/api/render';
+// Simple renderer display for Babylon.js
 
 export default function RendererSwitcher() {
-  const switcher = useRendererSwitcher();
-  const rendererStatus = getRendererStatus();
   const [isOpen, setIsOpen] = createSignal(false);
 
-  // Make reactive
-  const availableRenderers = () => {
-    const renderers = switcher.availableRenderers();
-    return renderers;
-  };
-  const currentRenderer = () => switcher.currentRenderer();
+  // Static babylon renderer
+  const currentRenderer = () => 'babylon';
+  const availableRenderers = () => ['babylon'];
 
   const rendererLabels = {
     babylon: 'Babylon.js',
@@ -59,12 +51,8 @@ export default function RendererSwitcher() {
   };
 
   const handleSwitchRenderer = async (rendererType) => {
-    try {
-      await switcher.switchRenderer(rendererType);
-      setIsOpen(false);
-    } catch (error) {
-      console.error('Failed to switch renderer:', error);
-    }
+    // Babylon.js is the only renderer
+    setIsOpen(false);
   };
 
   return (
@@ -83,16 +71,15 @@ export default function RendererSwitcher() {
         <div class="absolute top-full right-0 mt-1 w-40 bg-base-200 border border-base-300 rounded shadow-xl z-50">
           <For each={availableRenderers()}>
             {(rendererType) => {
-              const status = rendererStatus[rendererType];
               const isActive = currentRenderer() === rendererType;
-              const isAvailable = status?.available;
+              const isAvailable = true;
               const version = getRendererVersion(rendererType);
               
               return (
                 <button
                   onClick={() => isAvailable && handleSwitchRenderer(rendererType)}
-                  disabled={!isAvailable || switcher.isLoading()}
-                  title={`${status?.reason}${version ? ` (${version})` : ''}`}
+                  disabled={!isAvailable}
+                  title={version ? `${version}` : ''}
                   class={`w-full px-2 py-1 text-left text-xs transition-colors hover:bg-base-300 first:rounded-t last:rounded-b ${
                     isActive ? 'bg-primary text-primary-content' : 'text-base-content'
                   } ${!isAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -120,18 +107,6 @@ export default function RendererSwitcher() {
             }}
           </For>
           
-          <Show when={switcher.isLoading()}>
-            <div class="px-2 py-1 text-xs text-center border-t border-base-300">
-              <span class="loading loading-spinner loading-xs mr-1"></span>
-              Loading...
-            </div>
-          </Show>
-          
-          <Show when={switcher.error()}>
-            <div class="px-2 py-1 text-xs text-error text-center border-t border-base-300">
-              ⚠️ {switcher.error()}
-            </div>
-          </Show>
         </div>
       )}
     </div>

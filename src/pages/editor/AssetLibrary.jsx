@@ -7,7 +7,7 @@ import { createContextMenuActions } from '@/ui/ContextMenuActions.jsx';
 import ContextMenu from '@/ui/ContextMenu.jsx';
 import ScriptCreationDialog from './ScriptCreationDialog.jsx';
 import { bridgeService, bridgeService as projects } from '@/plugins/core/bridge';
-import { modelThumbnailGenerator } from '@/plugins/core/render/utils/modelThumbnailGenerator';
+import { modelThumbnailGenerator } from '@/render/babylonjs/utils/modelThumbnailGenerator';
 
 const getProjectManager = () => {
   return projects;

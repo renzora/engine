@@ -2,7 +2,7 @@ import { editorStore } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { Settings, X } from '@/ui/icons';
 import ViewportTabs from './ViewportTabs.jsx';
-import { ViewportCanvas } from '@/plugins/core/render';
+import { ViewportCanvas } from '@/render/babylonjs';
 import { viewportTypes, propertiesPanelVisible, bottomPanelVisible } from "@/api/plugin";
 import { Show, createMemo, createSignal } from 'solid-js';
 

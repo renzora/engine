@@ -2,21 +2,21 @@ import { createSignal, createEffect, onCleanup } from 'solid-js';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { editorStore } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
-import { useCameraController } from '../CameraController';
-import { useEngineManager } from '../hooks/useEngineManager';
-import { useSceneManager } from '../hooks/useSceneManager';
-import { useKeyboardControls } from '../hooks/useKeyboardControls';
-import { useAssetLoader } from '../hooks/useAssetLoader';
-import { useViewportInteraction } from '../hooks/useViewportInteraction';
-import { useGrid } from '../Grid';
+import { useCameraController } from './CameraController';
+import { useEngineManager } from './hooks/useEngineManager';
+import { useSceneManager } from './hooks/useSceneManager';
+import { useKeyboardControls } from './hooks/useKeyboardControls';
+import { useAssetLoader } from './hooks/useAssetLoader';
+import { useViewportInteraction } from './hooks/useViewportInteraction';
+import { useGrid } from './Grid';
 import Stats from 'stats.js';
 import { LoadingTooltip } from '@/ui';
-import ModelImportDialog from '@/../components/ModelImportDialog.jsx';
-import { useEngineReady } from '../index';
+import ModelImportDialog from '../../../components/ModelImportDialog.jsx';
+import { useEngineReady } from './index';
 
 function ViewportCanvas(props) {
   const [canvasRef, setCanvasRef] = createSignal();
-  let statsRef;
+  const [statsRef, setStatsRef] = createSignal(null);
 
   // Helper function to convert OKLCH to RGB using CSS Color Module 4 conversion
   const oklchToRgb = (l, c, h) => {
@@ -193,8 +193,8 @@ const initializeViewport = async () => {
       }, 100);
 
       engine.runRenderLoop(() => {
-        if (statsRef) {
-          statsRef.begin();
+        if (statsRef()) {
+          statsRef().begin();
         }
         
         if (cameraController) {
@@ -203,8 +203,8 @@ const initializeViewport = async () => {
         
         scene.render();
         
-        if (statsRef) {
-          statsRef.end();
+        if (statsRef()) {
+          statsRef().end();
         }
       });
 
@@ -252,9 +252,9 @@ const initializeViewport = async () => {
           clearTimeout(window._resizeTimeout);
         }
         
-        if (statsRef && statsRef.dom.parentElement) {
-          statsRef.dom.parentElement.removeChild(statsRef.dom);
-          statsRef = null;
+        if (statsRef() && statsRef().dom.parentElement) {
+          statsRef().dom.parentElement.removeChild(statsRef().dom);
+          setStatsRef(null);
         }
         
         disposeScene();
@@ -287,6 +287,14 @@ const initializeViewport = async () => {
     onCleanup(() => {
       if (cleanup) cleanup();
     });
+  });
+
+  // Cleanup stats on component unmount
+  onCleanup(() => {
+    if (statsRef() && statsRef().dom.parentElement) {
+      statsRef().dom.parentElement.removeChild(statsRef().dom);
+      setStatsRef(null);
+    }
   });
 
 
@@ -359,7 +367,7 @@ const initializeViewport = async () => {
   createEffect(() => {
     if (!canvasRef()) return;
 
-    if (settings().editor.showStats && !statsRef) {
+    if (settings().editor.showStats && !statsRef()) {
       const stats = new Stats();
       stats.showPanel(0);
       stats.dom.style.position = 'absolute';
@@ -369,13 +377,15 @@ const initializeViewport = async () => {
       stats.dom.style.zIndex = '1000';
       
       const viewportContainer = canvasRef().parentElement;
-      viewportContainer.appendChild(stats.dom);
-      statsRef = stats;
-    } else if (!settings().editor.showStats && statsRef) {
-      if (statsRef.dom.parentElement) {
-        statsRef.dom.parentElement.removeChild(statsRef.dom);
+      if (viewportContainer) {
+        viewportContainer.appendChild(stats.dom);
+        setStatsRef(stats);
       }
-      statsRef = null;
+    } else if (!settings().editor.showStats && statsRef()) {
+      if (statsRef().dom.parentElement) {
+        statsRef().dom.parentElement.removeChild(statsRef().dom);
+      }
+      setStatsRef(null);
     }
   });
 

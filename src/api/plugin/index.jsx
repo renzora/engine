@@ -61,7 +61,7 @@ class PluginLoader {
       { path: '/src/plugins/splash', main: 'index.jsx', priority: -1 },
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
       { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
-      { path: '/src/plugins/core/render', main: 'index.jsx', priority: -2 },
+      { path: '/src/render/babylonjs', main: 'index.jsx', priority: -2 },
       { path: '/src/plugins/test', main: 'index.jsx', priority: 1000 }
     ];
 
@@ -153,7 +153,7 @@ class PluginLoader {
             pluginModule = await import(`@/plugins/core/bridge/BridgePluginClass.jsx`);
             break;
           case 'core-render-plugin':
-            pluginModule = await import(`@/plugins/core/render/index.jsx`);
+            pluginModule = await import(`@/render/babylonjs/index.jsx`);
             break;
           default:
             try {
