@@ -8,6 +8,7 @@ class ScriptManager {
     this.scene = scene;
     this.activeScripts = new Map(); // objectId -> Set of script instances
     this.scriptClasses = new Map(); // scriptPath -> script class constructor
+    this.pausedScripts = new Map(); // objectId -> Set of paused script paths
     this.isRunning = false;
     this.updateObserver = null;
     
@@ -27,10 +28,59 @@ class ScriptManager {
     this.isRunning = true;
     console.log('🔧 ScriptManager: Starting script execution');
     
+    // Refresh scene reference from global if available
+    if (window._cleanBabylonScene) {
+      this.scene = window._cleanBabylonScene;
+      console.log('🔧 ScriptManager: Refreshed scene reference from global');
+    }
+    
+    console.log('🔧 ScriptManager: Scene available:', !!this.scene);
+    console.log('🔧 ScriptManager: Scene onBeforeRenderObservable available:', !!this.scene?.onBeforeRenderObservable);
+    
+    // Ensure we have a valid scene
+    if (!this.scene || !this.scene.onBeforeRenderObservable) {
+      console.error('🔧 ScriptManager: No valid scene available for restart');
+      this.isRunning = false;
+      return;
+    }
+    
+    // Update script API references to use the current scene
+    this.activeScripts.forEach((scripts, objectId) => {
+      scripts.forEach(script => {
+        if (script._scriptAPI) {
+          script._scriptAPI.scene = this.scene;
+          // Find the current babylon object reference
+          const babylonObject = this.findBabylonObject(objectId);
+          if (babylonObject) {
+            script._scriptAPI.babylonObject = babylonObject;
+            script._babylonObject = babylonObject;
+          }
+        }
+      });
+    });
+    
     // Register for scene updates
     this.updateObserver = this.scene.onBeforeRenderObservable.add(() => {
       this.update();
     });
+    
+    console.log('🔧 ScriptManager: Observer registered, active scripts:', this.activeScripts.size);
+  }
+  
+  /**
+   * Pause script execution (keeps scripts attached)
+   */
+  pause() {
+    if (!this.isRunning) return;
+    
+    this.isRunning = false;
+    console.log('🔧 ScriptManager: Pausing script execution');
+    
+    // Dispose update observer only
+    if (this.updateObserver) {
+      this.scene?.onBeforeRenderObservable?.remove(this.updateObserver);
+      this.updateObserver = null;
+    }
   }
   
   /**
@@ -44,7 +94,7 @@ class ScriptManager {
     
     // Dispose update observer
     if (this.updateObserver) {
-      this.scene.onBeforeRenderObservable.remove(this.updateObserver);
+      this.scene?.onBeforeRenderObservable?.remove(this.updateObserver);
       this.updateObserver = null;
     }
     
@@ -55,6 +105,7 @@ class ScriptManager {
     
     this.activeScripts.clear();
     this.scriptClasses.clear();
+    this.pausedScripts.clear();
   }
   
   /**
@@ -108,6 +159,14 @@ class ScriptManager {
       scriptInstance._objectId = objectId;
       scriptInstance._babylonObject = babylonObject;
       scriptInstance._scriptAPI = scriptAPI;
+      
+      // Copy script properties metadata to API if available
+      if (scriptInstance._scriptProperties) {
+        scriptAPI._scriptProperties = scriptInstance._scriptProperties;
+        scriptAPI._scriptInstance = scriptInstance; // Store reference for property updates
+        scriptAPI.initializeScriptProperties();
+        scriptAPI.initializeScriptInstanceProperties(scriptInstance);
+      }
       
       // Initialize script set for this object if needed
       if (!this.activeScripts.has(objectId)) {
@@ -193,6 +252,37 @@ class ScriptManager {
   }
   
   /**
+   * Pause a specific script on an object
+   */
+  pauseScript(objectId, scriptPath) {
+    if (!this.pausedScripts.has(objectId)) {
+      this.pausedScripts.set(objectId, new Set());
+    }
+    this.pausedScripts.get(objectId).add(scriptPath);
+    console.log('🔧 ScriptManager: Paused script', scriptPath, 'on object', objectId);
+  }
+  
+  /**
+   * Resume a specific script on an object
+   */
+  resumeScript(objectId, scriptPath) {
+    if (this.pausedScripts.has(objectId)) {
+      this.pausedScripts.get(objectId).delete(scriptPath);
+      if (this.pausedScripts.get(objectId).size === 0) {
+        this.pausedScripts.delete(objectId);
+      }
+    }
+    console.log('🔧 ScriptManager: Resumed script', scriptPath, 'on object', objectId);
+  }
+  
+  /**
+   * Check if a specific script is paused
+   */
+  isScriptPaused(objectId, scriptPath) {
+    return this.pausedScripts.has(objectId) && this.pausedScripts.get(objectId).has(scriptPath);
+  }
+  
+  /**
    * Update all active scripts
    */
   update() {
@@ -202,6 +292,11 @@ class ScriptManager {
     
     this.activeScripts.forEach((scripts, objectId) => {
       scripts.forEach(script => {
+        // Skip paused scripts
+        if (this.isScriptPaused(objectId, script._scriptPath)) {
+          return;
+        }
+        
         // Update the API's delta time
         if (script._scriptAPI && typeof script._scriptAPI._updateDeltaTime === 'function') {
           script._scriptAPI._updateDeltaTime(deltaTime);
@@ -270,16 +365,44 @@ class ScriptManager {
    */
   getStats() {
     let totalScripts = 0;
+    let totalPausedScripts = 0;
+    
     this.activeScripts.forEach(scripts => {
       totalScripts += scripts.size;
+    });
+    
+    this.pausedScripts.forEach(pausedSet => {
+      totalPausedScripts += pausedSet.size;
     });
     
     return {
       objectsWithScripts: this.activeScripts.size,
       totalActiveScripts: totalScripts,
+      totalPausedScripts: totalPausedScripts,
       registeredScriptClasses: this.scriptClasses.size,
       isRunning: this.isRunning
     };
+  }
+  
+  /**
+   * Get script instance for an object
+   * @param {string} objectId - ID of the object
+   * @param {string} scriptPath - Path to the script file
+   * @returns {Object|null} Script instance or null if not found
+   */
+  getScriptInstance(objectId, scriptPath) {
+    if (!this.activeScripts.has(objectId)) {
+      return null;
+    }
+    
+    const scripts = this.activeScripts.get(objectId);
+    for (const script of scripts) {
+      if (script._scriptPath === scriptPath) {
+        return script;
+      }
+    }
+    
+    return null;
   }
 }
 

@@ -1,10 +1,12 @@
 import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { horizontalMenuButtonsEnabled } from '@/api/plugin';
 import { Sun, Lightbulb, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle } from '@/ui/icons';
+import { Play, Pause } from '@/ui/icons/media';
 import { Settings } from '@/ui/icons/development';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { toolbarButtons } from '@/api/plugin';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
+import { getScriptRuntime } from '@/api/script';
 const getBabylonScene = () => window._cleanBabylonScene;
 import { viewportStore, viewportActions, objectPropertiesActions } from '@/layout/stores/ViewportStore';
 import CameraHelpers from '@/ui/display/CameraHelpers.jsx';
@@ -32,6 +34,7 @@ function Toolbar() {
   const [lightDropdownPosition, setLightDropdownPosition] = createSignal(null);
   const [activePluginDropdown, setActivePluginDropdown] = createSignal(null);
   const [pluginDropdownPosition, setPluginDropdownPosition] = createSignal(null);
+  const [scriptRuntimePlaying, setScriptRuntimePlaying] = createSignal(true);
   
   createEffect(() => {
     const handleClickOutside = (event) => {
@@ -53,6 +56,22 @@ function Toolbar() {
         document.removeEventListener('mousedown', handleClickOutside);
       });
     }
+  });
+
+  // Sync script runtime state
+  createEffect(() => {
+    const interval = setInterval(() => {
+      try {
+        const runtime = getScriptRuntime();
+        const stats = runtime.getStats();
+        setScriptRuntimePlaying(stats.running);
+      } catch (error) {
+        // Runtime might not be initialized yet
+        setScriptRuntimePlaying(false);
+      }
+    }, 1000);
+
+    onCleanup(() => clearInterval(interval));
   });
   
   const selectedTool = () => editorStore.ui.selectedTool;
@@ -185,6 +204,23 @@ function Toolbar() {
     await createBabylonLight(lightType);
     setShowLightDropdown(false);
     setLightDropdownPosition(null);
+  };
+
+  const handleScriptPlayToggle = () => {
+    const runtime = getScriptRuntime();
+    const stats = runtime.getStats();
+    
+    if (stats.running) {
+      runtime.pause();
+      setScriptRuntimePlaying(false);
+      editorActions.addConsoleMessage('Script execution paused', 'info');
+      console.log('🔧 Script execution paused');
+    } else {
+      runtime.start();
+      setScriptRuntimePlaying(true);
+      editorActions.addConsoleMessage('Script execution resumed', 'success');
+      console.log('🔧 Script execution resumed');
+    }
   };
 
   const handleLightDropdownToggle = (e) => {
@@ -684,6 +720,29 @@ function Toolbar() {
               );
             }}
           </For>
+
+          {/* Script control button */}
+          <div class="w-px h-6 bg-base-300 mx-1"></div>
+          <button
+            onClick={handleScriptPlayToggle}
+            class={`w-8 h-8 flex items-center justify-center rounded transition-all relative group cursor-pointer ${
+              scriptRuntimePlaying()
+                ? 'text-green-500 hover:text-green-400 hover:bg-green-500/10'
+                : 'text-orange-500 hover:text-orange-400 hover:bg-orange-500/10'
+            }`}
+            title={scriptRuntimePlaying() ? 'Pause script execution' : 'Resume script execution'}
+          >
+            {scriptRuntimePlaying() ? (
+              <Pause class="w-5 h-5" />
+            ) : (
+              <Play class="w-5 h-5" />
+            )}
+            
+            <div class="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+              {scriptRuntimePlaying() ? 'Pause Scripts' : 'Play Scripts'}
+              <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-200" />
+            </div>
+          </button>
 
         </div>
         

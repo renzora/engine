@@ -15,6 +15,8 @@ function Scripts() {
   const [isLoading, setIsLoading] = createSignal(false);
   const [selectedObjectScripts, setSelectedObjectScripts] = createSignal([]);
   const [editMode, setEditMode] = createSignal(false);
+  const [scriptPauseStates, setScriptPauseStates] = createSignal({});
+  const [refreshTrigger, setRefreshTrigger] = createSignal(0);
   
   const selection = () => editorStore.selection;
   const selectedEntity = () => selection().entity;
@@ -30,6 +32,31 @@ function Scripts() {
     } else {
       setSelectedObjectScripts([]);
     }
+  });
+
+  // Load script pause states reactively when scripts or entity changes
+  createEffect(() => {
+    const entityId = selectedEntity();
+    const scripts = selectedObjectScripts();
+    refreshTrigger(); // Track this signal for manual refreshes
+    
+    if (!entityId || scripts.length === 0) {
+      setScriptPauseStates({});
+      return;
+    }
+
+    const runtime = getScriptRuntime();
+    const newStates = {};
+    
+    scripts.forEach(scriptPath => {
+      try {
+        newStates[scriptPath] = runtime.isScriptPaused(entityId, scriptPath);
+      } catch (error) {
+        newStates[scriptPath] = false;
+      }
+    });
+    
+    setScriptPauseStates(newStates);
   });
 
   const loadScripts = async () => {
@@ -246,12 +273,45 @@ export default class ${scriptName} {
                 <div className="text-xs text-gray-500">No scripts attached</div>
               </Show>
               <For each={selectedObjectScripts()}>
-                {(scriptPath) => (
-                  <div className="flex items-center gap-2 py-1">
-                    <IconFileText class="w-3 h-3 text-green-400" />
-                    <span className="text-xs text-gray-200">{scriptPath}</span>
-                  </div>
-                )}
+                {(scriptPath) => {
+                  const runtime = getScriptRuntime();
+                  const isScriptPaused = () => scriptPauseStates()[scriptPath] || false;
+                  
+                  const toggleScriptPause = () => {
+                    const entityId = selectedEntity();
+                    if (!entityId) return;
+                    
+                    if (isScriptPaused()) {
+                      runtime.resumeScript(entityId, scriptPath);
+                      editorActions.addConsoleMessage(`Resumed script "${scriptPath}"`, 'success');
+                    } else {
+                      runtime.pauseScript(entityId, scriptPath);
+                      editorActions.addConsoleMessage(`Paused script "${scriptPath}"`, 'info');
+                    }
+                    
+                    // Trigger reactive update
+                    setRefreshTrigger(prev => prev + 1);
+                  };
+                  
+                  return (
+                    <div className="flex items-center gap-2 py-1">
+                      <input
+                        type="checkbox"
+                        checked={!isScriptPaused()}
+                        onChange={toggleScriptPause}
+                        className="toggle toggle-xs toggle-success"
+                        title={isScriptPaused() ? "Resume script" : "Pause script"}
+                      />
+                      <IconFileText class="w-3 h-3 text-green-400" />
+                      <span className={`text-xs ${isScriptPaused() ? 'text-gray-500' : 'text-gray-200'}`}>
+                        {scriptPath}
+                      </span>
+                      {isScriptPaused() && (
+                        <span className="text-xs text-orange-400">(paused)</span>
+                      )}
+                    </div>
+                  );
+                }}
               </For>
             </div>
           </Show>

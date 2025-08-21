@@ -1,4 +1,4 @@
-import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show } from 'solid-js';
+import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match } from 'solid-js';
 import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Trash, Edit, Code, X } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 const getBabylonScene = () => window._cleanBabylonScene;
@@ -661,6 +661,205 @@ function Scene(props) {
                     </CollapsibleSection>
                   </Show>
 
+                  {/* Script Properties Sections - Each script gets sections organized by props category */}
+                  <Show when={objectProps.scripts && objectProps.scripts.length > 0}>
+                    <For each={objectProps.scripts}>
+                      {(script) => {
+                        const runtime = getScriptRuntime();
+                        
+                        // Create reactive signals for script properties by section
+                        const [scriptPropertiesBySection, setScriptPropertiesBySection] = createSignal({});
+                        const [propertyValues, setPropertyValues] = createSignal({});
+                        
+                        // Initialize properties reactively
+                        createEffect(() => {
+                          try {
+                            const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
+                            if (scriptInstance && scriptInstance._scriptAPI && scriptInstance._scriptAPI.getScriptPropertiesBySection) {
+                              const propsBySection = scriptInstance._scriptAPI.getScriptPropertiesBySection();
+                              setScriptPropertiesBySection(propsBySection);
+                              
+                              // Get current values for all properties
+                              const values = {};
+                              Object.values(propsBySection).flat().forEach(prop => {
+                                const currentValue = scriptInstance._scriptAPI.getScriptProperty(prop.name);
+                                values[prop.name] = currentValue !== null && currentValue !== undefined 
+                                  ? currentValue 
+                                  : (prop.defaultValue || 0);
+                              });
+                              setPropertyValues(values);
+                            }
+                          } catch (error) {
+                            console.warn('Failed to get script properties:', error);
+                            setScriptPropertiesBySection({});
+                            setPropertyValues({});
+                          }
+                        });
+                        
+                        const handlePropertyChange = (propertyName, newValue) => {
+                          try {
+                            const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
+                            if (scriptInstance?._scriptAPI?.setScriptProperty) {
+                              scriptInstance._scriptAPI.setScriptProperty(propertyName, newValue);
+                              
+                              // Update reactive state
+                              setPropertyValues(prev => ({
+                                ...prev,
+                                [propertyName]: newValue
+                              }));
+                            }
+                          } catch (error) {
+                            console.error('Failed to set script property:', error);
+                          }
+                        };
+                        
+                        const renderPropertyInput = (property) => {
+                          const currentValue = () => propertyValues()[property.name] || property.defaultValue || 0;
+                          
+                          return (
+                            <div className="form-control">
+                              <label className="label pb-2">
+                                <span className="label-text text-sm font-medium capitalize">
+                                  {property.name.replace(/_/g, ' ')}
+                                </span>
+                                <Show when={property.description && property.description !== 'null'}>
+                                  <div className="tooltip tooltip-left" data-tip={property.description.replace(/"/g, '')}>
+                                    <span className="text-xs text-base-content/50 cursor-help">?</span>
+                                  </div>
+                                </Show>
+                              </label>
+                              
+                              <Switch>
+                                <Match when={property.type === 'number' || property.type === 'float'}>
+                                  <div className="join w-full">
+                                    <input
+                                      type="number"
+                                      value={currentValue()}
+                                      step={property.type === 'float' ? '0.1' : '1'}
+                                      min={property.min}
+                                      max={property.max}
+                                      onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value) || 0)}
+                                      className="input input-bordered input-sm join-item flex-1 text-sm"
+                                      placeholder="0"
+                                    />
+                                    <Show when={property.min !== null || property.max !== null}>
+                                      <span className="btn btn-sm join-item btn-outline btn-disabled text-xs">
+                                        {property.min || 0}↔{property.max || 100}
+                                      </span>
+                                    </Show>
+                                  </div>
+                                </Match>
+                                
+                                <Match when={property.type === 'boolean'}>
+                                  <div className="flex items-center justify-between">
+                                    <div className="form-control">
+                                      <label className="label cursor-pointer justify-start gap-3">
+                                        <input
+                                          type="checkbox"
+                                          checked={!!currentValue()}
+                                          onChange={(e) => handlePropertyChange(property.name, e.target.checked)}
+                                          className="toggle toggle-secondary toggle-sm"
+                                        />
+                                        <span className="label-text text-sm">
+                                          {currentValue() ? 'Enabled' : 'Disabled'}
+                                        </span>
+                                      </label>
+                                    </div>
+                                    <div className={`badge badge-sm ${currentValue() ? 'badge-success' : 'badge-ghost'}`}>
+                                      {currentValue() ? 'ON' : 'OFF'}
+                                    </div>
+                                  </div>
+                                </Match>
+                                
+                                <Match when={property.type === 'string'}>
+                                  <input
+                                    type="text"
+                                    value={currentValue() || ''}
+                                    onChange={(e) => handlePropertyChange(property.name, e.target.value)}
+                                    className="input input-bordered input-sm w-full text-sm"
+                                    placeholder={property.defaultValue?.replace(/"/g, '') || 'Enter text...'}
+                                  />
+                                </Match>
+                                
+                                <Match when={property.type === 'select' && property.options}>
+                                  <select
+                                    value={currentValue() || property.defaultValue}
+                                    onChange={(e) => handlePropertyChange(property.name, e.target.value)}
+                                    className="select select-bordered select-sm w-full text-sm"
+                                  >
+                                    <For each={property.options}>
+                                      {(option) => (
+                                        <option value={option}>{option}</option>
+                                      )}
+                                    </For>
+                                  </select>
+                                </Match>
+                                
+                                <Match when={property.type === 'range'}>
+                                  <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                      <input
+                                        type="range"
+                                        value={currentValue()}
+                                        min={property.min || 0}
+                                        max={property.max || 100}
+                                        step={0.01}
+                                        onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value))}
+                                        className="range range-secondary range-sm flex-1"
+                                      />
+                                      <div className="badge badge-secondary badge-outline font-mono text-xs min-w-[4rem]">
+                                        {parseFloat(currentValue()).toFixed(2)}
+                                      </div>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-base-content/60">
+                                      <span className="badge badge-ghost badge-xs">{property.min || 0}</span>
+                                      <span className="badge badge-ghost badge-xs">{property.max || 100}</span>
+                                    </div>
+                                  </div>
+                                </Match>
+                                
+                                <Match when={true}>
+                                  <div className="join w-full">
+                                    <input
+                                      type="text"
+                                      value={currentValue() || ''}
+                                      onChange={(e) => handlePropertyChange(property.name, e.target.value)}
+                                      className="input input-bordered input-sm join-item flex-1 text-sm"
+                                      placeholder={`${property.type} value`}
+                                    />
+                                    <span className="btn btn-sm join-item btn-outline btn-disabled text-xs">
+                                      {property.type}
+                                    </span>
+                                  </div>
+                                </Match>
+                              </Switch>
+                            </div>
+                          );
+                        };
+                        
+                        return (
+                          <Show when={Object.keys(scriptPropertiesBySection()).length > 0}>
+                            <For each={Object.entries(scriptPropertiesBySection())}>
+                              {([sectionName, properties]) => (
+                                <CollapsibleSection
+                                  title={sectionName}
+                                  icon={<Code className="w-4 h-4 text-secondary" />}
+                                  defaultExpanded={true}
+                                >
+                                  <div className="space-y-6 p-4">
+                                    <For each={properties}>
+                                      {(property) => renderPropertyInput(property)}
+                                    </For>
+                                  </div>
+                                </CollapsibleSection>
+                              )}
+                            </For>
+                          </Show>
+                        );
+                      }}
+                    </For>
+                  </Show>
+
                   <CollapsibleSection title="Scripts" defaultOpen={true} index={1}>
                     <div className="p-4">
                       <div className="mb-3">
@@ -682,7 +881,7 @@ function Scene(props) {
                             try {
                               const data = JSON.parse(droppedData);
                               if (data.type === 'asset' && data.fileType === 'script') {
-                                const validExtensions = ['.js', '.jsx', '.ts', '.tsx'];
+                                const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.ren'];
                                 const fileExt = data.name.substring(data.name.lastIndexOf('.')).toLowerCase();
                                 
                                 if (validExtensions.includes(fileExt)) {
@@ -724,7 +923,7 @@ function Scene(props) {
                             fallback={
                               <div className="text-base-content/50 text-xs">
                                 <p>Drop script files here</p>
-                                <p className="text-base-content/40 mt-1">(.js, .jsx, .ts, .tsx)</p>
+                                <p className="text-base-content/40 mt-1">(.js, .jsx, .ts, .tsx, .ren)</p>
                               </div>
                             }
                           >
@@ -735,16 +934,55 @@ function Scene(props) {
                                     <div className="flex items-center gap-2">
                                       <input
                                         type="checkbox"
-                                        checked={script.enabled}
+                                        checked={(() => {
+                                          const runtime = getScriptRuntime();
+                                          try {
+                                            return !runtime.isScriptPaused(selection.entity, script.path);
+                                          } catch {
+                                            return true;
+                                          }
+                                        })()}
                                         onChange={(e) => {
-                                          const updatedScripts = [...objectProps.scripts];
-                                          updatedScripts[index()] = { ...script, enabled: e.target.checked };
-                                          updateObjectProperty(selection.entity, 'scripts', updatedScripts);
+                                          const runtime = getScriptRuntime();
+                                          const entityId = selection.entity;
+                                          
+                                          if (e.target.checked) {
+                                            runtime.resumeScript(entityId, script.path);
+                                            editorActions.addConsoleMessage(`Resumed script "${script.name}"`, 'success');
+                                          } else {
+                                            runtime.pauseScript(entityId, script.path);
+                                            editorActions.addConsoleMessage(`Paused script "${script.name}"`, 'info');
+                                          }
                                         }}
-                                        className="w-3 h-3"
+                                        className="toggle toggle-xs toggle-success"
+                                        title={(() => {
+                                          const runtime = getScriptRuntime();
+                                          try {
+                                            return runtime.isScriptPaused(selection.entity, script.path) ? "Resume script" : "Pause script";
+                                          } catch {
+                                            return "Toggle script";
+                                          }
+                                        })()}
                                       />
                                       <Code className="w-3 h-3 text-base-content/60" />
-                                      <span className="text-xs text-base-content/70">{script.name}</span>
+                                      <span className={`text-xs ${(() => {
+                                        const runtime = getScriptRuntime();
+                                        try {
+                                          return runtime.isScriptPaused(selection.entity, script.path) ? 'text-base-content/40' : 'text-base-content/70';
+                                        } catch {
+                                          return 'text-base-content/70';
+                                        }
+                                      })()}`}>{script.name}</span>
+                                      {(() => {
+                                        const runtime = getScriptRuntime();
+                                        try {
+                                          return runtime.isScriptPaused(selection.entity, script.path) && (
+                                            <span className="text-xs text-orange-400">(paused)</span>
+                                          );
+                                        } catch {
+                                          return null;
+                                        }
+                                      })()}
                                     </div>
                                     <button
                                       onClick={() => {
@@ -770,6 +1008,7 @@ function Scene(props) {
                             </div>
                           </Show>
                         </div>
+                        
                       </div>
                     </div>
                   </CollapsibleSection>

@@ -49,6 +49,16 @@ class ScriptRuntime {
   }
   
   /**
+   * Pause script execution (keeps scripts attached)
+   */
+  pause() {
+    if (!this.isInitialized) return;
+    
+    this.scriptManager.pause();
+    console.log('🔧 ScriptRuntime: Paused');
+  }
+  
+  /**
    * Stop script execution
    */
   stop() {
@@ -174,8 +184,11 @@ class ScriptRuntime {
         this.scriptManager.removeScriptFromObject(objectId, scriptPath);
       });
       
+      // Clear from loader cache
+      this.scriptLoader.loadedScripts.delete(scriptPath);
+      
       // Reload the script
-      const ScriptClass = await this.scriptLoader.reloadScript(scriptPath);
+      const ScriptClass = await this.scriptLoader.loadScript(scriptPath);
       this.scriptManager.registerScript(scriptPath, ScriptClass);
       
       // Reattach to all objects
@@ -190,6 +203,50 @@ class ScriptRuntime {
       console.error('🔧 ScriptRuntime: Failed to reload script', error);
       return false;
     }
+  }
+  
+  /**
+   * Pause a specific script on an object
+   * @param {string} objectId - ID of the object
+   * @param {string} scriptPath - Path to the script file
+   */
+  pauseScript(objectId, scriptPath) {
+    if (!this.isInitialized) {
+      console.error('🔧 ScriptRuntime: Not initialized');
+      return false;
+    }
+    
+    this.scriptManager.pauseScript(objectId, scriptPath);
+    console.log('🔧 ScriptRuntime: Paused script', scriptPath, 'on object', objectId);
+    return true;
+  }
+  
+  /**
+   * Resume a specific script on an object
+   * @param {string} objectId - ID of the object
+   * @param {string} scriptPath - Path to the script file
+   */
+  resumeScript(objectId, scriptPath) {
+    if (!this.isInitialized) {
+      console.error('🔧 ScriptRuntime: Not initialized');
+      return false;
+    }
+    
+    this.scriptManager.resumeScript(objectId, scriptPath);
+    console.log('🔧 ScriptRuntime: Resumed script', scriptPath, 'on object', objectId);
+    return true;
+  }
+  
+  /**
+   * Check if a specific script is paused
+   * @param {string} objectId - ID of the object
+   * @param {string} scriptPath - Path to the script file
+   * @returns {boolean} True if the script is paused
+   */
+  isScriptPaused(objectId, scriptPath) {
+    if (!this.isInitialized) return false;
+    
+    return this.scriptManager.isScriptPaused(objectId, scriptPath);
   }
   
   /**
@@ -221,6 +278,21 @@ class ScriptRuntime {
       scriptManager: this.scriptManager.getStats(),
       scriptLoader: this.scriptLoader.getStats()
     };
+  }
+  
+  /**
+   * Get script instance for an object
+   * @param {string} objectId - ID of the object
+   * @param {string} scriptPath - Path to the script file
+   * @returns {Object|null} Script instance or null if not found
+   */
+  getScriptInstance(objectId, scriptPath) {
+    if (!this.isInitialized) {
+      console.error('🔧 ScriptRuntime: Not initialized');
+      return null;
+    }
+    
+    return this.scriptManager.getScriptInstance(objectId, scriptPath);
   }
   
   /**

@@ -1,5 +1,8 @@
+import { RenScriptCompiler } from './renscript/RenScriptCompiler.js';
+
 /**
  * ScriptLoader - Handles loading and evaluation of script files
+ * Supports JavaScript (.js) and RenScript (.ren) files
  */
 class ScriptLoader {
   constructor() {
@@ -70,13 +73,75 @@ class ScriptLoader {
       }
       
       const scriptContent = responseData.content;
-      return this._evaluateScript(scriptContent, scriptPath);
+      
+      // Check if it's a RenScript file
+      if (scriptPath.endsWith('.ren')) {
+        return this._evaluateRenScript(scriptContent, scriptPath);
+      } else {
+        return this._evaluateScript(scriptContent, scriptPath);
+      }
       
     } catch (error) {
       throw new Error(`Failed to load script ${scriptPath}: ${error.message}`);
     }
   }
   
+  /**
+   * Evaluate RenScript content and return script class
+   * @private
+   */
+  _evaluateRenScript(renScriptContent, scriptPath) {
+    try {
+      console.log('🔧 ScriptLoader: Compiling RenScript', scriptPath);
+      
+      // Compile RenScript to JavaScript
+      const jsCode = RenScriptCompiler.compile(renScriptContent);
+      console.log('🔧 ScriptLoader: RenScript compiled to JavaScript');
+      console.log('🔧 Generated JS Code:', jsCode);
+      
+      // Create evaluation context
+      const scriptModule = { exports: {} };
+      const require = this._createRequireFunction();
+      
+      // The generated code already includes the wrapper function
+      const wrappedCode = `
+        ${jsCode}
+        
+        module.exports = createRenScript;
+      `;
+      
+      // Execute the script
+      const scriptFunction = new Function(
+        'exports',
+        'module', 
+        'require',
+        'console',
+        'BABYLON',
+        wrappedCode
+      );
+      
+      scriptFunction(
+        scriptModule.exports,
+        scriptModule,
+        require,
+        this._createSafeConsole(scriptPath),
+        this._createBabylonAPI()
+      );
+      
+      const RenScriptClass = scriptModule.exports;
+      
+      if (typeof RenScriptClass !== 'function') {
+        throw new Error('RenScript compilation did not produce a valid script class');
+      }
+      
+      console.log('🔧 ScriptLoader: RenScript successfully compiled and evaluated');
+      return RenScriptClass;
+      
+    } catch (error) {
+      throw new Error(`Failed to evaluate RenScript ${scriptPath}: ${error.message}`);
+    }
+  }
+
   /**
    * Evaluate script content and extract the default export
    * @private
@@ -86,22 +151,160 @@ class ScriptLoader {
       // Transform ES6 export to CommonJS for evaluation
       let transformedScript = scriptContent;
       
-      // Replace ES6 export default with module.exports
-      transformedScript = transformedScript.replace(
-        /export\s+default\s+class\s+(\w+)/g, 
-        'class $1'
-      );
-      
-      // Add module.exports at the end
+      // Check if it's a class-based script
       const classNameMatch = scriptContent.match(/export\s+default\s+class\s+(\w+)/);
+      // Check if it's a functional script with export
+      const functionMatch = scriptContent.match(/export\s+default\s+(\w+)/);
+      // Check for inline script (object literal or simple script)
+      const hasOnStartUpdate = scriptContent.includes('onStart') || scriptContent.includes('onUpdate');
+      const hasReturnStatement = scriptContent.includes('return {');
+      // Check for const/let/var declaration with object literal
+      const constObjectMatch = scriptContent.match(/(?:const|let|var)\s+\w+\s*=\s*\{/);
+      const hasConstObject = !!constObjectMatch;
+      // Check for bare function declarations
+      const hasBareFunction = scriptContent.match(/^function\s+(onStart|onUpdate|onDestroy)/m);
+      // Check for bare method declarations (object method syntax without object wrapper)
+      const hasBareMethod = scriptContent.match(/^\s*(onStart|onUpdate|onDestroy)\s*\(/m);
+      
       if (classNameMatch) {
+        // Class-based script
+        transformedScript = transformedScript.replace(
+          /export\s+default\s+class\s+(\w+)/g, 
+          'class $1'
+        );
         const className = classNameMatch[1];
         transformedScript += `\n\nmodule.exports = ${className};`;
+      } else if (functionMatch) {
+        // Functional script with export - wrap in a class automatically
+        const functionName = functionMatch[1];
+        transformedScript = transformedScript.replace(
+          /export\s+default\s+(\w+)/g, 
+          ''
+        );
+        
+        // Wrap the function in a class
+        transformedScript += `
+        
+class FunctionalScriptWrapper {
+  constructor(scene, api) {
+    this.scene = scene;
+    this.api = api;
+    this._scriptFunction = ${functionName};
+    this._state = this._scriptFunction(scene, api) || {};
+  }
+  
+  onStart() {
+    if (this._state.onStart) {
+      this._state.onStart();
+    }
+  }
+  
+  onUpdate(deltaTime) {
+    if (this._state.onUpdate) {
+      this._state.onUpdate(deltaTime);
+    }
+  }
+  
+  onDestroy() {
+    if (this._state.onDestroy) {
+      this._state.onDestroy();
+    }
+  }
+}
+
+module.exports = FunctionalScriptWrapper;`;
+      } else if (hasOnStartUpdate) {
+        // Inline script - handle different patterns
+        if (hasConstObject) {
+          // Script uses const/let/var name = { ... } pattern - extract the variable name
+          const variableName = constObjectMatch[0].match(/(?:const|let|var)\s+(\w+)/)[1];
+          transformedScript = `
+function inlineScript(scene, api) {
+  ${transformedScript}
+  return ${variableName};
+}`;
+        } else if (hasBareMethod) {
+          // Script has bare method declarations - wrap in object literal
+          transformedScript = `
+function inlineScript(scene, api) {
+  return {
+    ${transformedScript}
+  };
+}`;
+        } else if (hasBareFunction) {
+          // Script has bare function declarations - wrap and collect them into an object
+          transformedScript = `
+function inlineScript(scene, api) {
+  // Wrap the script content in function scope
+  ${transformedScript}
+  
+  const scriptObject = {};
+  if (typeof onStart === 'function') scriptObject.onStart = onStart;
+  if (typeof onUpdate === 'function') scriptObject.onUpdate = onUpdate;
+  if (typeof onDestroy === 'function') scriptObject.onDestroy = onDestroy;
+  
+  return scriptObject;
+}`;
+        } else if (hasReturnStatement) {
+          // Script has return statement - wrap in function
+          transformedScript = `
+function inlineScript(scene, api) {
+  ${transformedScript}
+}`;
+        } else {
+          // Script is just an object literal - wrap it in return statement
+          transformedScript = `
+function inlineScript(scene, api) {
+  return ${transformedScript.trim()};
+}`;
+        }
+
+        transformedScript += `
+
+class InlineScriptWrapper {
+  constructor(scene, api) {
+    this.scene = scene;
+    this.api = api;
+    this._state = inlineScript(scene, api) || {};
+  }
+  
+  onStart() {
+    if (this._state.onStart) {
+      this._state.onStart();
+    }
+  }
+  
+  onUpdate(deltaTime) {
+    if (this._state.onUpdate) {
+      this._state.onUpdate(deltaTime);
+    }
+  }
+  
+  onDestroy() {
+    if (this._state.onDestroy) {
+      this._state.onDestroy();
+    }
+  }
+}
+
+module.exports = InlineScriptWrapper;`;
       } else {
-        throw new Error('Script must export a class using "export default class ClassName" syntax');
+        throw new Error('Script must export a class/function or contain onStart/onUpdate methods');
       }
       
       console.log('🔧 ScriptLoader: Transformed script for', scriptPath);
+      console.log('🔧 ScriptLoader: Detection results:', {
+        classNameMatch: !!classNameMatch,
+        functionMatch: !!functionMatch,
+        hasOnStartUpdate,
+        hasReturnStatement,
+        hasConstObject,
+        hasBareFunction: !!hasBareFunction,
+        hasBareMethod: !!hasBareMethod,
+        constObjectMatch: constObjectMatch ? constObjectMatch[0] : null,
+        bareFunctionMatch: hasBareFunction ? hasBareFunction[0] : null,
+        bareMethodMatch: hasBareMethod ? hasBareMethod[0] : null
+      });
       
       // Create a safe evaluation context
       const scriptModule = { exports: {} };
@@ -129,10 +332,10 @@ class ScriptLoader {
       const ScriptClass = scriptModule.exports;
       
       if (typeof ScriptClass !== 'function') {
-        throw new Error('Script must export a class');
+        throw new Error('Script must export a class or function');
       }
       
-      console.log('🔧 ScriptLoader: Successfully evaluated script class for', scriptPath);
+      console.log('🔧 ScriptLoader: Successfully evaluated script for', scriptPath);
       return ScriptClass;
       
     } catch (error) {

@@ -1459,7 +1459,7 @@ export default Script;
       if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) return '3d-models';
       if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) return 'textures';
       if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) return 'audio';
-      if (['.js', '.jsx', '.ts', '.tsx', '.py'].includes(ext)) return 'scripts';
+      if (['.js', '.jsx', '.ts', '.tsx', '.py', '.ren'].includes(ext)) return 'scripts';
       return 'misc';
     };
 

@@ -247,7 +247,7 @@ const ObjectProperties = (props) => {
                     when={objectProps().components.scripting.scriptFile}
                     fallback={
                       <div className="text-gray-500 text-xs">
-                        Drop JavaScript file here (.js, .ts, .jsx, .tsx)
+                        Drop script file here (.js, .ts, .jsx, .tsx, .ren)
                       </div>
                     }
                   >
