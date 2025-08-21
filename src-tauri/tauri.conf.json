@@ -19,8 +19,7 @@
         "maximized": false,
         "width": 1440,
         "height": 810,
-        "center": true,
-        "fileDropEnabled": true
+        "center": true
       }
     ],
     "security": {
