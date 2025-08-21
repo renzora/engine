@@ -138,6 +138,38 @@ class ScriptManager {
       return false;
     }
     
+    // Validate script type matches object type
+    if (ScriptClass._scriptObjectType && ScriptClass._scriptObjectType !== 'script') {
+      const objectClassName = babylonObject.getClassName ? babylonObject.getClassName().toLowerCase() : '';
+      const scriptObjectType = ScriptClass._scriptObjectType.toLowerCase();
+      
+      // Check if types match
+      let typeMatches = false;
+      if (scriptObjectType === 'camera' && objectClassName.includes('camera')) {
+        typeMatches = true;
+      } else if (scriptObjectType === 'light' && objectClassName.includes('light')) {
+        typeMatches = true;
+      } else if (scriptObjectType === 'mesh' && (objectClassName.includes('mesh') || objectClassName === 'mesh')) {
+        typeMatches = true;
+      } else if (scriptObjectType === 'transform' && objectClassName === 'transformnode') {
+        typeMatches = true;
+      } else if (scriptObjectType === 'scene' && objectClassName === 'scene') {
+        typeMatches = true;
+      }
+      
+      if (!typeMatches) {
+        const friendlyObjectType = objectClassName.replace('camera', 'Camera')
+          .replace('light', 'Light')
+          .replace('mesh', 'Mesh')
+          .replace('transformnode', 'Transform Node');
+        const friendlyScriptType = scriptObjectType.charAt(0).toUpperCase() + scriptObjectType.slice(1);
+        
+        console.error(`🔧 ScriptManager: Type mismatch! "${scriptPath}" is a ${friendlyScriptType} script but "${babylonObject.name}" is a ${friendlyObjectType}`);
+        console.error(`💡 Tip: ${friendlyScriptType} scripts can only be attached to ${friendlyScriptType} objects`);
+        return false;
+      }
+    }
+    
     // Check if script is already attached
     if (this.activeScripts.has(objectId)) {
       const scripts = this.activeScripts.get(objectId);

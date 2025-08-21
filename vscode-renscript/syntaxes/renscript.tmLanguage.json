@@ -1,0 +1,257 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RenScript",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#script-declaration"
+    },
+    {
+      "include": "#props-declaration"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#variables"
+    },
+    {
+      "include": "#function-calls"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.number-sign.renscript",
+          "match": "#.*$"
+        }
+      ]
+    },
+    "script-declaration": {
+      "patterns": [
+        {
+          "name": "meta.script.renscript",
+          "begin": "\\b(script|camera|light|mesh|scene|transform)\\s+(\\w+)\\s*\\{",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.script-type.renscript"
+            },
+            "2": {
+              "name": "entity.name.class.renscript"
+            }
+          },
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "$self"
+            }
+          ]
+        }
+      ]
+    },
+    "props-declaration": {
+      "patterns": [
+        {
+          "name": "meta.props.renscript",
+          "begin": "\\b(props)\\s+(\\w+)?\\s*\\{",
+          "beginCaptures": {
+            "1": {
+              "name": "keyword.control.props.renscript"
+            },
+            "2": {
+              "name": "entity.name.section.renscript"
+            }
+          },
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "#property-definition"
+            },
+            {
+              "include": "#comments"
+            }
+          ]
+        }
+      ]
+    },
+    "property-definition": {
+      "patterns": [
+        {
+          "name": "meta.property.renscript",
+          "begin": "(\\w+)\\s*:\\s*(boolean|float|number|string|vector3|color)\\s*\\{",
+          "beginCaptures": {
+            "1": {
+              "name": "variable.other.property.renscript"
+            },
+            "2": {
+              "name": "support.type.renscript"
+            }
+          },
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "#property-attributes"
+            },
+            {
+              "include": "#comments"
+            }
+          ]
+        }
+      ]
+    },
+    "property-attributes": {
+      "patterns": [
+        {
+          "name": "meta.property-attribute.renscript",
+          "match": "\\b(default|min|max|description)\\s*:\\s*([^,}]+)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.attribute.renscript"
+            },
+            "2": {
+              "name": "string.unquoted.renscript"
+            }
+          }
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "meta.function.renscript",
+          "begin": "\\b(start|update|destroy|on_collision|on_trigger)\\s*(\\([^)]*\\))?\\s*\\{",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.name.function.lifecycle.renscript"
+            },
+            "2": {
+              "name": "meta.parameters.renscript"
+            }
+          },
+          "end": "\\}",
+          "patterns": [
+            {
+              "include": "$self"
+            }
+          ]
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.flow.renscript",
+          "match": "\\b(if|else|else if|for|while|return|break|continue)\\b"
+        },
+        {
+          "name": "keyword.other.renscript",
+          "match": "\\b(function|const|let|var|null|true|false)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.renscript",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.renscript",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.renscript",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            {
+              "name": "constant.character.escape.renscript",
+              "match": "\\\\."
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.renscript",
+          "match": "\\b\\d+\\.\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.renscript",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.renscript",
+          "match": "[+\\-*/]"
+        },
+        {
+          "name": "keyword.operator.assignment.renscript",
+          "match": "="
+        },
+        {
+          "name": "keyword.operator.comparison.renscript",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.logical.renscript",
+          "match": "(&&|\\|\\||!)"
+        }
+      ]
+    },
+    "variables": {
+      "patterns": [
+        {
+          "name": "variable.other.renscript",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b(?!\\s*\\()"
+        }
+      ]
+    },
+    "function-calls": {
+      "patterns": [
+        {
+          "name": "meta.function-call.renscript",
+          "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "entity.name.function.renscript"
+            }
+          }
+        },
+        {
+          "name": "meta.function-call.builtin.renscript",
+          "match": "\\b(get_position|set_position|get_rotation|set_rotation|get_scale|set_scale|move_by|rotate_by|look_at|set_color|get_color|animate|stop_animation|pause_animation|resume_animation|clone_object|dispose_object|set_metadata|get_metadata|add_tag|remove_tag|has_tag|find_object_by_name|find_objects_by_tag|raycast|get_objects_in_radius|play_sound|stop_sound|set_sound_volume|is_key_pressed|is_mouse_button_pressed|get_mouse_position|get_gamepads|get_left_stick|get_right_stick|get_left_stick_x|get_left_stick_y|get_right_stick_x|get_right_stick_y|is_gamepad_button_pressed|get_gamepad_trigger|get_time|get_delta_time|log|sin|cos|tan|abs|sqrt|pow|min|max|floor|ceil|round|random|clamp|lerp|to_radians|to_degrees|distance|normalize|dot|cross|is_camera|is_light|is_mesh|detach_camera_controls|attach_camera_controls|set_camera_target|set_light_intensity|set_light_color|get_light_intensity|get_light_color)\\s*\\(",
+          "captures": {
+            "1": {
+              "name": "support.function.builtin.renscript"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "scopeName": "source.renscript"
+}

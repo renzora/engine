@@ -59,9 +59,16 @@ export const useSceneManager = () => {
     scene.clearColor = new Color3(0.05, 0.05, 0.05) // Dark background
     console.log('🎬 Clean Scene: Created fresh scene')
 
-    // Basic camera
+    // Create default camera - this will be the actual scene camera
     const camera = createCameraByType('universal', scene);
+    camera.name = "MainCamera"; // Give it a proper name for identification
     scene._camera = camera
+    
+    // Ensure the camera is in the scene's cameras array and active
+    if (!scene.cameras.includes(camera)) {
+      scene.addCamera(camera);
+    }
+    scene.activeCamera = camera
     
     // Basic lighting
     const sunLight = new DirectionalLight("sunLight", new Vector3(-1, -1, -1), scene)
@@ -109,6 +116,30 @@ export const useSceneManager = () => {
     
     return scene
   }
+
+  // Function to ensure at least one camera exists
+  const ensureActiveCamera = (scene) => {
+    if (!scene) return;
+    
+    // Check if there are any cameras in the scene
+    if (scene.cameras.length === 0) {
+      console.warn('⚠️ No cameras in scene! Creating default camera...');
+      const defaultCamera = createCameraByType('universal', scene);
+      defaultCamera.name = "DefaultCamera";
+      scene.addCamera(defaultCamera);
+      scene.activeCamera = defaultCamera;
+      scene._camera = defaultCamera;
+      
+      // Dispatch event for UI update
+      window.dispatchEvent(new CustomEvent('babylonSceneChanged', { 
+        detail: { type: 'camera-created' } 
+      }));
+    } else if (!scene.activeCamera) {
+      // If there are cameras but no active one, activate the first
+      scene.activeCamera = scene.cameras[0];
+      scene._camera = scene.cameras[0];
+    }
+  };
 
   const switchCameraType = (newType) => {
     const scene = sceneInstance();
@@ -190,9 +221,52 @@ export const useSceneManager = () => {
     setSceneInstance(null)
   }
   
+  // Switch to a specific camera by name or index
+  const switchToCamera = (cameraIdentifier) => {
+    const scene = sceneInstance();
+    if (!scene) return false;
+    
+    let targetCamera = null;
+    
+    if (typeof cameraIdentifier === 'string') {
+      // Find by name
+      targetCamera = scene.cameras.find(cam => cam.name === cameraIdentifier);
+    } else if (typeof cameraIdentifier === 'number') {
+      // Find by index
+      targetCamera = scene.cameras[cameraIdentifier];
+    }
+    
+    if (targetCamera) {
+      scene.activeCamera = targetCamera;
+      scene._camera = targetCamera;
+      targetCamera.attachControl(scene.getEngine().getRenderingCanvas(), true);
+      console.log('📷 Switched to camera:', targetCamera.name);
+      return true;
+    }
+    
+    console.warn('📷 Camera not found:', cameraIdentifier);
+    return false;
+  };
+  
+  // Get list of all cameras
+  const getCameraList = () => {
+    const scene = sceneInstance();
+    if (!scene) return [];
+    
+    return scene.cameras.map((cam, index) => ({
+      name: cam.name,
+      index: index,
+      isActive: cam === scene.activeCamera,
+      type: cam.getClassName()
+    }));
+  };
+  
   return {
     sceneInstance,
     createScene,
-    disposeScene
+    disposeScene,
+    ensureActiveCamera,
+    switchToCamera,
+    getCameraList
   }
 }

@@ -1,0 +1,16 @@
+{
+  "iconDefinitions": {
+    "_ren": {
+      "iconPath": "../images/renscript-icon.svg"
+    }
+  },
+  "fileExtensions": {
+    "ren": "_ren"
+  },
+  "fileNames": {},
+  "folderNames": {},
+  "folderNamesExpanded": {},
+  "languageIds": {
+    "renscript": "_ren"
+  }
+}

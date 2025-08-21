@@ -157,22 +157,34 @@ function Scene(props) {
     
     const babylonObjects = [];
     
-    if (scene.meshes) {
-      scene.meshes.forEach(mesh => {
-        const meshId = mesh.uniqueId || mesh.name;
-        if (meshId === selection.entity) {
-          babylonObjects.push({
-            id: mesh.uniqueId || mesh.name,
-            name: mesh.name,
-            type: 'mesh',
-            position: mesh.position ? [mesh.position.x, mesh.position.y, mesh.position.z] : [0, 0, 0],
-            rotation: mesh.rotation ? [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z] : [0, 0, 0],
-            scale: mesh.scaling ? [mesh.scaling.x, mesh.scaling.y, mesh.scaling.z] : [1, 1, 1],
-            visible: mesh.isVisible !== false,
-            babylonObject: mesh
-          });
-        }
-      });
+    // Helper function to create object data
+    const createObjectData = (obj, type) => {
+      return {
+        id: obj.uniqueId || obj.name,
+        name: obj.name,
+        type: type,
+        position: obj.position ? [obj.position.x, obj.position.y, obj.position.z] : [0, 0, 0],
+        rotation: obj.rotation ? [obj.rotation.x, obj.rotation.y, obj.rotation.z] : [0, 0, 0],
+        scale: obj.scaling ? [obj.scaling.x, obj.scaling.y, obj.scaling.z] : [1, 1, 1],
+        visible: obj.isVisible !== undefined ? obj.isVisible : (obj.isEnabled ? obj.isEnabled() : true),
+        babylonObject: obj
+      };
+    };
+    
+    // Check all object types
+    const allObjects = [
+      ...(scene.meshes || []).map(obj => ({ obj, type: 'mesh' })),
+      ...(scene.transformNodes || []).map(obj => ({ obj, type: 'transform' })),
+      ...(scene.cameras || []).map(obj => ({ obj, type: 'camera' })),
+      ...(scene.lights || []).map(obj => ({ obj, type: 'light' }))
+    ];
+    
+    for (const { obj, type } of allObjects) {
+      const objId = obj.uniqueId || obj.name;
+      if (objId === selection.entity) {
+        babylonObjects.push(createObjectData(obj, type));
+        break;
+      }
     }
     
     return babylonObjects.length > 0 ? babylonObjects[0] : null;
@@ -352,7 +364,28 @@ function Scene(props) {
     e.stopPropagation();
     
     if (item.babylonObject && item.babylonObject.dispose) {
+      const scene = getBabylonScene();
+      const isCamera = item.babylonObject.getClassName && item.babylonObject.getClassName().includes('Camera');
+      
+      // Check if this is the last camera
+      if (isCamera && scene && scene.cameras.length <= 1) {
+        editorActions.addConsoleMessage('Cannot delete the last camera! At least one camera is required for rendering.', 'error');
+        return;
+      }
+      
       item.babylonObject.dispose();
+      
+      // If we deleted a camera, ensure there's still an active camera
+      if (isCamera && scene) {
+        setTimeout(() => {
+          if (scene.cameras.length > 0 && !scene.activeCamera) {
+            scene.activeCamera = scene.cameras[0];
+            scene._camera = scene.cameras[0];
+            scene.cameras[0].attachControl(scene.getEngine().getRenderingCanvas(), true);
+            editorActions.addConsoleMessage(`Switched to camera: ${scene.cameras[0].name}`, 'info');
+          }
+        }, 100);
+      }
       
       if (selection.entity === item.id) {
         setSelectedEntity(null);
@@ -697,16 +730,19 @@ function Scene(props) {
                         });
                         
                         const handlePropertyChange = (propertyName, newValue) => {
+                          console.log(`Property change: ${propertyName} = ${newValue}`);
                           try {
                             const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
                             if (scriptInstance?._scriptAPI?.setScriptProperty) {
                               scriptInstance._scriptAPI.setScriptProperty(propertyName, newValue);
                               
-                              // Update reactive state
-                              setPropertyValues(prev => ({
-                                ...prev,
-                                [propertyName]: newValue
-                              }));
+                              // Force update reactive state with new object
+                              setPropertyValues(prev => {
+                                const updated = { ...prev };
+                                updated[propertyName] = newValue;
+                                console.log('Updated property values:', updated);
+                                return updated;
+                              });
                             }
                           } catch (error) {
                             console.error('Failed to set script property:', error);
@@ -714,7 +750,14 @@ function Scene(props) {
                         };
                         
                         const renderPropertyInput = (property) => {
-                          const currentValue = () => propertyValues()[property.name] || property.defaultValue || 0;
+                          const currentValue = () => {
+                            const val = propertyValues()[property.name];
+                            // For booleans, don't use || operator as false is a valid value
+                            if (property.type === 'boolean') {
+                              return val !== undefined ? val : property.defaultValue;
+                            }
+                            return val !== undefined && val !== null ? val : (property.defaultValue || 0);
+                          };
                           
                           return (
                             <div className="form-control">
@@ -731,23 +774,44 @@ function Scene(props) {
                               
                               <Switch>
                                 <Match when={property.type === 'number' || property.type === 'float'}>
-                                  <div className="join w-full">
-                                    <input
-                                      type="number"
-                                      value={currentValue()}
-                                      step={property.type === 'float' ? '0.1' : '1'}
-                                      min={property.min}
-                                      max={property.max}
-                                      onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value) || 0)}
-                                      className="input input-bordered input-sm join-item flex-1 text-sm"
-                                      placeholder="0"
-                                    />
-                                    <Show when={property.min !== null || property.max !== null}>
-                                      <span className="btn btn-sm join-item btn-outline btn-disabled text-xs">
-                                        {property.min || 0}↔{property.max || 100}
-                                      </span>
-                                    </Show>
-                                  </div>
+                                  <Show 
+                                    when={property.min !== undefined && property.max !== undefined}
+                                    fallback={
+                                      <div className="join w-full">
+                                        <input
+                                          type="number"
+                                          value={currentValue()}
+                                          step={property.type === 'float' ? '0.1' : '1'}
+                                          min={property.min}
+                                          max={property.max}
+                                          onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value) || 0)}
+                                          className="input input-bordered input-sm join-item flex-1 text-sm"
+                                          placeholder="0"
+                                        />
+                                      </div>
+                                    }
+                                  >
+                                    <div className="flex items-center gap-2 w-full">
+                                      <input
+                                        type="range"
+                                        min={property.min}
+                                        max={property.max}
+                                        step={property.type === 'float' ? '0.1' : '1'}
+                                        value={currentValue()}
+                                        onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value))}
+                                        className="range range-primary range-xs flex-1"
+                                      />
+                                      <input
+                                        type="number"
+                                        value={currentValue()}
+                                        step={property.type === 'float' ? '0.1' : '1'}
+                                        min={property.min}
+                                        max={property.max}
+                                        onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value) || 0)}
+                                        className="input input-bordered input-xs w-16 text-xs text-center"
+                                      />
+                                    </div>
+                                  </Show>
                                 </Match>
                                 
                                 <Match when={property.type === 'boolean'}>
@@ -863,7 +927,21 @@ function Scene(props) {
                   <CollapsibleSection title="Scripts" defaultOpen={true} index={1}>
                     <div className="p-4">
                       <div className="mb-3">
-                        <label className="block text-xs text-base-content/60 mb-2">Attached Scripts</label>
+                        <label className="block text-xs text-base-content/60 mb-2">
+                          Attached Scripts
+                          {(() => {
+                            const objData = selectedObjectData();
+                            if (objData) {
+                              const typeLabel = objData.type.charAt(0).toUpperCase() + objData.type.slice(1);
+                              return (
+                                <span className="ml-2 text-xs text-primary">
+                                  ({typeLabel} scripts only)
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </label>
                         <div 
                           className="min-h-[80px] border-2 border-dashed border-base-300 rounded-lg p-3 text-center transition-colors hover:border-primary hover:bg-primary/10"
                           onDragOver={(e) => {
@@ -906,7 +984,8 @@ function Scene(props) {
                                       updateObjectProperty(selection.entity, 'scripts', newScripts);
                                       editorActions.addConsoleMessage(`Script "${data.name}" attached successfully`, 'success');
                                     } else {
-                                      editorActions.addConsoleMessage(`Failed to attach script "${data.name}"`, 'error');
+                                      // The error message from ScriptManager will be more specific about type mismatches
+                                      editorActions.addConsoleMessage(`Cannot attach "${data.name}" - check console for details`, 'error');
                                     }
                                   } else {
                                     console.log('🔧 Script already attached:', data.path);

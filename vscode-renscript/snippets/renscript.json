@@ -1,0 +1,108 @@
+{
+  "Script Template": {
+    "prefix": "script",
+    "body": [
+      "script ${1:ScriptName} {",
+      "\tstart {",
+      "\t\t$2",
+      "\t}",
+      "\t",
+      "\tupdate(dt) {",
+      "\t\t$3",
+      "\t}",
+      "\t",
+      "\tdestroy {",
+      "\t\t$4",
+      "\t}",
+      "}"
+    ],
+    "description": "Create a new RenScript script"
+  },
+  "Camera Script": {
+    "prefix": "camera",
+    "body": [
+      "camera ${1:CameraName} {",
+      "\tstart {",
+      "\t\tdetach_camera_controls()",
+      "\t\t$2",
+      "\t}",
+      "\t",
+      "\tupdate(dt) {",
+      "\t\t$3",
+      "\t}",
+      "\t",
+      "\tdestroy {",
+      "\t\tattach_camera_controls()",
+      "\t}",
+      "}"
+    ],
+    "description": "Create a camera script"
+  },
+  "Mesh Script": {
+    "prefix": "mesh",
+    "body": [
+      "mesh ${1:MeshName} {",
+      "\tstart {",
+      "\t\t$2",
+      "\t}",
+      "\t",
+      "\tupdate(dt) {",
+      "\t\t$3",
+      "\t}",
+      "}"
+    ],
+    "description": "Create a mesh script"
+  },
+  "Properties Block": {
+    "prefix": "props",
+    "body": [
+      "props ${1:section} {",
+      "\t${2:property_name}: ${3|float,boolean,number,string,vector3,color|} {",
+      "\t\tdefault: ${4:value},",
+      "\t\tdescription: \"${5:description}\"",
+      "\t}",
+      "}"
+    ],
+    "description": "Create a properties block"
+  },
+  "Float Property": {
+    "prefix": "propf",
+    "body": [
+      "${1:property_name}: float {",
+      "\tdefault: ${2:1.0},",
+      "\tmin: ${3:0.0},",
+      "\tmax: ${4:10.0},",
+      "\tdescription: \"${5:description}\"",
+      "}"
+    ],
+    "description": "Create a float property with min/max"
+  },
+  "Boolean Property": {
+    "prefix": "propb",
+    "body": [
+      "${1:property_name}: boolean {",
+      "\tdefault: ${2|true,false|},",
+      "\tdescription: \"${3:description}\"",
+      "}"
+    ],
+    "description": "Create a boolean property"
+  },
+  "If Statement": {
+    "prefix": "if",
+    "body": [
+      "if (${1:condition}) {",
+      "\t$2",
+      "}"
+    ],
+    "description": "If statement"
+  },
+  "For Loop": {
+    "prefix": "for",
+    "body": [
+      "for (${1:i} = ${2:0}; ${1:i} < ${3:10}; ${1:i} = ${1:i} + 1) {",
+      "\t$4",
+      "}"
+    ],
+    "description": "For loop"
+  }
+}

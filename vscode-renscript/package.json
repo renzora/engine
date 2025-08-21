@@ -1,0 +1,41 @@
+{
+  "name": "renscript",
+  "displayName": "RenScript",
+  "description": "Syntax highlighting and language support for RenScript (.ren files)",
+  "version": "1.0.0",
+  "publisher": "renzora",
+  "icon": "images/renscript-icon.svg",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "renscript",
+        "aliases": ["RenScript", "renscript"],
+        "extensions": [".ren"],
+        "configuration": "./language-configuration.json",
+        "icon": {
+          "light": "./images/renscript-icon.svg",
+          "dark": "./images/renscript-icon.svg"
+        }
+      }
+    ],
+    "grammars": [
+      {
+        "language": "renscript",
+        "scopeName": "source.renscript",
+        "path": "./syntaxes/renscript.tmLanguage.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "renscript",
+        "path": "./snippets/renscript.json"
+      }
+    ]
+  }
+}

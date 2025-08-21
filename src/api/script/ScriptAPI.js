@@ -73,6 +73,17 @@ class ScriptAPI {
     this.isMouseButtonPressed = this.isMouseButtonPressed.bind(this);
     this.getMousePosition = this.getMousePosition.bind(this);
     
+    // Gamepad methods
+    this.getGamepads = this.getGamepads.bind(this);
+    this.getLeftStick = this.getLeftStick.bind(this);
+    this.getRightStick = this.getRightStick.bind(this);
+    this.getLeftStickX = this.getLeftStickX.bind(this);
+    this.getLeftStickY = this.getLeftStickY.bind(this);
+    this.getRightStickX = this.getRightStickX.bind(this);
+    this.getRightStickY = this.getRightStickY.bind(this);
+    this.isGamepadButtonPressed = this.isGamepadButtonPressed.bind(this);
+    this.getGamepadTrigger = this.getGamepadTrigger.bind(this);
+    
     // Utility methods
     this.log = this.log.bind(this);
     this.getDeltaTime = this.getDeltaTime.bind(this);
@@ -414,6 +425,198 @@ class ScriptAPI {
     return [quat.x, quat.y, quat.z, quat.w];
   }
   
+  // === CAMERA API ===
+  
+  /**
+   * Check if the attached object is a camera
+   * @returns {boolean} True if object is a camera
+   */
+  isCamera() {
+    return this.object.getClassName && this.object.getClassName().includes('Camera');
+  }
+  
+  /**
+   * Set camera field of view (for perspective cameras)
+   * @param {number} fov - Field of view in radians
+   */
+  setCameraFOV(fov) {
+    if (this.isCamera() && this.object.fov !== undefined) {
+      this.object.fov = fov;
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Detach camera controls (for script-controlled cameras)
+   */
+  detachCameraControls() {
+    if (this.isCamera() && this.object.detachControl) {
+      const canvas = this.scene.getEngine().getRenderingCanvas();
+      this.object.detachControl(canvas);
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Attach camera controls (restore user control)
+   */
+  attachCameraControls() {
+    if (this.isCamera() && this.object.attachControl) {
+      const canvas = this.scene.getEngine().getRenderingCanvas();
+      this.object.attachControl(canvas, true);
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Get camera field of view
+   * @returns {number} Field of view in radians
+   */
+  getCameraFOV() {
+    if (this.isCamera() && this.object.fov !== undefined) {
+      return this.object.fov;
+    }
+    return null;
+  }
+  
+  /**
+   * Set camera target position (for arc rotate cameras)
+   * @param {number|Array} x - X coordinate or [x, y, z] array
+   * @param {number} y - Y coordinate
+   * @param {number} z - Z coordinate
+   */
+  setCameraTarget(x, y, z) {
+    if (this.isCamera() && this.object.setTarget) {
+      if (Array.isArray(x)) {
+        this.object.setTarget(new Vector3(x[0] || 0, x[1] || 0, x[2] || 0));
+      } else {
+        this.object.setTarget(new Vector3(x || 0, y || 0, z || 0));
+      }
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Get camera target position
+   * @returns {Array|null} [x, y, z] target position or null
+   */
+  getCameraTarget() {
+    if (this.isCamera() && this.object.getTarget) {
+      const target = this.object.getTarget();
+      return [target.x, target.y, target.z];
+    }
+    return null;
+  }
+  
+  /**
+   * Set camera radius (for arc rotate cameras)
+   * @param {number} radius - Distance from target
+   */
+  setCameraRadius(radius) {
+    if (this.isCamera() && this.object.radius !== undefined) {
+      this.object.radius = radius;
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Get camera radius
+   * @returns {number|null} Camera radius or null
+   */
+  getCameraRadius() {
+    if (this.isCamera() && this.object.radius !== undefined) {
+      return this.object.radius;
+    }
+    return null;
+  }
+  
+  // === LIGHT API ===
+  
+  /**
+   * Check if the attached object is a light
+   * @returns {boolean} True if object is a light
+   */
+  isLight() {
+    return this.object.getClassName && this.object.getClassName().includes('Light');
+  }
+  
+  /**
+   * Set light intensity
+   * @param {number} intensity - Light intensity
+   */
+  setLightIntensity(intensity) {
+    if (this.isLight() && this.object.intensity !== undefined) {
+      this.object.intensity = intensity;
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Get light intensity
+   * @returns {number|null} Light intensity or null
+   */
+  getLightIntensity() {
+    if (this.isLight() && this.object.intensity !== undefined) {
+      return this.object.intensity;
+    }
+    return null;
+  }
+  
+  /**
+   * Set light color
+   * @param {number} r - Red component (0-1)
+   * @param {number} g - Green component (0-1)
+   * @param {number} b - Blue component (0-1)
+   */
+  setLightColor(r, g, b) {
+    if (this.isLight() && this.object.diffuse) {
+      this.object.diffuse = new Color3(r, g, b);
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Get light color
+   * @returns {Array|null} [r, g, b] color or null
+   */
+  getLightColor() {
+    if (this.isLight() && this.object.diffuse) {
+      const color = this.object.diffuse;
+      return [color.r, color.g, color.b];
+    }
+    return null;
+  }
+  
+  /**
+   * Set light range (for point lights)
+   * @param {number} range - Light range
+   */
+  setLightRange(range) {
+    if (this.isLight() && this.object.range !== undefined) {
+      this.object.range = range;
+      return true;
+    }
+    return false;
+  }
+  
+  /**
+   * Get light range
+   * @returns {number|null} Light range or null
+   */
+  getLightRange() {
+    if (this.isLight() && this.object.range !== undefined) {
+      return this.object.range;
+    }
+    return null;
+  }
+
   // === ENHANCED MATERIAL API ===
   
   /**
@@ -872,6 +1075,128 @@ class ScriptAPI {
     return [0, 0];
   }
   
+  /**
+   * Get all connected gamepads
+   * @returns {Array} Array of gamepad objects
+   */
+  getGamepads() {
+    if (typeof navigator !== 'undefined' && navigator.getGamepads) {
+      const gamepads = navigator.getGamepads();
+      return Array.from(gamepads).filter(gamepad => gamepad !== null);
+    }
+    return [];
+  }
+  
+  /**
+   * Get left stick values for a gamepad
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {Array} [x, y] stick values (-1 to 1)
+   */
+  getLeftStick(gamepadIndex = 0) {
+    const gamepads = this.getGamepads();
+    if (gamepadIndex < gamepads.length && gamepads[gamepadIndex]) {
+      const gamepad = gamepads[gamepadIndex];
+      return [
+        Math.abs(gamepad.axes[0]) > 0.1 ? gamepad.axes[0] : 0, // X axis with deadzone
+        Math.abs(gamepad.axes[1]) > 0.1 ? gamepad.axes[1] : 0  // Y axis with deadzone
+      ];
+    }
+    return [0, 0];
+  }
+  
+  /**
+   * Get right stick values for a gamepad
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {Array} [x, y] stick values (-1 to 1)
+   */
+  getRightStick(gamepadIndex = 0) {
+    const gamepads = this.getGamepads();
+    if (gamepadIndex < gamepads.length && gamepads[gamepadIndex]) {
+      const gamepad = gamepads[gamepadIndex];
+      return [
+        Math.abs(gamepad.axes[2]) > 0.1 ? gamepad.axes[2] : 0, // X axis with deadzone
+        Math.abs(gamepad.axes[3]) > 0.1 ? gamepad.axes[3] : 0  // Y axis with deadzone
+      ];
+    }
+    return [0, 0];
+  }
+  
+  /**
+   * Check if a gamepad button is pressed
+   * @param {number} buttonIndex - Button index
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {boolean} True if button is pressed
+   */
+  isGamepadButtonPressed(buttonIndex, gamepadIndex = 0) {
+    const gamepads = this.getGamepads();
+    if (gamepadIndex < gamepads.length && gamepads[gamepadIndex]) {
+      const gamepad = gamepads[gamepadIndex];
+      if (buttonIndex < gamepad.buttons.length) {
+        return gamepad.buttons[buttonIndex].pressed;
+      }
+    }
+    return false;
+  }
+  
+  /**
+   * Get left stick X value (for RenScript compatibility)
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {number} X value (-1 to 1)
+   */
+  getLeftStickX(gamepadIndex = 0) {
+    const stick = this.getLeftStick(gamepadIndex);
+    return stick[0];
+  }
+  
+  /**
+   * Get left stick Y value (for RenScript compatibility)
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {number} Y value (-1 to 1)
+   */
+  getLeftStickY(gamepadIndex = 0) {
+    const stick = this.getLeftStick(gamepadIndex);
+    return stick[1];
+  }
+  
+  /**
+   * Get right stick X value (for RenScript compatibility)
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {number} X value (-1 to 1)
+   */
+  getRightStickX(gamepadIndex = 0) {
+    const stick = this.getRightStick(gamepadIndex);
+    return stick[0];
+  }
+  
+  /**
+   * Get right stick Y value (for RenScript compatibility)
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {number} Y value (-1 to 1)
+   */
+  getRightStickY(gamepadIndex = 0) {
+    const stick = this.getRightStick(gamepadIndex);
+    return stick[1];
+  }
+  
+  /**
+   * Get trigger values (L2/R2)
+   * @param {string} trigger - "left" or "right"
+   * @param {number} gamepadIndex - Gamepad index (default 0)
+   * @returns {number} Trigger value (0 to 1)
+   */
+  getGamepadTrigger(trigger, gamepadIndex = 0) {
+    const gamepads = this.getGamepads();
+    if (gamepadIndex < gamepads.length && gamepads[gamepadIndex]) {
+      const gamepad = gamepads[gamepadIndex];
+      if (trigger === "left" && gamepad.buttons[6]) {
+        return gamepad.buttons[6].value;
+      } else if (trigger === "right" && gamepad.buttons[7]) {
+        return gamepad.buttons[7].value;
+      }
+    }
+    return 0;
+  }
+  
   // === ENHANCED MATH UTILITIES ===
   
   /**
@@ -1072,6 +1397,7 @@ class ScriptAPI {
     // Also set it on the script instance if we have a reference
     if (this._scriptInstance) {
       this._scriptInstance[propertyName] = value;
+      console.log(`🔧 ScriptAPI: Updated property '${propertyName}' to`, value, 'on script instance');
     }
   }
   
@@ -1131,22 +1457,21 @@ class ScriptAPI {
     if (expression === null || expression === undefined) return null;
     
     try {
+      // Handle boolean literals FIRST (before numeric check)
+      if (expression === true || expression === 'true') return true;
+      if (expression === false || expression === 'false') return false;
+      
       // Handle string literals
       if (typeof expression === 'string' && expression.startsWith('"') && expression.endsWith('"')) {
         return expression.slice(1, -1);
       }
       
-      // Handle numeric literals
-      if (!isNaN(expression)) {
+      // Handle numeric literals (but not booleans)
+      if (typeof expression !== 'boolean' && !isNaN(expression)) {
         return parseFloat(expression);
       }
       
-      // Handle boolean literals
-      if (expression === 'true') return true;
-      if (expression === 'false') return false;
-      
-      // For more complex expressions, try to evaluate safely
-      // This is a simplified evaluation - in production you'd want a proper expression evaluator
+      // For more complex expressions, return as-is
       return expression;
     } catch (error) {
       this.log('Failed to evaluate property default:', expression, error);

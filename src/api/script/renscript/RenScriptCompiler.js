@@ -160,6 +160,11 @@ class RenScriptLexer {
     // Check for keywords
     const keywords = {
       'script': 'SCRIPT',
+      'mesh': 'OBJECT_TYPE',
+      'camera': 'OBJECT_TYPE', 
+      'light': 'OBJECT_TYPE',
+      'scene': 'OBJECT_TYPE',
+      'transform': 'OBJECT_TYPE',
       'props': 'PROPS',
       'start': 'START',
       'update': 'UPDATE',
@@ -219,8 +224,20 @@ class RenScriptParser {
   }
   
   script() {
-    this.consume('SCRIPT', "Expected 'script'");
-    const name = this.consume('IDENTIFIER', "Expected script name").value;
+    // Handle both old syntax (script Name) and new syntax (camera Name, light Name, etc.)
+    let objectType = 'script';
+    let name;
+    
+    if (this.check('SCRIPT')) {
+      this.advance(); // consume 'script'
+      name = this.consume('IDENTIFIER', "Expected script name").value;
+    } else if (this.check('OBJECT_TYPE')) {
+      objectType = this.advance().value; // consume object type (camera, light, etc.)
+      name = this.consume('IDENTIFIER', "Expected object name").value;
+    } else {
+      throw new Error("Expected 'script', 'camera', 'light', 'mesh', 'scene', or 'transform'");
+    }
+    
     this.consume('LBRACE', "Expected '{'");
     
     const variables = [];
@@ -244,6 +261,7 @@ class RenScriptParser {
     return {
       type: 'Script',
       name,
+      objectType,
       variables,
       methods,
       properties
@@ -618,6 +636,26 @@ class RenScriptCodeGenerator {
   const set_material_property = (property, value) => api.setMaterialProperty(property, value);
   const get_material_property = (property) => api.getMaterialProperty(property);
   
+  // === Camera API ===
+  const is_camera = () => api.isCamera();
+  const set_camera_fov = (fov) => api.setCameraFOV(fov);
+  const get_camera_fov = () => api.getCameraFOV();
+  const set_camera_target = (x, y, z) => api.setCameraTarget(x, y, z);
+  const get_camera_target = () => api.getCameraTarget();
+  const set_camera_radius = (radius) => api.setCameraRadius(radius);
+  const get_camera_radius = () => api.getCameraRadius();
+  const detach_camera_controls = () => api.detachCameraControls();
+  const attach_camera_controls = () => api.attachCameraControls();
+  
+  // === Light API ===
+  const is_light = () => api.isLight();
+  const set_light_intensity = (intensity) => api.setLightIntensity(intensity);
+  const get_light_intensity = () => api.getLightIntensity();
+  const set_light_color = (r, g, b) => api.setLightColor(r, g, b);
+  const get_light_color = () => api.getLightColor();
+  const set_light_range = (range) => api.setLightRange(range);
+  const get_light_range = () => api.getLightRange();
+  
   // === Animation API ===
   const animate = (property, targetValue, duration, easing) => api.animate(property, targetValue, duration, easing);
   const stop_animation = () => api.stopAnimation();
@@ -645,6 +683,17 @@ class RenScriptCodeGenerator {
   const is_key_pressed = (key) => api.isKeyPressed(key);
   const is_mouse_button_pressed = (button) => api.isMouseButtonPressed(button);
   const get_mouse_position = () => api.getMousePosition();
+  
+  // === Gamepad API ===
+  const get_gamepads = () => api.getGamepads();
+  const get_left_stick = (gamepadIndex) => api.getLeftStick(gamepadIndex);
+  const get_right_stick = (gamepadIndex) => api.getRightStick(gamepadIndex);
+  const get_left_stick_x = (gamepadIndex) => api.getLeftStickX(gamepadIndex);
+  const get_left_stick_y = (gamepadIndex) => api.getLeftStickY(gamepadIndex);
+  const get_right_stick_x = (gamepadIndex) => api.getRightStickX(gamepadIndex);
+  const get_right_stick_y = (gamepadIndex) => api.getRightStickY(gamepadIndex);
+  const is_gamepad_button_pressed = (buttonIndex, gamepadIndex) => api.isGamepadButtonPressed(buttonIndex, gamepadIndex);
+  const get_gamepad_trigger = (trigger, gamepadIndex) => api.getGamepadTrigger(trigger, gamepadIndex);
   
   // === Time API ===
   const get_time = () => api.getTime();
@@ -695,7 +744,12 @@ ${properties.map(p => `    {
       options: ${p.options ? this.generateExpression(p.options) : null},
       description: ${p.description ? this.generateExpression(p.description) : null}
     }`).join(',\n')}
-  ],` : '';
+  ],
+  
+  // Script object type metadata
+  _scriptObjectType: ${JSON.stringify(script.objectType || 'script')},` : `
+  // Script object type metadata  
+  _scriptObjectType: ${JSON.stringify(script.objectType || 'script')},`;
 
     return `
 function createRenScript(scene, api) {

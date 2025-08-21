@@ -1,0 +1,148 @@
+# Sample RenScript file demonstrating syntax highlighting
+
+mesh GamepadController {
+  # Properties with sections
+  props movement {
+    enabled: boolean {
+      default: true,
+      description: "Enable gamepad control"
+    }
+    
+    speed: float {
+      default: 5.0,
+      min: 0.1,
+      max: 20.0,
+      description: "Movement speed"
+    }
+    
+    rotation_speed: float {
+      default: 2.0,
+      min: 0.1,
+      max: 10.0,
+      description: "Rotation speed"
+    }
+  }
+  
+  props debug {
+    show_debug: boolean {
+      default: false,
+      description: "Show debug info"
+    }
+  }
+  
+  # Variables
+  pos_x = 0.0
+  pos_y = 2.0
+  pos_z = 0.0
+  rot_y = 0.0
+  
+  # Lifecycle functions
+  start {
+    log("Gamepad controller initialized!")
+    add_tag("gamepad_controlled")
+    
+    # Initialize position
+    pos_x = 0.0
+    pos_y = 2.0
+    pos_z = 0.0
+  }
+  
+  update(dt) {
+    # Get gamepad input
+    gamepad_idx = 0
+    
+    # Get stick values using built-in functions
+    left_x = get_left_stick_x(gamepad_idx)
+    left_y = get_left_stick_y(gamepad_idx)
+    right_x = get_right_stick_x(gamepad_idx)
+    
+    # Calculate movement
+    move_x = left_x * speed * dt
+    move_z = left_y * speed * dt * -1.0
+    
+    # Update position
+    pos_x = pos_x + move_x
+    pos_z = pos_z + move_z
+    
+    # Rotation
+    rot_y = rot_y + right_x * rotation_speed * dt
+    
+    # Jump with button press
+    jump_pressed = is_gamepad_button_pressed(0, gamepad_idx)
+    
+    # Apply transforms
+    set_position(pos_x, pos_y, pos_z)
+    set_rotation(0.0, rot_y, 0.0)
+    
+    # Math functions
+    angle = sin(get_time() * 0.001)
+    clamped = clamp(angle, -0.5, 0.5)
+    random_val = random(0.0, 1.0)
+  }
+  
+  destroy {
+    log("Controller destroyed")
+    remove_tag("gamepad_controlled")
+  }
+}
+
+# Camera script example
+camera OrbitCamera {
+  props orbit {
+    radius: float {
+      default: 10.0,
+      min: 1.0,
+      max: 50.0,
+      description: "Orbit radius"
+    }
+  }
+  
+  angle = 0.0
+  
+  start {
+    detach_camera_controls()
+  }
+  
+  update(dt) {
+    angle = angle + dt * 0.5
+    
+    x = sin(angle) * radius
+    z = cos(angle) * radius
+    y = 5.0
+    
+    set_position(x, y, z)
+    set_camera_target(0, 0, 0)
+  }
+  
+  destroy {
+    attach_camera_controls()
+  }
+}
+
+# Light script example
+light DynamicLight {
+  props lighting {
+    pulse_speed: float {
+      default: 1.0,
+      min: 0.1,
+      max: 5.0,
+      description: "Pulse speed"
+    }
+  }
+  
+  time = 0.0
+  
+  update(dt) {
+    time = time + dt * pulse_speed
+    
+    # Pulse intensity
+    intensity = sin(time) * 0.5 + 1.0
+    set_light_intensity(intensity)
+    
+    # Change color
+    r = sin(time) * 0.5 + 0.5
+    g = cos(time * 1.3) * 0.5 + 0.5
+    b = sin(time * 0.7) * 0.5 + 0.5
+    set_light_color(r, g, b)
+  }
+}
