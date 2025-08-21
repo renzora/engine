@@ -1,5 +1,4 @@
 import { createPlugin } from '@/api/plugin';
-import { bridgeService } from '@/api/bridge';
 import { setCurrentProject } from '@/api/bridge/projects';
 import BridgeStatus from './BridgeStatus.jsx';
 import BridgeViewport from './BridgeViewport.jsx';

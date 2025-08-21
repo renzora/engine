@@ -24,8 +24,8 @@ pub fn read_file_content(file_path: &str) -> Result<String, String> {
         return Err("Asset path required".to_string());
     };
     
-    // Construct path to project's assets directory
-    let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    // Construct full path within project directory
+    let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full file path: {:?}", project_assets_path);
     
     match fs::read_to_string(&project_assets_path) {
@@ -61,8 +61,8 @@ pub fn write_file_content(file_path: &str, request: &WriteFileRequest) -> Result
         return Err("Asset path required".to_string());
     };
     
-    // Construct path to project's assets directory
-    let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    // Construct full path within project directory
+    let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full file path: {:?}", project_assets_path);
     
     if let Some(parent) = project_assets_path.parent() {
@@ -111,8 +111,8 @@ pub fn write_binary_file_content(file_path: &str, request: &WriteBinaryFileReque
         return Err("Asset path required".to_string());
     };
     
-    // Construct path to project's assets directory
-    let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    // Construct full path within project directory
+    let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full binary file path: {:?}", project_assets_path);
     
     if let Some(parent) = project_assets_path.parent() {
@@ -168,8 +168,8 @@ pub fn delete_file_or_directory(file_path: &str) -> Result<(), String> {
         return Err("Asset path required".to_string());
     };
     
-    // Construct path to project's assets directory
-    let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    // Construct full path within project directory
+    let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full delete path: {:?}", project_assets_path);
     
     if !project_assets_path.exists() {
@@ -241,8 +241,8 @@ pub fn read_binary_file(file_path: &str) -> Result<Vec<u8>, String> {
         return Err("Asset path required".to_string());
     };
     
-    // Construct path to project's assets directory
-    let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    // Construct full path within project directory
+    let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full binary file path: {:?}", project_assets_path);
     
     if !project_assets_path.exists() {

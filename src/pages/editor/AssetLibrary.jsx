@@ -1362,7 +1362,7 @@ function AssetLibrary({ onContextMenu }) {
         const headers = {};
         headers['X-Folder-Path'] = targetFolderPath;
         
-        const targetPath = targetFolderPath ? `projects/${currentProject.name}/assets/${targetFolderPath}/${file.name}` : `projects/${currentProject.name}/assets/${file.name}`;
+        const targetPath = targetFolderPath ? `projects/${currentProject.name}/${targetFolderPath}/${file.name}` : `projects/${currentProject.name}/${file.name}`;
         
         const isTextFile = file.type.startsWith('text/') || 
                           file.name.match(/\.(js|jsx|ts|tsx|json|xml|txt|md|css|html|yml|yaml|csv|log|ini|conf|cfg|properties)$/i);

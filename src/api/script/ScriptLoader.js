@@ -58,7 +58,7 @@ class ScriptLoader {
       // Get current project from bridge service
       const { getCurrentProject } = await import('@/api/bridge/projects');
       const projectName = getCurrentProject()?.name || 'demo';
-      const url = `http://localhost:3001/read/projects/${projectName}/assets/${scriptPath}`;
+      const url = `http://localhost:3001/read/projects/${projectName}/${scriptPath}`;
       
       console.log('🔧 ScriptLoader: Fetching script from URL:', url);
       
