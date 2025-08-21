@@ -60,9 +60,7 @@ class PluginLoader {
     const pluginLocations = [
       { path: '/src/plugins/splash', main: 'index.jsx', priority: -1 },
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
-      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
-      { path: '/src/render/babylonjs', main: 'index.jsx', priority: -2 },
-      { path: '/src/plugins/test', main: 'index.jsx', priority: 1000 }
+      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 }
     ];
 
     for (const location of pluginLocations) {
@@ -151,9 +149,6 @@ class PluginLoader {
             break;
           case 'core-bridge-plugin':
             pluginModule = await import(`@/plugins/core/bridge/BridgePluginClass.jsx`);
-            break;
-          case 'core-render-plugin':
-            pluginModule = await import(`@/render/babylonjs/index.jsx`);
             break;
           default:
             try {

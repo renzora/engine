@@ -10,9 +10,27 @@ export function Project(props) {
     currentProject,
     isProjectLoaded,
     
-    setCurrentProject: (project) => {
+    setCurrentProject: async (project) => {
       setCurrentProject(project);
       setIsProjectLoaded(true);
+      
+      // Tell the bridge server to focus file watching on this project
+      try {
+        const response = await fetch('http://localhost:3001/set-current-project', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            project_name: project?.name || null 
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          console.log('🔍 File watcher:', result.content);
+        }
+      } catch (error) {
+        console.error('Failed to set current project for file watcher:', error);
+      }
     },
     
     clearProject: () => {

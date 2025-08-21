@@ -1,16 +1,21 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For, createMemo, batch } from 'solid-js';
-import { Photo, Wave, FileText, File, Cube, Video, Code, FolderOpen, Folder, Plus, Circle, Rectangle, Grid, Lightbulb, Upload, X, Check, Search, Menu } from '@/ui/icons';
+import { Photo, Wave, FileText, File, Cube, Video, Code, FolderOpen, Folder, Plus, Circle, Rectangle, Grid, Lightbulb, Upload, X, Check, Search, Menu, ChevronRight, Refresh } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { assetsStore, assetsActions } from '@/layout/stores/AssetStore';
-import { createAssetAPI } from '@/ui/hooks/useAssetAPI.jsx';
 import { createContextMenuActions } from '@/ui/ContextMenuActions.jsx';
 import ContextMenu from '@/ui/ContextMenu.jsx';
 import ScriptCreationDialog from './ScriptCreationDialog.jsx';
-import { bridgeService, bridgeService as projects } from '@/plugins/core/bridge';
+import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
+import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
+import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { modelThumbnailGenerator } from '@/render/babylonjs/utils/modelThumbnailGenerator';
+import { scriptEditorActions } from '@/layout/stores/ScriptEditorStore.js';
 
 const getProjectManager = () => {
-  return projects;
+  return {
+    getCurrentProject,
+    setCurrentProject
+  };
 };
 
 function AssetLibrary({ onContextMenu }) {
@@ -267,17 +272,433 @@ function AssetLibrary({ onContextMenu }) {
   const contextMenuActions = createContextMenuActions(editorActions);
   const { handleCreateObject } = contextMenuActions;
   
-  const { 
-    isInitialized, 
-    fetchFolderTree, 
-    fetchAssetCategories, 
-    fetchAssets, 
-    searchAssets, 
-    createFolder, 
-    moveAsset, 
-    deleteAsset, 
-    addFileChangeListener 
-  } = createAssetAPI();
+  // Bridge API functions directly
+  const isInitialized = () => true; // Always initialized since we have direct bridge API
+  
+  const buildTreeFromAssets = (assets, projectName = null) => {
+    if (!assets || !Array.isArray(assets)) {
+      console.warn('buildTreeFromAssets: Invalid assets data:', assets);
+      return null;
+    }
+
+    console.log('🦀 buildTreeFromAssets input:', assets, 'projectName:', projectName);
+    const folders = assets.filter(asset => asset.is_directory);
+    const files = assets.filter(asset => !asset.is_directory);
+    console.log('🦀 Filtered folders:', folders);
+    console.log('🦀 Filtered files:', files);
+
+    let processedFolders = folders;
+    let processedFiles = files;
+    
+    if (projectName) {
+      processedFolders = folders.map(folder => {
+        let adjustedPath = folder.path;
+        const projectPrefix1 = `projects/${projectName}/`;
+        const projectPrefix2 = `projects\\\\${projectName}\\\\`;
+        const projectRoot1 = `projects/${projectName}`;
+        const projectRoot2 = `projects\\\\${projectName}`;
+        
+        if (adjustedPath.startsWith(projectPrefix1)) {
+          adjustedPath = adjustedPath.replace(projectPrefix1, '');
+        } else if (adjustedPath.startsWith(projectPrefix2)) {
+          adjustedPath = adjustedPath.replace(projectPrefix2, '');
+        } else if (adjustedPath === projectRoot1 || adjustedPath === projectRoot2) {
+          return null;
+        }
+        
+        adjustedPath = adjustedPath.replace(/\\\\/g, '/');
+        
+        return {
+          ...folder,
+          path: adjustedPath
+        };
+      }).filter(Boolean);
+
+      processedFiles = files.map(file => {
+        let adjustedPath = file.path;
+        const projectPrefix1 = `projects/${projectName}/`;
+        const projectPrefix2 = `projects\\\\${projectName}\\\\`;
+        
+        if (adjustedPath.startsWith(projectPrefix1)) {
+          adjustedPath = adjustedPath.replace(projectPrefix1, '');
+        } else if (adjustedPath.startsWith(projectPrefix2)) {
+          adjustedPath = adjustedPath.replace(projectPrefix2, '');
+        }
+        
+        adjustedPath = adjustedPath.replace(/\\\\/g, '/');
+        
+        return {
+          ...file,
+          path: adjustedPath
+        };
+      });
+    }
+
+    const buildTree = (parentPath = '') => {
+      console.log('🦀 buildTree called with parentPath:', parentPath);
+      console.log('🦀 processedFolders:', processedFolders);
+      
+      const rootFolders = processedFolders.filter(folder => {
+        const folderDepth = folder.path.split('/').length;
+        const parentDepth = parentPath ? parentPath.split('/').length : 0;
+        
+        console.log('🦀 Checking folder:', folder.path, 'depth:', folderDepth, 'parentDepth:', parentDepth);
+        
+        if (parentPath) {
+          const result = folder.path.startsWith(parentPath + '/') && folderDepth === parentDepth + 1;
+          console.log('🦀 Parent path filter result:', result);
+          return result;
+        } else {
+          const result = folderDepth === 1 || !folder.path.includes('/');
+          console.log('🦀 Root filter result:', result, 'folderDepth === 1:', folderDepth === 1, '!includes(/):', !folder.path.includes('/'));
+          return result;
+        }
+      });
+      
+      console.log('🦀 rootFolders found:', rootFolders);
+
+      return rootFolders.map(folder => {
+        const folderFiles = processedFiles.filter(file => {
+          const filePath = file.path.substring(0, file.path.lastIndexOf('/')) || '';
+          return filePath === folder.path;
+        });
+
+        const children = buildTree(folder.path);
+
+        return {
+          name: folder.name,
+          path: folder.path,
+          type: 'folder',
+          children: children,
+          files: folderFiles
+        };
+      });
+    };
+
+    const finalTree = buildTree();
+    console.log('🦀 Final tree result:', finalTree);
+    
+    // Fallback: if buildTree returns empty, create a simple flat tree
+    if (!finalTree || finalTree.length === 0) {
+      console.log('🦀 BuildTree returned empty, creating simple flat tree');
+      console.log('🦀 processedFolders:', processedFolders);
+      const simpleTree = processedFolders.map(folder => ({
+        name: folder.name,
+        path: folder.path,
+        type: 'folder',
+        children: [],
+        files: []
+      }));
+      console.log('🦀 Simple tree created:', simpleTree);
+      return simpleTree;
+    }
+    
+    return finalTree;
+  };
+
+  const fetchFolderTree = async (currentProject) => {
+    console.log('🦀 Using bridge API for folder tree, project:', currentProject.name);
+    
+    try {
+      const projects = await getProjects();
+      console.log('🦀 All projects from bridge:', projects);
+      const currentProjectData = projects.find(p => p.name === currentProject.name);
+      console.log('🦀 Current project data:', currentProjectData);
+      
+      if (currentProjectData && currentProjectData.files && currentProjectData.files.length > 0) {
+        const tree = buildTreeFromAssets(currentProjectData.files, currentProject.name);
+        console.log('🦀 Built tree from project files:', tree);
+        return tree;
+      }
+      
+      console.log('🦀 Falling back to listing project assets directory directly');
+      const projectFiles = await listDirectory(`projects/${currentProject.name}`);
+      console.log('🦀 Project files from direct listing:', projectFiles);
+      
+      // Build nested tree structure recursively
+      const buildNestedTree = async (items, basePath = '') => {
+        const tree = [];
+        
+        for (const item of items.filter(i => i.is_directory)) {
+          const folderPath = basePath ? `${basePath}/${item.path}` : item.path;
+          
+          try {
+            // Get contents of this folder
+            const subItems = await listDirectory(`projects/${currentProject.name}/${item.path}`);
+            const children = await buildNestedTree(subItems, basePath);
+            const files = subItems.filter(subItem => !subItem.is_directory);
+            
+            tree.push({
+              name: item.name,
+              path: item.path,
+              type: 'folder',
+              children: children,
+              files: files
+            });
+          } catch (err) {
+            console.warn('🦀 Could not read folder:', item.path, err);
+            // Add folder without children if we can't read it
+            tree.push({
+              name: item.name,
+              path: item.path,
+              type: 'folder',
+              children: [],
+              files: []
+            });
+          }
+        }
+        
+        return tree;
+      };
+      
+      const nestedTree = await buildNestedTree(projectFiles);
+      console.log('🦀 Created nested tree:', nestedTree);
+      return nestedTree;
+      
+    } catch (error) {
+      console.error('🦀 Bridge API failed:', error);
+      return [];
+    }
+  };
+
+  const fetchAssetCategories = async (currentProject) => {
+    console.log('🦀 Generating asset categories from bridge data');
+    
+    try {
+      const allAssets = await listDirectory(`projects/${currentProject.name}`);
+      console.log('🦀 RAW ASSETS FROM BRIDGE:', allAssets);
+      console.log('🦀 TOTAL ASSET COUNT:', allAssets.length);
+      
+      const categories = {
+        '3d-models': {
+          name: '3D Models',
+          extensions: ['.glb', '.gltf', '.obj', '.fbx', '.dae'],
+          assets: []
+        },
+        'textures': {
+          name: 'Textures',
+          extensions: ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga', '.hdr', '.exr'],
+          assets: []
+        },
+        'audio': {
+          name: 'Audio',
+          extensions: ['.mp3', '.wav', '.ogg', '.flac', '.aac'],
+          assets: []
+        },
+        'video': {
+          name: 'Video',
+          extensions: ['.mp4', '.webm', '.avi', '.mov', '.mkv'],
+          assets: []
+        },
+        'scripts': {
+          name: 'Scripts',
+          extensions: ['.js', '.ts', '.jsx', '.tsx', '.json'],
+          assets: []
+        },
+        'documents': {
+          name: 'Documents',
+          extensions: ['.txt', '.md', '.pdf', '.doc', '.docx'],
+          assets: []
+        },
+        'other': {
+          name: 'Other',
+          extensions: [],
+          assets: []
+        }
+      };
+      
+      allAssets.forEach(asset => {
+        console.log('🦀 PROCESSING ASSET:', asset.name, 'is_directory:', asset.is_directory);
+        
+        if (asset.is_directory) {
+          console.log('🦀 SKIPPING FOLDER:', asset.name);
+          return;
+        }
+        
+        const extension = asset.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+        console.log('🦀 FILE EXTENSION:', extension, 'for', asset.name);
+        let categorized = false;
+        
+        for (const [key, category] of Object.entries(categories)) {
+          if (key === 'other') continue;
+          
+          if (category.extensions.includes(extension)) {
+            console.log('🦀 CATEGORIZING FILE TO:', key, asset.name);
+            category.assets.push({
+              id: asset.path,
+              name: asset.name,
+              path: asset.path,
+              type: 'file',
+              extension,
+              size: asset.size || 0
+            });
+            categorized = true;
+            break;
+          }
+        }
+        
+        if (!categorized) {
+          console.log('🦀 ADDING FILE TO OTHER:', asset.name);
+          categories.other.assets.push({
+            id: asset.path,
+            name: asset.name,
+            path: asset.path,
+            type: 'file',
+            extension,
+            size: asset.size || 0
+          });
+        }
+      });
+      
+      console.log('🦀 Generated categories:', Object.keys(categories).map(key => 
+        `${key}: ${categories[key].assets.length} assets`
+      ));
+      
+      return categories;
+      
+    } catch (error) {
+      console.warn('🦀 Bridge failed for categories, using fallback:', error);
+      
+      return {
+        '3d-models': { name: '3D Models', extensions: ['.glb', '.gltf', '.obj'], assets: [] },
+        'textures': { name: 'Textures', extensions: ['.jpg', '.png', '.webp'], assets: [] },
+        'audio': { name: 'Audio', extensions: ['.mp3', '.wav', '.ogg'], assets: [] },
+        'scripts': { name: 'Scripts', extensions: ['.js', '.ts', '.json'], assets: [] },
+        'other': { name: 'Other', extensions: [], assets: [] }
+      };
+    }
+  };
+
+  const fetchAssets = async (currentProject, path = '') => {
+    console.log('🦀 Using bridge API for assets in path:', path);
+    
+    try {
+      const dirPath = path 
+        ? `projects/${currentProject.name}/${path}` 
+        : `projects/${currentProject.name}`;
+      
+      console.log('🦀 Requesting directory:', dirPath);
+      const rawAssets = await listDirectory(dirPath);
+      console.log('🦀 Got raw assets from bridge API:', rawAssets.length, rawAssets);
+      
+      const assets = rawAssets.map(asset => {
+        console.log(`🦀 Processing asset: ${asset.name}, is_directory: ${asset.is_directory}, type: ${typeof asset.is_directory}`);
+        const hasExtension = asset.name.includes('.') && !asset.is_directory;
+        const convertedAsset = {
+          id: asset.path,
+          name: asset.name,
+          path: path ? `${path}/${asset.name}` : asset.name,
+          type: asset.is_directory ? 'folder' : 'file',
+          extension: hasExtension ? '.' + asset.name.split('.').pop() : null,
+          size: asset.size || 0,
+          fileName: asset.name
+        };
+        console.log(`🦀 Converted to: type=${convertedAsset.type}`);
+        return convertedAsset;
+      });
+      
+      console.log('🦀 Converted assets:', assets);
+      return assets;
+      
+    } catch (error) {
+      console.error('🦀 Bridge API failed:', error);
+      return [];
+    }
+  };
+
+  const searchAssets = async (currentProject, query) => {
+    console.log('🦀 Using bridge API for asset search');
+    
+    try {
+      const allAssets = await listDirectory(`projects/${currentProject.name}`);
+      const searchLower = query.toLowerCase();
+      
+      const results = allAssets.filter(asset => 
+        asset.name.toLowerCase().includes(searchLower)
+      );
+      
+      console.log('🦀 Found', results.length, 'assets matching search');
+      return results;
+      
+    } catch (error) {
+      console.error('🦀 Bridge API search failed:', error);
+      return [];
+    }
+  };
+
+  const createFolder = async (currentProject, folderName, parentPath = '') => {
+    try {
+      const folderPath = parentPath 
+        ? `projects/${currentProject.name}/assets/${parentPath}/${folderName.trim()}`
+        : `projects/${currentProject.name}/assets/${folderName.trim()}`;
+      
+      await writeFile(`${folderPath}/.gitkeep`, '');
+      console.log('🦀 Created folder:', folderPath);
+      return { success: true, path: folderPath };
+    } catch (error) {
+      throw new Error(`Failed to create folder: ${error.message}`);
+    }
+  };
+
+  const isBinaryFile = (fileName) => {
+    const extension = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    const binaryExtensions = [
+      '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.ico', '.svg',
+      '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac',
+      '.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv',
+      '.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d',
+      '.zip', '.rar', '.7z', '.tar', '.gz',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+      '.exe', '.dll', '.so', '.dylib'
+    ];
+    return binaryExtensions.includes(extension);
+  };
+
+  const moveAsset = async (currentProject, sourcePath, targetPath) => {
+    try {
+      const fullSourcePath = `projects/${currentProject.name}/assets/${sourcePath}`;
+      const fullTargetPath = `projects/${currentProject.name}/assets/${targetPath}`;
+      
+      console.log('🦀 Moving asset:', sourcePath, '->', targetPath);
+      console.log('🦀 Full source path:', fullSourcePath);
+      console.log('🦀 Full target path:', fullTargetPath);
+      
+      const sourceFileName = sourcePath.split('/').pop();
+      
+      if (isBinaryFile(sourceFileName)) {
+        console.log('🦀 Moving binary file:', sourceFileName);
+        const base64Content = await readBinaryFile(fullSourcePath);
+        await writeBinaryFile(fullTargetPath, base64Content);
+      } else {
+        console.log('🦀 Moving text file:', sourceFileName);
+        const content = await readFile(fullSourcePath);
+        await writeFile(fullTargetPath, content);
+      }
+      
+      await deleteFile(fullSourcePath);
+      console.log('🦀 Successfully moved asset:', sourcePath, '->', targetPath);
+      return { success: true, sourcePath, targetPath };
+    } catch (error) {
+      throw new Error(`Failed to move item: ${error.message}`);
+    }
+  };
+
+  const deleteAsset = async (currentProject, assetPath) => {
+    try {
+      const fullAssetPath = `projects/${currentProject.name}/assets/${assetPath}`;
+      await deleteFile(fullAssetPath);
+      console.log('🦀 Deleted asset:', assetPath);
+      return { success: true, path: assetPath };
+    } catch (error) {
+      throw new Error(`Failed to delete asset: ${error.message}`);
+    }
+  };
+
+  const addFileChangeListener = (callback) => {
+    const handleProjectSelect = (event) => callback(event.detail);
+    document.addEventListener('engine:project-selected', handleProjectSelect);
+    return () => document.removeEventListener('engine:project-selected', handleProjectSelect);
+  };
   
   const projectManager = getProjectManager();
 
@@ -360,7 +781,7 @@ function AssetLibrary({ onContextMenu }) {
     if (!currentProject?.name) return null;
     
     const assetPath = asset.path || asset.name;
-    return bridgeService.getFileUrl(`projects/${currentProject.name}/assets/${assetPath}`);
+    return getFileUrl(`projects/${currentProject.name}/assets/${assetPath}`);
   };
 
   const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
@@ -378,23 +799,7 @@ function AssetLibrary({ onContextMenu }) {
         const assetPath = asset.name || asset.path;
         console.log(`🎯 Requesting thumbnail for: assets/${assetPath} (original path: ${asset.path})`);
         
-        const response = await fetch('http://localhost:3001/thumbnail', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            project_name: currentProject.name,
-            asset_path: `assets/${assetPath}`,
-            size: 512
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-
-        const result = await response.json();
+        const result = await generateThumbnail(assetPath, 512);
         
         if (result.success && result.thumbnail_data) {
           setThumbnailUrl(result.thumbnail_data);
@@ -498,6 +903,7 @@ function AssetLibrary({ onContextMenu }) {
       console.log('🦀 Setting folder tree:', tree);
       assetsActions.setFolderTree(tree);
       setFolderTree(tree);
+      console.log('🦀 folderTree signal is now:', folderTree());
     } catch (err) {
       console.error('Error fetching folder tree:', err);
       setError(err.message);
@@ -508,15 +914,15 @@ function AssetLibrary({ onContextMenu }) {
     let project = projectManager.getCurrentProject();
     if (!project) {
       try {
-        const allProjects = await bridgeService.getProjects();
+        const allProjects = await getProjects();
         if (allProjects.length > 0) {
-          const preferredProject = allProjects.find(p => p.name === 'test-project') || allProjects[0];
+          const preferredProject = allProjects[0];
           const projectData = {
             name: preferredProject.name,
             path: preferredProject.path || `projects/${preferredProject.name}`,
             loaded: new Date()
           };
-          bridgeService.setCurrentProject(projectData);
+          setCurrentProject(projectData);
           project = projectData;
           console.log('🦀 Auto-loaded project:', project);
         }
@@ -583,15 +989,43 @@ function AssetLibrary({ onContextMenu }) {
     }
   };
 
+  const handleFileChange = async (changeData) => {
+    console.log('🔄 AssetLibrary: File change detected:', changeData);
+    
+    // Ignore temporary files and system files that shouldn't trigger refresh
+    if (changeData.message) {
+      const message = changeData.message.toLowerCase();
+      if (message.includes('.tmp.') || message.includes('%') || message.includes('~')) {
+        console.log('🔄 AssetLibrary: Ignoring temporary/system file change');
+        return;
+      }
+    }
+    
+    console.log('🔄 AssetLibrary: Refreshing asset data...');
+    assetsActions.clearAllAssetCache();
+    
+    const currentProject = await ensureProjectLoaded();
+    if (!currentProject?.name) {
+      console.log('🔄 AssetLibrary: No project to refresh');
+      return;
+    }
+    
+    if (viewMode() === 'folder') {
+      fetchFolderTreeWithCache(currentProject);
+      fetchAssetsWithCache(currentProject, currentPath());
+    } else {
+      fetchAssetCategoriesWithCache(currentProject);
+    }
+  };
+
   onMount(async () => {
     setTreePanelWidth(200);
     
-    let currentProject = projectManager.getCurrentProject();
+    let currentProject = await ensureProjectLoaded();
     
     if (!currentProject?.name) {
-      console.log('🦀 No current project, using test-project as fallback');
-      currentProject = { name: 'test-project', path: 'test-project' };
-      projectManager.current = currentProject;
+      console.log('🦀 No current project available');
+      return;
     }
     
     console.log('🦀 AssetLibrary mounting with project:', currentProject?.name || 'undefined');
@@ -607,21 +1041,6 @@ function AssetLibrary({ onContextMenu }) {
       fetchAssetCategoriesWithCache(currentProject);
     }
 
-    const handleFileChange = (changeData) => {
-      console.log('🔄 AssetLibrary: File change detected:', changeData);
-      assetsActions.clearAllAssetCache();
-      setTimeout(() => {
-        console.log('🔄 AssetLibrary: Refreshing asset data...');
-        
-        if (viewMode() === 'folder') {
-          fetchFolderTreeWithCache(currentProject);
-          fetchAssetsWithCache(currentProject, currentPath());
-        } else {
-          fetchAssetCategoriesWithCache(currentProject);
-        }
-      }, 200);
-    };
-
     const handleWebSocketMessage = (event) => {
       try {
         const message = JSON.parse(event.data);
@@ -634,43 +1053,92 @@ function AssetLibrary({ onContextMenu }) {
       }
     };
 
-    if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
-      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+    // File watching with SSE stream
+    if (typeof window !== 'undefined') {
+      console.log('🔄 AssetLibrary: Setting up SSE file watching');
       
-      let ws = null;
+      let eventSource = null;
       let reconnectTimer = null;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      const reconnectDelay = 2000;
       
-      const connectWebSocket = () => {
+      const connectSSE = () => {
         try {
-          ws = new WebSocket(wsUrl);
-          ws.addEventListener('message', handleWebSocketMessage);
+          eventSource = new EventSource('http://localhost:3001/file-changes/stream');
           
-          ws.addEventListener('close', () => {
-            reconnectTimer = setTimeout(connectWebSocket, 1000);
-          });
+          eventSource.onopen = () => {
+            console.log('📡 AssetLibrary: SSE connection opened');
+            reconnectAttempts = 0;
+          };
+          
+          eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              console.log('📡 AssetLibrary: SSE message received:', data);
+              
+              if (data.type === 'file_change') {
+                console.log('📡 AssetLibrary: File change detected:', data.message);
+                handleFileChange({ source: 'sse', message: data.message });
+              } else if (data.type === 'connected') {
+                console.log('📡 AssetLibrary: SSE connected successfully');
+              } else if (data.type === 'heartbeat') {
+                // Heartbeat received - connection is alive
+              }
+            } catch (error) {
+              console.error('📡 AssetLibrary: Failed to parse SSE message:', error);
+            }
+          };
+          
+          eventSource.onerror = (error) => {
+            console.error('📡 AssetLibrary: SSE connection error:', error);
+            eventSource.close();
+            
+            if (reconnectAttempts < maxReconnectAttempts) {
+              reconnectAttempts++;
+              console.log(`📡 AssetLibrary: Reconnecting SSE... attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+              reconnectTimer = setTimeout(connectSSE, reconnectDelay);
+            } else {
+              console.error('📡 AssetLibrary: Max reconnection attempts reached, falling back to manual refresh');
+            }
+          };
         } catch (error) {
-          console.warn('Failed to connect to WebSocket for file watching:', error);
+          console.error('📡 AssetLibrary: Failed to create SSE connection:', error);
         }
       };
       
-      connectWebSocket();
+      // Start SSE connection
+      connectSSE();
+      
+      // Manual refresh with F5 key as fallback
+      const handleKeyPress = (e) => {
+        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+          e.preventDefault();
+          console.log('🔄 AssetLibrary: Manual refresh triggered');
+          handleFileChange({ source: 'manual' });
+        }
+      };
+      
+      document.addEventListener('keydown', handleKeyPress);
+      
+      const removeListener = addFileChangeListener(handleFileChange);
       
       onCleanup(() => {
-        if (ws) {
-          ws.close();
+        if (eventSource) {
+          eventSource.close();
         }
         if (reconnectTimer) {
           clearTimeout(reconnectTimer);
         }
+        document.removeEventListener('keydown', handleKeyPress);
+        removeListener();
+      });
+    } else {
+      const removeListener = addFileChangeListener(handleFileChange);
+      onCleanup(() => {
+        removeListener();
       });
     }
-
-    const removeListener = addFileChangeListener(handleFileChange);
-    
-    onCleanup(() => {
-      removeListener();
-    });
   });
 
   createEffect(async () => {
@@ -913,7 +1381,7 @@ function AssetLibrary({ onContextMenu }) {
             reader.onerror = () => reject(reader.error);
             reader.readAsText(file);
           });
-          await bridgeService.writeFile(targetPath, textContent);
+          await writeFile(targetPath, textContent);
         } else if (isBinaryFile) {
           console.log(`Uploading binary file: ${file.name} (type: ${file.type})`);
           const base64Content = await new Promise((resolve, reject) => {
@@ -929,7 +1397,7 @@ function AssetLibrary({ onContextMenu }) {
             reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(file);
           });
-          await bridgeService.writeBinaryFile(targetPath, base64Content);
+          await writeBinaryFile(targetPath, base64Content);
         } else {
           console.log(`Uploading unknown file type as binary: ${file.name} (type: ${file.type})`);
           const base64Content = await new Promise((resolve, reject) => {
@@ -945,7 +1413,7 @@ function AssetLibrary({ onContextMenu }) {
             reader.onerror = () => reject(reader.error);
             reader.readAsDataURL(file);
           });
-          await bridgeService.writeBinaryFile(targetPath, base64Content);
+          await writeBinaryFile(targetPath, base64Content);
         }
         
         const result = {
@@ -1239,7 +1707,7 @@ export default Script;
 
       const scriptPath = targetPath ? `projects/${currentProject.name}/assets/${targetPath}/${cleanScriptName}` : `projects/${currentProject.name}/assets/${cleanScriptName}`;
       
-      await bridgeService.writeFile(scriptPath, scriptContent);
+      await writeFile(scriptPath, scriptContent);
       
       const result = {
         filePath: scriptPath
@@ -1306,7 +1774,25 @@ export default Script;
   };
 
   const handleAssetDoubleClick = (asset) => {
-    console.log('🦀 File double-clicked:', asset.name);
+    // Check if it's a RenScript file
+    if (asset.extension?.toLowerCase() === '.ren') {
+      // Extract filename without path for display
+      const fileName = asset.name || asset.fileName || asset.path.split('/').pop() || asset.path.split('\\').pop();
+      
+      // Debug the asset data
+      console.log('Asset data:', asset);
+      console.log('Asset path:', asset.path);
+      console.log('File name:', fileName);
+      
+      // Open in script editor
+      scriptEditorActions.openScript(asset.path, fileName);
+      
+      // Switch to script editor tab (this will be handled by the tab visibility)
+      console.log('Opening RenScript file in editor:', fileName);
+    } else {
+      // Handle other file types (could expand this later)
+      console.log('Double-clicked on:', asset.name, 'Type:', asset.extension);
+    }
   };
 
   createEffect(() => {
@@ -1453,6 +1939,7 @@ export default Script;
     );
   };
 
+
   const renderAssetItem = (asset, index) => {
     const getAssetCategory = (extension) => {
       const ext = extension?.toLowerCase() || '';
@@ -1533,6 +2020,11 @@ export default Script;
             e.preventDefault();
             e.stopPropagation();
             toggleAssetSelection(asset, e.ctrlKey || e.metaKey, e.shiftKey);
+          }}
+          onDblClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleAssetDoubleClick(asset);
           }}
           onDragStart={(e) => startDrag(e, asset)}
           onDragEnd={() => {
@@ -1634,6 +2126,11 @@ export default Script;
             toggleAssetSelection(asset, e.ctrlKey || e.metaKey, e.shiftKey);
           }
         }}
+        onDblClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleAssetDoubleClick(asset);
+        }}
         onDragStart={(e) => startDrag(e, asset)}
         onDragEnd={() => {
           setIsInternalDrag(false);
@@ -1719,6 +2216,16 @@ export default Script;
           <div class="flex items-center justify-between mb-2">
             <div class="text-xs font-medium text-base-content/70">Project Assets</div>
             <div class="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  console.log('🔄 AssetLibrary: Manual refresh triggered via button');
+                  handleFileChange({ source: 'manual-button' });
+                }}
+                class="px-2 py-1 text-xs rounded bg-base-200 text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors"
+                title="Refresh Assets"
+              >
+                <Refresh class="w-3 h-3" />
+              </button>
               <div class="flex bg-base-200 rounded overflow-hidden">
                 <button
                   onClick={() => setViewMode('folder')}
@@ -1800,10 +2307,17 @@ export default Script;
           }>
             <Show when={folderTree()} fallback={
               <div class="p-4 text-center text-base-content/50 text-xs">
-                {error() ? error() : 'Loading directory tree...'}
+                {(() => {
+                  console.log('🦀 UI Render - folderTree() is falsy:', folderTree());
+                  return error() ? error() : 'Loading directory tree...';
+                })()}
               </div>
             }>
               <div class="py-1">
+                {(() => {
+                  console.log('🦀 UI Render - folderTree() is truthy:', folderTree(), 'length:', folderTree()?.length);
+                  return null;
+                })()}
                 <For each={Array.isArray(folderTree()) ? folderTree() : [folderTree()]}>
                   {(node) => renderFolderTree(node)}
                 </For>

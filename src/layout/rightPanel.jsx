@@ -4,7 +4,6 @@ import PanelResizer from '@/ui/PanelResizer.jsx';
 import PanelToggleButton from '@/ui/PanelToggleButton.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
-import { createPanelResize } from '@/ui/hooks/usePanelResize';
 import { Show, createMemo, createSignal } from 'solid-js';
 
 const RightPanel = () => {
@@ -32,7 +31,24 @@ const RightPanel = () => {
     setScenePanelOpen
   } = editorActions;
 
-  const panelResize = createPanelResize(editorActions);
+  // Panel resize functionality
+  const [isResizingRight, setIsResizingRight] = createSignal(false);
+  
+  const handleRightResizeStart = () => {
+    setIsResizingRight(true);
+  };
+  
+  const handleRightResizeEnd = () => {
+    setIsResizingRight(false);
+  };
+  
+  const handleRightResizeMove = (e) => {
+    if (!isResizingRight()) return;
+    
+    const newWidth = isLeftPanel() ? e.clientX : window.innerWidth - e.clientX;
+    const clampedWidth = Math.max(200, Math.min(newWidth, window.innerWidth * 0.5));
+    editorActions.setRightPanelWidth(clampedWidth);
+  };
 
   const handleObjectSelect = (objectId) => {
     setSelectedEntity(objectId);
@@ -114,13 +130,10 @@ const RightPanel = () => {
         <Show when={isScenePanelOpen()}>
           <PanelResizer
             type="right"
-            isResizing={panelResize?.isResizingRight}
-            onResizeStart={panelResize?.handleRightResizeStart}
-            onResizeEnd={panelResize?.handleRightResizeEnd}
-            onResize={(e) => panelResize?.handleRightResizeMove(e, { 
-              isScenePanelOpen: isScenePanelOpen(), 
-              isLeftPanel: isLeftPanel() 
-            })}
+            isResizing={isResizingRight}
+            onResizeStart={handleRightResizeStart}
+            onResizeEnd={handleRightResizeEnd}
+            onResize={handleRightResizeMove}
             isLeftPanel={isLeftPanel()}
             position={{
               left: '-8px',
@@ -140,7 +153,6 @@ const RightPanel = () => {
                 onToolSelect={setSelectedRightTool}
                 scenePanelOpen={isScenePanelOpen()}
                 onScenePanelToggle={handleRightPanelToggle}
-                panelResize={panelResize}
                 isLeftPanel={isLeftPanel()}
               />
             </div>

@@ -25,6 +25,8 @@ export default function AnimatedBackground() {
   let camera;
   let glowLayer;
   let movingShapes = [];
+  let colorCache = {};
+  let lastTheme = null;
 
   // Helper function to convert OKLCH to RGB using CSS Color Module 4 conversion
   const oklchToRgb = (l, c, h) => {
@@ -72,10 +74,7 @@ export default function AnimatedBackground() {
           l = l / 100;
         }
         
-        console.log(`Parsing OKLCH: l=${l}, c=${c}, h=${h}`);
-        const result = oklchToRgb(l, c, h);
-        console.log(`OKLCH to RGB result:`, result);
-        return result;
+        return oklchToRgb(l, c, h);
       }
     }
     
@@ -102,8 +101,22 @@ export default function AnimatedBackground() {
     return null;
   };
 
-  // Helper function to get DaisyUI color from CSS custom properties
+  // Helper function to get DaisyUI color from CSS custom properties with caching
   const getDaisyUIColor = (colorName) => {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'default';
+    const cacheKey = `${currentTheme}-${colorName}`;
+    
+    // Check if colors need to be recalculated
+    if (lastTheme !== currentTheme) {
+      colorCache = {}; // Clear cache when theme changes
+      lastTheme = currentTheme;
+    }
+    
+    // Return cached color if available
+    if (colorCache[cacheKey]) {
+      return colorCache[cacheKey];
+    }
+    
     const style = getComputedStyle(document.documentElement);
     // Map short names to actual DaisyUI CSS custom property names
     const colorPropertyMap = {
@@ -120,29 +133,31 @@ export default function AnimatedBackground() {
     const propertyName = colorPropertyMap[colorName] || colorName;
     const colorValue = style.getPropertyValue(`--${propertyName}`).trim();
     
-    console.log(`Getting DaisyUI color for --${propertyName}: "${colorValue}"`);
-    
+    let color;
     if (colorValue) {
       const rgb = parseColorToRgb(colorValue);
       if (rgb) {
-        console.log(`Parsed RGB for --${propertyName}:`, rgb);
-        return new Color3(rgb.r, rgb.g, rgb.b);
+        color = new Color3(rgb.r, rgb.g, rgb.b);
       }
     }
     
-    console.log(`Using fallback color for --${propertyName}`);
-    
     // Fallback colors that match common DaisyUI themes
-    switch (colorName) {
-      case 'p': return new Color3(0.235, 0.506, 0.957); // primary blue
-      case 's': return new Color3(0.545, 0.365, 0.957); // secondary purple
-      case 'a': return new Color3(0.024, 0.714, 0.831); // accent cyan
-      case 'b1': return new Color3(0.067, 0.094, 0.149); // base-100 dark
-      case 'b2': return new Color3(0.122, 0.161, 0.216); // base-200
-      case 'b3': return new Color3(0.220, 0.255, 0.318); // base-300
-      case 'bc': return new Color3(0.9, 0.9, 0.9); // base-content light
-      default: return new Color3(0.235, 0.506, 0.957); // fallback to primary
+    if (!color) {
+      switch (colorName) {
+        case 'p': color = new Color3(0.235, 0.506, 0.957); break; // primary blue
+        case 's': color = new Color3(0.545, 0.365, 0.957); break; // secondary purple
+        case 'a': color = new Color3(0.024, 0.714, 0.831); break; // accent cyan
+        case 'b1': color = new Color3(0.067, 0.094, 0.149); break; // base-100 dark
+        case 'b2': color = new Color3(0.122, 0.161, 0.216); break; // base-200
+        case 'b3': color = new Color3(0.220, 0.255, 0.318); break; // base-300
+        case 'bc': color = new Color3(0.9, 0.9, 0.9); break; // base-content light
+        default: color = new Color3(0.235, 0.506, 0.957); break; // fallback to primary
+      }
     }
+    
+    // Cache the color
+    colorCache[cacheKey] = color;
+    return color;
   };
 
   // Function to update scene colors when theme changes

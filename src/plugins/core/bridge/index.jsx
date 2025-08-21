@@ -176,27 +176,6 @@ export class BridgeService {
     return response.json();
   }
 
-  async startFileWatcher() {
-    const response = await fetch(`${this.apiPrefix}/start-watcher`, {
-      method: 'POST'
-    });
-    if (!response.ok) throw new Error('Failed to start file watcher');
-    return response.json();
-  }
-
-  async getFileChanges() {
-    const response = await fetch(`${this.apiPrefix}/file-changes`);
-    if (!response.ok) throw new Error('Failed to get file changes');
-    return response.json();
-  }
-
-  async clearFileChanges() {
-    const response = await fetch(`${this.apiPrefix}/clear-changes`, {
-      method: 'POST'
-    });
-    if (!response.ok) throw new Error('Failed to clear file changes');
-    return response.json();
-  }
 }
 
 export const bridgeService = new BridgeService();

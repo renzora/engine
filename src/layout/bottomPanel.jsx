@@ -4,7 +4,6 @@ import AssetLibrary from '@/pages/editor/AssetLibrary.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
-import { createPanelResize } from '@/ui/hooks/usePanelResize';
 
 const BottomPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
@@ -32,7 +31,24 @@ const BottomPanel = () => {
     setAssetPanelOpen
   } = editorActions;
 
-  const panelResize = createPanelResize(editorActions);
+  // Panel resize functionality
+  const [isResizingBottom, setIsResizingBottom] = createSignal(false);
+  
+  const handleBottomResizeStart = (e) => {
+    setIsResizingBottom(true);
+  };
+  
+  const handleBottomResizeEnd = () => {
+    setIsResizingBottom(false);
+  };
+  
+  const handleBottomResizeMove = (e) => {
+    if (!isResizingBottom()) return;
+    
+    const newHeight = window.innerHeight - e.clientY;
+    const clampedHeight = Math.max(100, Math.min(newHeight, window.innerHeight * 0.8));
+    editorActions.setBottomPanelHeight(clampedHeight);
+  };
 
   const handleContextMenu = (e, item, context = 'scene') => {
     if (!e) return;
@@ -70,23 +86,21 @@ const BottomPanel = () => {
         class="absolute bottom-0 pointer-events-auto no-select z-[60]"
         style={getPositioning()}
       >
-      <Show when={panelResize}>
-        <PanelResizer
-          type="bottom"
-          isResizing={panelResize.isResizingBottom}
-          onResizeStart={panelResize.handleBottomResizeStart}
-          onResizeEnd={panelResize.handleBottomResizeEnd}
-          onResize={(e) => panelResize.handleBottomResizeMove(e, { isAssetPanelOpen })}
-          position={{
-            top: '-8px',
-            left: '0',
-            right: '0',
-            height: '8px',
-            zIndex: 9999
-          }}
-          className="hover:h-3"
-        />
-      </Show>
+      <PanelResizer
+        type="bottom"
+        isResizing={isResizingBottom}
+        onResizeStart={handleBottomResizeStart}
+        onResizeEnd={handleBottomResizeEnd}
+        onResize={handleBottomResizeMove}
+        position={{
+          top: '-8px',
+          left: '0',
+          right: '0',
+          height: '8px',
+          zIndex: 9999
+        }}
+        className="hover:h-3"
+      />
       
       <BottomTabs 
         activeTab={activeTab()}
@@ -104,7 +118,6 @@ const BottomPanel = () => {
         }}
         rightPanelWidth={rightPanelWidth()}
         isScenePanelOpen={isScenePanelOpen()}
-        panelResize={panelResize}
       />
       
       <Show when={isAssetPanelOpen()}>

@@ -3,7 +3,6 @@ import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Tras
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 const getBabylonScene = () => window._cleanBabylonScene;
 import { viewportActions, objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
-import useSceneDnD from '@/ui/hooks/useSceneDnD.jsx';
 import { CollapsibleSection } from '@/ui';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { getScriptRuntime } from '@/api/script';
@@ -135,14 +134,87 @@ function Scene(props) {
     });
   });
 
-  const { draggedItem, dragOverItem, dropPosition, handleDragStart, handleDragOver, handleDrop, handleDragEnd } = useSceneDnD(hierarchyData());
+  // Inline drag and drop state and handlers
+  const [draggedItem, setDraggedItem] = createSignal(null);
+  const [dragOverItem, setDragOverItem] = createSignal(null);
+  const [dropPosition, setDropPosition] = createSignal(null);
+
+  const handleDragStart = (e, item) => {
+    setDraggedItem(item);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene-item', item }));
+  };
+
+  const handleDragOver = (e, item) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const height = rect.height;
+    
+    let position = 'inside';
+    if (y < height * 0.25) {
+      position = 'above';
+    } else if (y > height * 0.75) {
+      position = 'below';
+    }
+
+    setDragOverItem(item);
+    setDropPosition(position);
+  };
+
+  const handleDrop = (e, targetItem) => {
+    e.preventDefault();
+    const draggedData = draggedItem();
+    
+    if (!draggedData || draggedData.id === targetItem.id) {
+      return;
+    }
+
+    const scene = getBabylonScene();
+    if (!scene) return;
+
+    // Find the dragged object in Babylon scene
+    const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
+    const draggedBabylonObject = allObjects.find(obj => 
+      (obj.uniqueId || obj.name) === draggedData.id
+    );
+    const targetBabylonObject = allObjects.find(obj => 
+      (obj.uniqueId || obj.name) === targetItem.id
+    );
+
+    if (!draggedBabylonObject) return;
+
+    const position = dropPosition();
+    
+    if (position === 'inside' && targetItem.type === 'folder') {
+      // Parent to target folder
+      draggedBabylonObject.parent = targetBabylonObject;
+    } else if (position === 'above' || position === 'below') {
+      // Parent to same parent as target
+      draggedBabylonObject.parent = targetBabylonObject?.parent || null;
+    }
+
+    // Trigger scene update
+    setSceneUpdateTrigger(prev => prev + 1);
+  };
+
+  const handleDragEnd = (e) => {
+    setDraggedItem(null);
+    setDragOverItem(null);
+    setDropPosition(null);
+  };
 
   let containerRef;
 
   const handleDropWithAnimation = (e, item) => {
     handleDrop(e, item);
-    setDroppedItemId(draggedItem.id);
-    setTimeout(() => setDroppedItemId(null), 500);
+    const draggedData = draggedItem();
+    if (draggedData) {
+      setDroppedItemId(draggedData.id);
+      setTimeout(() => setDroppedItemId(null), 500);
+    }
   };
 
   const selectedObjectData = createMemo(() => {
@@ -417,11 +489,11 @@ function Scene(props) {
     const isExpanded = () => expandedItems().hasOwnProperty(item.id) ? expandedItems()[item.id] : (item.expanded || false);
     const Icon = getIcon(item.type, item.lightType);
     
-    const isDraggedOver = () => dragOverItem?.id === item.id;
-    const isFolderDrop = () => isDraggedOver() && dropPosition === 'inside' && item.type === 'folder';
+    const isDraggedOver = () => dragOverItem()?.id === item.id;
+    const isFolderDrop = () => isDraggedOver() && dropPosition() === 'inside' && item.type === 'folder';
 
-    const showTopDivider = () => isDraggedOver() && dropPosition === 'above';
-    const showBottomDivider = () => isDraggedOver() && dropPosition === 'below';
+    const showTopDivider = () => isDraggedOver() && dropPosition() === 'above';
+    const showBottomDivider = () => isDraggedOver() && dropPosition() === 'below';
 
     return (
       <div className="select-none relative">
@@ -434,7 +506,7 @@ function Scene(props) {
               ? 'bg-primary/25 text-primary-content shadow-sm' 
               : 'hover:bg-base-300/40 text-base-content/70 hover:text-base-content active:bg-base-300/60'
           } ${
-            draggedItem?.id === item.id ? 'opacity-30' : ''
+            draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
             isFolderDrop() ? 'border-2 border-primary' : ''
           } ${

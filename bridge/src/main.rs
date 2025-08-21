@@ -7,6 +7,7 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper_util::rt::TokioIo;
 use tokio::net::TcpListener;
+use log::{info, warn, error};
 
 mod modules;
 use modules::*;
@@ -28,6 +29,13 @@ pub fn get_app_state() -> Arc<AppState> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logger with timestamp and colors
+    env_logger::Builder::from_default_env()
+        .format_timestamp_secs()
+        .init();
+    
+    info!("🚀 Initializing Bridge API server...");
+    
     // Initialize application state with startup time
     let startup_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -44,82 +52,70 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let base_path = get_base_path();
     let projects_path = get_projects_path();
     
-    println!("🌉 Starting battle-tested Bridge API server with hyper...");
-    println!("📂 Base path: {}", base_path.display());
-    println!("📂 Projects path: {}", projects_path.display());
-    println!("🔌 Running on: http://localhost:{}", port);
-    println!("⏰ Bridge started at: {} (Unix timestamp)", startup_time);
+    info!("🌉 Starting battle-tested Bridge API server with hyper...");
+    info!("📂 Base path: {}", base_path.display());
+    info!("📂 Projects path: {}", projects_path.display());
+    info!("🔌 Running on: http://localhost:{}", port);
+    info!("⏰ Bridge started at: {} (Unix timestamp)", startup_time);
     
     if !projects_path.exists() {
         fs::create_dir_all(&projects_path)?;
-        println!("📁 Created projects directory");
-    }
-    
-    // Check if default project exists, create if not
-    let default_project_path = projects_path.join("test-project");
-    if !default_project_path.exists() {
-        println!("📁 Creating default project structure...");
-        fs::create_dir_all(&default_project_path)?;
-        
-        // Create standard asset directories
-        let asset_dirs = ["models", "images", "audio", "video", "scripts", "textures", "materials"];
-        for dir in &asset_dirs {
-            let dir_path = default_project_path.join(dir);
-            fs::create_dir_all(&dir_path)?;
-            println!("📁 Created directory: {}", dir);
-        }
-        
-        println!("✅ Default project 'test-project' created with asset directories");
+        info!("📁 Created projects directory");
     }
     
     // Initialize file watcher
     initialize_file_watcher(projects_path.clone())?;
     
+    // File watching now uses SSE streaming endpoint instead of separate WebSocket server
+    
     // Check for updates on startup
-    println!("🔄 Checking for updates...");
+    info!("🔄 Checking for updates...");
     tokio::spawn(async {
         match check_for_updates().await {
             Ok(result) => {
                 if result.update_available {
-                    println!("🎉 Update available!");
+                    info!("🎉 Update available!");
                     match result.channel {
                         modules::update_manager::Channel::Stable => {
                             if let Some(version) = result.latest_stable_version {
-                                println!("   Latest stable version: {}", version);
+                                info!("   Latest stable version: {}", version);
                             }
                         }
                         modules::update_manager::Channel::Dev => {
                             if let Some(version) = result.latest_dev_version {
-                                println!("   Latest dev version: {}", version);
+                                info!("   Latest dev version: {}", version);
                             }
                         }
                     }
                     if let Some(url) = result.download_url {
-                        println!("   Download: {}", url);
+                        info!("   Download: {}", url);
                     }
                 } else {
-                    println!("✅ You're running the latest version!");
+                    info!("✅ You're running the latest version!");
                 }
             }
             Err(e) => {
-                println!("⚠️  Failed to check for updates: {}", e);
+                warn!("⚠️  Failed to check for updates: {}", e);
             }
         }
     });
 
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
     let listener = TcpListener::bind(addr).await?;
+    info!("🎯 Server ready to accept connections");
 
     loop {
-        let (tcp, _) = listener.accept().await?;
+        let (tcp, client_addr) = listener.accept().await?;
         let io = TokioIo::new(tcp);
+        
+        info!("🔗 New connection from: {}", client_addr);
 
         tokio::task::spawn(async move {
             if let Err(err) = http1::Builder::new()
                 .serve_connection(io, service_fn(handle_http_request))
                 .await
             {
-                eprintln!("Error serving connection: {:?}", err);
+                error!("❌ Error serving connection from {}: {:?}", client_addr, err);
             }
         });
     }

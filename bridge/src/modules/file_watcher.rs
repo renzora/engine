@@ -1,14 +1,17 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
 use tokio::sync::broadcast;
 use notify::{Watcher, RecommendedWatcher, RecursiveMode, Event, EventKind};
 use crate::types::FileChangeEvent;
+use log::info;
 
 // Global file change broadcaster
 static FILE_CHANGE_SENDER: OnceLock<broadcast::Sender<String>> = OnceLock::new();
+// Global current project being watched
+static CURRENT_PROJECT: OnceLock<Arc<Mutex<Option<String>>>> = OnceLock::new();
 
-pub fn get_file_change_sender() -> Option<&'static broadcast::Sender<String>> {
-    FILE_CHANGE_SENDER.get()
+pub fn get_file_change_receiver() -> Option<broadcast::Receiver<String>> {
+    FILE_CHANGE_SENDER.get().map(|sender| sender.subscribe())
 }
 
 pub fn initialize_file_watcher(projects_path: PathBuf) -> Result<(), Box<dyn std::error::Error>> {
@@ -16,7 +19,11 @@ pub fn initialize_file_watcher(projects_path: PathBuf) -> Result<(), Box<dyn std
     let (tx, _) = broadcast::channel(100);
     FILE_CHANGE_SENDER.set(tx.clone()).ok();
     
-    // Start file watching in background
+    // Initialize current project tracker
+    CURRENT_PROJECT.set(Arc::new(Mutex::new(None))).ok();
+    
+    // For now, watch all projects but filter by current project
+    // In the future, we can dynamically update the watcher
     tokio::spawn(async move {
         if let Err(e) = watch_files(projects_path, tx).await {
             eprintln!("❌ File watcher error: {}", e);
@@ -24,6 +31,18 @@ pub fn initialize_file_watcher(projects_path: PathBuf) -> Result<(), Box<dyn std
     });
     
     Ok(())
+}
+
+pub fn set_current_project(project_name: Option<String>) {
+    if let Some(current) = CURRENT_PROJECT.get() {
+        let mut current_project = current.lock().unwrap();
+        *current_project = project_name.clone();
+        if let Some(name) = project_name {
+            info!("🔍 File watcher now focused on project: {}", name);
+        } else {
+            info!("🔍 File watcher now watching all projects");
+        }
+    }
 }
 
 pub async fn watch_files(projects_path: PathBuf, tx: broadcast::Sender<String>) -> Result<(), Box<dyn std::error::Error>> {
@@ -56,10 +75,24 @@ pub async fn watch_files(projects_path: PathBuf, tx: broadcast::Sender<String>) 
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         
-        if !paths.is_empty() {
+        // Filter by current project if one is set
+        let filtered_paths = if let Some(current) = CURRENT_PROJECT.get() {
+            if let Some(ref project_name) = *current.lock().unwrap() {
+                // Only include paths that start with the current project name
+                paths.into_iter()
+                    .filter(|p| p.starts_with(project_name))
+                    .collect()
+            } else {
+                paths
+            }
+        } else {
+            paths
+        };
+        
+        if !filtered_paths.is_empty() {
             let change_event = FileChangeEvent {
                 event_type: event_type.to_string(),
-                paths: paths.clone(),
+                paths: filtered_paths.clone(),
             };
             
             let frontend_message = serde_json::json!({
@@ -69,14 +102,10 @@ pub async fn watch_files(projects_path: PathBuf, tx: broadcast::Sender<String>) 
             
             if let Ok(json) = serde_json::to_string(&frontend_message) {
                 let _ = tx.send(json);
-                println!("📁 File {}: {:?}", event_type, paths);
+                println!("📁 File {}: {:?}", event_type, filtered_paths);
             }
         }
     }
     
     Ok(())
-}
-
-pub fn create_file_change_receiver() -> Option<broadcast::Receiver<String>> {
-    FILE_CHANGE_SENDER.get().map(|sender| sender.subscribe())
 }

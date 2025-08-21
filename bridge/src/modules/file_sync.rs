@@ -3,13 +3,16 @@ use std::path::Path;
 use crate::types::{WriteFileRequest, WriteBinaryFileRequest};
 use base64::{Engine as _, engine::general_purpose};
 use crate::project_manager::get_projects_path;
+use log::{info, warn, error, debug};
 
 pub fn read_file_content(file_path: &str) -> Result<String, String> {
     let projects_path = get_projects_path();
+    info!("📖 Reading file: {}", file_path);
     
     // Parse the path to extract project name and asset path
     let path_parts: Vec<&str> = file_path.split('/').collect();
     if path_parts.len() < 2 || path_parts[0] != "projects" {
+        error!("❌ Invalid path format: {} (expected projects/{{project_name}}/...)", file_path);
         return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
     }
     
@@ -17,22 +20,36 @@ pub fn read_file_content(file_path: &str) -> Result<String, String> {
     let asset_path = if path_parts.len() > 2 {
         path_parts[2..].join("/")
     } else {
+        error!("❌ Asset path required for: {}", file_path);
         return Err("Asset path required".to_string());
     };
     
     // Construct path to project's assets directory
     let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    debug!("📂 Full file path: {:?}", project_assets_path);
     
-    fs::read_to_string(&project_assets_path)
-        .map_err(|_| "Failed to read file".to_string())
+    match fs::read_to_string(&project_assets_path) {
+        Ok(content) => {
+            let file_size = content.len();
+            info!("✅ Successfully read file: {} ({} bytes)", file_path, file_size);
+            Ok(content)
+        },
+        Err(e) => {
+            error!("❌ Failed to read file: {} - Error: {}", file_path, e);
+            Err("Failed to read file".to_string())
+        }
+    }
 }
 
 pub fn write_file_content(file_path: &str, request: &WriteFileRequest) -> Result<(), String> {
     let projects_path = get_projects_path();
+    let content_size = request.content.len();
+    info!("💾 Writing file: {} ({} bytes)", file_path, content_size);
     
     // Parse the path to extract project name and asset path
     let path_parts: Vec<&str> = file_path.split('/').collect();
     if path_parts.len() < 2 || path_parts[0] != "projects" {
+        error!("❌ Invalid path format: {} (expected projects/{{project_name}}/...)", file_path);
         return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
     }
     
@@ -40,32 +57,49 @@ pub fn write_file_content(file_path: &str, request: &WriteFileRequest) -> Result
     let asset_path = if path_parts.len() > 2 {
         path_parts[2..].join("/")
     } else {
+        error!("❌ Asset path required for: {}", file_path);
         return Err("Asset path required".to_string());
     };
     
     // Construct path to project's assets directory
     let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    debug!("📂 Full file path: {:?}", project_assets_path);
     
     if let Some(parent) = project_assets_path.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return Err("Failed to create directories".to_string());
+        match fs::create_dir_all(parent) {
+            Ok(_) => debug!("📁 Created directory structure: {:?}", parent),
+            Err(e) => {
+                error!("❌ Failed to create directories for: {:?} - Error: {}", parent, e);
+                return Err("Failed to create directories".to_string());
+            }
         }
     }
 
-    fs::write(&project_assets_path, &request.content)
-        .map_err(|_| "Failed to write file".to_string())
+    match fs::write(&project_assets_path, &request.content) {
+        Ok(_) => {
+            info!("✅ Successfully wrote file: {} ({} bytes)", file_path, content_size);
+            Ok(())
+        },
+        Err(e) => {
+            error!("❌ Failed to write file: {} - Error: {}", file_path, e);
+            Err("Failed to write file".to_string())
+        }
+    }
 }
 
 pub fn write_binary_file_content(file_path: &str, request: &WriteBinaryFileRequest) -> Result<(), String> {
     let projects_path = get_projects_path();
+    info!("💾 Writing binary file: {}", file_path);
     
     if request.base64_content.is_empty() {
+        error!("❌ Missing base64_content for file: {}", file_path);
         return Err("Missing base64_content".to_string());
     }
     
     // Parse the path to extract project name and asset path
     let path_parts: Vec<&str> = file_path.split('/').collect();
     if path_parts.len() < 2 || path_parts[0] != "projects" {
+        error!("❌ Invalid path format: {} (expected projects/{{project_name}}/...)", file_path);
         return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
     }
     
@@ -73,31 +107,56 @@ pub fn write_binary_file_content(file_path: &str, request: &WriteBinaryFileReque
     let asset_path = if path_parts.len() > 2 {
         path_parts[2..].join("/")
     } else {
+        error!("❌ Asset path required for: {}", file_path);
         return Err("Asset path required".to_string());
     };
     
     // Construct path to project's assets directory
     let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    debug!("📂 Full binary file path: {:?}", project_assets_path);
     
     if let Some(parent) = project_assets_path.parent() {
-        if fs::create_dir_all(parent).is_err() {
-            return Err("Failed to create directories".to_string());
+        match fs::create_dir_all(parent) {
+            Ok(_) => debug!("📁 Created directory structure for binary file: {:?}", parent),
+            Err(e) => {
+                error!("❌ Failed to create directories for binary file: {:?} - Error: {}", parent, e);
+                return Err("Failed to create directories".to_string());
+            }
         }
     }
 
-    let binary_data = general_purpose::STANDARD.decode(&request.base64_content)
-        .map_err(|_| "Failed to decode base64".to_string())?;
+    let binary_data = match general_purpose::STANDARD.decode(&request.base64_content) {
+        Ok(data) => {
+            let decoded_size = data.len();
+            info!("🔧 Decoded base64 data: {} bytes", decoded_size);
+            data
+        },
+        Err(e) => {
+            error!("❌ Failed to decode base64 for file: {} - Error: {}", file_path, e);
+            return Err("Failed to decode base64".to_string());
+        }
+    };
 
-    fs::write(&project_assets_path, binary_data)
-        .map_err(|_| "Failed to write binary file".to_string())
+    match fs::write(&project_assets_path, &binary_data) {
+        Ok(_) => {
+            info!("✅ Successfully wrote binary file: {} ({} bytes)", file_path, binary_data.len());
+            Ok(())
+        },
+        Err(e) => {
+            error!("❌ Failed to write binary file: {} - Error: {}", file_path, e);
+            Err("Failed to write binary file".to_string())
+        }
+    }
 }
 
 pub fn delete_file_or_directory(file_path: &str) -> Result<(), String> {
     let projects_path = get_projects_path();
+    info!("🗑️ Deleting: {}", file_path);
     
     // Parse the path to extract project name and asset path
     let path_parts: Vec<&str> = file_path.split('/').collect();
     if path_parts.len() < 2 || path_parts[0] != "projects" {
+        error!("❌ Invalid path format: {} (expected projects/{{project_name}}/...)", file_path);
         return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
     }
     
@@ -105,19 +164,43 @@ pub fn delete_file_or_directory(file_path: &str) -> Result<(), String> {
     let asset_path = if path_parts.len() > 2 {
         path_parts[2..].join("/")
     } else {
+        error!("❌ Asset path required for: {}", file_path);
         return Err("Asset path required".to_string());
     };
     
     // Construct path to project's assets directory
     let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    debug!("📂 Full delete path: {:?}", project_assets_path);
     
-    let result = if project_assets_path.is_dir() {
+    if !project_assets_path.exists() {
+        warn!("⚠️ Delete target does not exist: {}", file_path);
+        return Err("File or directory not found".to_string());
+    }
+    
+    let is_directory = project_assets_path.is_dir();
+    let result = if is_directory {
+        info!("📁 Deleting directory: {}", file_path);
         fs::remove_dir_all(&project_assets_path)
     } else {
+        // Get file size before deletion for logging
+        let file_size = match fs::metadata(&project_assets_path) {
+            Ok(metadata) => metadata.len(),
+            Err(_) => 0,
+        };
+        info!("📄 Deleting file: {} ({} bytes)", file_path, file_size);
         fs::remove_file(&project_assets_path)
     };
 
-    result.map_err(|_| "Failed to delete".to_string())
+    match result {
+        Ok(_) => {
+            info!("✅ Successfully deleted {}: {}", if is_directory { "directory" } else { "file" }, file_path);
+            Ok(())
+        },
+        Err(e) => {
+            error!("❌ Failed to delete {}: {} - Error: {}", if is_directory { "directory" } else { "file" }, file_path, e);
+            Err("Failed to delete".to_string())
+        }
+    }
 }
 
 pub fn get_file_content_type(file_path: &Path) -> &'static str {
@@ -141,10 +224,12 @@ pub fn get_file_content_type(file_path: &Path) -> &'static str {
 
 pub fn read_binary_file(file_path: &str) -> Result<Vec<u8>, String> {
     let projects_path = get_projects_path();
+    info!("📖 Reading binary file: {}", file_path);
     
     // Parse the path to extract project name and asset path
     let path_parts: Vec<&str> = file_path.split('/').collect();
     if path_parts.len() < 2 || path_parts[0] != "projects" {
+        error!("❌ Invalid path format: {} (expected projects/{{project_name}}/...)", file_path);
         return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
     }
     
@@ -152,16 +237,29 @@ pub fn read_binary_file(file_path: &str) -> Result<Vec<u8>, String> {
     let asset_path = if path_parts.len() > 2 {
         path_parts[2..].join("/")
     } else {
+        error!("❌ Asset path required for: {}", file_path);
         return Err("Asset path required".to_string());
     };
     
     // Construct path to project's assets directory
     let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    debug!("📂 Full binary file path: {:?}", project_assets_path);
     
     if !project_assets_path.exists() {
+        warn!("⚠️ Binary file not found: {}", file_path);
         return Err("File not found".to_string());
     }
 
-    fs::read(&project_assets_path)
-        .map_err(|_| "Failed to read binary file".to_string())
+    match fs::read(&project_assets_path) {
+        Ok(data) => {
+            let file_size = data.len();
+            let file_type = get_file_content_type(&project_assets_path);
+            info!("✅ Successfully read binary file: {} ({} bytes, type: {})", file_path, file_size, file_type);
+            Ok(data)
+        },
+        Err(e) => {
+            error!("❌ Failed to read binary file: {} - Error: {}", file_path, e);
+            Err("Failed to read binary file".to_string())
+        }
+    }
 }

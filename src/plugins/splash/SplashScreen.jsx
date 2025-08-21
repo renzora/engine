@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onMount, Show, For } from 'solid-js';
 import { IconFolder, IconPlus, IconFolderOpen, IconSettings, IconCode, IconRocket, IconBox } from '@tabler/icons-solidjs';
-import { bridgeService } from '@/plugins/core/bridge';
+import { getProjects, createProject } from '@/api/bridge/projects';
 import AnimatedBackground from './AnimatedBackground';
 
 export default function SplashScreen({ onProjectSelect }) {
@@ -17,12 +17,7 @@ export default function SplashScreen({ onProjectSelect }) {
       setLoading(true);
       setError(null);
       
-      const response = await fetch('http://localhost:3001/projects');
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      
-      const projectData = await response.json();
+      const projectData = await getProjects();
       setProjects(projectData || []);
     } catch (err) {
       console.error('Failed to load projects:', err);
@@ -33,28 +28,15 @@ export default function SplashScreen({ onProjectSelect }) {
   };
 
   // Create a new project
-  const createProject = async () => {
+  const createNewProject = async () => {
     const name = newProjectName().trim();
     if (!name) return;
 
     try {
       setCreating(true);
       
-      // Create project directory structure via bridge
-      const response = await fetch('http://localhost:3001/projects', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name,
-          template: 'basic' // Could be expanded to support different templates
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to create project: ${response.status}`);
-      }
+      // Create project directory structure via bridge API
+      await createProject(name, 'basic');
 
       // Reload projects and select the new one
       await loadProjects();
@@ -214,7 +196,7 @@ export default function SplashScreen({ onProjectSelect }) {
                 type="text"
                 value={newProjectName()}
                 onInput={(e) => setNewProjectName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && createProject()}
+                onKeyDown={(e) => e.key === 'Enter' && createNewProject()}
                 placeholder="My Awesome Project"
                 class="input input-bordered w-full text-lg placeholder:text-base-content/50"
                 autofocus
@@ -234,7 +216,7 @@ export default function SplashScreen({ onProjectSelect }) {
                 Cancel
               </button>
               <button
-                onClick={createProject}
+                onClick={createNewProject}
                 disabled={!newProjectName().trim() || creating()}
                 class="btn btn-primary flex items-center gap-3"
               >

@@ -1,15 +1,19 @@
 use hyper::{Request, Response, Method, StatusCode};
 use hyper::header::{CONTENT_TYPE, ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_HEADERS};
-use http_body_util::{BodyExt, Full};
+use http_body_util::{BodyExt, Full, StreamBody, combinators::BoxBody};
+use hyper::body::Frame;
 use bytes::Bytes;
+use async_stream::stream;
 use std::convert::Infallible;
 use std::sync::OnceLock;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
+use log::{info, warn, error, debug};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
 use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
+use crate::file_watcher::{get_file_change_receiver, set_current_project};
 
 // Static variable to store startup time
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
@@ -18,25 +22,47 @@ pub fn set_startup_time(timestamp: u64) {
     STARTUP_TIME.set(timestamp).ok();
 }
 
-pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<Response<Full<Bytes>>, Infallible> {
+pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<Response<BoxBody<Bytes, Infallible>>, Infallible> {
+    let start_time = Instant::now();
     let method = req.method().clone();
     let path = req.uri().path().to_string();
+    let query = req.uri().query().unwrap_or("");
+    let user_agent = req.headers().get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("unknown");
+    
+    info!("📥 {} {} {} - User-Agent: {}", method, path, 
+          if query.is_empty() { "".to_string() } else { format!("?{}", query) }, user_agent);
     
     // Handle CORS preflight
     if method == Method::OPTIONS {
+        let duration = start_time.elapsed();
+        info!("⚡ OPTIONS {} - 200 OK - {}ms", path, duration.as_millis());
         return Ok(cors_response(StatusCode::OK, ""));
     }
     
-    // Special handling for SSE streaming endpoint - return simple response for now
+    // Special handling for SSE streaming endpoint - return streaming response
     if method == Method::GET && path == "/file-changes/stream" {
-        return Ok(simple_sse_response());
+        let duration = start_time.elapsed();
+        info!("🔄 SSE {} - streaming connection established - {}ms", path, duration.as_millis());
+        return Ok(create_sse_stream_response());
     }
     
     // Read body if this is a POST request
     let body = if method == Method::POST {
         match read_request_body(req).await {
-            Ok(body) => Some(body),
-            Err(_) => return Ok(error_response(StatusCode::BAD_REQUEST, "Failed to read request body")),
+            Ok(body) => {
+                let body_size = body.len();
+                info!("📄 Request body size: {} bytes", body_size);
+                if body_size > 1024 {
+                    debug!("📄 Large request body ({}KB)", body_size / 1024);
+                }
+                Some(body)
+            },
+            Err(e) => {
+                error!("❌ Failed to read request body: {}", e);
+                return Ok(error_response(StatusCode::BAD_REQUEST, "Failed to read request body"));
+            }
         }
     } else {
         None
@@ -83,6 +109,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::POST, "/start-watcher") => handle_start_watcher(),
         (&Method::GET, "/file-changes") => handle_get_file_changes(),
         (&Method::POST, "/clear-changes") => handle_clear_file_changes(),
+        (&Method::POST, "/set-current-project") => {
+            match &body {
+                Some(body_content) => handle_set_current_project(body_content),
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
         (&Method::POST, "/thumbnail") => {
             match &body {
                 Some(body_content) => handle_generate_thumbnail(body_content).await,
@@ -114,8 +146,22 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
-        _ => error_response(StatusCode::NOT_FOUND, "Not Found"),
+        _ => {
+            warn!("❓ Unknown route: {} {}", method, path);
+            error_response(StatusCode::NOT_FOUND, "Not Found")
+        },
     };
+    
+    let duration = start_time.elapsed();
+    let status = response.status();
+    
+    if status.is_success() {
+        info!("✅ {} {} - {} - {}ms", method, path, status, duration.as_millis());
+    } else if status.is_client_error() {
+        warn!("⚠️  {} {} - {} - {}ms", method, path, status, duration.as_millis());
+    } else {
+        error!("❌ {} {} - {} - {}ms", method, path, status, duration.as_millis());
+    }
     
     Ok(response)
 }
@@ -126,23 +172,23 @@ async fn read_request_body(req: Request<hyper::body::Incoming>) -> Result<String
     Ok(String::from_utf8(body_bytes.to_vec())?)
 }
 
-fn cors_response(status: StatusCode, body: &str) -> Response<Full<Bytes>> {
+fn cors_response(status: StatusCode, body: &str) -> Response<BoxBody<Bytes, Infallible>> {
     Response::builder()
         .status(status)
         .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
         .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, DELETE, OPTIONS")
         .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, Authorization")
         .header(CONTENT_TYPE, "application/json")
-        .body(Full::new(Bytes::from(body.to_string())))
+        .body(BoxBody::new(Full::new(Bytes::from(body.to_string()))))
         .unwrap()
 }
 
-fn json_response<T: serde::Serialize>(data: &T) -> Response<Full<Bytes>> {
+fn json_response<T: serde::Serialize>(data: &T) -> Response<BoxBody<Bytes, Infallible>> {
     let json = serde_json::to_string(data).unwrap_or_else(|_| "{}".to_string());
     cors_response(StatusCode::OK, &json)
 }
 
-fn error_response(status: StatusCode, message: &str) -> Response<Full<Bytes>> {
+fn error_response(status: StatusCode, message: &str) -> Response<BoxBody<Bytes, Infallible>> {
     let error_response = ApiResponse {
         success: false,
         content: None,
@@ -152,21 +198,21 @@ fn error_response(status: StatusCode, message: &str) -> Response<Full<Bytes>> {
     cors_response(status, &json)
 }
 
-fn handle_get_projects() -> Response<Full<Bytes>> {
+fn handle_get_projects() -> Response<BoxBody<Bytes, Infallible>> {
     match list_projects() {
         Ok(projects) => json_response(&projects),
         Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
     }
 }
 
-fn handle_list_directory(dir_path: &str) -> Response<Full<Bytes>> {
+fn handle_list_directory(dir_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match list_directory_contents(dir_path) {
         Ok(files) => json_response(&files),
         Err(e) => error_response(StatusCode::FORBIDDEN, &e),
     }
 }
 
-fn handle_read_file(file_path: &str) -> Response<Full<Bytes>> {
+fn handle_read_file(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match read_file_content(file_path) {
         Ok(content) => {
             let response = ApiResponse {
@@ -180,7 +226,7 @@ fn handle_read_file(file_path: &str) -> Response<Full<Bytes>> {
     }
 }
 
-fn handle_write_file(file_path: &str, body: &str) -> Response<Full<Bytes>> {
+fn handle_write_file(file_path: &str, body: &str) -> Response<BoxBody<Bytes, Infallible>> {
     let write_req: WriteFileRequest = match serde_json::from_str(body) {
         Ok(req) => req,
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "Invalid JSON"),
@@ -199,7 +245,7 @@ fn handle_write_file(file_path: &str, body: &str) -> Response<Full<Bytes>> {
     }
 }
 
-fn handle_write_binary_file(file_path: &str, body: &str) -> Response<Full<Bytes>> {
+fn handle_write_binary_file(file_path: &str, body: &str) -> Response<BoxBody<Bytes, Infallible>> {
     let write_req: WriteBinaryFileRequest = match serde_json::from_str(body) {
         Ok(req) => req,
         Err(_) => return error_response(StatusCode::BAD_REQUEST, "Invalid JSON"),
@@ -218,7 +264,7 @@ fn handle_write_binary_file(file_path: &str, body: &str) -> Response<Full<Bytes>
     }
 }
 
-fn handle_delete_file(file_path: &str) -> Response<Full<Bytes>> {
+fn handle_delete_file(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match delete_file_or_directory(file_path) {
         Ok(_) => {
             let response = ApiResponse {
@@ -232,7 +278,7 @@ fn handle_delete_file(file_path: &str) -> Response<Full<Bytes>> {
     }
 }
 
-fn handle_serve_asset(file_path: &str) -> Response<Full<Bytes>> {
+fn handle_serve_asset(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match read_binary_file(file_path) {
         Ok(contents) => {
             let full_path = std::path::Path::new(file_path);
@@ -242,7 +288,7 @@ fn handle_serve_asset(file_path: &str) -> Response<Full<Bytes>> {
                 .status(StatusCode::OK)
                 .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
                 .header(CONTENT_TYPE, content_type)
-                .body(Full::new(Bytes::from(contents)))
+                .body(BoxBody::new(Full::new(Bytes::from(contents))))
                 .unwrap()
         }
         Err(e) => {
@@ -256,7 +302,7 @@ fn handle_serve_asset(file_path: &str) -> Response<Full<Bytes>> {
     }
 }
 
-fn handle_start_watcher() -> Response<Full<Bytes>> {
+fn handle_start_watcher() -> Response<BoxBody<Bytes, Infallible>> {
     let response = ApiResponse {
         success: true,
         content: Some("File watcher is running".to_string()),
@@ -265,11 +311,11 @@ fn handle_start_watcher() -> Response<Full<Bytes>> {
     json_response(&response)
 }
 
-fn handle_get_file_changes() -> Response<Full<Bytes>> {
+fn handle_get_file_changes() -> Response<BoxBody<Bytes, Infallible>> {
     json_response(&Vec::<String>::new())
 }
 
-fn handle_clear_file_changes() -> Response<Full<Bytes>> {
+fn handle_clear_file_changes() -> Response<BoxBody<Bytes, Infallible>> {
     let response = ApiResponse {
         success: true,
         content: None,
@@ -278,7 +324,30 @@ fn handle_clear_file_changes() -> Response<Full<Bytes>> {
     json_response(&response)
 }
 
-async fn handle_generate_thumbnail(body_content: &str) -> Response<Full<Bytes>> {
+fn handle_set_current_project(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    #[derive(serde::Deserialize)]
+    struct SetProjectRequest {
+        project_name: Option<String>,
+    }
+    
+    match serde_json::from_str::<SetProjectRequest>(body_content) {
+        Ok(request) => {
+            set_current_project(request.project_name.clone());
+            let response = ApiResponse {
+                success: true,
+                content: request.project_name.map(|n| format!("Now watching project: {}", n))
+                    .or(Some("Now watching all projects".to_string())),
+                error: None,
+            };
+            json_response(&response)
+        }
+        Err(e) => {
+            error_response(StatusCode::BAD_REQUEST, &format!("Invalid request format: {}", e))
+        }
+    }
+}
+
+async fn handle_generate_thumbnail(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match serde_json::from_str::<ThumbnailRequest>(body_content) {
         Ok(request) => {
             let response = get_or_generate_thumbnail(request).await;
@@ -290,7 +359,7 @@ async fn handle_generate_thumbnail(body_content: &str) -> Response<Full<Bytes>> 
     }
 }
 
-fn handle_create_project(body_content: &str) -> Response<Full<Bytes>> {
+fn handle_create_project(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match serde_json::from_str::<CreateProjectRequest>(body_content) {
         Ok(request) => {
             match create_project(&request.name, &request.template.unwrap_or_else(|| "basic".to_string())) {
@@ -304,8 +373,55 @@ fn handle_create_project(body_content: &str) -> Response<Full<Bytes>> {
     }
 }
 
-fn simple_sse_response() -> Response<Full<Bytes>> {
-    let sse_data = "data: {\"type\":\"connected\",\"message\":\"File change stream connected\"}\n\n";
+fn create_sse_stream_response() -> Response<BoxBody<Bytes, Infallible>> {
+    let stream = stream! {
+        // Send initial connection message
+        let init_msg = "data: {\"type\":\"connected\",\"message\":\"File change stream connected\"}\n\n";
+        yield Ok(Frame::data(Bytes::from(init_msg)));
+        
+        // Get file change receiver
+        if let Some(mut receiver) = get_file_change_receiver() {
+            info!("📡 SSE: Streaming connection established, listening for file changes");
+            
+            // Set up a heartbeat to keep connection alive
+            let mut heartbeat_interval = tokio::time::interval(Duration::from_secs(30));
+            
+            loop {
+                tokio::select! {
+                    // Handle file change events
+                    file_change = receiver.recv() => {
+                        match file_change {
+                            Ok(message) => {
+                                info!("📡 SSE: Broadcasting file change: {}", message);
+                                let sse_msg = format!("data: {{\"type\":\"file_change\",\"message\":\"{}\"}}\n\n", 
+                                    message.replace("\"", "\\\""));
+                                yield Ok(Frame::data(Bytes::from(sse_msg)));
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                                warn!("📡 SSE: Lagged {} messages", count);
+                                let lag_msg = format!("data: {{\"type\":\"lag\",\"count\":{}}}\n\n", count);
+                                yield Ok(Frame::data(Bytes::from(lag_msg)));
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                                info!("📡 SSE: File change broadcaster closed");
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Send heartbeat to keep connection alive
+                    _ = heartbeat_interval.tick() => {
+                        let heartbeat_msg = "data: {\"type\":\"heartbeat\"}\n\n";
+                        yield Ok(Frame::data(Bytes::from(heartbeat_msg)));
+                    }
+                }
+            }
+        } else {
+            warn!("📡 SSE: No file change receiver available");
+            let error_msg = "data: {\"type\":\"error\",\"message\":\"File watcher not available\"}\n\n";
+            yield Ok(Frame::data(Bytes::from(error_msg)));
+        }
+    };
     
     Response::builder()
         .status(StatusCode::OK)
@@ -315,11 +431,49 @@ fn simple_sse_response() -> Response<Full<Bytes>> {
         .header(CONTENT_TYPE, "text/event-stream")
         .header("Cache-Control", "no-cache")
         .header("Connection", "keep-alive")
-        .body(Full::new(Bytes::from(sse_data)))
+        .body(BoxBody::new(StreamBody::new(stream)))
         .unwrap()
 }
 
-fn handle_health_check() -> Response<Full<Bytes>> {
+fn create_persistent_sse_response() -> Response<BoxBody<Bytes, Infallible>> {
+    // Send initial connection message - client will handle the persistent connection
+    let sse_data = "data: {\"type\":\"connected\",\"message\":\"File change stream connected\"}\n\n";
+    
+    // Spawn a task to handle file changes for this connection (for future enhancement)
+    tokio::spawn(async {
+        if let Some(mut receiver) = get_file_change_receiver() {
+            info!("📡 SSE: Listening for file changes");
+            loop {
+                match receiver.recv().await {
+                    Ok(message) => {
+                        info!("📡 SSE: File change detected: {}", message);
+                        // TODO: Send to specific client connection when we implement per-connection channels
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                        warn!("📡 SSE: Lagged {} messages", count);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        info!("📡 SSE: File change broadcaster closed");
+                        break;
+                    }
+                }
+            }
+        }
+    });
+    
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, DELETE, OPTIONS")
+        .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, Authorization")
+        .header(CONTENT_TYPE, "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        .body(BoxBody::new(Full::new(Bytes::from(sse_data))))
+        .unwrap()
+}
+
+fn handle_health_check() -> Response<BoxBody<Bytes, Infallible>> {
     use std::time::{SystemTime, UNIX_EPOCH};
     
     // Get basic system info
@@ -340,7 +494,7 @@ fn handle_health_check() -> Response<Full<Bytes>> {
     json_response(&health_data)
 }
 
-fn handle_get_startup_time() -> Response<Full<Bytes>> {
+fn handle_get_startup_time() -> Response<BoxBody<Bytes, Infallible>> {
     let startup_time = STARTUP_TIME.get().copied().unwrap_or_else(|| {
         // Fallback: return current time if not set
         SystemTime::now()
@@ -357,7 +511,7 @@ fn handle_get_startup_time() -> Response<Full<Bytes>> {
     json_response(&startup_data)
 }
 
-fn handle_restart_bridge() -> Response<Full<Bytes>> {
+fn handle_restart_bridge() -> Response<BoxBody<Bytes, Infallible>> {
     // In a real implementation, this would restart the server
     // For now, just return success
     let response = ApiResponse {
@@ -368,7 +522,7 @@ fn handle_restart_bridge() -> Response<Full<Bytes>> {
     json_response(&response)
 }
 
-fn handle_clear_cache() -> Response<Full<Bytes>> {
+fn handle_clear_cache() -> Response<BoxBody<Bytes, Infallible>> {
     // In a real implementation, this would clear caches
     // For now, just return success
     let response = ApiResponse {
@@ -380,7 +534,7 @@ fn handle_clear_cache() -> Response<Full<Bytes>> {
 }
 
 
-fn handle_set_update_channel(body: &str) -> Response<Full<Bytes>> {
+fn handle_set_update_channel(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
     #[derive(serde::Deserialize)]
     struct ChannelRequest {
         channel: String,
@@ -411,12 +565,12 @@ fn handle_set_update_channel(body: &str) -> Response<Full<Bytes>> {
     }
 }
 
-fn handle_get_update_config() -> Response<Full<Bytes>> {
+fn handle_get_update_config() -> Response<BoxBody<Bytes, Infallible>> {
     let config = get_current_config();
     json_response(&config)
 }
 
-async fn handle_check_updates() -> Response<Full<Bytes>> {
+async fn handle_check_updates() -> Response<BoxBody<Bytes, Infallible>> {
     // First check if we have a cached result from startup
     if let Some(cached_result) = get_last_update_check() {
         // If we have a cached result, return it immediately

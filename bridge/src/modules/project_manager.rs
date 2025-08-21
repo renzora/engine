@@ -1,7 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::fs;
 use std::env;
 use crate::types::{ProjectInfo, FileInfo};
+use log::{info, error, debug};
 
 pub fn get_base_path() -> PathBuf {
     env::current_dir().unwrap_or_else(|_| PathBuf::from(".."))
@@ -11,39 +12,42 @@ pub fn get_projects_path() -> PathBuf {
     get_base_path().join("projects")
 }
 
-pub fn ensure_safe_path(base_path: &Path, file_path: &str) -> Result<PathBuf, String> {
-    let full_path = base_path.join(file_path);
-    if !full_path.starts_with(base_path) {
-        return Err("Access denied: path traversal attempt".to_string());
-    }
-    Ok(full_path)
-}
-
 pub fn list_projects() -> Result<Vec<ProjectInfo>, String> {
     let projects_path = get_projects_path();
     let mut projects = Vec::new();
+    info!("📋 Listing projects from: {:?}", projects_path);
 
     if !projects_path.exists() {
-        if fs::create_dir_all(&projects_path).is_err() {
+        info!("📁 Projects directory doesn't exist, creating it...");
+        if let Err(e) = fs::create_dir_all(&projects_path) {
+            error!("❌ Failed to create projects directory: {}", e);
             return Err("Failed to create projects directory".to_string());
         }
+        info!("✅ Created projects directory");
     }
 
-    if let Ok(entries) = fs::read_dir(&projects_path) {
-        for entry in entries.flatten() {
-            if entry.path().is_dir() {
-                if let Some(name) = entry.file_name().to_str() {
-                    projects.push(ProjectInfo {
-                        name: name.to_string(),
-                        path: format!("projects/{}", name),
-                        files: Vec::new(),
-                    });
+    match fs::read_dir(&projects_path) {
+        Ok(entries) => {
+            for entry in entries.flatten() {
+                if entry.path().is_dir() {
+                    if let Some(name) = entry.file_name().to_str() {
+                        debug!("📁 Found project: {}", name);
+                        projects.push(ProjectInfo {
+                            name: name.to_string(),
+                            path: format!("projects/{}", name),
+                            files: Vec::new(),
+                        });
+                    }
                 }
             }
+            info!("✅ Listed {} projects", projects.len());
+            Ok(projects)
+        },
+        Err(e) => {
+            error!("❌ Failed to read projects directory: {}", e);
+            Err("Failed to read projects directory".to_string())
         }
     }
-
-    Ok(projects)
 }
 
 pub fn list_directory_contents(dir_path: &str) -> Result<Vec<FileInfo>, String> {
@@ -62,17 +66,19 @@ pub fn list_directory_contents(dir_path: &str) -> Result<Vec<FileInfo>, String> 
         String::new()
     };
     
-    // Construct path to project's assets directory
-    let project_assets_path = projects_path.join(project_name).join("assets").join(&asset_path);
+    // Construct path to project directory
+    let project_path = if asset_path.is_empty() {
+        projects_path.join(project_name)
+    } else {
+        projects_path.join(project_name).join(&asset_path)
+    };
     
-    if !project_assets_path.exists() {
-        if fs::create_dir_all(&project_assets_path).is_err() {
-            return Err("Failed to create directory".to_string());
-        }
+    if !project_path.exists() {
+        return Ok(Vec::new()); // Return empty list if directory doesn't exist
     }
 
     let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir(&project_assets_path) {
+    if let Ok(entries) = fs::read_dir(&project_path) {
         for entry in entries.flatten() {
             let file_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();

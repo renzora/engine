@@ -6,7 +6,7 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { editorActions } from '@/layout/stores/EditorStore'
-import { bridgeService as projects } from '@/plugins/core/bridge'
+import { getCurrentProject } from '@/api/bridge/projects'
 
 export const useAssetLoader = (sceneInstance, canvasRef) => {
   const [loadingTooltip, setLoadingTooltip] = createSignal({
@@ -89,7 +89,7 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
       return
     }
 
-    const currentProject = projects.getCurrentProject()
+    const currentProject = getCurrentProject()
     
     if (!currentProject?.name) {
       console.error('No project loaded')
@@ -97,7 +97,8 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
       return
     }
 
-    const assetUrl = `http://localhost:3001/api/projects/${currentProject.name}/assets/file/${encodeURIComponent(assetData.path)}`
+    const assetPath = `projects/${currentProject.name}/assets/${assetData.path}`;
+    const assetUrl = `http://localhost:3001/file/${encodeURIComponent(assetPath)}`
     
     // Use imported modules
     

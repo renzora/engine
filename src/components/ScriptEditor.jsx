@@ -1,16 +1,6 @@
-import { onMount, onCleanup, createSignal, createEffect, For, Show } from 'solid-js';
-import { usePluginAPI } from '@/api/plugin';
-import { Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder, Code } from '@/ui/icons';
-import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
-import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
-import ThemeSwitcher from '@/ui/ThemeSwitcher';
-import RendererSwitcher from '@/ui/RendererSwitcher';
+import { createSignal, onMount, createEffect, onCleanup, For, Show } from 'solid-js';
 import Editor from '@monaco-editor/react';
-
-import Scene from './Scene.jsx';
-import SettingsComponent from './Settings.jsx';
-import AssetLibrary from './AssetLibrary.jsx';
-import { scriptEditorStore, scriptEditorActions } from '../../layout/stores/ScriptEditorStore.js';
+import { scriptEditorStore, scriptEditorActions } from '../layout/stores/ScriptEditorStore.js';
 import { getCurrentProject } from '@/api/bridge/projects';
 import { readFile, writeFile } from '@/api/bridge/files';
 
@@ -63,9 +53,16 @@ const setupRenScriptLanguage = (monaco) => {
     // Tokenizer
     tokenizer: {
       root: [
+        // Comments
         [/#.*$/, 'comment'],
+        
+        // Script declarations
         [/\b(script|camera|light|mesh|scene|transform)\s+\w+/, 'keyword.declaration'],
+        
+        // Keywords
         [/\b(props|start|update|destroy|on_collision|on_trigger)\b/, 'keyword.lifecycle'],
+        
+        // Identifiers and keywords
         [/[a-z_$][\w$]*/, {
           cases: {
             '@keywords': 'keyword',
@@ -74,12 +71,18 @@ const setupRenScriptLanguage = (monaco) => {
             '@default': 'identifier'
           }
         }],
+        
+        // Numbers
         [/\b\d+\.\d+\b/, 'number.float'],
         [/\b\d+\b/, 'number'],
+        
+        // Strings
         [/"([^"\\]|\\.)*$/, 'string.invalid'],
         [/'([^'\\]|\\.)*$/, 'string.invalid'],
         [/"/, 'string', '@string_double'],
         [/'/, 'string', '@string_single'],
+        
+        // Operators
         [/[{}()\[\]]/, 'delimiter.bracket'],
         [/[<>](?!@symbols)/, 'delimiter.bracket'],
         [/@symbols/, {
@@ -88,6 +91,8 @@ const setupRenScriptLanguage = (monaco) => {
             '@default': ''
           }
         }],
+        
+        // Delimiters
         [/[;,.]/, 'delimiter'],
       ],
       
@@ -161,8 +166,7 @@ const setupRenScriptLanguage = (monaco) => {
   });
 };
 
-// Full ScriptEditor component implementation
-const ScriptEditor = () => {
+function ScriptEditor() {
   const [isSaving, setIsSaving] = createSignal(false);
   let editorRef = null;
   let monacoRef = null;
@@ -278,212 +282,118 @@ const ScriptEditor = () => {
 
   return (
     <div class="flex flex-col h-full bg-base-200">
-      {/* Tab bar */}
-      <Show when={openScripts().length > 1}>
-        <div class="flex bg-base-300 border-b border-base-content/10 overflow-x-auto">
-          <For each={openScripts()}>
-            {([filePath, scriptData]) => (
-              <button
-                class={`px-3 py-2 text-sm border-r border-base-content/10 flex items-center gap-2 hover:bg-base-content/10 ${
-                  activeScript() === filePath ? 'bg-base-200 text-base-content' : 'text-base-content/70'
-                }`}
-                onClick={() => scriptEditorActions.setActiveScript(filePath)}
-              >
-                <span>{scriptData.fileName}</span>
-                <Show when={scriptData.isDirty}>
-                  <div class="w-2 h-2 rounded-full bg-warning"></div>
-                </Show>
-                <span
-                  class="ml-1 hover:text-error cursor-pointer"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    scriptEditorActions.closeScript(filePath);
-                  }}
+        {/* Tab bar */}
+        <Show when={openScripts().length > 1}>
+          <div class="flex bg-base-300 border-b border-base-content/10 overflow-x-auto">
+            <For each={openScripts()}>
+              {([filePath, scriptData]) => (
+                <button
+                  class={`px-3 py-2 text-sm border-r border-base-content/10 flex items-center gap-2 hover:bg-base-content/10 ${
+                    activeScript() === filePath ? 'bg-base-200 text-base-content' : 'text-base-content/70'
+                  }`}
+                  onClick={() => scriptEditorActions.setActiveScript(filePath)}
                 >
-                  ✕
-                </span>
-              </button>
-            )}
-          </For>
-        </div>
-      </Show>
+                  <span>{scriptData.fileName}</span>
+                  <Show when={scriptData.isDirty}>
+                    <div class="w-2 h-2 rounded-full bg-warning"></div>
+                  </Show>
+                  <span
+                    class="ml-1 hover:text-error cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      scriptEditorActions.closeScript(filePath);
+                    }}
+                  >
+                    ✕
+                  </span>
+                </button>
+              )}
+            </For>
+          </div>
+        </Show>
 
-      {/* Toolbar */}
-      <div class="flex items-center justify-between p-2 bg-base-300 border-b border-base-content/10">
-        <div class="flex items-center gap-2">
-          <span class="text-sm font-semibold text-base-content">
-            {currentScriptData()?.fileName || 'Script Editor'}
-          </span>
-          <Show when={currentScriptData()?.isDirty}>
-            <span class="badge badge-warning badge-xs">Modified</span>
-          </Show>
-        </div>
-        
-        <div class="flex items-center gap-2">
-          <Show when={currentScriptData()?.lastSaved}>
-            <span class="text-xs text-base-content/50">
-              Last saved: {currentScriptData()?.lastSaved}
+        {/* Toolbar */}
+        <div class="flex items-center justify-between p-2 bg-base-300 border-b border-base-content/10">
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold text-base-content">
+              {currentScriptData()?.fileName || 'Script Editor'}
             </span>
-          </Show>
+            <Show when={currentScriptData()?.isDirty}>
+              <span class="badge badge-warning badge-xs">Modified</span>
+            </Show>
+          </div>
           
-          <button
-            class={`btn btn-primary btn-xs ${isSaving() ? 'loading' : ''}`}
-            onClick={saveScript}
-            disabled={!currentScriptData()?.isDirty || isSaving()}
-          >
-            {isSaving() ? 'Saving...' : 'Save (Ctrl+S)'}
-          </button>
-          
-          <button
-            class="btn btn-ghost btn-xs"
-            onClick={() => scriptEditorActions.hideEditor()}
-          >
-            ✕
-          </button>
+          <div class="flex items-center gap-2">
+            <Show when={currentScriptData()?.lastSaved}>
+              <span class="text-xs text-base-content/50">
+                Last saved: {currentScriptData()?.lastSaved}
+              </span>
+            </Show>
+            
+            <button
+              class={`btn btn-primary btn-xs ${isSaving() ? 'loading' : ''}`}
+              onClick={saveScript}
+              disabled={!currentScriptData()?.isDirty || isSaving()}
+            >
+              {isSaving() ? 'Saving...' : 'Save (Ctrl+S)'}
+            </button>
+            
+            <button
+              class="btn btn-ghost btn-xs"
+              onClick={() => scriptEditorActions.hideEditor()}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {/* Editor */}
+        <div class="flex-1 overflow-hidden">
+          <Editor
+            height="100%"
+            defaultLanguage={RENSCRIPT_LANGUAGE_ID}
+            value={currentScriptData()?.content || ''}
+            onChange={handleEditorChange}
+            onMount={handleEditorDidMount}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 14,
+              lineNumbers: 'on',
+              roundedSelection: false,
+              scrollBeyondLastLine: false,
+              readOnly: false,
+              automaticLayout: true,
+              tabSize: 2,
+              wordWrap: 'on',
+              folding: true,
+              foldingStrategy: 'indentation',
+              showFoldingControls: 'mouseover',
+              scrollbar: {
+                vertical: 'auto',
+                horizontal: 'auto',
+                useShadows: false,
+                verticalScrollbarSize: 10,
+                horizontalScrollbarSize: 10,
+              },
+              padding: {
+                top: 10,
+                bottom: 10,
+              },
+            }}
+          />
+        </div>
+
+        {/* Status bar */}
+        <div class="flex items-center justify-between px-2 py-1 bg-base-300 border-t border-base-content/10 text-xs">
+          <span class="text-base-content/50">
+            RenScript • Line {editorRef?.getPosition()?.lineNumber || 1}, Column {editorRef?.getPosition()?.column || 1}
+          </span>
+          <span class="text-base-content/50">
+            {(currentScriptData()?.content || '').split('\n').length} lines
+          </span>
         </div>
       </div>
-
-      {/* Editor */}
-      <div class="flex-1 overflow-hidden">
-        <Editor
-          height="100%"
-          defaultLanguage={RENSCRIPT_LANGUAGE_ID}
-          value={currentScriptData()?.content || ''}
-          onChange={handleEditorChange}
-          onMount={handleEditorDidMount}
-          options={{
-            minimap: { enabled: false },
-            fontSize: 14,
-            lineNumbers: 'on',
-            roundedSelection: false,
-            scrollBeyondLastLine: false,
-            readOnly: false,
-            automaticLayout: true,
-            tabSize: 2,
-            wordWrap: 'on',
-            folding: true,
-            foldingStrategy: 'indentation',
-            showFoldingControls: 'mouseover',
-            scrollbar: {
-              vertical: 'auto',
-              horizontal: 'auto',
-              useShadows: false,
-              verticalScrollbarSize: 10,
-              horizontalScrollbarSize: 10,
-            },
-            padding: {
-              top: 10,
-              bottom: 10,
-            },
-          }}
-        />
-      </div>
-
-      {/* Status bar */}
-      <div class="flex items-center justify-between px-2 py-1 bg-base-300 border-t border-base-content/10 text-xs">
-        <span class="text-base-content/50">
-          RenScript • Line {editorRef?.getPosition()?.lineNumber || 1}, Column {editorRef?.getPosition()?.column || 1}
-        </span>
-        <span class="text-base-content/50">
-          {(currentScriptData()?.content || '').split('\n').length} lines
-        </span>
-      </div>
-    </div>
-  );
-};
-
-export default function EditorPage() {
-  onMount(() => {
-    console.log('[EditorPage] Initializing editor components...');
-    const api = usePluginAPI();
-    
-    api.tab('scene', {
-      title: 'Scene',
-      component: Scene,
-      icon: Video,
-      order: 10
-    });
-
-    api.tab('settings', {
-      title: 'Settings',
-      component: SettingsComponent,
-      icon: SettingsIcon,
-      order: 20
-    });
-
-    api.tab('script-editor', {
-      title: 'Script Editor',
-      component: ScriptEditor,
-      icon: Code,
-      order: 15
-    });
-
-    api.panel('assets', {
-      title: 'Assets',
-      component: AssetLibrary,
-      icon: Folder,
-      order: 10,
-      defaultHeight: 300
-    });
-    
-    api.button('camera-helper', {
-      title: 'Camera Options',
-      icon: Camera,
-      section: 'right',
-      order: 10,
-      hasDropdown: true,
-      dropdownComponent: CameraDropdownContent,
-      dropdownWidth: 256
-    });
-    
-    api.button('grid-helper', {
-      title: 'Grid Options',
-      icon: Grid3x3,
-      section: 'right',
-      order: 20,
-      hasDropdown: true,
-      dropdownComponent: GridDropdownContent,
-      dropdownWidth: 256
-    });
-    
-    api.button('renderer-switcher', {
-      title: 'Renderer',
-      section: 'right',
-      order: 25,
-      isCustomComponent: true,
-      customComponent: RendererSwitcher
-    });
-    
-    api.button('theme-switcher', {
-      title: 'Theme',
-      section: 'right',
-      order: 30,
-      isCustomComponent: true,
-      customComponent: ThemeSwitcher
-    });
-    
-    api.button('fullscreen-button', {
-      title: 'Toggle Fullscreen',
-      icon: Maximize,
-      section: 'right',
-      order: 40,
-      onClick: () => {
-        if (!document.fullscreenElement) {
-          document.documentElement.requestFullscreen().catch(err => {
-            console.error('[EditorPage] Error attempting to enable fullscreen:', err);
-          });
-        } else {
-          document.exitFullscreen();
-        }
-      }
-    });
-
-    console.log('[EditorPage] Editor components registered');
-    
-    onCleanup(() => {
-      console.log('[EditorPage] Cleaning up editor components...');
-    });
-  });
-
-  return null;
+    );
 }
+
+export default ScriptEditor;
