@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, Switch, Match, createSignal } from 'solid-js';
+import { Show, createEffect, createMemo, Switch, Match, createSignal, onMount, onCleanup } from 'solid-js';
 import BottomTabs from './BottomTabs.jsx';
 import AssetLibrary from '@/pages/editor/AssetLibrary.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
@@ -7,6 +7,20 @@ import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/a
 
 const BottomPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
+  
+  // Handle window resize to ensure panel height stays within bounds
+  onMount(() => {
+    const handleWindowResize = () => {
+      const currentHeight = editorStore.ui.bottomPanelHeight;
+      const maxHeight = Math.floor(window.innerHeight * 0.8);
+      if (currentHeight > maxHeight) {
+        editorActions.setBottomPanelHeight(maxHeight);
+      }
+    };
+    
+    window.addEventListener('resize', handleWindowResize);
+    onCleanup(() => window.removeEventListener('resize', handleWindowResize));
+  });
   
   // Get reactive store values
   const ui = () => editorStore.ui;

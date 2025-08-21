@@ -45,8 +45,29 @@ const RightPanel = () => {
   const handleRightResizeMove = (e) => {
     if (!isResizingRight()) return;
     
-    const newWidth = isLeftPanel() ? e.clientX : window.innerWidth - e.clientX;
-    const clampedWidth = Math.max(200, Math.min(newWidth, window.innerWidth * 0.5));
+    const minPanelWidth = 250;
+    const maxPanelWidth = 800;
+    
+    let newWidth;
+    if (isLeftPanel()) {
+      newWidth = e.clientX;
+    } else {
+      // For right panel, calculate width from right edge
+      newWidth = window.innerWidth - e.clientX;
+      
+      // If the calculated width would be less than minimum (cursor too far right)
+      // Just set to minimum width
+      if (newWidth < minPanelWidth) {
+        newWidth = minPanelWidth;
+      }
+      
+      // If cursor is beyond window bounds, also set to minimum
+      if (e.clientX >= window.innerWidth) {
+        newWidth = minPanelWidth;
+      }
+    }
+    
+    const clampedWidth = Math.max(minPanelWidth, Math.min(newWidth, maxPanelWidth, window.innerWidth));
     editorActions.setRightPanelWidth(clampedWidth);
   };
 
@@ -124,7 +145,8 @@ const RightPanel = () => {
         className={`absolute top-0 right-0 pointer-events-auto no-select z-20`}
         style={{ 
           height: '100%',
-          width: `${rightPanelWidth()}px`
+          width: `${rightPanelWidth()}px`,
+          maxWidth: '100vw'
         }}
       >
         <Show when={isScenePanelOpen()}>
@@ -146,7 +168,7 @@ const RightPanel = () => {
         </Show>
         
         <Show when={isScenePanelOpen()}>
-          <div className="absolute inset-0 flex">
+          <div className="absolute inset-0 flex overflow-hidden">
             <div className="w-auto flex-shrink-1">
               <Toolbar 
                 selectedTool={selectedRightTool()}
@@ -157,9 +179,9 @@ const RightPanel = () => {
               />
             </div>
             
-            <div className="flex-1">
+            <div className="flex-1 min-w-0 overflow-hidden">
               <div 
-                className={`relative w-full h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300 shadow-2xl shadow-black/30 flex flex-col pointer-events-auto no-select`}
+                className={`relative w-full h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300 shadow-2xl shadow-black/30 flex flex-col pointer-events-auto no-select overflow-hidden`}
               >
               <div className="px-3 py-2 relative">
                 <div className="text-xs text-base-content/60 uppercase tracking-wide">

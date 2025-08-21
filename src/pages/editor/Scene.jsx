@@ -90,6 +90,23 @@ function Scene(props) {
   const { createNodeTab: createNodeEditorTab } = viewportActions;
   const { updateObjectProperty } = objectPropertiesActions;
   
+  // Handle window resize to adjust properties panel height
+  onMount(() => {
+    const handleWindowResize = () => {
+      const currentHeight = ui.scenePropertiesHeight;
+      const maxHeight = Math.floor(window.innerHeight * 0.7);
+      const minHeight = 300;
+      if (currentHeight > maxHeight) {
+        setBottomPanelHeight(maxHeight);
+      } else if (currentHeight < minHeight) {
+        setBottomPanelHeight(minHeight);
+      }
+    };
+    
+    window.addEventListener('resize', handleWindowResize);
+    onCleanup(() => window.removeEventListener('resize', handleWindowResize));
+  });
+  
   const [droppedItemId, setDroppedItemId] = createSignal(null);
   const [isDragOverScript, setIsDragOverScript] = createSignal(false);
   const [expandedItems, setExpandedItems] = createSignal({});
@@ -418,7 +435,9 @@ function Scene(props) {
     
     const handleMouseMove = (e) => {
       const deltaY = startY - e.clientY;
-      const newHeight = Math.max(200, Math.min(600, startHeight + deltaY));
+      const maxHeight = Math.floor(window.innerHeight * 0.7);
+      const minHeight = 200;
+      const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + deltaY));
       setBottomPanelHeight(newHeight);
     };
     
