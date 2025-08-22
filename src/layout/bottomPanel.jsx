@@ -1,6 +1,6 @@
 import { Show, createEffect, createMemo, Switch, Match, createSignal, onMount, onCleanup } from 'solid-js';
 import BottomTabs from './BottomTabs.jsx';
-import AssetLibrary from '@/pages/editor/AssetLibrary.jsx';
+import AssetLibrary from '@/pages/editor/AssetLibrary';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';

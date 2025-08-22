@@ -1,0 +1,1405 @@
+import { createSignal, createEffect, onMount, onCleanup, Show, createMemo, batch } from 'solid-js';
+import { Photo, Wave, FileText, File, Cube, Video, Code, Circle, Rectangle, Grid, Lightbulb, Plus } from '@/ui/icons';
+import { editorStore, editorActions } from '@/layout/stores/EditorStore';
+import { assetsStore, assetsActions } from '@/layout/stores/AssetStore';
+import { createContextMenuActions } from '@/ui/ContextMenuActions.jsx';
+import ContextMenu from '@/ui/ContextMenu.jsx';
+import ScriptCreationDialog from '../ScriptCreationDialog.jsx';
+import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
+import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
+import { generateThumbnail } from '@/api/bridge/thumbnails';
+
+// Components
+import AssetSidebar from './AssetSidebar';
+import AssetHeader from './AssetHeader';
+import AssetBreadcrumbs from './AssetBreadcrumbs';
+import AssetUploadArea from './AssetUploadArea';
+import AssetGrid from './AssetGrid';
+
+const getProjectManager = () => {
+  return {
+    getCurrentProject,
+    setCurrentProject
+  };
+};
+
+function AssetLibrary({ onContextMenu }) {
+  const viewMode = () => assetsStore.viewMode;
+  const setViewMode = (mode) => assetsActions.setViewMode(mode);
+  const [layoutMode, setLayoutMode] = createSignal('grid');
+  const [currentPath, setCurrentPath] = createSignal('');
+  const selectedCategory = () => assetsStore.selectedCategory;
+  const setSelectedCategory = (category) => assetsActions.setSelectedCategory(category);
+  const [searchQuery, setSearchQuery] = createSignal('');
+  const [hoveredItem, setHoveredItem] = createSignal(null);
+  const [isResizing, setIsResizing] = createSignal(false);
+  const [assets, setAssets] = createSignal([]);
+  const [folderTree, setFolderTree] = createSignal(null);
+  const [currentProject, setCurrentProject] = createSignal(null);
+  const [assetCategories, setAssetCategories] = createSignal(null);
+  const expandedFolders = () => assetsStore.expandedFolders;
+  const toggleFolderExpansion = (folderPath) => assetsActions.toggleFolderExpansion(folderPath);
+  const [loading, setLoading] = createSignal(true);
+  const [error, setError] = createSignal(null);
+  const [loadedAssets, setLoadedAssets] = createSignal([]);
+  const [preloadingAssets, setPreloadingAssets] = createSignal([]);
+  const [failedAssets, setFailedAssets] = createSignal([]);
+  const [showLoadingBar, setShowLoadingBar] = createSignal(false);
+  const [isDragOver, setIsDragOver] = createSignal(false);
+  const [isUploading, setIsUploading] = createSignal(false);
+  const [contextMenu, setContextMenu] = createSignal(null);
+  const [dragOverFolder, setDragOverFolder] = createSignal(null);
+  const [dragOverTreeFolder, setDragOverTreeFolder] = createSignal(null);
+  const [dragOverBreadcrumb, setDragOverBreadcrumb] = createSignal(null);
+  const [isInternalDrag, setIsInternalDrag] = createSignal(false);
+  const [showScriptDialog, setShowScriptDialog] = createSignal(false);
+  const [selectedAssets, setSelectedAssets] = createSignal(new Set());
+  const [lastSelectedAsset, setLastSelectedAsset] = createSignal(null);
+  const [isSelecting, setIsSelecting] = createSignal(false);
+  const [selectionStart, setSelectionStart] = createSignal(null);
+  const [selectionEnd, setSelectionEnd] = createSignal(null);
+  const [selectionRect, setSelectionRect] = createSignal(null);
+  const [globalSearchResults, setGlobalSearchResults] = createSignal([]);
+  const [isSearching, setIsSearching] = createSignal(false);
+  
+  let fileInputRef;
+  let folderInputRef;
+  let assetGridRef;
+  let mainContentRef;
+
+  const ui = () => editorStore.ui;
+  const assetCache = () => assetsStore;
+  const treePanelWidth = () => ui().assetsLibraryWidth && ui().assetsLibraryWidth > 150 ? ui().assetsLibraryWidth : 150;
+  const { setAssetsLibraryWidth: setTreePanelWidth } = editorActions;
+  const contextMenuActions = createContextMenuActions(editorActions);
+  const { handleCreateObject } = contextMenuActions;
+  const projectManager = getProjectManager();
+
+  // Helper functions
+  const toggleAssetSelection = (asset, ctrlKey = false, shiftKey = false) => {
+    const currentSelected = selectedAssets();
+    const newSelected = new Set(currentSelected);
+    
+    if (shiftKey && lastSelectedAsset()) {
+      const currentAssets = filteredAssets();
+      const lastIndex = currentAssets.findIndex(a => a.id === lastSelectedAsset().id);
+      const currentIndex = currentAssets.findIndex(a => a.id === asset.id);
+      
+      if (lastIndex !== -1 && currentIndex !== -1) {
+        const start = Math.min(lastIndex, currentIndex);
+        const end = Math.max(lastIndex, currentIndex);
+        
+        for (let i = start; i <= end; i++) {
+          newSelected.add(currentAssets[i].id);
+        }
+      }
+    } else if (ctrlKey) {
+      if (newSelected.has(asset.id)) {
+        newSelected.delete(asset.id);
+      } else {
+        newSelected.add(asset.id);
+        setLastSelectedAsset(asset);
+      }
+    } else {
+      newSelected.clear();
+      newSelected.add(asset.id);
+      setLastSelectedAsset(asset);
+    }
+    
+    setSelectedAssets(newSelected);
+  };
+
+  const clearSelection = () => {
+    setSelectedAssets(new Set());
+    setLastSelectedAsset(null);
+  };
+
+  const isAssetSelected = (assetId) => {
+    return selectedAssets().has(assetId);
+  };
+
+  const getExtensionStyle = (extension) => {
+    const ext = extension?.toLowerCase() || '';
+    
+    if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) {
+      return {
+        icon: null,
+        bgColor: 'bg-secondary',
+        hoverColor: 'hover:bg-secondary/80',
+        textColor: 'text-white'
+      };
+    }
+    
+    if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) {
+      return {
+        icon: <Photo class="w-3 h-3" />,
+        bgColor: 'bg-success', 
+        hoverColor: 'hover:bg-success/80',
+        textColor: 'text-white'
+      };
+    }
+    
+    if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
+      return {
+        icon: <Wave class="w-3 h-3" />,
+        bgColor: 'bg-warning',
+        hoverColor: 'hover:bg-warning/80', 
+        textColor: 'text-white'
+      };
+    }
+    
+    if (['.js', '.ts', '.jsx', '.tsx'].includes(ext)) {
+      return {
+        icon: null,
+        bgColor: 'bg-primary',
+        hoverColor: 'hover:bg-primary/80',
+        textColor: 'text-white'
+      };
+    }
+    
+    if (['.json', '.xml', '.txt', '.md'].includes(ext)) {
+      return {
+        icon: <FileText class="w-3 h-3" />,
+        bgColor: 'bg-info',
+        hoverColor: 'hover:bg-info/80',
+        textColor: 'text-white'
+      };
+    }
+    
+    return {
+      icon: <File class="w-3 h-3" />,
+      bgColor: 'bg-base-300',
+      hoverColor: 'hover:bg-base-300/80',
+      textColor: 'text-base-content'
+    };
+  };
+
+  // Bridge API functions
+  const buildTreeFromAssets = (assets, projectName = null) => {
+    if (!assets || !Array.isArray(assets)) {
+      console.warn('buildTreeFromAssets: Invalid assets data:', assets);
+      return null;
+    }
+
+    const folders = assets.filter(asset => asset.is_directory);
+    const files = assets.filter(asset => !asset.is_directory);
+
+    let processedFolders = folders;
+    let processedFiles = files;
+    
+    if (projectName) {
+      processedFolders = folders.map(folder => {
+        let adjustedPath = folder.path;
+        const projectPrefix1 = `projects/${projectName}/`;
+        const projectPrefix2 = `projects\\\\${projectName}\\\\`;
+        const projectRoot1 = `projects/${projectName}`;
+        const projectRoot2 = `projects\\\\${projectName}`;
+        
+        if (adjustedPath.startsWith(projectPrefix1)) {
+          adjustedPath = adjustedPath.replace(projectPrefix1, '');
+        } else if (adjustedPath.startsWith(projectPrefix2)) {
+          adjustedPath = adjustedPath.replace(projectPrefix2, '');
+        } else if (adjustedPath === projectRoot1 || adjustedPath === projectRoot2) {
+          return null;
+        }
+        
+        adjustedPath = adjustedPath.replace(/\\\\/g, '/');
+        
+        return {
+          ...folder,
+          path: adjustedPath
+        };
+      }).filter(Boolean);
+
+      processedFiles = files.map(file => {
+        let adjustedPath = file.path;
+        const projectPrefix1 = `projects/${projectName}/`;
+        const projectPrefix2 = `projects\\\\${projectName}\\\\`;
+        
+        if (adjustedPath.startsWith(projectPrefix1)) {
+          adjustedPath = adjustedPath.replace(projectPrefix1, '');
+        } else if (adjustedPath.startsWith(projectPrefix2)) {
+          adjustedPath = adjustedPath.replace(projectPrefix2, '');
+        }
+        
+        adjustedPath = adjustedPath.replace(/\\\\/g, '/');
+        
+        return {
+          ...file,
+          path: adjustedPath
+        };
+      });
+    }
+
+    const buildTree = (parentPath = '') => {
+      const rootFolders = processedFolders.filter(folder => {
+        const folderDepth = folder.path.split('/').length;
+        const parentDepth = parentPath ? parentPath.split('/').length : 0;
+        
+        if (parentPath) {
+          return folder.path.startsWith(parentPath + '/') && folderDepth === parentDepth + 1;
+        } else {
+          return folderDepth === 1 || !folder.path.includes('/');
+        }
+      });
+
+      return rootFolders.map(folder => {
+        const folderFiles = processedFiles.filter(file => {
+          const filePath = file.path.substring(0, file.path.lastIndexOf('/')) || '';
+          return filePath === folder.path;
+        });
+
+        const children = buildTree(folder.path);
+
+        return {
+          name: folder.name,
+          path: folder.path,
+          type: 'folder',
+          children: children,
+          files: folderFiles
+        };
+      });
+    };
+
+    const finalTree = buildTree();
+    
+    if (!finalTree || finalTree.length === 0) {
+      const simpleTree = processedFolders.map(folder => ({
+        name: folder.name,
+        path: folder.path,
+        type: 'folder',
+        children: [],
+        files: []
+      }));
+      return simpleTree;
+    }
+    
+    return finalTree;
+  };
+
+  const fetchFolderTree = async (currentProject) => {
+    try {
+      const projects = await getProjects();
+      const currentProjectData = projects.find(p => p.name === currentProject.name);
+      
+      if (currentProjectData && currentProjectData.files && currentProjectData.files.length > 0) {
+        const tree = buildTreeFromAssets(currentProjectData.files, currentProject.name);
+        return tree;
+      }
+      
+      const projectFiles = await listDirectory(`projects/${currentProject.name}`);
+      
+      const buildNestedTree = async (items, basePath = '') => {
+        const tree = [];
+        
+        for (const item of items.filter(i => i.is_directory)) {
+          const folderPath = basePath ? `${basePath}/${item.path}` : item.path;
+          
+          try {
+            const subItems = await listDirectory(`projects/${currentProject.name}/${item.path}`);
+            const children = await buildNestedTree(subItems, basePath);
+            const files = subItems.filter(subItem => !subItem.is_directory);
+            
+            tree.push({
+              name: item.name,
+              path: item.path,
+              type: 'folder',
+              children: children,
+              files: files
+            });
+          } catch (err) {
+            tree.push({
+              name: item.name,
+              path: item.path,
+              type: 'folder',
+              children: [],
+              files: []
+            });
+          }
+        }
+        
+        return tree;
+      };
+      
+      const nestedTree = await buildNestedTree(projectFiles);
+      return nestedTree;
+      
+    } catch (error) {
+      console.error('Bridge API failed:', error);
+      return [];
+    }
+  };
+
+  const fetchAssetCategories = async (currentProject) => {
+    try {
+      const allAssets = await listDirectory(`projects/${currentProject.name}`);
+      
+      const categories = {
+        '3d-models': {
+          name: '3D Models',
+          extensions: ['.glb', '.gltf', '.obj', '.fbx', '.dae'],
+          assets: []
+        },
+        'textures': {
+          name: 'Textures',
+          extensions: ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga', '.hdr', '.exr'],
+          assets: []
+        },
+        'audio': {
+          name: 'Audio',
+          extensions: ['.mp3', '.wav', '.ogg', '.flac', '.aac'],
+          assets: []
+        },
+        'video': {
+          name: 'Video',
+          extensions: ['.mp4', '.webm', '.avi', '.mov', '.mkv'],
+          assets: []
+        },
+        'scripts': {
+          name: 'Scripts',
+          extensions: ['.js', '.ts', '.jsx', '.tsx', '.json'],
+          assets: []
+        },
+        'documents': {
+          name: 'Documents',
+          extensions: ['.txt', '.md', '.pdf', '.doc', '.docx'],
+          assets: []
+        },
+        'other': {
+          name: 'Other',
+          extensions: [],
+          assets: []
+        }
+      };
+      
+      allAssets.forEach(asset => {
+        if (asset.is_directory) return;
+        
+        const extension = asset.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+        let categorized = false;
+        
+        for (const [key, category] of Object.entries(categories)) {
+          if (key === 'other') continue;
+          
+          if (category.extensions.includes(extension)) {
+            category.assets.push({
+              id: asset.path,
+              name: asset.name,
+              path: asset.path,
+              type: 'file',
+              extension,
+              size: asset.size || 0
+            });
+            categorized = true;
+            break;
+          }
+        }
+        
+        if (!categorized) {
+          categories.other.assets.push({
+            id: asset.path,
+            name: asset.name,
+            path: asset.path,
+            type: 'file',
+            extension,
+            size: asset.size || 0
+          });
+        }
+      });
+      
+      return categories;
+      
+    } catch (error) {
+      console.warn('Bridge failed for categories, using fallback:', error);
+      
+      return {
+        '3d-models': { name: '3D Models', extensions: ['.glb', '.gltf', '.obj'], assets: [] },
+        'textures': { name: 'Textures', extensions: ['.jpg', '.png', '.webp'], assets: [] },
+        'audio': { name: 'Audio', extensions: ['.mp3', '.wav', '.ogg'], assets: [] },
+        'scripts': { name: 'Scripts', extensions: ['.js', '.ts', '.json'], assets: [] },
+        'other': { name: 'Other', extensions: [], assets: [] }
+      };
+    }
+  };
+
+  const fetchAssets = async (currentProject, path = '') => {
+    try {
+      const dirPath = path 
+        ? `projects/${currentProject.name}/${path}` 
+        : `projects/${currentProject.name}`;
+      
+      const rawAssets = await listDirectory(dirPath);
+      
+      const assets = rawAssets.map(asset => {
+        const hasExtension = asset.name.includes('.') && !asset.is_directory;
+        return {
+          id: asset.path,
+          name: asset.name,
+          path: path ? `${path}/${asset.name}` : asset.name,
+          type: asset.is_directory ? 'folder' : 'file',
+          extension: hasExtension ? '.' + asset.name.split('.').pop() : null,
+          size: asset.size || 0,
+          fileName: asset.name
+        };
+      });
+      
+      return assets;
+      
+    } catch (error) {
+      console.error('Bridge API failed:', error);
+      return [];
+    }
+  };
+
+  const searchAssets = async (currentProject, query) => {
+    try {
+      const allAssets = await listDirectory(`projects/${currentProject.name}`);
+      const searchLower = query.toLowerCase();
+      
+      const results = allAssets.filter(asset => 
+        asset.name.toLowerCase().includes(searchLower)
+      );
+      
+      return results;
+      
+    } catch (error) {
+      console.error('Bridge API search failed:', error);
+      return [];
+    }
+  };
+
+  const isBinaryFile = (fileName) => {
+    const extension = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    const binaryExtensions = [
+      '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.ico', '.svg',
+      '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac',
+      '.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv',
+      '.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d',
+      '.zip', '.rar', '.7z', '.tar', '.gz',
+      '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+      '.exe', '.dll', '.so', '.dylib'
+    ];
+    return binaryExtensions.includes(extension);
+  };
+
+  const moveAsset = async (currentProject, sourcePath, targetPath) => {
+    try {
+      const fullSourcePath = `projects/${currentProject.name}/assets/${sourcePath}`;
+      const fullTargetPath = `projects/${currentProject.name}/assets/${targetPath}`;
+      
+      const sourceFileName = sourcePath.split('/').pop();
+      
+      if (isBinaryFile(sourceFileName)) {
+        const base64Content = await readBinaryFile(fullSourcePath);
+        await writeBinaryFile(fullTargetPath, base64Content);
+      } else {
+        const content = await readFile(fullSourcePath);
+        await writeFile(fullTargetPath, content);
+      }
+      
+      await deleteFile(fullSourcePath);
+      return { success: true, sourcePath, targetPath };
+    } catch (error) {
+      throw new Error(`Failed to move item: ${error.message}`);
+    }
+  };
+
+  const deleteAsset = async (currentProject, assetPath) => {
+    try {
+      const fullAssetPath = `projects/${currentProject.name}/assets/${assetPath}`;
+      await deleteFile(fullAssetPath);
+      return { success: true, path: assetPath };
+    } catch (error) {
+      throw new Error(`Failed to delete asset: ${error.message}`);
+    }
+  };
+
+  const addFileChangeListener = (callback) => {
+    const handleProjectSelect = (event) => callback(event.detail);
+    document.addEventListener('engine:project-selected', handleProjectSelect);
+    return () => document.removeEventListener('engine:project-selected', handleProjectSelect);
+  };
+
+  // Asset fetching and caching
+  const fetchAssetsWithCache = async (currentProject, path = '') => {
+    const cachedAssets = assetsActions.getAssetsForPath(path || currentPath());
+    if (cachedAssets) {
+      setAssets(cachedAssets);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+      const assetsList = await fetchAssets(currentProject, path);
+      
+      assetsActions.setAssetsForPath(path || currentPath(), assetsList);
+      setAssets(assetsList);
+    } catch (error) {
+      console.error('Failed to fetch assets:', error);
+      setError(error.message);
+      setAssets([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Event handlers
+  const handleFileChange = async (changeData) => {
+    console.log('File change detected:', changeData);
+    
+    if (changeData.message) {
+      const message = changeData.message.toLowerCase();
+      if (message.includes('.tmp.') || message.includes('%') || message.includes('~')) {
+        console.log('Ignoring temporary/system file change');
+        return;
+      }
+    }
+    
+    const currentProject = projectManager.getCurrentProject();
+    if (!currentProject?.name) return;
+    
+    if (changeData.source === 'manual-button') {
+      assetsActions.clearAllAssetCache();
+    }
+    
+    await Promise.all([
+      fetchAssetsWithCache(currentProject, currentPath()),
+      (async () => {
+        const tree = await fetchFolderTree(currentProject);
+        setFolderTree(tree);
+        // Also update the store to ensure proper folder expansion
+        assetsActions.setFolderTree(tree);
+      })(),
+      (async () => {
+        const categories = await fetchAssetCategories(currentProject);
+        setAssetCategories(categories);
+      })()
+    ]);
+  };
+
+  const handleResizeMouseDown = (e) => {
+    setIsResizing(true);
+    document.body.classList.add('dragging-horizontal');
+    e.preventDefault();
+  };
+
+  const handleResizeMouseMove = (e) => {
+    if (!isResizing()) return;
+    const newWidth = e.clientX;
+    setTreePanelWidth(Math.max(150, Math.min(400, newWidth)));
+  };
+
+  const handleResizeMouseUp = () => {
+    setIsResizing(false);
+    document.body.classList.remove('dragging-horizontal');
+  };
+
+  const uploadFiles = async (files) => {
+    setIsUploading(true);
+    setError(null);
+    
+    const currentProject = projectManager.getCurrentProject();
+    if (!currentProject?.name) {
+      console.error('No project loaded for file upload');
+      setError('No project loaded for file upload');
+      setIsUploading(false);
+      return;
+    }
+
+    try {
+      for (const file of files) {
+        const targetPath = currentPath() 
+          ? `projects/${currentProject.name}/assets/${currentPath()}/${file.name}`
+          : `projects/${currentProject.name}/assets/${file.name}`;
+        
+        if (isBinaryFile(file.name)) {
+          const reader = new FileReader();
+          const base64 = await new Promise((resolve, reject) => {
+            reader.onload = () => {
+              const base64String = reader.result.split(',')[1];
+              resolve(base64String);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          await writeBinaryFile(targetPath, base64);
+        } else {
+          const text = await file.text();
+          await writeFile(targetPath, text);
+        }
+        
+        console.log('Successfully uploaded:', file.name);
+      }
+      
+      await fetchAssetsWithCache(currentProject, currentPath());
+      
+    } catch (error) {
+      console.error('Error uploading files:', error);
+      setError(`Failed to upload files: ${error.message}`);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isInternalDrag() && !isDragOver()) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!isInternalDrag()) {
+      setIsDragOver(true);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragOver(false);
+    }
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    
+    if (!isInternalDrag()) {
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) {
+        uploadFiles(files);
+      }
+    }
+  };
+
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const contextMenuItems = [
+      {
+        label: 'Create Object',
+        action: () => {},
+        icon: <Plus class="w-4 h-4" />,
+        submenu: [
+          { label: 'Cube', action: () => handleCreateObject('cube'), icon: <Cube class="w-4 h-4" /> },
+          { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <Circle class="w-4 h-4" /> },
+          { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <Rectangle class="w-4 h-4" /> },
+          { label: 'Plane', action: () => handleCreateObject('plane'), icon: <Grid class="w-4 h-4" /> },
+          { separator: true },
+          { label: 'Light', action: () => handleCreateObject('light'), icon: <Lightbulb class="w-4 h-4" /> },
+          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <Video class="w-4 h-4" /> },
+        ]
+      },
+      { separator: true },
+      {
+        label: 'Create Script',
+        action: () => setShowScriptDialog(true),
+        icon: <Code class="w-4 h-4" />
+      }
+    ];
+    
+    if (onContextMenu) {
+      onContextMenu(e, contextMenuItems);
+    } else {
+      setContextMenu({
+        items: contextMenuItems,
+        position: { x: e.clientX, y: e.clientY }
+      });
+    }
+  };
+
+  const handleFileInputChange = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      uploadFiles(files);
+    }
+    e.target.value = '';
+  };
+
+  const handleFolderInputChange = (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length > 0) {
+      uploadFiles(files);
+    }
+    e.target.value = '';
+  };
+
+  const handleMoveItem = async (sourcePath, targetFolderPath) => {
+    const currentProject = projectManager.getCurrentProject();
+    if (!currentProject?.name) {
+      console.error('No project loaded for move operation');
+      return;
+    }
+
+    const sourceFileName = sourcePath.split('/').pop();
+    const targetPath = targetFolderPath ? `${targetFolderPath}/${sourceFileName}` : sourceFileName;
+
+    try {
+      await moveAsset(currentProject, sourcePath, targetPath);
+      assetsActions.invalidateAssetPaths([sourcePath.split('/').slice(0, -1).join('/'), targetFolderPath]);
+      await fetchAssetsWithCache(currentProject, currentPath());
+    } catch (error) {
+      console.error('Error moving item:', error);
+    }
+  };
+
+  const handleMoveMultipleItems = async (assets, targetFolderPath) => {
+    const currentProject = projectManager.getCurrentProject();
+    if (!currentProject?.name) {
+      console.error('No project loaded for move operation');
+      return;
+    }
+
+    try {
+      const pathsToInvalidate = new Set();
+      
+      for (const asset of assets) {
+        const sourceFileName = asset.name || asset.path.split('/').pop();
+        const targetPath = targetFolderPath ? `${targetFolderPath}/${sourceFileName}` : sourceFileName;
+        
+        await moveAsset(currentProject, asset.path, targetPath);
+        
+        const sourceFolderPath = asset.path.split('/').slice(0, -1).join('/');
+        pathsToInvalidate.add(sourceFolderPath);
+      }
+      
+      pathsToInvalidate.add(targetFolderPath);
+      assetsActions.invalidateAssetPaths(Array.from(pathsToInvalidate));
+      
+      await fetchAssetsWithCache(currentProject, currentPath());
+      clearSelection();
+    } catch (error) {
+      console.error('Error moving multiple items:', error);
+    }
+  };
+
+  const handleConfirmCreateScript = async (scriptName, scriptTemplate) => {
+    if (!scriptName || !scriptTemplate) {
+      console.error('Script name and template are required');
+      return;
+    }
+
+    const currentProject = projectManager.getCurrentProject();
+    if (!currentProject?.name) {
+      console.error('No project loaded for script creation');
+      return;
+    }
+
+    try {
+      const targetPath = currentPath() 
+        ? `projects/${currentProject.name}/scripts/${currentPath()}/${scriptName}.ren`
+        : `projects/${currentProject.name}/scripts/${scriptName}.ren`;
+      
+      await writeFile(targetPath, scriptTemplate);
+      console.log('Successfully created script:', scriptName);
+      
+      await fetchAssetsWithCache(currentProject, currentPath());
+      
+    } catch (error) {
+      console.error('Error creating script:', error);
+      setError(`Failed to create script: ${error.message}`);
+    }
+  };
+
+  const handleFolderClick = (folderPath) => {
+    console.log('Folder clicked:', folderPath);
+    setCurrentPath(folderPath);
+  };
+
+  const handleFolderToggle = (folderPath) => {
+    toggleFolderExpansion(folderPath);
+  };
+
+  const handleBreadcrumbClick = (path) => {
+    setCurrentPath(path);
+  };
+
+  const handleAssetDoubleClick = (asset) => {
+    if (asset.extension?.toLowerCase() === '.ren') {
+      const fileName = asset.name || asset.fileName || asset.path.split('/').pop() || asset.path.split('\\').pop();
+      console.log('Script editor has been removed. Cannot open:', fileName);
+    } else {
+      console.log('Double-clicked on:', asset.name, 'Type:', asset.extension);
+    }
+  };
+
+  // Selection handling
+  const startDragSelection = (e) => {
+    const target = e.target;
+    
+    const isInteractiveElement = target.closest('button, input, a, select, textarea');
+    if (isInteractiveElement) return;
+    
+    const isAssetElement = target.closest('[data-asset-id]');
+    if (isAssetElement) return;
+    
+    const isDraggableElement = target.closest('[draggable="true"]');
+    if (isDraggableElement) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const startPos = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top
+    };
+    
+    setSelectionStart(startPos);
+    setSelectionEnd(startPos);
+    
+    if (!e.ctrlKey && !e.metaKey) {
+      clearSelection();
+    }
+  };
+
+  const updateDragSelection = (e) => {
+    if (!isSelecting() || !mainContentRef) return;
+    
+    const containerRect = mainContentRef.getBoundingClientRect();
+    let currentPos = {
+      x: e.clientX - containerRect.left,
+      y: e.clientY - containerRect.top
+    };
+    
+    currentPos.x = Math.max(0, Math.min(currentPos.x, containerRect.width));
+    currentPos.y = Math.max(0, Math.min(currentPos.y, containerRect.height));
+  
+    const scrollTop = mainContentRef.scrollTop;
+    const scrollHeight = mainContentRef.scrollHeight;
+    const adjustedY = currentPos.y + scrollTop;
+    const constrainedY = Math.max(0, Math.min(adjustedY, scrollHeight - 12));
+  
+    currentPos.y = constrainedY - scrollTop;
+    
+    setSelectionEnd(currentPos);
+    
+    const start = selectionStart();
+    let selectionBox = {
+      x: Math.min(start.x, currentPos.x),
+      y: Math.min(start.y, currentPos.y),
+      width: Math.abs(currentPos.x - start.x),
+      height: Math.abs(currentPos.y - start.y)
+    };
+    
+    selectionBox.x = Math.max(0, selectionBox.x);
+    selectionBox.y = Math.max(0, selectionBox.y);
+    selectionBox.width = Math.min(selectionBox.width, containerRect.width - selectionBox.x);
+    selectionBox.height = Math.min(selectionBox.height, containerRect.height - selectionBox.y);
+    
+    setSelectionRect(selectionBox);
+    
+    const assetElements = mainContentRef.querySelectorAll('[data-asset-id]');
+    const newSelected = new Set(e.ctrlKey || e.metaKey ? selectedAssets() : []);
+    
+    assetElements?.forEach(element => {
+      const elementRect = element.getBoundingClientRect();
+      
+      const relativeRect = {
+        x: elementRect.left - containerRect.left,
+        y: elementRect.top - containerRect.top,
+        width: elementRect.width,
+        height: elementRect.height
+      };
+      
+      if (selectionBox.x < relativeRect.x + relativeRect.width &&
+          selectionBox.x + selectionBox.width > relativeRect.x &&
+          selectionBox.y < relativeRect.y + relativeRect.height &&
+          selectionBox.y + selectionBox.height > relativeRect.y) {
+        
+        const assetId = element.getAttribute('data-asset-id');
+        newSelected.add(assetId);
+      }
+    });
+    
+    setSelectedAssets(newSelected);
+  };
+
+  const endDragSelection = () => {
+    setIsSelecting(false);
+    setSelectionRect(null);
+    setSelectionStart(null);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      clearSelection();
+      return;
+    }
+    
+    if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      const allAssets = filteredAssets();
+      const allAssetIds = new Set(allAssets.map(a => a.id));
+      setSelectedAssets(allAssetIds);
+      if (allAssets.length > 0) {
+        setLastSelectedAsset(allAssets[allAssets.length - 1]);
+      }
+      return;
+    }
+    
+    if (e.key === 'Delete' && selectedAssets().size > 0) {
+      console.log('Delete key pressed with', selectedAssets().size, 'selected assets');
+    }
+  };
+
+  const handleGlobalMouseMove = (e) => {
+    if (selectionStart() && !isSelecting()) {
+      const startPos = selectionStart();
+      const deltaX = Math.abs(e.clientX - (startPos.x + (mainContentRef?.getBoundingClientRect().left || 0)));
+      const deltaY = Math.abs(e.clientY - (startPos.y + (mainContentRef?.getBoundingClientRect().top || 0)));
+      
+      if (deltaX > 3 || deltaY > 3) {
+        setIsSelecting(true);
+        e.preventDefault();
+      }
+    }
+    
+    updateDragSelection(e);
+  };
+
+  const handleGlobalMouseUp = (e) => {
+    if (isSelecting()) {
+      endDragSelection();
+    } else if (selectionStart()) {
+      setSelectionStart(null);
+    }
+  };
+
+  // Tree drag and drop handlers
+  const handleTreeDragOver = (path) => {
+    setDragOverTreeFolder(path);
+  };
+
+  const handleTreeDragEnter = (path) => {
+    setDragOverTreeFolder(path);
+  };
+
+  const handleTreeDragLeave = () => {
+    setDragOverTreeFolder(null);
+  };
+
+  const handleTreeDrop = (e, path) => {
+    setDragOverTreeFolder(null);
+    
+    try {
+      const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
+      
+      if (dragData.type === 'multiple-assets') {
+        const validAssets = dragData.assets.filter(asset => {
+          if (asset.assetType === 'folder' && path.startsWith(asset.path)) {
+            console.warn(`Cannot move folder ${asset.name} into itself or its children`);
+            return false;
+          }
+          return asset.path !== path;
+        });
+        
+        if (validAssets.length > 0) {
+          handleMoveMultipleItems(validAssets, path);
+        }
+      } else if (dragData.type === 'asset' && dragData.path !== path) {
+        if (dragData.assetType === 'folder' && path.startsWith(dragData.path)) {
+          console.warn('Cannot move folder into itself or its children');
+          return;
+        }
+        handleMoveItem(dragData.path, path);
+      }
+    } catch (error) {
+      console.error('Error parsing drag data in tree:', error);
+    }
+  };
+
+  const handleBreadcrumbDrop = (e, path) => {
+    setDragOverBreadcrumb(null);
+    
+    try {
+      const dragData = JSON.parse(e.dataTransfer.getData('application/json'));
+      
+      if (dragData.type === 'multiple-assets') {
+        const validAssets = dragData.assets.filter(asset => {
+          if (asset.assetType === 'folder' && path.startsWith(asset.path)) {
+            console.warn(`Cannot move folder ${asset.name} into itself or its children`);
+            return false;
+          }
+          return asset.path !== path;
+        });
+        
+        if (validAssets.length > 0) {
+          handleMoveMultipleItems(validAssets, path);
+        }
+      } else if (dragData.type === 'asset' && dragData.path !== path) {
+        if (dragData.assetType === 'folder' && path.startsWith(dragData.path)) {
+          console.warn('Cannot move folder into itself or its children');
+          return;
+        }
+        handleMoveItem(dragData.path, path);
+      }
+    } catch (error) {
+      console.error('Error parsing drag data in breadcrumb:', error);
+    }
+  };
+
+  // Computed values
+  const breadcrumbs = createMemo(() => {
+    if (viewMode() !== 'folder') return [];
+    
+    const project = currentProject();
+    if (!project?.name) {
+      return [];
+    }
+    
+    const parts = currentPath() ? currentPath().split('/') : [];
+    const crumbs = [{ name: project.name, path: '' }];
+    
+    let currentBreadcrumbPath = '';
+    for (const part of parts) {
+      currentBreadcrumbPath = currentBreadcrumbPath ? `${currentBreadcrumbPath}/${part}` : part;
+      crumbs.push({ name: part, path: currentBreadcrumbPath });
+    }
+    
+    return crumbs;
+  });
+
+  const getCategoryIcon = (categoryId) => {
+    const iconMap = {
+      '3d-models': Cube,
+      'textures': Photo,
+      'audio': Wave,
+      'video': Video,
+      'scripts': Code,
+      'documents': FileText,
+      'other': File
+    };
+    return iconMap[categoryId] || File;
+  };
+
+  const categoryList = createMemo(() => {
+    const categories = assetCategories();
+    if (!categories) return [];
+    
+    return Object.entries(categories).map(([id, data]) => ({
+      id,
+      label: data.name,
+      count: data.assets ? data.assets.length : (data.files ? data.files.length : 0),
+      icon: getCategoryIcon(id)
+    }));
+  });
+
+  const filteredAssets = createMemo(() => {
+    const fileAssets = assets().filter(asset => asset.type === 'file');
+    
+    if (!searchQuery()) return fileAssets;
+    
+    if (globalSearchResults().length > 0) {
+      return globalSearchResults().filter(asset => asset.type === 'file');
+    }
+    
+    return fileAssets.filter(asset => {
+      const matchesSearch = asset.name.toLowerCase().includes(searchQuery().toLowerCase()) ||
+                           asset.fileName?.toLowerCase().includes(searchQuery().toLowerCase());
+      return matchesSearch;
+    });
+  });
+
+  // Effects
+  createEffect(() => {
+    if (viewMode() === 'type') {
+      const currentProject = projectManager.getCurrentProject();
+      if (!currentProject?.name) return;
+      
+      const categories = assetCategories();
+      if (!categories) return;
+      
+      const category = categories[selectedCategory()];
+      if (category && category.assets) {
+        setAssets(category.assets);
+        setLoading(false);
+      }
+    }
+  });
+
+  createEffect(() => {
+    const currentProject = projectManager.getCurrentProject();
+    if (!currentProject?.name) return;
+    
+    if (viewMode() === 'folder') {
+      fetchAssetsWithCache(currentProject, currentPath());
+    }
+  });
+
+  createEffect(() => {
+    const query = searchQuery();
+    if (!query || query.length < 2) {
+      setGlobalSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+    
+    const debounceTimer = setTimeout(async () => {
+      const performGlobalSearch = async () => {
+        setIsSearching(true);
+        const currentProject = projectManager.getCurrentProject();
+        if (!currentProject?.name) {
+          setIsSearching(false);
+          return;
+        }
+
+        try {
+          const results = await searchAssets(currentProject, searchQuery());
+          setGlobalSearchResults(results);
+        } catch (error) {
+          console.error('Search failed:', error);
+          setGlobalSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      };
+      
+      performGlobalSearch();
+    }, 300);
+    
+    onCleanup(() => clearTimeout(debounceTimer));
+  });
+
+  // Initialize
+  onMount(async () => {
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
+    document.addEventListener('mousemove', handleResizeMouseMove);
+    document.addEventListener('mouseup', handleResizeMouseUp);
+
+    const cleanupFileListener = addFileChangeListener(handleFileChange);
+
+    const currentProject = projectManager.getCurrentProject();
+    setCurrentProject(currentProject);
+    
+    if (currentProject?.name) {
+      try {
+        const [tree, categories] = await Promise.all([
+          fetchFolderTree(currentProject),
+          fetchAssetCategories(currentProject)
+        ]);
+        
+        batch(() => {
+          setFolderTree(tree);
+          // Also update the store to ensure proper folder expansion
+          assetsActions.setFolderTree(tree);
+          setAssetCategories(categories);
+          setLoading(false);
+        });
+
+        await fetchAssetsWithCache(currentProject, '');
+      } catch (error) {
+        console.error('Failed to load initial data:', error);
+        setError(error.message);
+        setLoading(false);
+      }
+    } else {
+      setLoading(false);
+    }
+
+    onCleanup(() => {
+      cleanupFileListener();
+    });
+  });
+
+  onCleanup(() => {
+    document.removeEventListener('keydown', handleKeyDown);
+    document.removeEventListener('mousemove', handleGlobalMouseMove);
+    document.removeEventListener('mouseup', handleGlobalMouseUp);
+    document.removeEventListener('mousemove', handleResizeMouseMove);
+    document.removeEventListener('mouseup', handleResizeMouseUp);
+  });
+
+  createEffect(() => {
+    const handleClickOutside = () => {
+      if (!isSelecting()) {
+        clearSelection();
+      }
+    };
+    
+    document.addEventListener('click', handleClickOutside);
+    
+    onCleanup(() => {
+      document.removeEventListener('click', handleClickOutside);
+    });
+  });
+
+  return (
+    <div class="h-full flex bg-base-200 no-select">
+      <AssetSidebar
+        treePanelWidth={treePanelWidth}
+        isResizing={isResizing}
+        viewMode={viewMode}
+        setViewMode={setViewMode}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        isSearching={isSearching}
+        folderTree={folderTree}
+        categoryList={categoryList}
+        selectedCategory={selectedCategory}
+        setSelectedCategory={setSelectedCategory}
+        expandedFolders={expandedFolders}
+        currentPath={currentPath}
+        dragOverTreeFolder={dragOverTreeFolder}
+        isInternalDrag={isInternalDrag}
+        error={error}
+        onFolderClick={handleFolderClick}
+        onFolderToggle={handleFolderToggle}
+        onTreeDragOver={handleTreeDragOver}
+        onTreeDragEnter={handleTreeDragEnter}
+        onTreeDragLeave={handleTreeDragLeave}
+        onTreeDrop={handleTreeDrop}
+        onResizeMouseDown={handleResizeMouseDown}
+        onRefresh={() => {
+          console.log('Manual refresh triggered via button');
+          handleFileChange({ source: 'manual-button' });
+        }}
+      />
+      
+      <div 
+        class={`flex-1 flex flex-col transition-all duration-200 relative ${
+          isDragOver() ? 'bg-primary/20 border-2 border-primary border-dashed' : 'bg-base-200'
+        }`}
+      >
+        <div class="bg-base-200 flex-shrink-0 border-b border-base-300">
+          <div class="flex items-center justify-between px-3 py-2">
+            <AssetBreadcrumbs
+              breadcrumbs={breadcrumbs}
+              viewMode={viewMode}
+              selectedCategory={selectedCategory}
+              assetCategories={assetCategories}
+              onBreadcrumbClick={handleBreadcrumbClick}
+              dragOverBreadcrumb={dragOverBreadcrumb}
+              setDragOverBreadcrumb={setDragOverBreadcrumb}
+              isInternalDrag={isInternalDrag}
+              onBreadcrumbDrop={handleBreadcrumbDrop}
+            />
+            
+            <AssetHeader
+              selectedAssets={selectedAssets}
+              filteredAssets={filteredAssets}
+              isUploading={isUploading}
+              layoutMode={layoutMode}
+              setLayoutMode={setLayoutMode}
+              onRefresh={() => {
+                console.log('Manual refresh triggered via button');
+                handleFileChange({ source: 'manual-button' });
+              }}
+            />
+          </div>
+        </div>
+        
+        <div 
+          ref={mainContentRef}
+          class="flex-1 flex flex-col p-3 overflow-y-auto overflow-x-hidden scrollbar-thin relative user-select-none"
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onContextMenu={handleContextMenu}
+          onMouseDown={startDragSelection}
+        >
+          <AssetUploadArea
+            isDragOver={isDragOver}
+            isUploading={isUploading}
+            loading={loading}
+            error={error}
+            filteredAssets={filteredAssets}
+            searchQuery={searchQuery}
+            viewMode={viewMode}
+            selectedCategory={selectedCategory}
+            assetCategories={assetCategories}
+            fileInputRef={fileInputRef}
+            folderInputRef={folderInputRef}
+            onFileInputChange={handleFileInputChange}
+            onFolderInputChange={handleFolderInputChange}
+          />
+          
+          <AssetGrid
+            layoutMode={layoutMode}
+            filteredAssets={filteredAssets}
+            assetGridRef={assetGridRef}
+            isAssetSelected={isAssetSelected}
+            hoveredItem={hoveredItem}
+            setHoveredItem={setHoveredItem}
+            toggleAssetSelection={toggleAssetSelection}
+            handleAssetDoubleClick={handleAssetDoubleClick}
+            isInternalDrag={isInternalDrag}
+            setIsInternalDrag={setIsInternalDrag}
+            selectedAssets={selectedAssets}
+            setSelectedAssets={setSelectedAssets}
+            lastSelectedAsset={lastSelectedAsset}
+            setLastSelectedAsset={setLastSelectedAsset}
+            setDragOverFolder={setDragOverFolder}
+            setDragOverTreeFolder={setDragOverTreeFolder}
+            setDragOverBreadcrumb={setDragOverBreadcrumb}
+            loadedAssets={loadedAssets}
+            preloadingAssets={preloadingAssets}
+            failedAssets={failedAssets}
+            setFailedAssets={setFailedAssets}
+            setPreloadingAssets={setPreloadingAssets}
+            setLoadedAssets={setLoadedAssets}
+            getExtensionStyle={getExtensionStyle}
+          />
+          
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept=".glb,.gltf,.obj,.fbx,.dae,.3ds,.blend,.max,.ma,.mb,.stl,.ply,.x3d,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tga,.tiff,.ico,.svg,.mp3,.wav,.ogg,.m4a,.aac,.flac,.mp4,.avi,.mov,.mkv,.webm,.wmv,.js,.jsx,.ts,.tsx,.json,.xml,.txt,.md,.css,.html,.yml,.yaml,.csv,.log,.py,.ini,.conf,.cfg,.properties"
+            onChange={handleFileInputChange}
+            style={{ display: 'none' }}
+          />
+          
+          <input
+            ref={folderInputRef}
+            type="file"
+            webkitdirectory=""
+            multiple
+            onChange={handleFolderInputChange}
+            style={{ display: 'none' }}
+          />
+          
+          <Show when={contextMenu()}>
+            <ContextMenu
+              items={contextMenu().items}
+              position={contextMenu().position}
+              onClose={() => setContextMenu(null)}
+            />
+          </Show>
+
+          <ScriptCreationDialog
+            isOpen={showScriptDialog()}
+            onClose={() => setShowScriptDialog(false)}
+            onConfirm={handleConfirmCreateScript}
+          />
+          
+          <Show when={isSelecting() && selectionRect()}>
+            <div
+              class="absolute border-2 border-primary bg-primary/10 pointer-events-none z-20"
+              style={{
+                left: `${selectionRect().x}px`,
+                top: `${selectionRect().y}px`,
+                width: `${selectionRect().width}px`,
+                height: `${selectionRect().height}px`
+              }}
+            />
+          </Show>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default AssetLibrary;

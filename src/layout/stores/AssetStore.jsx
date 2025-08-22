@@ -32,12 +32,16 @@ export const assetsActions = {
     setAssetsStore('folderTree', tree);
     setAssetsStore('folderTreeTimestamp', Date.now());
     
-    // Auto-expand root folders by default
+    // Auto-expand root folders and 'assets' folder by default
     if (tree && Array.isArray(tree)) {
       const expandedSet = new Set();
       tree.forEach(rootFolder => {
         if (rootFolder.path) {
           expandedSet.add(rootFolder.path);
+          // Also expand 'assets' folder specifically
+          if (rootFolder.path === 'assets' || rootFolder.name === 'assets') {
+            expandedSet.add(rootFolder.path);
+          }
         }
       });
       setAssetsStore('expandedFolders', expandedSet);

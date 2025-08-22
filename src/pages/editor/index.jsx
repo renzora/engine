@@ -8,7 +8,7 @@ import RendererSwitcher from '@/ui/RendererSwitcher';
 
 import Scene from './Scene.jsx';
 import SettingsComponent from './Settings.jsx';
-import AssetLibrary from './AssetLibrary.jsx';
+import AssetLibrary from './AssetLibrary';
 import { scriptEditorStore, scriptEditorActions } from '../../layout/stores/ScriptEditorStore.js';
 import { getCurrentProject } from '@/api/bridge/projects';
 import { readFile, writeFile } from '@/api/bridge/files';

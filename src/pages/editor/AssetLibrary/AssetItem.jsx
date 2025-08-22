@@ -1,0 +1,421 @@
+import { Show, createSignal, createEffect } from 'solid-js';
+import { Photo, Code, X, Check } from '@/ui/icons';
+import { generateThumbnail } from '@/api/bridge/thumbnails';
+import { getFileUrl } from '@/api/bridge/files';
+import { getCurrentProject } from '@/api/bridge/projects';
+
+const is3DModelFile = (extension) => {
+  const modelExtensions = ['.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d'];
+  return modelExtensions.includes(extension?.toLowerCase() || '');
+};
+
+const isImageFile = (extension) => {
+  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.ico', '.svg'];
+  return imageExtensions.includes(extension?.toLowerCase() || '');
+};
+
+const isScriptFile = (extension) => {
+  const scriptExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.ren'];
+  return scriptExtensions.includes(extension?.toLowerCase() || '');
+};
+
+const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
+  const [thumbnailUrl, setThumbnailUrl] = createSignal(null);
+  const [isLoading, setIsLoading] = createSignal(true);
+  const [error, setError] = createSignal(false);
+
+  createEffect(async () => {
+    const currentProject = getCurrentProject();
+    if (!currentProject?.name || !is3DModelFile(asset.extension)) return;
+
+    try {
+      setIsLoading(true);
+      
+      const assetPath = asset.name || asset.path;
+      console.log(`🎯 Requesting thumbnail for: assets/${assetPath} (original path: ${asset.path})`);
+      
+      const result = await generateThumbnail(assetPath, 512);
+      
+      if (result.success && result.thumbnail_data) {
+        setThumbnailUrl(result.thumbnail_data);
+        setError(false);
+        console.log(`Thumbnail ${result.cached ? 'loaded from cache' : 'generated'} for ${asset.name}`);
+      } else {
+        throw new Error(result.error || 'Failed to generate thumbnail');
+      }
+    } catch (err) {
+      console.error('Failed to get model thumbnail:', err);
+      setError(true);
+    } finally {
+      setIsLoading(false);
+    }
+  });
+
+  return (
+    <Show when={!isLoading()} fallback={
+      <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+        <div class="w-4 h-4 border-2 border-success border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    }>
+      <Show when={!error() && thumbnailUrl()} fallback={
+        <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+          <Photo class="w-6 h-6 text-base-content/40" />
+        </div>
+      }>
+        <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110`}>
+          <img 
+            src={thumbnailUrl()}
+            alt={asset.name}
+            class="w-full h-full object-cover"
+          />
+        </div>
+      </Show>
+    </Show>
+  );
+};
+
+const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
+  const [imageLoaded, setImageLoaded] = createSignal(false);
+  const [imageError, setImageError] = createSignal(false);
+  
+  const getAssetThumbnailUrl = (asset) => {
+    const currentProject = getCurrentProject();
+    if (!currentProject?.name) return null;
+    
+    const assetPath = asset.name || asset.path;
+    const projectPath = `projects/${currentProject.name}`;
+    const fullPath = assetPath.startsWith('assets/') 
+      ? `${projectPath}/${assetPath}`
+      : `${projectPath}/assets/${assetPath}`;
+    
+    return getFileUrl(fullPath);
+  };
+  
+  const thumbnailUrl = getAssetThumbnailUrl(asset);
+  
+  if (!thumbnailUrl) {
+    return (
+      <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+        <Photo class="w-6 h-6 text-success" />
+      </div>
+    );
+  }
+  
+  return (
+    <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
+      <Show when={!imageError()} fallback={
+        <div class="w-full h-full flex items-center justify-center">
+          <Photo class="w-6 h-6 text-success" />
+        </div>
+      }>
+        <img 
+          src={thumbnailUrl}
+          alt={asset.name}
+          class={`w-full h-full object-cover transition-opacity duration-200 ${
+            imageLoaded() ? 'opacity-100' : 'opacity-0'
+          }`}
+          onLoad={() => setImageLoaded(true)}
+          onError={() => {
+            setImageError(true);
+            setImageLoaded(false);
+          }}
+        />
+        <Show when={!imageLoaded()}>
+          <div class="absolute inset-0 bg-base-300 flex items-center justify-center">
+            <div class="w-4 h-4 border-2 border-success border-t-transparent rounded-full animate-spin"></div>
+          </div>
+        </Show>
+      </Show>
+    </div>
+  );
+};
+
+function AssetItem({
+  asset,
+  index,
+  layoutMode,
+  isAssetSelected,
+  hoveredItem,
+  setHoveredItem,
+  toggleAssetSelection,
+  handleAssetDoubleClick,
+  isInternalDrag,
+  setIsInternalDrag,
+  selectedAssets,
+  setSelectedAssets,
+  lastSelectedAsset,
+  setLastSelectedAsset,
+  filteredAssets,
+  setDragOverFolder,
+  setDragOverTreeFolder,
+  setDragOverBreadcrumb,
+  loadedAssets,
+  preloadingAssets,
+  failedAssets,
+  setFailedAssets,
+  setPreloadingAssets,
+  setLoadedAssets,
+  getExtensionStyle
+}) {
+  const getAssetCategory = (extension) => {
+    const ext = extension?.toLowerCase() || '';
+    if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) return '3d-models';
+    if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) return 'textures';
+    if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) return 'audio';
+    if (['.js', '.jsx', '.ts', '.tsx', '.py', '.ren'].includes(ext)) return 'scripts';
+    return 'misc';
+  };
+
+  const startDrag = (e, asset) => {
+    setIsInternalDrag(true);
+    
+    if (!isAssetSelected(asset.id)) {
+      setSelectedAssets(new Set([asset.id]));
+      setLastSelectedAsset(asset);
+    }
+    
+    const selectedAssetIds = Array.from(selectedAssets());
+    const allAssets = filteredAssets();
+    const selectedAssetObjects = allAssets.filter(a => selectedAssetIds.includes(a.id));
+    
+    const dragData = {
+      type: selectedAssetObjects.length > 1 ? 'multiple-assets' : 'asset',
+      assets: selectedAssetObjects.map(a => ({
+        id: a.id,
+        name: a.name,
+        path: a.path,
+        assetType: a.type,
+        fileName: a.fileName,
+        extension: a.extension,
+        mimeType: a.mimeType,
+        category: getAssetCategory(a.extension),
+        fileType: getAssetCategory(a.extension) === 'scripts' ? 'script' : getAssetCategory(a.extension)
+      })),
+      ...(selectedAssetObjects.length === 1 ? {
+        id: asset.id,
+        name: asset.name,
+        path: asset.path,
+        assetType: asset.type,
+        fileName: asset.fileName,
+        extension: asset.extension,
+        mimeType: asset.mimeType,
+        category: getAssetCategory(asset.extension),
+        fileType: getAssetCategory(asset.extension) === 'scripts' ? 'script' : getAssetCategory(asset.extension)
+      } : {})
+    };
+    
+    e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+    e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
+    e.dataTransfer.effectAllowed = 'move';
+    
+    if (selectedAssetObjects.length > 1) {
+      const dragImage = document.createElement('div');
+      dragImage.className = 'fixed top-[-1000px] bg-primary text-primary-content px-3 py-2 rounded-lg font-medium shadow-lg';
+      dragImage.textContent = `Moving ${selectedAssetObjects.length} files`;
+      document.body.appendChild(dragImage);
+      e.dataTransfer.setDragImage(dragImage, 50, 25);
+      setTimeout(() => document.body.removeChild(dragImage), 0);
+    }
+  };
+
+  if (layoutMode() === 'list') {
+    return (
+      <div
+        class={`group cursor-pointer transition-all duration-200 p-2 flex items-center gap-3 ${
+          isAssetSelected(asset.id)
+            ? 'bg-primary/20 border-l-2 border-primary hover:bg-primary/30'
+            : typeof index === 'function' && index() % 2 === 0 
+              ? 'bg-base-200/50 hover:bg-base-300/50' 
+              : 'bg-base-300/30 hover:bg-base-300/50'
+        }`}
+        data-asset-id={asset.id}
+        draggable={true}
+        onMouseEnter={() => setHoveredItem(asset.id)}
+        onMouseLeave={() => setHoveredItem(null)}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleAssetSelection(asset, e.ctrlKey || e.metaKey, e.shiftKey);
+        }}
+        onDblClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          handleAssetDoubleClick(asset);
+        }}
+        onDragStart={(e) => startDrag(e, asset)}
+        onDragEnd={() => {
+          setIsInternalDrag(false);
+          setDragOverFolder(null);
+          setDragOverTreeFolder(null);
+          setDragOverBreadcrumb(null);
+        }}
+      >
+        <div class="w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
+          <Show when={is3DModelFile(asset.extension)} fallback={
+            <Show when={isImageFile(asset.extension)} fallback={
+              <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center ${
+                  loadedAssets().includes(asset.id) 
+                    ? 'opacity-100' 
+                    : failedAssets().includes(asset.id) 
+                      ? 'opacity-40 grayscale' 
+                      : 'opacity-60'
+                }`}>
+                {isScriptFile(asset.extension) ? (
+                  <Code class="w-5 h-5 text-primary" />
+                ) : (
+                  <Photo class="w-5 h-5 text-base-content/60" />
+                )}
+              </div>
+            }>
+              <ImageThumbnail asset={asset} />
+            </Show>
+          }>
+            <ModelThumbnail asset={asset} />
+          </Show>
+
+          <div class="absolute -bottom-1 -right-1">
+            <Show when={preloadingAssets().includes(asset.id)}>
+              <div class="w-3 h-3 bg-warning rounded-full flex items-center justify-center">
+                <div class="w-1.5 h-1.5 border border-white border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            </Show>
+            <Show when={failedAssets().includes(asset.id)}>
+              <div class="w-3 h-3 bg-error rounded-full flex items-center justify-center">
+                <X class="w-2 h-2 text-white" />
+              </div>
+            </Show>
+            <Show when={loadedAssets().includes(asset.id)}>
+              <div class="w-3 h-3 bg-success rounded-full flex items-center justify-center">
+                <Check class="w-2 h-2 text-white" />
+              </div>
+            </Show>
+          </div>
+        </div>
+        
+        <div class="flex-1 min-w-0">
+          <div class="text-sm text-base-content/70 group-hover:text-base-content transition-colors truncate">
+            {asset.name}
+          </div>
+          <div class="text-xs text-base-content/50 truncate">
+            {asset.extension?.toUpperCase()} • {asset.size ? `${Math.round(asset.size / 1024)} KB` : 'Unknown size'}
+          </div>
+        </div>
+
+        <Show when={asset.extension}>
+          {(() => {
+            const style = getExtensionStyle(asset.extension);
+            return (
+              <div class="flex-shrink-0">
+                <div class={`${style.bgColor} ${style.textColor} text-xs font-bold px-2 py-1 rounded-full flex items-center transition-colors ${style.hoverColor} ${style.icon ? 'gap-1' : ''} shadow-sm`}>
+                  {style.icon}
+                  <span>{asset.extension.replace('.', '').toUpperCase()}</span>
+                </div>
+              </div>
+            );
+          })()}
+        </Show>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      class={`group cursor-pointer transition-all duration-200 p-2 rounded-lg hover:bg-base-300/30 ${
+        isAssetSelected(asset.id) ? 'bg-primary/20 ring-2 ring-primary/50' : ''
+      }`}
+      data-asset-id={asset.id}
+      draggable={true}
+      onMouseEnter={() => setHoveredItem(asset.id)}
+      onMouseLeave={() => setHoveredItem(null)}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        if (failedAssets().includes(asset.id)) {
+          setFailedAssets(prev => prev.filter(id => id !== asset.id));
+          setPreloadingAssets(prev => [...prev, asset.id]);
+          setTimeout(() => {
+            setPreloadingAssets(prev => prev.filter(id => id !== asset.id));
+            setLoadedAssets(prev => [...prev, asset.id]);
+          }, 1000);
+        } else {
+          toggleAssetSelection(asset, e.ctrlKey || e.metaKey, e.shiftKey);
+        }
+      }}
+      onDblClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleAssetDoubleClick(asset);
+      }}
+      onDragStart={(e) => startDrag(e, asset)}
+      onDragEnd={() => {
+        setIsInternalDrag(false);
+        setDragOverFolder(null);
+        setDragOverTreeFolder(null);
+        setDragOverBreadcrumb(null);
+      }}
+    >
+      <div class="relative">
+        <div class="w-full aspect-square mb-2 flex items-center justify-center relative">
+          <Show when={is3DModelFile(asset.extension)} fallback={
+            <Show when={isImageFile(asset.extension)} fallback={
+              <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-105 ${
+                  loadedAssets().includes(asset.id) 
+                    ? 'opacity-100' 
+                    : failedAssets().includes(asset.id) 
+                      ? 'opacity-40 grayscale' 
+                      : 'opacity-60'
+                }`}>
+                {isScriptFile(asset.extension) ? (
+                  <Code class="w-8 h-8 text-primary" />
+                ) : (
+                  <Photo class="w-8 h-8 text-base-content/60" />
+                )}
+              </div>
+            }>
+              <ImageThumbnail asset={asset} />
+            </Show>
+          }>
+            <ModelThumbnail asset={asset} />
+          </Show>
+          
+          <Show when={asset.extension}>
+            {(() => {
+              const style = getExtensionStyle(asset.extension);
+              return (
+                <div class={`absolute top-0 right-0 ${style.bgColor} ${style.textColor} text-xs font-bold px-2 py-1 rounded-full text-center leading-none flex items-center transition-colors ${style.hoverColor} ${style.icon ? 'gap-1' : ''} shadow-sm`}>
+                  {style.icon}
+                  <span>{asset.extension.replace('.', '').toUpperCase()}</span>
+                </div>
+              );
+            })()}
+          </Show>
+
+          <div class="absolute -bottom-1 -right-1">
+            <Show when={preloadingAssets().includes(asset.id)}>
+              <div class="w-6 h-6 bg-warning rounded-full flex items-center justify-center">
+                <div class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            </Show>
+            <Show when={failedAssets().includes(asset.id)}>
+              <div class="w-6 h-6 bg-error rounded-full flex items-center justify-center" title={`Failed to load ${asset.name}`}>
+                <X class="w-3 h-3 text-white" />
+              </div>
+            </Show>
+            <Show when={loadedAssets().includes(asset.id)}>
+              <div class="w-6 h-6 bg-success rounded-full flex items-center justify-center">
+                <Check class="w-3 h-3 text-white" />
+              </div>
+            </Show>
+          </div>
+        </div>
+      </div>
+      
+      <div class="text-xs text-base-content/70 group-hover:text-base-content transition-colors truncate text-center leading-tight" title={asset.name}>
+        {asset.name}
+      </div>
+    </div>
+  );
+}
+
+export default AssetItem;
