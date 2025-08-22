@@ -9,7 +9,6 @@ import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/
 import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { modelThumbnailGenerator } from '@/render/babylonjs/utils/modelThumbnailGenerator';
-import { scriptEditorActions } from '@/layout/stores/ScriptEditorStore.js';
 
 const getProjectManager = () => {
   return {
@@ -1784,11 +1783,8 @@ export default Script;
       console.log('Asset path:', asset.path);
       console.log('File name:', fileName);
       
-      // Open in script editor
-      scriptEditorActions.openScript(asset.path, fileName);
-      
-      // Switch to script editor tab (this will be handled by the tab visibility)
-      console.log('Opening RenScript file in editor:', fileName);
+      // Script editor functionality removed
+      console.log('Script editor has been removed. Cannot open:', fileName);
     } else {
       // Handle other file types (could expand this later)
       console.log('Double-clicked on:', asset.name, 'Type:', asset.extension);

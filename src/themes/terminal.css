@@ -57,7 +57,7 @@
 }
 
 [data-theme="terminal"] * {
-  font-family: 'Courier New', 'Monaco', 'Menlo', monospace !important;
+  font-family: 'Courier New', 'Menlo', monospace !important;
   letter-spacing: 0.05em;
 }
 

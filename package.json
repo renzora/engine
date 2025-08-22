@@ -24,10 +24,8 @@
     "@babylonjs/post-processes": "^8.20.0",
     "@babylonjs/procedural-textures": "^8.20.0",
     "@babylonjs/serializers": "^8.20.0",
-    "@monaco-editor/react": "^4.7.0",
     "@tabler/icons-solidjs": "^3.34.1",
     "daisyui": "^5.0.50",
-    "monaco-editor": "^0.52.2",
     "solid-js": "^1.9.7",
     "stats.js": "^0.17.0"
   },
