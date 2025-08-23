@@ -1088,13 +1088,6 @@ function AssetLibrary({ onContextMenu }) {
     
     currentPos.x = Math.max(0, Math.min(currentPos.x, containerRect.width));
     currentPos.y = Math.max(0, Math.min(currentPos.y, containerRect.height));
-  
-    const scrollTop = mainContentRef.scrollTop;
-    const scrollHeight = mainContentRef.scrollHeight;
-    const adjustedY = currentPos.y + scrollTop;
-    const constrainedY = Math.max(0, Math.min(adjustedY, scrollHeight - 12));
-  
-    currentPos.y = constrainedY - scrollTop;
     
     setSelectionEnd(currentPos);
     
@@ -1595,7 +1588,7 @@ function AssetLibrary({ onContextMenu }) {
   });
 
   return (
-    <div class="h-full flex bg-base-200 no-select">
+    <div class="h-full flex bg-base-200 no-select overflow-hidden">
       <AssetSidebar
         treePanelWidth={treePanelWidth}
         isResizing={isResizing}
@@ -1627,7 +1620,7 @@ function AssetLibrary({ onContextMenu }) {
       />
       
       <div 
-        class={`flex-1 flex flex-col transition-all duration-200 relative ${
+        class={`flex-1 flex flex-col transition-all duration-200 relative overflow-hidden ${
           isDragOver() ? 'bg-primary/20 border-2 border-primary border-dashed' : 'bg-base-200'
         }`}
       >
@@ -1661,7 +1654,7 @@ function AssetLibrary({ onContextMenu }) {
           </div>
         </div>
         
-        <div class="flex-1 flex">
+        <div class="flex-1 flex overflow-hidden">
           {/* Show Assets Panel when code editor is closed */}
           <Show when={!isCodeEditorOpen()}>
             <div 
@@ -1716,6 +1709,18 @@ function AssetLibrary({ onContextMenu }) {
                 setLoadedAssets={setLoadedAssets}
                 getExtensionStyle={getExtensionStyle}
               />
+              
+              <Show when={isSelecting() && selectionRect()}>
+                <div
+                  class="absolute border-2 border-primary bg-primary/10 pointer-events-none z-20"
+                  style={{
+                    left: `${selectionRect().x}px`,
+                    top: `${selectionRect().y}px`,
+                    width: `${selectionRect().width}px`,
+                    height: `${selectionRect().height}px`
+                  }}
+                />
+              </Show>
             </div>
           </Show>
           
@@ -1764,17 +1769,6 @@ function AssetLibrary({ onContextMenu }) {
           onConfirm={handleConfirmCreateScript}
         />
         
-        <Show when={isSelecting() && selectionRect()}>
-          <div
-            class="absolute border-2 border-primary bg-primary/10 pointer-events-none z-20"
-            style={{
-              left: `${selectionRect().x}px`,
-              top: `${selectionRect().y}px`,
-              width: `${selectionRect().width}px`,
-              height: `${selectionRect().height}px`
-            }}
-          />
-        </Show>
       </div>
     </div>
   );

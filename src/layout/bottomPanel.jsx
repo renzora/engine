@@ -161,8 +161,8 @@ const BottomPanel = () => {
               })()}
             </Match>
             <Match when={true}>
-              <div class="p-4 text-base-content/60">
-                No content available for tab: {currentActiveTab()}
+              <div class="p-4 text-red-500 font-bold text-xl">
+                🔥 HMR TEST: No content available for tab: {currentActiveTab()}
               </div>
             </Match>
           </Switch>

@@ -101,6 +101,7 @@ export function useCameraController(camera, canvas, scene) {
       return;
     }
 
+    // Only prevent default and handle the event if we should allow camera movement
     event.preventDefault();
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
