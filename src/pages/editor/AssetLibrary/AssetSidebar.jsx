@@ -35,7 +35,8 @@ function AssetSidebar({
       style={{ width: `${treePanelWidth()}px` }}
     >
       <div
-        class={`absolute right-0 top-0 bottom-0 w-0.5 resize-handle cursor-col-resize ${isResizing() ? 'dragging' : ''}`}
+        class={`absolute right-0 top-0 bottom-0 w-1 resize-handle cursor-col-resize hover:bg-primary/50 ${isResizing() ? 'dragging' : ''}`}
+        style={{ 'z-index': 1000000 }}
         onMouseDown={onResizeMouseDown}
       />
       <div class="px-2 py-2 border-b border-base-300">

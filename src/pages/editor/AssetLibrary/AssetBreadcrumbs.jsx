@@ -41,6 +41,8 @@ function AssetBreadcrumbs({
     }
   };
 
+  console.log('🟡 AssetBreadcrumbs render - breadcrumbs:', breadcrumbs?.(), 'viewMode:', viewMode?.());
+  
   return (
     <div class="flex items-center text-xs">
       <Show when={viewMode() === 'folder' && breadcrumbs().length > 0} fallback={

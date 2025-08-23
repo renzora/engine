@@ -53,7 +53,7 @@ function FileTree({
   return (
     <div class="select-none relative">
       <div
-        class={`flex items-center py-1 px-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${ 
+        class={`flex items-center py-1 pr-8 text-xs cursor-pointer transition-colors relative overflow-hidden ${ 
           dragOverTreeFolder() === node.path 
             ? 'bg-primary/30 border-2 border-primary border-dashed rounded'
             : isSelected() 
@@ -109,9 +109,9 @@ function FileTree({
         }`} />
         <span class="flex-1 text-base-content/80 truncate">{node.name}</span>
         <Show when={node.files && node.files.length > 0}>
-          <span class={`ml-auto text-[10px] px-1.5 py-0.5 rounded-full ${
+          <span class={`absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 rounded-full ${
             isSelected() 
-              ? 'text-primary-content bg-primary' 
+              ? 'text-primary-content bg-primary-content/20' 
               : 'text-base-content/60 bg-base-300'
           }`}>
             {node.files.length}

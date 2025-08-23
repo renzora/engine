@@ -39,7 +39,7 @@ function AssetLibrary({ onContextMenu }) {
   const [assetCategories, setAssetCategories] = createSignal(null);
   const expandedFolders = () => assetsStore.expandedFolders;
   const toggleFolderExpansion = (folderPath) => assetsActions.toggleFolderExpansion(folderPath);
-  const [loading, setLoading] = createSignal(true);
+  const [loading, setLoading] = createSignal(false); // Start with false, only set true for initial load
   const [error, setError] = createSignal(null);
   const [loadedAssets, setLoadedAssets] = createSignal([]);
   const [preloadingAssets, setPreloadingAssets] = createSignal([]);
@@ -279,30 +279,40 @@ function AssetLibrary({ onContextMenu }) {
 
   const fetchFolderTree = async (currentProject) => {
     try {
+      console.log('🌳 fetchFolderTree called with project:', currentProject);
+      
       const projects = await getProjects();
+      console.log('🌳 All projects:', projects);
+      
       const currentProjectData = projects.find(p => p.name === currentProject.name);
+      console.log('🌳 Current project data:', currentProjectData);
       
       if (currentProjectData && currentProjectData.files && currentProjectData.files.length > 0) {
         const tree = buildTreeFromAssets(currentProjectData.files, currentProject.name);
+        console.log('🌳 Built tree from assets:', tree);
         return tree;
       }
       
+      console.log('🌳 No files in project data, using listDirectory');
       const projectFiles = await listDirectory(`projects/${currentProject.name}`);
+      console.log('🌳 Project files from listDirectory:', projectFiles);
       
-      const buildNestedTree = async (items, basePath = '') => {
+      const buildNestedTree = async (items, parentPath = '') => {
         const tree = [];
         
         for (const item of items.filter(i => i.is_directory)) {
-          const folderPath = basePath ? `${basePath}/${item.path}` : item.path;
+          // Build the correct full path for this folder
+          const fullPath = parentPath ? `${parentPath}/${item.name}` : item.name;
           
           try {
-            const subItems = await listDirectory(`projects/${currentProject.name}/${item.path}`);
-            const children = await buildNestedTree(subItems, basePath);
+            const subItems = await listDirectory(`projects/${currentProject.name}/${fullPath}`);
+            const children = await buildNestedTree(subItems, fullPath);
             const files = subItems.filter(subItem => !subItem.is_directory);
             
+            console.log('🔵 Building tree node - name:', item.name, 'path:', fullPath);
             tree.push({
               name: item.name,
-              path: item.path,
+              path: fullPath,
               type: 'folder',
               children: children,
               files: files
@@ -310,7 +320,7 @@ function AssetLibrary({ onContextMenu }) {
           } catch (err) {
             tree.push({
               name: item.name,
-              path: item.path,
+              path: fullPath,
               type: 'folder',
               children: [],
               files: []
@@ -322,10 +332,11 @@ function AssetLibrary({ onContextMenu }) {
       };
       
       const nestedTree = await buildNestedTree(projectFiles);
+      console.log('🌳 Final nested tree:', nestedTree);
       return nestedTree;
       
     } catch (error) {
-      console.error('Bridge API failed:', error);
+      console.error('🌳 Bridge API failed in fetchFolderTree:', error);
       return [];
     }
   };
@@ -521,16 +532,18 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   // Asset fetching and caching
-  const fetchAssetsWithCache = async (currentProject, path = '') => {
-    const cachedAssets = assetsActions.getAssetsForPath(path || currentPath());
+  const fetchAssetsWithCache = async (currentProject, path = '', forceRefresh = false, showLoading = true) => {
+    const cachedAssets = !forceRefresh ? assetsActions.getAssetsForPath(path || currentPath()) : null;
     if (cachedAssets) {
       setAssets(cachedAssets);
-      setLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
+      // Only show loading for initial load or manual navigation
+      if (showLoading) {
+        setLoading(true);
+      }
       setError(null);
       const assetsList = await fetchAssets(currentProject, path);
       
@@ -541,8 +554,170 @@ function AssetLibrary({ onContextMenu }) {
       setError(error.message);
       setAssets([]);
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
+  };
+
+  // Incremental file change handler
+  const handleIncrementalFileChanges = async (currentProject, changes) => {
+    console.log('📝 Processing incremental file changes:', changes);
+    
+    const currentAssets = [...assets()];
+    let updatedAssets = currentAssets;
+    let needsFolderTreeUpdate = false;
+    
+    // Process all changes
+    for (const change of changes) {
+      const { event_type, paths } = change;
+      
+      for (const filePath of paths) {
+        // Remove project prefix from path
+        const relativePath = filePath.replace(`${currentProject.name}/`, '').replace(`${currentProject.name}\\`, '');
+        
+        // Check if this change affects the current directory
+        const pathParts = relativePath.split(/[/\\]/);
+        const fileName = pathParts.pop();
+        const parentPath = pathParts.join('/');
+        
+        // Process changes in current directory
+        if (parentPath === currentPath()) {
+          console.log(`📝 Processing ${event_type} for ${fileName} in current directory`);
+          
+          if (event_type === 'create') {
+            // Check if file already exists in list
+            const existingIndex = updatedAssets.findIndex(a => a.name === fileName);
+            if (existingIndex === -1) {
+              // Determine if it's a file or folder by checking extension
+              const hasExtension = fileName.includes('.');
+              const newAsset = {
+                id: relativePath,
+                name: fileName,
+                path: relativePath,
+                type: hasExtension ? 'file' : 'folder',
+                extension: hasExtension ? '.' + fileName.split('.').pop() : null,
+                size: 0,
+                fileName: fileName
+              };
+              updatedAssets = [...updatedAssets, newAsset];
+              console.log('📝 Added new asset:', newAsset);
+            }
+            
+          } else if (event_type === 'delete' || event_type === 'remove') {
+            // Remove the file from the list
+            updatedAssets = updatedAssets.filter(a => a.name !== fileName);
+            console.log('📝 Removed asset:', fileName);
+            
+          } else if (event_type === 'modify') {
+            // For modifications, update the size or other metadata if needed
+            const assetIndex = updatedAssets.findIndex(a => a.name === fileName);
+            if (assetIndex !== -1) {
+              // Just trigger a re-render by creating a new object
+              updatedAssets = [
+                ...updatedAssets.slice(0, assetIndex),
+                { ...updatedAssets[assetIndex] },
+                ...updatedAssets.slice(assetIndex + 1)
+              ];
+              console.log('📝 Modified asset:', fileName);
+            }
+          }
+        }
+        
+        // Always update folder tree for any file changes to update counts
+        needsFolderTreeUpdate = true;
+      }
+    }
+    
+    // Update the assets list with the changes
+    setAssets(updatedAssets);
+    
+    // Update cache with new asset list
+    assetsActions.setAssetsForPath(currentPath(), updatedAssets);
+    
+    // Update folder tree to reflect new file counts
+    if (needsFolderTreeUpdate) {
+      console.log('📝 Updating folder tree to refresh file counts');
+      // Pass the affected paths for targeted updates
+      const affectedPaths = [...new Set(changes.flatMap(c => 
+        c.paths.map(p => {
+          const relativePath = p.replace(`${currentProject.name}/`, '').replace(`${currentProject.name}\\`, '');
+          const pathParts = relativePath.split(/[/\\]/);
+          pathParts.pop(); // Remove filename
+          return pathParts.join('/');
+        })
+      ))];
+      await updateFolderTreeIncrementally(currentProject, affectedPaths);
+    }
+  };
+  
+  // Update folder tree without full reload
+  const updateFolderTreeIncrementally = async (currentProject, affectedPaths = []) => {
+    try {
+      // For immediate UI update, we can update the tree locally
+      const currentTree = folderTree();
+      
+      if (currentTree) {
+        // Always update file counts when we have a tree
+        console.log('📊 Updating folder tree file counts');
+        const updatedTree = await updateTreeFileCounts(currentTree, currentProject);
+        
+        batch(() => {
+          setFolderTree(updatedTree);
+          assetsActions.setFolderTree(updatedTree);
+        });
+      } else {
+        // Fallback to fetching new tree if we don't have one
+        console.log('📊 Fetching new folder tree');
+        const newTree = await fetchFolderTree(currentProject);
+        
+        batch(() => {
+          setFolderTree(newTree);
+          assetsActions.setFolderTree(newTree);
+        });
+      }
+    } catch (error) {
+      console.error('Failed to update folder tree:', error);
+    }
+  };
+  
+  // Helper to update file counts in tree
+  const updateTreeFileCounts = async (tree, currentProject) => {
+    console.log('🔢 Updating tree file counts, current tree:', tree);
+    if (!tree || !Array.isArray(tree)) return tree;
+    
+    const updateNode = async (node) => {
+      if (!node) return node;
+      
+      // Fetch current files for this folder
+      try {
+        const dirPath = node.path 
+          ? `projects/${currentProject.name}/${node.path}` 
+          : `projects/${currentProject.name}`;
+        
+        console.log('🔢 Fetching files for:', dirPath);
+        const items = await listDirectory(dirPath);
+        const files = items.filter(item => !item.is_directory);
+        console.log(`🔢 Folder ${node.name} has ${files.length} files (was ${node.files?.length || 0})`);
+        
+        // Update the node with new file list
+        const updatedNode = {
+          ...node,
+          files: files,
+          children: node.children ? await Promise.all(node.children.map(child => updateNode(child))) : []
+        };
+        
+        return updatedNode;
+      } catch (error) {
+        console.error(`Failed to update file count for ${node.path}:`, error);
+        return node;
+      }
+    };
+    
+    // Update all root nodes
+    const updatedTree = await Promise.all(tree.map(node => updateNode(node)));
+    console.log('🔢 Updated tree:', updatedTree);
+    return updatedTree;
   };
 
   // Event handlers
@@ -560,23 +735,34 @@ function AssetLibrary({ onContextMenu }) {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject?.name) return;
     
+    // For manual refresh, do a full refresh but don't show loading
     if (changeData.source === 'manual-button') {
       assetsActions.clearAllAssetCache();
+      await Promise.all([
+        fetchAssetsWithCache(currentProject, currentPath(), true, false), // Don't show loading
+        updateFolderTreeIncrementally(currentProject),
+        (async () => {
+          const categories = await fetchAssetCategories(currentProject);
+          setAssetCategories(categories);
+        })()
+      ]);
+      return;
     }
     
-    await Promise.all([
-      fetchAssetsWithCache(currentProject, currentPath()),
-      (async () => {
-        const tree = await fetchFolderTree(currentProject);
-        setFolderTree(tree);
-        // Also update the store to ensure proper folder expansion
-        assetsActions.setFolderTree(tree);
-      })(),
-      (async () => {
-        const categories = await fetchAssetCategories(currentProject);
-        setAssetCategories(categories);
-      })()
-    ]);
+    // For SSE file changes, do incremental updates
+    if (changeData.changes && Array.isArray(changeData.changes)) {
+      await handleIncrementalFileChanges(currentProject, changeData.changes);
+    } else {
+      // Fallback: refresh current directory and update tree
+      console.log('📡 Fallback: Refreshing due to file change without details');
+      assetsActions.invalidateAssetPaths([currentPath()]);
+      
+      // Refresh assets and tree in parallel
+      await Promise.all([
+        fetchAssetsWithCache(currentProject, currentPath(), true, false), // Force refresh, no loading
+        updateFolderTreeIncrementally(currentProject)
+      ]);
+    }
   };
 
   const handleResizeMouseDown = (e) => {
@@ -813,17 +999,30 @@ function AssetLibrary({ onContextMenu }) {
     }
   };
 
-  const handleFolderClick = (folderPath) => {
-    console.log('Folder clicked:', folderPath);
+  const handleFolderClick = async (folderPath) => {
+    console.log('🔴 Folder clicked:', folderPath);
     setCurrentPath(folderPath);
+    
+    // Immediately fetch assets for the new path without showing loading
+    const currentProject = projectManager.getCurrentProject();
+    if (currentProject?.name) {
+      await fetchAssetsWithCache(currentProject, folderPath, false, false); // No cache check, no loading
+    }
   };
 
   const handleFolderToggle = (folderPath) => {
     toggleFolderExpansion(folderPath);
   };
 
-  const handleBreadcrumbClick = (path) => {
+  const handleBreadcrumbClick = async (path) => {
+    console.log('Breadcrumb clicked:', path);
     setCurrentPath(path);
+    
+    // Immediately fetch assets for the new path without showing loading
+    const currentProject = projectManager.getCurrentProject();
+    if (currentProject?.name) {
+      await fetchAssetsWithCache(currentProject, path, false, false); // No cache check, no loading
+    }
   };
 
   const handleAssetDoubleClick = (asset) => {
@@ -1050,14 +1249,25 @@ function AssetLibrary({ onContextMenu }) {
 
   // Computed values
   const breadcrumbs = createMemo(() => {
-    if (viewMode() !== 'folder') return [];
+    console.log('🟢 Computing breadcrumbs - viewMode:', viewMode(), 'currentPath:', currentPath());
     
-    const project = currentProject();
+    if (viewMode() !== 'folder') {
+      console.log('🟢 Not folder view, returning empty');
+      return [];
+    }
+    
+    // Use projectManager directly instead of the local signal
+    const project = projectManager.getCurrentProject();
+    console.log('🟢 Project from manager:', project);
+    
     if (!project?.name) {
+      console.log('🟢 No project, returning empty');
       return [];
     }
     
     const parts = currentPath() ? currentPath().split('/') : [];
+    console.log('🟢 Path parts:', parts);
+    
     const crumbs = [{ name: project.name, path: '' }];
     
     let currentBreadcrumbPath = '';
@@ -1066,6 +1276,7 @@ function AssetLibrary({ onContextMenu }) {
       crumbs.push({ name: part, path: currentBreadcrumbPath });
     }
     
+    console.log('🟢 Final breadcrumbs:', crumbs);
     return crumbs;
   });
 
@@ -1170,6 +1381,53 @@ function AssetLibrary({ onContextMenu }) {
     onCleanup(() => clearTimeout(debounceTimer));
   });
 
+  // Function to initialize project data
+  const initializeProjectData = async (projectData) => {
+    console.log('🟠 Initializing project:', projectData);
+    
+    if (!projectData?.name) {
+      console.log('🟠 No valid project data to initialize');
+      return;
+    }
+    
+    // Only show loading if this is the first project load
+    const isFirstLoad = !currentProject()?.name;
+    if (isFirstLoad) {
+      setLoading(true);
+    }
+    
+    setCurrentProject(projectData);
+    
+    try {
+      const [tree, categories] = await Promise.all([
+        fetchFolderTree(projectData),
+        fetchAssetCategories(projectData)
+      ]);
+      
+      console.log('🌲 Folder tree fetched:', tree);
+      console.log('📂 Categories fetched:', categories);
+      
+      batch(() => {
+        setFolderTree(tree);
+        assetsActions.setFolderTree(tree);
+        setAssetCategories(categories);
+        if (isFirstLoad) {
+          setLoading(false);
+        }
+      });
+      
+      console.log('🌲 Folder tree after setting:', folderTree());
+      
+      await fetchAssetsWithCache(projectData, '', false, isFirstLoad);
+    } catch (error) {
+      console.error('Failed to load initial data:', error);
+      setError(error.message);
+      if (isFirstLoad) {
+        setLoading(false);
+      }
+    }
+  };
+
   // Initialize
   onMount(async () => {
     document.addEventListener('keydown', handleKeyDown);
@@ -1178,39 +1436,124 @@ function AssetLibrary({ onContextMenu }) {
     document.addEventListener('mousemove', handleResizeMouseMove);
     document.addEventListener('mouseup', handleResizeMouseUp);
 
-    const cleanupFileListener = addFileChangeListener(handleFileChange);
-
-    const currentProject = projectManager.getCurrentProject();
-    setCurrentProject(currentProject);
-    
-    if (currentProject?.name) {
-      try {
-        const [tree, categories] = await Promise.all([
-          fetchFolderTree(currentProject),
-          fetchAssetCategories(currentProject)
-        ]);
-        
-        batch(() => {
-          setFolderTree(tree);
-          // Also update the store to ensure proper folder expansion
-          assetsActions.setFolderTree(tree);
-          setAssetCategories(categories);
-          setLoading(false);
-        });
-
-        await fetchAssetsWithCache(currentProject, '');
-      } catch (error) {
-        console.error('Failed to load initial data:', error);
-        setError(error.message);
-        setLoading(false);
-      }
+    // File watching with SSE stream
+    if (typeof window !== 'undefined') {
+      console.log('🔄 AssetLibrary: Setting up SSE file watching');
+      
+      let eventSource = null;
+      let reconnectTimer = null;
+      let reconnectAttempts = 0;
+      const maxReconnectAttempts = 5;
+      const reconnectDelay = 2000;
+      
+      const connectSSE = () => {
+        try {
+          eventSource = new EventSource('http://localhost:3001/file-changes/stream');
+          
+          eventSource.onopen = () => {
+            console.log('📡 AssetLibrary: SSE connection opened');
+            reconnectAttempts = 0;
+          };
+          
+          eventSource.onmessage = (event) => {
+            try {
+              const data = JSON.parse(event.data);
+              console.log('📡 AssetLibrary: SSE message received:', data);
+              
+              if (data.type === 'file-changes') {
+                console.log('📡 AssetLibrary: File changes detected:', data.changes);
+                handleFileChange({ source: 'sse', changes: data.changes });
+              } else if (data.type === 'file_change') {
+                // Legacy format support
+                console.log('📡 AssetLibrary: File change detected (legacy):', data.message);
+                handleFileChange({ source: 'sse', message: data.message });
+              } else if (data.type === 'file-change') {
+                // Another possible format
+                console.log('📡 AssetLibrary: File change detected (alt format):', data);
+                handleFileChange({ source: 'sse', message: data.message || data.path });
+              } else if (data.type === 'connected') {
+                console.log('📡 AssetLibrary: SSE connected successfully');
+              } else if (data.type === 'heartbeat') {
+                // Heartbeat received - connection is alive
+              }
+            } catch (error) {
+              console.error('📡 AssetLibrary: Failed to parse SSE message:', error);
+            }
+          };
+          
+          eventSource.onerror = (error) => {
+            console.error('📡 AssetLibrary: SSE connection error:', error);
+            eventSource.close();
+            
+            if (reconnectAttempts < maxReconnectAttempts) {
+              reconnectAttempts++;
+              console.log(`📡 AssetLibrary: Reconnecting SSE... attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+              reconnectTimer = setTimeout(connectSSE, reconnectDelay);
+            } else {
+              console.error('📡 AssetLibrary: Max reconnection attempts reached, falling back to manual refresh');
+            }
+          };
+        } catch (error) {
+          console.error('📡 AssetLibrary: Failed to create SSE connection:', error);
+        }
+      };
+      
+      // Start SSE connection
+      connectSSE();
+      
+      // Manual refresh with F5 key as fallback
+      const handleKeyPress = (e) => {
+        if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+          e.preventDefault();
+          console.log('🔄 AssetLibrary: Manual refresh triggered');
+          handleFileChange({ source: 'manual' });
+        }
+      };
+      
+      document.addEventListener('keydown', handleKeyPress);
+      
+      const removeListener = addFileChangeListener(handleFileChange);
+      
+      onCleanup(() => {
+        if (eventSource) {
+          eventSource.close();
+        }
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+        }
+        document.removeEventListener('keydown', handleKeyPress);
+        removeListener();
+      });
     } else {
-      setLoading(false);
+      const removeListener = addFileChangeListener(handleFileChange);
+      onCleanup(() => {
+        removeListener();
+      });
     }
 
+    // Listen for project selection events
+    const handleProjectSelection = (event) => {
+      console.log('🟠 Project selection event received:', event.detail);
+      const projectData = projectManager.getCurrentProject();
+      initializeProjectData(projectData);
+    };
+    
+    document.addEventListener('engine:project-selected', handleProjectSelection);
+    
+    // Check if project is already selected
+    const initialProject = projectManager.getCurrentProject();
+    console.log('🟠 Initial project data in onMount:', initialProject);
+    
+    if (initialProject?.name) {
+      initializeProjectData(initialProject);
+    } else {
+      console.log('🟠 No project on mount, waiting for project selection...');
+    }
+    
     onCleanup(() => {
-      cleanupFileListener();
+      document.removeEventListener('engine:project-selected', handleProjectSelection);
     });
+
   });
 
   onCleanup(() => {
