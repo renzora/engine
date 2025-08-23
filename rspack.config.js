@@ -2,6 +2,7 @@ import { defineConfig } from '@rspack/cli'
 import { rspack } from '@rspack/core'
 import { resolve } from 'node:path'
 import fs from 'fs'
+import refresh from 'solid-refresh/babel'
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -48,6 +49,7 @@ const config = {
                   dev: process.env.NODE_ENV !== 'production'
                 }]
               ],
+              plugins: !isProduction ? [refresh] : [],
             },
           },
         ],
@@ -82,8 +84,9 @@ const config = {
       'import.meta.env.MODE': JSON.stringify(isProduction ? 'production' : 'development'),
       '__DEV__': JSON.stringify(!isProduction),
     }),
+    !isProduction && new rspack.HotModuleReplacementPlugin(),
     // Bridge server runs standalone on port 3001
-  ],
+  ].filter(Boolean),
   
   optimization: {
     splitChunks: {
@@ -135,7 +138,7 @@ if (!isProduction) {
     port: 3000,
     host: 'localhost',
     hot: true,
-    liveReload: true,
+    liveReload: false,
     historyApiFallback: true,
     static: {
       directory: resolve(import.meta.dirname, 'dist'),

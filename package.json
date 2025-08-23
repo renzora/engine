@@ -29,6 +29,7 @@
     "daisyui": "^5.0.50",
     "monaco-editor": "^0.52.2",
     "solid-js": "^1.9.7",
+    "solid-refresh": "^0.7.5",
     "stats.js": "^0.17.0"
   },
   "bin": {

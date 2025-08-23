@@ -15,6 +15,7 @@
         "daisyui": "^5.0.50",
         "monaco-editor": "^0.52.2",
         "solid-js": "^1.9.7",
+        "solid-refresh": "^0.7.5",
         "stats.js": "^0.17.0",
       },
       "devDependencies": {
@@ -900,6 +901,8 @@
     "sockjs": ["sockjs@0.3.24", "", { "dependencies": { "faye-websocket": "^0.11.3", "uuid": "^8.3.2", "websocket-driver": "^0.7.4" } }, "sha512-GJgLTZ7vYb/JtPSSZ10hsOYIvEYsjbNU+zPdIHcUaWVNUEPivzxku31865sSSud0Da0W4lEeOPlmw93zLQchuQ=="],
 
     "solid-js": ["solid-js@1.9.8", "", { "dependencies": { "csstype": "^3.1.0", "seroval": "~1.3.0", "seroval-plugins": "~1.3.0" } }, "sha512-zF9Whfqk+s8wWuyDKnE7ekl+dJburjdZq54O6X1k4XChA57uZ5FOauYAa0s4I44XkBOM3CZmPrZC0DGjH9fKjQ=="],
+
+    "solid-refresh": ["solid-refresh@0.7.5", "", { "dependencies": { "@babel/generator": "^7.23.6", "@babel/types": "^7.23.6" }, "peerDependencies": { "solid-js": "^1.3" } }, "sha512-ZYMbjWsy7IwSF3+oZCNnReiTYSyCAFRvC7oLUKxxh1wPa6/6YIWqsxa+Ma2kM4F/ypWT69B1c0fmKeZRdLueGw=="],
 
     "source-map": ["source-map@0.6.1", "", {}, "sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g=="],
 
