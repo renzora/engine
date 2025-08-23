@@ -368,7 +368,7 @@ function Toolbar(props) {
         onMouseDown={(e) => {
           if (!props.panelResize) return;
           e.preventDefault();
-          props.panelResize.handleRightResizeStart();
+          props.panelResize.handleRightResizeStart(e);
           
           const handleMouseMove = (e) => {
             e.preventDefault();

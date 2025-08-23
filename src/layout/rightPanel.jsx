@@ -33,9 +33,14 @@ const RightPanel = () => {
 
   // Panel resize functionality
   const [isResizingRight, setIsResizingRight] = createSignal(false);
+  const [rightDragOffset, setRightDragOffset] = createSignal(0);
   
-  const handleRightResizeStart = () => {
+  const handleRightResizeStart = (e) => {
     setIsResizingRight(true);
+    // The actual panel left edge (where content starts, not including toolbar)
+    const currentPanelLeft = window.innerWidth - rightPanelWidth();
+    const offset = e?.clientX ? e.clientX - currentPanelLeft : 0;
+    setRightDragOffset(offset);
   };
   
   const handleRightResizeEnd = () => {
@@ -50,10 +55,10 @@ const RightPanel = () => {
     
     let newWidth;
     if (isLeftPanel()) {
-      newWidth = e.clientX;
+      newWidth = e.clientX - rightDragOffset();
     } else {
-      // For right panel, calculate width from right edge
-      newWidth = window.innerWidth - e.clientX;
+      // Apply the drag offset so panel edge follows mouse cursor (same logic as bottom panel)
+      newWidth = window.innerWidth - (e.clientX - rightDragOffset());
       
       // If the calculated width would be less than minimum (cursor too far right)
       // Just set to minimum width
@@ -176,6 +181,11 @@ const RightPanel = () => {
                 scenePanelOpen={isScenePanelOpen()}
                 onScenePanelToggle={handleRightPanelToggle}
                 isLeftPanel={isLeftPanel()}
+                panelResize={{
+                  handleRightResizeStart,
+                  handleRightResizeMove,
+                  handleRightResizeEnd
+                }}
               />
             </div>
             
@@ -183,14 +193,37 @@ const RightPanel = () => {
               <div 
                 className={`relative w-full h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300 shadow-2xl shadow-black/30 flex flex-col pointer-events-auto no-select overflow-hidden`}
               >
-              <div className="px-3 py-2 relative">
+              <div className="px-3 py-2 relative cursor-col-resize" onMouseDown={(e) => {
+                if (!isResizingRight()) {
+                  e.preventDefault();
+                  handleRightResizeStart(e);
+                  
+                  const handleMouseMove = (moveEvent) => {
+                    moveEvent.preventDefault();
+                    handleRightResizeMove(moveEvent);
+                  };
+
+                  const handleMouseUp = (upEvent) => {
+                    upEvent.preventDefault();
+                    handleRightResizeEnd();
+                    document.removeEventListener('mousemove', handleMouseMove);
+                    document.removeEventListener('mouseup', handleMouseUp);
+                  };
+
+                  document.addEventListener('mousemove', handleMouseMove);
+                  document.addEventListener('mouseup', handleMouseUp);
+                }
+              }}>
                 <div className="text-xs text-base-content/60 uppercase tracking-wide">
                   {getTabTitle()}
                 </div>
                 
                 <div className="absolute flex items-center" style={{ top: '4px', right: '-1px' }}>
                   <button
-                    onClick={handleRightPanelToggle}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRightPanelToggle();
+                    }}
                     className="w-6 h-6 text-base-content/60 hover:text-primary transition-colors flex items-center justify-center group relative"
                     style={{ 
                       'background-color': 'oklch(var(--b2))',

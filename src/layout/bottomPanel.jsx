@@ -47,9 +47,13 @@ const BottomPanel = () => {
 
   // Panel resize functionality
   const [isResizingBottom, setIsResizingBottom] = createSignal(false);
+  const [dragOffset, setDragOffset] = createSignal(0);
   
   const handleBottomResizeStart = (e) => {
     setIsResizingBottom(true);
+    // Calculate offset between mouse and current panel edge
+    const currentPanelTop = window.innerHeight - bottomPanelHeight();
+    setDragOffset(e?.clientY ? e.clientY - currentPanelTop : 0);
   };
   
   const handleBottomResizeEnd = () => {
@@ -59,7 +63,8 @@ const BottomPanel = () => {
   const handleBottomResizeMove = (e) => {
     if (!isResizingBottom()) return;
     
-    const newHeight = window.innerHeight - e.clientY;
+    // Apply the drag offset so panel edge follows mouse cursor
+    const newHeight = window.innerHeight - (e.clientY - dragOffset());
     const clampedHeight = Math.max(100, Math.min(newHeight, window.innerHeight * 0.8));
     editorActions.setBottomPanelHeight(clampedHeight);
   };
@@ -132,6 +137,11 @@ const BottomPanel = () => {
         }}
         rightPanelWidth={rightPanelWidth()}
         isScenePanelOpen={isScenePanelOpen()}
+        panelResize={{
+          handleBottomResizeStart,
+          handleBottomResizeMove,
+          handleBottomResizeEnd
+        }}
       />
       
       <Show when={isAssetPanelOpen()}>

@@ -304,7 +304,26 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
   const currentWorkflow = getCurrentWorkflow();
 
   return (
-    <div ref={containerRef} class="h-10 bg-base-200 border-t border-base-300 border-b border-base-300 flex items-center relative z-50">
+    <div ref={containerRef} class="h-10 bg-base-200 border-t border-base-300 border-b border-base-300 flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
+        if (!panelResize) return;
+        e.preventDefault();
+        panelResize.handleBottomResizeStart(e);
+        
+        const handleMouseMove = (e) => {
+          e.preventDefault();
+          panelResize.handleBottomResizeMove(e, { isAssetPanelOpen });
+        };
+
+        const handleMouseUp = (e) => {
+          e.preventDefault();
+          panelResize.handleBottomResizeEnd();
+          document.removeEventListener('mousemove', handleMouseMove);
+          document.removeEventListener('mouseup', handleMouseUp);
+        };
+
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+      }}>
       <div ref={tabsRef} class="flex flex-1 overflow-hidden">
         <For each={visibleTabs()}>
           {(tab) => {
@@ -315,7 +334,10 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
             return (
               <button
                 draggable
-                onClick={() => handleTabClick(tab.id)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTabClick(tab.id);
+                }}
                 onDragStart={(e) => handleDragStart(e, tab)}
                 onDragOver={(e) => handleDragOver(e, tab)}
                 onDragLeave={handleDragLeave}
@@ -347,30 +369,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
           }}
         </For>
         
-        {/* Empty space that can be dragged to resize */}
-        <div 
-          class="flex-1 cursor-row-resize"
-          onMouseDown={(e) => {
-            if (!panelResize) return;
-            e.preventDefault();
-            panelResize.handleBottomResizeStart();
-            
-            const handleMouseMove = (e) => {
-              e.preventDefault();
-              panelResize.handleBottomResizeMove(e, { isAssetPanelOpen });
-            };
-
-            const handleMouseUp = (e) => {
-              e.preventDefault();
-              panelResize.handleBottomResizeEnd();
-              document.removeEventListener('mousemove', handleMouseMove);
-              document.removeEventListener('mouseup', handleMouseUp);
-            };
-
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-          }}
-        />
+        <div class="flex-1"></div>
         
         <Show when={overflowTabs().length > 0}>
           <div class="relative">
@@ -460,7 +459,8 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
         
         {/* Toggle button */}
         <button 
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation();
             const currentState = bottomPanelOpen();
             onToggleAssetPanel(!currentState);
           }}
