@@ -18,7 +18,11 @@ const ThemeSwitcher = () => {
 
   onMount(() => {
     const html = document.documentElement;
-    const theme = html.getAttribute('data-theme') || 'renzora';
+    const savedTheme = localStorage.getItem('theme');
+    const theme = savedTheme || html.getAttribute('data-theme') || 'renzora';
+    
+    // Apply the theme to the DOM
+    html.setAttribute('data-theme', theme);
     setCurrentTheme(theme);
   });
 
