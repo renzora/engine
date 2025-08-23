@@ -319,7 +319,7 @@ function Toolbar(props) {
 
 
   return (
-    <div class="relative w-12 h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300/80 shadow-2xl shadow-black/30 flex flex-col py-2 pointer-events-auto no-select">
+    <div class="relative w-12 h-full bg-base-300/85 backdrop-blur-md border-l border-l-base-content/10 border-r border-r-base-content/10 shadow-2xl shadow-black/40 flex flex-col py-2 pointer-events-auto no-select">
       <div class="flex flex-col space-y-1 px-1">
         <For each={tools()}>
           {(tool) => {

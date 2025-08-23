@@ -145,7 +145,7 @@ const BottomPanel = () => {
       />
       
       <Show when={isAssetPanelOpen()}>
-        <div class="flex-1 bg-base-200 overflow-hidden" style={{ height: `${getPanelHeight() - 40}px` }}>
+        <div class="flex-1 bg-base-200/90 backdrop-blur-sm overflow-hidden border-t border-base-content/10" style={{ height: `${getPanelHeight() - 40}px` }}>
           <Switch>
             <Match when={currentActiveTab() === 'assets'}>
               <AssetLibrary onContextMenu={handleContextMenu} />

@@ -18,13 +18,11 @@ const ViewportTabs = () => {
 
   // Combine built-in and plugin viewport types
   const availableViewportTypes = createMemo(() => {
-    const SceneIcon = () => <div class="text-lg">🎬</div>;
-    
     const builtInTypes = [
       {
         id: '3d-viewport',
         label: 'New Scene',
-        icon: SceneIcon,
+        icon: Grid3x3,
         description: 'Create a new 3D scene viewport'
       },
       {
@@ -44,6 +42,10 @@ const ViewportTabs = () => {
       const viewportType = availableViewportTypes().find(v => v.id === type);
       if (viewportType && viewportType.icon && typeof viewportType.icon === 'function') {
         return viewportType.icon;
+      }
+      // Return proper icon for 3d-viewport
+      if (type === '3d-viewport') {
+        return Grid3x3;
       }
       return FileText;
     } catch (error) {
@@ -190,8 +192,8 @@ const ViewportTabs = () => {
 
   return (
     <>
-      <div className="flex items-center h-8 bg-base-200/95 border-b border-base-300">
-        <div className="flex items-center min-w-0 flex-1 overflow-x-auto">
+      <div className="flex items-stretch h-8 bg-base-200/95 border-b border-base-content/10 shadow-sm overflow-hidden">
+        <div className="flex items-center min-w-0 flex-1 overflow-x-hidden">
           <For each={tabs()}>
             {(tab) => {
               const Icon = getViewportIcon(tab.type);
@@ -200,7 +202,7 @@ const ViewportTabs = () => {
               return (
                 <div
                   classList={{
-                    'group flex items-center gap-2 px-3 py-1 border-r border-gray-700 cursor-pointer transition-all select-none min-w-0 max-w-48 flex-shrink-0': true,
+                    'group flex items-center gap-2 px-3 py-1 border-r border-gray-700 cursor-pointer transition-all select-none min-w-0 max-w-48 flex-shrink-0 h-full': true,
                     'bg-primary/20 border-b-2 border-b-primary text-primary': isActive(),
                     'text-base-content/60 hover:text-base-content hover:bg-base-300': !isActive()
                   }}
@@ -257,7 +259,7 @@ const ViewportTabs = () => {
             }}
           </For>
 
-          <div className="relative flex-shrink-0">
+          <div className="relative flex-shrink-0 h-full bg-neutral border-r border-neutral-content/50">
             <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -267,7 +269,7 @@ const ViewportTabs = () => {
                 });
                 setIsAddDropdownOpen(!isAddDropdownOpen());
               }}
-              className="flex items-center px-3 py-1 text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors border-r border-base-300"
+              className="flex items-center px-3 text-base-content/60 hover:text-base-content hover:bg-base-300/80 hover:border-base-content/90 transition-colors h-full cursor-pointer"
               title="Add Viewport"
             >
               <Plus className="w-4 h-4" />

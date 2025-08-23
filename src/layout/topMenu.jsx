@@ -198,7 +198,7 @@ function TopMenu() {
   return (
     <>
       <div 
-        class="relative w-full h-8 bg-base-200/95 backdrop-blur-sm border-b border-base-300 flex items-center px-2"
+        class="relative w-full h-8 bg-base-300/60 backdrop-blur-md shadow-sm flex items-center px-2"
         data-tauri-drag-region
       >
         <div 

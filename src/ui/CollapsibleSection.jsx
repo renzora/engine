@@ -13,16 +13,28 @@ function CollapsibleSection({
   
   const toggle = () => setIsOpen(!isOpen())
   
+  const getDynamicHeaderStyle = (title) => {
+    const lowerTitle = title.toLowerCase()
+    if (lowerTitle.includes('script')) {
+      return 'bg-base-300/90 text-base-content border-accent/15'
+    } else if (lowerTitle.includes('transform')) {
+      return 'bg-base-300/90 text-base-content border-primary/15'
+    } else if (lowerTitle.includes('prop') || lowerTitle.includes('properties')) {
+      return 'bg-base-300/90 text-base-content border-info/15'
+    }
+    return 'bg-base-300/90 text-base-content border-secondary/15'
+  }
+  
   return (
-    <div className={`border-b border-base-300/60 ${className}`}>
+    <div className={`${className}`}>
       <button
         onClick={toggle}
         className={`
           w-full pl-2 pr-4 py-3 text-left font-semibold text-sm 
-          transition-all duration-200 flex items-center gap-2 group
+          transition-all duration-200 flex items-center gap-2 group border-b border-base-content/10
           ${isOpen() 
-            ? 'bg-base-300/50 text-base-content' 
-            : 'text-base-content/70 hover:bg-base-300/30 hover:text-base-content active:bg-base-300/60'
+            ? getDynamicHeaderStyle(title) 
+            : 'text-base-content/70 hover:bg-gradient-to-r hover:from-base-300/40 hover:to-base-200/60 hover:text-base-content active:bg-base-300/70'
           }
           ${headerClassName}
         `}
@@ -40,7 +52,7 @@ function CollapsibleSection({
       </button>
       
       <Show when={isOpen()}>
-        <div className={`bg-base-200/20 ${contentClassName}`}>
+        <div className={`${contentClassName}`}>
           {children}
         </div>
       </Show>

@@ -311,7 +311,7 @@ function Scene(props) {
         <For each={['X', 'Y', 'Z']}>
           {(axis, index) => (
             <div className="relative">
-              <span className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium bg-base-300 border-t border-l border-b border-r border-base-300 rounded-l">
+              <span className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium border-t border-l border-b border-r border-base-300 bg-base-200 rounded-l">
                 {axis}
               </span>
               <input
@@ -327,7 +327,7 @@ function Scene(props) {
                 className={`w-full text-xs p-1.5 pl-7 pr-1.5 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary ${
                   isNodeControlled(`${propertyPath}.${index()}`) 
                     ? 'border-primary bg-primary/20 text-primary' 
-                    : 'border-base-300 bg-base-200 text-base-content'
+                    : 'border-base-300 bg-secondary/10 text-base-content'
                 } border`}
                 disabled={isNodeControlled(`${propertyPath}.${index()}`)}
               />
@@ -688,7 +688,7 @@ function Scene(props) {
         </For>
       </div>
       
-      <div className="flex items-center justify-between px-2 py-1 border-t border-base-300/60 bg-gradient-to-b from-base-200/50 to-base-300/80">
+      <div className="flex items-center justify-between px-2 py-1 border-t border-base-content/5">
         <div className="flex items-center gap-1">
           <button
             onClick={handleCreateFolder}
@@ -770,13 +770,13 @@ function Scene(props) {
               return (
                 <div className="space-y-0">
                   <CollapsibleSection title="Scripts" defaultOpen={true} index={0}>
-                    <div className="p-4">
+                    <div>
                       {/* Attached Scripts List - Outside the drop zone */}
                       <Show when={objectProps.scripts && objectProps.scripts.length > 0}>
-                        <div className="mb-4 space-y-2">
+                        <div>
                           <For each={objectProps.scripts}>
                             {(script, index) => (
-                              <div className="flex items-center justify-between bg-base-200 border border-base-300 rounded-lg px-2 py-1.5 shadow-sm">
+                              <div className="flex items-center justify-between bg-base-200 border border-base-300 px-2 py-1.5 shadow-sm">
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
                                   <input
                                     type="checkbox"
@@ -857,17 +857,30 @@ function Scene(props) {
 
                       {/* Drop Zone */}
                       <div 
-                        className="min-h-[60px] bg-base-300 border-2 border-dashed border-base-300 rounded-lg p-4 text-center"
+                        className={`min-h-[60px] bg-base-200/30 text-center ${isDragOverScript() ? 'animate-pulse brightness-110' : ''}`}
                         onDragOver={(e) => {
                           e.preventDefault();
-                          e.currentTarget.classList.add('border-primary', 'bg-primary/20');
+                          // Check if it's a script file being dragged
+                          const types = Array.from(e.dataTransfer.types);
+                          if (types.includes('text/plain')) {
+                            // Assume it's valid for now - we'll validate on drop
+                            e.currentTarget.classList.add('bg-success/20');
+                            e.currentTarget.classList.remove('bg-error/20');
+                            setIsDragOverScript(true);
+                          } else {
+                            e.currentTarget.classList.add('bg-error/20');
+                            e.currentTarget.classList.remove('bg-success/20');
+                            setIsDragOverScript(true);
+                          }
                         }}
                         onDragLeave={(e) => {
-                          e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
+                          e.currentTarget.classList.remove('bg-success/20', 'bg-error/20');
+                          setIsDragOverScript(false);
                         }}
                         onDrop={async (e) => {
                           e.preventDefault();
-                          e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
+                          e.currentTarget.classList.remove('bg-success/20', 'bg-error/20');
+                          setIsDragOverScript(false);
                           
                           const droppedData = e.dataTransfer.getData('text/plain');
                           try {
@@ -911,7 +924,7 @@ function Scene(props) {
                           }
                         }}
                       >
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap-2 p-4">
                           <Code className="w-5 h-5 text-base-content/40" />
                           <div className="text-base-content/60 text-sm">drop scripts here</div>
                           <div className="text-xs text-base-content/40">.ren, .js, .jsx, .ts, .tsx</div>
@@ -922,7 +935,7 @@ function Scene(props) {
 
                   <Show when={objectProps.transform}>
                     <CollapsibleSection title="Transform" defaultOpen={true} index={1}>
-                      <div className="p-4">
+                      <div className="p-4 bg-base-100/50">
                         <Show when={objectProps.transform.position}>
                           {renderVector3Input('Position', objectProps.transform.position, 'transform.position')}
                         </Show>
@@ -1201,7 +1214,7 @@ function Scene(props) {
                                   icon={<Code className="w-4 h-4 text-secondary" />}
                                   defaultExpanded={true}
                                 >
-                                  <div className="space-y-6 p-4">
+                                  <div className="space-y-6 p-4 bg-base-100/50">
                                     <For each={properties}>
                                       {(property) => renderPropertyInput(property)}
                                     </For>

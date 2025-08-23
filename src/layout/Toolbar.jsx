@@ -655,7 +655,7 @@ function Toolbar() {
 
   return (
     <>
-      <div class="relative w-full h-10 bg-base-200/95 backdrop-blur-sm border-b border-base-300 flex items-center">
+      <div class="relative w-full h-10 bg-base-200/90 backdrop-blur-md border-b border-base-content/10 shadow-lg flex items-center">
         <div class="flex items-center h-full px-4 gap-1">
           
           <For each={tools()}>

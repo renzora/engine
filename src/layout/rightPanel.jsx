@@ -191,7 +191,7 @@ const RightPanel = () => {
             
             <div className="flex-1 min-w-0 overflow-hidden">
               <div 
-                className={`relative w-full h-full bg-gradient-to-b from-base-200/95 to-base-300/98 backdrop-blur-md border-l border-base-300 shadow-2xl shadow-black/30 flex flex-col pointer-events-auto no-select overflow-hidden`}
+                className={`relative w-full h-full bg-base-200/95 backdrop-blur-md border-l border-base-content/10 shadow-2xl shadow-black/40 flex flex-col pointer-events-auto no-select overflow-hidden`}
               >
               <div className="px-3 py-2 relative cursor-col-resize" onMouseDown={(e) => {
                 if (!isResizingRight()) {

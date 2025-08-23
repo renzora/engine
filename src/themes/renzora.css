@@ -20,9 +20,9 @@
   --color-accent: #60a5fa;          /* blue-400 */
   --color-accent-content: #111827;  /* dark text on accent */
   
-  /* Neutral colors - Slate */
-  --color-neutral: #475569;         /* slate-600 */
-  --color-neutral-content: #d1d5db; /* gray-300 */
+  /* Neutral colors - Very dark */
+  --color-neutral: #0f172a;         /* slate-900 - almost black */
+  --color-neutral-content: #374151; /* gray-700 - dark border */
   
   /* Functional colors */
   --color-info: #2563eb;             /* blue-600 */
