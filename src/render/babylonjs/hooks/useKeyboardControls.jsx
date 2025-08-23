@@ -1,12 +1,141 @@
-import { createEffect, onCleanup } from 'solid-js'
+import { createEffect, onCleanup, onMount } from 'solid-js'
 import { Vector3 } from '@babylonjs/core/Maths/math.vector'
 import { Animation } from '@babylonjs/core/Animations/animation'
 import { Ray } from '@babylonjs/core/Culling/ray'
 import { editorActions } from '@/layout/stores/EditorStore'
+import { useGameEngineShortcuts } from '@/hooks/useGameEngineShortcuts'
 
 export const useKeyboardControls = (sceneInstance, cameraController) => {
   let copiedObjectRef = null
   // Babylon modules are now directly imported
+  
+  // Use the centralized keyboard shortcuts system
+  useGameEngineShortcuts({
+    // Focus on selected object
+    focusObject: () => {
+      const scene = sceneInstance();
+      if (scene && scene._gizmoManager?.attachedMesh && scene._camera) {
+        const objectName = scene._gizmoManager.attachedMesh.name;
+        focusOnObject(scene._gizmoManager.attachedMesh, scene._camera, scene);
+        editorActions.addConsoleMessage(`Flying to ${objectName}`, 'info');
+      } else {
+        editorActions.addConsoleMessage('No object selected to focus on', 'warning');
+      }
+    },
+    
+    // Delete selected object  
+    deleteObject: () => {
+      const scene = sceneInstance();
+      if (!scene) return;
+      
+      const attachedMesh = scene._gizmoManager?.attachedMesh;
+      if (attachedMesh && attachedMesh.name !== '__grid_container__' && !attachedMesh.name.startsWith('__grid_')) {
+        attachedMesh.dispose();
+        scene._gizmoManager.attachToMesh(null);
+        if (scene._highlightLayer) {
+          scene._highlightLayer.removeAllMeshes();
+        }
+        editorActions.selectEntity(null);
+        console.log('Deleted object:', attachedMesh.name);
+      }
+    },
+    
+    // Transform gizmos
+    positionMode: () => {
+      const scene = sceneInstance();
+      if (scene && scene._gizmoManager?.attachedMesh) {
+        scene._gizmoManager.positionGizmoEnabled = true;
+        scene._gizmoManager.rotationGizmoEnabled = false;
+        scene._gizmoManager.scaleGizmoEnabled = false;
+        console.log('Switched to position gizmo');
+      }
+    },
+    
+    rotateMode: () => {
+      const scene = sceneInstance();
+      if (scene && scene._gizmoManager?.attachedMesh) {
+        scene._gizmoManager.positionGizmoEnabled = false;
+        scene._gizmoManager.rotationGizmoEnabled = true;
+        scene._gizmoManager.scaleGizmoEnabled = false;
+        console.log('Switched to rotation gizmo');
+      }
+    },
+    
+    scaleMode: () => {
+      const scene = sceneInstance();
+      if (scene && scene._gizmoManager?.attachedMesh) {
+        scene._gizmoManager.positionGizmoEnabled = false;
+        scene._gizmoManager.rotationGizmoEnabled = false;
+        scene._gizmoManager.scaleGizmoEnabled = true;
+        console.log('Switched to scale gizmo');
+      }
+    },
+    
+    // Copy/Paste
+    copy: () => {
+      const scene = sceneInstance();
+      if (!scene) return;
+      
+      const attachedMesh = scene._gizmoManager?.attachedMesh;
+      if (attachedMesh) {
+        copiedObjectRef = {
+          name: attachedMesh.name,
+          position: attachedMesh.position.clone(),
+          rotation: attachedMesh.rotation ? attachedMesh.rotation.clone() : null,
+          scaling: attachedMesh.scaling ? attachedMesh.scaling.clone() : null,
+          className: attachedMesh.getClassName(),
+          babylonObject: attachedMesh
+        };
+        console.log('Copied object:', attachedMesh.name);
+      }
+    },
+    
+    paste: () => {
+      const scene = sceneInstance();
+      if (!scene || !copiedObjectRef) return;
+      
+      try {
+        let newObject = null;
+        
+        if (copiedObjectRef.className === 'TransformNode') {
+          newObject = copiedObjectRef.babylonObject.createInstance(copiedObjectRef.name + '_copy');
+          if (!newObject) {
+            newObject = copiedObjectRef.babylonObject.clone(copiedObjectRef.name + '_copy', null);
+          }
+        } else {
+          newObject = copiedObjectRef.babylonObject.createInstance(copiedObjectRef.name + '_copy');
+          if (!newObject) {
+            newObject = copiedObjectRef.babylonObject.clone(copiedObjectRef.name + '_copy', null);
+          }
+        }
+        
+        if (newObject) {
+          newObject.position = copiedObjectRef.position.add(new Vector3(2, 0, 2));
+          if (copiedObjectRef.rotation && newObject.rotation) {
+            newObject.rotation = copiedObjectRef.rotation.clone();
+          }
+          if (copiedObjectRef.scaling && newObject.scaling) {
+            newObject.scaling = copiedObjectRef.scaling.clone();
+          }
+          console.log('Pasted object:', newObject.name);
+        }
+      } catch (error) {
+        console.error('Failed to paste object:', error);
+        editorActions.addConsoleMessage(`Failed to paste object: ${error.message}`, 'error');
+      }
+    },
+    
+    // Snap to ground
+    snapToGround: () => {
+      const scene = sceneInstance();
+      if (!scene) return;
+      
+      const attachedMesh = scene._gizmoManager?.attachedMesh;
+      if (attachedMesh && attachedMesh.name !== '__grid_container__' && !attachedMesh.name.startsWith('__grid_')) {
+        snapObjectToGround(attachedMesh, scene);
+      }
+    }
+  });
   
   const focusOnObject = async (targetObject, camera, scene) => {
     if (!targetObject || !camera) return
@@ -208,148 +337,5 @@ export const useKeyboardControls = (sceneInstance, cameraController) => {
     }
   }
   
-  createEffect(() => {
-    const scene = sceneInstance()
-    if (!scene) return
-    
-    const handleKeyDown = (e) => {
-      // Skip keyboard commands if any input element is focused
-      const activeElement = document.activeElement;
-      const isInputFocused = activeElement && (
-        activeElement.tagName === 'INPUT' ||
-        activeElement.tagName === 'TEXTAREA' ||
-        activeElement.isContentEditable
-      );
-      
-      if (isInputFocused) {
-        return; // Don't prevent default, let normal input behavior work
-      }
-      
-      if (e.key.toLowerCase() === 'f' && scene) {
-        console.log('F key pressed!')
-        console.log('Scene:', scene)
-        console.log('Gizmo manager:', scene._gizmoManager)
-        console.log('Attached mesh:', scene._gizmoManager?.attachedMesh)
-        console.log('Camera:', scene._camera)
-        
-        if (scene._gizmoManager?.attachedMesh && scene._camera) {
-          const objectName = scene._gizmoManager.attachedMesh.name
-          focusOnObject(scene._gizmoManager.attachedMesh, scene._camera, scene)
-          editorActions.addConsoleMessage(`Flying to ${objectName}`, 'info')
-          e.preventDefault()
-        } else {
-          console.log('No object selected or camera not available')
-          editorActions.addConsoleMessage('No object selected to focus on', 'warning')
-        }
-      } else if (e.key === 'Delete' && scene) {
-        const attachedMesh = scene._gizmoManager?.attachedMesh
-        
-        if (attachedMesh && attachedMesh.name !== '__grid_container__' && !attachedMesh.name.startsWith('__grid_')) {
-          attachedMesh.dispose()
-          
-          scene._gizmoManager.attachToMesh(null)
-          if (scene._highlightLayer) {
-            scene._highlightLayer.removeAllMeshes()
-          }
-          
-          editorActions.selectEntity(null)
-          // CLEAN SCENE: No store selection needed
-          // CLEAN SCENE: No store refresh needed
-          
-          console.log('Deleted object:', attachedMesh.name)
-          e.preventDefault()
-        }
-      } else if (e.key.toLowerCase() === 's' && scene) {
-        if (scene._gizmoManager?.attachedMesh) {
-          scene._gizmoManager.positionGizmoEnabled = false
-          scene._gizmoManager.rotationGizmoEnabled = false
-          scene._gizmoManager.scaleGizmoEnabled = true
-          console.log('Switched to scale gizmo')
-          e.preventDefault()
-        }
-      } else if (e.key.toLowerCase() === 'r' && scene) {
-        if (scene._gizmoManager?.attachedMesh) {
-          scene._gizmoManager.positionGizmoEnabled = false
-          scene._gizmoManager.rotationGizmoEnabled = true
-          scene._gizmoManager.scaleGizmoEnabled = false
-          console.log('Switched to rotation gizmo')
-          e.preventDefault()
-        }
-      } else if (e.key.toLowerCase() === 'g' && scene) {
-        if (scene._gizmoManager?.attachedMesh) {
-          scene._gizmoManager.positionGizmoEnabled = true
-          scene._gizmoManager.rotationGizmoEnabled = false
-          scene._gizmoManager.scaleGizmoEnabled = false
-          console.log('Switched to position gizmo')
-          e.preventDefault()
-        }
-      } else if (e.ctrlKey && e.key.toLowerCase() === 'c' && scene) {
-        const attachedMesh = scene._gizmoManager?.attachedMesh
-        
-        if (attachedMesh) {
-          copiedObjectRef = {
-            name: attachedMesh.name,
-            position: attachedMesh.position.clone(),
-            rotation: attachedMesh.rotation ? attachedMesh.rotation.clone() : null,
-            scaling: attachedMesh.scaling ? attachedMesh.scaling.clone() : null,
-            className: attachedMesh.getClassName(),
-            babylonObject: attachedMesh
-          }
-          console.log('Copied object:', attachedMesh.name)
-          e.preventDefault()
-        }
-      } else if (e.ctrlKey && e.key.toLowerCase() === 'v' && scene) {
-        const copiedData = copiedObjectRef
-        
-        if (copiedData) {
-          try {
-            let newObject = null
-            
-            if (copiedData.className === 'TransformNode') {
-              newObject = copiedData.babylonObject.createInstance(copiedData.name + '_copy')
-              if (!newObject) {
-                newObject = copiedData.babylonObject.clone(copiedData.name + '_copy', null)
-              }
-            } else {
-              newObject = copiedData.babylonObject.createInstance(copiedData.name + '_copy')
-              if (!newObject) {
-                newObject = copiedData.babylonObject.clone(copiedData.name + '_copy', null)
-              }
-            }
-            
-            if (newObject) {
-              newObject.position = copiedData.position.add(new Vector3(2, 0, 2))
-              if (copiedData.rotation && newObject.rotation) {
-                newObject.rotation = copiedData.rotation.clone()
-              }
-              if (copiedData.scaling && newObject.scaling) {
-                newObject.scaling = copiedData.scaling.clone()
-              }
-              
-              // CLEAN SCENE: No store refresh needed
-              
-              console.log('Pasted object:', newObject.name)
-            }
-          } catch (error) {
-            console.error('Failed to paste object:', error)
-            editorActions.addConsoleMessage(`Failed to paste object: ${error.message}`, 'error')
-          }
-        }
-        e.preventDefault()
-      } else if (e.key === 'End' && scene) {
-        const attachedMesh = scene._gizmoManager?.attachedMesh
-        
-        if (attachedMesh && attachedMesh.name !== '__grid_container__' && !attachedMesh.name.startsWith('__grid_')) {
-          snapObjectToGround(attachedMesh, scene)
-          e.preventDefault()
-        }
-      }
-    }
-    
-    window.addEventListener('keydown', handleKeyDown)
-    
-    onCleanup(() => {
-      window.removeEventListener('keydown', handleKeyDown)
-    })
-  })
+  // No longer needed - using centralized keyboard shortcuts
 }

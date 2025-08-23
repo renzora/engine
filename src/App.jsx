@@ -6,6 +6,7 @@ import Layout from './layout'
 import DevNotice from './components/DevNotice'
 import EditorPage from './pages/editor'
 import { Project } from './plugins/splash/ProjectStore'
+import KeyboardShortcuts from './components/KeyboardShortcuts'
 export default function App() {
     onMount(() => {
     console.log('🎮 Renzora Engine loaded successfully!')
@@ -15,6 +16,7 @@ export default function App() {
   return (
     <Engine>
       <Project>
+        <KeyboardShortcuts />
         <div class="w-full h-full">
           <Layout />
           <DevNotice />

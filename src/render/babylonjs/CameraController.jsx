@@ -1,6 +1,7 @@
 import { createEffect, onCleanup } from 'solid-js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { viewportStore } from '@/layout/stores/ViewportStore';
+import { useGameEngineShortcuts } from '@/hooks/useGameEngineShortcuts';
 
 export function useCameraController(camera, canvas, scene) {
   const cameraSettings = () => viewportStore.camera;
@@ -16,6 +17,52 @@ export function useCameraController(camera, canvas, scene) {
   let currentFov = Math.PI / 4;
   let targetFov = Math.PI / 4;
   let fovAnimationId = null;
+
+  // Integrate camera movement with centralized shortcuts
+  useGameEngineShortcuts({
+    // Camera movement
+    moveForward: (speedMultiplier = 1.0) => {
+      if (!camera()) return;
+      const speed = moveSpeed() * speedMultiplier;
+      const forward = camera().getForwardRay().direction.normalize();
+      camera().position = camera().position.add(forward.scale(speed));
+    },
+    
+    moveBackward: (speedMultiplier = 1.0) => {
+      if (!camera()) return;
+      const speed = moveSpeed() * speedMultiplier;
+      const forward = camera().getForwardRay().direction.normalize();
+      camera().position = camera().position.add(forward.scale(-speed));
+    },
+    
+    moveLeft: (speedMultiplier = 1.0) => {
+      if (!camera()) return;
+      const speed = moveSpeed() * speedMultiplier;
+      const forward = camera().getForwardRay().direction.normalize();
+      const right = Vector3.Cross(Vector3.Up(), forward).normalize();
+      camera().position = camera().position.add(right.scale(-speed));
+    },
+    
+    moveRight: (speedMultiplier = 1.0) => {
+      if (!camera()) return;
+      const speed = moveSpeed() * speedMultiplier;
+      const forward = camera().getForwardRay().direction.normalize();
+      const right = Vector3.Cross(Vector3.Up(), forward).normalize();
+      camera().position = camera().position.add(right.scale(speed));
+    },
+    
+    moveUp: (speedMultiplier = 1.0) => {
+      if (!camera()) return;
+      const speed = moveSpeed() * speedMultiplier;
+      camera().position = camera().position.add(Vector3.Up().scale(speed));
+    },
+    
+    moveDown: (speedMultiplier = 1.0) => {
+      if (!camera()) return;
+      const speed = moveSpeed() * speedMultiplier;
+      camera().position = camera().position.add(Vector3.Up().scale(-speed));
+    }
+  });
   
   const cameraSpeed = () => cameraSettings()?.speed || 5;
   const mouseSensitivity = () => cameraSettings()?.mouseSensitivity || 0.002;
@@ -27,27 +74,7 @@ export function useCameraController(camera, canvas, scene) {
   const fovSpringSpeed = 0.15;
   const fovSpringDamping = 0.8;
 
-  const applyKeyboardMovement = () => {
-    if (!camera()) return;
-
-    const speedMultiplier = keysPressed.has('shift') ? 3.0 : keysPressed.has('control') ? 0.3 : 1.0;
-    const speed = moveSpeed() * speedMultiplier;
-    const forward = camera().getForwardRay().direction.normalize();
-    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
-    const up = Vector3.Up();
-    
-    let moveVector = Vector3.Zero();
-
-    if (keysPressed.has('w')) moveVector = moveVector.add(forward.scale(speed));
-    if (keysPressed.has('s')) moveVector = moveVector.add(forward.scale(-speed));
-    if (keysPressed.has('a')) moveVector = moveVector.add(right.scale(-speed));
-    if (keysPressed.has('d')) moveVector = moveVector.add(right.scale(speed));
-    if (keysPressed.has('e')) moveVector = moveVector.add(up.scale(speed));
-    if (keysPressed.has('q')) moveVector = moveVector.add(up.scale(-speed));
-    if (moveVector.length() > 0) {
-      camera().position = camera().position.add(moveVector);
-    }
-  };
+  // Camera movement now handled by centralized shortcuts
 
   const shouldAllowCameraMovement = (event) => {
     if (!scene() || !scene()._gizmoManager) return true;
@@ -160,9 +187,7 @@ export function useCameraController(camera, canvas, scene) {
     camera().position = camera().position.add(forward.scale(delta * zoomSpeed * fovSpeedMultiplier * wheelSpeedMultiplier * precisionMultiplier));
   };
 
-  const handleKeyDown = (event) => {
-    keysPressed.add(event.key.toLowerCase());
-  };
+  // Key handling now done by centralized shortcuts
 
   const animateFovSpringBack = () => {
     if (!camera()) return;
@@ -190,6 +215,7 @@ export function useCameraController(camera, canvas, scene) {
     animate();
   };
 
+  // Key up handling simplified - only for FOV zoom
   const handleKeyUp = (event) => {
     const key = event.key.toLowerCase();
     keysPressed.delete(key);
@@ -221,7 +247,6 @@ export function useCameraController(camera, canvas, scene) {
     canvas().addEventListener('pointermove', handleMouseMove);
     canvas().addEventListener('pointerup', handleMouseUp);
     canvas().addEventListener('wheel', handleWheel, { passive: false });
-    window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
 
     onCleanup(() => {
@@ -243,7 +268,6 @@ export function useCameraController(camera, canvas, scene) {
       canvas().removeEventListener('pointermove', handleMouseMove);
       canvas().removeEventListener('pointerup', handleMouseUp);
       canvas().removeEventListener('wheel', handleWheel);
-      window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
       
       if (fovAnimationId) {
@@ -261,15 +285,7 @@ export function useCameraController(camera, canvas, scene) {
     }
   });
 
-  createEffect(() => {
-    const interval = setInterval(() => {
-      if (keysPressed.size > 0) {
-        applyKeyboardMovement();
-      }
-    }, 16);
-
-    onCleanup(() => clearInterval(interval));
-  });
+  // Camera movement interval removed - now handled by centralized shortcuts
 
   const handleKeyboardMovement = () => {
   };

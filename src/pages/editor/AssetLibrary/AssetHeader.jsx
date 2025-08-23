@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import { Grid, Menu, Refresh } from '@/ui/icons';
+import { Grid, Menu, Refresh, Code } from '@/ui/icons';
 
 function AssetHeader({ 
   selectedAssets, 
@@ -7,7 +7,9 @@ function AssetHeader({
   isUploading, 
   layoutMode, 
   setLayoutMode,
-  onRefresh
+  onRefresh,
+  onCodeToggle,
+  isCodeEditorOpen = false
 }) {
   return (
     <div class="flex items-center gap-3">
@@ -26,6 +28,18 @@ function AssetHeader({
               <span class="text-xs text-base-content/60">Uploading...</span>
             </div>
           </Show>
+          
+          <button
+            onClick={onCodeToggle}
+            class={`px-2 py-1 text-xs rounded transition-colors ${
+              isCodeEditorOpen()
+                ? 'bg-primary text-primary-content'
+                : 'bg-base-200 text-base-content/60 hover:text-base-content hover:bg-base-300'
+            }`}
+            title="Toggle Code Editor"
+          >
+            <Code class="w-3 h-3" />
+          </button>
           
           <button
             onClick={onRefresh}
