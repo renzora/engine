@@ -241,6 +241,17 @@ const initializeViewport = async () => {
         }
       }
 
+      // Listen to panel dimension changes for proper viewport adjustment
+      createEffect(() => {
+        const rightWidth = editorStore.ui.rightPanelWidth;
+        const bottomHeight = editorStore.ui.bottomPanelHeight;
+        
+        // Trigger resize when panel dimensions change
+        setTimeout(() => {
+          handleResize();
+        }, 16);
+      });
+
       return () => {
         window.removeEventListener('resize', handleResize);
         
