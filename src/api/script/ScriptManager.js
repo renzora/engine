@@ -194,7 +194,19 @@ class ScriptManager {
       
       // Copy script properties metadata to API if available
       if (scriptInstance._scriptProperties) {
-        scriptAPI._scriptProperties = scriptInstance._scriptProperties;
+        // Ensure properties have the correct format (transform if needed)
+        const properties = scriptInstance._scriptProperties.map(prop => {
+          // Handle both old format (propType) and new format (type)
+          if (prop.propType && !prop.type) {
+            return {
+              ...prop,
+              type: prop.propType
+            };
+          }
+          return prop;
+        });
+        
+        scriptAPI._scriptProperties = properties;
         scriptAPI._scriptInstance = scriptInstance; // Store reference for property updates
         scriptAPI.initializeScriptProperties();
         scriptAPI.initializeScriptInstanceProperties(scriptInstance);
@@ -435,6 +447,175 @@ class ScriptManager {
     }
     
     return null;
+  }
+  
+  /**
+   * Update script properties for all instances of a script
+   * @param {string} scriptPath - Path to the script file
+   * @param {Array} newProperties - Array of new property definitions
+   * @param {Object} propertyChanges - Changes object with added, removed, modified, renamed arrays
+   */
+  updateScriptProperties(scriptPath, newProperties, propertyChanges) {
+    console.log('🔧 ScriptManager: Updating properties for script', scriptPath);
+    
+    let updatedInstances = 0;
+    
+    this.activeScripts.forEach((scripts, objectId) => {
+      scripts.forEach(script => {
+        if (script._scriptPath === scriptPath) {
+          this.updateScriptInstanceProperties(script, newProperties, propertyChanges);
+          updatedInstances++;
+        }
+      });
+    });
+    
+    console.log('🔧 ScriptManager: Updated', updatedInstances, 'script instances');
+  }
+  
+  /**
+   * Update properties for a single script instance
+   * @param {Object} scriptInstance - Script instance to update
+   * @param {Array} newProperties - Array of new property definitions
+   * @param {Object} propertyChanges - Changes object with added, removed, modified, renamed arrays
+   */
+  updateScriptInstanceProperties(scriptInstance, newProperties, propertyChanges) {
+    if (!scriptInstance || !scriptInstance._scriptAPI) {
+      console.warn('🔧 ScriptManager: Invalid script instance for property update');
+      return;
+    }
+    
+    const api = scriptInstance._scriptAPI;
+    
+    try {
+      // Handle property additions - set default values
+      propertyChanges.added.forEach(prop => {
+        try {
+          const defaultValue = this.evaluatePropertyDefault(prop.defaultValue);
+          api.setScriptProperty(prop.name, defaultValue);
+          scriptInstance[prop.name] = defaultValue;
+          console.log(`🔧 ScriptManager: Added property '${prop.name}' with default:`, defaultValue);
+        } catch (error) {
+          console.error(`🔧 ScriptManager: Failed to add property '${prop.name}':`, error);
+        }
+      });
+      
+      // Handle property modifications - update metadata and potentially update values
+      propertyChanges.modified.forEach(change => {
+        try {
+          const currentValue = api.getScriptProperty(change.old.name);
+          const oldDefault = this.evaluatePropertyDefault(change.old.defaultValue);
+          const newDefault = this.evaluatePropertyDefault(change.new.defaultValue);
+          
+          
+          // If type changed, reset to new default
+          if (change.changes.includes('type')) {
+            api.setScriptProperty(change.new.name, newDefault);
+            scriptInstance[change.new.name] = newDefault;
+            console.log(`🔧 ScriptManager: Property '${change.new.name}' type changed, reset to default:`, newDefault);
+          }
+          // If default value changed and current value matches old default, update to new default
+          else if (change.changes.includes('defaultValue') && currentValue === oldDefault) {
+            api.setScriptProperty(change.new.name, newDefault);
+            scriptInstance[change.new.name] = newDefault;
+            console.log(`🔧 ScriptManager: Property '${change.new.name}' default changed from ${oldDefault} to ${newDefault}, updating value`);
+          }
+          // If default changed but current value was manually set, keep the manual value
+          else if (change.changes.includes('defaultValue') && currentValue !== oldDefault) {
+            console.log(`🔧 ScriptManager: Property '${change.new.name}' default changed, but keeping manually set value:`, currentValue);
+          }
+          // For other changes (min, max, description), just update metadata
+          else {
+            console.log(`🔧 ScriptManager: Property '${change.new.name}' updated (keeping current value)`);
+          }
+        } catch (error) {
+          console.error(`🔧 ScriptManager: Failed to modify property '${change.new.name}':`, error);
+        }
+      });
+      
+      // Handle property renames - migrate values
+      propertyChanges.renamed.forEach(rename => {
+        try {
+          const oldValue = api.getScriptProperty(rename.from.name);
+          
+          // Remove old property
+          api.setScriptProperty(rename.from.name, null);
+          delete scriptInstance[rename.from.name];
+          
+          // Set new property with old value (or default if types don't match)
+          let newValue = oldValue;
+          if (rename.from.propType !== rename.to.propType) {
+            newValue = this.evaluatePropertyDefault(rename.to.defaultValue);
+            console.log(`🔧 ScriptManager: Property type changed during rename, using default value`);
+          }
+          
+          api.setScriptProperty(rename.to.name, newValue);
+          scriptInstance[rename.to.name] = newValue;
+          console.log(`🔧 ScriptManager: Renamed property '${rename.from.name}' -> '${rename.to.name}'`);
+        } catch (error) {
+          console.error(`🔧 ScriptManager: Failed to rename property '${rename.from.name}' to '${rename.to.name}':`, error);
+        }
+      });
+      
+      // Handle property removals
+      propertyChanges.removed.forEach(prop => {
+        try {
+          api.setScriptProperty(prop.name, null);
+          delete scriptInstance[prop.name];
+          console.log(`🔧 ScriptManager: Removed property '${prop.name}'`);
+        } catch (error) {
+          console.error(`🔧 ScriptManager: Failed to remove property '${prop.name}':`, error);
+        }
+      });
+      
+      // Update the script properties metadata on the API
+      // Transform properties to the format expected by Scene.jsx
+      const transformedProperties = newProperties.map(prop => ({
+        name: prop.name,
+        type: prop.propType, // Scene.jsx expects 'type' not 'propType'
+        section: prop.section,
+        defaultValue: prop.defaultValue,
+        min: prop.min,
+        max: prop.max,
+        description: prop.description,
+        options: prop.options
+      }));
+      
+      api._scriptProperties = transformedProperties;
+      
+    } catch (error) {
+      console.error('🔧 ScriptManager: Error during property update:', error);
+    }
+  }
+  
+  /**
+   * Evaluate property default value expression
+   * @param {*} expression - Default value expression
+   * @returns {*} Evaluated value
+   */
+  evaluatePropertyDefault(expression) {
+    if (expression === null || expression === undefined) return null;
+    
+    try {
+      // Handle boolean literals FIRST (before numeric check)
+      if (expression === true || expression === 'true') return true;
+      if (expression === false || expression === 'false') return false;
+      
+      // Handle string literals
+      if (typeof expression === 'string' && expression.startsWith('"') && expression.endsWith('"')) {
+        return expression.slice(1, -1);
+      }
+      
+      // Handle numeric literals (but not booleans)
+      if (typeof expression !== 'boolean' && !isNaN(expression)) {
+        return parseFloat(expression);
+      }
+      
+      // For more complex expressions, return as-is
+      return expression;
+    } catch (error) {
+      console.warn('Failed to evaluate property default:', expression, error);
+      return null;
+    }
   }
 }
 

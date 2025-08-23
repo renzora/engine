@@ -12,6 +12,7 @@ class ScriptRuntime {
     this.scriptLoader = getScriptLoader();
     this.scene = null;
     this.isInitialized = false;
+    this.propertyUpdateListener = null;
   }
   
   /**
@@ -30,8 +31,41 @@ class ScriptRuntime {
     
     console.log('🔧 ScriptRuntime: Initialized with scene');
     
+    // Set up event listener for live property updates
+    this.setupPropertyUpdateListener();
+    
     // Start the script manager
     this.start();
+  }
+  
+  /**
+   * Set up event listener for live script property updates
+   */
+  setupPropertyUpdateListener() {
+    this.propertyUpdateListener = (event) => {
+      const { scriptPath, properties, propertyChanges } = event.detail;
+      
+      if (!scriptPath || !properties || !propertyChanges) return;
+      
+      console.log('🔧 ScriptRuntime: Received property update event for', scriptPath);
+      
+      // Update script properties using the script manager
+      this.scriptManager.updateScriptProperties(scriptPath, properties, propertyChanges);
+    };
+    
+    document.addEventListener('engine:script-properties-updated', this.propertyUpdateListener);
+    console.log('🔧 ScriptRuntime: Property update listener registered');
+  }
+  
+  /**
+   * Clean up property update listener
+   */
+  cleanupPropertyUpdateListener() {
+    if (this.propertyUpdateListener) {
+      document.removeEventListener('engine:script-properties-updated', this.propertyUpdateListener);
+      this.propertyUpdateListener = null;
+      console.log('🔧 ScriptRuntime: Property update listener removed');
+    }
   }
   
   /**
@@ -75,6 +109,7 @@ class ScriptRuntime {
     if (!this.isInitialized) return;
     
     this.stop();
+    this.cleanupPropertyUpdateListener();
     this.scriptManager = null;
     this.scene = null;
     this.isInitialized = false;

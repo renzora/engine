@@ -794,13 +794,61 @@ function Scene(props) {
                         // Create reactive signals for script properties by section
                         const [scriptPropertiesBySection, setScriptPropertiesBySection] = createSignal({});
                         const [propertyValues, setPropertyValues] = createSignal({});
+                        const [refreshTrigger, setRefreshTrigger] = createSignal(0);
+                        
+                        // Listen for live script property updates and script reloads
+                        onMount(() => {
+                          const propertyUpdateListener = (event) => {
+                            const { scriptPath, properties } = event.detail;
+                            
+                            // Check if this is the script we're displaying
+                            if (scriptPath === script.path) {
+                              console.log('🔧 Scene.jsx: Received property update for script', scriptPath);
+                              setRefreshTrigger(prev => prev + 1);
+                            }
+                          };
+                          
+                          const scriptReloadListener = (event) => {
+                            const { scriptPath, action } = event.detail;
+                            
+                            // Check if this is the script we're displaying
+                            if (scriptPath === script.path) {
+                              console.log('🔄 Scene.jsx: Script fully reloaded, refreshing properties', scriptPath);
+                              setRefreshTrigger(prev => prev + 1);
+                            }
+                          };
+
+                          const scriptRemovedListener = (event) => {
+                            const { scriptPath, affectedObjects, action } = event.detail;
+                            
+                            // Check if this script was removed and affects our current object
+                            if (scriptPath === script.path && affectedObjects.includes(selection.entity)) {
+                              console.log('🗑️ Scene.jsx: Script removed, clearing properties', scriptPath);
+                              setScriptPropertiesBySection({});
+                              setPropertyValues({});
+                            }
+                          };
+                          
+                          document.addEventListener('engine:script-properties-updated', propertyUpdateListener);
+                          document.addEventListener('engine:script-reloaded', scriptReloadListener);
+                          document.addEventListener('engine:script-removed', scriptRemovedListener);
+                          
+                          onCleanup(() => {
+                            document.removeEventListener('engine:script-properties-updated', propertyUpdateListener);
+                            document.removeEventListener('engine:script-reloaded', scriptReloadListener);
+                            document.removeEventListener('engine:script-removed', scriptRemovedListener);
+                          });
+                        });
                         
                         // Initialize properties reactively
                         createEffect(() => {
+                          // Force reactive update by accessing refreshTrigger
+                          refreshTrigger();
                           try {
                             const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
                             if (scriptInstance && scriptInstance._scriptAPI && scriptInstance._scriptAPI.getScriptPropertiesBySection) {
                               const propsBySection = scriptInstance._scriptAPI.getScriptPropertiesBySection();
+                              console.log('🔧 Scene.jsx: Updating properties for', script.path, 'sections:', Object.keys(propsBySection), 'total props:', Object.values(propsBySection).flat().length);
                               setScriptPropertiesBySection(propsBySection);
                               
                               // Get current values for all properties
@@ -815,6 +863,7 @@ function Scene(props) {
                             }
                           } catch (error) {
                             console.warn('Failed to get script properties:', error);
+                            console.log('🔧 Scene.jsx: Clearing properties due to error for', script.path);
                             setScriptPropertiesBySection({});
                             setPropertyValues({});
                           }
