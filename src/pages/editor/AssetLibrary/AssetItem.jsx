@@ -215,6 +215,28 @@ function AssetItem({
       document.body.appendChild(dragImage);
       e.dataTransfer.setDragImage(dragImage, 50, 25);
       setTimeout(() => document.body.removeChild(dragImage), 0);
+    } else if (selectedAssetObjects.length === 1 && getAssetCategory(selectedAssetObjects[0].extension) === 'scripts') {
+      // Create custom drag card for script files
+      const dragCard = document.createElement('div');
+      dragCard.className = 'fixed top-[-1000px] bg-success text-success-content rounded-lg p-3 shadow-lg flex items-center gap-2 min-w-[200px]';
+      dragCard.innerHTML = `
+        <div class="w-8 h-8 bg-success-content/20 rounded flex items-center justify-center">
+          <svg class="w-4 h-4 text-success-content" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/>
+            <path d="M14 2v6h6"/>
+            <path d="M16 13H8"/>
+            <path d="M16 17H8"/>
+            <path d="M10 9H8"/>
+          </svg>
+        </div>
+        <div class="flex flex-col">
+          <span class="text-sm font-medium text-success-content">${selectedAssetObjects[0].name}</span>
+          <span class="text-xs text-success-content">Script file</span>
+        </div>
+      `;
+      document.body.appendChild(dragCard);
+      e.dataTransfer.setDragImage(dragCard, 100, 25);
+      setTimeout(() => document.body.removeChild(dragCard), 0);
     }
   };
 

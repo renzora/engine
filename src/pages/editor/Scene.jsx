@@ -769,8 +769,159 @@ function Scene(props) {
               
               return (
                 <div className="space-y-0">
+                  <CollapsibleSection title="Scripts" defaultOpen={true} index={0}>
+                    <div className="p-4">
+                      {/* Attached Scripts List - Outside the drop zone */}
+                      <Show when={objectProps.scripts && objectProps.scripts.length > 0}>
+                        <div className="mb-4 space-y-2">
+                          <For each={objectProps.scripts}>
+                            {(script, index) => (
+                              <div className="flex items-center justify-between bg-base-200 border border-base-300 rounded-lg px-2 py-1.5 shadow-sm">
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={(() => {
+                                      const runtime = getScriptRuntime();
+                                      try {
+                                        return !runtime.isScriptPaused(selection.entity, script.path);
+                                      } catch {
+                                        return true;
+                                      }
+                                    })()}
+                                    onChange={(e) => {
+                                      const runtime = getScriptRuntime();
+                                      const entityId = selection.entity;
+                                      
+                                      if (e.target.checked) {
+                                        runtime.resumeScript(entityId, script.path);
+                                        editorActions.addConsoleMessage(`Resumed script "${script.name}"`, 'success');
+                                      } else {
+                                        runtime.pauseScript(entityId, script.path);
+                                        editorActions.addConsoleMessage(`Paused script "${script.name}"`, 'info');
+                                      }
+                                    }}
+                                    className="toggle toggle-xs toggle-success flex-shrink-0"
+                                    title={(() => {
+                                      const runtime = getScriptRuntime();
+                                      try {
+                                        return runtime.isScriptPaused(selection.entity, script.path) ? "Resume script" : "Pause script";
+                                      } catch {
+                                        return "Toggle script";
+                                      }
+                                    })()}
+                                  />
+                                  <div className="flex flex-col min-w-0 flex-1">
+                                    <span className={`text-sm font-medium truncate ${(() => {
+                                      const runtime = getScriptRuntime();
+                                      try {
+                                        return runtime.isScriptPaused(selection.entity, script.path) ? 'text-base-content/40' : 'text-base-content';
+                                      } catch {
+                                        return 'text-base-content';
+                                      }
+                                    })()}`} title={script.name}>{script.name}</span>
+                                    {(() => {
+                                      const runtime = getScriptRuntime();
+                                      try {
+                                        return runtime.isScriptPaused(selection.entity, script.path) && (
+                                          <span className="text-xs text-warning">Paused</span>
+                                        );
+                                      } catch {
+                                        return null;
+                                      }
+                                    })()}
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    console.log('🔧 Removing script:', script.path, 'from', selection.entity);
+                                    
+                                    // Detach from runtime
+                                    const runtime = getScriptRuntime();
+                                    runtime.detachScript(selection.entity, script.path);
+                                    
+                                    // Update UI
+                                    const updatedScripts = objectProps.scripts.filter((_, i) => i !== index());
+                                    updateObjectProperty(selection.entity, 'scripts', updatedScripts);
+                                    
+                                    editorActions.addConsoleMessage(`Script "${script.name}" removed`, 'info');
+                                  }}
+                                  className="p-1.5 hover:bg-base-300 rounded transition-colors"
+                                >
+                                  <X className="w-4 h-4 text-base-content/60 hover:text-error" />
+                                </button>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+
+                      {/* Drop Zone */}
+                      <div 
+                        className="min-h-[60px] bg-base-300 border-2 border-dashed border-base-300 rounded-lg p-4 text-center"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.add('border-primary', 'bg-primary/20');
+                        }}
+                        onDragLeave={(e) => {
+                          e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
+                          
+                          const droppedData = e.dataTransfer.getData('text/plain');
+                          try {
+                            const data = JSON.parse(droppedData);
+                            if (data.type === 'asset' && data.fileType === 'script') {
+                              const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.ren'];
+                              const fileExt = data.name.substring(data.name.lastIndexOf('.')).toLowerCase();
+                              
+                              if (validExtensions.includes(fileExt)) {
+                                if (!objectProps.scripts) {
+                                  objectPropertiesActions.addPropertySection(selection.entity, 'scripts', []);
+                                }
+                                
+                                const currentScripts = objectProps.scripts || [];
+                                if (!currentScripts.find(s => s.path === data.path)) {
+                                  console.log('🔧 Attaching script via drag and drop:', data.path, 'to', selection.entity);
+                                  
+                                  // Use script runtime to attach the script
+                                  const runtime = getScriptRuntime();
+                                  const success = await runtime.attachScript(selection.entity, data.path);
+                                  
+                                  if (success) {
+                                    const newScripts = [...currentScripts, { 
+                                      path: data.path, 
+                                      name: data.name,
+                                      enabled: true 
+                                    }];
+                                    updateObjectProperty(selection.entity, 'scripts', newScripts);
+                                    editorActions.addConsoleMessage(`Script "${data.name}" attached successfully`, 'success');
+                                  } else {
+                                    // The error message from ScriptManager will be more specific about type mismatches
+                                    editorActions.addConsoleMessage(`Cannot attach "${data.name}" - check console for details`, 'error');
+                                  }
+                                } else {
+                                  console.log('🔧 Script already attached:', data.path);
+                                }
+                              }
+                            }
+                          } catch (err) {
+                            console.warn('Invalid drop data:', droppedData);
+                          }
+                        }}
+                      >
+                        <div className="flex flex-col items-center gap-2">
+                          <Code className="w-5 h-5 text-base-content/40" />
+                          <div className="text-base-content/60 text-sm">drop scripts here</div>
+                          <div className="text-xs text-base-content/40">.ren, .js, .jsx, .ts, .tsx</div>
+                        </div>
+                      </div>
+                    </div>
+                  </CollapsibleSection>
+
                   <Show when={objectProps.transform}>
-                    <CollapsibleSection title="Transform" defaultOpen={true} index={0}>
+                    <CollapsibleSection title="Transform" defaultOpen={true} index={1}>
                       <div className="p-4">
                         <Show when={objectProps.transform.position}>
                           {renderVector3Input('Position', objectProps.transform.position, 'transform.position')}
@@ -1063,174 +1214,6 @@ function Scene(props) {
                       }}
                     </For>
                   </Show>
-
-                  <CollapsibleSection title="Scripts" defaultOpen={true} index={1}>
-                    <div className="p-4">
-                      <div className="mb-3">
-                        <label className="block text-xs text-base-content/60 mb-2">
-                          Attached Scripts
-                          {(() => {
-                            const objData = selectedObjectData();
-                            if (objData) {
-                              const typeLabel = objData.type.charAt(0).toUpperCase() + objData.type.slice(1);
-                              return (
-                                <span className="ml-2 text-xs text-primary">
-                                  ({typeLabel} scripts only)
-                                </span>
-                              );
-                            }
-                            return null;
-                          })()}
-                        </label>
-                        <div 
-                          className="min-h-[80px] border-2 border-dashed border-base-300 rounded-lg p-3 text-center transition-colors hover:border-primary hover:bg-primary/10"
-                          onDragOver={(e) => {
-                            e.preventDefault();
-                            e.currentTarget.classList.add('border-primary', 'bg-primary/20');
-                          }}
-                          onDragLeave={(e) => {
-                            e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
-                          }}
-                          onDrop={async (e) => {
-                            e.preventDefault();
-                            e.currentTarget.classList.remove('border-primary', 'bg-primary/20');
-                            
-                            const droppedData = e.dataTransfer.getData('text/plain');
-                            try {
-                              const data = JSON.parse(droppedData);
-                              if (data.type === 'asset' && data.fileType === 'script') {
-                                const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.ren'];
-                                const fileExt = data.name.substring(data.name.lastIndexOf('.')).toLowerCase();
-                                
-                                if (validExtensions.includes(fileExt)) {
-                                  if (!objectProps.scripts) {
-                                    objectPropertiesActions.addPropertySection(selection.entity, 'scripts', []);
-                                  }
-                                  
-                                  const currentScripts = objectProps.scripts || [];
-                                  if (!currentScripts.find(s => s.path === data.path)) {
-                                    console.log('🔧 Attaching script via drag and drop:', data.path, 'to', selection.entity);
-                                    
-                                    // Use script runtime to attach the script
-                                    const runtime = getScriptRuntime();
-                                    const success = await runtime.attachScript(selection.entity, data.path);
-                                    
-                                    if (success) {
-                                      const newScripts = [...currentScripts, { 
-                                        path: data.path, 
-                                        name: data.name,
-                                        enabled: true 
-                                      }];
-                                      updateObjectProperty(selection.entity, 'scripts', newScripts);
-                                      editorActions.addConsoleMessage(`Script "${data.name}" attached successfully`, 'success');
-                                    } else {
-                                      // The error message from ScriptManager will be more specific about type mismatches
-                                      editorActions.addConsoleMessage(`Cannot attach "${data.name}" - check console for details`, 'error');
-                                    }
-                                  } else {
-                                    console.log('🔧 Script already attached:', data.path);
-                                  }
-                                }
-                              }
-                            } catch (err) {
-                              console.warn('Invalid drop data:', droppedData);
-                            }
-                          }}
-                        >
-                          <Show 
-                            when={objectProps.scripts && objectProps.scripts.length > 0}
-                            fallback={
-                              <div className="text-base-content/50 text-xs">
-                                <p>Drop script files here</p>
-                                <p className="text-base-content/40 mt-1">(.js, .jsx, .ts, .tsx, .ren)</p>
-                              </div>
-                            }
-                          >
-                            <div className="space-y-2">
-                              <For each={objectProps.scripts}>
-                                {(script, index) => (
-                                  <div className="flex items-center justify-between bg-base-200 rounded px-2 py-1">
-                                    <div className="flex items-center gap-2">
-                                      <input
-                                        type="checkbox"
-                                        checked={(() => {
-                                          const runtime = getScriptRuntime();
-                                          try {
-                                            return !runtime.isScriptPaused(selection.entity, script.path);
-                                          } catch {
-                                            return true;
-                                          }
-                                        })()}
-                                        onChange={(e) => {
-                                          const runtime = getScriptRuntime();
-                                          const entityId = selection.entity;
-                                          
-                                          if (e.target.checked) {
-                                            runtime.resumeScript(entityId, script.path);
-                                            editorActions.addConsoleMessage(`Resumed script "${script.name}"`, 'success');
-                                          } else {
-                                            runtime.pauseScript(entityId, script.path);
-                                            editorActions.addConsoleMessage(`Paused script "${script.name}"`, 'info');
-                                          }
-                                        }}
-                                        className="toggle toggle-xs toggle-success"
-                                        title={(() => {
-                                          const runtime = getScriptRuntime();
-                                          try {
-                                            return runtime.isScriptPaused(selection.entity, script.path) ? "Resume script" : "Pause script";
-                                          } catch {
-                                            return "Toggle script";
-                                          }
-                                        })()}
-                                      />
-                                      <Code className="w-3 h-3 text-base-content/60" />
-                                      <span className={`text-xs ${(() => {
-                                        const runtime = getScriptRuntime();
-                                        try {
-                                          return runtime.isScriptPaused(selection.entity, script.path) ? 'text-base-content/40' : 'text-base-content/70';
-                                        } catch {
-                                          return 'text-base-content/70';
-                                        }
-                                      })()}`}>{script.name}</span>
-                                      {(() => {
-                                        const runtime = getScriptRuntime();
-                                        try {
-                                          return runtime.isScriptPaused(selection.entity, script.path) && (
-                                            <span className="text-xs text-orange-400">(paused)</span>
-                                          );
-                                        } catch {
-                                          return null;
-                                        }
-                                      })()}
-                                    </div>
-                                    <button
-                                      onClick={() => {
-                                        console.log('🔧 Removing script:', script.path, 'from', selection.entity);
-                                        
-                                        // Detach from runtime
-                                        const runtime = getScriptRuntime();
-                                        runtime.detachScript(selection.entity, script.path);
-                                        
-                                        // Update UI
-                                        const updatedScripts = objectProps.scripts.filter((_, i) => i !== index());
-                                        updateObjectProperty(selection.entity, 'scripts', updatedScripts);
-                                        
-                                        editorActions.addConsoleMessage(`Script "${script.name}" removed`, 'info');
-                                      }}
-                                      className="p-0.5 hover:bg-base-300 rounded"
-                                    >
-                                      <X className="w-3 h-3 text-base-content/60 hover:text-error" />
-                                    </button>
-                                  </div>
-                                )}
-                              </For>
-                            </div>
-                          </Show>
-                        </div>
-                        
-                      </div>
-                    </div>
-                  </CollapsibleSection>
 
                   <Show when={!objectProps.transform && !objectProps.material && !objectProps.components}>
                     <div className="p-4 text-center">
