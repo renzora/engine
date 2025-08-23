@@ -1119,13 +1119,18 @@ function AssetLibrary({ onContextMenu }) {
         height: elementRect.height
       };
       
-      if (selectionBox.x < relativeRect.x + relativeRect.width &&
-          selectionBox.x + selectionBox.width > relativeRect.x &&
-          selectionBox.y < relativeRect.y + relativeRect.height &&
-          selectionBox.y + selectionBox.height > relativeRect.y) {
-        
+      const isIntersecting = (
+        selectionBox.x < relativeRect.x + relativeRect.width &&
+        selectionBox.x + selectionBox.width > relativeRect.x &&
+        selectionBox.y < relativeRect.y + relativeRect.height &&
+        selectionBox.y + selectionBox.height > relativeRect.y
+      );
+      
+      if (isIntersecting) {
         const assetId = element.getAttribute('data-asset-id');
-        newSelected.add(assetId);
+        if (assetId) {
+          newSelected.add(assetId);
+        }
       }
     });
     
@@ -1574,9 +1579,12 @@ function AssetLibrary({ onContextMenu }) {
   });
 
   createEffect(() => {
-    const handleClickOutside = () => {
-      if (!isSelecting()) {
-        clearSelection();
+    const handleClickOutside = (e) => {
+      if (!isSelecting() && mainContentRef) {
+        // Only clear selection if clicking outside the main content area
+        if (!mainContentRef.contains(e.target)) {
+          clearSelection();
+        }
       }
     };
     

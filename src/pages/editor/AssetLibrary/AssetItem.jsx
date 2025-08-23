@@ -342,8 +342,10 @@ function AssetItem({
 
   return (
     <div
-      class={`group cursor-pointer transition-all duration-200 p-2 rounded-lg hover:bg-base-300/30 ${
-        isAssetSelected(asset.id) ? 'bg-primary/20 ring-2 ring-primary/50' : ''
+      class={`group cursor-pointer transition-all duration-200 p-2 rounded-lg ${
+        isAssetSelected(asset.id) 
+          ? 'bg-primary/20 ring-2 ring-primary/50 hover:bg-primary/30' 
+          : 'hover:bg-base-300/30'
       }`}
       data-asset-id={asset.id}
       draggable={true}
