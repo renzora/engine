@@ -1,5 +1,5 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match } from 'solid-js';
-import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Trash, Edit, Code, X } from '@/ui/icons';
+import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Trash, Edit, CodeSlash, X } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 const getBabylonScene = () => window._cleanBabylonScene;
 import { viewportActions, objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
@@ -244,8 +244,6 @@ function Scene(props) {
       return null;
     }
     
-    const babylonObjects = [];
-    
     // Helper function to create object data
     const createObjectData = (obj, type) => {
       return {
@@ -271,12 +269,11 @@ function Scene(props) {
     for (const { obj, type } of allObjects) {
       const objId = obj.uniqueId || obj.name;
       if (objId === selection.entity) {
-        babylonObjects.push(createObjectData(obj, type));
-        break;
+        return createObjectData(obj, type);
       }
     }
     
-    return babylonObjects.length > 0 ? babylonObjects[0] : null;
+    return null;
   });
 
   const handleAssetDrop = (e, propertyPath) => {
@@ -752,11 +749,15 @@ function Scene(props) {
           />
           <div className="overflow-y-auto scrollbar-thin" style={{ height: `${bottomPanelHeight()}px` }}>
             {(() => {
+              console.log('🐛 Properties panel: Checking for entity:', selection.entity);
               let objectProps = objectPropertiesStore.objects[selection.entity];
+              console.log('🐛 Properties panel: Current props:', objectProps ? 'exists' : 'null');
               
-              if (!objectProps && selectedObjectData()) {
+              if (!objectProps && selection.entity) {
+                console.log('🐛 Properties panel: Creating default components for:', selection.entity);
                 objectPropertiesActions.ensureDefaultComponents(selection.entity);
                 objectProps = objectPropertiesStore.objects[selection.entity];
+                console.log('🐛 Properties panel: Props after ensure:', objectProps ? 'exists' : 'still null');
               }
               
               if (!objectProps) {
@@ -780,55 +781,45 @@ function Scene(props) {
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
                                   <input
                                     type="checkbox"
-                                    checked={(() => {
-                                      const runtime = getScriptRuntime();
-                                      try {
-                                        return !runtime.isScriptPaused(selection.entity, script.path);
-                                      } catch {
-                                        return true;
-                                      }
-                                    })()}
-                                    onChange={(e) => {
+                                    checked={script.enabled !== false}
+                                    onChange={async (e) => {
                                       const runtime = getScriptRuntime();
                                       const entityId = selection.entity;
                                       
                                       if (e.target.checked) {
-                                        runtime.resumeScript(entityId, script.path);
-                                        editorActions.addConsoleMessage(`Resumed script "${script.name}"`, 'success');
+                                        // Enable script - attach it to runtime
+                                        const success = await runtime.attachScript(entityId, script.path);
+                                        if (success) {
+                                          // Update the enabled state in the UI
+                                          const updatedScripts = objectProps.scripts.map((s, i) => 
+                                            i === index() ? { ...s, enabled: true } : s
+                                          );
+                                          updateObjectProperty(entityId, 'scripts', updatedScripts);
+                                          editorActions.addConsoleMessage(`Enabled script "${script.name}"`, 'success');
+                                        } else {
+                                          editorActions.addConsoleMessage(`Cannot enable "${script.name}" - check console for details`, 'error');
+                                        }
                                       } else {
-                                        runtime.pauseScript(entityId, script.path);
-                                        editorActions.addConsoleMessage(`Paused script "${script.name}"`, 'info');
+                                        // Disable script - detach from runtime
+                                        runtime.detachScript(entityId, script.path);
+                                        // Update the enabled state in the UI
+                                        const updatedScripts = objectProps.scripts.map((s, i) => 
+                                          i === index() ? { ...s, enabled: false } : s
+                                        );
+                                        updateObjectProperty(entityId, 'scripts', updatedScripts);
+                                        editorActions.addConsoleMessage(`Disabled script "${script.name}"`, 'info');
                                       }
                                     }}
                                     className="toggle toggle-xs toggle-success flex-shrink-0"
-                                    title={(() => {
-                                      const runtime = getScriptRuntime();
-                                      try {
-                                        return runtime.isScriptPaused(selection.entity, script.path) ? "Resume script" : "Pause script";
-                                      } catch {
-                                        return "Toggle script";
-                                      }
-                                    })()}
+                                    title={script.enabled !== false ? "Disable script" : "Enable script"}
                                   />
                                   <div className="flex flex-col min-w-0 flex-1">
-                                    <span className={`text-sm font-medium truncate ${(() => {
-                                      const runtime = getScriptRuntime();
-                                      try {
-                                        return runtime.isScriptPaused(selection.entity, script.path) ? 'text-base-content/40' : 'text-base-content';
-                                      } catch {
-                                        return 'text-base-content';
-                                      }
-                                    })()}`} title={script.name}>{script.name}</span>
-                                    {(() => {
-                                      const runtime = getScriptRuntime();
-                                      try {
-                                        return runtime.isScriptPaused(selection.entity, script.path) && (
-                                          <span className="text-xs text-warning">Paused</span>
-                                        );
-                                      } catch {
-                                        return null;
-                                      }
-                                    })()}
+                                    <span className={`text-sm font-medium truncate ${
+                                      script.enabled !== false ? 'text-base-content' : 'text-base-content/40'
+                                    }`} title={script.name}>{script.name}</span>
+                                    {script.enabled === false && (
+                                      <span className="text-xs text-warning">Disabled</span>
+                                    )}
                                   </div>
                                 </div>
                                 <button
@@ -857,6 +848,7 @@ function Scene(props) {
 
                       {/* Drop Zone */}
                       <div 
+                        data-drop-zone="scripts"
                         className={`min-h-[60px] bg-base-200/30 text-center ${isDragOverScript() ? 'animate-pulse brightness-110' : ''}`}
                         onDragOver={(e) => {
                           e.preventDefault();
@@ -898,7 +890,7 @@ function Scene(props) {
                                 if (!currentScripts.find(s => s.path === data.path)) {
                                   console.log('🔧 Attaching script via drag and drop:', data.path, 'to', selection.entity);
                                   
-                                  // Use script runtime to attach the script
+                                  // Use script runtime to attach and start the script
                                   const runtime = getScriptRuntime();
                                   const success = await runtime.attachScript(selection.entity, data.path);
                                   
@@ -906,10 +898,10 @@ function Scene(props) {
                                     const newScripts = [...currentScripts, { 
                                       path: data.path, 
                                       name: data.name,
-                                      enabled: true 
+                                      enabled: true // Start enabled by default when dragged to scene properties
                                     }];
                                     updateObjectProperty(selection.entity, 'scripts', newScripts);
-                                    editorActions.addConsoleMessage(`Script "${data.name}" attached successfully`, 'success');
+                                    editorActions.addConsoleMessage(`Script "${data.name}" attached and started`, 'success');
                                   } else {
                                     // The error message from ScriptManager will be more specific about type mismatches
                                     editorActions.addConsoleMessage(`Cannot attach "${data.name}" - check console for details`, 'error');
@@ -925,7 +917,7 @@ function Scene(props) {
                         }}
                       >
                         <div className="flex flex-col items-center gap-2 p-4">
-                          <Code className="w-5 h-5 text-base-content/40" />
+                          <CodeSlash className="w-5 h-5 text-base-content/40" />
                           <div className="text-base-content/60 text-sm">drop scripts here</div>
                           <div className="text-xs text-base-content/40">.ren, .js, .jsx, .ts, .tsx</div>
                         </div>
@@ -1211,7 +1203,7 @@ function Scene(props) {
                               {([sectionName, properties]) => (
                                 <CollapsibleSection
                                   title={sectionName}
-                                  icon={<Code className="w-4 h-4 text-secondary" />}
+                                  icon={<CodeSlash className="w-4 h-4 text-secondary" />}
                                   defaultExpanded={true}
                                 >
                                   <div className="space-y-6 p-4 bg-base-100/50">

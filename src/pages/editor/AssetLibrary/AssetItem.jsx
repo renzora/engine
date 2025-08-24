@@ -1,5 +1,5 @@
 import { Show, createSignal, createEffect } from 'solid-js';
-import { Photo, Code, X, Check } from '@/ui/icons';
+import { Photo, Code, X, Check, CodeSlash, ArrowRight, Monitor } from '@/ui/icons';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -59,7 +59,7 @@ const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
     }>
       <Show when={!error() && thumbnailUrl()} fallback={
         <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
-          <Photo class="w-6 h-6 text-base-content/40" />
+          <Photo class="w-10 h-10 text-base-content/40" />
         </div>
       }>
         <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110`}>
@@ -96,7 +96,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   if (!thumbnailUrl) {
     return (
       <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
-        <Photo class="w-6 h-6 text-success" />
+        <Photo class="w-10 h-10 text-success" />
       </div>
     );
   }
@@ -105,7 +105,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
     <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
       <Show when={!imageError()} fallback={
         <div class="w-full h-full flex items-center justify-center">
-          <Photo class="w-6 h-6 text-success" />
+          <Photo class="w-10 h-10 text-success" />
         </div>
       }>
         <img 
@@ -157,6 +157,66 @@ function AssetItem({
   setLoadedAssets,
   getExtensionStyle
 }) {
+  const [contextMenu, setContextMenu] = createSignal(null);
+  
+  const handleContextMenu = (e) => {
+    console.log('🐛 Context menu triggered for:', asset.name, asset.extension);
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Check if it's a script file
+    const isScript = isScriptFile(asset.extension);
+    console.log('🐛 Is script file:', isScript);
+    
+    // Only show context menu for script files
+    if (!isScript) {
+      console.log('🐛 Not a script file, skipping context menu');
+      return;
+    }
+    
+    const { clientX: x, clientY: y } = e;
+    console.log('🐛 Setting context menu at position:', { x, y });
+    setContextMenu({
+      position: { x, y },
+      asset: asset
+    });
+  };
+
+  const openInViewport = (side = 'left') => {
+    // Dispatch a custom event to trigger the viewport split view
+    document.dispatchEvent(new CustomEvent('asset:open-in-viewport', {
+      detail: {
+        asset: asset,
+        side: side,
+        script: {
+          name: asset.name,
+          path: asset.path || asset.name
+        }
+      }
+    }));
+    
+    setContextMenu(null);
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
+
+  // Close context menu when clicking elsewhere
+  createEffect(() => {
+    if (contextMenu()) {
+      const handleClickOutside = (e) => {
+        // Check if click is outside context menu
+        if (!e.target.closest('.asset-context-menu')) {
+          closeContextMenu();
+        }
+      };
+      
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  });
+  
   const getAssetCategory = (extension) => {
     const ext = extension?.toLowerCase() || '';
     if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) return '3d-models';
@@ -283,9 +343,9 @@ function AssetItem({
                       : 'opacity-60'
                 }`}>
                 {isScriptFile(asset.extension) ? (
-                  <Code class="w-5 h-5 text-primary" />
+                  <CodeSlash class="w-6 h-6 text-primary" />
                 ) : (
-                  <Photo class="w-5 h-5 text-base-content/60" />
+                  <Photo class="w-6 h-6 text-base-content/60" />
                 )}
               </div>
             }>
@@ -372,6 +432,7 @@ function AssetItem({
         handleAssetDoubleClick(asset);
       }}
       onDragStart={(e) => startDrag(e, asset)}
+      onContextMenu={handleContextMenu}
       onDragEnd={() => {
         setIsInternalDrag(false);
         setDragOverFolder(null);
@@ -391,9 +452,9 @@ function AssetItem({
                       : 'opacity-60'
                 }`}>
                 {isScriptFile(asset.extension) ? (
-                  <Code class="w-8 h-8 text-primary" />
+                  <CodeSlash class="w-12 h-12 text-primary" />
                 ) : (
-                  <Photo class="w-8 h-8 text-base-content/60" />
+                  <Photo class="w-12 h-12 text-base-content/60" />
                 )}
               </div>
             }>
@@ -432,12 +493,63 @@ function AssetItem({
               </div>
             </Show>
           </div>
+          
+          {/* Viewport Button for Script Files */}
+          <Show when={isScriptFile(asset.extension)}>
+            <button
+              class="absolute top-1 left-1 w-6 h-6 bg-primary text-primary-content rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 shadow-lg"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openInViewport('left');
+              }}
+              title="Open in Viewport"
+            >
+              <Monitor class="w-3 h-3" />
+            </button>
+          </Show>
         </div>
       </div>
       
       <div class="text-xs text-base-content/70 group-hover:text-base-content transition-colors truncate text-center leading-tight" title={asset.name}>
         {asset.name}
       </div>
+      
+      {/* Context Menu */}
+      {(() => {
+        const menu = contextMenu();
+        console.log('🐛 Context menu render check:', menu);
+        return menu;
+      })()}
+      <Show when={contextMenu()}>
+        <div 
+          class="asset-context-menu fixed z-50 bg-base-200 border border-base-300 rounded-lg shadow-lg py-2 min-w-[180px]"
+          style={{
+            left: `${contextMenu().position.x}px`,
+            top: `${contextMenu().position.y}px`
+          }}
+        >
+          <div class="px-3 py-1 text-xs text-base-content/60 border-b border-base-300 mb-1">
+            {asset.name}
+          </div>
+          
+          <button 
+            class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-base-300/50 transition-colors flex items-center gap-2"
+            onClick={() => openInViewport('left')}
+          >
+            <ArrowRight class="w-4 h-4 rotate-180" />
+            Open in Viewport (Left)
+          </button>
+          
+          <button 
+            class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-base-300/50 transition-colors flex items-center gap-2"
+            onClick={() => openInViewport('right')}
+          >
+            <ArrowRight class="w-4 h-4" />
+            Open in Viewport (Right)
+          </button>
+        </div>
+      </Show>
     </div>
   );
 }

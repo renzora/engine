@@ -1,58 +1,117 @@
-import { createSignal, For, Show } from 'solid-js';
+import { createSignal, For, Show, createEffect } from 'solid-js';
+import { invoke } from '@tauri-apps/api/core';
 // Simple renderer display for Babylon.js
 
 export default function RendererSwitcher() {
   const [isOpen, setIsOpen] = createSignal(false);
+  const [currentRenderer, setCurrentRenderer] = createSignal('babylon');
+  const [isVulkanSupported, setIsVulkanSupported] = createSignal(false);
+  const [isTauriEnv, setIsTauriEnv] = createSignal(false);
 
-  // Static babylon renderer
-  const currentRenderer = () => 'babylon';
-  const availableRenderers = () => ['babylon'];
+  // Check if running in Tauri environment
+  createEffect(async () => {
+    try {
+      // Try to call a Tauri command to detect environment
+      await invoke('check_vulkan_support');
+      setIsTauriEnv(true);
+      
+      // Check Vulkan support
+      const vulkanSupported = await invoke('check_vulkan_support');
+      setIsVulkanSupported(vulkanSupported);
+    } catch (e) {
+      // Not in Tauri environment
+      setIsTauriEnv(false);
+      setIsVulkanSupported(false);
+    }
+  });
 
-  const rendererLabels = {
-    babylon: 'Babylon.js',
-    three: 'Three.js',
-    torus: 'Torus',
-    webgpu: 'WebGPU',
-    playcanvas: 'PlayCanvas',
-    pixi: 'PixiJS',
-    phaser: 'Phaser'
+  const availableRenderers = () => {
+    const renderers = ['babylon', 'threejs', 'playcanvas', 'pixijs', 'phaser', 'melonjs'];
+    if (isTauriEnv()) {
+      renderers.push('webgpu');
+      renderers.push('babylon-native');
+      if (isVulkanSupported()) {
+        renderers.push('vulkan');
+      }
+    }
+    return renderers;
   };
 
-  // Get library versions - these would ideally come from the renderer implementations
-  const getRendererVersion = (rendererType) => {
+  const rendererLabels = {
+    babylon: 'Babylon.js (WebGL)',
+    webgpu: 'Babylon.js (WebGPU)',
+    'babylon-native': 'Babylon Native',
+    vulkan: 'Torus R1',
+    threejs: 'Three.js',
+    three: 'Three.js',
+    torus: 'Torus',
+    playcanvas: 'PlayCanvas',
+    pixijs: 'PixiJS',
+    pixi: 'PixiJS',
+    phaser: 'Phaser',
+    melonjs: 'MelonJS'
+  };
+
+  // Get library versions and languages
+  const getRendererInfo = (rendererType) => {
     switch (rendererType) {
       case 'babylon':
         try {
-          // Try to get Babylon.js version if available
-          return window.BABYLON?.Engine?.Version || '7.x';
+          const version = window.BABYLON?.Engine?.Version || '8.20.0';
+          return { version, language: 'JavaScript' };
         } catch {
-          return '7.x';
+          return { version: '8.20.0', language: 'JavaScript' };
         }
+      case 'webgpu':
+        return { version: '8.20.0', language: 'JavaScript/WebGPU' };
+      case 'babylon-native':
+        return { version: '8.20.0', language: 'C++' };
       case 'torus':
-        return 'v1.0'; // Custom renderer version
+      case 'vulkan':
+        return { version: 'v1.0', language: 'Rust' };
       case 'three':
+      case 'threejs':
         try {
-          // Try to get Three.js version if available
-          return window.THREE?.REVISION ? `r${window.THREE.REVISION}` : '0.160+';
+          const version = window.THREE?.REVISION ? `r${window.THREE.REVISION}` : '0.169+';
+          return { version, language: 'JavaScript' };
         } catch {
-          return '0.160+';
+          return { version: '0.169+', language: 'JavaScript' };
         }
       case 'pixi':
-        return '8.x';
+      case 'pixijs':
+        return { version: '8.12.0', language: 'JavaScript' };
       case 'playcanvas':
-        return '1.70+';
+        return { version: '1.70+', language: 'JavaScript' };
       case 'phaser':
-        return '3.80+';
-      case 'webgpu':
-        return 'Draft';
+        return { version: '3.90.0', language: 'JavaScript' };
+      case 'melonjs':
+        return { version: '17.4.0', language: 'JavaScript' };
       default:
-        return '';
+        return { version: '', language: '' };
     }
   };
 
   const handleSwitchRenderer = async (rendererType) => {
-    // Babylon.js is the only renderer
-    setIsOpen(false);
+    try {
+      if (rendererType === 'vulkan' && isTauriEnv()) {
+        // Initialize native Vulkan renderer
+        await invoke('init_vulkan_renderer');
+        console.log('Switched to native Vulkan renderer');
+      } else if (rendererType === 'babylon-native' && isTauriEnv()) {
+        // Initialize Babylon Native renderer
+        await invoke('init_babylon_native', { width: 800, height: 600 });
+        console.log('Switched to Babylon Native renderer');
+      }
+      setCurrentRenderer(rendererType);
+      setIsOpen(false);
+      
+      // Emit custom event for renderer change
+      window.dispatchEvent(new CustomEvent('renderer-changed', { 
+        detail: { renderer: rendererType } 
+      }));
+    } catch (error) {
+      console.error('Failed to switch renderer:', error);
+    }
   };
 
   return (
@@ -73,13 +132,13 @@ export default function RendererSwitcher() {
             {(rendererType) => {
               const isActive = currentRenderer() === rendererType;
               const isAvailable = true;
-              const version = getRendererVersion(rendererType);
+              const { version, language } = getRendererInfo(rendererType);
               
               return (
                 <button
                   onClick={() => isAvailable && handleSwitchRenderer(rendererType)}
                   disabled={!isAvailable}
-                  title={version ? `${version}` : ''}
+                  title={`${version} • ${language}`}
                   class={`w-full px-2 py-1 text-left text-xs transition-colors hover:bg-base-300 first:rounded-t last:rounded-b ${
                     isActive ? 'bg-primary text-primary-content' : 'text-base-content'
                   } ${!isAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -94,13 +153,18 @@ export default function RendererSwitcher() {
                         </Show>
                       </span>
                     </div>
-                    {version && (
+                    <div class="flex items-center justify-between gap-1">
                       <span class={`text-[10px] truncate ${
                         isActive ? 'text-primary-content/70' : 'text-base-content/60'
                       }`}>
                         {version}
                       </span>
-                    )}
+                      <span class={`text-[10px] truncate ${
+                        isActive ? 'text-primary-content/70' : 'text-base-content/60'
+                      }`}>
+                        {language}
+                      </span>
+                    </div>
                   </div>
                 </button>
               );

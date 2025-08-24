@@ -3,6 +3,7 @@ import Toolbar from './Toolbar.jsx';
 import Viewport from './viewport.jsx';
 import RightPanel from './rightPanel.jsx';
 import BottomPanel from './bottomPanel.jsx';
+import Footer from './Footer.jsx';
 
 const Layout = () => {
   return (
@@ -17,6 +18,8 @@ const Layout = () => {
         <RightPanel />
         <BottomPanel />
       </div>
+      
+      <Footer />
     </div>
   );
 };

@@ -1,5 +1,5 @@
-import { createSignal, createEffect, Show } from 'solid-js';
-import { X, Save, FileText, Code } from '@/ui/icons';
+import { createSignal, createEffect, Show, For } from 'solid-js';
+import { X, Save, FileText, Code, Forward, Back } from '@/ui/icons';
 import MonacoEditor from '@/components/MonacoEditor';
 import { readFile, writeFile, deleteFile } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -10,7 +10,9 @@ function CodeEditorPanel({
   isOpen, 
   onClose, 
   selectedFile, 
-  width = 400 
+  width = 400,
+  onToggleSide,
+  currentSide = 'left'
 }) {
   const [editorValue, setEditorValue] = createSignal('');
   const [loading, setLoading] = createSignal(false);
@@ -802,22 +804,22 @@ function CodeEditorPanel({
   return (
     <div class="h-full flex flex-col bg-base-100">
         {/* Header */}
-        <div class="flex items-center justify-between p-3 border-b border-base-300 bg-base-200">
-          <div class="flex items-center gap-2 min-w-0 flex-1">
+        <div class="flex items-center justify-between py-2 pl-3 pr-1 border-b border-base-300 bg-base-200">
+          <div class="flex items-center gap-1.5 min-w-0 flex-1">
             <FileText class="w-4 h-4 text-primary flex-shrink-0" />
+            <Show when={hasChanges()}>
+              <div class="w-2 h-2 bg-warning rounded-full flex-shrink-0" title="Unsaved changes" />
+            </Show>
             <input
               type="text"
               value={fileName()}
               onInput={(e) => handleFileNameChange(e.target.value)}
-              class="text-sm font-medium bg-transparent border-none outline-none focus:bg-base-100 focus:px-2 focus:py-1 focus:rounded focus:border focus:border-primary/20 transition-all flex-1 min-w-0"
+              class="text-xs font-medium bg-transparent border-none outline-none focus:bg-base-100 focus:px-1 focus:py-0.5 focus:rounded focus:border focus:border-primary/20 transition-all flex-1 min-w-0"
               placeholder="filename.js"
             />
-            <Show when={hasChanges()}>
-              <div class="w-2 h-2 bg-warning rounded-full flex-shrink-0" title="Unsaved changes" />
-            </Show>
           </div>
           
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-1">
             <Show when={selectedFile() && (fileName().endsWith('.js') || fileName().endsWith('.jsx') || fileName().endsWith('.ts') || fileName().endsWith('.tsx') || fileName().endsWith('.ren'))}>
               <button
                 draggable="true"
@@ -855,20 +857,30 @@ function CodeEditorPanel({
                     setTimeout(() => document.body.removeChild(dragCard), 0);
                   }
                 }}
-                class="px-2 py-1 text-xs rounded bg-base-300 text-base-content/60 hover:text-base-content hover:bg-base-300/80 transition-colors"
+                class="px-1.5 py-0.5 text-xs rounded text-base-content/60 hover:text-base-content hover:bg-base-300/60 transition-colors cursor-grab active:cursor-grabbing"
                 title="Drag to attach script to object"
               >
                 <Code class="w-3 h-3" />
               </button>
             </Show>
             
+            <Show when={onToggleSide}>
+              <button
+                onClick={onToggleSide}
+                class="px-1.5 py-0.5 text-xs rounded text-base-content/60 hover:text-base-content hover:bg-base-300/60 transition-colors cursor-pointer"
+                title={`Move editor to ${currentSide === 'left' ? 'right' : 'left'} side`}
+              >
+                {currentSide === 'left' ? <Forward class="w-3 h-3" /> : <Back class="w-3 h-3" />}
+              </button>
+            </Show>
+            
             <button
               onClick={saveFile}
               disabled={!hasChanges() || saving()}
-              class={`px-2 py-1 text-xs rounded transition-colors ${
+              class={`px-1.5 py-0.5 text-xs rounded transition-colors ${
                 hasChanges() && !saving()
-                  ? 'bg-primary text-primary-content hover:bg-primary/80'
-                  : 'bg-base-300 text-base-content/50 cursor-not-allowed'
+                  ? 'bg-primary text-primary-content hover:bg-primary/80 cursor-pointer'
+                  : 'text-base-content/50 cursor-not-allowed hover:bg-base-300/60'
               }`}
               title="Save (Ctrl+S)"
             >
@@ -879,7 +891,7 @@ function CodeEditorPanel({
             
             <button
               onClick={handleClose}
-              class="px-2 py-1 text-xs rounded bg-base-300 text-base-content/60 hover:text-base-content hover:bg-base-300/80 transition-colors"
+              class="px-1.5 py-0.5 text-xs rounded text-base-content/60 hover:text-base-content hover:bg-base-300/60 transition-colors cursor-pointer"
               title="Close"
             >
               <X class="w-3 h-3" />

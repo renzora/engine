@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import { Grid, Menu, Refresh, Code } from '@/ui/icons';
+import { Grid, Menu, Refresh, CodeSlash, Plus } from '@/ui/icons';
 
 function AssetHeader({ 
   selectedAssets, 
@@ -9,7 +9,8 @@ function AssetHeader({
   setLayoutMode,
   onRefresh,
   onCodeToggle,
-  isCodeEditorOpen = false
+  isCodeEditorOpen = false,
+  onImport
 }) {
   return (
     <div class="flex items-center gap-3">
@@ -29,27 +30,27 @@ function AssetHeader({
             </div>
           </Show>
           
-          <button
-            onClick={onCodeToggle}
-            class={`px-2 py-1 text-xs rounded transition-colors ${
-              isCodeEditorOpen()
-                ? 'bg-primary text-primary-content'
-                : 'bg-base-200 text-base-content/60 hover:text-base-content hover:bg-base-300'
-            }`}
-            title="Toggle Code Editor"
-          >
-            <Code class="w-3 h-3" />
-          </button>
           
           <button
-            onClick={onRefresh}
-            class="px-2 py-1 text-xs rounded bg-base-200 text-base-content/60 hover:text-base-content hover:bg-base-300 transition-colors"
-            title="Refresh Assets"
+            onClick={onImport}
+            class="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-primary text-primary-content hover:bg-primary/80 transition-colors"
           >
-            <Refresh class="w-3 h-3" />
+            <Plus class="w-3 h-3" />
+            <span>Import</span>
           </button>
           
           <div class="flex bg-base-300 rounded overflow-hidden">
+            <button
+              onClick={onCodeToggle}
+              class={`px-2 py-1 text-xs transition-colors ${
+                isCodeEditorOpen()
+                  ? 'bg-primary text-primary-content'
+                  : 'text-base-content/60 hover:text-base-content hover:bg-base-200'
+              }`}
+              title="Toggle Code Editor"
+            >
+              <CodeSlash class="w-3 h-3" />
+            </button>
             <button
               onClick={() => setLayoutMode('grid')}
               class={`px-2 py-1 text-xs transition-colors ${

@@ -328,6 +328,189 @@ function MonacoEditor({
     });
   };
 
+  // Helper function to get CSS custom property values and convert to hex
+  const getCSSVariable = (name, fallback = '000000') => {
+    if (typeof window === 'undefined') return fallback;
+    
+    try {
+      const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      console.log(`CSS Variable ${name}:`, value);
+      
+      if (!value) return fallback;
+      
+      // DaisyUI variables are usually in HSL format like "200 6% 10%"
+      // We need to convert them to hex
+      if (value.includes('%')) {
+        // Parse HSL values like "200 6% 10%"
+        const parts = value.split(' ');
+        if (parts.length >= 3) {
+          const h = parseInt(parts[0]) || 0;
+          const s = parseInt(parts[1]) || 0;
+          const l = parseInt(parts[2]) || 50;
+          return hslToHex(h, s, l);
+        }
+      }
+      
+      // If it's already a hex color, use it
+      if (value.startsWith('#')) {
+        return value.replace('#', '');
+      }
+      
+      // If it's RGB, convert it
+      if (value.startsWith('rgb')) {
+        const matches = value.match(/\d+/g);
+        if (matches && matches.length >= 3) {
+          const r = parseInt(matches[0]);
+          const g = parseInt(matches[1]);
+          const b = parseInt(matches[2]);
+          return rgbToHex(r, g, b);
+        }
+      }
+      
+      return fallback;
+    } catch (error) {
+      console.warn(`Failed to get CSS variable ${name}:`, error);
+      return fallback;
+    }
+  };
+
+  // Convert HSL to Hex
+  const hslToHex = (h, s, l) => {
+    l /= 100;
+    const a = s * Math.min(l, 1 - l) / 100;
+    const f = n => {
+      const k = (n + h / 30) % 12;
+      const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+      return Math.round(255 * color).toString(16).padStart(2, '0');
+    };
+    return `${f(0)}${f(8)}${f(4)}`;
+  };
+
+  // Convert RGB to Hex
+  const rgbToHex = (r, g, b) => {
+    return ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+  };
+
+  // Define DaisyUI theme
+  const createDaisyUITheme = (monaco) => {
+    console.log('Creating DaisyUI theme...');
+    
+    // Get current theme colors from CSS custom properties
+    const baseContent = getCSSVariable('--bc', 'A6ADBA');
+    const base100 = getCSSVariable('--b1', '2A303C');
+    const base200 = getCSSVariable('--b2', '242933');
+    const base300 = getCSSVariable('--b3', '1D232A');
+    const primary = getCSSVariable('--p', '3ABFF8');
+    const secondary = getCSSVariable('--s', '828DF8');
+    const accent = getCSSVariable('--a', 'F471B5');
+    const neutral = getCSSVariable('--n', '1B1D1D');
+    const info = getCSSVariable('--in', '3ABFF8');
+    const success = getCSSVariable('--su', '36D399');
+    const warning = getCSSVariable('--wa', 'FBBD23');
+    const error = getCSSVariable('--er', 'F87272');
+
+    console.log('Theme colors:', { baseContent, base100, base200, base300, primary });
+
+    monaco.editor.defineTheme('daisyui-theme', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        // General
+        { token: '', foreground: baseContent },
+        { token: 'comment', foreground: '6B7280', fontStyle: 'italic' },
+        { token: 'keyword', foreground: primary, fontStyle: 'bold' },
+        { token: 'identifier', foreground: baseContent },
+        
+        // Types and classes
+        { token: 'type', foreground: secondary },
+        { token: 'type.identifier', foreground: accent },
+        
+        // Strings and numbers
+        { token: 'string', foreground: success },
+        { token: 'string.quote', foreground: success },
+        { token: 'number', foreground: warning },
+        { token: 'number.float', foreground: warning },
+        { token: 'number.hex', foreground: warning },
+        
+        // Functions and methods
+        { token: 'support.function', foreground: info },
+        { token: 'support.function.event', foreground: accent },
+        { token: 'keyword.other', foreground: secondary },
+        
+        // Operators and delimiters
+        { token: 'operator', foreground: baseContent },
+        { token: 'delimiter', foreground: '9CA3AF' },
+        
+        // Invalid/errors
+        { token: 'string.invalid', foreground: error },
+        { token: 'string.escape.invalid', foreground: error },
+        
+        // Brackets
+        { token: 'delimiter.bracket', foreground: baseContent },
+      ],
+      colors: {
+        // Editor background
+        'editor.background': base100,
+        'editor.foreground': baseContent,
+        
+        // Line numbers
+        'editorLineNumber.foreground': '6B7280',
+        'editorLineNumber.activeForeground': primary,
+        
+        // Cursor
+        'editorCursor.foreground': primary,
+        
+        // Selection
+        'editor.selectionBackground': primary + '40',
+        'editor.selectionHighlightBackground': primary + '20',
+        
+        // Current line
+        'editor.lineHighlightBackground': base200,
+        
+        // Indentation guides
+        'editorIndentGuide.background': base300,
+        'editorIndentGuide.activeBackground': primary + '60',
+        
+        // Gutter
+        'editorGutter.background': base100,
+        
+        // Scrollbar
+        'scrollbar.shadow': '00000020',
+        'scrollbarSlider.background': base300 + '80',
+        'scrollbarSlider.hoverBackground': base300,
+        'scrollbarSlider.activeBackground': primary + '80',
+        
+        // Find/replace
+        'editor.findMatchBackground': warning + '40',
+        'editor.findMatchHighlightBackground': warning + '20',
+        
+        // Brackets matching
+        'editorBracketMatch.background': primary + '20',
+        'editorBracketMatch.border': primary,
+        
+        // Overview ruler
+        'editorOverviewRuler.border': base300,
+        
+        // Widget backgrounds
+        'editorWidget.background': base200,
+        'editorWidget.border': base300,
+        'editorSuggestWidget.background': base200,
+        'editorSuggestWidget.border': base300,
+        'editorSuggestWidget.selectedBackground': primary + '40',
+        
+        // Input
+        'input.background': base200,
+        'input.border': base300,
+        'input.foreground': baseContent,
+        
+        // Dropdown
+        'dropdown.background': base200,
+        'dropdown.border': base300,
+        'dropdown.foreground': baseContent,
+      }
+    });
+  };
+
   onMount(async () => {
     try {
       // Configure Monaco loader to minimize bundle size
@@ -339,6 +522,9 @@ function MonacoEditor({
 
       const monaco = await loader.init();
       
+      // Create and register DaisyUI theme
+      createDaisyUITheme(monaco);
+      
       // Register custom language features
       registerScriptingLanguage(monaco);
       registerRenScriptLanguage(monaco);
@@ -347,8 +533,49 @@ function MonacoEditor({
         value: value || '',
         language,
         theme,
-        ...defaultOptions
+        ...defaultOptions,
+        // Disable drag and drop to prevent conflicts with asset drag/drop
+        dragAndDrop: false,
+        dropIntoEditor: { enabled: false }
       });
+
+      // Explicitly disable drag/drop events on the editor container
+      const editorContainer = editorInstance.getDomNode();
+      let dragEventListeners = [];
+      
+      if (editorContainer) {
+        const preventDragDrop = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        
+        // Store listener references for cleanup
+        const addDragListener = (element, event, handler) => {
+          element.addEventListener(event, handler, true);
+          dragEventListeners.push({ element, event, handler });
+        };
+        
+        // Prevent all drag/drop events on container
+        addDragListener(editorContainer, 'dragover', preventDragDrop);
+        addDragListener(editorContainer, 'dragenter', preventDragDrop);  
+        addDragListener(editorContainer, 'dragleave', preventDragDrop);
+        addDragListener(editorContainer, 'drop', preventDragDrop);
+        
+        // Also prevent on the inner editor elements
+        const setupEditableAreaListeners = () => {
+          const editableArea = editorContainer.querySelector('.monaco-editor .overflow-guard .monaco-scrollable-element');
+          if (editableArea) {
+            addDragListener(editableArea, 'dragover', preventDragDrop);
+            addDragListener(editableArea, 'dragenter', preventDragDrop);
+            addDragListener(editableArea, 'dragleave', preventDragDrop);
+            addDragListener(editableArea, 'drop', preventDragDrop);
+          }
+        };
+        
+        // Apply immediately and after a small delay to ensure DOM is ready
+        setupEditableAreaListeners();
+        setTimeout(setupEditableAreaListeners, 100);
+      }
 
       setEditor(editorInstance);
 
@@ -382,8 +609,32 @@ function MonacoEditor({
       resizeObserver.observe(containerRef);
 
       onCleanup(() => {
+        console.log('[MonacoEditor] Cleaning up editor instance');
+        
+        // Clean up drag/drop event listeners
+        if (dragEventListeners) {
+          dragEventListeners.forEach(({ element, event, handler }) => {
+            try {
+              element.removeEventListener(event, handler, true);
+            } catch (error) {
+              console.warn('[MonacoEditor] Error removing event listener:', error);
+            }
+          });
+          dragEventListeners = [];
+        }
+        
+        // Clean up resize observer
         resizeObserver.disconnect();
-        editorInstance.dispose();
+        
+        // Re-enable shortcuts if they were disabled
+        keyboardShortcuts.enable();
+        
+        // Dispose of editor instance
+        try {
+          editorInstance.dispose();
+        } catch (error) {
+          console.warn('[MonacoEditor] Error disposing editor:', error);
+        }
       });
 
     } catch (error) {
@@ -412,6 +663,36 @@ function MonacoEditor({
           monaco.editor.setModelLanguage(model, language);
         });
       }
+    }
+  });
+
+  // Watch for theme changes using MutationObserver
+  onMount(() => {
+    if (theme === 'daisyui-theme') {
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'data-theme') {
+            // Theme changed, update Monaco theme
+            const editorInstance = editor();
+            if (editorInstance) {
+              loader.init().then(monaco => {
+                createDaisyUITheme(monaco);
+                monaco.editor.setTheme('daisyui-theme');
+              });
+            }
+          }
+        });
+      });
+
+      // Observe theme changes on html element
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme', 'class']
+      });
+
+      onCleanup(() => {
+        observer.disconnect();
+      });
     }
   });
 

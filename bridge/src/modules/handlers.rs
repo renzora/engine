@@ -7,13 +7,16 @@ use async_stream::stream;
 use std::convert::Infallible;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
+use tokio::time;
 use log::{info, warn, error, debug};
+use percent_encoding::percent_decode_str;
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
 use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
+use crate::system_monitor::get_system_stats;
 
 // Static variable to store startup time
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
@@ -78,23 +81,39 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         }
         (&Method::GET, path) if path.starts_with("/list/") => {
             let dir_path = &path[6..];
-            handle_list_directory(dir_path)
+            let decoded_path = match decode_url_path(dir_path) {
+                Ok(path) => path,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
+            handle_list_directory(&decoded_path)
         }
         (&Method::GET, path) if path.starts_with("/read/") => {
             let file_path = &path[6..];
-            handle_read_file(file_path)
+            let decoded_path = match decode_url_path(file_path) {
+                Ok(path) => path,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
+            handle_read_file(&decoded_path)
         }
         (&Method::POST, path) if path.starts_with("/write/") => {
             let file_path = &path[7..];
+            let decoded_path = match decode_url_path(file_path) {
+                Ok(path) => path,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
             match &body {
-                Some(body_content) => handle_write_file(file_path, body_content),
+                Some(body_content) => handle_write_file(&decoded_path, body_content),
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
         (&Method::POST, path) if path.starts_with("/write-binary/") => {
             let file_path = &path[14..];
+            let decoded_path = match decode_url_path(file_path) {
+                Ok(path) => path,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
             match &body {
-                Some(body_content) => handle_write_binary_file(file_path, body_content),
+                Some(body_content) => handle_write_binary_file(&decoded_path, body_content),
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
@@ -104,7 +123,11 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         }
         (&Method::GET, path) if path.starts_with("/file/") => {
             let file_path = &path[6..];
-            return Ok(handle_serve_asset(file_path));
+            let decoded_path = match decode_url_path(file_path) {
+                Ok(path) => path,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
+            return Ok(handle_serve_asset(&decoded_path));
         }
         (&Method::POST, "/start-watcher") => handle_start_watcher(),
         (&Method::GET, "/file-changes") => handle_get_file_changes(),
@@ -123,6 +146,7 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         }
         (&Method::GET, "/health") => handle_health_check(),
         (&Method::GET, "/startup-time") => handle_get_startup_time(),
+        (&Method::GET, "/system/stats") => handle_get_system_stats(),
         (&Method::POST, "/restart") => handle_restart_bridge(),
         (&Method::POST, "/clear-cache") => handle_clear_cache(),
         (&Method::GET, "/update/check") => {
@@ -264,8 +288,23 @@ fn handle_write_binary_file(file_path: &str, body: &str) -> Response<BoxBody<Byt
     }
 }
 
+fn decode_url_path(encoded_path: &str) -> Result<String, String> {
+    match percent_decode_str(encoded_path).decode_utf8() {
+        Ok(decoded) => Ok(decoded.to_string()),
+        Err(e) => {
+            error!("Failed to decode URL path '{}': {}", encoded_path, e);
+            Err(format!("Invalid URL encoding: {}", e))
+        }
+    }
+}
+
 fn handle_delete_file(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
-    match delete_file_or_directory(file_path) {
+    let decoded_path = match decode_url_path(file_path) {
+        Ok(path) => path,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
+    };
+    
+    match delete_file_or_directory(&decoded_path) {
         Ok(_) => {
             let response = ApiResponse {
                 success: true,
@@ -510,6 +549,12 @@ fn handle_get_startup_time() -> Response<BoxBody<Bytes, Infallible>> {
     
     json_response(&startup_data)
 }
+
+fn handle_get_system_stats() -> Response<BoxBody<Bytes, Infallible>> {
+    let stats = get_system_stats();
+    json_response(&stats)
+}
+
 
 fn handle_restart_bridge() -> Response<BoxBody<Bytes, Infallible>> {
     // In a real implementation, this would restart the server

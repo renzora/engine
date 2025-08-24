@@ -1,0 +1,3 @@
+[submodule "src-tauri/babylon-native"]
+	path = src-tauri/babylon-native
+	url = https://github.com/BabylonJS/BabylonNative.git

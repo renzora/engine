@@ -149,7 +149,7 @@ const RightPanel = () => {
       <div 
         className={`absolute top-0 right-0 pointer-events-auto no-select z-20`}
         style={{ 
-          height: '100%',
+          height: 'calc(100% - 24px)', // Subtract footer height
           width: `${rightPanelWidth()}px`,
           maxWidth: '100vw'
         }}
@@ -165,7 +165,7 @@ const RightPanel = () => {
             position={{
               left: '-8px',
               top: 0,
-              bottom: `${bottomPanelHeight()}px`,
+              bottom: `${bottomPanelHeight() + 24}px`, // Add 24px for footer
               width: '8px',
               zIndex: 30
             }}

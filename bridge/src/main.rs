@@ -66,6 +66,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize file watcher
     initialize_file_watcher(projects_path.clone())?;
     
+    // Initialize system monitor
+    initialize_system_monitor();
+    
     // File watching now uses SSE streaming endpoint instead of separate WebSocket server
     
     // Check for updates on startup

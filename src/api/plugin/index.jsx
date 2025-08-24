@@ -60,7 +60,19 @@ class PluginLoader {
     const pluginLocations = [
       { path: '/src/plugins/splash', main: 'index.jsx', priority: -1 },
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
-      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 }
+      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
+      // Bottom panel plugins
+      { path: '/src/plugins/editor/console', main: 'index.jsx', priority: 10 },
+      { path: '/src/plugins/editor/particles', main: 'index.jsx', priority: 11 },
+      { path: '/src/plugins/editor/physics', main: 'index.jsx', priority: 12 },
+      { path: '/src/plugins/editor/animation', main: 'index.jsx', priority: 13 },
+      { path: '/src/plugins/editor/terrain', main: 'index.jsx', priority: 14 },
+      { path: '/src/plugins/editor/nodes', main: 'index.jsx', priority: 15 },
+      // Right panel plugins
+      { path: '/src/plugins/editor/bookmarks', main: 'index.jsx', priority: 20 },
+      { path: '/src/plugins/editor/teamchat', main: 'index.jsx', priority: 21 },
+      { path: '/src/plugins/editor/lighting', main: 'index.jsx', priority: 22 },
+      { path: '/src/plugins/editor/postprocessing', main: 'index.jsx', priority: 23 }
     ];
 
     for (const location of pluginLocations) {
@@ -149,6 +161,38 @@ class PluginLoader {
             break;
           case 'core-bridge-plugin':
             pluginModule = await import(`@/plugins/core/bridge/BridgePluginClass.jsx`);
+            break;
+          // Bottom panel plugins
+          case 'editor-console-plugin':
+            pluginModule = await import(`@/plugins/editor/console/index.jsx`);
+            break;
+          case 'editor-particles-plugin':
+            pluginModule = await import(`@/plugins/editor/particles/index.jsx`);
+            break;
+          case 'editor-physics-plugin':
+            pluginModule = await import(`@/plugins/editor/physics/index.jsx`);
+            break;
+          case 'editor-animation-plugin':
+            pluginModule = await import(`@/plugins/editor/animation/index.jsx`);
+            break;
+          case 'editor-terrain-plugin':
+            pluginModule = await import(`@/plugins/editor/terrain/index.jsx`);
+            break;
+          case 'editor-nodes-plugin':
+            pluginModule = await import(`@/plugins/editor/nodes/index.jsx`);
+            break;
+          // Right panel plugins
+          case 'editor-bookmarks-plugin':
+            pluginModule = await import(`@/plugins/editor/bookmarks/index.jsx`);
+            break;
+          case 'editor-teamchat-plugin':
+            pluginModule = await import(`@/plugins/editor/teamchat/index.jsx`);
+            break;
+          case 'editor-lighting-plugin':
+            pluginModule = await import(`@/plugins/editor/lighting/index.jsx`);
+            break;
+          case 'editor-postprocessing-plugin':
+            pluginModule = await import(`@/plugins/editor/postprocessing/index.jsx`);
             break;
           default:
             try {

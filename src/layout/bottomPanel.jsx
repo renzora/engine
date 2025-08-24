@@ -12,7 +12,8 @@ const BottomPanel = () => {
   onMount(() => {
     const handleWindowResize = () => {
       const currentHeight = editorStore.ui.bottomPanelHeight;
-      const maxHeight = Math.floor(window.innerHeight * 0.8);
+      const footerHeight = 24;
+      const maxHeight = Math.floor((window.innerHeight - footerHeight) * 0.8);
       if (currentHeight > maxHeight) {
         editorActions.setBottomPanelHeight(maxHeight);
       }
@@ -51,8 +52,9 @@ const BottomPanel = () => {
   
   const handleBottomResizeStart = (e) => {
     setIsResizingBottom(true);
-    // Calculate offset between mouse and current panel edge
-    const currentPanelTop = window.innerHeight - bottomPanelHeight();
+    // Calculate offset between mouse and current panel edge, accounting for footer
+    const footerHeight = 24;
+    const currentPanelTop = window.innerHeight - bottomPanelHeight() - footerHeight;
     setDragOffset(e?.clientY ? e.clientY - currentPanelTop : 0);
   };
   
@@ -63,9 +65,11 @@ const BottomPanel = () => {
   const handleBottomResizeMove = (e) => {
     if (!isResizingBottom()) return;
     
-    // Apply the drag offset so panel edge follows mouse cursor
-    const newHeight = window.innerHeight - (e.clientY - dragOffset());
-    const clampedHeight = Math.max(100, Math.min(newHeight, window.innerHeight * 0.8));
+    // Apply the drag offset so panel edge follows mouse cursor, accounting for footer
+    const footerHeight = 24;
+    const newHeight = window.innerHeight - footerHeight - (e.clientY - dragOffset());
+    const maxHeight = (window.innerHeight - footerHeight) * 0.8;
+    const clampedHeight = Math.max(100, Math.min(newHeight, maxHeight));
     editorActions.setBottomPanelHeight(clampedHeight);
   };
 
@@ -95,14 +99,16 @@ const BottomPanel = () => {
     const leftPos = isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0';
     const rightPos = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0';
     const heightVal = `${getPanelHeight()}px`;
+    const footerHeight = 24; // 24px footer height
+    const bottomPos = `${footerHeight}px`;
     
-    return { left: leftPos, right: rightPos, height: heightVal };
+    return { left: leftPos, right: rightPos, height: heightVal, bottom: bottomPos };
   };
   
   return (
     <Show when={bottomPanelVisible()}>
       <div 
-        class="absolute bottom-0 pointer-events-auto no-select z-[60]"
+        class="absolute pointer-events-auto no-select z-[60]"
         style={getPositioning()}
       >
       <PanelResizer

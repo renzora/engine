@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, createMemo, batch } from 'solid-js';
-import { Photo, Wave, FileText, File, Cube, Video, Code, Circle, Rectangle, Grid, Lightbulb, Plus } from '@/ui/icons';
+import { Photo, Wave, FileText, File, Cube, Video, Code, Circle, Rectangle, Grid, Lightbulb, Plus, Refresh } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { assetsStore, assetsActions } from '@/layout/stores/AssetStore';
 import { createContextMenuActions } from '@/ui/ContextMenuActions.jsx';
@@ -79,6 +79,16 @@ function AssetLibrary({ onContextMenu }) {
   const projectManager = getProjectManager();
 
   // Helper functions
+  const isWindowsReservedName = (name) => {
+    const reservedNames = [
+      'con', 'prn', 'aux', 'nul',
+      'com1', 'com2', 'com3', 'com4', 'com5', 'com6', 'com7', 'com8', 'com9',
+      'lpt1', 'lpt2', 'lpt3', 'lpt4', 'lpt5', 'lpt6', 'lpt7', 'lpt8', 'lpt9'
+    ];
+    const baseName = name.toLowerCase().split('.')[0];
+    return reservedNames.includes(baseName);
+  };
+
   const toggleAssetSelection = (asset, ctrlKey = false, shiftKey = false) => {
     const currentSelected = selectedAssets();
     const newSelected = new Set(currentSelected);
@@ -184,8 +194,8 @@ function AssetLibrary({ onContextMenu }) {
       return null;
     }
 
-    const folders = assets.filter(asset => asset.is_directory);
-    const files = assets.filter(asset => !asset.is_directory);
+    const folders = assets.filter(asset => asset.is_directory && !isWindowsReservedName(asset.name));
+    const files = assets.filter(asset => !asset.is_directory && !isWindowsReservedName(asset.name));
 
     let processedFolders = folders;
     let processedFiles = files;
@@ -303,14 +313,14 @@ function AssetLibrary({ onContextMenu }) {
       const buildNestedTree = async (items, parentPath = '') => {
         const tree = [];
         
-        for (const item of items.filter(i => i.is_directory)) {
+        for (const item of items.filter(i => i.is_directory && !isWindowsReservedName(i.name))) {
           // Build the correct full path for this folder
           const fullPath = parentPath ? `${parentPath}/${item.name}` : item.name;
           
           try {
             const subItems = await listDirectory(`projects/${currentProject.name}/${fullPath}`);
             const children = await buildNestedTree(subItems, fullPath);
-            const files = subItems.filter(subItem => !subItem.is_directory);
+            const files = subItems.filter(subItem => !subItem.is_directory && !isWindowsReservedName(subItem.name));
             
             console.log('🔵 Building tree node - name:', item.name, 'path:', fullPath);
             tree.push({
@@ -444,18 +454,20 @@ function AssetLibrary({ onContextMenu }) {
       
       const rawAssets = await listDirectory(dirPath);
       
-      const assets = rawAssets.map(asset => {
-        const hasExtension = asset.name.includes('.') && !asset.is_directory;
-        return {
-          id: asset.path,
-          name: asset.name,
-          path: path ? `${path}/${asset.name}` : asset.name,
-          type: asset.is_directory ? 'folder' : 'file',
-          extension: hasExtension ? '.' + asset.name.split('.').pop() : null,
-          size: asset.size || 0,
-          fileName: asset.name
-        };
-      });
+      const assets = rawAssets
+        .filter(asset => !isWindowsReservedName(asset.name))
+        .map(asset => {
+          const hasExtension = asset.name.includes('.') && !asset.is_directory;
+          return {
+            id: asset.path,
+            name: asset.name,
+            path: path ? `${path}/${asset.name}` : asset.name,
+            type: asset.is_directory ? 'folder' : 'file',
+            extension: hasExtension ? '.' + asset.name.split('.').pop() : null,
+            size: asset.size || 0,
+            fileName: asset.name
+          };
+        });
       
       return assets;
       
@@ -471,7 +483,7 @@ function AssetLibrary({ onContextMenu }) {
       const searchLower = query.toLowerCase();
       
       const results = allAssets.filter(asset => 
-        asset.name.toLowerCase().includes(searchLower)
+        asset.name.toLowerCase().includes(searchLower) && !isWindowsReservedName(asset.name)
       );
       
       return results;
@@ -700,7 +712,7 @@ function AssetLibrary({ onContextMenu }) {
         
         console.log('🔢 Fetching files for:', dirPath);
         const items = await listDirectory(dirPath);
-        const files = items.filter(item => !item.is_directory);
+        const files = items.filter(item => !item.is_directory && !isWindowsReservedName(item.name));
         console.log(`🔢 Folder ${node.name} has ${files.length} files (was ${node.files?.length || 0})`);
         
         // Update the node with new file list
@@ -1050,6 +1062,10 @@ function AssetLibrary({ onContextMenu }) {
     setSelectedFileForEdit(null);
   };
 
+  const handleImportClick = () => {
+    fileInputRef?.click();
+  };
+
   // Selection handling
   const startDragSelection = (e) => {
     const target = e.target;
@@ -1143,7 +1159,7 @@ function AssetLibrary({ onContextMenu }) {
     setSelectionStart(null);
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = async (e) => {
     if (e.key === 'Escape') {
       clearSelection();
       return;
@@ -1161,7 +1177,40 @@ function AssetLibrary({ onContextMenu }) {
     }
     
     if (e.key === 'Delete' && selectedAssets().size > 0) {
-      console.log('Delete key pressed with', selectedAssets().size, 'selected assets');
+      e.preventDefault();
+      const currentProject = projectManager.getCurrentProject();
+      if (!currentProject?.name) {
+        console.error('No project loaded for delete operation');
+        return;
+      }
+
+      const assetsToDelete = filteredAssets().filter(asset => selectedAssets().has(asset.id));
+      let deletedCount = 0;
+      let failedCount = 0;
+      const failedFiles = [];
+      
+      for (const asset of assetsToDelete) {
+        try {
+          // Use the correct path structure - assets are stored directly in the project folder
+          const fullAssetPath = `projects/${currentProject.name}/${asset.path}`;
+          await deleteFile(fullAssetPath);
+          console.log('Deleted asset:', asset.name);
+          deletedCount++;
+        } catch (error) {
+          console.error('Failed to delete asset:', asset.name, error);
+          failedCount++;
+          failedFiles.push(asset.name);
+        }
+      }
+      
+      clearSelection();
+      await fetchAssetsWithCache(currentProject, currentPath(), true, false);
+      
+      if (failedCount > 0) {
+        setError(`Deleted ${deletedCount} files. Failed to delete ${failedCount} files with special characters: ${failedFiles.join(', ')}`);
+      } else if (deletedCount > 0) {
+        console.log(`Successfully deleted ${deletedCount} files`);
+      }
     }
   };
 
@@ -1633,18 +1682,31 @@ function AssetLibrary({ onContextMenu }) {
         }`}
       >
         <div class="bg-base-200 flex-shrink-0 border-b border-base-300">
-          <div class="flex items-center justify-between px-3 py-2">
-            <AssetBreadcrumbs
-              breadcrumbs={breadcrumbs}
-              viewMode={viewMode}
-              selectedCategory={selectedCategory}
-              assetCategories={assetCategories}
-              onBreadcrumbClick={handleBreadcrumbClick}
-              dragOverBreadcrumb={dragOverBreadcrumb}
-              setDragOverBreadcrumb={setDragOverBreadcrumb}
-              isInternalDrag={isInternalDrag}
-              onBreadcrumbDrop={handleBreadcrumbDrop}
-            />
+          <div class="flex items-center justify-between pr-3 py-2">
+            <div class="flex items-center gap-2 ml-2">
+              <button
+                onClick={() => {
+                  console.log('Manual refresh triggered via button');
+                  handleFileChange({ source: 'manual-button' });
+                }}
+                class="p-1 text-xs rounded bg-base-300/70 text-base-content/60 hover:text-base-content hover:bg-base-300/90 transition-colors opacity-80"
+                title="Refresh Assets"
+              >
+                <Refresh class="w-3 h-3" />
+              </button>
+              
+              <AssetBreadcrumbs
+                breadcrumbs={breadcrumbs}
+                viewMode={viewMode}
+                selectedCategory={selectedCategory}
+                assetCategories={assetCategories}
+                onBreadcrumbClick={handleBreadcrumbClick}
+                dragOverBreadcrumb={dragOverBreadcrumb}
+                setDragOverBreadcrumb={setDragOverBreadcrumb}
+                isInternalDrag={isInternalDrag}
+                onBreadcrumbDrop={handleBreadcrumbDrop}
+              />
+            </div>
             
             <AssetHeader
               selectedAssets={selectedAssets}
@@ -1652,12 +1714,9 @@ function AssetLibrary({ onContextMenu }) {
               isUploading={isUploading}
               layoutMode={layoutMode}
               setLayoutMode={setLayoutMode}
-              onRefresh={() => {
-                console.log('Manual refresh triggered via button');
-                handleFileChange({ source: 'manual-button' });
-              }}
               onCodeToggle={handleCodeEditorToggle}
               isCodeEditorOpen={isCodeEditorOpen}
+              onImport={handleImportClick}
             />
           </div>
         </div>

@@ -31,6 +31,13 @@ zip = "0.6"
 tempfile = "3.8"
 sha2 = "0.10"
 hex = "0.4"
+percent-encoding = "2.3"
+sysinfo = "0.30"
+nvml-wrapper = { version = "0.10", optional = true }
+
+[features]
+default = []
+nvidia = ["nvml-wrapper"]
 
 [profile.release]
 lto = true

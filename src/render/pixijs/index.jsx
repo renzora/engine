@@ -1,0 +1,1 @@
+export { PixiViewport as default } from './PixiViewport.jsx';
