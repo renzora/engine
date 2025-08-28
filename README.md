@@ -8,6 +8,8 @@ A cross-platform game engine built on modern web technologies with enhanced plug
 
 ## 🚀 Overview
 
+## Please note, Renzora Engine is under heavy development and very broken. It's an early preview of what you can expect. Please treat it as an evaluation and not a working product.
+
 Renzora Engine r2 builds upon the original Renzora Engine with significant improvements including a modular plugin system, enhanced performance, and better developer experience. Built with SolidJS and powered by BabylonJS, this revision provides a robust foundation for creating both web and desktop games.
 
 ## ✨ Key Features
