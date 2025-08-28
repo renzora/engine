@@ -7,12 +7,14 @@ import { CollapsibleSection } from '@/ui';
 import { getScriptRuntime } from '@/api/script';
 
 function ObjectProperties() {
+  console.log('🏗️ ObjectProperties component created');
   const { selection } = editorStore;
   const { updateObjectProperty } = objectPropertiesActions;
   const [isDragOverScript, setIsDragOverScript] = createSignal(false);
   const [isResettingProperties, setIsResettingProperties] = createSignal(false);
   
   // Individual signals for each property type
+  console.log('🏗️ Creating signals');
   const [positionSignal, setPositionSignal] = createSignal([0, 0, 0]);
   const [rotationSignal, setRotationSignal] = createSignal([0, 0, 0]);
   const [scaleSignal, setScaleSignal] = createSignal([1, 1, 1]);
@@ -22,30 +24,59 @@ function ObjectProperties() {
 
   // Get the selected Babylon object directly
   const getSelectedBabylonObject = () => {
-    if (!selection.entity || !renderStore.scene) return null;
+    console.log('🔍 getSelectedBabylonObject called, selection.entity:', selection.entity);
+    if (!selection.entity || !renderStore.scene) {
+      console.log('🔍 No entity or scene, returning null');
+      return null;
+    }
     
     // Find the Babylon object by ID
     const allObjects = [...renderStore.scene.meshes, ...renderStore.scene.transformNodes, ...renderStore.scene.lights, ...renderStore.scene.cameras];
-    return allObjects.find(obj => (obj.uniqueId || obj.name) === selection.entity);
+    const found = allObjects.find(obj => (obj.uniqueId || obj.name) === selection.entity);
+    console.log('🔍 Found babylon object:', found?.name || 'null');
+    return found;
   };
 
   // Unified property sync: Set up render loop observer for selected object
   let renderObserver = null;
+  let currentObservedEntity = null;
   
+  // Separate the entity tracking from signal updates
   createEffect(() => {
+    console.log('🔄 createEffect triggered for entity selection change');
+    const entityId = selection.entity;
+    console.log('🔄 Entity changed to:', entityId);
+    
+    // Only proceed if entity actually changed
+    if (currentObservedEntity === entityId) {
+      console.log('🔄 Same entity, skipping observer setup');
+      return;
+    }
+    
+    currentObservedEntity = entityId;
+    
     // Clean up previous observer
     if (renderObserver && renderStore.scene) {
+      console.log('🔄 Cleaning up previous render observer');
       renderStore.scene.unregisterBeforeRender(renderObserver);
       renderObserver = null;
     }
     
-    const babylonObject = getSelectedBabylonObject();
-    if (!babylonObject || !renderStore.scene) {
-      setLiveProperties({});
-      // Clean up original properties from previously selected object if any
-      // (This will be handled when a new object is selected)
+    if (!entityId || !renderStore.scene) {
+      console.log('🔄 No entity or scene, skipping observer setup');
       return;
     }
+    
+    // Get babylon object without triggering reactivity
+    const allObjects = [...renderStore.scene.meshes, ...renderStore.scene.transformNodes, ...renderStore.scene.lights, ...renderStore.scene.cameras];
+    const babylonObject = allObjects.find(obj => (obj.uniqueId || obj.name) === entityId);
+    
+    if (!babylonObject) {
+      console.log('🔄 No babylon object found for entity:', entityId);
+      return;
+    }
+    
+    console.log('🔄 Setting up observer for babylon object:', babylonObject.name);
     
     
     // Initialize metadata structure if it doesn't exist
@@ -78,14 +109,19 @@ function ObjectProperties() {
     
     // Register render loop observer for live updates
     renderObserver = () => {
+      console.log('🔄 Render observer called');
       // Skip sync during reset operations
-      if (isResettingProperties()) return;
+      if (isResettingProperties()) {
+        console.log('🔄 Skipping sync - reset in progress');
+        return;
+      }
       
       // Update individual transform signals
       if (babylonObject.position) {
         const newPosition = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
         const currentPosition = positionSignal();
         if (newPosition.some((val, i) => val !== currentPosition[i])) {
+          console.log('🔄 Position changed, updating signal:', newPosition);
           setPositionSignal(newPosition);
         }
       }
@@ -94,6 +130,7 @@ function ObjectProperties() {
         const newRotation = [babylonObject.rotation.x, babylonObject.rotation.y, babylonObject.rotation.z];
         const currentRotation = rotationSignal();
         if (newRotation.some((val, i) => val !== currentRotation[i])) {
+          console.log('🔄 Rotation changed, updating signal:', newRotation);
           setRotationSignal(newRotation);
         }
       }
@@ -102,12 +139,14 @@ function ObjectProperties() {
         const newScale = [babylonObject.scaling.x, babylonObject.scaling.y, babylonObject.scaling.z];
         const currentScale = scaleSignal();
         if (newScale.some((val, i) => val !== currentScale[i])) {
+          console.log('🔄 Scale changed, updating signal:', newScale);
           setScaleSignal(newScale);
         }
       } else if (babylonObject.scale) {
         const newScale = [babylonObject.scale.x, babylonObject.scale.y, babylonObject.scale.z];
         const currentScale = scaleSignal();
         if (newScale.some((val, i) => val !== currentScale[i])) {
+          console.log('🔄 Scale (scale prop) changed, updating signal:', newScale);
           setScaleSignal(newScale);
         }
       }
@@ -134,12 +173,15 @@ function ObjectProperties() {
       }
       
       if (scriptPropsChanged) {
+        console.log('🔄 Script properties changed, updating signal:', scriptProperties);
         setScriptPropertiesSignal(scriptProperties);
         
         // Check if script metadata changed when properties change (indicates script reload)
+        console.log('🔄 Checking script metadata changes');
         const runtime = getScriptRuntime();
         const scripts = runtime?.scriptManager?.getScriptsForObject?.(selection.entity) || [];
         const scriptInstances = scripts.map(s => s.instance).filter(Boolean);
+        console.log('🔄 Found script instances:', scriptInstances.length);
         
         // Build current sections structure
         const currentScriptSections = {};
@@ -156,33 +198,52 @@ function ObjectProperties() {
         const previousSectionsStr = JSON.stringify(previousScriptSections);
         
         if (currentSectionsStr !== previousSectionsStr) {
+          console.log('🔄 Script metadata sections changed!');
+          console.log('🔄 Previous sections:', previousSectionsStr);
+          console.log('🔄 Current sections:', currentSectionsStr);
           previousScriptSections = currentScriptSections;
-          setScriptMetadataVersion(prev => prev + 1);
+          setScriptMetadataVersion(prev => {
+            console.log('🔄 Incrementing script metadata version from', prev, 'to', prev + 1);
+            return prev + 1;
+          });
           console.log('🔄 Script metadata changed - section structure updated');
         }
       }
     };
     
+    console.log('🔄 Registering render observer');
     renderStore.scene.registerBeforeRender(renderObserver);
     
     
     // Initial sync
+    console.log('🔄 Running initial sync');
     renderObserver();
   });
   
   // Helper function to add script defaults to originalProperties when script is attached
   const addScriptDefaults = (babylonObject, scriptInstance) => {
-    if (!babylonObject?.metadata?.originalProperties || !scriptInstance?._scriptAPI) return;
+    if (!babylonObject?.metadata || !scriptInstance?._scriptAPI) return;
+    
+    // Initialize metadata structure
+    if (!babylonObject.metadata.originalProperties) babylonObject.metadata.originalProperties = {};
+    if (!babylonObject.metadata.scriptProperties) babylonObject.metadata.scriptProperties = {};
     
     const scriptAPI = scriptInstance._scriptAPI;
     const scriptProperties = scriptAPI.getScriptProperties?.() || [];
     
     scriptProperties.forEach(prop => {
-      // Only add if not already present (don't override existing defaults)
+      // Add to originalProperties (for reset functionality)
       if (babylonObject.metadata.originalProperties[prop.name] === undefined) {
         babylonObject.metadata.originalProperties[prop.name] = prop.defaultValue;
       }
+      
+      // Add to scriptProperties (for UI display)
+      if (babylonObject.metadata.scriptProperties[prop.name] === undefined) {
+        babylonObject.metadata.scriptProperties[prop.name] = prop.defaultValue;
+      }
     });
+    
+    console.log('📝 Script defaults added to babylon metadata:', babylonObject.metadata.scriptProperties);
   };
 
   // Helper function to completely remove script properties when script is detached
@@ -447,11 +508,14 @@ function ObjectProperties() {
     const { property, babylonObject } = props;
     
     console.log(`🔍 ScriptPropertyInput CREATED for: ${property.name}`);
+    console.log(`🔍 ScriptPropertyInput props:`, property);
     
     // Use a simple function instead of createMemo to avoid circular dependencies
     const getCurrentValue = () => {
       console.log(`🔍 getCurrentValue CALLED for: ${property.name}`);
+      console.log(`🔍 babylonObject metadata:`, babylonObject?.metadata);
       if (!babylonObject?.metadata?.scriptProperties) {
+        console.log(`🔍 No script properties in metadata, using default:`, property.defaultValue);
         return property.defaultValue !== undefined ? property.defaultValue : getDefaultValueForType(property.type);
       }
       const val = babylonObject.metadata.scriptProperties[property.name];
@@ -480,6 +544,8 @@ function ObjectProperties() {
     const handlePropertyChange = (propertyName, newValue) => {
       try {
         console.log(`🎛️ UI Script property change: ${propertyName} = ${newValue}`);
+        console.log(`🎛️ Property change call stack:`);
+        console.trace();
         
         // Validate the property change
         if (!propertyName || propertyName.trim() === '') {
@@ -492,24 +558,34 @@ function ObjectProperties() {
           console.error('No babylon object available for property change');
           return;
         }
+        console.log(`🎛️ Updating babylon object metadata for:`, babylonObject.name);
         
         if (!babylonObject.metadata) babylonObject.metadata = {};
         if (!babylonObject.metadata.scriptProperties) babylonObject.metadata.scriptProperties = {};
         
+        console.log(`🎛️ Setting ${propertyName} = ${newValue} in babylon metadata`);
         babylonObject.metadata.scriptProperties[propertyName] = newValue;
+        console.log(`🎛️ Babylon metadata after update:`, babylonObject.metadata.scriptProperties);
         
         // Also update through ScriptAPI for script instance synchronization
+        console.log(`🎛️ Updating script instances for entity:`, selection.entity);
         const runtime = getScriptRuntime();
         const scripts = runtime?.scriptManager?.getScriptsForObject?.(selection.entity) || [];
+        console.log(`🎛️ Found ${scripts.length} scripts to update`);
         scripts.forEach(script => {
           const instance = script.instance;
           if (instance?._scriptAPI?.setScriptProperty) {
             try {
+              console.log(`🎛️ Calling setScriptProperty on instance for ${propertyName}`);
               instance._scriptAPI.setScriptProperty(propertyName, newValue);
+              console.log(`🎛️ Setting property directly on instance: ${propertyName}`);
               instance[propertyName] = newValue;
+              console.log(`🎛️ Successfully updated script instance property`);
             } catch (scriptError) {
               console.error('Error updating script instance:', scriptError);
             }
+          } else {
+            console.log(`🎛️ No setScriptProperty method available on script instance`);
           }
         });
       } catch (error) {
@@ -733,7 +809,22 @@ function ObjectProperties() {
             </div>
           </Match>
           
-          
+          <Match when={property.type === 'select'}>
+            <select
+              id={`script-${property.name}-select-${selection.entity || 'unknown'}`}
+              value={getCurrentValue() || property.defaultValue}
+              onChange={(e) => handlePropertyChange(property.name, e.target.value)}
+              className="select select-bordered select-sm w-full text-sm"
+            >
+              <Show when={property.options && Array.isArray(property.options)}>
+                <For each={property.options}>
+                  {(option) => (
+                    <option value={option}>{option}</option>
+                  )}
+                </For>
+              </Show>
+            </select>
+          </Match>
 
           <Match when={true}>
             <input
@@ -749,6 +840,13 @@ function ObjectProperties() {
     );
   };
 
+  console.log('🎨 ObjectProperties render cycle started');
+  console.log('🎨 Current selection.entity:', selection.entity);
+  console.log('🎨 Position signal:', positionSignal());
+  console.log('🎨 Rotation signal:', rotationSignal());
+  console.log('🎨 Scale signal:', scaleSignal());
+  console.log('🎨 Script properties signal:', Object.keys(scriptPropertiesSignal()));
+  
   return (
     <div className="flex flex-col h-full" data-object-properties>
       {/* Header with reset button */}
@@ -1042,9 +1140,11 @@ function ObjectProperties() {
                   return null;
                 }
                 
+                console.log(`🔍 Getting script instances for metadata version: ${metadataVersion}`);
                 const runtime = getScriptRuntime();
                 const scripts = runtime?.scriptManager?.getScriptsForObject?.(selection.entity) || [];
                 const scriptInstances = scripts.map(s => s.instance).filter(Boolean);
+                console.log(`🔍 Found ${scriptInstances.length} script instances`);
                 
                 
                 
@@ -1057,13 +1157,16 @@ function ObjectProperties() {
                         return null;
                       }
                       
+                      console.log(`🔍 Getting properties by section for script:`, scriptInstance._scriptPath);
                       const propertiesBySection = scriptAPI.getScriptPropertiesBySection?.() || {};
+                      console.log(`🔍 Properties by section:`, propertiesBySection);
                       
                       return (
                         <Show when={Object.keys(propertiesBySection).length > 0}>
                           <For each={Object.entries(propertiesBySection)}>
                             {([sectionName, properties]) => {
                               console.log(`🔍 Rendering section: ${sectionName} with ${properties.length} properties`);
+                        console.log(`🔍 Section properties:`, properties);
                               
                               return (
                                 <CollapsibleSection
@@ -1075,6 +1178,8 @@ function ObjectProperties() {
                                     <For each={properties}>
                                       {(property) => {
                                         console.log(`🔍 About to render property: ${property.name}`);
+                                        console.log(`🔍 Property details:`, property);
+                                        console.log(`🔍 BabylonObject for property:`, babylonObject?.name);
                                         return <ScriptPropertyInput property={property} babylonObject={babylonObject} />;
                                       }}
                                     </For>

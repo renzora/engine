@@ -330,7 +330,15 @@ export const renderActions = {
     } else if (className.includes('Camera')) {
       type = 'camera';
     } else if (className === 'TransformNode') {
-      type = 'folder';
+      // Check if this is an imported asset container (has mesh children)
+      const hasMeshChildren = babylonObject.getChildren && 
+        babylonObject.getChildren().some(child => 
+          child.getClassName && (
+            child.getClassName().includes('Mesh') || 
+            child.getClassName().includes('InstancedMesh')
+          )
+        );
+      type = hasMeshChildren ? 'mesh' : 'folder';
     }
     
     const children = [];
