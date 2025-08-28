@@ -71,6 +71,7 @@ The Rust-based bridge provides:
 ```bash
 git clone https://github.com/renzora/engine
 cd engine
+git checkout dev
 npx install
 ```
 
