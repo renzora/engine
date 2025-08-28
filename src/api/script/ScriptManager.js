@@ -225,6 +225,12 @@ class ScriptManager {
         scriptInstance.onStart();
       }
       
+      // Call onOnce initially to apply any preset properties
+      if (typeof scriptInstance.onOnce === 'function') {
+        console.log('🔧 ScriptManager: Calling initial onOnce() for script', scriptPath);
+        scriptInstance.onOnce();
+      }
+      
       console.log('🔧 ScriptManager: Script attached', scriptPath, 'to', objectId);
       return true;
       

@@ -2,118 +2,30 @@ import { editorStore } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { Settings, X } from '@/ui/icons';
 import ViewportTabs from './ViewportTabs.jsx';
-import { ViewportCanvas } from '@/render/babylonjs';
-import { VulkanViewport } from '@/render/custom-vulkan/VulkanViewport.jsx';
-import { BabylonNativeViewport } from '@/render/babylon-native/BabylonNativeViewport.jsx';
-import { ThreeViewport } from '@/render/threejs/ThreeViewport.jsx';
-import { PlayCanvasViewport } from '@/render/playcanvas/PlayCanvasViewport.jsx';
-import { PixiViewport } from '@/render/pixijs/PixiViewport.jsx';
-import { PhaserViewport } from '@/render/phaser/PhaserViewport.jsx';
-import { MelonViewport } from '@/render/melonjs/MelonViewport.jsx';
 import { viewportTypes, propertiesPanelVisible, bottomPanelVisible } from "@/api/plugin";
 import { Show, createMemo, createSignal, createEffect, onCleanup } from 'solid-js';
 import CodeEditorPanel from '@/pages/editor/AssetLibrary/CodeEditorPanel.jsx';
+import BabylonRenderer from '@/render/index.jsx';
+
+// Babylon.js viewport with new render system
+const BabylonViewport = (props) => {
+  return (
+    <div 
+      className="w-full h-full bg-base-300"
+      onContextMenu={props.onContextMenu}
+      style={props.style}
+    >
+      <BabylonRenderer onContextMenu={props.onContextMenu} />
+    </div>
+  );
+};
 
 const PersistentRenderViewport = (props) => {
-  const [currentRenderer, setCurrentRenderer] = createSignal('babylon');
-  
-  console.log('🔧 PersistentRenderViewport: Component created/mounted');
-
-  // Listen for renderer changes
-  createEffect(() => {
-    const handleRendererChange = (event) => {
-      console.log('🔄 Viewport: Renderer changed to:', event.detail.renderer);
-      setCurrentRenderer(event.detail.renderer);
-    };
-
-    window.addEventListener('renderer-changed', handleRendererChange);
-    
-    onCleanup(() => {
-      console.log('🧹 PersistentRenderViewport: Component unmounting/cleanup');
-      window.removeEventListener('renderer-changed', handleRendererChange);
-    });
-  });
-  
   return (
-    <>
-      {(() => {
-        const renderer = currentRenderer();
-        console.log('🎨 Viewport: Current renderer is:', renderer);
-        
-        if (renderer === 'vulkan') {
-          console.log('🎮 Viewport: Rendering VulkanViewport');
-          return (
-            <VulkanViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else if (renderer === 'babylon-native') {
-          console.log('🏛️ Viewport: Rendering BabylonNativeViewport');
-          return (
-            <BabylonNativeViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else if (renderer === 'threejs') {
-          console.log('🎮 Viewport: Rendering ThreeViewport');
-          return (
-            <ThreeViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else if (renderer === 'playcanvas') {
-          console.log('🎯 Viewport: Rendering PlayCanvasViewport');
-          return (
-            <PlayCanvasViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else if (renderer === 'pixijs') {
-          console.log('🎨 Viewport: Rendering PixiViewport');
-          return (
-            <PixiViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else if (renderer === 'phaser') {
-          console.log('🎮 Viewport: Rendering PhaserViewport');
-          return (
-            <PhaserViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else if (renderer === 'melonjs') {
-          console.log('🍉 Viewport: Rendering MelonViewport');
-          return (
-            <MelonViewport
-              onContextMenu={props.contextMenuHandler}
-              style={{ width: '100%', height: '100%' }}
-              showStats={editorStore.settings.editor.showStats}
-            />
-          );
-        } else {
-          console.log('🌐 Viewport: Rendering ViewportCanvas');
-          return (
-            <ViewportCanvas
-              onContextMenu={props.contextMenuHandler} 
-              style={{ width: '100%', height: '100%' }}
-            />
-          );
-        }
-      })()}
-    </>
+    <BabylonViewport
+      onContextMenu={props.contextMenuHandler} 
+      style={{ width: '100%', height: '100%' }}
+    />
   );
 };
 

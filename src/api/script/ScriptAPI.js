@@ -1,5 +1,10 @@
 import { Vector3, Vector2, Vector4 } from '@babylonjs/core/Maths/math.vector.js';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js';
+import { PointLight } from '@babylonjs/core/Lights/pointLight.js';
+import { SpotLight } from '@babylonjs/core/Lights/spotLight.js';
+import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js';
 import { Matrix, Quaternion } from '@babylonjs/core/Maths/math.vector.js';
 import { Tools } from '@babylonjs/core/Misc/tools.js';
 import { Animation } from '@babylonjs/core/Animations/animation.js';
@@ -7,6 +12,13 @@ import { AnimationGroup } from '@babylonjs/core/Animations/animationGroup.js';
 import { Sound } from '@babylonjs/core/Audio/sound.js';
 import { Ray } from '@babylonjs/core/Culling/ray.js';
 import { PickingInfo } from '@babylonjs/core/Collisions/pickingInfo.js';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder.js';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
+import { Texture } from '@babylonjs/core/Materials/Textures/texture.js';
+import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture.js';
+import { getCurrentProject } from '@/api/bridge/projects';
+import { getFileUrl } from '@/api/bridge/files';
+import { BackgroundMaterial } from '@babylonjs/core/Materials/Background/backgroundMaterial.js';
 
 /**
  * ScriptAPI - Provides a safe interface for scripts to interact with Babylon.js objects
@@ -91,6 +103,35 @@ class ScriptAPI {
     this.random = this.random.bind(this);
     this.clamp = this.clamp.bind(this);
     this.lerp = this.lerp.bind(this);
+    
+    // RenScript compatibility aliases
+    this.set_camera_fov = this.setCameraFOV.bind(this);
+    this.set_camera_radius = this.setCameraRadius.bind(this);
+    this.set_camera_target = this.setCameraTarget.bind(this);
+    this.rotate_by = this.rotateBy.bind(this);
+    this.set_position = this.setPosition.bind(this);
+    this.add_tag = this.addTag.bind(this);
+
+    // Lighting helpers (for RenScript)
+    this.ensureLight = this.ensureLight.bind(this);
+    this.setLightPosition = this.setLightPosition.bind(this);
+    this.setLightDirection = this.setLightDirection.bind(this);
+    this.setLightSpecular = this.setLightSpecular.bind(this);
+    this.setHemisphericGroundColor = this.setHemisphericGroundColor.bind(this);
+    this.setSceneExposure = this.setSceneExposure.bind(this);
+    this.setShadowEnabled = this.setShadowEnabled.bind(this);
+    this.setShadowDarkness = this.setShadowDarkness.bind(this);
+    this.setShadowBias = this.setShadowBias.bind(this);
+    this.setShadowQuality = this.setShadowQuality.bind(this);
+    this.setShadowSoftness = this.setShadowSoftness.bind(this);
+
+    // Skybox helpers
+    this.ensureSkybox = this.ensureSkybox.bind(this);
+    this.setSkyboxColors = this.setSkyboxColors.bind(this);
+    this.setSkyboxTexture = this.setSkyboxTexture.bind(this);
+    this.setSkyboxSize = this.setSkyboxSize.bind(this);
+    this.setSkyboxEnabled = this.setSkyboxEnabled.bind(this);
+    this.setSkyboxInfinite = this.setSkyboxInfinite.bind(this);
   }
   
   /**
@@ -220,6 +261,48 @@ class ScriptAPI {
    * @param {number} z - Z rotation offset (if x is not array)
    */
   rotateBy(x, y, z) {
+    // Handle camera rotation differently based on camera type
+    if (this.isCamera()) {
+      const className = this.babylonObject.getClassName();
+      
+      if (className === 'ArcRotateCamera') {
+        // For ArcRotateCamera, Y rotation = alpha (horizontal), X = beta (vertical)
+        if (Array.isArray(x)) {
+          this.babylonObject.alpha += (x[1] || 0); // Y becomes alpha (horizontal orbit)
+          this.babylonObject.beta += (x[0] || 0);  // X becomes beta (vertical orbit)
+        } else {
+          this.babylonObject.alpha += (y || 0);    // Y becomes alpha (horizontal orbit)
+          this.babylonObject.beta += (x || 0);     // X becomes beta (vertical orbit)
+        }
+        return;
+      } else if (className === 'UniversalCamera' || className === 'FreeCamera') {
+        // For Universal/Free cameras, use rotation properties directly
+        if (Array.isArray(x)) {
+          this.babylonObject.rotation.x += (x[0] || 0); // Pitch (look up/down)
+          this.babylonObject.rotation.y += (x[1] || 0); // Yaw (look left/right)
+          this.babylonObject.rotation.z += (x[2] || 0); // Roll
+        } else {
+          this.babylonObject.rotation.x += (x || 0); // Pitch
+          this.babylonObject.rotation.y += (y || 0); // Yaw
+          this.babylonObject.rotation.z += (z || 0); // Roll
+        }
+        return;
+      } else if (className === 'TargetCamera') {
+        // For TargetCamera, modify the rotation but maintain target behavior
+        if (Array.isArray(x)) {
+          this.babylonObject.rotation.x += (x[0] || 0);
+          this.babylonObject.rotation.y += (x[1] || 0);
+          this.babylonObject.rotation.z += (x[2] || 0);
+        } else {
+          this.babylonObject.rotation.x += (x || 0);
+          this.babylonObject.rotation.y += (y || 0);
+          this.babylonObject.rotation.z += (z || 0);
+        }
+        return;
+      }
+    }
+    
+    // Default rotation for meshes and other objects
     const currentRot = this.getRotation();
     
     if (Array.isArray(x)) {
@@ -274,7 +357,7 @@ class ScriptAPI {
    * @param {number} b - Blue component (0-1) (if r is not array)
    */
   setColor(r, g, b) {
-    if (!this.object.material) return false;
+    this.ensureMaterial();
     
     let red, green, blue;
     if (Array.isArray(r)) {
@@ -581,6 +664,17 @@ class ScriptAPI {
     }
     return false;
   }
+
+  /**
+   * Set light specular color (if supported)
+   */
+  setLightSpecular(r, g, b) {
+    if (this.isLight() && this.object.specular !== undefined) {
+      this.object.specular = new Color3(r, g, b);
+      return true;
+    }
+    return false;
+  }
   
   /**
    * Get light color
@@ -617,6 +711,240 @@ class ScriptAPI {
     return null;
   }
 
+  /**
+   * Ensure there is a light to control. If the current object is a light, returns it.
+   * If not a light, creates (or reuses) a child light of the requested type and returns it.
+   * @param {string} type - 'directional' | 'hemispheric' | 'point' | 'spot'
+   */
+  ensureLight(type = 'directional') {
+    if (this.isLight()) {
+      const className = this.object.getClassName().toLowerCase();
+      if (!type || className.includes(type)) return this.object;
+      // fallthrough to child light if types mismatch
+    }
+    if (!this.scene) return null;
+    if (!this.object.metadata) this.object.metadata = {};
+    if (!this.object.metadata._attachedLight) this.object.metadata._attachedLight = {};
+    const info = this.object.metadata._attachedLight;
+    let light = null;
+    if (info.uniqueId) {
+      light = this.scene.lights.find(l => l.uniqueId === info.uniqueId) || null;
+    }
+    if (!light || (light.getClassName && !light.getClassName().toLowerCase().includes(type))) {
+      // Dispose old
+      if (light && light.dispose) try { light.dispose(); } catch {}
+      const name = (this.object.name || 'node') + '_light';
+      const dir = new Vector3(-0.3, -0.8, -0.5);
+      switch (type) {
+        case 'directional':
+          light = new DirectionalLight(name, dir, this.scene); break;
+        case 'hemispheric':
+          light = new HemisphericLight(name, new Vector3(0, 1, 0), this.scene); break;
+        case 'spot':
+          light = new SpotLight(name, new Vector3(0, 5, 0), dir, Math.PI/3, 2, this.scene); break;
+        case 'point':
+        default:
+          light = new PointLight(name, new Vector3(0, 5, 0), this.scene); break;
+      }
+      if (light && this.object) {
+        try { light.parent = this.object; } catch {}
+      }
+      light.intensity = 1.0;
+      info.uniqueId = light.uniqueId;
+      info.type = type;
+    }
+    return light;
+  }
+
+  /** Set light position (for point/spot or directional shadow origin) */
+  setLightPosition(x, y, z) {
+    const light = this.isLight() ? this.object : this.ensureLight();
+    if (light && light.position) { light.position.set(x, y, z); return true; }
+    return false;
+  }
+
+  /** Set light direction (for directional/spot/hemispheric) */
+  setLightDirection(x, y, z) {
+    const light = this.isLight() ? this.object : this.ensureLight('directional');
+    if (light && light.direction) { light.direction.set(x, y, z); return true; }
+    return false;
+  }
+
+  /** Set ground color for hemispheric lights */
+  setHemisphericGroundColor(r, g, b) {
+    const light = this.isLight() ? this.object : this.ensureLight('hemispheric');
+    if (light && light.getClassName && light.getClassName().toLowerCase().includes('hemispheric')) {
+      light.groundColor = new Color3(r, g, b);
+      return true;
+    }
+    return false;
+  }
+
+  /** Set scene exposure (tone mapping) */
+  setSceneExposure(value) {
+    if (this.scene && this.scene.imageProcessingConfiguration) {
+      this.scene.imageProcessingConfiguration.exposure = value;
+      return true;
+    }
+    return false;
+  }
+
+  /** Enable/disable shadows on the target light (Directional/Spot) */
+  setShadowEnabled(enabled) {
+    const light = this.isLight() ? this.object : this.ensureLight('directional');
+    if (!light) return false;
+    if (!light.metadata) light.metadata = {};
+    if (!enabled) {
+      if (light.metadata.shadowGenerator) {
+        try { light.metadata.shadowGenerator.dispose(); } catch {}
+        light.metadata.shadowGenerator = null;
+      }
+      return true;
+    }
+    if (!light.metadata.shadowGenerator) {
+      const gen = new ShadowGenerator(1024, light);
+      gen.usePercentageCloserFiltering = true;
+      gen.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+      gen.darkness = 0.35;
+      gen.bias = 0.0005;
+      if (gen.getShadowMap()) {
+        gen.getShadowMap().renderList = (this.scene.meshes || []).filter(m => !m.name?.startsWith('__'));
+      }
+      light.metadata.shadowGenerator = gen;
+    }
+    return true;
+  }
+
+  setShadowDarkness(value) {
+    const gen = (this.isLight() ? this.object : this.ensureLight('directional'))?.metadata?.shadowGenerator;
+    if (gen) { gen.darkness = value; return true; }
+    return false;
+  }
+
+  setShadowBias(value) {
+    const gen = (this.isLight() ? this.object : this.ensureLight('directional'))?.metadata?.shadowGenerator;
+    if (gen) { gen.bias = value; return true; }
+    return false;
+  }
+
+  setShadowQuality(quality = 'high') {
+    const gen = (this.isLight() ? this.object : this.ensureLight('directional'))?.metadata?.shadowGenerator;
+    if (!gen) return false;
+    const map = { low: ShadowGenerator.QUALITY_LOW, medium: ShadowGenerator.QUALITY_MEDIUM, high: ShadowGenerator.QUALITY_HIGH };
+    gen.filteringQuality = map[quality] ?? ShadowGenerator.QUALITY_HIGH;
+    return true;
+  }
+
+  setShadowSoftness(ratio = 0.05) {
+    const gen = (this.isLight() ? this.object : this.ensureLight('directional'))?.metadata?.shadowGenerator;
+    if (!gen) return false;
+    gen.contactHardeningLightSizeUVRatio = ratio;
+    return true;
+  }
+
+  // === SKYBOX API ===
+
+  /** Ensure skybox exists and matches mode ('gradient' | 'cube' | 'color') */
+  ensureSkybox(mode = 'gradient', diameter = 200) {
+    if (!this.scene) return null;
+    let skybox = this.scene.getMeshByName('skybox');
+    if (!skybox) {
+      try {
+        skybox = MeshBuilder.CreateSphere('skybox', { diameter }, this.scene);
+      } catch (e) {
+        return null;
+      }
+      skybox.isPickable = false;
+      skybox.infiniteDistance = true;
+    }
+
+    const currentMode = skybox.metadata?.skyboxMode;
+    // If mode not provided, stick with current mode or default to gradient
+    if (!mode) mode = currentMode || 'gradient';
+    if (!skybox.metadata) skybox.metadata = {};
+    if (currentMode !== mode || !skybox.material) {
+      if (mode === 'gradient') {
+        const mat = new BackgroundMaterial('skyboxBackground', this.scene);
+        mat.backFaceCulling = false;
+        mat.disableLighting = true;
+        mat.useRGBColor = true;
+        skybox.material = mat;
+      } else {
+        const mat = new StandardMaterial('skyboxMaterial', this.scene);
+        mat.backFaceCulling = false;
+        mat.disableLighting = true;
+        mat.diffuseColor = new Color3(0, 0, 0);
+        mat.specularColor = new Color3(0, 0, 0);
+        skybox.material = mat;
+      }
+      skybox.metadata.skyboxMode = mode;
+    }
+    return skybox;
+  }
+
+  /** Set gradient or uniform colors on skybox */
+  setSkyboxColors(topR = 0.4, topG = 0.7, topB = 1.0, bottomR = 0.1, bottomG = 0.1, bottomB = 0.15) {
+    const skybox = this.ensureSkybox('gradient');
+    if (!skybox) return false;
+    const mat = skybox.material;
+    if (mat && mat.getClassName && mat.getClassName().toLowerCase().includes('background')) {
+      mat.primaryColor = new Color3(topR, topG, topB);
+      mat.secondaryColor = new Color3(bottomR, bottomG, bottomB);
+      return true;
+    } else if (mat && mat.emissiveColor) {
+      mat.emissiveColor = new Color3(topR, topG, topB);
+      return true;
+    }
+    return false;
+  }
+
+  /** Set skybox cube texture from base URL (expects px, py, pz, nx, ny, nz or prefiltered DDS) */
+  setSkyboxTexture(baseUrl) {
+    if (!baseUrl) return false;
+    const skybox = this.ensureSkybox('cube');
+    if (!skybox) return false;
+    const mat = skybox.material;
+    try {
+      const texture = CubeTexture.CreateFromPrefilteredData?.(baseUrl, this.scene) || new CubeTexture(baseUrl, this.scene);
+      if (mat) {
+        mat.reflectionTexture = texture;
+        if (mat.reflectionTexture && mat.reflectionTexture.coordinatesMode !== undefined) {
+          mat.reflectionTexture.coordinatesMode = Texture.SKYBOX_MODE;
+        }
+      }
+      return true;
+    } catch (e) {
+      this.log('Failed to set skybox texture:', e);
+      return false;
+    }
+  }
+
+  setSkyboxSize(diameter = 200) {
+    // Only adjust size; do not change mode/material
+    const skybox = this.scene?.getMeshByName('skybox') || this.ensureSkybox('gradient', diameter);
+    if (!skybox) return false;
+    // Directly set scaling based on desired diameter
+    const radius = diameter / 2;
+    const current = skybox.getBoundingInfo?.().boundingSphere?.radius || radius;
+    const s = current ? radius / current : 1;
+    if (skybox.scaling) skybox.scaling.set(s, s, s);
+    return true;
+  }
+
+  setSkyboxEnabled(enabled = true) {
+    const skybox = this.ensureSkybox();
+    if (!skybox) return false;
+    skybox.setEnabled(!!enabled);
+    return true;
+  }
+
+  setSkyboxInfinite(enabled = true) {
+    const skybox = this.ensureSkybox();
+    if (!skybox) return false;
+    skybox.infiniteDistance = !!enabled;
+    return true;
+  }
+
   // === ENHANCED MATERIAL API ===
   
   /**
@@ -638,10 +966,7 @@ class ScriptAPI {
    * @param {number} b - Blue component (0-1)
    */
   setEmissiveColor(r, g, b) {
-    if (!this.object.material) {
-      this.log('No material found on object for setEmissiveColor');
-      return false;
-    }
+    this.ensureMaterial();
     
     try {
       this.object.material.emissiveColor = new Color3(r, g, b);
@@ -670,7 +995,7 @@ class ScriptAPI {
    * @param {*} value - Property value
    */
   setMaterialProperty(property, value) {
-    if (!this.object.material) return false;
+    this.ensureMaterial();
     
     try {
       if (property.includes('Color') && Array.isArray(value)) {
@@ -684,6 +1009,169 @@ class ScriptAPI {
       return false;
     }
   }
+
+  /**
+   * Load and apply texture to material
+   * @param {string} property - Texture property name (diffuseTexture, normalTexture, etc.)
+   * @param {string} texturePath - Path to texture file
+   */
+  /**
+   * Ensure the object has a material, creating one if needed
+   * @private
+   */
+  ensureMaterial() {
+    if (!this.object.material) {
+      this.log('No material found, creating StandardMaterial for object');
+      const materialName = `${this.object.name}_material`;
+      this.object.material = new StandardMaterial(materialName, this.scene);
+    }
+  }
+
+  setTexture(property, texturePath) {
+    this.ensureMaterial();
+    
+    if (!texturePath) {
+      // Clear texture if no path provided
+      this.object.material[property] = null;
+      return true;
+    }
+    
+    try {
+      // Convert relative path to full URL with project context
+      let textureUrl;
+      if (texturePath.startsWith('http')) {
+        textureUrl = texturePath;
+      } else {
+        // Get current project context and build proper path
+        const currentProject = getCurrentProject();
+        const projectName = currentProject?.name || 'demo';
+        const fullPath = `projects/${projectName}/${texturePath}`;
+        textureUrl = getFileUrl(fullPath);
+      }
+      
+      const texture = new Texture(textureUrl, this.scene);
+      this.object.material[property] = texture;
+      
+      this.log(`Applied texture ${texturePath} to ${property} (URL: ${textureUrl})`);
+      return true;
+    } catch (error) {
+      this.log('Failed to load texture:', texturePath, error);
+      return false;
+    }
+  }
+
+  /**
+   * Load and apply diffuse texture (main color texture)
+   * @param {string} texturePath - Path to texture file
+   */
+  setDiffuseTexture(texturePath) {
+    return this.setTexture('diffuseTexture', texturePath);
+  }
+
+  /**
+   * Load and apply normal texture (bump map)
+   * @param {string} texturePath - Path to texture file
+   */
+  setNormalTexture(texturePath) {
+    return this.setTexture('bumpTexture', texturePath);
+  }
+
+  /**
+   * Load and apply emissive texture (glow map)
+   * @param {string} texturePath - Path to texture file
+   */
+  setEmissiveTexture(texturePath) {
+    return this.setTexture('emissiveTexture', texturePath);
+  }
+
+  /**
+   * Load and apply specular texture (reflectivity/shininess map)
+   * @param {string} texturePath - Path to texture file
+   */
+  setSpecularTexture(texturePath) {
+    return this.setTexture('specularTexture', texturePath);
+  }
+
+  /**
+   * Load and apply ambient texture (ambient occlusion map)
+   * @param {string} texturePath - Path to texture file
+   */
+  setAmbientTexture(texturePath) {
+    return this.setTexture('ambientTexture', texturePath);
+  }
+
+  /**
+   * Load and apply opacity texture (transparency mask)
+   * @param {string} texturePath - Path to texture file
+   */
+  setOpacityTexture(texturePath) {
+    return this.setTexture('opacityTexture', texturePath);
+  }
+
+  /**
+   * Load and apply reflection texture (environment map)
+   * @param {string} texturePath - Path to texture file
+   */
+  setReflectionTexture(texturePath) {
+    return this.setTexture('reflectionTexture', texturePath);
+  }
+
+  /**
+   * Load and apply refraction texture (glass distortion)
+   * @param {string} texturePath - Path to texture file
+   */
+  setRefractionTexture(texturePath) {
+    return this.setTexture('refractionTexture', texturePath);
+  }
+
+  /**
+   * Load and apply lightmap texture (baked lighting)
+   * @param {string} texturePath - Path to texture file
+   */
+  setLightmapTexture(texturePath) {
+    return this.setTexture('lightmapTexture', texturePath);
+  }
+
+  /**
+   * Load and apply metallic texture (metallic workflow PBR)
+   * @param {string} texturePath - Path to texture file
+   */
+  setMetallicTexture(texturePath) {
+    return this.setTexture('metallicTexture', texturePath);
+  }
+
+  /**
+   * Load and apply roughness texture (roughness workflow PBR)
+   * @param {string} texturePath - Path to texture file
+   */
+  setRoughnessTexture(texturePath) {
+    return this.setTexture('roughnessTexture', texturePath);
+  }
+
+  /**
+   * Load and apply micro roughness texture (fine surface detail)
+   * @param {string} texturePath - Path to texture file
+   */
+  setMicroRoughnessTexture(texturePath) {
+    return this.setTexture('microSurfaceTexture', texturePath);
+  }
+
+  /**
+   * Load and apply displacement texture (height-based geometry displacement)
+   * @param {string} texturePath - Path to texture file
+   */
+  setDisplacementTexture(texturePath) {
+    return this.setTexture('displacementTexture', texturePath);
+  }
+
+  /**
+   * Load and apply detail texture (high-frequency surface detail)
+   * @param {string} texturePath - Path to texture file
+   */
+  setDetailTexture(texturePath) {
+    return this.setTexture('detailTexture', texturePath);
+  }
+
   
   /**
    * Get material property
@@ -698,6 +1186,247 @@ class ScriptAPI {
       return [value.r, value.g, value.b];
     }
     return value;
+  }
+  
+  // === MATERIAL PROPERTY API ===
+  
+  /**
+   * Set material alpha (transparency)
+   * @param {number} value - Alpha value (0.0 = transparent, 1.0 = opaque)
+   */
+  setAlpha(value) {
+    this.ensureMaterial();
+    this.object.material.alpha = Math.max(0, Math.min(1, value));
+    return true;
+  }
+  
+  /**
+   * Set material specular power (shininess)
+   * @param {number} value - Specular power (higher = shinier)
+   */
+  setSpecularPower(value) {
+    this.ensureMaterial();
+    this.object.material.specularPower = Math.max(0, value);
+    return true;
+  }
+  
+  /**
+   * Set material diffuse color
+   * @param {number|Array} r - Red component (0-1) or [r, g, b] array
+   * @param {number} g - Green component (0-1)
+   * @param {number} b - Blue component (0-1)
+   */
+  setDiffuseColor(r, g, b) {
+    this.ensureMaterial();
+    
+    let red, green, blue;
+    if (Array.isArray(r)) {
+      red = r[0] || 0;
+      green = r[1] || 0;
+      blue = r[2] || 0;
+    } else {
+      red = r || 0;
+      green = g || 0;
+      blue = b || 0;
+    }
+    
+    this.object.material.diffuseColor = new Color3(red, green, blue);
+    return true;
+  }
+  
+  /**
+   * Set material specular color (reflection tint)
+   * @param {number|Array} r - Red component (0-1) or [r, g, b] array
+   * @param {number} g - Green component (0-1)
+   * @param {number} b - Blue component (0-1)
+   */
+  setSpecularColor(r, g, b) {
+    this.ensureMaterial();
+    
+    let red, green, blue;
+    if (Array.isArray(r)) {
+      red = r[0] || 0;
+      green = r[1] || 0;
+      blue = r[2] || 0;
+    } else {
+      red = r || 0;
+      green = g || 0;
+      blue = b || 0;
+    }
+    
+    this.object.material.specularColor = new Color3(red, green, blue);
+    return true;
+  }
+  
+  /**
+   * Set material ambient color (shadows)
+   * @param {number|Array} r - Red component (0-1) or [r, g, b] array
+   * @param {number} g - Green component (0-1)
+   * @param {number} b - Blue component (0-1)
+   */
+  setAmbientColor(r, g, b) {
+    this.ensureMaterial();
+    
+    let red, green, blue;
+    if (Array.isArray(r)) {
+      red = r[0] || 0;
+      green = r[1] || 0;
+      blue = r[2] || 0;
+    } else {
+      red = r || 0;
+      green = g || 0;
+      blue = b || 0;
+    }
+    
+    this.object.material.ambientColor = new Color3(red, green, blue);
+    return true;
+  }
+  
+  /**
+   * Set back face culling (whether back faces are rendered)
+   * @param {boolean} value - true = cull back faces, false = render both sides
+   */
+  setBackFaceCulling(value) {
+    this.ensureMaterial();
+    this.object.material.backFaceCulling = Boolean(value);
+    return true;
+  }
+  
+  /**
+   * Disable lighting (makes material unlit/emissive)
+   * @param {boolean} value - true = disable lighting, false = enable lighting
+   */
+  setDisableLighting(value) {
+    this.ensureMaterial();
+    this.object.material.disableLighting = Boolean(value);
+    return true;
+  }
+  
+  /**
+   * Set wireframe mode
+   * @param {boolean} value - true = wireframe, false = solid
+   */
+  setWireframe(value) {
+    this.ensureMaterial();
+    this.object.material.wireframe = Boolean(value);
+    return true;
+  }
+  
+  /**
+   * Set point cloud mode
+   * @param {boolean} value - true = point cloud, false = solid
+   */
+  setPointsCloud(value) {
+    this.ensureMaterial();
+    this.object.material.pointsCloud = Boolean(value);
+    return true;
+  }
+  
+  /**
+   * Set fill mode (solid, wireframe, or points)
+   * @param {string} mode - 'solid', 'wireframe', or 'points'
+   */
+  setFillMode(mode) {
+    this.ensureMaterial();
+    const material = this.object.material;
+    
+    // Handle null/undefined values
+    if (!mode || typeof mode !== 'string') {
+      mode = 'solid'; // Default to solid
+    }
+    
+    switch(mode.toLowerCase()) {
+      case 'wireframe':
+        material.fillMode = 2; // Material.WireFrameFillMode
+        break;
+      case 'points':
+        material.fillMode = 3; // Material.PointFillMode
+        break;
+      case 'solid':
+      default:
+        material.fillMode = 0; // Material.TriangleFillMode
+        break;
+    }
+    return true;
+  }
+  
+  /**
+   * Invert normal map X component
+   * @param {boolean} value - true = invert X, false = normal X
+   */
+  setInvertNormalMapX(value) {
+    this.ensureMaterial();
+    this.object.material.invertNormalMapX = Boolean(value);
+    return true;
+  }
+  
+  /**
+   * Invert normal map Y component  
+   * @param {boolean} value - true = invert Y, false = normal Y
+   */
+  setInvertNormalMapY(value) {
+    this.ensureMaterial();
+    this.object.material.invertNormalMapY = Boolean(value);
+    return true;
+  }
+  
+  /**
+   * Set bump/normal map intensity
+   * @param {number} value - Bump intensity (0.0 = no effect, higher = more pronounced)
+   */
+  setBumpLevel(value) {
+    this.ensureMaterial();
+    if (this.object.material.bumpTexture) {
+      this.object.material.bumpTexture.level = Math.max(0, value);
+    }
+    return true;
+  }
+  
+  /**
+   * Set parallax scale for displacement mapping
+   * @param {number} value - Parallax scale
+   */
+  setParallaxScaleBias(value) {
+    this.ensureMaterial();
+    this.object.material.parallaxScaleBias = value;
+    return true;
+  }
+  
+  /**
+   * Set index of refraction for transparency
+   * @param {number} value - Index of refraction (1.0 = no refraction, 1.33 = water, 1.5 = glass)
+   */
+  setIndexOfRefraction(value) {
+    this.ensureMaterial();
+    this.object.material.indexOfRefraction = Math.max(0, value);
+    return true;
+  }
+  
+  /**
+   * Set Fresnel parameters for reflections
+   * @param {number} bias - Fresnel bias
+   * @param {number} power - Fresnel power  
+   * @param {number} leftColor - Left color intensity
+   * @param {number} rightColor - Right color intensity
+   */
+  setFresnelParameters(bias = 0, power = 1, leftColor = 1, rightColor = 0) {
+    this.ensureMaterial();
+    const material = this.object.material;
+    
+    if (!material.diffuseFresnelParameters) {
+      material.diffuseFresnelParameters = {
+        bias: bias,
+        power: power,
+        leftColor: new Color3(leftColor, leftColor, leftColor),
+        rightColor: new Color3(rightColor, rightColor, rightColor)
+      };
+    } else {
+      material.diffuseFresnelParameters.bias = bias;
+      material.diffuseFresnelParameters.power = power;
+      material.diffuseFresnelParameters.leftColor = new Color3(leftColor, leftColor, leftColor);
+      material.diffuseFresnelParameters.rightColor = new Color3(rightColor, rightColor, rightColor);
+    }
+    return true;
   }
   
   // === ANIMATION API ===
@@ -1398,7 +2127,24 @@ class ScriptAPI {
     if (this._scriptInstance) {
       this._scriptInstance[propertyName] = value;
       console.log(`🔧 ScriptAPI: Updated property '${propertyName}' to`, value, 'on script instance');
+      
+      // Call onOnce method if this property is marked with triggerOnce: true
+      if (this.shouldTriggerOnce(propertyName) && this._scriptInstance.onOnce) {
+        console.log(`🔧 ScriptAPI: Calling onOnce() due to ${propertyName} property change`);
+        this._scriptInstance.onOnce();
+      }
     }
+  }
+  
+  /**
+   * Check if a property should trigger the onOnce method when changed
+   * @param {string} propertyName - The property name to check
+   * @returns {boolean} True if this property has triggerOnce: true
+   */
+  shouldTriggerOnce(propertyName) {
+    const properties = this.getScriptProperties();
+    const property = properties.find(prop => prop.name === propertyName);
+    return property?.triggerOnce === true;
   }
   
   /**

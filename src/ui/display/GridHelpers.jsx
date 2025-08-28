@@ -89,25 +89,10 @@ export default function GridHelpers() {
 
               {gridSettings().enabled && (
                 <div class="space-y-3 pt-2 border-t border-base-300">
-                  <div>
-                    <label class="block text-xs text-base-content/60 mb-1">Units</label>
-                    <select
-                      value={gridSettings().unit || 'meters'}
-                      onChange={(e) => updateGridSettings({ unit: e.target.value })}
-                      class="w-full bg-base-200 border border-base-300 text-base-content text-xs p-1.5 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                    >
-                      <option value="meters">Meters (m)</option>
-                      <option value="centimeters">Centimeters (cm)</option>
-                      <option value="millimeters">Millimeters (mm)</option>
-                      <option value="feet">Feet (ft)</option>
-                      <option value="inches">Inches (in)</option>
-                    </select>
-                  </div>
-
                   <div class="grid grid-cols-2 gap-2">
                     {!gridSettings().infiniteGrid && (
                       <div>
-                        <label class="block text-xs text-base-content/60 mb-1">Size ({gridSettings().unit || 'meters'})</label>
+                        <label class="block text-xs text-base-content/60 mb-1">Size ({gridSettings().unit || 'centimeters'})</label>
                         <input
                           type="number"
                           step={gridSettings().unit === 'millimeters' ? "100" : gridSettings().unit === 'centimeters' ? "10" : gridSettings().unit === 'inches' ? "12" : "1"}
@@ -120,7 +105,7 @@ export default function GridHelpers() {
                       </div>
                     )}
                     <div>
-                      <label class="block text-xs text-base-content/60 mb-1">Cell Size ({gridSettings().unit || 'meters'})</label>
+                      <label class="block text-xs text-base-content/60 mb-1">Cell Size ({gridSettings().unit || 'centimeters'})</label>
                       <input
                         type="number"
                         step={gridSettings().unit === 'millimeters' ? "10" : gridSettings().unit === 'centimeters' ? "1" : gridSettings().unit === 'inches' ? "1" : "0.1"}

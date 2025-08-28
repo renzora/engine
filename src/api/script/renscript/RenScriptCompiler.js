@@ -33,8 +33,14 @@ class RenScriptLexer {
       
       const char = this.source[this.position];
       
-      // Comments
+      // Comments - support both # and //
       if (char === '#') {
+        this.skipComment();
+        continue;
+      }
+      
+      // Check for // comments
+      if (char === '/' && this.position + 1 < this.source.length && this.source[this.position + 1] === '/') {
         this.skipComment();
         continue;
       }
@@ -102,6 +108,15 @@ class RenScriptLexer {
   }
   
   skipComment() {
+    // Skip the comment start characters (# or //)
+    if (this.source[this.position] === '#') {
+      this.advance(); // Skip #
+    } else if (this.source[this.position] === '/' && this.source[this.position + 1] === '/') {
+      this.advance(); // Skip first /
+      this.advance(); // Skip second /
+    }
+    
+    // Skip the rest of the line
     while (this.position < this.source.length && this.source[this.position] !== '\n') {
       this.advance();
     }
@@ -169,6 +184,7 @@ class RenScriptLexer {
       'start': 'START',
       'update': 'UPDATE',
       'destroy': 'DESTROY',
+      'once': 'ONCE',
       'if': 'IF',
       'else': 'ELSE',
       'while': 'WHILE',
@@ -249,7 +265,7 @@ class RenScriptParser {
         properties.push(...this.propsDeclaration());
       } else if (this.check('IDENTIFIER') && this.peekNext()?.type === 'ASSIGN') {
         variables.push(this.variableDeclaration());
-      } else if (this.check('START') || this.check('UPDATE') || this.check('DESTROY')) {
+      } else if (this.check('START') || this.check('UPDATE') || this.check('DESTROY') || this.check('ONCE')) {
         methods.push(this.methodDeclaration());
       } else {
         throw new Error(`Unexpected token ${this.peek().type} at line ${this.peek().line}`);
@@ -297,16 +313,42 @@ class RenScriptParser {
     
     const propType = this.consume('IDENTIFIER', "Expected property type").value;
     
+    // Validate property type - only allow known types
+    const validPropertyTypes = ['number', 'float', 'boolean', 'string', 'range', 'select'];
+    if (!validPropertyTypes.includes(propType)) {
+      throw new Error(`RenScript Error: Unknown property type '${propType}' in property '${name}' at line ${this.peek().line}.
+
+Valid property types:
+  • number    - Integer values with number input
+  • float     - Decimal values with number input  
+  • boolean   - True/false values with toggle switch
+  • string    - Text values with text input
+  • range     - Numeric values with slider control
+  • select    - Choice from predefined options with dropdown
+
+Please use one of these supported types instead.`);
+    }
+    
     let defaultValue = null;
     let min = null;
     let max = null;
     let options = null;
     let description = null;
+    let triggerOnce = false;
     
     // Parse property options
     if (this.match('LBRACE')) {
       while (!this.check('RBRACE') && !this.isAtEnd()) {
-        const optionName = this.consume('IDENTIFIER', "Expected option name").value;
+        // Handle keywords as identifiers in property option context
+        let optionName;
+        if (this.check('IDENTIFIER')) {
+          optionName = this.advance().value;
+        } else if (this.check('ONCE')) {
+          // Allow 'once' keyword to be used as property option
+          optionName = this.advance().value || 'once';
+        } else {
+          throw new Error(`Expected option name at line ${this.peek().line}, got ${this.peek().type}`);
+        }
         this.consume('COLON', "Expected ':'");
         
         switch (optionName) {
@@ -324,6 +366,12 @@ class RenScriptParser {
             break;
           case 'description':
             description = this.expression();
+            break;
+          case 'once':
+            const onceValue = this.expression();
+            if (onceValue.type === 'Literal' && onceValue.value === true) {
+              triggerOnce = true;
+            }
             break;
           default:
             throw new Error(`Unknown property option: ${optionName}`);
@@ -343,7 +391,8 @@ class RenScriptParser {
       min,
       max,
       options,
-      description
+      description,
+      triggerOnce
     };
   }
   
@@ -359,7 +408,7 @@ class RenScriptParser {
   }
   
   methodDeclaration() {
-    const methodType = this.advance().type; // START, UPDATE, or DESTROY
+    const methodType = this.advance().type; // START, UPDATE, DESTROY, or ONCE
     let parameters = [];
     
     if (methodType === 'UPDATE' && this.check('LPAREN')) {
@@ -388,11 +437,46 @@ class RenScriptParser {
   }
   
   statement() {
+    if (this.check('IF')) {
+      return this.ifStatement();
+    }
+    
     if (this.check('IDENTIFIER') && this.peekNext()?.type === 'ASSIGN') {
       return this.assignment();
     }
     
     return this.expressionStatement();
+  }
+
+  ifStatement() {
+    this.consume('IF', "Expected 'if'");
+    this.consume('LPAREN', "Expected '(' after 'if'");
+    const condition = this.expression();
+    this.consume('RPAREN', "Expected ')' after if condition");
+    this.consume('LBRACE', "Expected '{' after if condition");
+    
+    const thenStatements = [];
+    while (!this.check('RBRACE') && !this.isAtEnd()) {
+      thenStatements.push(this.statement());
+    }
+    this.consume('RBRACE', "Expected '}' after if body");
+    
+    let elseStatements = null;
+    if (this.match('ELSE')) {
+      this.consume('LBRACE', "Expected '{' after 'else'");
+      elseStatements = [];
+      while (!this.check('RBRACE') && !this.isAtEnd()) {
+        elseStatements.push(this.statement());
+      }
+      this.consume('RBRACE', "Expected '}' after else body");
+    }
+    
+    return {
+      type: 'IfStatement',
+      condition,
+      thenStatements,
+      elseStatements
+    };
   }
   
   assignment() {
@@ -598,137 +682,136 @@ class RenScriptParser {
 class RenScriptCodeGenerator {
   constructor(ast) {
     this.ast = ast;
+    this.usedFunctions = new Set();
   }
   
   generate() {
+    // First pass: analyze what functions are used
+    this.analyzeUsage(this.ast);
     return this.generateScript(this.ast);
+  }
+
+  analyzeUsage(node) {
+    if (!node || typeof node !== 'object') return;
+    
+    if (node.type === 'CallExpression' && node.callee?.type === 'Identifier') {
+      this.usedFunctions.add(node.callee.name);
+    }
+    
+    // Recursively analyze child nodes
+    Object.values(node).forEach(child => {
+      if (Array.isArray(child)) {
+        child.forEach(item => this.analyzeUsage(item));
+      } else if (typeof child === 'object' && child !== null) {
+        this.analyzeUsage(child);
+      }
+    });
+  }
+
+  generateUsedApiBindings() {
+    // API method mappings (camelCase -> snake_case)
+    const apiMethods = {
+      log: 'log',
+      get_position: 'getPosition',
+      set_position: 'setPosition',
+      get_world_position: 'getWorldPosition',
+      get_rotation: 'getRotation',
+      set_rotation: 'setRotation',
+      get_world_rotation: 'getWorldRotationQuaternion',
+      rotate_by: 'rotateBy',
+      move_by: 'moveBy',
+      move_to: 'setPosition',
+      get_scale: 'getScale',
+      set_scale: 'setScale',
+      is_visible: 'isVisible',
+      set_visible: 'setVisible',
+      set_color: 'setColor',
+      get_color: 'getColor',
+      set_emissive_color: 'setEmissiveColor',
+      get_emissive_color: 'getEmissiveColor',
+      set_material_property: 'setMaterialProperty',
+      get_material_property: 'getMaterialProperty',
+      set_texture: 'setTexture',
+      set_diffuse_texture: 'setDiffuseTexture',
+      set_normal_texture: 'setNormalTexture',
+      set_emissive_texture: 'setEmissiveTexture',
+      set_specular_texture: 'setSpecularTexture',
+      set_ambient_texture: 'setAmbientTexture',
+      set_opacity_texture: 'setOpacityTexture',
+      set_reflection_texture: 'setReflectionTexture',
+      set_refraction_texture: 'setRefractionTexture',
+      set_lightmap_texture: 'setLightmapTexture',
+      set_metallic_texture: 'setMetallicTexture',
+      set_roughness_texture: 'setRoughnessTexture',
+      set_micro_roughness_texture: 'setMicroRoughnessTexture',
+      set_displacement_texture: 'setDisplacementTexture',
+      set_detail_texture: 'setDetailTexture',
+      set_alpha: 'setAlpha',
+      set_specular_power: 'setSpecularPower',
+      set_diffuse_color: 'setDiffuseColor',
+      set_specular_color: 'setSpecularColor',
+      set_ambient_color: 'setAmbientColor',
+      set_back_face_culling: 'setBackFaceCulling',
+      set_disable_lighting: 'setDisableLighting',
+      set_wireframe: 'setWireframe',
+      set_points_cloud: 'setPointsCloud',
+      set_fill_mode: 'setFillMode',
+      set_invert_normal_map_x: 'setInvertNormalMapX',
+      set_invert_normal_map_y: 'setInvertNormalMapY',
+      set_bump_level: 'setBumpLevel',
+      set_parallax_scale_bias: 'setParallaxScaleBias',
+      set_index_of_refraction: 'setIndexOfRefraction',
+      set_fresnel_parameters: 'setFresnelParameters',
+      add_tag: 'addTag',
+      remove_tag: 'removeTag',
+      has_tag: 'hasTag'
+    };
+
+    const usedMethods = [];
+    
+    for (const [renscriptName, apiName] of Object.entries(apiMethods)) {
+      if (this.usedFunctions.has(renscriptName)) {
+        usedMethods.push(`  const ${renscriptName} = api.${apiName}.bind(api);`);
+      }
+    }
+
+    return usedMethods.length > 0 ? 
+      `  // SMART: Only binding methods actually used in script\n${usedMethods.join('\n')}\n` : 
+      '  // No API methods used in this script\n';
+  }
+
+  generateUsedMathMethods() {
+    const mathMethods = ['sin', 'cos', 'tan', 'abs', 'sqrt', 'pow', 'floor', 'ceil', 'round'];
+    const usedMath = [];
+    
+    for (const method of mathMethods) {
+      if (this.usedFunctions.has(method)) {
+        usedMath.push(`  const ${method} = Math.${method};`);
+      }
+    }
+
+    // Handle min/max specially since they use spread operator
+    if (this.usedFunctions.has('min')) {
+      usedMath.push('  const min = (...args) => Math.min(...args);');
+    }
+    if (this.usedFunctions.has('max')) {
+      usedMath.push('  const max = (...args) => Math.max(...args);');
+    }
+
+    return usedMath.length > 0 ? 
+      `\n  // Math functions\n${usedMath.join('\n')}\n` : 
+      '';
   }
   
   generateScript(script) {
-    const variables = script.variables.map(v => this.generateVariableDeclaration(v)).join('\n  ');
+    const variables = script.variables.map(v => this.generateVariableDeclaration(v)).join('\n    ');
     const methods = script.methods.map(m => this.generateMethod(m)).join(',\n\n  ');
     const properties = script.properties || [];
     
-    // Create the API function mapping
-    const apiFunctions = `
-  // === Core Transform API ===
-  const log = (...args) => api.log(...args);
-  const get_position = () => api.getPosition();
-  const set_position = (x, y, z) => api.setPosition(x, y, z);
-  const get_world_position = () => api.getWorldPosition();
-  const get_rotation = () => api.getRotation();
-  const set_rotation = (x, y, z) => api.setRotation(x, y, z);
-  const get_world_rotation = () => api.getWorldRotationQuaternion();
-  const rotate_by = (x, y, z) => api.rotateBy(x, y, z);
-  const move_by = (x, y, z) => api.moveBy(x, y, z);
-  const move_to = (x, y, z) => api.setPosition(x, y, z);
-  const look_at = (target, up) => api.lookAt(target, up);
-  const get_scale = () => api.getScale();
-  const set_scale = (x, y, z) => api.setScale(x, y, z);
-  
-  // === Visibility & Material API ===
-  const is_visible = () => api.isVisible();
-  const set_visible = (visible) => api.setVisible(visible);
-  const set_color = (r, g, b) => api.setColor(r, g, b);
-  const get_color = () => api.getColor();
-  const set_emissive_color = (r, g, b) => api.setEmissiveColor(r, g, b);
-  const get_emissive_color = () => api.getEmissiveColor();
-  const set_material_property = (property, value) => api.setMaterialProperty(property, value);
-  const get_material_property = (property) => api.getMaterialProperty(property);
-  
-  // === Camera API ===
-  const is_camera = () => api.isCamera();
-  const set_camera_fov = (fov) => api.setCameraFOV(fov);
-  const get_camera_fov = () => api.getCameraFOV();
-  const set_camera_target = (x, y, z) => api.setCameraTarget(x, y, z);
-  const get_camera_target = () => api.getCameraTarget();
-  const set_camera_radius = (radius) => api.setCameraRadius(radius);
-  const get_camera_radius = () => api.getCameraRadius();
-  const detach_camera_controls = () => api.detachCameraControls();
-  const attach_camera_controls = () => api.attachCameraControls();
-  
-  // === Light API ===
-  const is_light = () => api.isLight();
-  const set_light_intensity = (intensity) => api.setLightIntensity(intensity);
-  const get_light_intensity = () => api.getLightIntensity();
-  const set_light_color = (r, g, b) => api.setLightColor(r, g, b);
-  const get_light_color = () => api.getLightColor();
-  const set_light_range = (range) => api.setLightRange(range);
-  const get_light_range = () => api.getLightRange();
-  
-  // === Animation API ===
-  const animate = (property, targetValue, duration, easing) => api.animate(property, targetValue, duration, easing);
-  const stop_animation = () => api.stopAnimation();
-  const pause_animation = () => api.pauseAnimation();
-  const resume_animation = () => api.resumeAnimation();
-  
-  // === Physics API ===
-  const set_physics_impostor = (type, options) => api.setPhysicsImpostor(type, options);
-  const apply_impulse = (force, contactPoint) => api.applyImpulse(force, contactPoint);
-  const set_linear_velocity = (velocity) => api.setLinearVelocity(velocity);
-  const set_angular_velocity = (velocity) => api.setAngularVelocity(velocity);
-  
-  // === Scene Query API ===
-  const find_object = (name) => api.findObjectByName(name);
-  const find_objects_by_tag = (tag) => api.findObjectsByTag(tag);
-  const raycast = (direction, maxDistance, excludeObjects) => api.raycast(direction, maxDistance, excludeObjects);
-  const get_objects_in_radius = (radius, objectTypes) => api.getObjectsInRadius(radius, objectTypes);
-  
-  // === Audio API ===
-  const play_sound = (soundPath, options) => api.playSound(soundPath, options);
-  const stop_sound = (sound) => api.stopSound(sound);
-  const set_sound_volume = (sound, volume) => api.setSoundVolume(sound, volume);
-  
-  // === Input API ===
-  const is_key_pressed = (key) => api.isKeyPressed(key);
-  const is_mouse_button_pressed = (button) => api.isMouseButtonPressed(button);
-  const get_mouse_position = () => api.getMousePosition();
-  
-  // === Gamepad API ===
-  const get_gamepads = () => api.getGamepads();
-  const get_left_stick = (gamepadIndex) => api.getLeftStick(gamepadIndex);
-  const get_right_stick = (gamepadIndex) => api.getRightStick(gamepadIndex);
-  const get_left_stick_x = (gamepadIndex) => api.getLeftStickX(gamepadIndex);
-  const get_left_stick_y = (gamepadIndex) => api.getLeftStickY(gamepadIndex);
-  const get_right_stick_x = (gamepadIndex) => api.getRightStickX(gamepadIndex);
-  const get_right_stick_y = (gamepadIndex) => api.getRightStickY(gamepadIndex);
-  const is_gamepad_button_pressed = (buttonIndex, gamepadIndex) => api.isGamepadButtonPressed(buttonIndex, gamepadIndex);
-  const get_gamepad_trigger = (trigger, gamepadIndex) => api.getGamepadTrigger(trigger, gamepadIndex);
-  
-  // === Time API ===
-  const get_time = () => api.getTime();
-  const get_delta_time = () => api.getDeltaTime();
-  
-  // === Object Management API ===
-  const clone_object = (name, position) => api.clone(name, position);
-  const dispose_object = () => api.dispose();
-  const set_metadata = (key, value) => api.setMetadata(key, value);
-  const get_metadata = (key) => api.getMetadata(key);
-  const add_tag = (tag) => api.addTag(tag);
-  const remove_tag = (tag) => api.removeTag(tag);
-  const has_tag = (tag) => api.hasTag(tag);
-  
-  // === Math Functions ===
-  const sin = Math.sin;
-  const cos = Math.cos;
-  const tan = Math.tan;
-  const abs = Math.abs;
-  const sqrt = Math.sqrt;
-  const pow = Math.pow;
-  const min = (...args) => Math.min(...args);
-  const max = (...args) => Math.max(...args);
-  const floor = Math.floor;
-  const ceil = Math.ceil;
-  const round = Math.round;
-  const random = (min, max) => api.random(min, max);
-  const clamp = (value, min, max) => api.clamp(value, min, max);
-  const lerp = (start, end, t) => api.lerp(start, end, t);
-  const to_radians = (degrees) => api.toRadians(degrees);
-  const to_degrees = (radians) => api.toDegrees(radians);
-  const distance = (pos1, pos2) => api.distance(pos1, pos2);
-  const normalize = (vector) => api.normalize(vector);
-  const dot = (vec1, vec2) => api.dot(vec1, vec2);
-  const cross = (vec1, vec2) => api.cross(vec1, vec2);`;
+    // SMART: Only bind functions that are actually used
+    const usedApiMethods = this.generateUsedApiBindings();
+    const usedMathMethods = this.generateUsedMathMethods();
+    const efficientAPI = `${usedApiMethods}${usedMathMethods}`;
     
     // Generate properties metadata
     const propertiesMetadata = properties.length > 0 ? `
@@ -742,7 +825,8 @@ ${properties.map(p => `    {
       min: ${p.min ? this.generateExpression(p.min) : null},
       max: ${p.max ? this.generateExpression(p.max) : null},
       options: ${p.options ? this.generateExpression(p.options) : null},
-      description: ${p.description ? this.generateExpression(p.description) : null}
+      description: ${p.description ? this.generateExpression(p.description) : null},
+      triggerOnce: ${p.triggerOnce || false}
     }`).join(',\n')}
   ],
   
@@ -753,7 +837,7 @@ ${properties.map(p => `    {
 
     return `
 function createRenScript(scene, api) {
-${apiFunctions}
+${efficientAPI}
   
   return {
     // Script variables
@@ -777,6 +861,7 @@ ${apiFunctions}
     const methodName = method.methodType === 'start' ? 'onStart' :
                       method.methodType === 'update' ? 'onUpdate' :
                       method.methodType === 'destroy' ? 'onDestroy' :
+                      method.methodType === 'once' ? 'onOnce' :
                       method.methodType;
     
     return `${methodName}(${params}) {
@@ -790,6 +875,15 @@ ${apiFunctions}
         return `this.${statement.name} = ${this.generateExpression(statement.value, context)};`;
       case 'ExpressionStatement':
         return `${this.generateExpression(statement.expression, context)};`;
+      case 'IfStatement':
+        const condition = this.generateExpression(statement.condition, context);
+        const thenBody = statement.thenStatements.map(s => this.generateStatement(s, context)).join('\n      ');
+        const elseBody = statement.elseStatements ? 
+          statement.elseStatements.map(s => this.generateStatement(s, context)).join('\n      ') : null;
+        
+        return elseBody ? 
+          `if (${condition}) {\n      ${thenBody}\n    } else {\n      ${elseBody}\n    }` :
+          `if (${condition}) {\n      ${thenBody}\n    }`;
       default:
         throw new Error(`Unknown statement type: ${statement.type}`);
     }
@@ -827,26 +921,51 @@ ${apiFunctions}
 class RenScriptCompiler {
   static compile(source) {
     try {
-      console.log('🔧 RenScript: Compiling source');
+      console.log('🔧 RenScript: Starting efficient compilation');
       
-      // Tokenize
+      // Validate input
+      if (!source || typeof source !== 'string' || source.trim() === '') {
+        throw new Error('Source code is empty or invalid');
+      }
+      
+      // Tokenize with validation
+      console.log('🔧 RenScript: Tokenizing source');
       const lexer = new RenScriptLexer(source);
       const tokens = lexer.tokenize();
-      console.log('🔧 RenScript: Tokens generated:', tokens.length);
       
-      // Parse
+      if (!tokens || tokens.length === 0) {
+        throw new Error('No tokens generated from source');
+      }
+      
+      console.log(`🔧 RenScript: Generated ${tokens.length} tokens`);
+      
+      // Parse with validation
+      console.log('🔧 RenScript: Parsing tokens');
       const parser = new RenScriptParser(tokens);
       const ast = parser.parse();
-      console.log('🔧 RenScript: AST generated:', ast);
       
-      // Generate code
+      if (!ast) {
+        throw new Error('Failed to generate AST');
+      }
+      
+      console.log('🔧 RenScript: AST generated successfully');
+      
+      // Generate efficient code
+      console.log('🔧 RenScript: Generating efficient JavaScript');
       const generator = new RenScriptCodeGenerator(ast);
       const jsCode = generator.generate();
-      console.log('🔧 RenScript: JavaScript generated');
+      
+      if (!jsCode) {
+        throw new Error('Failed to generate JavaScript code');
+      }
+      
+      console.log('🔧 RenScript: Compilation completed successfully');
+      console.log(`🔧 RenScript: Generated ${jsCode.length} characters (efficient version)`);
       
       return jsCode;
       
     } catch (error) {
+      console.error('🔧 RenScript: Compilation failed:', error.message);
       throw new Error(`RenScript compilation failed: ${error.message}`);
     }
   }

@@ -1,30 +1,11 @@
-// Custom Theme Registry
-// Import all custom themes to make them available
+// Theme Registry - Only built-in DaisyUI themes and engine theme
+// Import engine theme
 import './renzora.css';
-import './matrix.css';
-import './neon.css';
-import './ocean.css';
-import './terminal.css';
-import './aurora.css';
-import './volcano.css';
 
-// Theme definitions for the ThemeSwitcher
-export const customThemes = [
-  { name: 'matrix', label: 'Matrix', category: 'Custom' },
-  { name: 'neon', label: 'Neon', category: 'Custom' },
-  { name: 'ocean', label: 'Ocean', category: 'Custom' },
-  { name: 'terminal', label: 'Terminal', category: 'Custom' },
-  { name: 'aurora', label: 'Aurora', category: 'Custom' },
-  { name: 'volcano', label: 'Volcano', category: 'Custom' }
-];
-
-// All available themes (DaisyUI + Custom)
+// All available themes (DaisyUI + Engine)
 export const allThemes = [
   // Engine themes
   { name: 'renzora', label: 'Renzora', category: 'Engine' },
-  
-  // Custom themes
-  ...customThemes,
   
   // DaisyUI built-in themes
   { name: 'light', label: 'Light', category: 'DaisyUI' },

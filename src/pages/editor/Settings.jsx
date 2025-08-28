@@ -175,7 +175,71 @@ function Settings() {
           </div>
         </CollapsibleSection>
         
-        <CollapsibleSection title="Performance" defaultOpen={false} index={3}>
+        <CollapsibleSection title="Editor" defaultOpen={false} index={3}>
+          <div class="space-y-4 p-4">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide flex items-center justify-between">
+                Script Reload Delay
+                <span class="badge badge-primary badge-outline font-mono text-xs">
+                  {settings.editor.scriptReloadDebounceMs || 500}ms
+                </span>
+              </label>
+              <div class="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={100}
+                  max={3000}
+                  step={50}
+                  value={settings.editor.scriptReloadDebounceMs || 500}
+                  onChange={(e) => {
+                    const newDelay = parseInt(e.target.value);
+                    editorActions.updateEditorSettings({ scriptReloadDebounceMs: newDelay });
+                  }}
+                  onMouseUp={(e) => {
+                    const newDelay = parseInt(e.target.value);
+                    editorActions.addConsoleMessage(`Script reload delay set to ${newDelay}ms`, 'info');
+                  }}
+                  class="range range-primary range-sm flex-1"
+                />
+              </div>
+              <div class="flex justify-between text-xs text-base-content/60">
+                <span>100ms (Fast)</span>
+                <span>3000ms (Slow)</span>
+              </div>
+              <div class="text-xs text-base-content/60 mt-1">
+                How long to wait after you stop typing before reloading scripts
+              </div>
+            </div>
+          </div>
+        </CollapsibleSection>
+        
+        <CollapsibleSection title="World" defaultOpen={false} index={4}>
+          <div class="space-y-4 p-4">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Unit Measurement</label>
+              <Select
+                value={settings.grid.unit || 'centimeters'}
+                onChange={(e) => {
+                  const newUnit = e.target.value;
+                  editorActions.updateGridSettings({ unit: newUnit });
+                  editorActions.addConsoleMessage(`Changed unit measurement to ${newUnit}`, 'info');
+                }}
+                options={[
+                  { value: 'centimeters', label: 'Centimeters (cm)' },
+                  { value: 'meters', label: 'Meters (m)' },
+                  { value: 'inches', label: 'Inches (in)' },
+                  { value: 'feet', label: 'Feet (ft)' }
+                ]}
+                size="sm"
+              />
+              <div class="text-xs text-base-content/60 mt-1">
+                Choose the unit of measurement for position and size values
+              </div>
+            </div>
+          </div>
+        </CollapsibleSection>
+        
+        <CollapsibleSection title="Performance" defaultOpen={false} index={5}>
           <div class="space-y-4 p-4">
             <div class="flex items-center justify-between p-3 bg-base-200/40 rounded-lg border border-base-300/50">
               <div>

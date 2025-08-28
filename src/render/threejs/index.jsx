@@ -1,1 +1,0 @@
-export { ThreeViewport as default } from './ThreeViewport.jsx';

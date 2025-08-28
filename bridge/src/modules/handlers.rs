@@ -7,7 +7,6 @@ use async_stream::stream;
 use std::convert::Infallible;
 use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
-use tokio::time;
 use log::{info, warn, error, debug};
 use percent_encoding::percent_decode_str;
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
@@ -474,43 +473,6 @@ fn create_sse_stream_response() -> Response<BoxBody<Bytes, Infallible>> {
         .unwrap()
 }
 
-fn create_persistent_sse_response() -> Response<BoxBody<Bytes, Infallible>> {
-    // Send initial connection message - client will handle the persistent connection
-    let sse_data = "data: {\"type\":\"connected\",\"message\":\"File change stream connected\"}\n\n";
-    
-    // Spawn a task to handle file changes for this connection (for future enhancement)
-    tokio::spawn(async {
-        if let Some(mut receiver) = get_file_change_receiver() {
-            info!("📡 SSE: Listening for file changes");
-            loop {
-                match receiver.recv().await {
-                    Ok(message) => {
-                        info!("📡 SSE: File change detected: {}", message);
-                        // TODO: Send to specific client connection when we implement per-connection channels
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
-                        warn!("📡 SSE: Lagged {} messages", count);
-                    }
-                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
-                        info!("📡 SSE: File change broadcaster closed");
-                        break;
-                    }
-                }
-            }
-        }
-    });
-    
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-        .header(ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, DELETE, OPTIONS")
-        .header(ACCESS_CONTROL_ALLOW_HEADERS, "Content-Type, Authorization")
-        .header(CONTENT_TYPE, "text/event-stream")
-        .header("Cache-Control", "no-cache")
-        .header("Connection", "keep-alive")
-        .body(BoxBody::new(Full::new(Bytes::from(sse_data))))
-        .unwrap()
-}
 
 fn handle_health_check() -> Response<BoxBody<Bytes, Infallible>> {
     use std::time::{SystemTime, UNIX_EPOCH};

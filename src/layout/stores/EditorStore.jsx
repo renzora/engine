@@ -1,4 +1,26 @@
-import { createStore } from 'solid-js/store'
+import { createStore } from 'solid-js/store';
+
+// Load settings from localStorage
+const loadSettings = () => {
+  try {
+    const saved = localStorage.getItem('editor-settings');
+    return saved ? JSON.parse(saved) : {};
+  } catch (e) {
+    console.warn('Failed to load settings from localStorage:', e);
+    return {};
+  }
+};
+
+// Save settings to localStorage
+const saveSettings = (settings) => {
+  try {
+    localStorage.setItem('editor-settings', JSON.stringify(settings));
+  } catch (e) {
+    console.warn('Failed to save settings to localStorage:', e);
+  }
+};
+
+const savedSettings = loadSettings();
 
 const [editorStore, setEditorStore] = createStore({
   isOpen: false,
@@ -39,23 +61,24 @@ const [editorStore, setEditorStore] = createStore({
   
   settings: {
     viewport: {
-      backgroundColor: 'theme',
-      renderingEngine: 'webgl'
+      backgroundColor: savedSettings.viewport?.backgroundColor || 'theme',
+      renderingEngine: savedSettings.viewport?.renderingEngine || 'webgl'
     },
     editor: {
-      showStats: true,
-      panelPosition: 'right'
+      showStats: savedSettings.editor?.showStats !== undefined ? savedSettings.editor.showStats : true,
+      panelPosition: savedSettings.editor?.panelPosition || 'right',
+      scriptReloadDebounceMs: savedSettings.editor?.scriptReloadDebounceMs || 500
     },
     grid: {
-      enabled: true,
-      unit: 'meters',
-      size: 20,
-      cellSize: 1,
-      sectionSize: 10,
-      infiniteGrid: true,
-      position: [0, 0, 0],
-      cellColor: '#334155',
-      sectionColor: '#475569'
+      enabled: savedSettings.grid?.enabled !== undefined ? savedSettings.grid.enabled : true,
+      unit: savedSettings.grid?.unit || 'centimeters',
+      size: savedSettings.grid?.size || 20,
+      cellSize: savedSettings.grid?.cellSize || 1,
+      sectionSize: savedSettings.grid?.sectionSize || 10,
+      infiniteGrid: savedSettings.grid?.infiniteGrid !== undefined ? savedSettings.grid.infiniteGrid : true,
+      position: savedSettings.grid?.position || [0, 0, 0],
+      cellColor: savedSettings.grid?.cellColor || '#334155',
+      sectionColor: savedSettings.grid?.sectionColor || '#475569'
     }
   }
 })
@@ -122,7 +145,8 @@ export const editorActions = {
   },
   
   updateViewportSettings: (settings) => {
-    setEditorStore('settings', 'viewport', settings)
+    setEditorStore('settings', 'viewport', settings);
+    saveSettings(editorStore.settings);
   },
   
   toggleStats: () => {
@@ -130,11 +154,13 @@ export const editorActions = {
   },
   
   updateEditorSettings: (settings) => {
-    setEditorStore('settings', 'editor', settings)
+    setEditorStore('settings', 'editor', settings);
+    saveSettings(editorStore.settings);
   },
   
   updateGridSettings: (settings) => {
-    setEditorStore('settings', 'grid', settings)
+    setEditorStore('settings', 'grid', settings);
+    saveSettings(editorStore.settings);
   },
   
   setToolbarTabOrder: (order) => {
@@ -151,6 +177,13 @@ export const editorActions = {
 
   setAssetsLibraryWidth: (width) => {
     setEditorStore('ui', 'assetsLibraryWidth', width)
+  },
+
+  updateBabylonObjectFromProperties: (entityId) => {
+    // This will be used to sync changes from property panel to Babylon object
+    // Note: This creates a circular dependency, so we'll implement this differently
+    // by calling it from the Scene.jsx component where both stores are already imported
+    console.log('updateBabylonObjectFromProperties called for:', entityId);
   }
 }
 

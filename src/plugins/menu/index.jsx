@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { Refresh, Video, Edit, ArrowLeft, ArrowRight, Plus, Folder, File, ArrowDown, ArrowUp, Scissors, Copy, Clipboard, Trash, Cube, Download, Upload, Photo, GameController, Globe, Building, Box
+import { Refresh, Video, Edit, ArrowLeft, ArrowRight, Plus, Folder, File, ArrowDown, ArrowUp, Scissors, Copy, Clipboard, Trash, Cube, Download, Upload, Photo, GameController, Globe, Box
 } from '@/ui/icons';
 
 export default createPlugin({
@@ -31,7 +31,7 @@ export default createPlugin({
               submenu: [
                 { id: 'template-basic', label: 'Basic Scene', icon: Cube },
                 { id: 'template-game', label: 'Game Template', icon: GameController },
-                { id: 'template-arch', label: 'Architecture', icon: Building },
+                { id: 'template-arch', label: 'Architecture', icon: Box },
                 { id: 'template-product', label: 'Product Viz', icon: Box }
               ]
             },

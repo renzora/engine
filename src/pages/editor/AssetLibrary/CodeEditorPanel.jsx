@@ -1,10 +1,11 @@
-import { createSignal, createEffect, Show, For } from 'solid-js';
+import { createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
 import { X, Save, FileText, Code, Forward, Back } from '@/ui/icons';
 import MonacoEditor from '@/components/MonacoEditor';
 import { readFile, writeFile, deleteFile } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
 import { RenScriptCompiler } from '@/api/script/renscript/RenScriptCompiler';
 import { getScriptRuntime } from '@/api/script';
+import { editorStore } from '@/layout/stores/EditorStore';
 
 function CodeEditorPanel({ 
   isOpen, 
@@ -747,13 +748,30 @@ function CodeEditorPanel({
     }
   };
 
+  // Debounce timeout for script parsing
+  let parseTimeout = null;
+  
+  // Cleanup timeout on component unmount
+  onCleanup(() => {
+    if (parseTimeout) {
+      clearTimeout(parseTimeout);
+    }
+  });
+  
   const handleEditorChange = (value) => {
     setEditorValue(value);
     updateHasChanges(value, fileName());
     
-    // Add real-time parsing for .ren files
+    // Add debounced parsing for .ren files to prevent script reload on every keystroke
     if (fileName().endsWith('.ren')) {
-      parseScriptImmediately(value);
+      if (parseTimeout) {
+        clearTimeout(parseTimeout);
+      }
+      
+      const debounceMs = editorStore.settings.editor.scriptReloadDebounceMs || 500;
+      parseTimeout = setTimeout(() => {
+        parseScriptImmediately(value);
+      }, debounceMs);
     }
   };
 

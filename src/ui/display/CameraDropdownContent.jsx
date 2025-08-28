@@ -3,10 +3,11 @@ import { Grid3x3, Cube, Palette, Sun, Pointer, Camera, Rotate360, Eye, Move } fr
 import { Dynamic } from 'solid-js/web';
 
 export default function CameraDropdownContent() {
-  const { setCameraType, setCameraSpeed, setCameraSensitivity, setRenderMode } = viewportActions;
+  const { setCameraType, setCameraSpeed, setCameraSensitivity, setCameraFriction, setRenderMode } = viewportActions;
   
-  const cameraSpeed = () => viewportStore.camera.speed || 5;
-  const mouseSensitivity = () => viewportStore.camera.mouseSensitivity || 0.002;
+  const cameraSpeed = () => viewportStore.camera.speed || 2;
+  const mouseSensitivity = () => viewportStore.camera.mouseSensitivity || 0.004;
+  const cameraFriction = () => viewportStore.camera.friction || 2;
   const renderMode = () => viewportStore.renderMode || 'solid';
   const cameraType = () => viewportStore.camera.type || 'universal';
   
@@ -19,9 +20,9 @@ export default function CameraDropdownContent() {
   
   const speedPresets = [
     { value: 1, label: 'Slow' },
-    { value: 5, label: 'Normal' },
-    { value: 10, label: 'Fast' },
-    { value: 20, label: 'Very Fast' }
+    { value: 2, label: 'Normal' },
+    { value: 5, label: 'Fast' },
+    { value: 10, label: 'Very Fast' }
   ];
 
   const cameraTypes = [
@@ -30,19 +31,19 @@ export default function CameraDropdownContent() {
   ];
 
   return (
-    <div class="w-64 space-y-4 p-4">
+    <div class="w-64 space-y-4 p-4 bg-base-200 text-base-content">
       <div>
-        <label class="block font-medium text-gray-300 mb-2">
+        <label class="block font-medium text-base-content mb-2">
           Camera Type
         </label>
         <div class="grid grid-cols-1 gap-1">
           {cameraTypes.map((type) => (
             <button
               onClick={() => setCameraType(type.id)}
-              class={`flex items-center gap-2 px-3 py-2 text-xs rounded transition-colors ${
+              class={`btn btn-sm flex items-center gap-2 justify-start ${
                 cameraType() === type.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'btn-primary'
+                  : 'btn-ghost'
               }`}
               title={type.description}
             >
@@ -54,17 +55,17 @@ export default function CameraDropdownContent() {
       </div>
       
       <div>
-        <label class="block font-medium text-gray-300 mb-2">
+        <label class="block font-medium text-base-content mb-2">
           Camera Speed: {cameraSpeed()}
         </label>
         <div class="grid grid-cols-2 gap-1 mb-2">
           {speedPresets.map((preset) => (
             <button
               onClick={() => setCameraSpeed(preset.value)}
-              class={`px-2 py-1 text-xs rounded transition-colors ${
+              class={`btn btn-xs ${
                 cameraSpeed() === preset.value
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'btn-primary'
+                  : 'btn-ghost'
               }`}
             >
               {preset.label}
@@ -73,17 +74,17 @@ export default function CameraDropdownContent() {
         </div>
         <input
           type="range"
-          min="0.5"
-          max="50"
-          step="0.5"
+          min="0.1"
+          max="10"
+          step="0.1"
           value={cameraSpeed()}
           onInput={(e) => setCameraSpeed(parseFloat(e.target.value))}
-          class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+          class="range range-primary w-full"
         />
       </div>
       
       <div>
-        <label class="block font-medium text-gray-300 mb-2">
+        <label class="block font-medium text-base-content mb-2">
           Mouse Sensitivity: {(mouseSensitivity() * 1000).toFixed(1)}
         </label>
         <input
@@ -93,22 +94,41 @@ export default function CameraDropdownContent() {
           step="0.0001"
           value={mouseSensitivity()}
           onInput={(e) => setCameraSensitivity(parseFloat(e.target.value))}
-          class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
+          class="range range-primary w-full"
         />
       </div>
       
       <div>
-        <label class="block font-medium text-gray-300 mb-2">
+        <label class="block font-medium text-base-content mb-2">
+          Movement Momentum: {cameraFriction()}
+        </label>
+        <input
+          type="range"
+          min="1"
+          max="5"
+          step="1"
+          value={cameraFriction()}
+          onInput={(e) => setCameraFriction(parseInt(e.target.value))}
+          class="range range-primary w-full"
+        />
+        <div class="flex justify-between text-xs text-base-content/60 mt-1">
+          <span>Quick Stop</span>
+          <span>Smooth Drift</span>
+        </div>
+      </div>
+      
+      <div>
+        <label class="block font-medium text-base-content mb-2">
           Render Mode
         </label>
         <div class="grid grid-cols-2 gap-1">
           {renderModes.map((mode) => (
             <button
               onClick={() => setRenderMode(mode.id)}
-              class={`flex items-center gap-2 px-2 py-2 text-xs rounded transition-colors ${
+              class={`btn btn-xs flex items-center gap-2 justify-start ${
                 renderMode() === mode.id
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  ? 'btn-primary'
+                  : 'btn-ghost'
               }`}
               title={mode.label}
             >

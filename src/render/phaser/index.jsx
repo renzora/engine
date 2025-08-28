@@ -1,1 +1,0 @@
-export { PhaserViewport as default } from './PhaserViewport.jsx';

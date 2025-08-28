@@ -7,9 +7,8 @@ import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { toolbarButtons } from '@/api/plugin';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 import { getScriptRuntime } from '@/api/script';
-const getBabylonScene = () => window._cleanBabylonScene;
 import { viewportStore, viewportActions, objectPropertiesActions } from '@/layout/stores/ViewportStore';
-import CameraHelpers from '@/ui/display/CameraHelpers.jsx';
+import { renderStore, renderActions } from '@/render/store.jsx';
 import GridHelpers from '@/ui/display/GridHelpers.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Ray } from '@babylonjs/core/Culling/ray';
@@ -145,32 +144,10 @@ function Toolbar() {
       
       setTransformMode(toolId);
       
-      const scene = getCurrentScene();
-      if (scene && scene._gizmoManager) {
-        scene._gizmoManager.positionGizmoEnabled = false;
-        scene._gizmoManager.rotationGizmoEnabled = false;
-        scene._gizmoManager.scaleGizmoEnabled = false;
-        
-        switch (toolId) {
-          case 'move':
-            scene._gizmoManager.positionGizmoEnabled = true;
-            break;
-          case 'rotate':
-            scene._gizmoManager.rotationGizmoEnabled = true;
-            break;
-          case 'scale':
-            scene._gizmoManager.scaleGizmoEnabled = true;
-            break;
-          case 'select':
-            break;
-        }
-        
-        if (scene._ensureGizmoThickness) {
-          scene._ensureGizmoThickness();
-        }
-        
-        editorActions.addConsoleMessage(`Switched to ${toolId} tool`, 'info');
-      }
+      // Use render store for gizmo management
+      renderActions.setTransformMode(toolId);
+      
+      editorActions.addConsoleMessage(`Switched to ${toolId} tool`, 'info');
     }
     else if (['cube', 'sphere', 'cylinder', 'plane'].includes(toolId)) {
       await createBabylonPrimitive(toolId);
@@ -275,7 +252,7 @@ function Toolbar() {
   };
 
   const getCurrentScene = () => {
-    return getBabylonScene();
+    return renderStore.scene;
   };
 
   const getObjectName = (type) => {
@@ -382,28 +359,10 @@ function Toolbar() {
           }
         }
         
-        if (scene._gizmoManager) {
-          scene._gizmoManager.attachToMesh(mainContainer);
-          
-          // Enable move gizmo by default when creating objects
-          scene._gizmoManager.positionGizmoEnabled = true;
-          scene._gizmoManager.rotationGizmoEnabled = false;
-          scene._gizmoManager.scaleGizmoEnabled = false;
-          
-          if (scene._highlightLayer) {
-            scene._highlightLayer.removeAllMeshes();
-            try {
-              const childMeshes = mainContainer.getChildMeshes();
-              childMeshes.forEach(childMesh => {
-                if (childMesh.getClassName() === 'Mesh') {
-                  scene._highlightLayer.addMesh(childMesh, Color3.Yellow());
-                }
-              });
-            } catch (error) {
-              console.warn('Could not add highlight to primitive:', error);
-            }
-          }
-        }
+        // Add to scene tree and select
+        renderActions.addObject(mainContainer);
+        renderActions.selectObject(mainContainer);
+        renderActions.setTransformMode('move'); // Set to move mode when creating objects
         
         const objectId = mainContainer.uniqueId || mainContainer.name;
         
@@ -479,23 +438,9 @@ function Toolbar() {
       lightHelper.material = helperMaterial;
       lightHelper._isInternalMesh = true;
       
-      if (scene._gizmoManager) {
-        scene._gizmoManager.attachToMesh(mainContainer);
-        
-        if (scene._highlightLayer) {
-          scene._highlightLayer.removeAllMeshes();
-          try {
-            const childMeshes = mainContainer.getChildMeshes();
-            childMeshes.forEach(childMesh => {
-              if (childMesh.getClassName() === 'Mesh') {
-                scene._highlightLayer.addMesh(childMesh, Color3.Yellow());
-              }
-            });
-          } catch (error) {
-            console.warn('Could not add highlight to light:', error);
-          }
-        }
-      }
+      // Add to scene tree and select
+      renderActions.addObject(mainContainer);
+      renderActions.selectObject(mainContainer);
       
       const objectId = mainContainer.uniqueId || mainContainer.name;
       
@@ -540,23 +485,9 @@ function Toolbar() {
       cameraHelper.material = helperMaterial;
       cameraHelper._isInternalMesh = true;
       
-      if (scene._gizmoManager) {
-        scene._gizmoManager.attachToMesh(mainContainer);
-      
-        if (scene._highlightLayer) {
-          scene._highlightLayer.removeAllMeshes();
-          try {
-            const childMeshes = mainContainer.getChildMeshes();
-            childMeshes.forEach(childMesh => {
-              if (childMesh.getClassName() === 'Mesh') {
-                scene._highlightLayer.addMesh(childMesh, Color3.Yellow());
-              }
-            });
-          } catch (error) {
-            console.warn('Could not add highlight to camera:', error);
-          }
-        }
-      }
+      // Add to scene tree and select
+      renderActions.addObject(mainContainer);
+      renderActions.selectObject(mainContainer);
       
       const objectId = mainContainer.uniqueId || mainContainer.name;
       
@@ -577,41 +508,30 @@ function Toolbar() {
 
   const duplicateSelectedObject = async () => {
     const scene = getCurrentScene();
-    if (!scene || !scene._gizmoManager?.attachedMesh) {
+    const selectedObject = renderStore.selectedObject;
+    
+    if (!scene || !selectedObject) {
       editorActions.addConsoleMessage('No object selected to duplicate', 'warning');
       return;
     }
-
-    const attachedMesh = scene._gizmoManager.attachedMesh;
     
     try {
-      let newObject = attachedMesh.clone(attachedMesh.name + '_duplicate', null, false, true);
+      let newObject = selectedObject.clone(selectedObject.name + '_duplicate', null, false, true);
       
       if (newObject) {
         newObject.parent = null;
-        newObject.position = attachedMesh.position.add(new Vector3(2, 0, 2));
-        if (attachedMesh.rotation && newObject.rotation) {
-          newObject.rotation = attachedMesh.rotation.clone();
+        newObject.position = selectedObject.position.add(new Vector3(2, 0, 2));
+        if (selectedObject.rotation && newObject.rotation) {
+          newObject.rotation = selectedObject.rotation.clone();
         }
-        if (attachedMesh.scaling && newObject.scaling) {
-          newObject.scaling = attachedMesh.scaling.clone();
+        if (selectedObject.scaling && newObject.scaling) {
+          newObject.scaling = selectedObject.scaling.clone();
         }
         
         const objectId = newObject.uniqueId || newObject.name;
         
-        if (scene._highlightLayer) {
-          scene._highlightLayer.removeAllMeshes();
-        }
-        
-        scene._gizmoManager.attachToMesh(newObject);
-        
-        if (scene._highlightLayer) {
-          try {
-            scene._highlightLayer.addMesh(newObject, Color3.Yellow());
-          } catch (highlightError) {
-            console.warn('Could not add highlight to duplicated object:', highlightError);
-          }
-        }
+        // Use render store for selection
+        renderActions.selectObject(newObject);
         
         editorActions.selectEntity(objectId);
         
@@ -625,24 +545,23 @@ function Toolbar() {
 
   const deleteSelectedObject = () => {
     const scene = getCurrentScene();
-    if (!scene || !scene._gizmoManager?.attachedMesh) {
+    const selectedObject = renderStore.selectedObject;
+    
+    if (!scene || !selectedObject) {
       editorActions.addConsoleMessage('No object selected to delete', 'warning');
       return;
     }
-
-    const attachedMesh = scene._gizmoManager.attachedMesh;
     
-    if (attachedMesh.name === 'ground' || attachedMesh.name === 'skybox') {
+    if (selectedObject.name === 'ground' || selectedObject.name === 'skybox') {
       editorActions.addConsoleMessage('Cannot delete default scene objects', 'warning');
       return;
     }
     
     try {
-      attachedMesh.dispose();
-      scene._gizmoManager.attachToMesh(null);
-      if (scene._highlightLayer) {
-        scene._highlightLayer.removeAllMeshes();
-      }
+      selectedObject.dispose();
+      
+      // Use render store to clear selection
+      renderActions.selectObject(null);
       
       editorActions.selectEntity(null);
       

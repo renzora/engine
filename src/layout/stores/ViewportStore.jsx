@@ -10,8 +10,9 @@ const [viewportStore, setViewportStore] = createStore({
   suspendedTabs: [],
   
   camera: {
-    speed: 5,
-    mouseSensitivity: 0.002,
+    speed: 2,
+    mouseSensitivity: 0.004,
+    friction: 2,
     mode: 'orbit',
     type: 'universal',
     position: [0, 0, 5],
@@ -46,6 +47,10 @@ export const viewportActions = {
   
   setCameraSensitivity: (sensitivity) => {
     setViewportStore('camera', 'mouseSensitivity', sensitivity)
+  },
+  
+  setCameraFriction: (friction) => {
+    setViewportStore('camera', 'friction', friction)
   },
   
   setViewportCameraMode: (mode) => {
@@ -228,6 +233,13 @@ export const objectPropertiesActions = {
 
   getObjectProperties: (objectId) => {
     return objectPropertiesStore.objects[objectId] || null
+  },
+
+  syncBabylonObjectProperties: (objectId) => {
+    // Sync properties from Babylon object to the properties store
+    // Note: This creates a circular dependency, so we'll implement this differently
+    // by calling it from the Scene.jsx component where the render store is already imported
+    console.log('syncBabylonObjectProperties called for:', objectId);
   }
 }
 

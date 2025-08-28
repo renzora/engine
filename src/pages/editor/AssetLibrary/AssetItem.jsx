@@ -1,5 +1,5 @@
 import { Show, createSignal, createEffect } from 'solid-js';
-import { Photo, Code, X, Check, CodeSlash, ArrowRight, Monitor } from '@/ui/icons';
+import { Photo, Code, X, Check, CodeSlash, ArrowRight, Video } from '@/ui/icons';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -505,7 +505,7 @@ function AssetItem({
               }}
               title="Open in Viewport"
             >
-              <Monitor class="w-3 h-3" />
+              <Video class="w-3 h-3" />
             </button>
           </Show>
         </div>
