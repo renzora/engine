@@ -99,11 +99,6 @@ const loadDefaultSceneContent = (scene, canvas) => {
   // Realistic shadow softness - sun shadows are quite sharp
   shadowGenerator.contactHardeningLightSizeUVRatio = 0.05;
 
-  // Create small platform that receives shadows (no material applied)
-  const platform = CreateGround('platform', { width: 8, height: 8, subdivisions: 1 }, scene);
-  platform.scaling.y = 0.2; // Make it thicker
-  platform.position.y = 0.1; // Raised above grid to prevent z-fighting
-  platform.receiveShadows = true; // Enable shadow receiving
 
 
   // Set camera in render store
@@ -337,22 +332,21 @@ export default function BabylonRenderer(props) {
         // Only process left-click events (button 0) - let right-click pass through to camera controller
         if (pointerInfo.type === 1 && pointerInfo.event && pointerInfo.event.button === 0) { // LEFT CLICK only
           if (pointerInfo.pickInfo?.hit && pointerInfo.pickInfo.pickedMesh) {
-            const pickedMesh = pointerInfo.pickInfo.pickedMesh;
-            renderActions.selectObject(pickedMesh);
+            let targetObject = pointerInfo.pickInfo.pickedMesh;
             
-            // Update editor selection
-            const entityId = pickedMesh.uniqueId || pickedMesh.name;
-            editorActions.selectEntity(entityId);
+            // Walk up the hierarchy to find the top-level selectable object
+            // Stop at the first TransformNode parent or when we reach a root object
+            while (targetObject.parent && 
+                   targetObject.parent.getClassName() === 'TransformNode' &&
+                   !targetObject.parent.name.startsWith('__')) {
+              targetObject = targetObject.parent;
+            }
             
-            // Dispatch custom event for sync instead of direct call to avoid circular dependencies
-            const syncEvent = new CustomEvent('babylonObjectSync', {
-              detail: { objectId: entityId, babylonObject: pickedMesh }
-            });
-            window.dispatchEvent(syncEvent);
+            // Use shared selection - this will update both render and editor stores
+            renderActions.selectObject(targetObject);
           } else {
             // Left click but no hit - deselect
             renderActions.selectObject(null);
-            editorActions.selectEntity(null);
           }
         }
       });

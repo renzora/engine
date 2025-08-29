@@ -616,6 +616,97 @@ export class AssetAPI {
     return true;
   }
 
+  // === SKELETON MERGING ===
+
+  async mergeModelWithSkeleton(modelAssetName, skeletonAssetName, targetName = null) {
+    const modelAsset = this.loadedAssets.get(modelAssetName);
+    const skeletonAsset = this.loadedAssets.get(skeletonAssetName);
+    
+    if (!modelAsset || !skeletonAsset) {
+      console.error('Model or skeleton asset not found');
+      return null;
+    }
+    
+    if (modelAsset.type !== 'mesh' || skeletonAsset.type !== 'mesh') {
+      console.error('Both assets must be mesh assets');
+      return null;
+    }
+    
+    const modelMeshes = modelAsset.meshes || [];
+    const skeletonData = skeletonAsset.skeletons || [];
+    const skeletonAnimations = skeletonAsset.animationGroups || [];
+    
+    if (skeletonData.length === 0) {
+      console.error('Skeleton asset has no skeleton data');
+      return null;
+    }
+    
+    const targetSkeleton = skeletonData[0];
+    const mergedResult = {
+      meshes: [],
+      skeleton: targetSkeleton,
+      animationGroups: skeletonAnimations,
+      root: null
+    };
+    
+    // Clone model meshes and attach skeleton
+    modelMeshes.forEach((mesh, index) => {
+      const clonedMesh = mesh.clone(targetName ? `${targetName}_${index}` : `merged_${modelAssetName}_${index}`);
+      
+      // Attach skeleton to mesh
+      if (clonedMesh) {
+        clonedMesh.skeleton = targetSkeleton;
+        
+        // Ensure the mesh is properly skinned
+        if (targetSkeleton && targetSkeleton.bones) {
+          clonedMesh.refreshBoundingInfo();
+        }
+        
+        mergedResult.meshes.push(clonedMesh);
+        if (index === 0) {
+          mergedResult.root = clonedMesh;
+        }
+      }
+    });
+    
+    // Store merged result
+    const mergedAssetName = targetName || `${modelAssetName}_with_skeleton`;
+    this.loadedAssets.set(mergedAssetName, {
+      type: 'mesh',
+      meshes: mergedResult.meshes,
+      skeletons: [targetSkeleton],
+      animationGroups: skeletonAnimations
+    });
+    
+    console.log(`Merged ${modelAssetName} with skeleton from ${skeletonAssetName} as ${mergedAssetName}`);
+    return mergedResult;
+  }
+
+  async loadAndMergeAssets(modelUrl, modelFile, skeletonUrl, skeletonFile, targetName = null) {
+    try {
+      // Load both assets
+      const modelResult = await this.loadGLTF('temp_model', modelUrl, modelFile);
+      const skeletonResult = await this.loadGLTF('temp_skeleton', skeletonUrl, skeletonFile);
+      
+      if (!modelResult || !skeletonResult) {
+        console.error('Failed to load model or skeleton assets');
+        return null;
+      }
+      
+      // Merge them
+      const merged = await this.mergeModelWithSkeleton('temp_model', 'temp_skeleton', targetName);
+      
+      // Clean up temporary assets
+      this.disposeAsset('temp_model');
+      this.disposeAsset('temp_skeleton');
+      
+      return merged;
+    } catch (error) {
+      console.error('Failed to load and merge assets:', error);
+      return null;
+    }
+  }
+
   // === ASSET UTILITIES ===
 
   getAllAssetNames() {

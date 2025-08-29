@@ -1710,6 +1710,7 @@ class RenScriptCodeGenerator {
       
       // === ASSET LOADING ===
       load_mesh: 'loadMesh',
+      load_gltf: 'loadGLTF',
       load_asset_container: 'loadAssetContainer',
       import_mesh: 'importMesh',
       append_scene: 'appendScene',
@@ -1717,6 +1718,12 @@ class RenScriptCodeGenerator {
       add_mesh_task: 'addMeshTask',
       add_texture_task: 'addTextureTask',
       load_all_assets: 'loadAllAssets',
+      merge_model_with_skeleton: 'mergeModelWithSkeleton',
+      load_and_merge_assets: 'loadAndMergeAssets',
+      get_loaded_asset: 'getLoadedAsset',
+      get_loaded_mesh: 'getLoadedMesh',
+      get_loaded_animations: 'getLoadedAnimations',
+      get_loaded_skeleton: 'getLoadedSkeleton',
       
       // === SERIALIZATION ===
       serialize_scene: 'serializeScene',

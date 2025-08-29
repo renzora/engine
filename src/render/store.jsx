@@ -63,21 +63,19 @@ export const renderActions = {
         gizmoManager.rotationGizmoEnabled = false;
         gizmoManager.scaleGizmoEnabled = false;
         
-        // Enable the appropriate gizmo
-        switch (mode) {
-          case 'move':
-            gizmoManager.positionGizmoEnabled = true;
-            break;
-          case 'rotate':
-            gizmoManager.rotationGizmoEnabled = true;
-            break;
-          case 'scale':
-            gizmoManager.scaleGizmoEnabled = true;
-            break;
-          case 'select':
-          default:
-            // No gizmos enabled for select mode
-            break;
+        // Enable the appropriate gizmo only if an object is selected
+        if (renderStore.selectedObject && mode !== 'select') {
+          switch (mode) {
+            case 'move':
+              gizmoManager.positionGizmoEnabled = true;
+              break;
+            case 'rotate':
+              gizmoManager.rotationGizmoEnabled = true;
+              break;
+            case 'scale':
+              gizmoManager.scaleGizmoEnabled = true;
+              break;
+          }
         }
       } catch (e) {
         // Custom gizmo handles this internally
@@ -165,6 +163,20 @@ export const renderActions = {
   selectObject(object) {
     setRenderStore('selectedObject', object);
     
+    // Also update editor store selection to keep UI in sync
+    if (object) {
+      const entityId = object.uniqueId || object.name;
+      // Import editorActions dynamically to avoid circular imports
+      import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+        editorActions.selectEntity(entityId);
+      });
+    } else {
+      // Import editorActions dynamically to avoid circular imports
+      import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+        editorActions.selectEntity(null);
+      });
+    }
+    
     // Handle gizmo attachment
     const gizmoManager = renderStore.gizmoManager;
     const highlightLayer = renderStore.highlightLayer;
@@ -177,15 +189,26 @@ export const renderActions = {
         // Attach gizmo to selected object
         gizmoManager.attachToMesh(object);
         
-        // Automatically show move gizmo when object is selected
-        try {
-          gizmoManager.positionGizmoEnabled = true;
-          gizmoManager.rotationGizmoEnabled = false;
-          gizmoManager.scaleGizmoEnabled = false;
-        } catch (e) {
-          // Custom gizmo handles this internally
+        // Only show gizmo if not in select mode
+        const currentMode = renderStore.transformMode;
+        if (currentMode !== 'select') {
+          try {
+            gizmoManager.positionGizmoEnabled = currentMode === 'move';
+            gizmoManager.rotationGizmoEnabled = currentMode === 'rotate';
+            gizmoManager.scaleGizmoEnabled = currentMode === 'scale';
+          } catch (e) {
+            // Custom gizmo handles this internally
+          }
+        } else {
+          // In select mode, hide all gizmos
+          try {
+            gizmoManager.positionGizmoEnabled = false;
+            gizmoManager.rotationGizmoEnabled = false;
+            gizmoManager.scaleGizmoEnabled = false;
+          } catch (e) {
+            // Custom gizmo handles this internally
+          }
         }
-        setRenderStore('transformMode', 'move');
         
         // Add drag callbacks to the existing gizmo manager
         this.attachGizmoCallbacks(gizmoManager);
@@ -342,7 +365,16 @@ export const renderActions = {
     }
     
     const children = [];
-    if (babylonObject.getChildren) {
+    
+    // For imported asset containers, don't show children to keep hierarchy clean
+    const isImportedAsset = babylonObject.getClassName() === 'TransformNode' && 
+                           babylonObject.getChildren && 
+                           babylonObject.getChildren().some(child => 
+                             child.getClassName && child.getClassName().includes('Mesh')
+                           );
+    
+    // Only build children for non-imported assets or when specifically requested
+    if (babylonObject.getChildren && !isImportedAsset) {
       const babylonChildren = babylonObject.getChildren();
       babylonChildren.forEach(child => {
         if (child.name && !child.name.startsWith('__') && !child.name.includes('gizmo')) {

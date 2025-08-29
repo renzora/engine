@@ -38,5 +38,6 @@ Thumbs.db
 
 # Claude
 .claude
+CLAUDE.md
 prompt.txt
 AGENTS.md

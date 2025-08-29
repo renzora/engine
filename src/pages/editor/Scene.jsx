@@ -335,7 +335,13 @@ function Scene(props) {
           onKeyDown={(e) => handleKeyDown(e, item)}
           onClick={() => {
             if (renamingItemId() !== item.id) {
-              setSelectedEntity(item.id);
+              // Use shared selection through renderActions
+              if (item.babylonObject) {
+                renderActions.selectObject(item.babylonObject);
+              } else {
+                // Fallback for non-Babylon objects (like folders)
+                setSelectedEntity(item.id);
+              }
             }
           }}
           onDoubleClick={() => {

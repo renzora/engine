@@ -5,6 +5,8 @@ import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
+import { Mesh } from '@babylonjs/core/Meshes/mesh'
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { editorActions } from '@/layout/stores/EditorStore'
 import { renderActions } from '@/render/store'
 import { getCurrentProject } from '@/api/bridge/projects'
@@ -28,23 +30,27 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
     const rect = canvas.getBoundingClientRect()
     const x = event.clientX - rect.left
     const y = event.clientY - rect.top
-    const ray = scene.createPickingRay(x, y, Matrix.Identity(), scene.activeCamera)
-    const hit = scene.pickWithRay(ray)
-    if (hit.hit && hit.pickedPoint) {
-      return hit.pickedPoint.add(new Vector3(0, 0.5, 0))
-    }
     
+    console.log(`Mouse pos: ${x}, ${y}, Canvas size: ${rect.width}x${rect.height}`)
+    
+    // Create picking ray - this should handle coordinate conversion correctly
+    const ray = scene.createPickingRay(x, y, Matrix.Identity(), scene.activeCamera)
+    
+    // Always intersect with ground plane at y=0
     const groundPlane = Plane.FromPositionAndNormal(
       Vector3.Zero(), 
-      new Vector3(0, 1, 0)
+      new Vector3(0, 1, 0)  // Normal pointing up
     )
     
     const distance = ray.intersectsPlane(groundPlane)
-    if (distance !== null) {
+    if (distance !== null && distance > 0) {
       const worldPoint = ray.origin.add(ray.direction.scale(distance))
+      console.log(`Drop position: ${worldPoint.x}, ${worldPoint.y}, ${worldPoint.z}`)
       return worldPoint
     }
     
+    // Fallback to origin if ray doesn't intersect ground
+    console.log('Ray missed ground plane, using origin')
     return Vector3.Zero()
   }
 
@@ -173,12 +179,63 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
         }
         
         if (result.meshes.length > 0) {
-          const rootMesh = result.meshes[0]
-          rootMesh.position = position || Vector3.Zero()
+          const targetPosition = position || Vector3.Zero()
+          
+          console.log(`Target position from cursor: ${targetPosition.x}, ${targetPosition.y}, ${targetPosition.z}`)
+          console.log(`Total meshes loaded: ${result.meshes.length}`)
+          
+          // Create a single container that groups all meshes
+          const cleanName = assetData.name.replace(/\.[^/.]+$/, "") // Remove extension
+          const container = new TransformNode(cleanName, scene)
+          
+          console.log(`Creating container: ${cleanName} for ${result.meshes.length} meshes`)
+          
+          // Parent all meshes to the container
+          result.meshes.forEach(mesh => {
+            mesh.setParent(container)
+          })
+          
+          // Also parent other imported objects
+          if (result.transformNodes) {
+            result.transformNodes.forEach(node => {
+              if (node !== container) {
+                node.setParent(container)
+              }
+            })
+          }
+          
+          // If there are skeletons, attach them to the container
+          if (result.skeletons && result.skeletons.length > 0) {
+            container.skeleton = result.skeletons[0]
+          }
+          
+          // If there are animations, store them in metadata
+          if (result.animationGroups && result.animationGroups.length > 0) {
+            container.metadata = container.metadata || {}
+            container.metadata.animationGroups = result.animationGroups
+          }
+          
+          const finalMesh = container
+          console.log(`Container created: ${finalMesh.name}`)
+          
+          // Set initial position at ground level
+          finalMesh.position = new Vector3(targetPosition.x, 0, targetPosition.z)
+          
+          // Calculate bounding box for positioning on ground
+          finalMesh.computeWorldMatrix(true)
+          const boundingInfo = finalMesh.getHierarchyBoundingVectors()
+          const minY = boundingInfo.min.y
+          
+          console.log(`Bounding box minY: ${minY}, adjusting position to: ${-minY}`)
+          
+          // Adjust Y position so the bottom sits exactly on ground (y=0)
+          finalMesh.position.y = -minY
+          
+          console.log(`Final position: ${finalMesh.position.x}, ${finalMesh.position.y}, ${finalMesh.position.z}`)
           
           // Add to render store hierarchy and select it
-          renderActions.addObject(rootMesh);
-          renderActions.selectObject(rootMesh);
+          renderActions.addObject(finalMesh);
+          renderActions.selectObject(finalMesh);
           
           editorActions.addConsoleMessage(`Successfully loaded: ${assetData.name}`, 'success')
           console.log('Loaded meshes:', result.meshes)
