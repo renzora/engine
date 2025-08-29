@@ -165,12 +165,30 @@ export default function BabylonRenderer(props) {
       console.log('🎯 Focusing camera on object:', selectedObject.name);
       
       // Get the bounding box of the selected object
-      const boundingInfo = selectedObject.getBoundingInfo();
-      const center = boundingInfo.boundingBox.centerWorld;
-      const size = boundingInfo.boundingBox.extendSizeWorld;
+      let boundingInfo, center, size;
       
-      // Use fixed distance regardless of object size
-      const focusDistance = 8; // Fixed distance for consistent closeness
+      if (selectedObject.getClassName() === 'TransformNode') {
+        // For TransformNode containers, use hierarchy bounding box
+        const hierarchyBounds = selectedObject.getHierarchyBoundingVectors();
+        center = hierarchyBounds.min.add(hierarchyBounds.max).scale(0.5);
+        size = hierarchyBounds.max.subtract(hierarchyBounds.min);
+      } else {
+        // For regular meshes, use standard bounding box
+        boundingInfo = selectedObject.getBoundingInfo();
+        center = boundingInfo.boundingBox.centerWorld;
+        size = boundingInfo.boundingBox.extendSizeWorld;
+      }
+      
+      // Calculate distance to fit entire object in camera view
+      const maxDimension = Math.max(size.x, size.y, size.z);
+      const cameraFov = camera.fov || 0.8; // Default FOV in radians
+      
+      // Calculate distance needed to fit object in view
+      // Using half FOV and some padding for better framing
+      const padding = 1.2; // 20% padding around object
+      const focusDistance = Math.max(1, (maxDimension * padding) / (2 * Math.tan(cameraFov / 2)));
+      
+      console.log(`Object size: ${maxDimension.toFixed(2)}, FOV: ${(cameraFov * 180/Math.PI).toFixed(1)}°, focus distance: ${focusDistance.toFixed(2)}`);
       
       // Position camera at a safe angle (45 degrees up and back) to avoid going through object
       const backDirection = new Vector3(1, 1, 1).normalize(); // Back, up, and to the side
@@ -333,16 +351,44 @@ export default function BabylonRenderer(props) {
         if (pointerInfo.type === 1 && pointerInfo.event && pointerInfo.event.button === 0) { // LEFT CLICK only
           if (pointerInfo.pickInfo?.hit && pointerInfo.pickInfo.pickedMesh) {
             let targetObject = pointerInfo.pickInfo.pickedMesh;
+            console.log('🎯 Clicked on mesh:', targetObject.name, 'class:', targetObject.getClassName());
             
             // Walk up the hierarchy to find the top-level selectable object
-            // Stop at the first TransformNode parent or when we reach a root object
-            while (targetObject.parent && 
-                   targetObject.parent.getClassName() === 'TransformNode' &&
-                   !targetObject.parent.name.startsWith('__')) {
+            // Keep walking up until we reach a root object (no parent)
+            console.log('🔍 Starting hierarchy walk from:', targetObject.name, 'ID:', targetObject.uniqueId);
+            console.log('🔍 Initial parent check:', targetObject.parent?.name || 'none', 'ID:', targetObject.parent?.uniqueId || 'none');
+            
+            // Walk up until we reach a true root object (no parent) 
+            // Don't stop at system objects if they have parents - keep going to reach our container
+            let walkCount = 0;
+            while (targetObject.parent && walkCount < 10) { // Safety limit
+              walkCount++;
+              
+              console.log('⬆️ Walking up hierarchy from', targetObject.name, '(ID:', targetObject.uniqueId, ') to parent', targetObject.parent.name, '(ID:', targetObject.parent.uniqueId, ') parent class:', targetObject.parent.getClassName());
               targetObject = targetObject.parent;
+              console.log('⬆️ Now at node:', targetObject.name, '(ID:', targetObject.uniqueId, ')');
+              console.log('⬆️ Parent of current node:', targetObject.parent?.name || 'none', '(ID:', targetObject.parent?.uniqueId || 'none', ')');
+              
+              // Only stop if we encounter a system object that has no parent (true system root)
+              const currentName = targetObject.name || '';
+              const isSystemObject = currentName.startsWith('__') || 
+                                   currentName.includes('gizmo') || 
+                                   currentName.includes('helper');
+              
+              if (isSystemObject && !targetObject.parent) {
+                console.log('🏁 Reached system root object:', currentName, '- stopping walk');
+                break;
+              }
             }
             
+            if (walkCount >= 10) {
+              console.log('⚠️ Hierarchy walk exceeded safety limit, stopping');
+            }
+            
+            console.log('✅ Final selection target:', targetObject.name, '(ID:', targetObject.uniqueId, ') class:', targetObject.getClassName());
+            
             // Use shared selection - this will update both render and editor stores
+            console.log('🔗 Calling renderActions.selectObject with:', targetObject.name, 'ID:', targetObject.uniqueId);
             renderActions.selectObject(targetObject);
           } else {
             // Left click but no hit - deselect

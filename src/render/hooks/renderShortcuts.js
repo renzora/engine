@@ -255,8 +255,8 @@ export function renderShortcuts(callbacks = {}) {
 
   // Blender-style transform functions
   const handleTransformShortcuts = (event, key) => {
-    // Start transform modes
-    if (!transformState.isActive && ['g', 'r', 's'].includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+    // Start transform modes - but not when right mouse button is held for camera movement
+    if (!transformState.isActive && ['g', 'r', 's'].includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey && !isRightClickHeld) {
       const selectedObject = renderStore.selectedObject;
       if (!selectedObject) return false;
 

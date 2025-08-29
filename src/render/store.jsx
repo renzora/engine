@@ -161,16 +161,20 @@ export const renderActions = {
   },
 
   selectObject(object) {
+    console.log('🎯 selectObject called with:', object?.name || 'null');
     setRenderStore('selectedObject', object);
     
     // Also update editor store selection to keep UI in sync
     if (object) {
       const entityId = object.uniqueId || object.name;
+      console.log('🔗 Setting editor entity ID:', entityId);
       // Import editorActions dynamically to avoid circular imports
       import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+        console.log('✅ Calling editorActions.selectEntity with:', entityId);
         editorActions.selectEntity(entityId);
       });
     } else {
+      console.log('🚫 Clearing editor selection');
       // Import editorActions dynamically to avoid circular imports
       import('@/layout/stores/EditorStore').then(({ editorActions }) => {
         editorActions.selectEntity(null);
@@ -335,6 +339,38 @@ export const renderActions = {
 
   isReady() {
     return renderStore.isInitialized && renderStore.scene && renderStore.engine;
+  },
+
+  // Select object by ID (used by scene tree)
+  selectObjectById(objectId) {
+    console.log('🔍 selectObjectById called with:', objectId);
+    if (!renderStore.scene) return false;
+    
+    // Find the Babylon object by ID in the hierarchy
+    const findObjectById = (hierarchyItems) => {
+      for (const item of hierarchyItems) {
+        console.log('🔎 Checking hierarchy item:', item.id, 'against target:', objectId);
+        if (item.id === objectId && item.babylonObject) {
+          console.log('✅ Found matching Babylon object:', item.babylonObject.name);
+          return item.babylonObject;
+        }
+        if (item.children) {
+          const found = findObjectById(item.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    const babylonObject = findObjectById(renderStore.hierarchy);
+    if (babylonObject) {
+      console.log('🎯 Found object, calling selectObject');
+      this.selectObject(babylonObject);
+      return true;
+    }
+    
+    console.log(`❌ Could not find Babylon object for ID: ${objectId}`);
+    return false;
   },
 
   // Hierarchy management functions

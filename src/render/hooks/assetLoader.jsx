@@ -189,20 +189,80 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
           const container = new TransformNode(cleanName, scene)
           
           console.log(`Creating container: ${cleanName} for ${result.meshes.length} meshes`)
+          console.log(`📋 Container details - Name: ${container.name}, ID: ${container.uniqueId}, Class: ${container.getClassName()}`)
           
-          // Parent all meshes to the container
+          // Recursively collect ALL nodes from the entire hierarchy
+          const collectAllNodes = (nodeArray) => {
+            const allNodes = [];
+            const visited = new Set();
+            
+            const traverse = (node) => {
+              if (!node || visited.has(node)) return;
+              visited.add(node);
+              allNodes.push(node);
+              
+              // Get children recursively
+              if (node.getChildren) {
+                node.getChildren().forEach(child => traverse(child));
+              }
+            };
+            
+            nodeArray.forEach(node => traverse(node));
+            return allNodes;
+          };
+          
+          // Collect all nodes from meshes and transform nodes
+          const allMeshes = collectAllNodes(result.meshes || []);
+          const allTransformNodes = collectAllNodes(result.transformNodes || []);
+          const allNodes = [...allMeshes, ...allTransformNodes];
+          
+          console.log(`Found ${allNodes.length} total nodes to parent (${allMeshes.length} meshes, ${allTransformNodes.length} transform nodes)`);
+          
+          // Log the entire loaded hierarchy before parenting
+          console.log(`📊 LOADED HIERARCHY BEFORE PARENTING:`);
+          result.meshes.forEach((mesh, index) => {
+            console.log(`  Mesh ${index}: ${mesh.name} (ID: ${mesh.uniqueId}) - Parent: ${mesh.parent?.name || 'none'} (ID: ${mesh.parent?.uniqueId || 'none'})`);
+          });
+          if (result.transformNodes) {
+            result.transformNodes.forEach((node, index) => {
+              console.log(`  TransformNode ${index}: ${node.name} (ID: ${node.uniqueId}) - Parent: ${node.parent?.name || 'none'} (ID: ${node.parent?.uniqueId || 'none'})`);
+            });
+          }
+          
+          // Parent only the original root meshes and transform nodes to maintain hierarchy
           result.meshes.forEach(mesh => {
-            mesh.setParent(container)
-          })
+            if (!mesh.parent) {
+              console.log(`🔗 Parenting root mesh ${mesh.name} (ID: ${mesh.uniqueId}) to container`);
+              mesh.setParent(container);
+            } else {
+              console.log(`⏭️ Skipping mesh ${mesh.name} (ID: ${mesh.uniqueId}) - already has parent: ${mesh.parent.name}`);
+            }
+          });
           
-          // Also parent other imported objects
           if (result.transformNodes) {
             result.transformNodes.forEach(node => {
-              if (node !== container) {
-                node.setParent(container)
+              if (node !== container && !node.parent) {
+                console.log(`🔗 Parenting root TransformNode ${node.name} (ID: ${node.uniqueId}) to container`);
+                node.setParent(container);
+              } else if (node !== container) {
+                console.log(`⏭️ Skipping TransformNode ${node.name} (ID: ${node.uniqueId}) - already has parent: ${node.parent?.name || 'none'}`);
               }
-            })
+            });
           }
+          
+          // Log the final hierarchy after parenting
+          console.log(`📊 FINAL HIERARCHY AFTER PARENTING:`);
+          console.log(`  Container: ${container.name} (ID: ${container.uniqueId})`);
+          const containerChildren = container.getChildren();
+          containerChildren.forEach((child, index) => {
+            console.log(`    Child ${index}: ${child.name} (ID: ${child.uniqueId}) - Class: ${child.getClassName()}`);
+            if (child.getChildren) {
+              const grandChildren = child.getChildren();
+              grandChildren.forEach((grandChild, gIndex) => {
+                console.log(`      GrandChild ${gIndex}: ${grandChild.name} (ID: ${grandChild.uniqueId}) - Class: ${grandChild.getClassName()}`);
+              });
+            }
+          });
           
           // If there are skeletons, attach them to the container
           if (result.skeletons && result.skeletons.length > 0) {
