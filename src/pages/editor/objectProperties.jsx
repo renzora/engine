@@ -16,6 +16,7 @@ function ObjectProperties() {
   const [scriptSearchTerm, setScriptSearchTerm] = createSignal('');
   const [searchResults, setSearchResults] = createSignal([]);
   const [isSearching, setIsSearching] = createSignal(false);
+  const [showSearchResults, setShowSearchResults] = createSignal(false);
   
   // Individual signals for each property type
   console.log('🏗️ Creating signals');
@@ -28,8 +29,9 @@ function ObjectProperties() {
 
   // Dynamic script search using bridge service
   const searchScripts = async (searchTerm) => {
-    if (!searchTerm || searchTerm.length < 2) {
+    if (!searchTerm || searchTerm.length < 1) {
       setSearchResults([]);
+      setShowSearchResults(false);
       return;
     }
     
@@ -47,10 +49,12 @@ function ObjectProperties() {
         }));
       
       setSearchResults(matchingScripts);
+      setShowSearchResults(matchingScripts.length > 0);
       console.log('📜 Script search results:', matchingScripts);
     } catch (error) {
       console.warn('Error searching scripts:', error);
       setSearchResults([]);
+      setShowSearchResults(false);
     } finally {
       setIsSearching(false);
     }
@@ -622,8 +626,6 @@ function ObjectProperties() {
             try {
               console.log(`🎛️ Calling setScriptProperty on instance for ${propertyName}`);
               instance._scriptAPI.setScriptProperty(propertyName, newValue);
-              console.log(`🎛️ Setting property directly on instance: ${propertyName}`);
-              instance[propertyName] = newValue;
               console.log(`🎛️ Successfully updated script instance property`);
             } catch (scriptError) {
               console.error('Error updating script instance:', scriptError);
@@ -893,10 +895,10 @@ function ObjectProperties() {
   
   return (
     <div className="flex flex-col h-full" data-object-properties>
-      {/* Header with reset button */}
+      {/* Header with object name and reset button */}
       <Show when={selection.entity}>
         <div 
-          className="flex items-center justify-end p-2 border-b border-base-content/10 bg-base-200/50 cursor-row-resize hover:bg-base-200/70 transition-colors duration-150 select-none"
+          className="flex items-center justify-between p-2 border-b border-base-content/10 bg-base-200/50 cursor-row-resize hover:bg-base-200/70 transition-colors duration-150 select-none"
           onMouseDown={(e) => {
             // Don't trigger resize if clicking on the reset button
             if (e.target.closest('button')) {
@@ -927,8 +929,10 @@ function ObjectProperties() {
             document.addEventListener('mousemove', handleMouseMove);
             document.addEventListener('mouseup', handleMouseUp);
           }}
-          title="Drag to resize Object Properties panel"
         >
+          <div className="text-sm font-medium text-base-content/80 hover:text-base-content/50 transition-colors duration-150">
+            {getSelectedBabylonObject()?.name || 'Unknown Object'} Properties
+          </div>
           <button
             onMouseDown={() => console.log('🔄 Main reset button mousedown')}
             onClick={(e) => {
@@ -969,18 +973,32 @@ function ObjectProperties() {
             <CollapsibleSection title="Scripts" defaultOpen={true} index={0}>
               <div>
                 {/* Script Search Box */}
-                <div className="mb-3">
+                <div className="mb-3 relative">
                   <input
                     type="text"
                     placeholder="Search scripts..."
                     value={scriptSearchTerm()}
-                    onInput={(e) => setScriptSearchTerm(e.target.value)}
-                    className="input input-bordered input-sm w-full text-sm"
+                    onInput={(e) => {
+                      setScriptSearchTerm(e.target.value);
+                      if (e.target.value.length > 0) {
+                        setShowSearchResults(true);
+                      }
+                    }}
+                    onFocus={() => {
+                      if (scriptSearchTerm().length > 0 && searchResults().length > 0) {
+                        setShowSearchResults(true);
+                      }
+                    }}
+                    onBlur={() => {
+                      // Delay hiding to allow clicking on dropdown items
+                      setTimeout(() => setShowSearchResults(false), 150);
+                    }}
+                    className="input input-sm w-full text-sm rounded-none bg-gradient-to-b from-base-300/80 to-base-300 border-0 focus:outline-none"
                   />
                   
                   {/* Available Scripts Dropdown */}
-                  <Show when={scriptSearchTerm() && searchResults().length > 0}>
-                    <div className="mt-2 max-h-32 overflow-y-auto bg-base-100 border border-base-300 rounded shadow-lg">
+                  <Show when={showSearchResults() && scriptSearchTerm() && searchResults().length > 0}>
+                    <div className="absolute top-full left-0 right-0 z-50 max-h-32 overflow-y-auto bg-base-100 border border-base-300 rounded shadow-lg">
                       <For each={searchResults()}>
                         {(script) => (
                           <div 
@@ -1030,6 +1048,7 @@ function ObjectProperties() {
                                   updateObjectProperty(selection.entity, 'scripts', newScripts);
                                   editorActions.addConsoleMessage(`Script "${script.name}" attached and started`, 'success');
                                   setScriptSearchTerm(''); // Clear search
+                                  setShowSearchResults(false); // Hide dropdown
                                 } else {
                                   editorActions.addConsoleMessage(`Cannot attach "${script.name}" - check console for details`, 'error');
                                 }

@@ -177,6 +177,8 @@ export class ScriptAPI {
   disablePhysics() { return this.physics.disablePhysics(); }
   setPhysicsImpostor(type, mass, options) { return this.physics.setPhysicsImpostor(type, mass, options); }
   removePhysicsImpostor() { return this.physics.removePhysicsImpostor(); }
+  hasPhysicsImpostor() { return this.physics.hasPhysicsImpostor(); }
+  havokUpdate() { return this.physics.havok_update(); }
   applyImpulse(fx, fy, fz, px, py, pz) { return this.physics.applyImpulse(fx, fy, fz, px, py, pz); }
   applyForce(fx, fy, fz, px, py, pz) { return this.physics.applyForce(fx, fy, fz, px, py, pz); }
   setLinearVelocity(vx, vy, vz) { return this.physics.setLinearVelocity(vx, vy, vz); }
@@ -283,6 +285,12 @@ export class ScriptAPI {
   getCameraTarget() { return this.camera.getCameraTarget(); }
   setCameraRotation(x, y, z) { return this.camera.setCameraRotation(x, y, z); }
   getCameraRotation() { return this.camera.getCameraRotation(); }
+  setCameraFOV(fov) { return this.camera.setCameraFOV(fov); }
+  getCameraFOV() { return this.camera.getCameraFOV(); }
+  setCameraRadius(radius) { return this.camera.setCameraRadius(radius); }
+  getCameraRadius() { return this.camera.getCameraRadius(); }
+  setCameraType(type) { return this.camera.setCameraType(type); }
+  orbitCamera(speed, direction) { return this.camera.orbitCamera(speed, direction); }
 
   // === COMPATIBILITY LAYER ===
   
@@ -365,6 +373,12 @@ export class ScriptAPI {
   get_camera_target() { return this.getCameraTarget(); }
   set_camera_rotation(x, y, z) { return this.setCameraRotation(x, y, z); }
   get_camera_rotation() { return this.getCameraRotation(); }
+  set_camera_fov(fov) { return this.setCameraFOV(fov); }
+  get_camera_fov() { return this.getCameraFOV(); }
+  set_camera_radius(radius) { return this.setCameraRadius(radius); }
+  get_camera_radius() { return this.getCameraRadius(); }
+  set_camera_type(type) { return this.setCameraType(type); }
+  orbit_camera(speed, direction) { return this.orbitCamera(speed, direction); }
 
   // === INTERNAL METHODS ===
   
@@ -450,19 +464,47 @@ export class ScriptAPI {
   }
   
   updateScriptProperty(propertyName, value) {
+    console.log(`🔧 updateScriptProperty called: ${propertyName} = ${value}`);
+    
     const hasProperty = Array.isArray(this._scriptProperties) ? 
       this._scriptProperties.some(prop => prop.name === propertyName) :
       this._scriptProperties && this._scriptProperties.has(propertyName);
       
     if (hasProperty) {
+      console.log(`🔧 Property ${propertyName} found in script properties`);
       this[propertyName] = value;
       
       // Update the script instance if it exists
       if (this._scriptInstance) {
         this._scriptInstance[propertyName] = value;
+        console.log(`🔧 Updated script instance property: ${propertyName}`);
+      }
+      
+      // Check if this property has once: true and trigger onOnce if it does
+      if (Array.isArray(this._scriptProperties)) {
+        const property = this._scriptProperties.find(prop => prop.name === propertyName);
+        console.log(`🔧 Found property definition:`, property);
+        if (property && property.triggerOnce === true) {
+          console.log(`🔄 Property ${propertyName} has triggerOnce: true, triggering onOnce`);
+          if (this._scriptInstance && typeof this._scriptInstance.onOnce === 'function') {
+            try {
+              console.log(`🔄 Calling onOnce() method...`);
+              this._scriptInstance.onOnce();
+              console.log(`✅ onOnce() called successfully`);
+            } catch (error) {
+              console.error(`Error calling onOnce for property ${propertyName}:`, error);
+            }
+          } else {
+            console.log(`❌ No onOnce method found on script instance`);
+          }
+        } else {
+          console.log(`🔧 Property ${propertyName} does not have triggerOnce: true (triggerOnce = ${property?.triggerOnce})`);
+        }
       }
       
       return true;
+    } else {
+      console.log(`❌ Property ${propertyName} not found in script properties`);
     }
     return false;
   }
@@ -576,6 +618,7 @@ export class ScriptAPI {
   }
   
   setScriptProperty(propertyName, value) {
+    console.log(`🔧 setScriptProperty called: ${propertyName} = ${value}`);
     return this.updateScriptProperty(propertyName, value);
   }
 

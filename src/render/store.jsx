@@ -121,6 +121,11 @@ export const renderActions = {
         posGizmo.onDragEndObservable.add(() => {
           console.log('🔧 Position gizmo drag ended');
           this.setGizmoDragging(false);
+          
+          // Mark transform as manually changed for physics sync
+          if (renderStore.selectedObject) {
+            renderStore.selectedObject._manualTransformChange = true;
+          }
         });
       }
       
@@ -138,6 +143,11 @@ export const renderActions = {
         rotGizmo.onDragEndObservable.add(() => {
           console.log('🔧 Rotation gizmo drag ended');
           this.setGizmoDragging(false);
+          
+          // Mark transform as manually changed for physics sync
+          if (renderStore.selectedObject) {
+            renderStore.selectedObject._manualTransformChange = true;
+          }
         });
       }
       

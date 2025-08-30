@@ -55,10 +55,18 @@ class ScriptLoader {
    */
   async _loadScriptFromServer(scriptPath) {
     try {
-      // Get current project from bridge service
-      const { getCurrentProject } = await import('@/api/bridge/projects');
-      const projectName = getCurrentProject()?.name || 'demo';
-      const url = `http://localhost:3001/read/projects/${projectName}/${scriptPath}`;
+      let url;
+      
+      // Check if this is a built-in script from src/renscripts
+      if (scriptPath.startsWith('src/renscripts/')) {
+        // Built-in script - use root path
+        url = `http://localhost:3001/read/${scriptPath}`;
+      } else {
+        // Project script - use project path
+        const { getCurrentProject } = await import('@/api/bridge/projects');
+        const projectName = getCurrentProject()?.name || 'demo';
+        url = `http://localhost:3001/read/projects/${projectName}/${scriptPath}`;
+      }
       
       console.log('🔧 ScriptLoader: Fetching script from URL:', url);
       

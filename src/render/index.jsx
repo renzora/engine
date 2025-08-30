@@ -25,6 +25,9 @@ import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
 import '@babylonjs/core/Layers/effectLayerSceneComponent';
 import '@babylonjs/core/Materials/standardMaterial';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
+import HavokPhysics from '@babylonjs/havok';
+import '@babylonjs/core/Physics/physicsEngineComponent';
 import { renderStore, renderActions } from './store.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { grid } from './hooks/grid.jsx';
@@ -354,7 +357,7 @@ export default function BabylonRenderer(props) {
     }
   });
 
-  const initializeBabylon = () => {
+  const initializeBabylon = async () => {
     if (!canvasRef) return;
 
     try {
@@ -372,6 +375,30 @@ export default function BabylonRenderer(props) {
       babylonScene.clearColor = new Color4(0.1, 0.1, 0.15, 1);
       // Lower overall exposure to avoid overly bright results
       babylonScene.imageProcessingConfiguration.exposure = 0.85;
+
+      // Enable Havok physics
+      try {
+        const havokInstance = await HavokPhysics();
+        const hk = new HavokPlugin(true, havokInstance);
+        const enableResult = babylonScene.enablePhysics(new Vector3(0, -9.81, 0), hk);
+        console.log('✅ Havok physics enabled, result:', enableResult);
+        
+        // Wait for physics engine to be fully ready
+        await new Promise(resolve => {
+          const checkPhysics = () => {
+            const physicsEngine = babylonScene.getPhysicsEngine();
+            if (physicsEngine) {
+              resolve();
+            } else {
+              setTimeout(checkPhysics, 10);
+            }
+          };
+          checkPhysics();
+        });
+        console.log('✅ Havok physics engine is ready');
+      } catch (error) {
+        console.warn('⚠️ Failed to enable Havok physics:', error);
+      }
 
       // Scene content will be loaded separately
       console.log('🎮 Scene created, ready for content loading');

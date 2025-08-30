@@ -17,6 +17,7 @@ export function useCameraController(camera, canvas, scene) {
   let currentFov = Math.PI / 4;
   let targetFov = Math.PI / 4;
   let fovAnimationId = null;
+  let isDisabled = false;
   
   const cameraSpeed = () => cameraSettings()?.speed || 5;
   const mouseSensitivity = () => cameraSettings()?.mouseSensitivity || 0.002;
@@ -99,7 +100,7 @@ export function useCameraController(camera, canvas, scene) {
   };
 
   const handleMouseMove = (event) => {
-    if (!camera()) return;
+    if (!camera() || isDisabled) return;
     
     // Check if camera movement should be blocked
     if (!shouldAllowCameraMovement(event)) {
@@ -285,6 +286,7 @@ export function useCameraController(camera, canvas, scene) {
 
   // Key handling like your old working code
   const handleKeyDown = (event) => {
+    if (isDisabled) return;
     const key = event.key.toLowerCase();
     keysPressed.add(key);
     
@@ -318,7 +320,7 @@ export function useCameraController(camera, canvas, scene) {
 
   // Movement loop with velocity and smooth stopping
   const handleKeyboardMovement = () => {
-    if (!camera()) return;
+    if (!camera() || isDisabled) return;
     
     // Check if camera movement should be blocked (for rotation/scale gizmos)
     const gizmoManager = renderStore.gizmoManager;
@@ -479,11 +481,21 @@ export function useCameraController(camera, canvas, scene) {
     isDragging = false;
   };
 
+  // Expose disable method globally
+  if (canvas()) {
+    canvas()._cameraMovementController = {
+      disable: () => { isDisabled = true; },
+      enable: () => { isDisabled = false; }
+    };
+  }
+
   return {
     handleKeyboardMovement,
     getIsDragging,
     getMouseDownPos,
     getKeysPressed,
-    resetDragState
+    resetDragState,
+    disable: () => { isDisabled = true; },
+    enable: () => { isDisabled = false; }
   };
 }

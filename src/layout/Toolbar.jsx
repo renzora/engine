@@ -341,6 +341,7 @@ function Toolbar() {
           break;
         case 'plane':
           mesh = MeshBuilder.CreatePlane(meshName, { size: 1 }, scene);
+          mesh.rotation.x = Math.PI / 2; // Rotate 90 degrees to lay flat
           break;
       }
       

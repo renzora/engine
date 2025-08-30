@@ -18,6 +18,13 @@ script CameraController {
       default: true,
       description: "Enable automatic orbiting"
     }
+    
+    direction: float {
+      default: 1.0,
+      min: -1.0,
+      max: 1.0,
+      description: "Orbit direction (1.0 = clockwise, -1.0 = counterclockwise)"
+    }
   }
   
   props view {
@@ -68,9 +75,9 @@ script CameraController {
     set_camera_radius(radius) 
     set_camera_target(target_x, target_y, target_z)
     
-    # Simple orbit using built-in rotation
+    # Simple orbit using camera orbit function
     if (auto_orbit) {
-      rotate_by(0, dt * orbit_speed, 0)
+      orbit_camera(orbit_speed, direction)
     }
   }
 }

@@ -20,6 +20,7 @@
   "dependencies": {
     "@babylonjs/core": "^8.20.0",
     "@babylonjs/gui": "^8.25.0",
+    "@babylonjs/havok": "^1.3.10",
     "@babylonjs/inspector": "^8.25.0",
     "@babylonjs/loaders": "^8.20.0",
     "@babylonjs/materials": "^8.25.0",

@@ -6,29 +6,37 @@ use crate::project_manager::get_projects_path;
 use log::{info, warn, error, debug};
 
 pub fn read_file_content(file_path: &str) -> Result<String, String> {
-    let projects_path = get_projects_path();
     info!("📖 Reading file: {}", file_path);
     
-    // Parse the path to extract project name and asset path
-    let path_parts: Vec<&str> = file_path.split('/').collect();
-    if path_parts.len() < 2 || path_parts[0] != "projects" {
-        error!("❌ Invalid path format: {} (expected projects/{{project_name}}/...)", file_path);
-        return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
-    }
-    
-    let project_name = path_parts[1];
-    let asset_path = if path_parts.len() > 2 {
-        path_parts[2..].join("/")
+    let full_path = if file_path.starts_with("projects/") {
+        // Project file - use existing logic
+        let projects_path = get_projects_path();
+        
+        // Parse the path to extract project name and asset path
+        let path_parts: Vec<&str> = file_path.split('/').collect();
+        if path_parts.len() < 2 {
+            error!("❌ Invalid project path format: {} (expected projects/{{project_name}}/...)", file_path);
+            return Err("Invalid project path format. Expected projects/{project_name}/...".to_string());
+        }
+        
+        let project_name = path_parts[1];
+        let asset_path = if path_parts.len() > 2 {
+            path_parts[2..].join("/")
+        } else {
+            error!("❌ Asset path required for: {}", file_path);
+            return Err("Asset path required".to_string());
+        };
+        
+        projects_path.join(project_name).join(&asset_path)
     } else {
-        error!("❌ Asset path required for: {}", file_path);
-        return Err("Asset path required".to_string());
+        // Non-project file - use engine root (for src/renscripts, etc.)
+        let base_path = crate::project_manager::get_base_path();
+        base_path.join(file_path)
     };
     
-    // Construct full path within project directory
-    let project_assets_path = projects_path.join(project_name).join(&asset_path);
-    debug!("📂 Full file path: {:?}", project_assets_path);
+    debug!("📂 Full file path: {:?}", full_path);
     
-    match fs::read_to_string(&project_assets_path) {
+    match fs::read_to_string(&full_path) {
         Ok(content) => {
             let file_size = content.len();
             info!("✅ Successfully read file: {} ({} bytes)", file_path, file_size);
