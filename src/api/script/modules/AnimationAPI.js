@@ -29,8 +29,9 @@ import {
 import { MorphTarget, MorphTargetManager } from '@babylonjs/core/Morph/index.js';
 
 export class AnimationAPI {
-  constructor(scene) {
+  constructor(scene, babylonObject = null) {
     this.scene = scene;
+    this.mesh = babylonObject; // Set the current object as the default mesh
   }
 
   // === BASIC ANIMATION CREATION ===
@@ -644,19 +645,38 @@ export class AnimationAPI {
   }
 
   getAllAnimations(target) {
+    if (!target) target = this.mesh;
     if (!target) return [];
     
     const animations = [];
     
     // Get mesh animations
     if (target.animations) {
-      animations.push(...target.animations);
+      animations.push(...target.animations.map(anim => anim.name));
     }
     
     // Get skeleton animation ranges
     if (target.skeleton && target.skeleton.getAnimationRanges) {
       const ranges = target.skeleton.getAnimationRanges();
       animations.push(...ranges.map(range => range.name));
+    }
+    
+    // Check for animation groups (common in GLTF/GLB files)
+    if (target.metadata && target.metadata.animationGroups) {
+      target.metadata.animationGroups.forEach(group => {
+        animations.push(group.name);
+      });
+    }
+    
+    // Also check scene animation groups
+    if (this.scene && this.scene.animationGroups) {
+      this.scene.animationGroups.forEach(group => {
+        // Check if this animation group targets our mesh
+        const targetsOurMesh = group.targetedAnimations.some(ta => ta.target === target || ta.target === target.skeleton);
+        if (targetsOurMesh) {
+          animations.push(group.name);
+        }
+      });
     }
     
     return animations;
@@ -697,6 +717,88 @@ export class AnimationAPI {
     if (!curve) return null;
     const tangent = curve.getTangentAt(Math.max(0, Math.min(1, t)));
     return [tangent.x, tangent.y, tangent.z];
+  }
+
+  // === SMART ANIMATION PLAYER ===
+
+  playAnimationByName(animationName, loop = true, speedRatio = 1.0) {
+    if (!animationName || animationName === "none") return false;
+    
+    // First try to find it as an animation group in the scene
+    if (this.scene && this.scene.animationGroups) {
+      const animationGroup = this.scene.animationGroups.find(group => group.name === animationName);
+      if (animationGroup) {
+        console.log(`Found animation group: ${animationName}, checking targets...`);
+        console.log(`this.mesh:`, this.mesh);
+        console.log(`Animation group targeted animations:`, animationGroup.targetedAnimations.map(ta => ({target: ta.target, targetName: ta.target?.name})));
+        
+        // Check if this animation group targets our mesh or skeleton
+        const targetsOurMesh = animationGroup.targetedAnimations.some(ta => 
+          ta.target === this.mesh || 
+          (this.mesh && ta.target === this.mesh.skeleton) ||
+          // Also check by name if direct reference fails
+          (this.mesh && ta.target && ta.target.name === this.mesh.name) ||
+          // Check if any child of our TransformNode is targeted
+          (this.mesh && this.mesh.getChildren && this.mesh.getChildren().includes(ta.target)) ||
+          // Check if target is a skeleton of any child mesh
+          (this.mesh && this.mesh.getChildren && this.mesh.getChildren().some(child => 
+            child.skeleton && child.skeleton === ta.target
+          ))
+        );
+        
+        // For TransformNodes with skeletal animations, be less restrictive
+        if (targetsOurMesh || animationGroup.targetedAnimations.length === 0 || 
+            (this.mesh && this.mesh.getClassName && this.mesh.getClassName() === 'TransformNode')) {
+          console.log(`Playing animation group: ${animationName}`);
+          animationGroup.play(loop);
+          if (speedRatio !== 1.0) {
+            animationGroup.speedRatio = speedRatio;
+          }
+          return true;
+        } else {
+          console.log(`Animation group ${animationName} doesn't target our mesh`);
+        }
+      } else {
+        console.log(`Animation group ${animationName} not found in scene.animationGroups`);
+      }
+    }
+    
+    // Then try as skeleton animation range
+    if (this.mesh && this.mesh.skeleton) {
+      console.log(`Checking skeleton animation ranges for: ${animationName}`);
+      const allRanges = this.mesh.skeleton.getAnimationRanges();
+      console.log(`Available skeleton ranges:`, allRanges.map(r => r.name));
+      
+      const animationRange = this.mesh.skeleton.getAnimationRange(animationName);
+      if (animationRange) {
+        console.log(`Playing skeleton animation range: ${animationName}`);
+        this.scene.beginAnimation(
+          this.mesh.skeleton,
+          animationRange.from,
+          animationRange.to,
+          loop,
+          speedRatio
+        );
+        return true;
+      } else {
+        console.log(`Skeleton animation range ${animationName} not found`);
+      }
+    } else {
+      console.log(`No mesh or skeleton available for animation: ${animationName}`);
+    }
+    
+    // Finally try as mesh animation
+    if (this.mesh && this.mesh.animations) {
+      const meshAnimation = this.mesh.animations.find(anim => anim.name === animationName);
+      if (meshAnimation) {
+        console.log(`Playing mesh animation: ${animationName}`);
+        this.scene.beginAnimation(this.mesh, 0, 100, loop, speedRatio, null, [meshAnimation]);
+        return true;
+      }
+    }
+    
+    console.warn(`Animation '${animationName}' not found in any format`);
+    return false;
   }
 
   // === ANIMATION INFO ===

@@ -6,6 +6,7 @@ import { renderStore } from '@/render/store';
 import { CollapsibleSection } from '@/ui';
 import { getScriptRuntime } from '@/api/script';
 import { bridgeService } from '@/plugins/core/bridge';
+import { keyboardShortcuts } from '@/components/KeyboardShortcuts';
 
 function ObjectProperties() {
   console.log('🏗️ ObjectProperties component created');
@@ -488,7 +489,13 @@ function ObjectProperties() {
                 type="number"
                 step="0.1"
                 value={value()[index()] || 0}
-                onFocus={() => console.log(`🔧 Transform input focused: ${propertyPath}[${index()}]`)}
+                onFocus={() => {
+                  console.log(`🔧 Transform input focused: ${propertyPath}[${index()}]`);
+                  keyboardShortcuts.disable();
+                }}
+                onBlur={() => {
+                  keyboardShortcuts.enable();
+                }}
                 onMouseDown={() => console.log(`🔧 Transform input mousedown: ${propertyPath}[${index()}]`)}
                 onChange={(e) => {
                   const newValue = parseFloat(e.target.value) || 0;
@@ -694,6 +701,8 @@ function ObjectProperties() {
                   step={property.type === 'float' ? '0.1' : '1'}
                   min={property.min}
                   max={property.max}
+                  onFocus={() => keyboardShortcuts.disable()}
+                  onBlur={() => keyboardShortcuts.enable()}
                   onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value) || 0)}
                   className="input input-bordered input-sm w-full text-sm"
                   placeholder="0"
@@ -718,6 +727,8 @@ function ObjectProperties() {
                   step={property.type === 'float' ? '0.1' : '1'}
                   min={property.min}
                   max={property.max}
+                  onFocus={() => keyboardShortcuts.disable()}
+                  onBlur={() => keyboardShortcuts.enable()}
                   onChange={(e) => handlePropertyChange(property.name, parseFloat(e.target.value) || 0)}
                   className="input input-bordered input-xs w-16 text-xs text-center"
                 />
@@ -792,6 +803,8 @@ function ObjectProperties() {
                   id={`script-${property.name}-text-${selection.entity || 'unknown'}`}
                   type="text"
                   value={getCurrentValue() || ''}
+                  onFocus={() => keyboardShortcuts.disable()}
+                  onBlur={() => keyboardShortcuts.enable()}
                   onChange={(e) => handlePropertyChange(property.name, e.target.value)}
                   className="input input-bordered input-sm w-full text-sm"
                   placeholder={property.defaultValue?.replace(/"/g, '') || 'Drag material/texture files here...'}
@@ -876,6 +889,8 @@ function ObjectProperties() {
             <input
               type="text"
               value={getCurrentValue() || ''}
+              onFocus={() => keyboardShortcuts.disable()}
+              onBlur={() => keyboardShortcuts.enable()}
               onChange={(e) => handlePropertyChange(property.name, e.target.value)}
               className="input input-bordered input-sm w-full text-sm"
               placeholder="Enter value"
@@ -985,11 +1000,13 @@ function ObjectProperties() {
                       }
                     }}
                     onFocus={() => {
+                      keyboardShortcuts.disable();
                       if (scriptSearchTerm().length > 0 && searchResults().length > 0) {
                         setShowSearchResults(true);
                       }
                     }}
                     onBlur={() => {
+                      keyboardShortcuts.enable();
                       // Delay hiding to allow clicking on dropdown items
                       setTimeout(() => setShowSearchResults(false), 150);
                     }}

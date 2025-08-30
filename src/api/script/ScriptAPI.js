@@ -30,7 +30,7 @@ export class ScriptAPI {
     this.core = new CoreAPI(scene, babylonObject);
     this.material = new MaterialAPI(scene);
     this.mesh = new MeshAPI(scene);
-    this.animation = new AnimationAPI(scene);
+    this.animation = new AnimationAPI(scene, babylonObject);
     this.sceneQuery = new SceneAPI(scene, babylonObject);
     this.physics = new PhysicsAPI(scene, babylonObject);
     this.input = new InputAPI(scene, babylonObject);
@@ -236,6 +236,7 @@ export class ScriptAPI {
   play_jump_animation() {
     return this.animation.playJumpAnimation(this.babylonObject);
   }
+
 
   stop_animation() {
     return this.animation.stopAnimationAPI(this.babylonObject);
@@ -620,6 +621,86 @@ export class ScriptAPI {
   setScriptProperty(propertyName, value) {
     console.log(`🔧 setScriptProperty called: ${propertyName} = ${value}`);
     return this.updateScriptProperty(propertyName, value);
+  }
+
+  // === DYNAMIC PROPERTIES ===
+  
+  addDynamicProperty(name, type, options = {}) {
+    console.log(`🔧 Adding dynamic property: ${name} (${type})`);
+    if (!this._scriptInstance._scriptProperties) {
+      this._scriptInstance._scriptProperties = [];
+    }
+    
+    const property = {
+      name: name,
+      type: type,
+      section: options.section || 'Dynamic',
+      defaultValue: options.default || (type === 'boolean' ? false : type === 'select' ? 'none' : 0),
+      min: options.min || null,
+      max: options.max || null,
+      options: options.options || (type === 'select' ? ['none'] : null),
+      description: options.description || `Dynamic ${type} property`,
+      triggerOnce: options.once || false
+    };
+    
+    this._scriptInstance._scriptProperties.push(property);
+    
+    // Initialize the property value
+    this._scriptInstance[name] = property.defaultValue;
+    
+    // Trigger UI update
+    this.updateScriptPropertyMetadata();
+    return true;
+  }
+  
+  updatePropertyOptions(propertyName, newOptions) {
+    console.log(`🔧 Updating property options for: ${propertyName}`, newOptions);
+    if (!this._scriptInstance || !this._scriptInstance._scriptProperties) return false;
+    
+    // Find and update the property
+    const property = this._scriptInstance._scriptProperties.find(p => p.name === propertyName);
+    if (property && property.type === 'select') {
+      property.options = ['none', ...newOptions];
+      this.updateScriptPropertyMetadata();
+      return true;
+    }
+    return false;
+  }
+  
+  removeDynamicProperty(propertyName) {
+    console.log(`🔧 Removing dynamic property: ${propertyName}`);
+    if (!this._scriptInstance || !this._scriptInstance._scriptProperties) return false;
+    
+    const index = this._scriptInstance._scriptProperties.findIndex(p => p.name === propertyName);
+    if (index >= 0) {
+      this._scriptInstance._scriptProperties.splice(index, 1);
+      delete this._scriptInstance[propertyName];
+      this.updateScriptPropertyMetadata();
+      return true;
+    }
+    return false;
+  }
+  
+  getPropertyValue(propertyName) {
+    return this._scriptInstance ? this._scriptInstance[propertyName] : undefined;
+  }
+  
+  setPropertyValue(propertyName, value) {
+    if (this._scriptInstance) {
+      this._scriptInstance[propertyName] = value;
+      return this.updateScriptProperty(propertyName, value);
+    }
+    return false;
+  }
+  
+  updateScriptPropertyMetadata() {
+    // Trigger a UI refresh for script properties
+    if (this.mesh && this.mesh.metadata && this.mesh.metadata.entityId) {
+      const event = new CustomEvent('engine:script-properties-updated', {
+        detail: { entityId: this.mesh.metadata.entityId }
+      });
+      document.dispatchEvent(event);
+    }
   }
 
   // === UPDATE METHODS ===

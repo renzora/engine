@@ -5,6 +5,28 @@ use base64::{Engine as _, engine::general_purpose};
 use crate::project_manager::get_projects_path;
 use log::{info, warn, error, debug};
 
+pub fn sanitize_file_name(name: &str) -> String {
+    name.chars()
+        .map(|c| match c {
+            'a'..='z' | 'A'..='Z' | '0'..='9' | '-' | '.' => c,
+            ' ' => '_',
+            _ => '_',
+        })
+        .collect::<String>()
+        .split('_')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<&str>>()
+        .join("_")
+        .to_lowercase()
+}
+
+pub fn sanitize_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| sanitize_file_name(segment))
+        .collect::<Vec<String>>()
+        .join("/")
+}
+
 pub fn read_file_content(file_path: &str) -> Result<String, String> {
     info!("📖 Reading file: {}", file_path);
     

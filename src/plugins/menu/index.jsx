@@ -47,6 +47,12 @@ export default createPlugin({
           label: 'Import', 
           icon: ArrowDown,
           submenu: [
+            { id: 'import-model', label: 'Model Importer...', icon: Download, 
+              action: () => {
+                document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
+              }
+            },
+            { divider: true },
             { id: 'import-fbx', label: 'FBX File', icon: Download },
             { id: 'import-obj', label: 'OBJ File', icon: Download },
             { id: 'import-gltf', label: 'GLTF/GLB File', icon: Download },

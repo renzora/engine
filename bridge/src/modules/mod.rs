@@ -6,6 +6,7 @@ pub mod project_manager;
 pub mod thumbnail_generator;
 pub mod update_manager;
 pub mod system_monitor;
+pub mod model_processor;
 
 // Export only what's needed by main.rs
 pub use handlers::{handle_http_request, set_startup_time};

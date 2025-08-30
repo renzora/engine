@@ -1063,7 +1063,7 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   const handleImportClick = () => {
-    fileInputRef?.click();
+    document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
   };
 
   // Selection handling
@@ -1601,7 +1601,24 @@ function AssetLibrary({ onContextMenu }) {
       initializeProjectData(projectData);
     };
     
+    // Listen for asset refresh events from model importer
+    const handleAssetsRefresh = async () => {
+      const currentProject = projectManager.getCurrentProject();
+      if (currentProject?.name) {
+        // Refresh assets after import
+        await Promise.all([
+          fetchAssetsWithCache(currentProject, currentPath(), true, false),
+          updateFolderTreeIncrementally(currentProject),
+          (async () => {
+            const categories = await fetchAssetCategories(currentProject);
+            setAssetCategories(categories);
+          })()
+        ]);
+      }
+    };
+
     document.addEventListener('engine:project-selected', handleProjectSelection);
+    document.addEventListener('engine:assets-refresh', handleAssetsRefresh);
     
     // Check if project is already selected
     const initialProject = projectManager.getCurrentProject();
@@ -1615,6 +1632,7 @@ function AssetLibrary({ onContextMenu }) {
     
     onCleanup(() => {
       document.removeEventListener('engine:project-selected', handleProjectSelection);
+      document.removeEventListener('engine:assets-refresh', handleAssetsRefresh);
     });
 
   });
@@ -1835,6 +1853,7 @@ function AssetLibrary({ onContextMenu }) {
           onClose={() => setShowScriptDialog(false)}
           onConfirm={handleConfirmCreateScript}
         />
+
         
       </div>
     </div>

@@ -9,6 +9,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
 use log::{info, warn, error, debug};
 use percent_encoding::percent_decode_str;
+use base64::{Engine as _, engine::general_purpose};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
@@ -16,6 +17,7 @@ use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
 use crate::system_monitor::get_system_stats;
+use crate::model_processor::{process_model_import, ModelImportSettings};
 
 // Static variable to store startup time
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
@@ -166,6 +168,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 Some(_body_content) => {
                     error_response(StatusCode::NOT_IMPLEMENTED, "Async endpoint - use web interface")
                 },
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
+        (&Method::POST, "/process-model") => {
+            match &body {
+                Some(body_content) => handle_process_model(body_content).await,
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
@@ -592,6 +600,47 @@ async fn handle_check_updates() -> Response<BoxBody<Bytes, Infallible>> {
     match check_for_updates().await {
         Ok(result) => json_response(&result),
         Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+    }
+}
+
+async fn handle_process_model(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    #[derive(serde::Deserialize)]
+    struct ModelProcessRequest {
+        file_data: String, // base64 encoded file data
+        filename: String,
+        project_name: String,
+        settings: ModelImportSettings,
+    }
+    
+    let request: ModelProcessRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(e) => {
+            error!("❌ Failed to parse model process request: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
+        }
+    };
+    
+    info!("🎨 Processing model: {} for project: {}", request.filename, request.project_name);
+    
+    // Decode base64 file data
+    let file_data = match general_purpose::STANDARD.decode(&request.file_data) {
+        Ok(data) => data,
+        Err(e) => {
+            error!("❌ Failed to decode base64 file data: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid base64 file data");
+        }
+    };
+    
+    // Process the model import
+    match process_model_import(file_data, &request.filename, &request.project_name, request.settings) {
+        Ok(result) => {
+            info!("✅ Model processing completed: {}", request.filename);
+            json_response(&result)
+        }
+        Err(e) => {
+            error!("❌ Model processing failed: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+        }
     }
 }
 

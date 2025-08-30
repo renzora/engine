@@ -17,6 +17,34 @@
  * }
  */
 
+class RenScriptError extends Error {
+  constructor(message, line = null, column = null, token = null, context = null) {
+    super(message);
+    this.name = 'RenScriptError';
+    this.line = line;
+    this.column = column;
+    this.token = token;
+    this.context = context;
+  }
+
+  toString() {
+    let result = `RenScript Error: ${this.message}`;
+    if (this.line !== null) {
+      result += ` at line ${this.line}`;
+      if (this.column !== null) {
+        result += `, column ${this.column}`;
+      }
+    }
+    if (this.token) {
+      result += ` (token: ${this.token.type}="${this.token.value}")`;
+    }
+    if (this.context) {
+      result += `\nContext: ${this.context}`;
+    }
+    return result;
+  }
+}
+
 class RenScriptLexer {
   constructor(source) {
     this.source = source;
@@ -157,7 +185,7 @@ class RenScriptLexer {
         case ':': this.addToken('COLON'); break;
         case '?': this.addToken('QUESTION'); break;
         default:
-          throw new Error(`Unexpected character '${char}' at line ${this.line}, column ${this.column}`);
+          throw new RenScriptError(`Unexpected character '${char}'`, this.line, this.column, null, `Found '${char}' while tokenizing`);
       }
       
       this.advance();
@@ -1086,6 +1114,7 @@ class RenScriptCodeGenerator {
   constructor(ast) {
     this.ast = ast;
     this.usedFunctions = new Set();
+    this.usedArrayMethods = new Set();
     this.customFunctions = new Set();
     
     // Extract custom function names from AST
@@ -1253,10 +1282,10 @@ class RenScriptCodeGenerator {
       get_bone_rotation: 'getBoneRotation',
       
       // Animation range/clip management
-      play_animation_range: 'playAnimationRange',
+      play_animation_range: 'playAnimationByName',
       stop_animation_range: 'stopAnimationRange',
       set_animation_range: 'setAnimationRange',
-      get_animation_ranges: 'getAnimationRanges',
+      get_animation_ranges: 'animation_getAllAnimations',
       
       // Character animation states
       play_walk_animation: 'playWalkAnimation',
@@ -1276,6 +1305,93 @@ class RenScriptCodeGenerator {
       get_current_animation: 'getCurrentAnimation',
       get_animation_time: 'getAnimationTime',
       set_animation_time: 'setAnimationTime',
+      
+      // Basic animation creation
+      animation_create_animation: 'animation_createAnimation',
+      animation_create_vector_animation: 'animation_createVectorAnimation',
+      animation_create_color_animation: 'animation_createColorAnimation',
+      animation_create_quaternion_animation: 'animation_createQuaternionAnimation',
+      
+      // Animation keyframes
+      animation_add_animation_keys: 'animation_addAnimationKeys',
+      animation_parse_animation_value: 'animation_parseAnimationValue',
+      
+      // Animation playback
+      animation_play_animation: 'animation_playAnimation',
+      animation_stop_animation: 'animation_stopAnimation',
+      animation_pause_animation: 'animation_pauseAnimation',
+      animation_restart_animation: 'animation_restartAnimation',
+      
+      // Easing functions
+      animation_create_bezier_ease: 'animation_createBezierEase',
+      animation_create_circle_ease: 'animation_createCircleEase',
+      animation_create_back_ease: 'animation_createBackEase',
+      animation_create_bounce_ease: 'animation_createBounceEase',
+      animation_create_elastic_ease: 'animation_createElasticEase',
+      animation_create_exponential_ease: 'animation_createExponentialEase',
+      animation_create_power_ease: 'animation_createPowerEase',
+      animation_set_easing_mode: 'animation_setEasingMode',
+      
+      // Animation groups
+      animation_create_animation_group: 'animation_createAnimationGroup',
+      animation_add_animation_to_group: 'animation_addAnimationToGroup',
+      animation_play_animation_group: 'animation_playAnimationGroup',
+      animation_stop_animation_group: 'animation_stopAnimationGroup',
+      animation_pause_animation_group: 'animation_pauseAnimationGroup',
+      animation_reset_animation_group: 'animation_resetAnimationGroup',
+      
+      // Skeleton animation
+      animation_create_skeleton: 'animation_createSkeleton',
+      animation_play_skeleton_animation: 'animation_playSkeletonAnimation',
+      animation_stop_skeleton_animation: 'animation_stopSkeletonAnimation',
+      animation_create_animation_range: 'animation_createAnimationRange',
+      animation_delete_animation_range: 'animation_deleteAnimationRange',
+      animation_get_skeleton_animation_ranges: 'animation_getSkeletonAnimationRanges',
+      
+      // Bone manipulation
+      animation_get_bone_by_name: 'animation_getBoneByName',
+      animation_set_bone_transform: 'animation_setBoneTransform',
+      animation_get_bone_world_matrix: 'animation_getBoneWorldMatrix',
+      animation_attach_mesh_to_bone: 'animation_attachMeshToBone',
+      
+      // Morph target animation
+      animation_create_morph_target_manager: 'animation_createMorphTargetManager',
+      animation_add_morph_target: 'animation_addMorphTarget',
+      animation_set_morph_target_influence: 'animation_setMorphTargetInfluence',
+      animation_animate_morph_target: 'animation_animateMorphTarget',
+      
+      // Advanced animation features
+      animation_blend_animations: 'animation_blendAnimations',
+      animation_animate_along_path: 'animation_animateAlongPath',
+      animation_animate_rotation_around_axis: 'animation_animateRotationAroundAxis',
+      animation_animate_opacity: 'animation_animateOpacity',
+      
+      // Animation weight & blending
+      animation_set_animation_weight: 'animation_setAnimationWeight',
+      animation_blend_to_animation: 'animation_blendToAnimation',
+      
+      // Animation events
+      animation_add_animation_event: 'animation_addAnimationEvent',
+      animation_remove_animation_events: 'animation_removeAnimationEvents',
+      
+      // Animation utilities
+      animation_get_animation_progress: 'animation_getAnimationProgress',
+      animation_is_animation_playing: 'animation_isAnimationPlaying',
+      animation_get_all_animations: 'animation_getAllAnimations',
+      
+      // Physics animation
+      animation_animate_with_physics: 'animation_animateWithPhysics',
+      
+      // Animation curves
+      animation_create_animation_curve: 'animation_createAnimationCurve',
+      animation_get_curve_point: 'animation_getCurvePoint',
+      animation_get_curve_tangent: 'animation_getCurveTangent',
+      
+      // Smart animation player
+      animation_play_animation_by_name: 'animation_playAnimationByName',
+      
+      // Animation info
+      animation_get_animation_info: 'animation_getAnimationInfo',
       
       // === SCENE QUERIES ===
       find_object_by_name: 'findObjectByName',
@@ -1804,13 +1920,21 @@ class RenScriptCodeGenerator {
       enable_outline_renderer: 'enableOutlineRenderer',
       enable_edges_renderer: 'enableEdgesRenderer',
       enable_bounding_box_renderer: 'enableBoundingBoxRenderer',
-      create_utility_layer_renderer: 'createUtilityLayerRenderer'
+      create_utility_layer_renderer: 'createUtilityLayerRenderer',
+      
+      // === DYNAMIC PROPERTIES ===
+      add_dynamic_property: 'addDynamicProperty',
+      update_property_options: 'updatePropertyOptions',
+      remove_dynamic_property: 'removeDynamicProperty',
+      get_property_value: 'getPropertyValue',
+      set_property_value: 'setPropertyValue'
     };
 
     const usedMethods = [];
     
     for (const [renscriptName, apiName] of Object.entries(apiMethods)) {
       if (this.usedFunctions.has(renscriptName)) {
+        usedMethods.push(`  if (!api.${apiName}) throw new Error('RenScript API Error: Method "${apiName}" not found in API for function "${renscriptName}". Available methods: ' + Object.keys(api).join(', '));`);
         usedMethods.push(`  const ${renscriptName} = api.${apiName}.bind(api);`);
       }
     }
@@ -1861,6 +1985,20 @@ class RenScriptCodeGenerator {
       `\n  // Math functions\n${usedMath.join('\n')}\n` : 
       '';
   }
+
+  generateUsedArrayMethods() {
+    const arrayMethods = [];
+
+    // Array methods - these are handled differently since they're member methods
+    // We don't need to bind them like API methods since they're native JavaScript
+    if (this.usedArrayMethods && this.usedArrayMethods.size > 0) {
+      arrayMethods.push('  // Array methods are native JavaScript - no binding needed');
+    }
+
+    return arrayMethods.length > 0 ? 
+      `\n  // Array support\n${arrayMethods.join('\n')}\n` : 
+      '';
+  }
   
   generateScript(script) {
     const variables = script.variables.map(v => this.generateVariableDeclaration(v)).join('\n    ');
@@ -1871,7 +2009,8 @@ class RenScriptCodeGenerator {
     // SMART: Only bind functions that are actually used
     const usedApiMethods = this.generateUsedApiBindings();
     const usedMathMethods = this.generateUsedMathMethods();
-    const efficientAPI = `${usedApiMethods}${usedMathMethods}`;
+    const usedArrayMethods = this.generateUsedArrayMethods();
+    const efficientAPI = `${usedApiMethods}${usedMathMethods}${usedArrayMethods}`;
     
     // Generate properties metadata
     const propertiesMetadata = properties.length > 0 ? `
@@ -2005,14 +2144,35 @@ ${efficientAPI}
           const functionName = expression.callee.name;
           // Check if this is a custom function - prefix with 'this.'
           callee = this.customFunctions.has(functionName) ? `this.${functionName}` : functionName;
+        } else if (expression.callee.type === 'MemberExpression') {
+          // Track array method usage
+          if (expression.callee.property && expression.callee.property.name) {
+            const methodName = expression.callee.property.name;
+            const arrayMethods = ['push', 'pop', 'shift', 'unshift', 'splice', 'slice', 'indexOf', 'join', 'concat', 'reverse', 'sort'];
+            if (arrayMethods.includes(methodName)) {
+              this.usedArrayMethods.add(methodName);
+            }
+          }
+          callee = this.generateExpression(expression.callee, context);
         } else {
           callee = this.generateExpression(expression.callee, context);
         }
         const args = expression.arguments.map(arg => this.generateExpression(arg, context)).join(', ');
         return `${callee}(${args})`;
       case 'MemberExpression':
+        // Track array property usage
+        if (expression.property && expression.property.name) {
+          const propertyName = expression.property.name;
+          const arrayProperties = ['length'];
+          if (arrayProperties.includes(propertyName)) {
+            this.usedArrayMethods.add(propertyName);
+          }
+        }
         const object = this.generateExpression(expression.object, context);
-        const property = this.generateExpression(expression.property, context);
+        // For member expressions, don't prefix property names with 'this.'
+        const property = expression.computed 
+          ? this.generateExpression(expression.property, context)
+          : expression.property.name;
         return expression.computed ? `${object}[${property}]` : `${object}.${property}`;
       case 'UpdateExpression':
         const argument = this.generateExpression(expression.argument, context);
