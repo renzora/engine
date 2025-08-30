@@ -51,34 +51,17 @@ pub fn list_projects() -> Result<Vec<ProjectInfo>, String> {
 }
 
 pub fn list_directory_contents(dir_path: &str) -> Result<Vec<FileInfo>, String> {
-    let projects_path = get_projects_path();
+    let base_path = get_base_path();
     
-    // Parse the path to extract project name and asset path
-    let path_parts: Vec<&str> = dir_path.split('/').collect();
-    if path_parts.len() < 2 || path_parts[0] != "projects" {
-        return Err("Invalid path format. Expected projects/{project_name}/...".to_string());
-    }
+    // Allow access to any directory under the base path (engine root)
+    let target_path = base_path.join(dir_path);
     
-    let project_name = path_parts[1];
-    let asset_path = if path_parts.len() > 2 {
-        path_parts[2..].join("/")
-    } else {
-        String::new()
-    };
-    
-    // Construct path to project directory
-    let project_path = if asset_path.is_empty() {
-        projects_path.join(project_name)
-    } else {
-        projects_path.join(project_name).join(&asset_path)
-    };
-    
-    if !project_path.exists() {
+    if !target_path.exists() {
         return Ok(Vec::new()); // Return empty list if directory doesn't exist
     }
 
     let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir(&project_path) {
+    if let Ok(entries) = fs::read_dir(&target_path) {
         for entry in entries.flatten() {
             let file_path = entry.path();
             let name = entry.file_name().to_string_lossy().to_string();
@@ -87,11 +70,7 @@ pub fn list_directory_contents(dir_path: &str) -> Result<Vec<FileInfo>, String> 
                 file_path.metadata().map(|m| m.len()).unwrap_or(0) 
             };
             
-            let relative_path = if asset_path.is_empty() {
-                name.clone()
-            } else {
-                format!("{}/{}", asset_path, name)
-            };
+            let relative_path = format!("{}/{}", dir_path, name);
             
             files.push(FileInfo {
                 name,

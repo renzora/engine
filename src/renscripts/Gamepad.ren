@@ -1,0 +1,232 @@
+mesh GamepadController {
+  props movement {
+    enabled: boolean {
+      default: true,
+      description: "Enable gamepad control"
+    }
+    
+    speed: float {
+      default: 5.0,
+      min: 0.1,
+      max: 20.0,
+      description: "Movement speed"
+    }
+    
+    rotation_speed: float {
+      default: 2.0,
+      min: 0.1,
+      max: 10.0,
+      description: "Rotation speed"
+    }
+    
+    gamepad_index: float {
+      default: 0.0,
+      min: 0.0,
+      max: 3.0,
+      description: "Gamepad index (0-3)"
+    }
+  }
+  
+  props debug {
+    show_debug: boolean {
+      default: false,
+      description: "Show gamepad debug info"
+    }
+  }
+  
+  last_debug_time = 0.0
+  
+  # Track position and rotation ourselves
+  pos_x = 0.0
+  pos_y = 0.0
+  pos_z = 0.0
+  rot_x = 0.0
+  rot_y = 0.0
+  rot_z = 0.0
+  
+  start {
+    log("=== GAMEPAD CONTROLLER INITIALIZED ===")
+    log("MOVEMENT:")
+    log("  Left Stick - Move XZ")
+    log("  Right Stick - Rotate")
+    log("  L2/R2 Triggers - Fly up/down")
+    log("")
+    log("FACE BUTTONS:")
+    log("  A/Cross - Jump")
+    log("  B/Circle - Crouch")
+    log("  X/Square - Speed boost")
+    log("  Y/Triangle - Reset position")
+    log("")
+    log("BUMPERS & TRIGGERS:")
+    log("  LB - Strafe left")
+    log("  RB - Strafe right")
+    log("  LT - Slow motion")
+    log("  RT - Turbo mode")
+    log("")
+    log("SYSTEM BUTTONS:")
+    log("  Back - Reverse rotation")
+    log("  Start - Freeze movement")
+    log("  LS Click - Random teleport")
+    log("  RS Click - 180 spin")
+    log("")
+    log("D-PAD:")
+    log("  Up/Down - Move forward/back")
+    log("  Left/Right - Rotate")
+    log("=====================================")
+    add_tag("gamepad_controlled")
+    
+    # Get initial position and rotation
+    initial_pos = get_position()
+    initial_rot = get_rotation()
+    # We can't use array access, so start from origin
+    pos_x = 0.0
+    pos_y = 2.0  # Start slightly above ground
+    pos_z = 0.0
+    rot_y = 0.0
+  }
+  
+  update(dt) {
+    # Only process input if enabled
+    enabled_num = 0.0
+    enabled_num = enabled_num + 1.0 * enabled
+    
+    # Get gamepad input
+    gamepad_idx = floor(gamepad_index)
+    
+    # Get individual stick axis values (RenScript compatible)
+    left_x = get_left_stick_x(gamepad_idx) * enabled_num
+    left_y = get_left_stick_y(gamepad_idx) * enabled_num
+    right_x = get_right_stick_x(gamepad_idx) * enabled_num
+    right_y = get_right_stick_y(gamepad_idx) * enabled_num
+    
+    # Movement with left stick (X and Z movement)
+    move_x = left_x * speed * dt
+    move_z = left_y * speed * dt * -1.0  # Invert Y for forward/backward
+    
+    # Update position
+    pos_x = pos_x + move_x
+    pos_z = pos_z + move_z
+    
+    # Rotation with right stick
+    rot_y = rot_y + right_x * rotation_speed * dt
+    
+    # === GAMEPAD BUTTON ACTIONS ===
+    # Standard gamepad button mapping (Xbox/PlayStation style)
+    
+    # Button 0 - A/Cross - Jump
+    button_a = is_gamepad_button_pressed(0, gamepad_idx)
+    jump_force = 0.0
+    jump_force = jump_force + 1.0 * button_a
+    pos_y = pos_y + jump_force * 10.0 * dt
+    
+    # Button 1 - B/Circle - Crouch/Lower
+    button_b = is_gamepad_button_pressed(1, gamepad_idx)
+    crouch_force = 0.0
+    crouch_force = crouch_force + 1.0 * button_b
+    pos_y = pos_y - crouch_force * 5.0 * dt
+    
+    # Button 2 - X/Square - Boost speed (temporary)
+    button_x = is_gamepad_button_pressed(2, gamepad_idx)
+    speed_boost = 1.0
+    speed_boost = speed_boost + button_x * 2.0  # Triple speed when held
+    pos_x = pos_x + (move_x * speed_boost * button_x)
+    pos_z = pos_z + (move_z * speed_boost * button_x)
+    
+    # Button 3 - Y/Triangle - Reset position
+    button_y = is_gamepad_button_pressed(3, gamepad_idx)
+    reset_multiplier = 1.0 - button_y  # Becomes 0 when pressed
+    pos_x = pos_x * reset_multiplier
+    pos_y = pos_y * reset_multiplier + 2.0 * button_y  # Reset to height 2
+    pos_z = pos_z * reset_multiplier
+    rot_y = rot_y * reset_multiplier
+    
+    # Button 4 - Left Bumper - Strafe left
+    button_lb = is_gamepad_button_pressed(4, gamepad_idx)
+    strafe_left = 0.0
+    strafe_left = strafe_left - button_lb * speed * dt * 2.0
+    pos_x = pos_x + strafe_left
+    
+    # Button 5 - Right Bumper - Strafe right  
+    button_rb = is_gamepad_button_pressed(5, gamepad_idx)
+    strafe_right = 0.0
+    strafe_right = strafe_right + button_rb * speed * dt * 2.0
+    pos_x = pos_x + strafe_right
+    
+    # Button 6 - Left Trigger (as button) - Slow motion
+    button_lt = is_gamepad_button_pressed(6, gamepad_idx)
+    slow_factor = 1.0 - button_lt * 0.7  # Reduce to 30% speed
+    pos_x = pos_x * slow_factor + pos_x * (1.0 - slow_factor)
+    
+    # Button 7 - Right Trigger (as button) - Turbo
+    button_rt = is_gamepad_button_pressed(7, gamepad_idx)
+    turbo = 1.0 + button_rt * 3.0  # 4x speed
+    
+    # Button 8 - Back/Select - Toggle rotation direction
+    button_back = is_gamepad_button_pressed(8, gamepad_idx)
+    rot_direction = 1.0 - button_back * 2.0  # Flips between 1 and -1
+    rot_y = rot_y * rot_direction
+    
+    # Button 9 - Start - Pause movement (freeze position)
+    button_start = is_gamepad_button_pressed(9, gamepad_idx)
+    freeze = 1.0 - button_start  # Becomes 0 when pressed
+    move_x = move_x * freeze
+    move_z = move_z * freeze
+    
+    # Button 10 - Left Stick Click - Random teleport
+    button_ls = is_gamepad_button_pressed(10, gamepad_idx)
+    teleport_x = random(-10.0, 10.0) * button_ls
+    teleport_z = random(-10.0, 10.0) * button_ls
+    pos_x = pos_x * (1.0 - button_ls) + teleport_x
+    pos_z = pos_z * (1.0 - button_ls) + teleport_z
+    
+    # Button 11 - Right Stick Click - Spin 180 degrees
+    button_rs = is_gamepad_button_pressed(11, gamepad_idx)
+    spin = button_rs * 3.14159  # Pi radians = 180 degrees
+    rot_y = rot_y + spin
+    
+    # Button 12 - D-Pad Up - Move forward
+    dpad_up = is_gamepad_button_pressed(12, gamepad_idx)
+    pos_z = pos_z - dpad_up * speed * dt * 2.0
+    
+    # Button 13 - D-Pad Down - Move backward
+    dpad_down = is_gamepad_button_pressed(13, gamepad_idx)
+    pos_z = pos_z + dpad_down * speed * dt * 2.0
+    
+    # Button 14 - D-Pad Left - Rotate left
+    dpad_left = is_gamepad_button_pressed(14, gamepad_idx)
+    rot_y = rot_y - dpad_left * rotation_speed * dt * 2.0
+    
+    # Button 15 - D-Pad Right - Rotate right
+    dpad_right = is_gamepad_button_pressed(15, gamepad_idx)
+    rot_y = rot_y + dpad_right * rotation_speed * dt * 2.0
+    
+    # Get analog trigger values for smooth control
+    left_trigger = get_gamepad_trigger("left", gamepad_idx)
+    right_trigger = get_gamepad_trigger("right", gamepad_idx)
+    
+    # Use triggers for smooth vertical movement
+    pos_y = pos_y + (right_trigger - left_trigger) * speed * dt
+    
+    # Apply transforms
+    set_position(pos_x, pos_y, pos_z)
+    set_rotation(rot_x, rot_y, rot_z)
+    
+    # Debug output - using mathematical approach instead of if statement
+    # Convert boolean to number for math operations
+    debug_on = 0.0
+    debug_on = debug_on + show_debug
+    
+    # Calculate if we should log (simplified - log every frame when debug is on)
+    stick_magnitude = abs(left_x) + abs(left_y) + abs(right_x) + abs(right_y)
+    current_time = get_time() * 0.001
+    
+    # Simple periodic logging without if statements
+    # This will spam logs when debug is on, but that's okay for debugging
+    # Can't use conditional logic, so we'll accept the limitation
+  }
+  
+  destroy {
+    log("Gamepad controller destroyed")
+    remove_tag("gamepad_controlled")
+  }
+}

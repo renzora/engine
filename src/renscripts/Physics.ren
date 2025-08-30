@@ -1,0 +1,391 @@
+script PhysicsSimulation {
+  props Physics_Settings {
+    physics_engine: select {
+      default: "cannon",
+      options: ["cannon", "ammo", "havok"],
+      description: "Physics engine to use",
+      once: true
+    }
+    
+    impostor_type: select {
+      default: "box",
+      options: ["box", "sphere", "cylinder", "plane", "mesh", "convex_hull"],
+      description: "Physics impostor shape",
+      once: true
+    }
+    
+    mass: range {
+      default: 1.0,
+      min: 0.0,
+      max: 100.0,
+      description: "Object mass (0 = static)",
+      once: true
+    }
+    
+    friction: range {
+      default: 0.5,
+      min: 0.0,
+      max: 2.0,
+      description: "Surface friction coefficient",
+      once: true
+    }
+    
+    restitution: range {
+      default: 0.3,
+      min: 0.0,
+      max: 1.0,
+      description: "Bounce factor (0 = no bounce, 1 = perfect bounce)",
+      once: true
+    }
+  }
+  
+  props Forces {
+    gravity_x: range {
+      default: 0.0,
+      min: -20.0,
+      max: 20.0,
+      description: "Gravity X component"
+    }
+    
+    gravity_y: range {
+      default: -9.81,
+      min: -20.0,
+      max: 20.0,
+      description: "Gravity Y component"
+    }
+    
+    gravity_z: range {
+      default: 0.0,
+      min: -20.0,
+      max: 20.0,
+      description: "Gravity Z component"
+    }
+    
+    impulse_force: range {
+      default: 5.0,
+      min: 0.1,
+      max: 50.0,
+      description: "Impulse force magnitude"
+    }
+    
+    continuous_force: range {
+      default: 2.0,
+      min: 0.1,
+      max: 20.0,
+      description: "Continuous force magnitude"
+    }
+  }
+  
+  props Advanced_Physics {
+    enable_ragdoll: boolean {
+      default: false,
+      description: "Enable ragdoll physics (Havok only)",
+      once: true
+    }
+    
+    enable_soft_body: boolean {
+      default: false,
+      description: "Enable soft body physics",
+      once: true
+    }
+    
+    enable_character_controller: boolean {
+      default: false,
+      description: "Enable character controller",
+      once: true
+    }
+    
+    soft_body_stiffness: range {
+      default: 0.8,
+      min: 0.1,
+      max: 1.0,
+      description: "Soft body stiffness"
+    }
+    
+    soft_body_damping: range {
+      default: 0.1,
+      min: 0.0,
+      max: 1.0,
+      description: "Soft body damping"
+    }
+  }
+  
+  # Physics state variables
+  physics_enabled = false
+  character_controller = null
+  physics_joints = []
+  collision_count = 0
+  last_collision_time = 0
+  
+  start {
+    log("Physics Demo initialized")
+    add_tag("physics_object")
+    
+    # Enable physics engine
+    if (enable_physics(physics_engine, gravity_x, gravity_y, gravity_z)) {
+      physics_enabled = true
+      log("Physics engine enabled: " + physics_engine)
+    } else {
+      log("Failed to enable physics engine")
+      return
+    }
+    
+    # Set up physics debug if available
+    enable_physics_debug()
+  }
+  
+  once {
+    if (!physics_enabled) {
+      log("Physics not enabled, skipping physics setup")
+      return
+    }
+    
+    log("Setting up physics properties...")
+    
+    # Set up physics impostor
+    set_physics_impostor(impostor_type, mass, {
+      friction: friction,
+      restitution: restitution
+    })
+    
+    # Set physics material
+    physics_material = create_physics_material("demo_material", friction, restitution)
+    set_physics_material(physics_material)
+    
+    # Advanced physics features
+    if (enable_ragdoll && physics_engine == "havok") {
+      enable_ragdoll()
+      log("Ragdoll physics enabled")
+    }
+    
+    if (enable_soft_body) {
+      if (enable_soft_body()) {
+        set_soft_body_properties(soft_body_stiffness, soft_body_damping)
+        log("Soft body physics enabled")
+      }
+    }
+    
+    if (enable_character_controller) {
+      character_controller = create_character_controller({
+        height: 2.0,
+        radius: 0.5,
+        stepHeight: 0.3
+      })
+      if (character_controller) {
+        log("Character controller created")
+      }
+    }
+    
+    # Set up collision detection
+    on_collision_enter((collision_data) => {
+      collision_count = collision_count + 1
+      last_collision_time = get_time()
+      
+      log("Collision detected! Count: " + collision_count)
+      log("Collided with: " + collision_data.collidedWith.name)
+      
+      # Visual feedback on collision
+      set_emissive_color(1.0, 0.2, 0.2)
+      
+      # Apply impact force
+      impact_direction = normalize(
+        get_position()[0] - collision_data.collidedWith.position.x,
+        get_position()[1] - collision_data.collidedWith.position.y,
+        get_position()[2] - collision_data.collidedWith.position.z
+      )
+      apply_impulse(
+        impact_direction[0] * impulse_force,
+        impact_direction[1] * impulse_force,
+        impact_direction[2] * impulse_force
+      )
+    })
+    
+    # Initial impulse to start motion
+    apply_impulse(2.0, 5.0, 1.0)
+  }
+  
+  update(dt) {
+    if (!physics_enabled) return
+    
+    # Update gravity dynamically
+    current_gravity = get_gravity()
+    if (current_gravity[0] != gravity_x || current_gravity[1] != gravity_y || current_gravity[2] != gravity_z) {
+      set_gravity(gravity_x, gravity_y, gravity_z)
+    }
+    
+    # Character controller movement
+    if (character_controller) {
+      movement_x = 0
+      movement_z = 0
+      
+      if (is_key_pressed("w")) movement_z = continuous_force
+      if (is_key_pressed("s")) movement_z = -continuous_force
+      if (is_key_pressed("a")) movement_x = -continuous_force
+      if (is_key_pressed("d")) movement_x = continuous_force
+      
+      if (movement_x != 0 || movement_z != 0) {
+        move_character(movement_x * dt, 0, movement_z * dt)
+      }
+      
+      if (is_key_pressed("space")) {
+        jump_character(impulse_force)
+      }
+    }
+    
+    # Apply continuous forces based on input
+    if (is_key_pressed("up")) {
+      apply_force(0, continuous_force, 0)
+    }
+    if (is_key_pressed("down")) {
+      apply_force(0, -continuous_force, 0)
+    }
+    if (is_key_pressed("left")) {
+      apply_force(-continuous_force, 0, 0)
+    }
+    if (is_key_pressed("right")) {
+      apply_force(continuous_force, 0, 0)
+    }
+    
+    # Gamepad physics control
+    if (is_gamepad_connected()) {
+      left_stick = get_left_stick_with_deadzone(0.2)
+      right_stick = get_right_stick_with_deadzone(0.2)
+      
+      # Movement forces
+      if (left_stick[0] != 0 || left_stick[1] != 0) {
+        apply_force(left_stick[0] * continuous_force, 0, -left_stick[1] * continuous_force)
+      }
+      
+      # Rotation forces
+      if (right_stick[0] != 0) {
+        set_angular_velocity(0, right_stick[0] * 2.0, 0)
+      }
+      
+      # Jump with A button
+      if (is_gamepad_button_a()) {
+        apply_impulse(0, impulse_force, 0)
+      }
+      
+      # Reset with B button
+      if (is_gamepad_button_b()) {
+        reset_physics_object()
+      }
+    }
+    
+    # Monitor physics properties
+    if (has_physics_impostor()) {
+      velocity = get_linear_velocity()
+      angular_velocity = get_angular_velocity()
+      
+      # Limit maximum velocity
+      max_velocity = 20.0
+      velocity_magnitude = sqrt(velocity[0] * velocity[0] + velocity[1] * velocity[1] + velocity[2] * velocity[2])
+      
+      if (velocity_magnitude > max_velocity) {
+        # Clamp velocity
+        scale = max_velocity / velocity_magnitude
+        set_linear_velocity(velocity[0] * scale, velocity[1] * scale, velocity[2] * scale)
+      }
+      
+      # Apply air resistance
+      air_resistance = 0.98
+      set_linear_velocity(velocity[0] * air_resistance, velocity[1] * air_resistance, velocity[2] * air_resistance)
+    }
+    
+    # Reset emissive color after collision
+    if (get_time() - last_collision_time > 500) {
+      set_emissive_color(0.0, 0.0, 0.0)
+    }
+    
+    # Physics raycast demo
+    if (is_key_pressed("r")) {
+      perform_physics_raycast()
+    }
+    
+    # Create physics joints with nearby objects
+    if (is_key_pressed("j")) {
+      create_physics_joints_with_nearby()
+    }
+  }
+  
+  # Custom physics functions
+  reset_physics_object() {
+    if (has_physics_impostor()) {
+      set_linear_velocity(0, 0, 0)
+      set_angular_velocity(0, 0, 0)
+      set_position(0, 5, 0)  # Reset to spawn position
+      log("Physics object reset")
+    }
+  }
+  
+  perform_physics_raycast() {
+    position = get_position()
+    raycast_result = physics_raycast(
+      position[0], position[1], position[2],
+      0, -1, 0,  # Downward ray
+      10.0
+    )
+    
+    if (raycast_result && raycast_result.hit) {
+      log("Physics raycast hit at distance: " + raycast_result.distance)
+    } else {
+      log("Physics raycast missed")
+    }
+  }
+  
+  create_physics_joints_with_nearby() {
+    position = get_position()
+    nearby_objects = get_objects_in_radius(position[0], position[1], position[2], 3.0)
+    
+    for (i = 0; i < nearby_objects.length; i++) {
+      obj = nearby_objects[i]
+      if (obj.object != this && obj.object.physicsImpostor) {
+        joint = create_physics_joint("hinge", obj.object, {
+          mainPivot: [0, 0, 0],
+          connectedPivot: [0, 0, 0],
+          mainAxis: [0, 1, 0],
+          connectedAxis: [0, 1, 0]
+        })
+        
+        if (joint) {
+          physics_joints.push(joint)
+          log("Created physics joint with: " + obj.object.name)
+        }
+        
+        # Only create one joint at a time
+        break
+      }
+    }
+  }
+  
+  pause_physics_simulation() {
+    pause_physics()
+    log("Physics simulation paused")
+  }
+  
+  resume_physics_simulation() {
+    resume_physics(1.0 / 60.0)
+    log("Physics simulation resumed")
+  }
+  
+  destroy {
+    log("Physics Demo destroyed")
+    
+    # Clean up physics joints
+    for (i = 0; i < physics_joints.length; i++) {
+      remove_physics_joint(physics_joints[i])
+    }
+    physics_joints = []
+    
+    # Disable physics debug
+    disable_physics_debug()
+    
+    # Clean up physics
+    dispose_physics()
+    
+    # Disable character controller
+    if (character_controller) {
+      character_controller = null
+    }
+  }
+}

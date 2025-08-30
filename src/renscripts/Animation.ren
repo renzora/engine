@@ -1,0 +1,209 @@
+script CompleteAnimationDemo {
+  props Animation_Controls {
+    enable_rotation: boolean {
+      default: true,
+      description: "Enable rotation animation",
+      once: true
+    }
+    
+    enable_scale: boolean {
+      default: true,
+      description: "Enable scale animation",
+      once: true
+    }
+    
+    enable_color: boolean {
+      default: true,
+      description: "Enable color animation",
+      once: true
+    }
+    
+    rotation_speed: range {
+      default: 1.0,
+      min: 0.1,
+      max: 5.0,
+      description: "Rotation speed multiplier"
+    }
+    
+    scale_amplitude: range {
+      default: 0.5,
+      min: 0.1,
+      max: 2.0,
+      description: "Scale animation amplitude"
+    }
+    
+    animation_easing: select {
+      default: "ease-in-out",
+      options: ["linear", "ease-in", "ease-out", "ease-in-out", "bounce", "elastic", "back"],
+      description: "Animation easing function"
+    }
+  }
+  
+  props Animation_Targets {
+    target_position_x: range {
+      default: 2.0,
+      min: -10.0,
+      max: 10.0,
+      description: "Target X position for animation"
+    }
+    
+    target_position_y: range {
+      default: 1.0,
+      min: -10.0,
+      max: 10.0,
+      description: "Target Y position for animation"
+    }
+    
+    target_position_z: range {
+      default: 0.0,
+      min: -10.0,
+      max: 10.0,
+      description: "Target Z position for animation"
+    }
+    
+    animation_duration: range {
+      default: 2000.0,
+      min: 500.0,
+      max: 10000.0,
+      description: "Animation duration in milliseconds"
+    }
+  }
+  
+  # Animation state variables
+  time_elapsed = 0.0
+  base_position = [0, 0, 0]
+  is_animating = false
+  animation_group = null
+  
+  start {
+    log("Complete Animation Demo initialized")
+    add_tag("animated_object")
+    
+    # Store initial position
+    base_position = get_position()
+    
+    # Create animation group for complex sequences
+    animation_group = create_animation_group("demo_animations")
+    
+    # Set up keyframe animations
+    create_complex_keyframe_animation()
+  }
+  
+  once {
+    log("Setting up all animation types...")
+    
+    # Position animation with easing
+    if (target_position_x != 0 || target_position_y != 0 || target_position_z != 0) {
+      animate_position(target_position_x, target_position_y, target_position_z, 
+                      animation_duration, animation_easing)
+    }
+    
+    # Color cycling animation
+    if (enable_color) {
+      animate_color(1.0, 0.2, 0.2, 1000, "ease-in-out")
+      
+      # Chain multiple color animations
+      setTimeout(() => {
+        animate_color(0.2, 1.0, 0.2, 1000, "ease-in-out")
+      }, 1000)
+      
+      setTimeout(() => {
+        animate_color(0.2, 0.2, 1.0, 1000, "ease-in-out")
+      }, 2000)
+      
+      setTimeout(() => {
+        animate_color(1.0, 1.0, 1.0, 1000, "ease-in-out")
+      }, 3000)
+    }
+    
+    # Alpha fade animation
+    animate_alpha(0.3, 1500, "ease-in")
+    setTimeout(() => {
+      animate_alpha(1.0, 1500, "ease-out")
+    }, 1500)
+  }
+  
+  update(dt) {
+    time_elapsed = time_elapsed + dt
+    
+    # Continuous rotation animation
+    if (enable_rotation) {
+      rotate_by(0, dt * rotation_speed, 0)
+    }
+    
+    # Oscillating scale animation
+    if (enable_scale) {
+      scale_factor = 1.0 + sin(time_elapsed * 2.0) * scale_amplitude
+      set_scale(scale_factor, scale_factor, scale_factor)
+    }
+    
+    # Floating motion (sine wave)
+    current_pos = get_position()
+    float_offset = sin(time_elapsed) * 0.5
+    set_position(current_pos[0], base_position[1] + float_offset, current_pos[2])
+    
+    # Complex animation control
+    if (time_elapsed > 5.0 && !is_animating) {
+      start_complex_animation_sequence()
+      is_animating = true
+    }
+    
+    # Check animation progress
+    if (is_animating("position")) {
+      progress = get_animation_progress("position")
+      if (progress > 0.5) {
+        # Trigger mid-animation effects
+        set_emissive_color(0.1, 0.1, 0.1)
+      }
+    }
+  }
+  
+  # Custom function to create keyframe animations
+  create_complex_keyframe_animation() {
+    keyframes = [
+      { time: 0, value: base_position },
+      { time: 1000, value: [base_position[0] + 2, base_position[1] + 1, base_position[2]] },
+      { time: 2000, value: [base_position[0] + 2, base_position[1] + 2, base_position[2] + 1] },
+      { time: 3000, value: [base_position[0], base_position[1] + 1, base_position[2] + 1] },
+      { time: 4000, value: base_position }
+    ]
+    
+    create_keyframe_animation("position", keyframes, 60, false)
+  }
+  
+  # Complex animation sequence
+  start_complex_animation_sequence() {
+    # Animate to multiple targets in sequence
+    animate_to("rotation", [0, 3.14, 0], 1000, "elastic")
+    
+    # Animation events
+    on_animation_complete(animate_to("scale", [2, 2, 2], 800, "bounce"), () => {
+      log("Scale animation completed!")
+      animate_to("scale", [1, 1, 1], 600, "ease-out")
+    })
+    
+    # Blend between animations
+    rotation_anim = animate_rotation(0, 6.28, 0, 2000, "linear")
+    position_anim = animate_position(base_position[0] + 3, base_position[1], base_position[2], 2000, "ease-in-out")
+    
+    blend_animations(rotation_anim, position_anim, 500)
+  }
+  
+  # Animation group control
+  play_animation_group_demo() {
+    if (animation_group) {
+      play_animation_group(animation_group, true)  # Loop the group
+    }
+  }
+  
+  stop_all_animations() {
+    stop_animation()  # Stop all animations
+    stop_animation_group(animation_group)
+    log("All animations stopped")
+  }
+  
+  destroy {
+    stop_all_animations()
+    log("Complete Animation Demo destroyed")
+  }
+}

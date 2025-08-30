@@ -2,6 +2,8 @@ import { onMount, onCleanup } from 'solid-js';
 import { keyboardShortcuts } from '@/components/KeyboardShortcuts';
 import { renderStore, renderActions } from '../store.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
+import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
+import { Color3 } from '@babylonjs/core/Maths/math.color.js';
 
 // Hook for registering render viewport keyboard shortcuts
 export function renderShortcuts(callbacks = {}) {
@@ -17,7 +19,10 @@ export function renderShortcuts(callbacks = {}) {
     isActive: false,
     startMousePos: { x: 0, y: 0 },
     originalTransform: null,
-    isFreeTransform: false
+    isFreeTransform: false,
+    axisLine: null, // Babylon.js line mesh for axis visualization
+    virtualCursor: null, // Virtual cursor element
+    savedHighlightedMeshes: [] // Store highlighted meshes before transform
   };
   
   let statusDiv = null;
@@ -41,6 +46,36 @@ export function renderShortcuts(callbacks = {}) {
       pointer-events: none;
     `;
     document.body.appendChild(statusDiv);
+    
+    // Create virtual cursor div with axis arrows
+    const virtualCursor = document.createElement('div');
+    virtualCursor.style.cssText = `
+      position: fixed;
+      width: 80px;
+      height: 80px;
+      pointer-events: none;
+      z-index: 10000;
+      display: none;
+      transform: translate(-50%, -50%);
+    `;
+    
+    virtualCursor.innerHTML = `
+      <div style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 20px;
+        height: 20px;
+        border: 2px solid white;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.5);
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+      "></div>
+    `;
+    
+    document.body.appendChild(virtualCursor);
+    transformState.virtualCursor = virtualCursor;
     
     // Track right mouse button state
     const handleMouseDown = (e) => {
@@ -108,6 +143,9 @@ export function renderShortcuts(callbacks = {}) {
       // Focus on object
       'f': () => callbacks.focusObject?.(),
       
+      // Focus on mouse point
+      'shift+f': () => callbacks.focusOnMousePoint?.(),
+      
       // Delete object
       'delete': () => callbacks.deleteObject?.(),
       
@@ -157,33 +195,97 @@ export function renderShortcuts(callbacks = {}) {
 
     // Add mouse event handlers for transforms
     const handleMouseMove = (event) => {
-      if (transformState.isActive && transformState.isFreeTransform) {
-        const deltaX = event.clientX - transformState.startMousePos.x;
-        const deltaY = event.clientY - transformState.startMousePos.y;
-        applyFreeTransform(deltaX, deltaY);
+      if (transformState.isActive) {
+        // Update virtual cursor position
+        if (transformState.virtualCursor && transformState.virtualCursor.style.display === 'block') {
+          if (document.pointerLockElement) {
+            // Get canvas bounds for proper viewport wrapping
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+              const canvasRect = canvas.getBoundingClientRect();
+              
+              // Move virtual cursor based on movement deltas with viewport wrapping
+              const currentLeft = parseInt(transformState.virtualCursor.style.left) || (canvasRect.left + canvasRect.width / 2);
+              const currentTop = parseInt(transformState.virtualCursor.style.top) || (canvasRect.top + canvasRect.height / 2);
+              
+              let newLeft = currentLeft + (event.movementX || 0);
+              let newTop = currentTop + (event.movementY || 0);
+              
+              // Wrap around canvas viewport edges
+              const margin = 20; // Small margin from edges
+              if (newLeft < canvasRect.left + margin) {
+                newLeft = canvasRect.right - margin;
+              } else if (newLeft > canvasRect.right - margin) {
+                newLeft = canvasRect.left + margin;
+              }
+              
+              if (newTop < canvasRect.top + margin) {
+                newTop = canvasRect.bottom - margin;
+              } else if (newTop > canvasRect.bottom - margin) {
+                newTop = canvasRect.top + margin;
+              }
+              
+              transformState.virtualCursor.style.left = newLeft + 'px';
+              transformState.virtualCursor.style.top = newTop + 'px';
+            }
+          } else {
+            transformState.virtualCursor.style.left = event.clientX + 'px';
+            transformState.virtualCursor.style.top = event.clientY + 'px';
+          }
+        }
+        
+        if (document.pointerLockElement) {
+          // Use movementX/Y when pointer is locked
+          const deltaX = event.movementX;
+          const deltaY = event.movementY;
+          
+          // Accumulate movement for smooth transforms
+          if (!transformState.accumulatedDelta) {
+            transformState.accumulatedDelta = { x: 0, y: 0 };
+          }
+          
+          transformState.accumulatedDelta.x += deltaX;
+          transformState.accumulatedDelta.y += deltaY;
+          
+          applyFreeTransform(transformState.accumulatedDelta.x, transformState.accumulatedDelta.y);
+        } else {
+          // Fallback to regular mouse movement
+          const deltaX = event.clientX - transformState.startMousePos.x;
+          const deltaY = event.clientY - transformState.startMousePos.y;
+          applyFreeTransform(deltaX, deltaY);
+        }
       }
     };
 
     const handleMouseClick = (event) => {
       if (transformState.isActive) {
+        event.preventDefault();
+        event.stopPropagation();
+        
         if (event.button === 0) { // Left click - confirm
-          event.preventDefault();
-          event.stopPropagation();
+          console.log('✅ Transform confirmed with left click');
           resetTransformState();
         } else if (event.button === 2) { // Right click - cancel
-          event.preventDefault();
-          event.stopPropagation();
+          console.log('❌ Transform cancelled with right click');
           cancelTransform();
         }
       }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mousedown', handleMouseClick);
+    document.addEventListener('click', handleMouseClick);
 
     // Custom handler that also tracks key presses for movement
     const customHandler = (event) => {
       const key = event.key.toLowerCase();
+      
+      // Disable Ctrl+F (browser find)
+      if (event.ctrlKey && key === 'f') {
+        event.preventDefault();
+        event.stopPropagation();
+        console.log('🚫 Ctrl+F disabled in render viewport');
+        return;
+      }
       
       // Handle Blender-style transform shortcuts
       if (handleTransformShortcuts(event, key)) {
@@ -243,12 +345,15 @@ export function renderShortcuts(callbacks = {}) {
       document.removeEventListener('mouseup', handleMouseUp);
       document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mousedown', handleMouseClick);
+      document.removeEventListener('click', handleMouseClick);
       unregister();
       
-      // Clean up status div
+      // Clean up status div and virtual cursor
       if (statusDiv && statusDiv.parentNode) {
         document.body.removeChild(statusDiv);
+      }
+      if (transformState.virtualCursor && transformState.virtualCursor.parentNode) {
+        document.body.removeChild(transformState.virtualCursor);
       }
     });
   });
@@ -268,6 +373,39 @@ export function renderShortcuts(callbacks = {}) {
       transformState.axis = null;
       transformState.isFreeTransform = true;
       transformState.startMousePos = { x: event.clientX || 0, y: event.clientY || 0 };
+      transformState.accumulatedDelta = { x: 0, y: 0 };
+      
+      // Request pointer lock for infinite mouse movement
+      const canvas = document.querySelector('canvas');
+      if (canvas && canvas.requestPointerLock) {
+        canvas.requestPointerLock();
+      }
+      
+      // Show virtual cursor and hide real cursor
+      if (transformState.virtualCursor) {
+        transformState.virtualCursor.style.display = 'block';
+        transformState.virtualCursor.style.left = event.clientX + 'px';
+        transformState.virtualCursor.style.top = event.clientY + 'px';
+      }
+      document.body.style.cursor = 'none';
+      
+      // Store current highlights and disable highlighting during transform
+      const highlightLayer = renderStore.highlightLayer;
+      transformState.savedHighlightedMeshes = [];
+      if (highlightLayer) {
+        // Store currently highlighted meshes
+        if (selectedObject.getChildMeshes) {
+          const childMeshes = selectedObject.getChildMeshes();
+          childMeshes.forEach(childMesh => {
+            if (childMesh.getClassName() === 'Mesh') {
+              transformState.savedHighlightedMeshes.push(childMesh);
+            }
+          });
+        } else {
+          transformState.savedHighlightedMeshes.push(selectedObject);
+        }
+        highlightLayer.removeAllMeshes();
+      }
       
       // Store original transform for cancellation
       transformState.originalTransform = {
@@ -302,6 +440,7 @@ export function renderShortcuts(callbacks = {}) {
       if (['x', 'y', 'z'].includes(key)) {
         transformState.axis = key;
         transformState.isFreeTransform = false; // Switch to constrained mode
+        createAxisLine(key);
         updateTransformStatus();
         return true;
       }
@@ -341,6 +480,12 @@ export function renderShortcuts(callbacks = {}) {
       return;
     }
 
+    // Only show status for numeric input, hide for visual modes (free transform or axis lines)
+    if (!transformState.numericInput) {
+      statusDiv.style.display = 'none';
+      return;
+    }
+
     let text = '';
     switch (transformState.mode) {
       case 'move':
@@ -358,13 +503,7 @@ export function renderShortcuts(callbacks = {}) {
       text += ` ${transformState.axis.toUpperCase()}`;
     }
 
-    if (transformState.numericInput) {
-      text += `: ${transformState.numericInput}`;
-    } else if (transformState.isFreeTransform) {
-      text += ' (Free - move mouse, click to confirm, right-click to cancel)';
-    } else {
-      text += ' (Constrained - move mouse, click to confirm, right-click to cancel)';
-    }
+    text += `: ${transformState.numericInput}`;
 
     statusDiv.textContent = text;
     statusDiv.style.display = 'block';
@@ -393,34 +532,60 @@ export function renderShortcuts(callbacks = {}) {
     const selectedObject = renderStore.selectedObject;
     if (!selectedObject || !transformState.originalTransform) return;
 
-    const sensitivity = 0.01;
+    const camera = renderStore.camera;
+    
+    // Calculate distance-based sensitivity for zoom-responsive movement
+    let sensitivity = 0.01;
+    if (camera && selectedObject) {
+      const distance = Vector3.Distance(camera.position, selectedObject.position);
+      // Scale sensitivity based on camera distance (closer = slower, farther = faster)
+      sensitivity = Math.max(0.001, distance * 0.002);
+    }
     
     switch (transformState.mode) {
       case 'move':
         if (transformState.axis) {
-          // Constrained axis movement
-          const delta = deltaX * sensitivity;
-          switch (transformState.axis) {
-            case 'x':
-              selectedObject.position.x = transformState.originalTransform.position.x + delta;
-              break;
-            case 'y':
-              selectedObject.position.y = transformState.originalTransform.position.y + delta;
-              break;
-            case 'z':
-              selectedObject.position.z = transformState.originalTransform.position.z + delta;
-              break;
+          // Constrained axis movement - project mouse movement onto world axes relative to camera
+          if (camera) {
+            const forward = camera.getForwardRay().direction;
+            const right = Vector3.Cross(forward, Vector3.Up()).normalize();
+            const up = Vector3.Cross(right, forward).normalize();
+            
+            // Calculate movement based on camera orientation
+            let axisVector, mouseDelta;
+            
+            switch (transformState.axis) {
+              case 'x':
+                axisVector = Vector3.Right(); // World X axis
+                // Project camera right vector onto world X to determine direction
+                const xDot = Vector3.Dot(right, axisVector);
+                mouseDelta = deltaX * (xDot > 0 ? 1 : -1) * sensitivity;
+                selectedObject.position.x = transformState.originalTransform.position.x + mouseDelta;
+                break;
+              case 'y':
+                axisVector = Vector3.Up(); // World Y axis
+                // Y axis is always up regardless of camera rotation
+                mouseDelta = -deltaY * sensitivity; // Invert for natural movement
+                selectedObject.position.y = transformState.originalTransform.position.y + mouseDelta;
+                break;
+              case 'z':
+                axisVector = Vector3.Forward(); // World Z axis
+                // Project camera forward vector onto world Z to determine direction
+                const zDot = Vector3.Dot(forward, axisVector);
+                mouseDelta = deltaY * (zDot > 0 ? -1 : 1) * sensitivity;
+                selectedObject.position.z = transformState.originalTransform.position.z + mouseDelta;
+                break;
+            }
           }
         } else {
           // Free movement in screen space
-          const camera = renderStore.camera;
           if (camera) {
             const forward = camera.getForwardRay().direction;
             const right = Vector3.Cross(forward, Vector3.Up()).normalize();
             const up = Vector3.Cross(right, forward).normalize();
             
             const moveAmount = deltaX * sensitivity;
-            const upAmount = -deltaY * sensitivity;
+            const upAmount = -deltaY * sensitivity; // Invert Y for natural movement
             
             selectedObject.position.copyFrom(transformState.originalTransform.position);
             selectedObject.position.addInPlace(right.scale(moveAmount));
@@ -550,12 +715,100 @@ export function renderShortcuts(callbacks = {}) {
     console.log(`Scaled object by ${value} on ${axis.toUpperCase()} axis`);
   };
 
+
+  const createAxisLine = (axis) => {
+    const selectedObject = renderStore.selectedObject;
+    const scene = renderStore.scene;
+    
+    if (!selectedObject || !scene) return;
+    
+    // Remove existing axis line
+    if (transformState.axisLine) {
+      transformState.axisLine.dispose();
+      transformState.axisLine = null;
+    }
+    
+    
+    // Get object center position and offset it slightly above the object
+    const center = selectedObject.position.clone();
+    const offset = new Vector3(0, 0.5, 0); // Lift line above object
+    const lineCenter = center.add(offset);
+    const lineLength = 1000; // Very long line to span entire viewport
+    
+    // Define axis direction and color
+    let direction, color;
+    switch (axis) {
+      case 'x':
+        direction = new Vector3(lineLength, 0, 0);
+        color = Color3.Red();
+        break;
+      case 'y':
+        direction = new Vector3(0, lineLength, 0);
+        color = Color3.Green();
+        break;
+      case 'z':
+        direction = new Vector3(0, 0, lineLength);
+        color = Color3.Blue();
+        break;
+    }
+    
+    // Create line points (from far negative to far positive) centered above object
+    const points = [
+      lineCenter.subtract(direction),
+      lineCenter.add(direction)
+    ];
+    
+    // Create the line mesh
+    transformState.axisLine = CreateLines(`transformAxis_${axis}`, { points }, scene);
+    transformState.axisLine.color = color;
+    transformState.axisLine.isPickable = false;
+    transformState.axisLine.alwaysSelectAsActiveMesh = false;
+    transformState.axisLine.renderingGroupId = 2; // Render on top
+    transformState.axisLine.alpha = 1; // Ensure full opacity
+    transformState.axisLine.useAlphaFromDiffuseTexture = false;
+    transformState.axisLine.doNotSyncBoundingInfo = true; // Don't affect bounding calculations
+    
+    console.log(`Created ${axis.toUpperCase()} axis line`);
+  };
+
   const resetTransformState = () => {
     transformState.isActive = false;
     transformState.mode = null;
     transformState.axis = null;
     transformState.numericInput = '';
+    transformState.accumulatedDelta = null;
     statusDiv.style.display = 'none';
+    
+    // Hide virtual cursor and restore real cursor
+    if (transformState.virtualCursor) {
+      transformState.virtualCursor.style.display = 'none';
+    }
+    document.body.style.cursor = '';
+    
+    // Remove axis line
+    if (transformState.axisLine) {
+      transformState.axisLine.dispose();
+      transformState.axisLine = null;
+    }
+    
+    
+    // Re-enable highlighting after transform using saved meshes
+    const highlightLayer = renderStore.highlightLayer;
+    if (highlightLayer && transformState.savedHighlightedMeshes.length > 0) {
+      try {
+        transformState.savedHighlightedMeshes.forEach(mesh => {
+          highlightLayer.addMesh(mesh, Color3.Yellow());
+        });
+      } catch (error) {
+        console.warn('Could not restore highlight after transform:', error);
+      }
+    }
+    transformState.savedHighlightedMeshes = [];
+    
+    // Exit pointer lock
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
   };
 
 }

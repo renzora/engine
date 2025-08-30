@@ -46,19 +46,6 @@ const loadDefaultSceneContent = (scene, canvas) => {
   // Don't attach Babylon's native controls - we use custom camera controller
   camera.setTarget(Vector3.Zero());
 
-  // Create realistic skybox with gradient
-  const skybox = CreateSphere('skybox', { diameter: 200 }, scene);
-  const skyboxMaterial = new StandardMaterial('skybox', scene);
-  
-  // Realistic sky colors based on atmospheric scattering
-  skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
-  skyboxMaterial.specularColor = new Color3(0, 0, 0);
-  skyboxMaterial.emissiveColor = new Color3(0.4, 0.7, 1.0); // Realistic sky blue
-  skyboxMaterial.disableLighting = true;
-  skyboxMaterial.backFaceCulling = false;
-  
-  skybox.material = skyboxMaterial;
-  skybox.infiniteDistance = true;
 
   // Realistic physically-based lighting setup
   
@@ -104,7 +91,7 @@ const loadDefaultSceneContent = (scene, canvas) => {
   // Set camera in render store
   renderActions.setCamera(camera);
   
-  console.log('✅ Default scene content loaded with skybox and lighting');
+  console.log('✅ Default scene content loaded with lighting');
 };
 
 export default function BabylonRenderer(props) {
@@ -224,6 +211,72 @@ export default function BabylonRenderer(props) {
       
       animate();
     },
+    // Focus on mouse point
+    focusOnMousePoint: () => {
+      const camera = renderStore.camera;
+      const currentScene = renderStore.scene;
+      
+      if (!camera || !currentScene) {
+        console.log('⚠️ No camera or scene available for focus');
+        return;
+      }
+      
+      // Get current mouse position from last known coordinates
+      const canvas = canvasRef;
+      if (!canvas) {
+        console.log('⚠️ No canvas available');
+        return;
+      }
+      
+      // Cast ray from camera through mouse position
+      const pickInfo = currentScene.pick(
+        currentScene.pointerX || canvas.width / 2,
+        currentScene.pointerY || canvas.height / 2
+      );
+      
+      if (pickInfo && pickInfo.hit && pickInfo.pickedPoint) {
+        const targetPoint = pickInfo.pickedPoint;
+        console.log('🎯 Focusing camera on point:', targetPoint);
+        
+        // Calculate camera position maintaining current distance but looking at picked point
+        const currentDistance = Vector3.Distance(camera.position, camera.getTarget());
+        const direction = camera.position.subtract(targetPoint).normalize();
+        const newCameraPosition = targetPoint.add(direction.scale(currentDistance));
+        
+        // Smooth animation to new position
+        const startPosition = camera.position.clone();
+        const animationDuration = 500; // ms
+        const startTime = Date.now();
+        
+        const animate = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / animationDuration, 1);
+          
+          // Smooth easing function (ease-out)
+          const easedProgress = 1 - Math.pow(1 - progress, 3);
+          
+          // Interpolate position
+          camera.position = Vector3.Lerp(startPosition, newCameraPosition, easedProgress);
+          
+          // Set target to picked point
+          if (camera.setTarget) {
+            camera.setTarget(targetPoint);
+          }
+          
+          if (progress < 1) {
+            requestAnimationFrame(animate);
+          } else {
+            console.log('✅ Camera focused on mouse point');
+            editorActions.addConsoleMessage('Focused camera on mouse point', 'success');
+          }
+        };
+        
+        animate();
+      } else {
+        console.log('⚠️ No surface found at mouse position');
+        editorActions.addConsoleMessage('No surface found at mouse position', 'warning');
+      }
+    },
     // Delete selected object
     deleteObject: () => {
       const selectedObject = renderStore.selectedObject;
@@ -233,11 +286,6 @@ export default function BabylonRenderer(props) {
         return;
       }
       
-      // Don't allow deleting default scene objects
-      if (selectedObject.name === 'platform' || selectedObject.name === 'skybox') {
-        console.log('⚠️ Cannot delete default scene objects');
-        return;
-      }
       
       console.log('🗑️ Deleting object:', selectedObject.name);
       

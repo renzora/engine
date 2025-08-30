@@ -1,0 +1,136 @@
+script SimpleMeshDemo {
+  props Mesh_Settings {
+    mesh_size: range {
+      default: 1.0,
+      min: 0.1,
+      max: 10.0,
+      description: "Size of the mesh"
+    }
+    
+    enable_rotation: boolean {
+      default: true,
+      description: "Enable rotation animation"
+    }
+    
+    rotation_speed: range {
+      default: 1.0,
+      min: 0.1,
+      max: 5.0,
+      description: "Rotation speed multiplier"
+    }
+    
+    enable_scaling: boolean {
+      default: false,
+      description: "Enable scale pulsing"
+    }
+    
+    scale_amplitude: range {
+      default: 0.2,
+      min: 0.1,
+      max: 1.0,
+      description: "Scale animation amplitude"
+    }
+  }
+  
+  props Visual_Effects {
+    enable_wireframe: boolean {
+      default: false,
+      description: "Show wireframe mode"
+    }
+    
+    enable_color_animation: boolean {
+      default: true,
+      description: "Enable color cycling"
+    }
+    
+    color_speed: range {
+      default: 1.0,
+      min: 0.1,
+      max: 3.0,
+      description: "Color animation speed"
+    }
+  }
+  
+  # State variables
+  time_elapsed = 0.0
+  base_scale = 1.0
+  
+  start {
+    log("Simple Mesh Demo initialized")
+    add_tag("simple_mesh")
+    
+    # Set initial scale
+    base_scale = mesh_size
+    set_scale(base_scale, base_scale, base_scale)
+  }
+  
+  once {
+    log("Applying initial settings...")
+    
+    if (enable_wireframe) {
+      set_wireframe(true)
+      log("Wireframe enabled")
+    }
+  }
+  
+  update(dt) {
+    time_elapsed = time_elapsed + dt
+    
+    # Rotation animation
+    if (enable_rotation) {
+      rotate_by(0, dt * rotation_speed, 0)
+    }
+    
+    # Scale animation
+    if (enable_scaling) {
+      scale_factor = base_scale + sin(time_elapsed * 2.0) * scale_amplitude
+      set_scale(scale_factor, scale_factor, scale_factor)
+    }
+    
+    # Color animation
+    if (enable_color_animation) {
+      red = sin(time_elapsed * color_speed) * 0.5 + 0.5
+      green = sin(time_elapsed * color_speed + 2.0) * 0.5 + 0.5
+      blue = sin(time_elapsed * color_speed + 4.0) * 0.5 + 0.5
+      set_color(red, green, blue)
+    }
+    
+    # Simple input handling
+    # Toggle wireframe with W key
+    if (is_key_pressed("w")) {
+      current_wireframe = get_material_property("wireframe")
+      set_wireframe(!current_wireframe)
+    }
+    
+    # Reset transform with R key
+    if (is_key_pressed("r")) {
+      set_position(0, 0, 0)
+      set_rotation(0, 0, 0)
+      set_scale(base_scale, base_scale, base_scale)
+      set_color(1.0, 1.0, 1.0)
+      log("Transform reset")
+    }
+    
+    # Change color with C key
+    if (is_key_pressed("c")) {
+      set_color(random(), random(), random())
+    }
+    
+    # Scale up/down with + and - keys
+    if (is_key_pressed("=")) {
+      new_scale = base_scale * 1.1
+      set_scale(new_scale, new_scale, new_scale)
+      log("Scale increased")
+    }
+    
+    if (is_key_pressed("-")) {
+      new_scale = base_scale * 0.9
+      set_scale(new_scale, new_scale, new_scale)
+      log("Scale decreased")
+    }
+  }
+  
+  destroy {
+    log("Simple Mesh Demo destroyed")
+  }
+}

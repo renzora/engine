@@ -1,0 +1,125 @@
+script AnimationDropdown {
+  props Animation_Control {
+    selected_animation: select {
+      default: "auto",
+      options: [],
+      description: "Choose animation to play"
+    }
+    
+    auto_rotate: boolean {
+      default: true,
+      description: "Auto-rotate character for better viewing"
+    }
+    
+    rotation_speed: range {
+      default: 0.5,
+      min: 0.0,
+      max: 2.0,
+      description: "Auto-rotation speed"
+    }
+    
+    animation_speed: range {
+      default: 1.0,
+      min: 0.1,
+      max: 3.0,
+      description: "Animation playback speed"
+    }
+  }
+  
+  # Animation state
+  time_elapsed = 0.0
+  rotation_y = 0.0
+  available_animations = []
+  initialized = false
+  last_selected = ""
+  
+  start {
+    log("🎭 Animation Dropdown Controller Started")
+    log("📋 Use dropdown to select available animations")
+    
+    add_tag("animation_controller")
+  }
+  
+  once {
+    log("🔄 DROPDOWN: Starting animation detection process")
+    
+    # Check if this object has animations
+    if (has_skeleton()) {
+      log("✅ DROPDOWN: Skeleton found - scanning for animations")
+      
+      # Get all available animation ranges
+      log("🔍 DROPDOWN: About to call get_animation_ranges()...")
+      available_animations = get_animation_ranges()
+      log("📊 DROPDOWN: Found " + String(available_animations.length) + " animation ranges")
+      
+      # List all available animations
+      if (available_animations.length > 0) {
+        for (i = 0; i < available_animations.length; i++) {
+          log("🎭 DROPDOWN: Animation " + String(i + 1) + ": " + available_animations[i])
+        }
+        
+        # Update dropdown options with detected animations
+        update_property_options("selected_animation", available_animations)
+        log("📋 DROPDOWN: Updated dropdown with " + String(available_animations.length) + " animation options")
+        
+        # Try to play initial animation based on selection
+        if (selected_animation == "auto" && available_animations.length > 0) {
+          play_animation_range(available_animations[0])
+          log("▶️ DROPDOWN: Auto-playing first animation: " + available_animations[0])
+        } else if (selected_animation != "auto") {
+          play_animation_range(selected_animation)
+          log("▶️ DROPDOWN: Playing selected animation: " + selected_animation)
+        }
+        
+        set_animation_speed(animation_speed)
+        initialized = true
+        last_selected = selected_animation
+      } else {
+        log("❌ DROPDOWN: No animations found in get_animation_ranges()")
+      }
+    } else {
+      log("⚠️ DROPDOWN: No skeleton found - attach this script to an animated model")
+    }
+  }
+  
+  update(dt) {
+    time_elapsed = time_elapsed + dt
+    
+    # Only process if we have animations
+    if (!initialized || available_animations.length == 0) {
+      return
+    }
+    
+    # Check if animation selection changed
+    if (selected_animation != last_selected) {
+      stop_animation()
+      
+      if (selected_animation == "auto") {
+        # Play first available animation
+        if (available_animations.length > 0) {
+          play_animation_range(available_animations[0])
+          log("🔄 Auto mode - playing: " + available_animations[0])
+        }
+      } else {
+        # Play selected animation
+        play_animation_range(selected_animation)
+        log("🔄 Switched to: " + selected_animation)
+      }
+      
+      set_animation_speed(animation_speed)
+      last_selected = selected_animation
+    }
+    
+    # Auto-rotate character for better view
+    if (auto_rotate) {
+      rotation_y = rotation_y + rotation_speed * dt
+      set_rotation(0.0, rotation_y, 0.0)
+    }
+  }
+  
+  destroy {
+    log("🔚 Animation Dropdown Controller destroyed")
+    stop_animation()
+    remove_tag("animation_controller")
+  }
+}

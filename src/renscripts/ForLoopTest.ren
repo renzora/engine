@@ -1,0 +1,32 @@
+script ForLoopTestDemo {
+  # State variables
+  counter = 0
+  
+  start {
+    log("For loop test initialized")
+    
+    # Simple for loop test
+    for (i = 0; i < 5; i++) {
+      log("Loop iteration: " + i)
+      counter = counter + 1
+    }
+    
+    log("Loop completed, counter: " + counter)
+  }
+  
+  update(dt) {
+    # Test single-line if
+    if (counter > 10) counter = 0
+    
+    # Test for loop in update
+    if (is_key_pressed("t")) {
+      for (j = 0; j < 3; j++) {
+        log("Test loop: " + j)
+      }
+    }
+  }
+  
+  destroy {
+    log("For loop test destroyed")
+  }
+}

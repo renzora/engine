@@ -1,0 +1,201 @@
+script allTextures {
+  props basic_textures {
+    texture: string {
+      default: "",
+      description: "Main color texture (albedo/diffuse)",
+      once: true
+    }
+    
+    normal_texture: string {
+      default: "",
+      description: "Normal map for surface detail",
+      once: true
+    }
+    
+    emissive_texture: string {
+      default: "",
+      description: "Emissive glow texture",
+      once: true
+    }
+    
+    specular_texture: string {
+      default: "",
+      description: "Specular reflectivity map",
+      once: true
+    }
+  }
+  
+  props advanced_textures {
+    ambient_texture: string {
+      default: "",
+      description: "Ambient occlusion map",
+      once: true
+    }
+    
+    opacity_texture: string {
+      default: "",
+      description: "Transparency mask",
+      once: true
+    }
+    
+    reflection_texture: string {
+      default: "",
+      description: "Environment reflection map",
+      once: true
+    }
+    
+    refraction_texture: string {
+      default: "",
+      description: "Glass distortion map",
+      once: true
+    }
+    
+    lightmap_texture: string {
+      default: "",
+      description: "Baked lighting map",
+      once: true
+    }
+  }
+  
+  props pbr_textures {
+    metallic_texture: string {
+      default: "",
+      description: "Metallic workflow map",
+      once: true
+    }
+    
+    roughness_texture: string {
+      default: "",
+      description: "Roughness workflow map",
+      once: true
+    }
+    
+    micro_roughness_texture: string {
+      default: "",
+      description: "Fine surface detail map",
+      once: true
+    }
+  }
+  
+  props geometry_textures {
+    displacement_texture: string {
+      default: "",
+      description: "Height-based geometry displacement",
+      once: true
+    }
+    
+    detail_texture: string {
+      default: "",
+      description: "High-frequency surface detail",
+      once: true
+    }
+  }
+  
+  props material_properties {
+    metallic: range {
+      default: 0.0,
+      min: 0,
+      max: 1,
+      description: "Metallic strength",
+      once: true
+    }
+    
+    roughness: range {
+      default: 0.5,
+      min: 0,
+      max: 1,
+      description: "Surface roughness",
+      once: true
+    }
+    
+    opacity: range {
+      default: 1.0,
+      min: 0,
+      max: 1,
+      description: "Material opacity",
+      once: true
+    }
+  }
+  
+  start {
+    log("All texture types script initialized")
+    add_tag("textured_object")
+  }
+  
+  once {
+    log("Applying all texture settings...")
+    
+    # Apply material properties
+    set_material_property("metallic", metallic)
+    set_material_property("roughness", roughness)
+    set_material_property("alpha", opacity)
+    
+    # Apply basic textures
+    if (texture) {
+      set_diffuse_texture(texture)
+    }
+    
+    if (normal_texture) {
+      set_normal_texture(normal_texture)
+    }
+    
+    if (emissive_texture) {
+      set_emissive_texture(emissive_texture)
+    }
+    
+    if (specular_texture) {
+      set_specular_texture(specular_texture)
+    }
+    
+    # Apply advanced textures
+    if (ambient_texture) {
+      set_ambient_texture(ambient_texture)
+    }
+    
+    if (opacity_texture) {
+      set_opacity_texture(opacity_texture)
+    }
+    
+    if (reflection_texture) {
+      set_reflection_texture(reflection_texture)
+    }
+    
+    if (refraction_texture) {
+      set_refraction_texture(refraction_texture)
+    }
+    
+    if (lightmap_texture) {
+      set_lightmap_texture(lightmap_texture)
+    }
+    
+    # Apply PBR textures
+    if (metallic_texture) {
+      set_metallic_texture(metallic_texture)
+    }
+    
+    if (roughness_texture) {
+      set_roughness_texture(roughness_texture)
+    }
+    
+    if (micro_roughness_texture) {
+      set_micro_roughness_texture(micro_roughness_texture)
+    }
+    
+    # Apply geometry textures
+    if (displacement_texture) {
+      set_displacement_texture(displacement_texture)
+    }
+    
+    if (detail_texture) {
+      set_detail_texture(detail_texture)
+    }
+  }
+
+  update(dt) {
+    # No animation in this example
+  }
+
+  destroy {
+    log("All textures script destroyed")
+  }
+}

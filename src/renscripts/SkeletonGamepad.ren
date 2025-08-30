@@ -1,0 +1,355 @@
+mesh SkeletonGamepadController {
+  props Movement {
+    enabled: boolean {
+      default: true,
+      description: "Enable gamepad control"
+    }
+    
+    move_speed: range {
+      default: 5.0,
+      min: 0.1,
+      max: 20.0,
+      description: "Walking/running speed"
+    }
+    
+    rotation_speed: range {
+      default: 2.0,
+      min: 0.1,
+      max: 10.0,
+      description: "Rotation speed"
+    }
+    
+    gamepad_index: range {
+      default: 0.0,
+      min: 0.0,
+      max: 3.0,
+      description: "Gamepad index (0-3)"
+    }
+  }
+  
+  props Animation {
+    idle_animation: string {
+      default: "idle",
+      description: "Name of idle animation"
+    }
+    
+    walk_animation: string {
+      default: "walk", 
+      description: "Name of walk animation"
+    }
+    
+    run_animation: string {
+      default: "run",
+      description: "Name of run animation"
+    }
+    
+    jump_animation: string {
+      default: "jump",
+      description: "Name of jump animation"
+    }
+    
+    animation_speed: range {
+      default: 1.0,
+      min: 0.1,
+      max: 3.0,
+      description: "Animation playback speed"
+    }
+    
+    blend_time: range {
+      default: 0.3,
+      min: 0.1,
+      max: 2.0,
+      description: "Animation blend/transition time"
+    }
+  }
+  
+  props Camera {
+    camera_follow: boolean {
+      default: true,
+      description: "Enable camera following"
+    }
+    
+    camera_distance: range {
+      default: 8.0,
+      min: 2.0,
+      max: 20.0,
+      description: "Camera distance behind character"
+    }
+    
+    camera_height: range {
+      default: 3.0,
+      min: 0.5,
+      max: 10.0,
+      description: "Camera height above character"
+    }
+    
+    camera_sensitivity: range {
+      default: 2.0,
+      min: 0.5,
+      max: 5.0,
+      description: "Camera rotation sensitivity"
+    }
+  }
+  
+  # Movement state
+  pos_x = 0.0
+  pos_y = 0.0
+  pos_z = 0.0
+  rot_y = 0.0
+  velocity_y = 0.0
+  
+  # Animation state
+  current_animation = "idle"
+  is_moving = false
+  is_running = false
+  is_jumping = false
+  ground_level = 0.0
+  
+  # Camera state
+  camera_rot_x = 0.0
+  camera_rot_y = 0.0
+  
+  # Helper function to determine movement state
+  get_movement_state(left_x, left_y, run_button_pressed) {
+    stick_magnitude = sqrt(left_x * left_x + left_y * left_y)
+    
+    if (stick_magnitude < 0.1) {
+      return "idle"
+    }
+    
+    if (run_button_pressed && stick_magnitude > 0.5) {
+      return "run"
+    }
+    
+    return "walk"
+  }
+  
+  # Function to play appropriate animation based on state
+  update_character_animation(movement_state) {
+    if (current_animation != movement_state) {
+      log("Animation state change: " + current_animation + " -> " + movement_state)
+      
+      switch (movement_state) {
+        case "idle":
+          if (has_skeleton()) {
+            play_idle_animation()
+            set_animation_speed(animation_speed)
+          }
+          break
+          
+        case "walk":
+          if (has_skeleton()) {
+            play_walk_animation()
+            set_animation_speed(animation_speed)
+          }
+          break
+          
+        case "run":
+          if (has_skeleton()) {
+            play_run_animation() 
+            set_animation_speed(animation_speed * 1.5)
+          }
+          break
+          
+        case "jump":
+          if (has_skeleton()) {
+            play_jump_animation()
+            set_animation_speed(animation_speed)
+          }
+          break
+      }
+      
+      current_animation = movement_state
+    }
+  }
+  
+  # Function to handle smooth movement with physics
+  apply_movement(move_x, move_z, dt, is_running_state) {
+    # Apply movement relative to camera view direction
+    cos_rot = cos(camera_rot_y)
+    sin_rot = sin(camera_rot_y)
+    
+    # Transform movement to world space (relative to camera direction)
+    world_move_x = move_x * cos_rot - move_z * sin_rot
+    world_move_z = move_x * sin_rot + move_z * cos_rot
+    
+    # Apply speed multiplier for running
+    speed_multiplier = 1.0
+    if (is_running_state) {
+      speed_multiplier = 2.0
+    }
+    
+    pos_x = pos_x + world_move_x * speed_multiplier * dt
+    pos_z = pos_z + world_move_z * speed_multiplier * dt
+    
+    # Rotate character to face movement direction if moving
+    if (move_x != 0.0 || move_z != 0.0) {
+      rot_y = atan2(world_move_x, world_move_z)
+    }
+  }
+  
+  # Function to handle jumping with gravity
+  handle_jumping(jump_pressed, dt) {
+    gravity = -20.0
+    jump_force = 15.0
+    
+    # Apply gravity
+    velocity_y = velocity_y + gravity * dt
+    pos_y = pos_y + velocity_y * dt
+    
+    # Ground collision
+    if (pos_y <= ground_level) {
+      pos_y = ground_level
+      
+      # Jump if button pressed and on ground
+      if (jump_pressed && velocity_y <= 0.0) {
+        velocity_y = jump_force
+        is_jumping = true
+        
+        # Trigger jump animation
+        if (has_skeleton()) {
+          play_jump_animation()
+        }
+        
+        log("Character jumped!")
+      } else if (velocity_y <= 0.0) {
+        velocity_y = 0.0
+        is_jumping = false
+      }
+    }
+  }
+  
+  # Function to update camera to follow character
+  update_camera(dt) {
+    # Update camera pitch with right stick Y
+    camera_rot_x = camera_rot_x + right_y * camera_sensitivity * dt
+    camera_rot_x = clamp(camera_rot_x, -1.4, 0.5)  # Clamp vertical rotation
+    
+    # Position camera orbiting around character
+    cos_rot = cos(camera_rot_y)
+    sin_rot = sin(camera_rot_y)
+    cos_pitch = cos(camera_rot_x)
+    
+    # Camera position: orbiting around character
+    cam_x = pos_x - sin_rot * camera_distance * cos_pitch
+    cam_y = pos_y + camera_height + camera_distance * sin(-camera_rot_x)
+    cam_z = pos_z - cos_rot * camera_distance * cos_pitch
+    
+    set_camera_position(cam_x, cam_y, cam_z)
+    set_camera_target(pos_x, pos_y + camera_height * 0.5, pos_z)
+  }
+  
+  start {
+    log("=== SKELETON GAMEPAD CONTROLLER ===")
+    log("Controls:")
+    log("  Left Stick: Move")  
+    log("  Right Stick: Camera (Look Around)")
+    log("  A/Cross: Jump")
+    log("  X/Square: Run (hold)")
+    log("  Y/Triangle: Reset")
+    log("=====================================")
+    
+    add_tag("skeleton_character")
+    
+    # Initialize position
+    initial_pos = get_position()
+    pos_x = initial_pos[0]
+    pos_y = initial_pos[1] 
+    pos_z = initial_pos[2]
+    ground_level = pos_y
+    
+    # Start with idle animation if skeleton exists
+    if (has_skeleton()) {
+      log("Skeleton detected - starting idle animation")
+      play_idle_animation()
+      set_animation_speed(animation_speed)
+    } else {
+      log("No skeleton found - using transform-only movement")
+    }
+    
+    current_animation = "idle"
+    
+    # Initialize camera rotation to match character
+    camera_rot_y = rot_y
+  }
+  
+  update(dt) {
+    if (!enabled) {
+      return
+    }
+    
+    gamepad_idx = floor(gamepad_index)
+    
+    # Get gamepad input
+    left_x = get_left_stick_x(gamepad_idx)
+    left_y = get_left_stick_y(gamepad_idx) * -1.0  # Invert for forward/back
+    right_x = get_right_stick_x(gamepad_idx)
+    right_y = get_right_stick_y(gamepad_idx) * -1.0  # Camera pitch
+    
+    # Button inputs
+    jump_pressed = is_gamepad_button_pressed(0, gamepad_idx)  # A/Cross
+    run_pressed = is_gamepad_button_pressed(2, gamepad_idx)   # X/Square  
+    reset_pressed = is_gamepad_button_pressed(3, gamepad_idx) # Y/Triangle
+    
+    # Calculate movement
+    move_x = left_x * move_speed
+    move_z = left_y * move_speed
+    
+    # Determine animation state
+    movement_state = get_movement_state(left_x, left_y, run_pressed)
+    
+    # Handle jumping (affects animation state)
+    if (jump_pressed) {
+      movement_state = "jump"
+    }
+    
+    # Update character animation
+    update_character_animation(movement_state)
+    
+    # Apply movement
+    apply_movement(move_x, move_z, dt, run_pressed)
+    
+    # Handle jumping physics
+    handle_jumping(jump_pressed, dt)
+    
+    # Update camera rotation with right stick (this affects movement direction)
+    camera_rot_y = camera_rot_y + right_x * camera_sensitivity * dt
+    
+    # Reset button
+    if (reset_pressed) {
+      pos_x = 0.0
+      pos_y = ground_level
+      pos_z = 0.0
+      rot_y = 0.0
+      velocity_y = 0.0
+      
+      # Reset to idle animation
+      if (has_skeleton()) {
+        play_idle_animation()
+      }
+      current_animation = "idle"
+      
+      log("Character reset to origin")
+    }
+    
+    # Apply all transforms
+    set_position(pos_x, pos_y, pos_z)
+    set_rotation(0.0, rot_y, 0.0)
+    
+    # Update camera to follow character
+    if (camera_follow) {
+      update_camera(dt)
+    }
+  }
+  
+  destroy {
+    log("Skeleton gamepad controller destroyed")
+    
+    # Stop all animations
+    if (has_skeleton()) {
+      stop_animation()
+    }
+    
+    remove_tag("skeleton_character")
+  }
+}

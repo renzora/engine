@@ -381,7 +381,7 @@ function AssetLibrary({ onContextMenu }) {
         },
         'scripts': {
           name: 'Scripts',
-          extensions: ['.js', '.ts', '.jsx', '.tsx', '.json'],
+          extensions: ['.js', '.ts', '.jsx', '.tsx', '.json', '.ren'],
           assets: []
         },
         'documents': {

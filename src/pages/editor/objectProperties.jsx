@@ -5,6 +5,7 @@ import { objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/
 import { renderStore } from '@/render/store';
 import { CollapsibleSection } from '@/ui';
 import { getScriptRuntime } from '@/api/script';
+import { bridgeService } from '@/plugins/core/bridge';
 
 function ObjectProperties() {
   console.log('🏗️ ObjectProperties component created');
@@ -12,6 +13,9 @@ function ObjectProperties() {
   const { updateObjectProperty } = objectPropertiesActions;
   const [isDragOverScript, setIsDragOverScript] = createSignal(false);
   const [isResettingProperties, setIsResettingProperties] = createSignal(false);
+  const [scriptSearchTerm, setScriptSearchTerm] = createSignal('');
+  const [searchResults, setSearchResults] = createSignal([]);
+  const [isSearching, setIsSearching] = createSignal(false);
   
   // Individual signals for each property type
   console.log('🏗️ Creating signals');
@@ -21,6 +25,46 @@ function ObjectProperties() {
   const [scriptPropertiesSignal, setScriptPropertiesSignal] = createSignal({});
   const [scriptMetadataVersion, setScriptMetadataVersion] = createSignal(0);
   let previousScriptSections = {};
+
+  // Dynamic script search using bridge service
+  const searchScripts = async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    try {
+      const scripts = await bridgeService.listDirectory('src/renscripts');
+      const matchingScripts = scripts
+        .filter(script => 
+          script.name.endsWith('.ren') && 
+          script.name.toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .map(script => ({
+          name: script.name,
+          path: `src/renscripts/${script.name}`
+        }));
+      
+      setSearchResults(matchingScripts);
+      console.log('📜 Script search results:', matchingScripts);
+    } catch (error) {
+      console.warn('Error searching scripts:', error);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  // Debounced search effect
+  createEffect(() => {
+    const term = scriptSearchTerm();
+    const timeoutId = setTimeout(() => {
+      searchScripts(term);
+    }, 300); // 300ms debounce
+    
+    onCleanup(() => clearTimeout(timeoutId));
+  });
 
   // Get the selected Babylon object directly
   const getSelectedBabylonObject = () => {
@@ -924,6 +968,87 @@ function ObjectProperties() {
           <div className="space-y-0">
             <CollapsibleSection title="Scripts" defaultOpen={true} index={0}>
               <div>
+                {/* Script Search Box */}
+                <div className="mb-3">
+                  <input
+                    type="text"
+                    placeholder="Search scripts..."
+                    value={scriptSearchTerm()}
+                    onInput={(e) => setScriptSearchTerm(e.target.value)}
+                    className="input input-bordered input-sm w-full text-sm"
+                  />
+                  
+                  {/* Available Scripts Dropdown */}
+                  <Show when={scriptSearchTerm() && searchResults().length > 0}>
+                    <div className="mt-2 max-h-32 overflow-y-auto bg-base-100 border border-base-300 rounded shadow-lg">
+                      <For each={searchResults()}>
+                        {(script) => (
+                          <div 
+                            className="p-2 hover:bg-base-200 cursor-pointer border-b border-base-300/50 last:border-b-0"
+                            onClick={async () => {
+                              if (!selection.entity) return;
+                              
+                              console.log('🔧 Adding script from search:', script.path, 'to', selection.entity);
+                              
+                              const currentScripts = objectProps.scripts || [];
+                              if (!currentScripts.find(s => s.path === script.path)) {
+                                // Use script runtime to attach and start the script
+                                const runtime = getScriptRuntime();
+                                const success = await runtime.attachScript(selection.entity, script.path);
+                                
+                                if (success) {
+                                  // Get script instance and add its defaults to Babylon metadata
+                                  const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
+                                  const babylonObject = getSelectedBabylonObject();
+                                  
+                                  if (scriptInstance && babylonObject) {
+                                    // Add script defaults to originalProperties in Babylon metadata
+                                    addScriptDefaults(babylonObject, scriptInstance);
+                                  }
+                                  
+                                  const metadata = scriptInstance?._scriptProperties || [];
+                                  const defaultValues = {};
+                                  
+                                  console.log('📝 Script metadata:', metadata);
+                                  
+                                  // Extract default values from metadata (for UI compatibility)
+                                  if (Array.isArray(metadata)) {
+                                    metadata.forEach(prop => {
+                                      defaultValues[prop.name] = prop.defaultValue;
+                                      console.log(`📝 Storing default: ${prop.name} = ${prop.defaultValue}`);
+                                    });
+                                  }
+                                  
+                                  const newScripts = [...currentScripts, { 
+                                    path: script.path, 
+                                    name: script.name,
+                                    enabled: true,
+                                    metadata: metadata,
+                                    defaultValues: defaultValues,
+                                    properties: defaultValues
+                                  }];
+                                  updateObjectProperty(selection.entity, 'scripts', newScripts);
+                                  editorActions.addConsoleMessage(`Script "${script.name}" attached and started`, 'success');
+                                  setScriptSearchTerm(''); // Clear search
+                                } else {
+                                  editorActions.addConsoleMessage(`Cannot attach "${script.name}" - check console for details`, 'error');
+                                }
+                              } else {
+                                editorActions.addConsoleMessage(`Script "${script.name}" already attached`, 'warning');
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <CodeSlash className="w-4 h-4 text-secondary" />
+                              <span className="text-sm">{script.name}</span>
+                            </div>
+                          </div>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </div>
+                
                 {/* Attached Scripts List - Outside the drop zone */}
                 <Show when={objectProps.scripts && objectProps.scripts.length > 0}>
                   <div>

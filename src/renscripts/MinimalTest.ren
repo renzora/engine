@@ -1,0 +1,23 @@
+script MinimalTestDemo {
+  counter = 5
+  
+  test_function() {
+    if (counter == 0) {
+      return
+    }
+    
+    for (i = 0; i < 3; i = i + 1) {
+      log("Loop: " + i)
+    }
+  }
+  
+  start {
+    test_function()
+  }
+  
+  update(dt) {
+  }
+  
+  destroy {
+  }
+}

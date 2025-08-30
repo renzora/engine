@@ -1,0 +1,184 @@
+script SimpleAnimationDemo {
+  props Animation_Settings {
+    animate_position: boolean {
+      default: true,
+      description: "Enable position animation"
+    }
+    
+    target_x: range {
+      default: 3.0,
+      min: -10.0,
+      max: 10.0,
+      description: "Target X position"
+    }
+    
+    target_y: range {
+      default: 2.0,
+      min: -10.0,
+      max: 10.0,
+      description: "Target Y position"
+    }
+    
+    target_z: range {
+      default: 1.0,
+      min: -10.0,
+      max: 10.0,
+      description: "Target Z position"
+    }
+    
+    animation_duration: range {
+      default: 2000.0,
+      min: 500.0,
+      max: 10000.0,
+      description: "Animation duration in milliseconds"
+    }
+    
+    loop_animation: boolean {
+      default: false,
+      description: "Loop the animation"
+    }
+  }
+  
+  props Color_Animation {
+    animate_color: boolean {
+      default: true,
+      description: "Enable color animation"
+    }
+    
+    color_speed: range {
+      default: 1.0,
+      min: 0.1,
+      max: 5.0,
+      description: "Color animation speed"
+    }
+    
+    animate_alpha: boolean {
+      default: false,
+      description: "Enable alpha animation"
+    }
+    
+    min_alpha: range {
+      default: 0.3,
+      min: 0.0,
+      max: 1.0,
+      description: "Minimum alpha value"
+    }
+  }
+  
+  # State variables
+  time_elapsed = 0.0
+  start_position = [0, 0, 0]
+  animation_started = false
+  
+  start {
+    log("Simple Animation Demo initialized")
+    add_tag("animated")
+    
+    # Store starting position
+    start_position = get_position()
+  }
+  
+  once {
+    if (animate_position) {
+      log("Starting position animation...")
+      animate_position(target_x, target_y, target_z, animation_duration)
+      animation_started = true
+    }
+    
+    if (animate_alpha) {
+      log("Starting alpha animation...")
+      animate_alpha(min_alpha, animation_duration)
+    }
+  }
+  
+  update(dt) {
+    time_elapsed = time_elapsed + dt
+    
+    # Continuous color animation
+    if (animate_color) {
+      red = sin(time_elapsed * color_speed * 0.001) * 0.5 + 0.5
+      green = sin(time_elapsed * color_speed * 0.001 + 2.0) * 0.5 + 0.5
+      blue = sin(time_elapsed * color_speed * 0.001 + 4.0) * 0.5 + 0.5
+      set_color(red, green, blue)
+    }
+    
+    # Handle input - inline
+    # Start new animation with SPACE
+    if (is_key_pressed("space")) {
+      animate_position(target_x, target_y, target_z, animation_duration)
+      log("Animation restarted")
+    }
+    
+    # Return to start with HOME key
+    if (is_key_pressed("home")) {
+      animate_position(start_position[0], start_position[1], start_position[2], 1000)
+      log("Returning to start position")
+    }
+    
+    # Stop all animations with S key
+    if (is_key_pressed("s")) {
+      stop_animation()
+      log("All animations stopped")
+    }
+    
+    # Quick animations with number keys
+    if (is_key_pressed("1")) {
+      animate_position(5, 0, 0, 1000)
+    }
+    
+    if (is_key_pressed("2")) {
+      animate_position(0, 5, 0, 1000)
+    }
+    
+    if (is_key_pressed("3")) {
+      animate_position(0, 0, 5, 1000)
+    }
+    
+    if (is_key_pressed("4")) {
+      animate_position(-5, 0, 0, 1000)
+    }
+    
+    # Color animations
+    if (is_key_pressed("r")) {
+      animate_color(1.0, 0.0, 0.0, 500)
+    }
+    
+    if (is_key_pressed("g")) {
+      animate_color(0.0, 1.0, 0.0, 500)
+    }
+    
+    if (is_key_pressed("b")) {
+      animate_color(0.0, 0.0, 1.0, 500)
+    }
+    
+    # Scale animations
+    if (is_key_pressed("=")) {
+      animate_scale(2.0, 2.0, 2.0, 800)
+    }
+    
+    if (is_key_pressed("-")) {
+      animate_scale(0.5, 0.5, 0.5, 800)
+    }
+    
+    # Reset scale
+    if (is_key_pressed("0")) {
+      animate_scale(1.0, 1.0, 1.0, 500)
+    }
+    
+    # Check for animation completion and loop
+    if (loop_animation && animation_started) {
+      # This is a simple approximation of animation looping
+      if (time_elapsed > animation_duration) {
+        # Reset and restart
+        set_position(start_position[0], start_position[1], start_position[2])
+        animate_position(target_x, target_y, target_z, animation_duration)
+        time_elapsed = 0.0
+      }
+    }
+  }
+  
+  destroy {
+    log("Simple Animation Demo destroyed")
+    stop_animation()
+  }
+}
