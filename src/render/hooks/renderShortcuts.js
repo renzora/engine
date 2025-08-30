@@ -614,21 +614,28 @@ export function renderShortcuts(callbacks = {}) {
         
       case 'scale':
         const scaleSensitivity = 0.01;
-        const scaleDelta = 1 + (deltaX * scaleSensitivity);
         if (transformState.axis) {
+          let scaleDelta;
           switch (transformState.axis) {
             case 'x':
+              // X axis scaling uses horizontal mouse movement
+              scaleDelta = 1 + (deltaX * scaleSensitivity);
               selectedObject.scaling.x = transformState.originalTransform.scaling.x * scaleDelta;
               break;
             case 'y':
+              // Y axis scaling uses vertical mouse movement (inverted)
+              scaleDelta = 1 + (-deltaY * scaleSensitivity);
               selectedObject.scaling.y = transformState.originalTransform.scaling.y * scaleDelta;
               break;
             case 'z':
+              // Z axis scaling uses vertical mouse movement (forward/back)
+              scaleDelta = 1 + (deltaY * scaleSensitivity);
               selectedObject.scaling.z = transformState.originalTransform.scaling.z * scaleDelta;
               break;
           }
         } else {
-          // Uniform scaling
+          // Uniform scaling uses horizontal movement
+          const scaleDelta = 1 + (deltaX * scaleSensitivity);
           selectedObject.scaling.copyFrom(transformState.originalTransform.scaling);
           selectedObject.scaling.scaleInPlace(scaleDelta);
         }
