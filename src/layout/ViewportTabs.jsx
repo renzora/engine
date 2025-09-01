@@ -192,7 +192,7 @@ const ViewportTabs = () => {
 
   return (
     <>
-      <div className="flex items-stretch h-8 bg-base-200/95 border-b border-base-content/10 shadow-sm overflow-hidden">
+      <div className="flex items-stretch h-8 bg-base-200/95 shadow-sm overflow-hidden relative">
         <div className="flex items-center min-w-0 flex-1 overflow-x-hidden">
           <For each={tabs()}>
             {(tab) => {
@@ -202,8 +202,8 @@ const ViewportTabs = () => {
               return (
                 <div
                   classList={{
-                    'group flex items-center gap-2 px-3 py-1 border-r border-gray-700 cursor-pointer transition-all select-none min-w-0 max-w-48 flex-shrink-0 h-full': true,
-                    'bg-primary/20 border-b-2 border-b-primary text-primary': isActive(),
+                    'group flex items-center gap-2 px-3 py-1 border-r border-neutral cursor-pointer transition-all select-none min-w-0 max-w-48 flex-shrink-0 h-full relative border-t border-b border-neutral': true,
+                    'bg-primary/20 text-primary': isActive(),
                     'text-base-content/60 hover:text-base-content hover:bg-base-300': !isActive()
                   }}
                   onClick={() => handleTabClick(tab.id)}
@@ -211,6 +211,7 @@ const ViewportTabs = () => {
                   onMouseDown={(e) => handleMiddleClick(e, tab.id)}
                   title={tab.name}
                 >
+                  <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-base-content/15 to-transparent"></div>
                   <Icon className="w-4 h-4 flex-shrink-0" />
                   
                   <Show 
@@ -259,7 +260,7 @@ const ViewportTabs = () => {
             }}
           </For>
 
-          <div className="relative flex-shrink-0 h-full bg-neutral border-r border-neutral-content/50">
+          <div className="relative flex-shrink-0 h-full bg-neutral rounded-tr-lg">
             <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -269,7 +270,7 @@ const ViewportTabs = () => {
                 });
                 setIsAddDropdownOpen(!isAddDropdownOpen());
               }}
-              className="flex items-center px-3 text-base-content/60 hover:text-base-content hover:bg-base-300/80 hover:border-base-content/90 transition-colors h-full cursor-pointer"
+              className="flex items-center px-3 text-base-content hover:text-base-content/60 bg-base-300/80 hover:bg-neutral transition-colors h-full cursor-pointer rounded-tr-lg"
               title="Add Viewport"
             >
               <Plus className="w-4 h-4" />

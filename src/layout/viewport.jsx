@@ -251,43 +251,10 @@ const Viewport = () => {
           const PluginComponent = pluginViewportType.component;
           console.log('🎯 Rendering plugin component for:', tab.type);
           
-          // Special handling for splash viewport - no header
-          if (tab.type === 'splash-viewport') {
-            return (
-              <div className="absolute inset-0 bg-base-100">
-                <PluginComponent tab={tab} />
-              </div>
-            );
-          }
-          
+          // All plugin viewports render without headers
           return (
-            <div className="absolute inset-0 bg-base-100 flex flex-col">
-              <div className="flex items-center justify-between p-3 border-b border-base-300 bg-base-200">
-                <div className="flex items-center gap-2">
-                  <Show when={pluginViewportType.icon} fallback={<Settings class="w-4 h-4 text-base-content/60" />}>
-                    <div class="w-4 h-4 text-base-content/60">
-                      <pluginViewportType.icon class="w-4 h-4" />
-                    </div>
-                  </Show>
-                  <span className="text-sm font-medium text-base-content">{tab.name}</span>
-                </div>
-                <button
-                  onClick={() => {
-                    const threeDTab = viewportStore.tabs.find(t => t.type === '3d-viewport');
-                    if (threeDTab) {
-                      viewportActions.setActiveViewportTab(threeDTab.id);
-                    }
-                  }}
-                  className="p-1 hover:bg-base-300 rounded transition-colors"
-                  title="Close overlay (return to 3D view)"
-                >
-                  <X class="w-4 h-4 text-base-content/60" />
-                </button>
-              </div>
-              
-              <div className="flex-1 overflow-hidden">
-                <PluginComponent tab={tab} />
-              </div>
+            <div className="absolute inset-0 bg-base-100">
+              <PluginComponent tab={tab} />
             </div>
           );
         }

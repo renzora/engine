@@ -163,7 +163,7 @@ function BridgeViewport({ tab }) {
       pluginAPI.hidePanel();
       pluginAPI.hideProps();
       pluginAPI.hideMenu();
-      pluginAPI.hideTabs();
+      pluginAPI.showTabs();
     }
   });
 
@@ -182,237 +182,311 @@ function BridgeViewport({ tab }) {
   });
 
   return (
-    <div className="flex flex-col h-full bg-base-100">
-      <div className="flex items-center justify-between p-4 border-b border-base-300">
-        <div className="flex items-center gap-3">
-          <span className="text-lg font-semibold">🌉 Bridge Management</span>
-          <div className={`flex items-center gap-2 px-2 py-1 rounded text-xs ${
-            isOnline() ? 'bg-success/20 text-success' : 'bg-error/20 text-error'
+    <div className="flex flex-col h-full bg-gradient-to-br from-base-100 to-base-200/50">
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b border-base-300/50 bg-base-100/80 backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-br from-primary/20 to-secondary/20 rounded-xl border border-primary/30">
+              <Settings className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-base-content">Bridge Management</h1>
+              <p className="text-sm text-base-content/60">Server monitoring and cache control</p>
+            </div>
+          </div>
+          
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+            isOnline() 
+              ? 'bg-success/10 text-success border border-success/30' 
+              : 'bg-error/10 text-error border border-error/30'
           }`}>
-            <div className={`w-2 h-2 rounded-full ${isOnline() ? 'bg-success' : 'bg-error'}`} />
-            {isOnline() ? 'Online' : 'Offline'}
+            <div className={`w-2 h-2 rounded-full ${isOnline() ? 'bg-success animate-pulse' : 'bg-error'}`} />
+            {isOnline() ? 'Connected' : 'Disconnected'}
           </div>
         </div>
         
-        <div className="flex gap-2">
-          <button
-            onClick={checkBridgeStatus}
-            className="btn btn-sm btn-outline"
-            disabled={isLoading()}
-          >
-            🔄 Refresh Status
-          </button>
-        </div>
+        <button
+          onClick={checkBridgeStatus}
+          className="btn btn-sm btn-primary btn-outline gap-2"
+          disabled={isLoading()}
+        >
+          <Settings className="w-4 h-4" />
+          {isLoading() ? 'Refreshing...' : 'Refresh'}
+        </button>
       </div>
 
-      <div className="flex border-b border-base-300">
+      {/* Tab Navigation */}
+      <div className="flex bg-base-100/60 border-b border-base-300/30">
         <button
           onClick={() => setActiveTab('cache')}
-          className={`px-4 py-2 text-sm transition-colors ${
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab() === 'cache' 
-              ? 'bg-primary text-primary-content border-b-2 border-primary' 
-              : 'hover:bg-base-200'
+              ? 'text-primary bg-primary/5 border-b-2 border-primary' 
+              : 'text-base-content/60 hover:text-base-content hover:bg-base-200/50'
           }`}
         >
-          📂 Cache Management
+          Cache & Search
         </button>
         <button
           onClick={() => setActiveTab('database')}
-          className={`px-4 py-2 text-sm transition-colors ${
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab() === 'database' 
-              ? 'bg-primary text-primary-content border-b-2 border-primary' 
-              : 'hover:bg-base-200'
+              ? 'text-primary bg-primary/5 border-b-2 border-primary' 
+              : 'text-base-content/60 hover:text-base-content hover:bg-base-200/50'
           }`}
         >
-          🗄️ Database
+          Database
         </button>
         <button
           onClick={() => setActiveTab('logs')}
-          className={`px-4 py-2 text-sm transition-colors ${
+          className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab() === 'logs' 
-              ? 'bg-primary text-primary-content border-b-2 border-primary' 
-              : 'hover:bg-base-200'
+              ? 'text-primary bg-primary/5 border-b-2 border-primary' 
+              : 'text-base-content/60 hover:text-base-content hover:bg-base-200/50'
           }`}
         >
-          📜 Logs
+          System Logs
         </button>
       </div>
 
       <div className="flex-1 overflow-hidden">
         <Switch>
           <Match when={activeTab() === 'cache'}>
-            <div className="p-4 h-full overflow-y-auto">
-              <CollapsibleSection title="Cache Statistics" defaultOpen={true}>
-                <div className="grid grid-cols-2 gap-4 p-4">
-                  <div className="stat bg-base-200 rounded">
-                    <div className="stat-title">Cache Size</div>
-                    <div className="stat-value text-lg">{bridgeStatus().cache_size || 0}</div>
-                    <div className="stat-desc">bytes</div>
-                  </div>
-                  <div className="stat bg-base-200 rounded">
-                    <div className="stat-title">Thumbnails</div>
-                    <div className="stat-value text-lg">{bridgeStatus().thumbnail_count || 0}</div>
-                    <div className="stat-desc">cached</div>
+            <div className="p-6 h-full overflow-y-auto space-y-6">
+              {/* Stats Cards */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-gradient-to-br from-base-100 to-base-200 p-4 rounded-xl border border-base-300/50 shadow-sm">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <Settings className="w-4 h-4 text-primary" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-base-content/60 uppercase tracking-wide">Cache Size</div>
+                      <div className="text-lg font-bold text-base-content">{((bridgeStatus().cache_size || 0) / 1024).toFixed(1)} KB</div>
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-2 p-4">
+                
+                <div className="bg-gradient-to-br from-base-100 to-base-200 p-4 rounded-xl border border-base-300/50 shadow-sm">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-secondary/10 rounded-lg">
+                      <Settings className="w-4 h-4 text-secondary" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-base-content/60 uppercase tracking-wide">Thumbnails</div>
+                      <div className="text-lg font-bold text-base-content">{bridgeStatus().thumbnail_count || 0}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="bg-gradient-to-br from-base-100 to-base-200 p-4 rounded-xl border border-base-300/50 shadow-sm">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="p-2 bg-accent/10 rounded-lg">
+                      <Settings className="w-4 h-4 text-accent" />
+                    </div>
+                    <div>
+                      <div className="text-xs text-base-content/60 uppercase tracking-wide">Scripts</div>
+                      <div className="text-lg font-bold text-base-content">{allScripts().length}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="bg-base-100 p-4 rounded-xl border border-base-300/50 shadow-sm">
+                <h3 className="text-sm font-semibold text-base-content mb-3">Cache Operations</h3>
+                <div className="flex gap-3">
                   <button
                     onClick={clearCache}
-                    className="btn btn-warning btn-sm"
+                    className="btn btn-warning btn-sm gap-2"
                     disabled={isLoading()}
                   >
-                    {isLoading() ? 'Clearing...' : '🗑️ Clear Cache'}
+                    <Settings className="w-4 h-4" />
+                    {isLoading() ? 'Clearing...' : 'Clear Cache'}
                   </button>
                   <button
                     onClick={refreshRenScriptCache}
-                    className="btn btn-primary btn-sm"
+                    className="btn btn-primary btn-sm gap-2"
                     disabled={isLoading()}
                   >
-                    {isLoading() ? 'Refreshing...' : '🔄 Refresh RenScript Cache'}
+                    <Settings className="w-4 h-4" />
+                    {isLoading() ? 'Refreshing...' : 'Refresh Scripts'}
                   </button>
                 </div>
-              </CollapsibleSection>
+              </div>
 
-              <CollapsibleSection title="RenScript Search" defaultOpen={true}>
-                <div className="p-4">
-                  <div className="flex gap-2 mb-4">
-                    <input
-                      type="text"
-                      placeholder="Search renscripts..."
-                      value={searchTerm()}
-                      onInput={(e) => setSearchTerm(e.target.value)}
-                      className="input input-bordered flex-1"
-                    />
-                    <div className="badge badge-outline">{allScripts().length} total</div>
-                  </div>
-                  
-                  <div className="space-y-2 max-h-64 overflow-y-auto">
-                    <Show when={searchTerm().length > 0} fallback={
-                      <For each={allScripts().slice(0, 20)}>
-                        {(script) => (
-                          <div className="p-2 bg-base-200 rounded flex justify-between items-center">
-                            <div>
-                              <div className="font-medium">{script.name}</div>
-                              <div className="text-xs text-base-content/60">{script.full_path}</div>
-                            </div>
-                          </div>
-                        )}
-                      </For>
-                    }>
-                      <For each={searchResults()}>
-                        {(script) => (
-                          <div className="p-2 bg-primary/10 rounded flex justify-between items-center">
-                            <div>
-                              <div className="font-medium">{script.name}</div>
-                              <div className="text-xs text-base-content/60">{script.full_path}</div>
-                            </div>
-                            <div className="badge badge-primary badge-sm">{script.directory}</div>
-                          </div>
-                        )}
-                      </For>
-                    </Show>
-                    
-                    <Show when={searchTerm().length > 0 && searchResults().length === 0}>
-                      <div className="text-center text-base-content/50 py-4">
-                        No scripts found for "{searchTerm()}"
-                      </div>
-                    </Show>
-                  </div>
+              {/* Search Interface */}
+              <div className="bg-base-100 p-4 rounded-xl border border-base-300/50 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-base-content">RenScript Search</h3>
+                  <div className="badge badge-primary badge-sm">{allScripts().length} total</div>
                 </div>
-              </CollapsibleSection>
+                
+                <div className="mb-4">
+                  <input
+                    type="text"
+                    placeholder="Search scripts by name or path..."
+                    value={searchTerm()}
+                    onInput={(e) => setSearchTerm(e.target.value)}
+                    className="input input-bordered w-full"
+                  />
+                </div>
+                
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  <Show when={searchTerm().length > 0} fallback={
+                    <For each={allScripts().slice(0, 15)}>
+                      {(script) => (
+                        <div className="p-3 bg-base-200/50 rounded-lg border border-base-300/30 hover:bg-base-200 transition-colors">
+                          <div className="font-medium text-sm text-base-content">{script.name}</div>
+                          <div className="text-xs text-base-content/60 mt-1">{script.full_path}</div>
+                        </div>
+                      )}
+                    </For>
+                  }>
+                    <For each={searchResults()}>
+                      {(script) => (
+                        <div className="p-3 bg-primary/5 rounded-lg border border-primary/20 hover:bg-primary/10 transition-colors">
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="font-medium text-sm text-base-content">{script.name}</div>
+                              <div className="text-xs text-base-content/60 mt-1">{script.full_path}</div>
+                            </div>
+                            <div className="badge badge-primary badge-xs ml-2">{script.directory}</div>
+                          </div>
+                        </div>
+                      )}
+                    </For>
+                  </Show>
+                  
+                  <Show when={searchTerm().length > 0 && searchResults().length === 0}>
+                    <div className="text-center text-base-content/50 py-8">
+                      <div className="text-base-content/40 mb-2">No results found</div>
+                      <div className="text-sm">Try searching for "{searchTerm()}" with different terms</div>
+                    </div>
+                  </Show>
+                </div>
+              </div>
             </div>
           </Match>
 
           <Match when={activeTab() === 'database'}>
-            <div className="p-4 h-full overflow-y-auto">
-              <CollapsibleSection title="SQL Query Interface" defaultOpen={true}>
-                <div className="p-4">
-                  <div className="mb-4">
-                    <label className="label">
-                      <span className="label-text">SQL Query</span>
+            <div className="p-6 h-full overflow-y-auto space-y-6">
+              {/* Query Interface */}
+              <div className="bg-base-100 p-6 rounded-xl border border-base-300/50 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-base-content">SQL Query Interface</h3>
+                  <div className={`badge ${isOnline() ? 'badge-success' : 'badge-error'} badge-sm`}>
+                    {isOnline() ? 'Database Online' : 'Database Offline'}
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-base-content/80 mb-2 block">
+                      SQL Query
                     </label>
                     <textarea
                       value={sqlQuery()}
                       onInput={(e) => setSqlQuery(e.target.value)}
-                      className="textarea textarea-bordered w-full h-24 font-mono text-sm"
-                      placeholder="Enter SQL query..."
+                      className="textarea textarea-bordered w-full h-32 font-mono text-sm bg-base-200/50"
+                      placeholder="SELECT * FROM scripts WHERE name LIKE '%camera%';"
                     />
                   </div>
                   
-                  <div className="flex gap-2 mb-4">
+                  <div className="flex gap-3">
                     <button
                       onClick={executeQuery}
-                      className="btn btn-primary btn-sm"
+                      className="btn btn-primary gap-2"
                       disabled={isLoading() || !isOnline()}
                     >
-                      {isLoading() ? 'Executing...' : '▶️ Execute Query'}
+                      <Settings className="w-4 h-4" />
+                      {isLoading() ? 'Executing...' : 'Execute Query'}
                     </button>
                     <button
                       onClick={() => setSqlQuery('SELECT * FROM scripts LIMIT 10;')}
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost gap-2"
                     >
-                      📋 Sample Query
+                      <Settings className="w-4 h-4" />
+                      Sample Query
                     </button>
                   </div>
-
-                  <Show when={queryResults()}>
-                    <div className="bg-base-200 rounded p-4">
-                      <h4 className="font-medium mb-2">Query Results:</h4>
-                      <pre className="text-xs overflow-auto max-h-64 bg-base-300 p-2 rounded">
-                        {JSON.stringify(queryResults(), null, 2)}
-                      </pre>
-                    </div>
-                  </Show>
                 </div>
-              </CollapsibleSection>
+              </div>
+
+              {/* Results */}
+              <Show when={queryResults()}>
+                <div className="bg-base-100 p-6 rounded-xl border border-base-300/50 shadow-sm">
+                  <h4 className="text-lg font-semibold text-base-content mb-4">Query Results</h4>
+                  <div className="bg-base-200/50 rounded-lg p-4 max-h-96 overflow-auto">
+                    <pre className="text-xs font-mono text-base-content whitespace-pre-wrap">
+                      {JSON.stringify(queryResults(), null, 2)}
+                    </pre>
+                  </div>
+                </div>
+              </Show>
             </div>
           </Match>
 
           <Match when={activeTab() === 'logs'}>
-            <div className="p-4 h-full overflow-y-auto">
-              <CollapsibleSection title="Bridge Console Logs" defaultOpen={true}>
-                <div className="p-4">
-                  <div className="flex gap-2 mb-4">
+            <div className="p-6 h-full overflow-y-auto">
+              <div className="bg-base-100 p-6 rounded-xl border border-base-300/50 shadow-sm h-full flex flex-col">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-base-content">System Logs</h3>
+                  <div className="flex items-center gap-3">
+                    <div className="badge badge-outline">{logs().length} entries</div>
                     <button
                       onClick={() => setLogs([])}
-                      className="btn btn-ghost btn-sm"
+                      className="btn btn-ghost btn-sm gap-2"
                     >
-                      🗑️ Clear Logs
+                      <Settings className="w-4 h-4" />
+                      Clear Logs
                     </button>
-                    <div className="badge badge-outline">{logs().length} entries</div>
                   </div>
-                  
-                  <div className="bg-base-300 rounded p-4 h-64 overflow-y-auto font-mono text-xs">
+                </div>
+                
+                <div className="flex-1 bg-base-300/30 rounded-lg border border-base-300/50 overflow-hidden">
+                  <div className="h-full overflow-y-auto p-4 font-mono text-sm">
                     <Show when={logs().length === 0}>
-                      <div className="text-base-content/50 text-center py-8">
-                        No logs available. Bridge logs would appear here when integrated.
+                      <div className="text-center text-base-content/50 py-12">
+                        <div className="text-base-content/40 mb-2">No logs available</div>
+                        <div className="text-xs">Bridge logs will appear here when integrated</div>
                       </div>
                     </Show>
                     <For each={logs()}>
                       {(log) => (
-                        <div className={`mb-1 ${
-                          log.level === 'error' ? 'text-error' :
-                          log.level === 'warn' ? 'text-warning' :
-                          log.level === 'info' ? 'text-info' : ''
+                        <div className={`mb-2 p-2 rounded ${
+                          log.level === 'error' ? 'bg-error/10 text-error' :
+                          log.level === 'warn' ? 'bg-warning/10 text-warning' :
+                          log.level === 'info' ? 'bg-info/10 text-info' : 'bg-base-200/50'
                         }`}>
-                          <span className="text-base-content/60">[{log.timestamp}]</span> {log.message}
+                          <span className="text-base-content/60 text-xs">[{log.timestamp}]</span>
+                          <span className="ml-2">{log.message}</span>
                         </div>
                       )}
                     </For>
                   </div>
                 </div>
-              </CollapsibleSection>
+              </div>
             </div>
           </Match>
         </Switch>
       </div>
 
       <Show when={isOnline()}>
-        <div className="p-2 border-t border-base-300 bg-base-200/50">
-          <div className="flex justify-between items-center text-xs text-base-content/60">
-            <span>Uptime: {Math.floor((bridgeStatus().uptime || 0) / 1000)}s</span>
-            <span>Watched files: {bridgeStatus().watched_files || 0}</span>
-            <span>Port: 3001</span>
+        <div className="p-4 border-t border-base-300/30 bg-base-100/80 backdrop-blur-sm">
+          <div className="flex justify-between items-center text-sm">
+            <div className="flex items-center gap-4 text-base-content/60">
+              <span className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-success rounded-full animate-pulse" />
+                Uptime: {Math.floor((bridgeStatus().uptime || 0) / 1000)}s
+              </span>
+              <span>Files: {bridgeStatus().watched_files || 0}</span>
+              <span className="font-mono">:3001</span>
+            </div>
+            <div className="text-xs text-base-content/40">
+              Bridge Server v{bridgeStatus().version || '1.0.0'}
+            </div>
           </div>
         </div>
       </Show>
