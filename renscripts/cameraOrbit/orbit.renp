@@ -1,0 +1,27 @@
+props movement {
+  orbit_speed: float {
+    default: 1.0,
+    min: 0.0,
+    max: 5.0,
+    description: "Speed of camera orbit"
+  }
+  
+  radius_multiplier: float {
+    default: 3.0,
+    min: 1.0,
+    max: 10.0,
+    description: "Multiplier for object size to determine orbit distance"
+  }
+  
+  auto_orbit: boolean {
+    default: true,
+    description: "Enable automatic orbiting"
+  }
+  
+  direction: float {
+    default: 1.0,
+    min: -1.0,
+    max: 1.0,
+    description: "Orbit direction (1.0 = clockwise, -1.0 = counterclockwise)"
+  }
+}

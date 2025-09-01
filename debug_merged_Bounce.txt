@@ -1,0 +1,49 @@
+props physics {
+  gravity: float {
+    default: -9.81,
+    min: -20.0,
+    max: 0.0,
+    description: "Gravity strength"
+  }
+  
+  bounce_factor: range {
+    default: 0.8,
+    min: 0.0,
+    max: 1.0,
+    description: "Bounce strength"
+  }
+  
+  ground_level: float {
+    default: 0.0,
+    min: -10.0,
+    max: 10.0,
+    description: "Ground Y position"
+  }
+}
+
+script ObjectBounce {
+  velocity_y = 0.0
+  
+  start {
+    log("Physics bouncer initialized")
+  }
+  
+  update() {
+    pos = position()
+    pos_x = pos[0]
+    current_y = pos[1]
+    pos_z = pos[2]
+    
+    # Apply gravity
+    velocity_y = velocity_y + gravity * time()
+    new_y = current_y + velocity_y * time()
+    
+    # Ground collision
+    if (new_y <= ground_level) {
+      new_y = ground_level
+      velocity_y = velocity_y * -bounce_factor
+    }
+    
+    setPosition(pos_x, new_y, pos_z)
+  }
+}

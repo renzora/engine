@@ -22,6 +22,10 @@ export class CoreAPI {
     return [pos.x, pos.y, pos.z];
   }
 
+  position() {
+    return this.getPosition();
+  }
+
   setPosition(x, y, z) {
     if (!this.babylonObject?.position) return;
     this.babylonObject.position.set(x, y, z);
@@ -34,10 +38,18 @@ export class CoreAPI {
     return [worldPos.x, worldPos.y, worldPos.z];
   }
 
+  worldPosition() {
+    return this.getWorldPosition();
+  }
+
   getRotation() {
     if (!this.babylonObject?.rotation) return [0, 0, 0];
     const rot = this.babylonObject.rotation;
     return [rot.x, rot.y, rot.z];
+  }
+
+  rotation() {
+    return this.getRotation();
   }
 
   setRotation(x, y, z) {
@@ -55,10 +67,18 @@ export class CoreAPI {
     return this.getWorldRotation();
   }
 
+  worldRotation() {
+    return this.getWorldRotationQuaternion();
+  }
+
   getScale() {
     if (!this.babylonObject?.scaling) return [1, 1, 1];
     const scale = this.babylonObject.scaling;
     return [scale.x, scale.y, scale.z];
+  }
+
+  scale() {
+    return this.getScale();
   }
 
   setScale(x, y, z) {
@@ -134,14 +154,22 @@ export class CoreAPI {
     return Array.from(this.babylonObject?.metadata?.tags || []);
   }
 
+  tags() {
+    return this.getTags();
+  }
+
   // === TIME & UTILITY ===
   
   getDeltaTime() {
     return this._deltaTime;
   }
 
+  time() {
+    return this._deltaTime;
+  }
+
   getTime() {
-    return this.scene?.getEngine()?.getTimeInFrames() || 0;
+    return performance.now();
   }
 
   log(...args) {
@@ -207,6 +235,10 @@ export class CoreAPI {
     return this.babylonObject?.name || '';
   }
 
+  name() {
+    return this.getName();
+  }
+
   setName(name) {
     if (this.babylonObject) {
       this.babylonObject.name = name;
@@ -215,6 +247,10 @@ export class CoreAPI {
 
   getId() {
     return this.babylonObject?.id || '';
+  }
+
+  id() {
+    return this.getId();
   }
 
   // === UPDATE DELTA TIME ===

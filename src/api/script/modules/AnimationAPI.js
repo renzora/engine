@@ -818,4 +818,120 @@ export class AnimationAPI {
       looping: animatable.loopAnimation
     };
   }
+
+  // === SIMPLE ANIMATION HELPERS ===
+
+  animatePosition(x, y, z, duration = 1000, easing = null) {
+    const target = this.mesh;
+    if (!target) return null;
+
+    const animation = this.createVectorAnimation(`${target.name}_position`, 'position');
+    const keys = [
+      { frame: 0, value: target.position.clone() },
+      { frame: 60, value: new Vector3(x, y, z) }
+    ];
+    
+    this.addAnimationKeys(animation, keys);
+    if (easing) animation.setEasingFunction(easing);
+    
+    return this.scene.beginAnimation(target, 0, 60, false, 60000 / duration);
+  }
+
+  animateRotation(x, y, z, duration = 1000, easing = null) {
+    const target = this.mesh;
+    if (!target) return null;
+
+    const animation = this.createVectorAnimation(`${target.name}_rotation`, 'rotation');
+    const keys = [
+      { frame: 0, value: target.rotation.clone() },
+      { frame: 60, value: new Vector3(x, y, z) }
+    ];
+    
+    this.addAnimationKeys(animation, keys);
+    if (easing) animation.setEasingFunction(easing);
+    
+    return this.scene.beginAnimation(target, 0, 60, false, 60000 / duration);
+  }
+
+  animateScale(x, y, z, duration = 1000, easing = null) {
+    const target = this.mesh;
+    if (!target) return null;
+
+    const animation = this.createVectorAnimation(`${target.name}_scale`, 'scaling');
+    const keys = [
+      { frame: 0, value: target.scaling.clone() },
+      { frame: 60, value: new Vector3(x, y, z) }
+    ];
+    
+    this.addAnimationKeys(animation, keys);
+    if (easing) animation.setEasingFunction(easing);
+    
+    return this.scene.beginAnimation(target, 0, 60, false, 60000 / duration);
+  }
+
+  animateColor(r, g, b, duration = 1000, easing = null) {
+    const target = this.mesh;
+    if (!target || !target.material) return null;
+
+    const animation = this.createColorAnimation(`${target.name}_color`, 'material.diffuseColor');
+    const keys = [
+      { frame: 0, value: target.material.diffuseColor.clone() },
+      { frame: 60, value: new Color3(r, g, b) }
+    ];
+    
+    this.addAnimationKeys(animation, keys);
+    if (easing) animation.setEasingFunction(easing);
+    
+    return this.scene.beginAnimation(target, 0, 60, false, 60000 / duration);
+  }
+
+  animateAlpha(alpha, duration = 1000, easing = null) {
+    const target = this.mesh;
+    if (!target || !target.material) return null;
+
+    const animation = this.createAnimation(`${target.name}_alpha`, 'material.alpha');
+    const keys = [
+      { frame: 0, value: target.material.alpha },
+      { frame: 60, value: alpha }
+    ];
+    
+    this.addAnimationKeys(animation, keys);
+    if (easing) animation.setEasingFunction(easing);
+    
+    return this.scene.beginAnimation(target, 0, 60, false, 60000 / duration);
+  }
+
+  // === SHORT NAME ALIASES ===
+  
+  skeletonAnimationRanges(skeleton) {
+    return this.getSkeletonAnimationRanges(skeleton);
+  }
+  
+  boneByName(skeleton, name) {
+    return this.getBoneByName(skeleton, name);
+  }
+  
+  boneWorldMatrix(bone) {
+    return this.getBoneWorldMatrix(bone);
+  }
+  
+  animationProgress(target) {
+    return this.getAnimationProgress(target);
+  }
+  
+  allAnimations(target) {
+    return this.getAllAnimations(target);
+  }
+  
+  curvePoint(curve, t) {
+    return this.getCurvePoint(curve, t);
+  }
+  
+  curveTangent(curve, t) {
+    return this.getCurveTangent(curve, t);
+  }
+  
+  animationInfo(target) {
+    return this.getAnimationInfo(target);
+  }
 }

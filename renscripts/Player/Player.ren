@@ -1,0 +1,17 @@
+script TestPlayer {
+  speed = 5.0
+  
+  start {
+    log("Test player started")
+  }
+  
+  update() {
+    if (is_key_pressed("w")) {
+      move_by(0, 0, speed * time())
+    }
+  }
+  
+  destroy {
+    log("Test player destroyed")
+  }
+}

@@ -1,0 +1,34 @@
+props movement {
+  enabled: boolean {
+    default: true,
+    description: "Enable gamepad control"
+  }
+    
+  speed: float {
+    default: 5.0,
+    min: 0.1,
+    max: 20.0,
+    description: "Movement speed"
+  }
+    
+  rotation_speed: float {
+    default: 2.0,
+    min: 0.1,
+    max: 10.0,
+    description: "Rotation speed"
+  }
+    
+  gamepad_index: float {
+    default: 0.0,
+    min: 0.0,
+    max: 3.0,
+    description: "Gamepad index (0-3)"
+  }
+}
+  
+props debug {
+  show_debug: boolean {
+    default: false,
+    description: "Show gamepad debug info"
+  }
+}

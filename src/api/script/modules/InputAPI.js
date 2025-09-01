@@ -494,4 +494,74 @@ export class InputAPI {
     this._gamepadState.clear();
     this._touchState.clear();
   }
+  
+  // === SHORT NAME ALIASES ===
+  
+  pressedKeys() {
+    return this.getPressedKeys();
+  }
+  
+  mousePosition() {
+    return this.getMousePosition();
+  }
+  
+  mouseX() {
+    return this.getMouseX();
+  }
+  
+  mouseY() {
+    return this.getMouseY();
+  }
+  
+  mouseNormalized() {
+    return this.getMouseNormalized();
+  }
+  
+  touchCount() {
+    return this.getTouchCount();
+  }
+  
+  touches() {
+    return this.getTouches();
+  }
+  
+  touch(index = 0) {
+    return this.getTouch(index);
+  }
+  
+  pinchDistance() {
+    return this.getPinchDistance();
+  }
+  
+  touchCenter() {
+    return this.getTouchCenter();
+  }
+  
+  gamepads() {
+    return this.getGamepads();
+  }
+  
+  gamepad(index = 0) {
+    return this.getGamepad(index);
+  }
+  
+  leftStick(gamepadIndex = 0, deadzone = 0.1) {
+    return this.getLeftStick(gamepadIndex, deadzone);
+  }
+  
+  rightStick(gamepadIndex = 0, deadzone = 0.1) {
+    return this.getRightStick(gamepadIndex, deadzone);
+  }
+  
+  leftTrigger(gamepadIndex = 0) {
+    return this.getLeftTrigger(gamepadIndex);
+  }
+  
+  rightTrigger(gamepadIndex = 0) {
+    return this.getRightTrigger(gamepadIndex);
+  }
+  
+  inputSnapshot() {
+    return this.getInputSnapshot();
+  }
 }

@@ -93,7 +93,7 @@
       "patterns": [
         {
           "name": "meta.property.renscript",
-          "begin": "(\\w+)\\s*:\\s*(boolean|float|number|string|vector3|color)\\s*\\{",
+          "begin": "(\\w+)\\s*:\\s*(boolean|float|number|string|vector3|color|range|int|text|file|dropdown|slider)\\s*\\{",
           "beginCaptures": {
             "1": {
               "name": "variable.other.property.renscript"
@@ -109,6 +109,12 @@
             },
             {
               "include": "#comments"
+            },
+            {
+              "include": "#strings"
+            },
+            {
+              "include": "#numbers"
             }
           ]
         }
@@ -118,7 +124,31 @@
       "patterns": [
         {
           "name": "meta.property-attribute.renscript",
-          "match": "\\b(default|min|max|description)\\s*:\\s*([^,}]+)",
+          "match": "\\b(default|min|max|step|options|placeholder)\\s*:\\s*(\\d+\\.\\d+|\\d+|true|false)",
+          "captures": {
+            "1": {
+              "name": "keyword.other.attribute.renscript"
+            },
+            "2": {
+              "name": "constant.numeric.renscript"
+            }
+          }
+        },
+        {
+          "name": "meta.property-attribute.string.renscript",
+          "match": "\\b(description|placeholder|label)\\s*:\\s*(\"[^\"]*\")",
+          "captures": {
+            "1": {
+              "name": "keyword.other.attribute.renscript"
+            },
+            "2": {
+              "name": "string.quoted.double.renscript"
+            }
+          }
+        },
+        {
+          "name": "meta.property-attribute.generic.renscript",
+          "match": "\\b(\\w+)\\s*:\\s*([^,}]+)",
           "captures": {
             "1": {
               "name": "keyword.other.attribute.renscript"

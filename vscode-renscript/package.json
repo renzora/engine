@@ -1,10 +1,9 @@
 {
   "name": "renscript",
   "displayName": "RenScript",
-  "description": "Syntax highlighting and language support for RenScript (.ren files)",
+  "description": "Syntax highlighting and language support for RenScript (.ren and .renp files)",
   "version": "1.0.0",
   "publisher": "renzora",
-  "icon": "images/renscript-icon.svg",
   "engines": {
     "vscode": "^1.74.0"
   },
@@ -16,7 +15,7 @@
       {
         "id": "renscript",
         "aliases": ["RenScript", "renscript"],
-        "extensions": [".ren"],
+        "extensions": [".ren", ".renp"],
         "configuration": "./language-configuration.json",
         "icon": {
           "light": "./images/renscript-icon.svg",

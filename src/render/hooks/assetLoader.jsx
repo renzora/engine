@@ -11,6 +11,7 @@ import { editorActions } from '@/layout/stores/EditorStore'
 import { renderActions } from '@/render/store'
 import { getCurrentProject } from '@/api/bridge/projects'
 
+
 export const useAssetLoader = (sceneInstance, canvasRef) => {
   const [loadingTooltip, setLoadingTooltip] = createSignal({
     isVisible: false,
@@ -292,6 +293,18 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
           finalMesh.position.y = -minY
           
           console.log(`Final position: ${finalMesh.position.x}, ${finalMesh.position.y}, ${finalMesh.position.z}`)
+          
+          
+          // Also add shadow casting to all child meshes
+          if (scene.shadowGenerator) {
+            const allChildren = finalMesh.getChildMeshes();
+            allChildren.forEach(childMesh => {
+              if (childMesh.getClassName && childMesh.getClassName() === 'Mesh') {
+                scene.shadowGenerator.addShadowCaster(childMesh);
+              }
+            });
+            console.log(`🌑 Added ${allChildren.filter(m => m.getClassName && m.getClassName() === 'Mesh').length} child meshes to shadow casting`);
+          }
           
           // Add to render store hierarchy and select it
           renderActions.addObject(finalMesh);

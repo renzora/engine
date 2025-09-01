@@ -422,4 +422,46 @@ export class SceneAPI {
       isEnabled: monitor.isEnabled
     };
   }
+  
+  // === SHORT NAME ALIASES ===
+  
+  allMeshes() {
+    return this.getAllMeshes();
+  }
+  
+  allLights() {
+    return this.getAllLights();
+  }
+  
+  allCameras() {
+    return this.getAllCameras();
+  }
+  
+  objectsInRadius(centerX, centerY, centerZ, radius) {
+    return this.getObjectsInRadius(centerX, centerY, centerZ, radius);
+  }
+  
+  objectsInBox(minX, minY, minZ, maxX, maxY, maxZ) {
+    return this.getObjectsInBox(minX, minY, minZ, maxX, maxY, maxZ);
+  }
+  
+  closestObject(targetX, targetY, targetZ, tag = null) {
+    return this.getClosestObject(targetX, targetY, targetZ, tag);
+  }
+  
+  boundingInfo() {
+    return this.getBoundingInfo();
+  }
+  
+  metadata(key) {
+    return this.getMetadata(key);
+  }
+  
+  sceneInfo() {
+    return this.getSceneInfo();
+  }
+  
+  performanceData() {
+    return this.getPerformanceData();
+  }
 }

@@ -1,0 +1,26 @@
+script ObjectBounce {
+  velocity_y = 0.0
+  
+  start {
+    log("Physics bouncer initialized")
+  }
+  
+  update {
+    pos = position()
+    pos_x = pos[0]
+    current_y = pos[1]
+    pos_z = pos[2]
+    
+    # Apply gravity
+    velocity_y = velocity_y + gravity * time()
+    new_y = current_y + velocity_y * time()
+    
+    # Ground collision
+    if (new_y <= ground_level) {
+      new_y = ground_level
+      velocity_y = velocity_y * -bounce_factor
+    }
+    
+    setPosition(pos_x, new_y, pos_z)
+  }
+}

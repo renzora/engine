@@ -1,0 +1,44 @@
+script HavokPhysicsV2 {
+  start {
+    if (enabled) {
+      log("Initializing Havok physics engine...")
+      physics("havok", 0, -9.81, 0)
+      log("Creating physics aggregate...")
+      physicsAggregate(impostor_type, {
+        mass: mass,
+        friction: friction,
+        restitution: restitution
+      })
+      addTag("havok_physics")
+      
+      if (show_bounding_box) {
+        log("Enabling bounding box visualization...")
+        boundingBoxGizmo()
+        addTag("physics_debug")
+      }
+    }
+  }
+  
+  once {
+    if (enabled) {
+      log("Updating physics properties...")
+      updatePhysics({
+        mass: mass,
+        friction: friction,
+        restitution: restitution
+      })
+      
+      if (show_bounding_box) {
+        boundingBoxGizmo()
+        addTag("physics_debug")
+      } else {
+        removeTag("physics_debug")
+      }
+    }
+  }
+  
+  destroy {
+    removePhysicsAggregate()
+    log("Physics aggregate removed")
+  }
+}

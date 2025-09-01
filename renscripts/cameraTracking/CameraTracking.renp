@@ -1,0 +1,34 @@
+props tracking {
+  enabled: boolean {
+    default: true,
+    description: "Enable camera tracking"
+  }
+  
+  follow_distance: range {
+    default: 8.0,
+    min: 2.0,
+    max: 20.0,
+    description: "Distance behind target"
+  }
+  
+  follow_height: range {
+    default: 3.0,
+    min: 0.5,
+    max: 10.0,
+    description: "Height above target"
+  }
+  
+  smoothing: range {
+    default: 0.9,
+    min: 0.1,
+    max: 0.99,
+    description: "Camera movement smoothing"
+  }
+  
+  look_ahead: range {
+    default: 2.0,
+    min: 0.0,
+    max: 10.0,
+    description: "Look ahead distance"
+  }
+}

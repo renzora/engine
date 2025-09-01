@@ -1,6 +1,6 @@
 # RenScript - Complete 3D Game Scripting API
 
-RenScript is a comprehensive, modular scripting system built on **Babylon.js** that provides a complete API for 3D game development. It features 16 specialized modules covering everything from basic transforms to advanced physics, VR/AR, and visual effects.
+RenScript is a comprehensive, modular scripting system built on **Babylon.js** that provides a complete API for 3D game development. It features 20 specialized modules covering everything from basic transforms to advanced physics, VR/AR, and visual effects.
 
 ## Table of Contents
 
@@ -12,7 +12,7 @@ RenScript is a comprehensive, modular scripting system built on **Babylon.js** t
 
 ## Overview
 
-RenScript provides **550+ methods** across **16 specialized modules**, offering production-ready capabilities for:
+RenScript provides **777+ methods** across **20 specialized modules**, offering production-ready capabilities for:
 
 - **3D Graphics** - Complete mesh creation, materials, textures, lighting
 - **Animation** - Keyframe, skeletal, morph targets, procedural animation
@@ -60,751 +60,1124 @@ script MyGameObject {
 
 ## Complete API Reference
 
-### 🔧 CoreAPI - Essential Functions (50+ methods)
+### 🔧 Core API - Essential Functions (40+ methods)
 *Priority: HIGHEST - Used in almost every script*
 
 #### Transform & Movement
 ```renscript
 # Position Control
-get_position()                    # Returns [x, y, z]
-set_position(x, y, z)            # Set absolute position
-move_by(x, y, z)                 # Move relative to current
-get_world_position()             # World space position
-move_to(x, y, z)                 # Move to target over time
+position(x, y, z)                # Set absolute position
+getPosition()                    # Get current position [x, y, z]
+worldPosition()                  # Get world space position
+move(x, y, z)                   # Move relative to current
+moveTo(x, y, z)                 # Move to target position
 
 # Rotation Control  
-get_rotation()                   # Returns [x, y, z] in radians
-set_rotation(x, y, z)           # Set absolute rotation
-rotate_by(x, y, z)              # Rotate relative to current
-get_world_rotation()            # World space rotation
-look_at(x, y, z)               # Orient towards target
+rotation(x, y, z)               # Set absolute rotation
+getRotation()                   # Get current rotation [x, y, z]
+worldRotation()                 # Get world rotation quaternion
+rotate(x, y, z)                 # Rotate relative to current
+lookAt(x, y, z)                # Orient towards target
 
 # Scale Control
-get_scale()                     # Returns [x, y, z]
-set_scale(x, y, z)             # Set scale factors
+scale(x, y, z)                  # Set scale factors
+getScale()                      # Get current scale [x, y, z]
 ```
 
 #### Visibility & State
 ```renscript
-is_visible()                    # Check visibility state
-set_visible(visible)           # Show/hide object
-is_enabled()                   # Check enabled state
-set_enabled(enabled)           # Enable/disable object
+visible(state)                  # Show/hide object
+isVisible()                     # Check visibility state
+enabled(state)                  # Enable/disable object
+isEnabled()                     # Check enabled state
+name(newName)                   # Set object name
+getName()                       # Get object name
+id()                           # Get unique object ID
 ```
 
-#### Tagging System
+#### Tags & Metadata
 ```renscript
-add_tag(tag)                   # Add tag to object
-remove_tag(tag)                # Remove specific tag
-has_tag(tag)                   # Check if tagged
-get_tags()                     # Get all tags
+addTag(tag)                     # Add tag to object
+removeTag(tag)                  # Remove specific tag
+hasTag(tag)                     # Check if object has tag
+getTags()                       # Get all tags array
+metadata(key, value)            # Set metadata key-value
+getMetadata(key)                # Get metadata value
+hasMetadata(key)                # Check if metadata exists
+removeMetadata(key)             # Remove metadata key
 ```
 
-#### Math Utilities
+#### Time & Math Utilities
 ```renscript
+# Time Functions
+getTime()                       # Current time (milliseconds)
+getDeltaTime()                  # Frame time delta
+
 # Basic Math
-random()                       # Random 0-1
-random_range(min, max)         # Random in range
-clamp(value, min, max)         # Constrain value
-lerp(start, end, t)           # Linear interpolation
+random()                        # Random 0-1
+randomRange(min, max)           # Random in range
+clamp(value, min, max)          # Constrain value
+lerp(start, end, t)            # Linear interpolation
 
 # Vector Math
-distance(x1,y1,z1, x2,y2,z2)  # Distance between points
-normalize(x, y, z)             # Normalize vector
-dot(x1,y1,z1, x2,y2,z2)       # Dot product
-cross(x1,y1,z1, x2,y2,z2)     # Cross product
+distance(x1,y1,z1, x2,y2,z2)   # Distance between points
+normalize(x, y, z)              # Normalize vector
+dot(x1,y1,z1, x2,y2,z2)        # Dot product
+cross(x1,y1,z1, x2,y2,z2)      # Cross product
+toRadians(degrees)              # Convert degrees to radians
+toDegrees(radians)              # Convert radians to degrees
 
-# Angle Conversion
-to_radians(degrees)            # Convert degrees to radians
-to_degrees(radians)            # Convert radians to degrees
-```
-
-#### Time & Logging
-```renscript
-get_time()                     # Current time (milliseconds)
-get_delta_time()               # Frame time delta
-log(message, ...)              # Console logging
+# Logging
+log(message, ...)               # Console logging
 ```
 
 ---
 
-### 🎨 MaterialAPI - Materials & Appearance (40+ methods)
+### 🎨 Material API - Materials & Appearance (65+ methods)
 *Priority: HIGH - Essential for visual appearance*
 
-#### Basic Materials
+#### Material Creation
 ```renscript
-create_standard_material(name, options)    # Basic material
-create_pbr_material(name, options)         # Physically-based material
-create_unlit_material(name, options)       # Performance material
+# Basic Materials
+standardMaterial(name, opts)            # Basic standard material
+pbrMaterial(name, opts)                 # Physically-based rendering
+pbrMetallicRoughnessMaterial(name, opts) # PBR metallic/roughness workflow
+pbrSpecularGlossinessMaterial(name, opts) # PBR specular/glossiness workflow
+unlitMaterial(name, opts)               # Performance unlit material
+backgroundMaterial(name, opts)          # Skybox background material
+nodeMaterial(name, opts)                # Node-based material editor
+shaderMaterial(name, opts)              # Custom shader material
+multiMaterial(name, opts)               # Multi-material for submeshes
+
+# Specialized Materials
+cellMaterial(name, opts)                # Toon/cel shading
+customMaterial(name, opts)              # Custom material
+pbrCustomMaterial(name, opts)           # Custom PBR material
+simpleMaterial(name, opts)              # Lightweight simple material
+shadowOnlyMaterial(name, opts)          # Shadow-only rendering
+skyMaterial(name, opts)                 # Sky dome material
+waterMaterial(name, opts)               # Water simulation material
+terrainMaterial(name, opts)             # Multi-texture terrain blending
+gridMaterial(name, opts)                # Grid overlay material
+triplanarMaterial(name, opts)           # Triplanar projection material
+mixMaterial(name, opts)                 # Texture mixing material
+lavaMaterial(name, opts)                # Animated lava material
+fireMaterial(name, opts)                # Fire effect material
+furMaterial(name, opts)                 # Fur/hair rendering
+gradientMaterial(name, opts)            # Color gradient material
 ```
 
-#### Advanced Materials
+#### Color & Properties
 ```renscript
-create_pbr_metallic_roughness(name, opts)  # Metal/rough workflow
-create_pbr_specular_glossiness(name, opts) # Spec/gloss workflow
-create_background_material(name, opts)      # Skybox material
-create_node_material(name, opts)           # Node-based material
-create_shader_material(name, opts)         # Custom shader
+# Color Control
+color(r, g, b, a)                      # Set diffuse color
+getColor()                             # Get current color
+alpha(value)                           # Set transparency
+getAlpha()                             # Get transparency value
+diffuseColor(r, g, b)                  # Set diffuse color
+specularColor(r, g, b)                 # Set specular color
+emissiveColor(r, g, b)                 # Set emissive/glow color
+ambientColor(r, g, b)                  # Set ambient color
+getEmissiveColor()                     # Get emissive color
+specularPower(power)                   # Set specular sharpness
+
+# Material Properties
+materialProperty(prop, value)          # Set any material property
+getMaterialProperty(prop)              # Get property value
+backFaceCulling(enabled)               # Enable/disable backface culling
+disableLighting(disabled)              # Disable lighting calculations
+wireframe(enabled)                     # Enable wireframe mode
+pointsCloud(enabled)                   # Enable points cloud mode
+fillMode(mode)                         # Set fill mode (solid/wireframe/points)
 ```
 
-#### Specialized Materials
+#### Advanced Rendering
 ```renscript
-create_cell_material(name, opts)          # Toon shading
-create_sky_material(name, opts)           # Sky dome
-create_water_material(name, opts)         # Water simulation
-create_terrain_material(name, opts)       # Terrain blending
-create_grid_material(name, opts)          # Grid overlay
-create_fire_material(name, opts)          # Fire effect
-create_fur_material(name, opts)           # Fur/hair
-create_gradient_material(name, opts)      # Color gradients
+# Normal & Bump Mapping
+invertNormalMapX(invert)               # Invert normal map X channel
+invertNormalMapY(invert)               # Invert normal map Y channel
+bumpLevel(level)                       # Set normal map intensity
+parallaxScaleBias(scale, bias)         # Parallax occlusion mapping
+
+# Refraction & Reflection
+indexOfRefraction(ior)                 # Set index of refraction
+fresnelParameters(bias, scale, power)  # Set Fresnel reflection parameters
+
+# Dynamic Textures
+dynamicTexture(name, options)          # Create dynamic texture
+renderTargetTexture(name, options)     # Create render target texture
 ```
 
-#### Material Properties
+#### Texture System
 ```renscript
-set_material_property(prop, value)        # Set any material property
-get_material_property(prop)               # Get property value
-set_color(r, g, b, a)                    # Set diffuse color
-get_color()                              # Get current color
-set_alpha(alpha)                         # Set transparency
-set_emissive_color(r, g, b)             # Set glow color
-enable_material_transparency(material)    # Enable alpha blending
-```
+# Basic Texture Assignment
+texture(url)                           # Set main texture
+diffuseTexture(url)                    # Set diffuse map
+normalTexture(url)                     # Set normal map
+emissiveTexture(url)                   # Set emissive map
+specularTexture(url)                   # Set specular map
+ambientTexture(url)                    # Set ambient occlusion map
+opacityTexture(url)                    # Set transparency map
+reflectionTexture(url)                 # Set reflection map
+refractionTexture(url)                 # Set refraction map
+lightmapTexture(url)                   # Set lightmap texture
 
----
-
-### 🎭 MeshAPI - 3D Geometry Creation (45+ methods)
-*Priority: HIGH - Core 3D object creation*
-
-#### Basic Shapes
-```renscript
-create_box(name, options)                # Box/cube
-create_sphere(name, options)             # Sphere
-create_cylinder(name, options)           # Cylinder
-create_plane(name, options)              # Flat plane
-create_ground(name, options)             # Terrain ground
-create_capsule(name, options)            # Capsule shape
-create_torus(name, options)              # Donut shape
-```
-
-#### Advanced Geometry
-```renscript
-create_ribbon(name, options)             # Custom ribbon mesh
-create_tube(name, options)               # Tube along path
-create_extrusion(name, shape, path)      # Extrude shape along path
-create_lathe(name, shape, options)       # Rotate shape around axis
-create_polygon(name, shape, options)     # 2D polygon mesh
-create_text(name, text, options)         # 3D text mesh
-```
-
-#### Mesh Operations
-```renscript
-clone_mesh(mesh, name)                   # Duplicate mesh
-merge_meshes(meshes, name)               # Combine meshes
-union_meshes(mesh1, mesh2)               # CSG union
-subtract_meshes(mesh1, mesh2)            # CSG subtraction
-intersect_meshes(mesh1, mesh2)           # CSG intersection
-```
-
-#### Mesh Properties
-```renscript
-set_mesh_visibility(mesh, visible)       # Show/hide mesh
-set_mesh_enabled(mesh, enabled)          # Enable/disable
-set_mesh_pickable(mesh, pickable)        # Mouse interaction
-set_mesh_cast_shadows(mesh, cast)        # Shadow casting
-```
-
-#### Instancing & Performance
-```renscript
-create_mesh_instance(source)             # Create instance
-create_mesh_instances(source, count)     # Batch instances
-create_thin_instances(source, matrices)  # High-performance instances
-optimize_mesh(mesh)                      # Optimize geometry
-simplify_mesh(mesh, quality)             # Reduce polygons
-```
-
----
-
-### 🎬 AnimationAPI - Animation System (55+ methods)  
-*Priority: HIGH - Animation system*
-
-#### Basic Animation
-```renscript
-create_animation(name, property, frameRate) # Create keyframe animation
-play_animation(target, animations)          # Play animation
-stop_animation(target)                      # Stop animation
-pause_animation(target)                     # Pause animation
-resume_animation(target)                    # Resume animation
-```
-
-#### Keyframe Management
-```renscript
-add_animation_keys(animation, keyframes)    # Add keyframes
-create_vector_animation(name, property)     # Vector3 animation
-create_color_animation(name, property)      # Color animation
-create_quaternion_animation(name, property) # Rotation animation
-```
-
-#### Easing Functions
-```renscript
-create_bezier_ease(x1, y1, x2, y2)        # Bezier curve easing
-create_bounce_ease(bounces, bounciness)    # Bounce effect
-create_elastic_ease(oscillations, spring) # Elastic effect
-create_exponential_ease(exponent)          # Exponential curve
-```
-
-#### Skeleton Animation
-```renscript
-create_skeleton(name, bones)               # Create bone hierarchy
-play_skeleton_animation(skeleton, name)    # Play bone animation
-create_animation_range(skeleton, name)     # Define anim range
-get_bone_by_name(skeleton, name)           # Find specific bone
-play_idle_animation(mesh)                  # Play idle preset
-play_walk_animation(mesh)                  # Play walk preset
-play_run_animation(mesh)                   # Play run preset
-play_jump_animation(mesh)                  # Play jump preset
-```
-
-#### Morph Target Animation
-```renscript
-create_morph_target_manager(mesh)          # Create morph system
-add_morph_target(mesh, name, positions)    # Add morph target
-set_morph_target_influence(mesh, idx, val) # Control influence
-animate_morph_target(mesh, idx, influence) # Animate influence
-```
-
-#### Procedural Animation
-```renscript
-animate_along_path(mesh, path, duration)   # Path following
-animate_rotation_around_axis(mesh, axis)   # Orbital rotation
-animate_scale(mesh, fromScale, toScale)    # Scale animation
-animate_opacity(mesh, fromAlpha, toAlpha)  # Fade animation
+# PBR Texture Maps
+metallicTexture(url)                   # Set metallic map
+roughnessTexture(url)                  # Set roughness map
+microRoughnessTexture(url)             # Set micro-roughness map
+displacementTexture(url)               # Set displacement map
+detailTexture(url)                     # Set detail texture
 ```
 
 ---
 
-### ⚡ PhysicsAPI - Physics Simulation (35+ methods)
-*Priority: HIGH - Realistic object behavior*
-
-#### Physics Engine
-```renscript
-enable_physics(engine, gravity)           # Initialize physics
-disable_physics()                         # Disable physics
-is_physics_enabled()                      # Check if active
-set_gravity(x, y, z)                     # Set world gravity
-```
-
-#### Physics Impostors
-```renscript
-set_physics_impostor(type, options)       # Add physics body
-remove_physics_impostor()                 # Remove physics
-has_physics_impostor()                    # Check if has physics
-set_mass(mass)                           # Set object mass
-set_friction(friction)                   # Set surface friction
-set_restitution(bounce)                  # Set bounciness
-```
-
-#### Forces & Movement
-```renscript
-apply_impulse(force, contactPoint)        # Apply instant force
-apply_force(force, contactPoint)          # Apply continuous force  
-set_linear_velocity(x, y, z)             # Set movement velocity
-set_angular_velocity(x, y, z)            # Set rotation velocity
-get_linear_velocity()                     # Get current velocity
-get_angular_velocity()                    # Get rotation speed
-```
-
-#### Collision Detection
-```renscript
-on_collision_enter(callback)              # Collision start event
-on_collision_exit(callback)               # Collision end event
-physics_raycast(origin, direction, max)   # Physics ray test
-```
-
-#### Joints & Constraints
-```renscript
-create_physics_joint(type, options)       # Connect objects
-remove_physics_joint(joint)               # Remove connection
-create_distance_joint(target, distance)   # Distance constraint
-create_hinge_joint(target, pivot, axis)   # Hinge constraint
-```
-
----
-
-### 🎮 InputAPI - Input Handling (40+ methods)
-*Priority: HIGH - User interaction*
-
-#### Keyboard Input
-```renscript
-is_key_pressed(key)                      # Check if key pressed this frame
-is_key_down(key)                         # Check if key held down
-get_pressed_keys()                       # Get all pressed keys
-is_key_combo_pressed(keys)               # Check key combination
-is_ctrl_pressed()                        # Check Ctrl modifier
-is_shift_pressed()                       # Check Shift modifier
-is_alt_pressed()                         # Check Alt modifier
-```
-
-#### Mouse Input
-```renscript
-is_mouse_button_pressed(button)          # Check mouse button
-get_mouse_position()                     # Screen coordinates
-get_mouse_normalized()                   # Normalized coordinates
-get_mouse_delta()                        # Movement delta
-request_pointer_lock()                   # Lock mouse cursor
-exit_pointer_lock()                      # Release mouse
-is_pointer_locked()                      # Check lock state
-```
-
-#### Touch Input
-```renscript
-get_touch_count()                        # Number of touches
-get_touches()                           # All touch data
-is_touching()                           # Any touch active
-get_pinch_distance()                    # Pinch gesture distance
-get_touch_center()                      # Center of touches
-```
-
-#### Gamepad Input
-```renscript
-get_gamepads()                          # All connected gamepads
-is_gamepad_connected(index)             # Check if connected
-is_gamepad_button_pressed(idx, button)  # Check button
-get_left_stick(index)                   # Left analog stick
-get_right_stick(index)                  # Right analog stick
-get_left_trigger(index)                 # Left trigger value
-get_right_trigger(index)                # Right trigger value
-vibrate_gamepad(index, weak, strong)    # Haptic feedback
-```
-
----
-
-### 🖼️ TextureAPI - Texture Management (35+ methods)
-*Priority: MEDIUM - Visual enhancement*
+### 🖼️ Texture API - Texture Management (50+ methods)
+*Priority: HIGH - Visual enhancement*
 
 #### Basic Textures
 ```renscript
-create_texture(url, options)             # Load texture from file
-create_cube_texture(url, options)        # Skybox texture
-create_dynamic_texture(name, options)    # Programmable texture
-create_video_texture(url, options)       # Video as texture
+texture(url, options)                  # Load basic texture
+cubeTexture(url, options)              # Skybox cube texture
+hdrCubeTexture(url, options)           # HDR cube texture
+videoTexture(url, options)             # Video as texture
+mirrorTexture(options)                 # Real-time mirror texture
+refractionTexture(options)             # Refraction texture
+depthTexture(options)                  # Depth texture
+dynamicTexture(name, options)          # Programmable texture
+renderTargetTexture(name, options)     # Render-to-texture
 ```
 
 #### Procedural Textures
 ```renscript
-create_wood_texture(name, options)       # Wood pattern
-create_cloud_texture(name, options)      # Cloud pattern
-create_fire_texture(name, options)       # Fire pattern
-create_grass_texture(name, options)      # Grass pattern
-create_marble_texture(name, options)     # Marble pattern
-create_perlin_noise_texture(name, opts)  # Perlin noise
-```
-
-#### Texture Properties
-```renscript
-set_texture_wrap_mode(texture, mode)     # Wrap/repeat mode
-set_texture_filtering(texture, filter)   # Filter quality
-set_texture_offset(texture, u, v)        # UV offset
-set_texture_scale(texture, u, v)         # UV scale
-set_texture_rotation(texture, angle)     # UV rotation
-```
-
-#### Dynamic Texture Drawing
-```renscript
-draw_text_on_texture(texture, text, opts) # Draw text
-clear_dynamic_texture(texture)            # Clear content
-draw_rect_on_texture(texture, x, y, w, h) # Draw rectangle
-draw_circle_on_texture(texture, x, y, r)  # Draw circle
-```
-
-#### Texture Animation
-```renscript
-animate_texture_offset(texture, u, v, dur) # Animate UV offset
-animate_texture_rotation(texture, angle)   # Animate UV rotation
+proceduralTexture(name, options)       # Base procedural texture
+noiseTexture(name, options)            # Noise texture
+woodTexture(name, options)             # Wood grain pattern
+marbleTexture(name, options)           # Marble pattern
+fireTexture(name, options)             # Animated fire texture
+cloudTexture(name, options)            # Cloud pattern
+grassTexture(name, options)            # Grass pattern
+roadTexture(name, options)             # Road surface texture
+brickTexture(name, options)            # Brick pattern
+perlinNoiseTexture(name, options)      # Perlin noise texture
+normalMapTexture(name, options)        # Generate normal map
 ```
 
 ---
 
-### ✨ ParticleAPI - Visual Effects (30+ methods)
-*Priority: MEDIUM - Visual effects*
+### 🎭 Mesh API - 3D Geometry Creation (35+ methods)
+*Priority: HIGH - Core 3D object creation*
+
+#### Basic Geometry
+```renscript
+box(name, options)                      # Create box/cube mesh
+sphere(name, options)                   # Create sphere mesh
+cylinder(name, options)                 # Create cylinder mesh
+plane(name, options)                    # Create flat plane
+ground(name, options)                   # Create ground plane
+torus(name, options)                    # Create torus/donut shape
+tube(name, path, options)               # Create tube along path
+ribbon(name, paths, options)            # Create ribbon mesh
+lathe(name, shape, options)             # Revolve shape around axis
+extrusion(name, shape, path, options)   # Extrude shape along path
+polygon(name, shape, options)           # Create polygon mesh
+icosphere(name, options)                # Create icosphere
+capsule(name, options)                  # Create capsule shape
+text(name, text, options)               # Create 3D text mesh
+decal(name, options)                    # Create decal mesh
+```
+
+#### Advanced Mesh Types
+```renscript
+lineSystem(name, lines, options)        # Create line system
+dashedLines(name, points, options)      # Create dashed lines
+trail(name, generator, options)         # Create trail mesh
+```
+
+#### CSG Operations
+```renscript
+csg(mesh)                              # Convert mesh to CSG
+csgUnion(mesh1, mesh2)                 # CSG union operation
+csgSubtract(mesh1, mesh2)              # CSG subtraction
+csgIntersect(mesh1, mesh2)             # CSG intersection
+csgToMesh(csgObject, name)             # Convert CSG to mesh
+```
+
+#### Instancing & Performance
+```renscript
+instances(source, matrices)            # Create instances array
+thinInstances(source, matrices)        # Create thin instances
+updateInstanceData(instances, data)    # Update instance data
+disposeInstances(instances)            # Dispose instances
+getInstanceCount(instances)            # Get instance count
+
+# Performance Optimization
+freezeWorldMatrix()                    # Freeze world matrix updates
+unfreezeWorldMatrix()                  # Unfreeze world matrix
+renderingGroup(groupId)                # Set rendering group
+getRenderingGroup()                    # Get rendering group ID
+layerMask(mask)                        # Set layer mask
+getLayerMask()                         # Get layer mask
+```
+
+#### Visual Enhancement
+```renscript
+edges(enabled)                         # Enable edge rendering
+disableEdges()                         # Disable edge rendering
+outline(enabled)                       # Enable outline rendering
+disableOutline()                       # Disable outline
+outlineColor(r, g, b)                  # Set outline color
+outlineWidth(width)                    # Set outline width
+```
+
+---
+
+### 🎬 Animation API - Animation System (85+ methods)  
+*Priority: HIGH - Animation system*
+
+#### Basic Animation Control
+```renscript
+# Animation Playback
+animate(property, to, duration, ease)     # Basic property animation
+stopAnimation(target)                     # Stop all animations
+pauseAnimation(target)                    # Pause animations
+resumeAnimation(target)                   # Resume animations
+animateTo(target, properties, duration)   # Animate multiple properties
+animatePosition(target, position, duration) # Animate position
+animateRotation(target, rotation, duration) # Animate rotation
+animateScale(target, scale, duration)     # Animate scale
+animateColor(target, color, duration)     # Animate color
+animateAlpha(target, alpha, duration)     # Animate transparency
+
+# Animation State
+isAnimating(target)                       # Check if animating
+getActiveAnimations(target)               # Get active animations
+getAnimationProgress(target)              # Get animation progress
+animationSpeed(speed)                     # Set animation speed
+getAnimationSpeed()                       # Get animation speed
+```
+
+#### Keyframe Animation System
+```renscript
+# Animation Creation
+createAnimation(name, property, frameRate) # Create keyframe animation
+createVectorAnimation(name, property)      # Vector3 keyframe animation
+createColorAnimation(name, property)       # Color keyframe animation
+createQuaternionAnimation(name, property)  # Quaternion keyframe animation
+
+# Keyframe Management
+addAnimationKeys(animation, keyframes)     # Add keyframes to animation
+parseAnimationValue(value, type)          # Parse animation value
+
+# Animation Playback
+playAnimation(target, animations)          # Play animation set
+stopAnimation(target)                      # Stop animations
+pauseAnimation(target)                     # Pause animations
+restartAnimation(target)                   # Restart animations
+```
+
+#### Animation Groups
+```renscript
+animationGroup(name)                       # Create animation group
+addToAnimationGroup(group, animation)     # Add animation to group
+addAnimationToGroup(group, animation)     # Add animation to group
+playAnimationGroup(group)                 # Play animation group
+stopAnimationGroup(group)                 # Stop animation group  
+pauseAnimationGroup(group)                # Pause animation group
+resetAnimationGroup(group)                # Reset animation group
+```
+
+#### Easing Functions
+```renscript
+bezierEase(x1, y1, x2, y2)               # Bezier curve easing
+circleEase(mode)                          # Circle easing
+backEase(amplitude)                       # Back easing
+bounceEase(bounces, bounciness)          # Bounce easing
+elasticEase(oscillations, springiness)   # Elastic easing
+exponentialEase(exponent)                # Exponential easing
+powerEase(power)                         # Power easing
+quadraticEase()                          # Quadratic easing
+quarticEase()                            # Quartic easing
+quinticEase()                            # Quintic easing
+sineEase()                               # Sine easing
+bezierCurveEase(x1, y1, x2, y2)         # Bezier curve easing
+easingMode(mode)                         # Set easing mode (in/out/inout)
+```
+
+#### Skeleton & Bone Animation
+```renscript
+# Skeleton Management
+hasSkeleton()                            # Check if has skeleton
+getSkeleton()                            # Get mesh skeleton
+getBoneCount()                           # Get bone count
+getBone(index)                           # Get bone by index
+getBoneByName(name)                      # Get bone by name
+bonePosition(bone, position)             # Set bone position
+boneRotation(bone, rotation)             # Set bone rotation
+getBonePosition(bone)                    # Get bone position
+getBoneRotation(bone)                    # Get bone rotation
+
+# Skeleton Animation
+skeleton(name, bones)                    # Create skeleton
+playSkeletonAnimation(skeleton, name)    # Play skeleton animation
+stopSkeletonAnimation(skeleton)          # Stop skeleton animation
+
+# Animation Ranges
+animationRange(name, start, end)         # Create animation range
+deleteAnimationRange(name)              # Delete animation range
+getSkeletonAnimationRanges()             # Get all animation ranges
+playAnimationRange(name)                 # Play animation by name
+stopAnimationRange(name)                # Stop animation range
+
+# Bone Manipulation
+boneTransform(bone, matrix)              # Set bone transform matrix
+getBoneWorldMatrix(bone)                 # Get bone world matrix
+attachMeshToBone(mesh, bone)             # Attach mesh to bone
+```
+
+#### Character Animation Presets
+```renscript
+walkAnimation()                          # Play walk animation
+runAnimation()                           # Play run animation
+idleAnimation()                          # Play idle animation
+jumpAnimation()                          # Play jump animation
+crouchAnimation()                        # Play crouch animation
+customAnimation(name)                    # Play custom animation
+```
+
+#### Animation Blending & Mixing
+```renscript
+blendAnimations(anim1, anim2, factor)    # Blend two animations
+animationWeight(animation, weight)       # Set animation weight
+blendToAnimation(animation, duration)    # Blend to animation
+crossfadeAnimation(from, to, duration)   # Crossfade animations
+
+# Animation State Queries
+isAnimationPlaying(name)                 # Check if animation playing
+getCurrentAnimation()                    # Get current animation name
+getAnimationTime()                       # Get animation time
+animationTime(time)                      # Set animation time
+getAnimationInfo(name)                   # Get animation information
+```
+
+#### Morph Target Animation
+```renscript
+morphTargetManager(mesh)                 # Create morph target manager
+addMorphTarget(mesh, name, positions)    # Add morph target
+morphTargetInfluence(mesh, index, value) # Set morph influence
+animateMorphTarget(mesh, index, influence) # Animate morph target
+```
+
+#### Advanced Animation Features
+```renscript
+# Procedural Animation
+animateAlongPath(mesh, path, duration)   # Animate along path
+animateRotationAroundAxis(mesh, axis, speed) # Rotate around axis
+animateOpacity(mesh, from, to, duration)  # Animate opacity
+
+# Animation Events
+addAnimationEvent(animation, frame, callback) # Add animation event
+removeAnimationEvents(animation)          # Remove animation events
+
+# Animation Curves
+animationCurve(points)                    # Create animation curve
+getCurvePoint(curve, t)                   # Get curve point at t
+getCurveTangent(curve, t)                 # Get curve tangent
+
+# Advanced Features
+animateWithPhysics(mesh, force)          # Physics-based animation
+onAnimationComplete(callback)            # Animation complete event
+onAnimationLoop(callback)                # Animation loop event
+getAllAnimations()                       # Get all animations
+playAnimationByName(name)                # Play animation by name
+```
+
+---
+
+### ⚡ Physics API - Havok Physics V2 Simulation (45+ methods)
+*Priority: HIGH - Realistic object behavior using Babylon.js Physics V2 with Havok engine*
+
+#### Physics Engine Control
+```renscript
+physics(engine, gravity)                 # Enable physics engine
+disablePhysics()                         # Disable physics engine
+isPhysicsEnabled()                       # Check if physics active
+gravity(x, y, z)                         # Set world gravity
+getGravity()                             # Get gravity vector
+pausePhysics()                           # Pause physics simulation
+resumePhysics()                          # Resume physics simulation
+physicsTimeStep(timeStep)                # Set physics time step
+physicsDebug(enabled)                    # Enable physics debug visualization
+disablePhysicsDebug()                    # Disable physics debug
+disposePhysics()                         # Dispose physics engine
+```
+
+#### Physics Bodies & Aggregates (V2 API)
+```renscript
+physicsAggregate(type, options)          # Create physics aggregate (V2 API)
+removePhysicsAggregate()                 # Remove physics aggregate
+hasPhysicsAggregate()                    # Check if has physics body
+
+# Mass & Material Properties
+mass(value)                              # Set object mass
+getMass()                                # Get object mass
+friction(value)                          # Set surface friction
+getFriction()                            # Get friction value
+restitution(value)                       # Set bounciness/elasticity
+getRestitution()                         # Get restitution value
+physicsMaterial(material)                # Create physics material
+setPhysicsMaterial(material)             # Apply physics material
+```
+
+#### Forces & Velocities
+```renscript
+impulse(force, contactPoint)             # Apply instant impulse force
+force(force, contactPoint)               # Apply continuous force
+linearVelocity(x, y, z)                 # Set linear velocity
+getLinearVelocity()                      # Get linear velocity
+angularVelocity(x, y, z)                # Set angular velocity
+getAngularVelocity()                     # Get angular velocity
+```
+
+#### Collision Detection & Events
+```renscript
+onCollisionEnter(callback)               # Collision start event
+onCollisionExit(callback)                # Collision end event
+physicsRaycast(origin, direction, max)   # Physics raycast test
+```
+
+#### Constraints & Joints
+```renscript
+physicsJoint(type, options)             # Create physics joint
+removePhysicsJoint(joint)               # Remove physics joint
+```
+
+#### Character Physics
+```renscript
+characterController(options)            # Create character controller
+moveCharacter(movement)                  # Move character controller
+jumpCharacter(force)                     # Make character jump
+```
+
+#### Advanced Physics Features
+```renscript
+ragdoll(enabled)                         # Enable ragdoll physics
+disableRagdoll()                         # Disable ragdoll
+softBody(enabled)                        # Enable soft body physics
+softBodyProperties(properties)           # Set soft body properties
+```
+
+---
+
+### 🎮 Input API - Input Handling (50+ methods)
+*Priority: HIGH - User interaction*
+
+#### Keyboard Input
+```renscript
+# Basic Key Detection
+isKeyPressed(key)                        # Check if key pressed this frame
+isKeyDown(key)                          # Check if key held down
+isAnyKeyPressed()                       # Check if any key pressed
+getPressedKeys()                        # Get array of pressed keys
+isKeyComboPressed(keys)                 # Check key combination
+
+# Modifier Keys
+isCtrlPressed()                         # Check Ctrl modifier key
+isShiftPressed()                        # Check Shift modifier key
+isAltPressed()                          # Check Alt modifier key
+
+# Keyboard Events
+onKeyDown(callback)                     # Key press event handler
+onKeyUp(callback)                       # Key release event handler
+```
+
+#### Mouse Input
+```renscript
+# Mouse Button Detection
+isMousePressed(button)                  # Check mouse button pressed
+isLeftMouse()                           # Check left mouse button
+isRightMouse()                          # Check right mouse button
+isMiddleMouse()                         # Check middle mouse button
+
+# Mouse Position & Movement
+mousePosition()                         # Get mouse screen coordinates
+mouseX()                               # Get mouse X coordinate
+mouseY()                               # Get mouse Y coordinate
+mouseNormalized()                      # Get normalized coordinates (0-1)
+
+# Mouse Events & Control
+onMouseDown(callback)                  # Mouse button press event
+onMouseUp(callback)                    # Mouse button release event
+pointerLock()                          # Request pointer lock
+exitPointerLock()                      # Exit pointer lock
+isPointerLocked()                      # Check pointer lock state
+```
+
+#### Touch Input
+```renscript
+touchCount()                           # Get number of active touches
+getTouches()                           # Get all touch data
+getTouch(index)                        # Get specific touch
+isTouching()                           # Check if any touch active
+pinchDistance()                        # Get pinch gesture distance
+touchCenter()                          # Get center point of touches
+```
+
+#### Gamepad Input
+```renscript
+# Gamepad Connection
+gamepads()                             # Get all connected gamepads
+gamepad(index)                         # Get specific gamepad
+isGamepadConnected(index)              # Check if gamepad connected
+
+# Button Input
+button(index, buttonId)                # Check gamepad button
+buttonValue(index, buttonId)           # Get button pressure value
+isButtonA(index)                       # Check A button (Xbox)
+isButtonB(index)                       # Check B button (Xbox)
+isButtonX(index)                       # Check X button (Xbox)
+isButtonY(index)                       # Check Y button (Xbox)
+
+# Analog Sticks
+leftStick(index)                       # Get left stick values [x, y]
+rightStick(index)                      # Get right stick values [x, y]
+leftX(index)                           # Get left stick X axis
+leftY(index)                           # Get left stick Y axis
+rightX(index)                          # Get right stick X axis
+rightY(index)                          # Get right stick Y axis
+
+# Triggers
+leftTrigger(index)                     # Get left trigger value
+rightTrigger(index)                    # Get right trigger value
+trigger(index, triggerId)              # Get specific trigger value
+
+# Deadzone & Calibration
+deadzone(value, deadzone)              # Apply deadzone to analog value
+leftStickDeadzone(index, deadzone)     # Get left stick with deadzone
+rightStickDeadzone(index, deadzone)    # Get right stick with deadzone
+
+# Haptic Feedback
+vibrate(index, weak, strong, duration) # Vibrate gamepad motors
+
+# Advanced Input
+virtualJoystick(options)               # Create virtual joystick for mobile
+inputSnapshot()                        # Capture current input state
+```
+
+---
+
+### 🎯 Scene API - Scene Management & Queries (30+ methods)
+*Priority: HIGH - Object interaction and scene management*
+
+#### Object Finding & Queries
+```renscript
+findByName(name)                        # Find object by name
+findObjectsByName(name)                 # Find all objects by name pattern  
+findByTag(tag)                          # Find objects by tag
+findWithTag(tag)                        # Find objects with tag
+getAllMeshes()                          # Get all scene meshes
+getAllLights()                          # Get all scene lights
+getAllCameras()                         # Get all scene cameras
+```
+
+#### Spatial Queries & Raycasting
+```renscript
+raycast(origin, direction, maxDistance) # Cast ray and get intersection
+cameraRaycast(x, y)                     # Raycast from camera through screen point
+multiRaycast(rays)                      # Cast multiple rays
+pick(x, y)                             # Pick object at screen coordinates
+pickObjects(x, y)                       # Pick multiple objects
+```
+
+#### Spatial Proximity
+```renscript
+getInRadius(position, radius)           # Get objects in radius
+getInBox(min, max)                      # Get objects in bounding box
+getClosest(position, tag)               # Get closest object to position
+intersectsMesh(mesh1, mesh2)           # Test mesh intersection
+intersectsPoint(point)                  # Test point intersection
+getBoundingInfo()                       # Get object bounding information
+```
+
+#### Object Management
+```renscript
+dispose()                              # Remove object from scene
+clone(newName)                         # Clone object with new name
+isInCameraView()                       # Check if object visible to camera
+occlusionQuery(enabled)                # Enable occlusion culling
+addLodLevel(distance, mesh)            # Add level-of-detail
+removeLodLevel(distance)               # Remove LOD level
+```
+
+#### Scene Information
+```renscript
+sceneInfo()                            # Get complete scene statistics
+performanceMonitor(enabled)            # Enable performance monitoring
+disablePerformanceMonitor()            # Disable performance monitoring
+performanceData()                      # Get performance metrics
+```
+
+---
+
+### 📷 Camera API - Camera Control (25+ methods)
+*Priority: HIGH - Camera control and viewport management*
+
+#### Camera Management
+```renscript
+isCamera()                             # Check if object is camera
+getActiveCamera()                      # Get current active camera
+cameraPosition(x, y, z)                # Set camera position
+getCameraPosition()                    # Get camera position
+cameraTarget(x, y, z)                  # Set camera target
+getCameraTarget()                      # Get camera target
+cameraRotation(x, y, z)                # Set camera rotation
+getCameraRotation()                    # Get camera rotation
+```
+
+#### Camera Properties
+```renscript
+cameraFov(fov)                         # Set field of view
+getCameraFov()                         # Get field of view
+cameraType(type)                       # Set camera type
+cameraRadius(radius)                   # Set orbit camera radius
+getCameraRadius()                      # Get orbit camera radius
+```
+
+#### Camera Types
+```renscript
+arcRotateCamera(name, alpha, beta, radius, target) # Create arc rotate camera
+freeCamera(name, position)             # Create free camera
+universalCamera(name, position)        # Create universal camera
+flyCamera(name, position)              # Create fly camera
+followCamera(name, target)             # Create follow camera
+deviceOrientationCamera(name, position) # Create device orientation camera
+virtualJoysticksCamera(name, position) # Create virtual joystick camera
+webvrFreeCamera(name, position)        # Create WebVR camera
+vrDeviceOrientationCamera(name, pos)   # Create VR device camera
+```
+
+#### Camera Control
+```renscript
+orbitCamera(alpha, beta, radius)       # Orbit camera around target
+detachCameraControls()                 # Detach camera controls
+attachCameraControls()                 # Attach camera controls
+```
+
+---
+
+### 💡 Lighting API - Light Management (30+ methods)
+*Priority: HIGH - Scene lighting and shadows*
+
+#### Light Management
+```renscript
+isLight()                              # Check if object is light
+lightIntensity(intensity)              # Set light intensity
+getLightIntensity()                    # Get light intensity
+lightColor(r, g, b)                    # Set light color
+getLightColor()                        # Get light color
+lightRange(range)                      # Set light range
+getLightRange()                        # Get light range
+ensureLight()                          # Ensure object is a light
+lightPosition(x, y, z)                 # Set light position
+lightDirection(x, y, z)                # Set light direction
+lightSpecular(r, g, b)                 # Set specular light color
+```
+
+#### Light Types
+```renscript
+directionalLight(name, direction)      # Create directional light
+hemisphericLight(name, direction)      # Create hemispheric light
+pointLight(name, position)             # Create point light
+spotLight(name, position, direction)   # Create spot light
+hemisphericGroundColor(r, g, b)        # Set hemispheric ground color
+```
+
+#### Scene Lighting
+```renscript
+sceneExposure(exposure)                # Set scene exposure
+```
+
+#### Shadow System
+```renscript
+shadowEnabled(enabled)                 # Enable/disable shadows
+shadowDarkness(darkness)               # Set shadow darkness
+shadowBias(bias)                       # Set shadow bias
+shadowQuality(quality)                 # Set shadow quality
+shadowSoftness(softness)               # Set shadow softness
+```
+
+#### Skybox System
+```renscript
+ensureSkybox()                         # Ensure skybox exists
+skyboxColors(top, horizon, ground)     # Set skybox gradient colors
+skyboxTexture(url)                     # Set skybox texture
+skyboxSize(size)                       # Set skybox size
+skyboxEnabled(enabled)                 # Enable/disable skybox
+skyboxInfinite(infinite)               # Set skybox infinite distance
+```
+
+---
+
+### ✨ Particle API - Visual Effects (20+ methods)
+*Priority: MEDIUM - Visual effects and particle systems*
 
 #### Particle System Creation
 ```renscript
-create_particle_system(name, capacity)    # Basic particle system
-create_gpu_particle_system(name, cap)     # GPU-accelerated particles
+particleSystem(name, capacity)            # Create basic particle system
+gpuParticleSystem(name, capacity)         # Create GPU particle system
+solidParticleSystem(name, mesh, nb)       # Create solid particle system
+pointsCloudSystem(name, nb)              # Create points cloud system
 ```
 
-#### Emitter Shapes
+#### Particle Control
 ```renscript
-set_box_emitter(system, min, max)         # Box-shaped emission
-set_sphere_emitter(system, radius)        # Sphere emission
-set_cone_emitter(system, radius, angle)   # Cone emission
-set_cylinder_emitter(system, r1, r2, h)   # Cylinder emission
-set_point_emitter(system)                 # Point emission
-```
-
-#### Particle Properties
-```renscript
-set_particle_lifetime(system, min, max)   # Particle lifespan
-set_particle_size(system, min, max)       # Particle scale
-set_particle_speed(system, min, max)      # Emission speed
-set_particle_colors(system, start, end)   # Color over lifetime
-set_emission_rate(system, rate)           # Particles per second
-```
-
-#### Forces & Effects
-```renscript
-set_gravity(system, x, y, z)              # Gravity effect
-add_particle_force(system, force)         # Custom force
-set_wind_force(system, direction, strength) # Wind effect
-```
-
-#### Preset Effects
-```renscript
-create_fire_particles(name, intensity)    # Fire effect
-create_smoke_particles(name, density)     # Smoke effect
-create_rain_particles(name, intensity)    # Rain effect
-create_snow_particles(name, intensity)    # Snow effect
-create_spark_particles(name, count)       # Electric sparks
-create_explosion_effect(pos, intensity)   # Explosion burst
-create_magic_effect(name, color, power)   # Magical effects
+startParticles(system)                    # Start particle emission
+stopParticles(system)                     # Stop particle emission
+particleEmissionRate(system, rate)        # Set emission rate
+particleLifeTime(system, min, max)        # Set particle lifetime
+particleSize(system, min, max)            # Set particle size range
+particleColor(system, color1, color2)     # Set particle color range
+particleVelocity(system, min, max)        # Set velocity range
+particleGravity(system, gravity)          # Set gravity effect
+particleTexture(system, texture)          # Set particle texture
 ```
 
 ---
 
-### 🔊 AudioAPI - 3D Audio System (40+ methods)
-*Priority: MEDIUM - Audio system*
+### 🔊 Audio API - 3D Audio System (20+ methods)
+*Priority: MEDIUM - Audio and sound effects*
 
-#### Sound Creation
+#### Sound Creation & Playback
 ```renscript
-create_sound(name, url, options)          # Basic sound
-create_3d_sound(name, url, options)       # Spatial sound
-create_spatial_sound(name, url, opts)     # Advanced 3D sound
+sound(name, url, options)                 # Create basic sound
+spatialSound(name, url, options)          # Create 3D spatial sound
+soundTrack(name, sounds)                  # Create sound track
+playSound(name)                           # Play sound
+stopSound(name)                           # Stop sound
+soundVolume(name, volume)                 # Set sound volume
 ```
 
-#### Sound Playback
+#### 3D Audio Positioning
 ```renscript
-play_sound(name)                          # Play audio
-stop_sound(name)                          # Stop audio
-pause_sound(name)                         # Pause audio
-set_sound_volume(name, volume)            # Volume control
-set_sound_playback_rate(name, rate)       # Playback speed
+soundPosition(name, x, y, z)              # Set sound position in 3D space
+soundMaxDistance(name, distance)          # Set maximum hearing distance
+soundRolloffFactor(name, factor)          # Set distance rolloff factor
 ```
 
-#### 3D Positioning
+#### Audio Analysis
 ```renscript
-set_sound_position(name, x, y, z)         # Position in 3D space
-attach_sound_to_mesh(sound, mesh)         # Follow object
-set_sound_max_distance(name, distance)    # Hearing range
-set_sound_cone(name, angle, outerAngle)   # Directional audio
-```
-
-#### Audio Effects
-```renscript
-set_sound_lowpass(name, frequency)        # Low-pass filter
-set_sound_highpass(name, frequency)       # High-pass filter
-set_sound_reverb(name, options)           # Reverb effect
-```
-
-#### Sound Synthesis
-```renscript
-create_tone_sound(frequency, duration)    # Generate tone
-create_noise_sound(type, duration)        # Generate noise
-create_beep_sound(frequency, duration)    # Simple beep
-create_chord_sound(frequencies, duration) # Musical chord
-```
-
-#### Advanced Features
-```renscript
-create_audio_analyser(sound)              # Audio analysis
-get_audio_frequency_data(analyser)        # Frequency spectrum
-get_audio_level(analyser)                 # Volume level
-create_music_playlist(sounds)             # Music playlist
-cross_fade_sounds(sound1, sound2, time)   # Smooth transition
+audioAnalyser(sound)                      # Create audio analyser
+audioFrequencyData(analyser)              # Get frequency data
+audioTimeData(analyser)                   # Get time domain data
 ```
 
 ---
 
-### 🖥️ GUIAPI - User Interface (50+ methods)
-*Priority: MEDIUM - User interface*
+### 🖥️ GUI API - User Interface (50+ methods)
+*Priority: MEDIUM - User interface creation*
 
-#### UI Setup
+#### 2D GUI System
 ```renscript
-create_fullscreen_ui(name)                # Full-screen UI layer
-create_texture_ui(name, size)             # Texture-based UI
-create_mesh_ui(name, mesh)                # 3D mesh UI
+guiTexture(name, size)                    # Create GUI texture/layer
+guiButton(name, text)                     # Create button control
+guiTextBlock(name, text)                  # Create text display
+guiStackPanel(name, vertical)             # Create stack layout panel
+guiRectangle(name)                        # Create rectangle shape
+guiEllipse(name)                          # Create ellipse shape
+guiLine(name)                             # Create line shape
+guiSlider(name, min, max, value)          # Create slider control
+guiCheckbox(name, checked)                # Create checkbox
+guiRadioButton(name, group)               # Create radio button
+guiInputText(name, placeholder)           # Create text input
+guiPassword(name, placeholder)            # Create password input
+guiScrollViewer(name)                     # Create scroll viewer
+guiVirtualKeyboard(name)                  # Create virtual keyboard
+guiImage(name, url)                       # Create image control
 ```
 
-#### Basic Controls
+#### 3D GUI System
 ```renscript
-create_button(name, text)                 # Interactive button
-create_text_block(name, text)             # Text display
-create_image(name, url)                   # Image display
-create_rectangle(name)                    # Rectangle shape
-```
-
-#### Input Controls
-```renscript
-create_slider(name, min, max, value)      # Value slider
-create_checkbox(name, checked)            # Checkbox toggle
-create_input_text(name, placeholder)      # Text input field
-create_color_picker(name, color)          # Color selection
-```
-
-#### Layout Controls
-```renscript
-create_stack_panel(name, vertical)        # Stack layout
-create_grid(name, rows, cols)             # Grid layout
-create_scroll_viewer(name)                # Scrollable area
-create_container(name)                    # Generic container
-```
-
-#### Control Properties
-```renscript
-set_control_position(ctrl, x, y)          # Position control
-set_control_size(ctrl, width, height)     # Size control
-set_control_alignment(ctrl, h, v)         # Alignment
-set_control_background(ctrl, color)       # Background color
-set_control_border(ctrl, width, color)    # Border styling
-```
-
-#### Events & Animation
-```renscript
-on_button_click(button, callback)         # Button click event
-on_slider_change(slider, callback)        # Slider value change
-animate_control_property(ctrl, prop, val) # Animate control
-fade_in_control(control, duration)        # Fade in effect
-slide_in_control(control, direction)      # Slide in effect
+gui3dManager()                            # Create 3D GUI manager
+cylinderPanel(name, radius)               # Create cylinder panel
+planePanel(name, width, height)           # Create plane panel
+spherePanel(name, radius)                 # Create sphere panel
+stackPanel3d(name, vertical)              # Create 3D stack panel
+button3d(name, text)                      # Create 3D button
+holographicButton(name, text)             # Create holographic button
+meshButton3d(name, mesh)                  # Create mesh button
 ```
 
 ---
 
-### 🎥 PostProcessAPI - Visual Effects (25+ methods)
-*Priority: MEDIUM - Visual enhancement*
+### 🎬 Post-Processing API - Visual Effects (25+ methods)
+*Priority: MEDIUM - Visual enhancement and effects*
 
-#### Basic Post-Processing
+#### Rendering Pipelines
 ```renscript
-create_blur_post_process(name, direction)  # Blur effect
-create_fxaa_post_process(name)            # Anti-aliasing
-create_highlights_post_process(name)       # Highlight extraction
-create_image_processing(name)              # Color processing
+defaultRenderingPipeline(name)            # Create default rendering pipeline
+ssaoRenderingPipeline(name)               # Create SSAO pipeline
+ssao2RenderingPipeline(name)              # Create SSAO2 pipeline
+standardRenderingPipeline(name)           # Create standard pipeline
+lensRenderingPipeline(name)               # Create lens effects pipeline
 ```
 
-#### Advanced Effects
+#### Post-Processing Effects
 ```renscript
-create_depth_of_field_effect(name, opts)  # DOF blur
-create_volumetric_light_scattering(name)  # God rays
-create_motion_blur_post_process(name)      # Motion blur
-create_screen_space_reflections(name)      # SSR reflections
-```
-
-#### Custom Effects
-```renscript
-create_custom_post_process(name, shader)  # Custom shader
-create_grayscale_post_process(name)       # B&W conversion
-create_sepia_post_process(name)           # Sepia tone
-create_vignette_post_process(name, opts)  # Vignette effect
-```
-
-#### Rendering Pipeline
-```renscript
-create_default_rendering_pipeline(name)   # Standard pipeline
-enable_basic_pipeline()                   # Basic presets
-enable_cinematic_pipeline()               # Cinematic look
-enable_retro_pixel_pipeline()             # Retro aesthetic
+addPostProcess(effect)                    # Add post-process effect
+removePostProcess(effect)                 # Remove post-process effect
+blurPostProcess(name, direction, kernel)  # Create blur effect
+blackAndWhitePostProcess(name)            # Create B&W effect
+convolutionPostProcess(name, kernel)      # Create convolution effect
+filterPostProcess(name, matrix)           # Create filter effect
+fxaaPostProcess(name)                     # Create FXAA anti-aliasing
+highlightsPostProcess(name)               # Create highlights effect
+refractionPostProcess(name, texture)      # Create refraction effect
+volumetricLightPostProcess(name, mesh)    # Create volumetric light
+colorCorrectionPostProcess(name, table)   # Create color correction
+tonemapPostProcess(name, exposure)        # Create tone mapping
+imageProcessingPostProcess(name)          # Create image processing
 ```
 
 ---
 
-### 🥽 XRAPI - VR/AR Support (25+ methods)
-*Priority: LOW - Extended reality*
+### 🥽 XR/VR/AR API - Extended Reality (15+ methods)
+*Priority: LOW - VR/AR support*
 
-#### XR Initialization
+#### WebXR System
 ```renscript
-initialize_xr(options)                    # Setup WebXR
-enter_vr()                               # Enter VR mode
-enter_ar()                               # Enter AR mode
-exit_xr()                                # Exit XR mode
-is_in_xr()                               # Check XR state
-```
-
-#### Controller Tracking
-```renscript
-get_controller_position(index)            # Controller position
-get_controller_rotation(index)            # Controller rotation
-get_controller_button_state(idx, btn)     # Button state
-get_controller_trigger_value(idx, trigger) # Trigger pressure
+webxrDefaultExperience(options)           # Create WebXR default experience
+webxrExperienceHelper(options)            # Create WebXR helper
+webxr(options)                            # Enable WebXR
+disableWebxr()                            # Disable WebXR
+isWebxrAvailable()                        # Check WebXR availability
+isWebxrSessionActive()                    # Check if XR session active
+webxrControllers()                        # Get XR controllers
+webxrInputSources()                       # Get XR input sources
+teleportInXr(position)                    # Teleport in XR
 ```
 
 #### Hand Tracking
 ```renscript
-enable_hand_tracking()                    # Enable hand detection
-get_hand_joint_position(hand, joint)      # Joint position
-is_hand_tracked(hand)                     # Hand visibility
+handTracking(enabled)                     # Enable hand tracking
+disableHandTracking()                     # Disable hand tracking
 ```
 
-#### AR Features
+### 🎭 Behavior API - Object Behaviors (15+ methods)
+*Priority: MEDIUM - Advanced object behaviors*
+
+#### Behavior System
 ```renscript
-enable_plane_detection()                  # Detect surfaces
-get_detected_planes()                     # Surface list
-create_anchor(position, rotation)         # Spatial anchor
-perform_hit_test(x, y)                   # AR hit testing
+autoRotationBehavior(options)             # Add auto-rotation behavior
+bouncingBehavior(options)                 # Add bouncing behavior
+framingBehavior(options)                  # Add camera framing behavior
+attachToBoxBehavior(faceVector)           # Add attach-to-box behavior
+fadeInOutBehavior(options)                # Add fade in/out behavior
+multiPointerScaleBehavior()               # Add multi-pointer scaling
+pointerDragBehavior(options)              # Add pointer drag behavior
+sixDofDragBehavior()                      # Add 6DOF drag behavior
+removeBehavior(behavior)                  # Remove specific behavior
+getBehaviors()                            # Get all behaviors
 ```
 
 ---
 
-### 🔍 DebugAPI - Development Tools (35+ methods)
+### 🎛️ Gizmo API - Manipulation Tools (10+ methods)
 *Priority: LOW - Development tools*
 
-#### Debug Visualization
+#### Gizmo System
 ```renscript
-show_inspector()                          # Babylon.js inspector
-show_fps()                               # FPS counter
-show_frame_time()                        # Frame timing
-show_memory_usage()                      # Memory monitor
-show_draw_calls()                        # Render statistics
-```
-
-#### Visual Helpers
-```renscript
-show_axes(mesh, size)                    # XYZ axes display
-show_bounding_box(mesh, color)           # Bounding box
-show_wireframe(mesh, color)              # Wireframe mode
-show_ray(origin, direction, length)      # Ray visualization
-```
-
-#### Gizmos
-```renscript
-show_position_gizmo(mesh)                # Position manipulator
-show_rotation_gizmo(mesh)                # Rotation manipulator
-show_scale_gizmo(mesh)                   # Scale manipulator
-show_bounding_box_gizmo(mesh)            # Bounding box gizmo
-```
-
-#### Debug Information
-```renscript
-get_scene_info()                         # Complete scene stats
-show_scene_info()                        # Display scene info
-show_mesh_info(mesh)                     # Display mesh details
-show_camera_info(camera)                 # Display camera info
-log_mesh_hierarchy()                     # Console hierarchy dump
-take_screenshot(width, height)           # Capture screen
+gizmoManager()                            # Create gizmo manager
+positionGizmo(options)                    # Create position gizmo
+rotationGizmo(options)                    # Create rotation gizmo
+scaleGizmo(options)                       # Create scale gizmo
+boundingBoxGizmo(options)                 # Create bounding box gizmo
+gizmos(enabled)                           # Enable/disable all gizmos
+disableGizmos()                           # Disable all gizmos
 ```
 
 ---
 
-### 📦 AssetAPI - Asset Management (25+ methods)
-*Priority: MEDIUM - Content management*
+### 🎨 Layer API - Rendering Layers (15+ methods)
+*Priority: MEDIUM - Visual effects layers*
+
+#### Effect Layers
+```renscript
+layer(name, scene)                        # Create basic layer
+highlightLayer(name, scene)               # Create highlight layer
+glowLayer(name, scene)                    # Create glow layer
+effectLayer(name, scene)                  # Create effect layer
+addToHighlightLayer(mesh, color)          # Add to highlight layer
+removeFromHighlightLayer(mesh)            # Remove from highlight
+addToGlowLayer(mesh, color)              # Add to glow layer
+removeFromGlowLayer(mesh)                # Remove from glow
+```
+
+---
+
+### 🖼️ Sprite API - 2D Sprite System (10+ methods)
+*Priority: LOW - 2D sprite management*
+
+#### Sprite System
+```renscript
+sprite(name, manager)                     # Create sprite
+spriteManager(name, imgUrl, capacity)     # Create sprite manager
+spriteMap(name, options)                  # Create sprite map
+spriteTexture(sprite, texture)            # Set sprite texture
+spriteFrame(sprite, frame)                # Set sprite frame
+animateSprite(sprite, from, to, loop)     # Animate sprite frames
+disposeSprite(sprite)                     # Dispose sprite
+```
+
+---
+
+### 🦴 Morph Target API - Vertex Animation (10+ methods)
+*Priority: MEDIUM - Advanced animation*
+
+#### Morph Target System
+```renscript
+morphTarget(name, mesh)                   # Create morph target
+morphTargetManager(mesh)                  # Create morph manager
+addMorphTarget(manager, target)           # Add morph target
+removeMorphTarget(manager, target)        # Remove morph target
+morphTargetInfluence(target, influence)   # Set influence value
+getMorphTargetInfluence(target)           # Get influence value
+```
+
+---
+
+### 🧭 Navigation API - Pathfinding (10+ methods)
+*Priority: LOW - AI navigation*
+
+#### Navigation & Crowd
+```renscript
+navigationMesh(mesh)                      # Create navigation mesh
+findPath(start, end)                      # Find path between points
+crowd(maxAgents, maxRadius, scene)        # Create crowd simulation
+addAgentToCrowd(agent, position)          # Add agent to crowd
+removeAgentFromCrowd(agent)               # Remove agent from crowd
+agentDestination(agent, destination)      # Set agent destination
+getAgentPosition(agent)                   # Get agent position
+getAgentVelocity(agent)                   # Get agent velocity
+```
+
+---
+
+### 📦 Asset Loading API - Asset Management (20+ methods)
+*Priority: HIGH - Asset management*
 
 #### Asset Loading
 ```renscript
-load_mesh(name, url, options)            # Load 3D mesh
-load_gltf(name, url, options)            # Load GLTF/GLB
-load_fbx(name, url, options)             # Load FBX
-load_obj(name, url, options)             # Load OBJ
-load_stl(name, url, options)             # Load STL
+loadMesh(name, rootUrl, sceneFile)        # Load mesh file
+loadGltf(name, rootUrl, sceneFile)        # Load GLTF/GLB file
+loadAssetContainer(rootUrl, sceneFile)    # Load as container
+importMesh(names, rootUrl, sceneFile)     # Import specific meshes
+appendScene(rootUrl, sceneFile)           # Append to current scene
 ```
 
 #### Asset Manager
 ```renscript
-create_assets_manager()                   # Batch loading
-add_mesh_task(manager, name, url)         # Add mesh to batch
-add_texture_task(manager, name, url)      # Add texture to batch
-load_all_assets(manager)                 # Execute batch load
+assetsManager()                           # Create assets manager
+meshTask(manager, name, rootUrl, file)    # Add mesh task
+textureTask(manager, name, url)           # Add texture task
+loadAllAssets(manager)                    # Load all queued assets
 ```
 
 #### Asset Operations
 ```renscript
-get_loaded_asset(name)                   # Retrieve asset
-get_loaded_mesh(name)                    # Get specific mesh
-get_loaded_animations(name)              # Get animations
-instantiate_asset(name)                  # Create instance
-clone_asset(name, newName)               # Duplicate asset
-```
-
-#### Asset Management
-```renscript
-dispose_asset(name)                      # Remove from memory
-dispose_all_assets()                     # Clear all assets
-get_asset_info(name)                     # Asset details
-is_asset_loaded(name)                    # Check load status
-get_total_memory_usage()                 # Memory usage
+mergeModelWithSkeleton(model, skeleton)   # Merge model with skeleton
+loadAndMergeAssets(assets)                # Load and merge assets
+getLoadedAsset(name)                      # Get loaded asset
+getLoadedMesh(name)                       # Get loaded mesh
+getLoadedAnimations(name)                 # Get loaded animations
+getLoadedSkeleton(name)                   # Get loaded skeleton
 ```
 
 ---
 
-### 🔧 UtilityAPI - Helper Functions (30+ methods)
-*Priority: LOW - Helper functions*
+### 💾 Serialization API - Export & Import (10+ methods)
+*Priority: LOW - Data export*
 
-#### Advanced Math
+#### Export Functions
 ```renscript
-smooth_step(edge0, edge1, x)             # Smooth interpolation
-remap(value, oldMin, oldMax, newMin, newMax) # Remap range
-random_choice(array)                     # Random array element
-```
-
-#### Vector Operations
-```renscript
-create_vector3(x, y, z)                  # Create vector
-vector_distance(v1, v2)                  # Distance between vectors
-vector_lerp(v1, v2, t)                  # Vector interpolation
-vector_normalize(vector)                 # Normalize vector
-vector_cross(v1, v2)                    # Cross product
-angle_between_vectors(v1, v2)            # Angle between vectors
-```
-
-#### Color Utilities
-```renscript
-create_color3(r, g, b)                   # Create color
-color_lerp(color1, color2, t)            # Color interpolation
-color_from_hex(hexString)                # Convert from hex
-color_to_hex(color)                      # Convert to hex
-color_from_hsv(h, s, v)                  # Convert from HSV
-```
-
-#### Transformation Utilities
-```renscript
-quaternion_from_euler(x, y, z)           # Euler to quaternion
-quaternion_to_euler(quaternion)          # Quaternion to euler
-transform_point(point, matrix)           # Transform coordinate
-```
-
-#### Screen & World Conversion
-```renscript
-world_to_screen(position)                # 3D to screen coords
-screen_to_world(x, y, depth)             # Screen to 3D coords
-get_screen_size()                        # Screen dimensions
+serializeScene()                          # Serialize scene to JSON
+exportGltf(filename, scene)               # Export to GLTF format
+exportObj(filename, meshes)               # Export to OBJ format
+exportStl(filename, mesh)                 # Export to STL format
+exportUsdz(filename, scene)               # Export to USDZ format
+exportSplat(filename, pointCloud)         # Export to Splat format
 ```
 
 ---
 
-### 🎯 SceneAPI - Scene Queries & Management (20+ methods)
-*Priority: HIGH - Object interaction*
+### 🔧 Advanced APIs - Specialized Systems (40+ methods)
+*Priority: LOW to MEDIUM - Advanced features*
 
-#### Object Finding
+#### Compute Shaders
 ```renscript
-find_object_by_name(name)                # Find by name
-find_objects_by_tag(tag)                 # Find by tag
-get_all_meshes()                         # All scene meshes
-get_all_lights()                         # All scene lights
-get_all_cameras()                        # All scene cameras
+computeShader(name, code)                 # Create compute shader
+computeEffect(name, defines)              # Create compute effect
+dispatchCompute(x, y, z)                  # Dispatch compute shader
+computeUniform(name, value)               # Set compute uniform
+getComputeBuffer(name)                    # Get compute buffer
 ```
 
-#### Spatial Queries
+#### Flow Graph System
 ```renscript
-raycast(origin, direction, maxDistance)   # Ray intersection
-raycast_from_camera(x, y)                # Camera ray
-get_objects_in_radius(pos, radius)       # Proximity search
-get_objects_in_box(min, max)             # Box intersection
-get_closest_object(position, tag)        # Find nearest
+flowGraph(name)                           # Create flow graph
+flowGraphBlock(type, inputs, outputs)     # Add flow graph block
+connectFlowGraphNodes(out, in)            # Connect flow nodes
+executeFlowGraph(graph)                   # Execute flow graph
 ```
 
-#### Object Operations
+#### Frame Graph System
 ```renscript
-pick_object(x, y)                        # Mouse picking
-intersects_mesh(mesh1, mesh2)            # Collision test
-clone_object(object, name)               # Duplicate object
-dispose_object(object)                   # Remove object
+frameGraph(name)                          # Create frame graph
+frameGraphTask(task, dependencies)        # Add frame graph task
+executeFrameGraph(graph)                  # Execute frame graph
 ```
+
+#### Advanced Rendering
+```renscript
+depthRenderer(enabled)                    # Enable depth renderer
+geometryBufferRenderer(enabled)           # Enable G-buffer renderer
+outlineRenderer(enabled)                  # Enable outline renderer
+edgesRenderer(enabled)                    # Enable edges renderer
+boundingBoxRenderer(enabled)              # Enable bbox renderer
+utilityLayerRenderer(scene)               # Create utility layer
+```
+
+#### Environment Helpers
+```renscript
+environmentHelper(options)                # Create environment helper
+photoDome(name, url, options)             # Create photo dome
+videoDome(name, url, options)             # Create video dome
+textureDome(name, texture, options)       # Create texture dome
+```
+
+#### Debug & Visualization
+```renscript
+axesViewer(size, scene)                   # Create axes viewer
+boneAxesViewer(mesh, bone)                # Create bone axes viewer
+skeletonViewer(skeleton, mesh)            # Create skeleton viewer
+physicsViewer(scene)                      # Create physics viewer
+rayHelper(ray)                           # Create ray helper
+debugLayer(enabled)                       # Enable debug layer
+disableDebugLayer()                       # Disable debug layer
+showWorldAxes(size)                       # Show world axes
+hideWorldAxes()                           # Hide world axes
+```
+
+#### Dynamic Properties
+```renscript
+dynamicProperty(name, type, options)      # Add dynamic property
+updatePropertyOptions(name, options)      # Update property options
+removeDynamicProperty(name)               # Remove dynamic property
+getPropertyValue(name)                    # Get property value
+propertyValue(name, value)                # Set property value
+```
+
+---
+
 
 ---
 
@@ -812,24 +1185,32 @@ dispose_object(object)                   # Remove object
 
 | Module | Methods | Priority | Description |
 |--------|---------|----------|-------------|
-| **CoreAPI** | 50+ | HIGHEST | Transform, visibility, math, time, logging |
-| **AnimationAPI** | 55+ | HIGH | Keyframe, skeleton, morph, procedural animation |
-| **PhysicsAPI** | 35+ | HIGH | Physics simulation, forces, collision |
-| **InputAPI** | 40+ | HIGH | Keyboard, mouse, touch, gamepad input |
-| **MaterialAPI** | 40+ | HIGH | Materials, colors, shaders, textures |
-| **MeshAPI** | 45+ | HIGH | 3D geometry creation and manipulation |
-| **SceneAPI** | 20+ | HIGH | Scene queries, raycasting, object finding |
-| **TextureAPI** | 35+ | MEDIUM | Texture creation, procedural, dynamic |
-| **ParticleAPI** | 30+ | MEDIUM | Particle effects, emitters, forces |
-| **AudioAPI** | 40+ | MEDIUM | 3D audio, spatial sound, synthesis |
-| **GUIAPI** | 50+ | MEDIUM | UI controls, layouts, events |
-| **PostProcessAPI** | 25+ | MEDIUM | Visual effects, post-processing |
-| **AssetAPI** | 25+ | MEDIUM | Asset loading, management, optimization |
-| **XRAPI** | 25+ | LOW | VR/AR support, hand tracking |
-| **DebugAPI** | 35+ | LOW | Debug tools, performance monitoring |
-| **UtilityAPI** | 30+ | LOW | Helper functions, utilities |
+| **Core API** | 40+ | HIGHEST | Transform, visibility, math, time, logging |
+| **Material API** | 65+ | HIGH | Materials, colors, shaders, textures |
+| **Texture API** | 50+ | HIGH | Texture creation, procedural, dynamic |
+| **Mesh API** | 35+ | HIGH | 3D geometry creation and manipulation |
+| **Animation API** | 85+ | HIGH | Keyframe, skeleton, morph, procedural animation |
+| **Physics API** | 45+ | HIGH | Physics simulation, forces, collision |
+| **Input API** | 50+ | HIGH | Keyboard, mouse, touch, gamepad input |
+| **Scene API** | 30+ | HIGH | Scene queries, raycasting, object finding |
+| **Camera API** | 25+ | HIGH | Camera control and viewport management |
+| **Lighting API** | 30+ | HIGH | Scene lighting, shadows, skybox |
+| **Particle API** | 20+ | MEDIUM | Particle effects, emitters, forces |
+| **Audio API** | 20+ | MEDIUM | 3D audio, spatial sound, synthesis |
+| **GUI API** | 50+ | MEDIUM | UI controls, layouts, events |
+| **Post-Processing API** | 25+ | MEDIUM | Visual effects, post-processing |
+| **Asset Loading API** | 20+ | HIGH | Asset loading, management, optimization |
+| **XR/VR/AR API** | 15+ | LOW | VR/AR support, hand tracking |
+| **Behavior API** | 15+ | MEDIUM | Object behaviors and interactions |
+| **Gizmo API** | 10+ | LOW | Development manipulation tools |
+| **Layer API** | 15+ | MEDIUM | Visual effects layers |
+| **Sprite API** | 10+ | LOW | 2D sprite management |
+| **Morph Target API** | 10+ | MEDIUM | Vertex animation |
+| **Navigation API** | 10+ | LOW | AI pathfinding and crowd simulation |
+| **Serialization API** | 10+ | LOW | Data export and import |
+| **Advanced APIs** | 40+ | LOW-MEDIUM | Compute shaders, flow graphs, debug tools |
 
-**Total: 580+ methods across 16 modules**
+**Total: 777+ methods across 24 specialized modules**
 
 ## Examples
 
@@ -893,7 +1274,7 @@ script CompleteDemo {
     
     # Setup physics if enabled
     if enable_physics {
-      set_physics_impostor("box", {mass: 1, restitution: bounce_factor})
+      physicsAggregate("box", {mass: 1, restitution: bounce_factor})
     }
     
     # Create particle effect
@@ -987,7 +1368,7 @@ script AnimationController {
   
   start {
     # Setup physics for character
-    set_physics_impostor("capsule", {mass: 1})
+    physicsAggregate("capsule", {mass: 1})
     
     # Load animation presets
     play_idle_animation(this)
@@ -1061,12 +1442,14 @@ script AnimationController {
 
 ## Architecture Benefits
 
-1. **Modular Design** - Each API module is self-contained and focused
-2. **Babylon.js Foundation** - Built on industry-standard 3D engine
-3. **Complete Feature Set** - 580+ methods covering all aspects of 3D development
-4. **Performance Optimized** - GPU acceleration, instancing, LOD systems
-5. **Developer Friendly** - Extensive debugging tools and helpers
-6. **Future Ready** - VR/AR support, modern web standards
+1. **Comprehensive Coverage** - 777+ methods across 24 specialized modules covering every aspect of 3D development
+2. **Modular Design** - Each API module is self-contained and focused on specific functionality
+3. **Babylon.js Foundation** - Built on industry-standard 3D engine with full WebGL 2.0 support
+4. **Performance Optimized** - GPU acceleration, instancing, thin instances, LOD systems, compute shaders
+5. **Developer Friendly** - Extensive debugging tools, gizmos, and visualization helpers
+6. **Future Ready** - WebXR support, compute shaders, flow graphs, advanced rendering pipelines
+7. **Production Ready** - Asset loading, serialization, optimization, and performance monitoring
+8. **Cross-Platform** - Web, mobile, VR/AR support with unified API
 
 ## System Requirements
 
@@ -1080,4 +1463,4 @@ script AnimationController {
 
 ---
 
-*This documentation covers the complete RenScript API with all 580+ available methods across 16 specialized modules. The system provides professional-grade 3D development capabilities comparable to commercial game engines.*
+*This documentation covers the complete RenScript API with all 777+ available methods across 24 specialized modules. The system provides professional-grade 3D development capabilities comparable to commercial game engines, with comprehensive support for 3D graphics, animation, physics, audio, VR/AR, and advanced rendering techniques.*

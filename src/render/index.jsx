@@ -13,6 +13,8 @@ import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
 import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder';
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture';
+import '@babylonjs/core/Materials/Textures/Loaders/envTextureLoader';
+import { CreateSkyBox } from '@babylonjs/core/Helpers/environmentHelper';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
@@ -25,9 +27,15 @@ import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
 import '@babylonjs/core/Layers/effectLayerSceneComponent';
 import '@babylonjs/core/Materials/standardMaterial';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
+import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
+import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
+import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
+import '@babylonjs/loaders/glTF';
 import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
 import HavokPhysics from '@babylonjs/havok';
 import '@babylonjs/core/Physics/physicsEngineComponent';
+import { bridgeService } from '@/plugins/core/bridge';
 import { renderStore, renderActions } from './store.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { grid } from './hooks/grid.jsx';
@@ -36,6 +44,8 @@ import { useCameraController } from './hooks/cameraMovement.jsx';
 import { GizmoManagerComponent } from './hooks/gizmo.jsx';
 import { useAssetLoader } from './hooks/assetLoader.jsx';
 import { LoadingTooltip } from './components/LoadingTooltip.jsx';
+
+
 
 const loadDefaultSceneContent = (scene, canvas) => {
   console.log('🌟 Loading default scene content');
@@ -50,22 +60,32 @@ const loadDefaultSceneContent = (scene, canvas) => {
   camera.setTarget(Vector3.Zero());
 
 
-  // Realistic physically-based lighting setup
+  // Enhanced lighting setup with skybox and better shadows
   
-  // Sky ambient light - gentle ambient to avoid washout with StandardMaterial
+  // Create a simple gradient skybox manually
+  const skybox = CreateBox('skyBox', { size: 1000 }, scene);
+  const skyboxMaterial = new StandardMaterial('skyBox', scene);
+  skyboxMaterial.backFaceCulling = false;
+  skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
+  skyboxMaterial.specularColor = new Color3(0, 0, 0);
+  skyboxMaterial.emissiveColor = new Color3(0.5, 0.7, 1.0); // Sky blue emission
+  skybox.material = skyboxMaterial;
+  skybox.infiniteDistance = true;
+  
+  // Sky ambient light - reduced intensity since we have skybox
   const skyLight = new HemisphericLight('skyLight', new Vector3(0, 1, 0), scene);
-  skyLight.intensity = 0.25;
-  skyLight.diffuse = new Color3(0.45, 0.65, 0.85);
-  skyLight.groundColor = new Color3(0.18, 0.24, 0.20);
+  skyLight.intensity = 0.3;
+  skyLight.diffuse = new Color3(0.6, 0.8, 1.0);
+  skyLight.groundColor = new Color3(0.2, 0.3, 0.4);
   
-  // Sun - realistic solar illumination
-  const sunLight = new DirectionalLight('sunLight', new Vector3(-0.3, -0.8, -0.5), scene);
-  sunLight.intensity = 0.9;
-  sunLight.diffuse = new Color3(0.98, 0.92, 0.80);
-  sunLight.specular = new Color3(0.7, 0.7, 0.65);
+  // Main sun light - stronger and more dramatic
+  const sunLight = new DirectionalLight('sunLight', new Vector3(-0.4, -0.7, -0.6), scene);
+  sunLight.intensity = 1.2;
+  sunLight.diffuse = new Color3(1.0, 0.95, 0.85);
+  sunLight.specular = new Color3(1.0, 0.9, 0.8);
   
-  // Realistic sun position (45° elevation, morning/afternoon angle)
-  const sunElevation = 45 * Math.PI / 180; // 45 degrees above horizon
+  // Position sun higher for better shadow angles
+  const sunElevation = 60 * Math.PI / 180; // 60 degrees elevation
   const sunAzimuth = 135 * Math.PI / 180; // Southeast direction
   sunLight.direction = new Vector3(
     Math.cos(sunElevation) * Math.cos(sunAzimuth),
@@ -73,23 +93,30 @@ const loadDefaultSceneContent = (scene, canvas) => {
     Math.cos(sunElevation) * Math.sin(sunAzimuth)
   );
   
-  // Fill light - simulates atmospheric scattering and bounce light
-  const fillLight = new DirectionalLight('fillLight', new Vector3(0.4, -0.3, 0.6), scene);
-  fillLight.intensity = 0.12;
+  // Fill light - simulates bounce light from environment
+  const fillLight = new DirectionalLight('fillLight', new Vector3(0.3, -0.2, 0.8), scene);
+  fillLight.intensity = 0.15;
   fillLight.diffuse = new Color3(0.7, 0.8, 1.0);
   fillLight.specular = new Color3(0.0, 0.0, 0.0);
 
-  // Create realistic shadow generator
-  const shadowGenerator = new ShadowGenerator(2048, sunLight);
+  // Enhanced shadow generator with better quality
+  const shadowGenerator = new ShadowGenerator(4096, sunLight); // Higher resolution
   shadowGenerator.usePercentageCloserFiltering = true;
   shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
-  shadowGenerator.darkness = 0.35; // Softer, less crushed shadows
-  shadowGenerator.bias = 0.0005; // Reduce acne without Peter-panning
+  shadowGenerator.darkness = 0.4; // More pronounced shadows
+  shadowGenerator.bias = 0.0001; // Tighter bias for sharper shadows
   
-  // Realistic shadow softness - sun shadows are quite sharp
-  shadowGenerator.contactHardeningLightSizeUVRatio = 0.05;
-
-
+  // Contact hardening for realistic shadow softness
+  shadowGenerator.useContactHardeningShadow = true;
+  shadowGenerator.contactHardeningLightSizeUVRatio = 0.075;
+  
+  // Set shadow map size and enable blur
+  shadowGenerator.blurBoxOffset = 2.0;
+  shadowGenerator.blurScale = 2.0;
+  shadowGenerator.blurKernel = 32;
+  
+  // Store shadow generator for access by physics objects
+  scene.shadowGenerator = shadowGenerator;
 
   // Set camera in render store
   renderActions.setCamera(camera);
@@ -376,26 +403,12 @@ export default function BabylonRenderer(props) {
       // Lower overall exposure to avoid overly bright results
       babylonScene.imageProcessingConfiguration.exposure = 0.85;
 
-      // Enable Havok physics
+      // Enable Havok physics for RenScript
       try {
         const havokInstance = await HavokPhysics();
         const hk = new HavokPlugin(true, havokInstance);
         const enableResult = babylonScene.enablePhysics(new Vector3(0, -9.81, 0), hk);
-        console.log('✅ Havok physics enabled, result:', enableResult);
-        
-        // Wait for physics engine to be fully ready
-        await new Promise(resolve => {
-          const checkPhysics = () => {
-            const physicsEngine = babylonScene.getPhysicsEngine();
-            if (physicsEngine) {
-              resolve();
-            } else {
-              setTimeout(checkPhysics, 10);
-            }
-          };
-          checkPhysics();
-        });
-        console.log('✅ Havok physics engine is ready');
+        console.log('✅ Havok physics enabled for RenScript, result:', enableResult);
       } catch (error) {
         console.warn('⚠️ Failed to enable Havok physics:', error);
       }
@@ -496,6 +509,8 @@ export default function BabylonRenderer(props) {
 
   const cleanup = () => {
     const babylonEngine = engine();
+    const babylonScene = scene();
+    
     
     // Use render store for cleanup
     renderActions.cleanup();

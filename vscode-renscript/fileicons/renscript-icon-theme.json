@@ -5,7 +5,8 @@
     }
   },
   "fileExtensions": {
-    "ren": "_ren"
+    "ren": "_ren",
+    "renp": "_ren"
   },
   "fileNames": {},
   "folderNames": {},

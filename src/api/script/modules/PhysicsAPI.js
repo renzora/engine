@@ -1,12 +1,8 @@
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { PhysicsImpostor } from '@babylonjs/core/Physics/physicsImpostor.js';
-import { PhysicsBody } from '@babylonjs/core/Physics/v2/physicsBody.js';
-import { PhysicsMotionType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js';
-import { PhysicsShapeBox } from '@babylonjs/core/Physics/v2/physicsShape.js';
-import { PhysicsShapeSphere } from '@babylonjs/core/Physics/v2/physicsShape.js';
-import { PhysicsShapeCylinder } from '@babylonjs/core/Physics/v2/physicsShape.js';
-import { PhysicsShapeMesh } from '@babylonjs/core/Physics/v2/physicsShape.js';
-import { PhysicsShapeConvexHull } from '@babylonjs/core/Physics/v2/physicsShape.js';
+import { PhysicsAggregate } from '@babylonjs/core/Physics/v2/physicsAggregate.js';
+import { PhysicsShapeType } from '@babylonjs/core/Physics/v2/IPhysicsEnginePlugin.js';
+import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin.js';
+import HavokPhysics from '@babylonjs/havok';
 import { StandardMaterial, Color3 } from '@babylonjs/core';
 
 /**
@@ -21,72 +17,27 @@ export class PhysicsAPI {
 
   // === PHYSICS ENGINE SETUP ===
   
-  async enablePhysics(engine = 'cannon', gravityX = 0, gravityY = -9.81, gravityZ = 0) {
+  async enablePhysics(engine = 'havok', gravityX = 0, gravityY = -9.81, gravityZ = 0) {
     if (!this.scene) return false;
     
     try {
       const gravity = new Vector3(gravityX, gravityY, gravityZ);
       
-      // Import appropriate physics engine
-      let physicsPlugin;
-      switch (engine.toLowerCase()) {
-        case 'havok':
-          try {
-            // Try to enable Havok if available
-            if (typeof HavokPlugin !== 'undefined' && typeof HavokPhysics !== 'undefined') {
-              physicsPlugin = new HavokPlugin(true, await HavokPhysics());
-            } else {
-              console.warn('Havok physics not available, using basic physics simulation');
-              this.scene.gravity = gravity;
-              return true;
-            }
-          } catch (error) {
-            console.warn('Failed to initialize Havok, using basic physics');
-            this.scene.gravity = gravity;
-            return true;
-          }
-          break;
-        case 'cannon':
-          try {
-            if (typeof CannonJSPlugin !== 'undefined' && typeof CANNON !== 'undefined') {
-              physicsPlugin = new CannonJSPlugin(true, 10, CANNON);
-            } else {
-              console.warn('Cannon.js not available, using basic physics simulation');
-              this.scene.gravity = gravity;
-              return true;
-            }
-          } catch (error) {
-            this.scene.gravity = gravity;
-            return true;
-          }
-          break;
-        case 'ammo':
-          try {
-            if (typeof AmmoJSPlugin !== 'undefined' && typeof Ammo !== 'undefined') {
-              physicsPlugin = new AmmoJSPlugin(true, Ammo);
-            } else {
-              console.warn('Ammo.js not available, using basic physics simulation');
-              this.scene.gravity = gravity;
-              return true;
-            }
-          } catch (error) {
-            this.scene.gravity = gravity;
-            return true;
-          }
-          break;
-        default:
-          console.warn('Unknown physics engine:', engine, '- using basic simulation');
-          this.scene.gravity = gravity;
+      if (engine.toLowerCase() === 'havok') {
+        try {
+          const havokInstance = await HavokPhysics();
+          const hk = new HavokPlugin(true, havokInstance);
+          const enableResult = this.scene.enablePhysics(gravity, hk);
+          console.log('✅ Havok physics enabled, result:', enableResult);
           return true;
-      }
-      
-      if (physicsPlugin) {
-        this.scene.enablePhysics(gravity, physicsPlugin);
+        } catch (error) {
+          console.error('Failed to initialize Havok:', error);
+          return false;
+        }
       } else {
-        this.scene.gravity = gravity;
+        console.warn('Only Havok physics engine is supported');
+        return false;
       }
-      
-      return true;
     } catch (error) {
       console.error('Failed to enable physics:', error);
       return false;
@@ -126,343 +77,264 @@ export class PhysicsAPI {
     return [0, -9.81, 0];
   }
 
-  // === PHYSICS IMPOSTORS ===
+  // === PHYSICS AGGREGATES (V2 API) ===
   
   setPhysicsImpostor(type = 'box', mass = 1, options = {}) {
     if (!this.babylonObject) return;
     
-    // Check if scene has Physics v2 (Havok) or v1 (legacy)
     const physicsEngine = this.scene.getPhysicsEngine();
     if (!physicsEngine) {
       console.warn('No physics engine available');
       return;
     }
     
-    // Use Physics v2 if available (Havok)
-    if (physicsEngine.getPluginVersion && physicsEngine.getPluginVersion() === 2) {
-      // Auto-detect object type and create appropriate shape
-      let detectedType = type.toLowerCase();
+    // Map aggregate types to PhysicsShapeType
+    let shapeType;
+    
+    // Auto-detect shape for common objects
+    if (this.babylonObject.getClassName) {
+      const className = this.babylonObject.getClassName().toLowerCase();
+      const objectName = this.babylonObject.name.toLowerCase();
       
-      // Auto-detect based on object class name if type is 'box' (default)
-      if (type.toLowerCase() === 'box' && this.babylonObject.getClassName) {
-        const className = this.babylonObject.getClassName().toLowerCase();
-        if (className.includes('sphere')) {
-          detectedType = 'sphere';
-        } else if (className.includes('cylinder')) {
-          detectedType = 'cylinder';
-        } else if (className.includes('ground') || className.includes('plane')) {
-          detectedType = 'mesh';
+      if (className.includes('ground') || objectName.includes('ground') || objectName.includes('plane')) {
+        shapeType = PhysicsShapeType.BOX;
+        console.log('Auto-detected ground/plane object, using BOX shape');
+      } else if (className.includes('sphere') || objectName.includes('sphere')) {
+        shapeType = PhysicsShapeType.SPHERE;
+        console.log('Auto-detected sphere object, using SPHERE shape');
+      } else {
+        // Use provided type
+        switch (type.toLowerCase()) {
+          case 'sphere':
+            shapeType = PhysicsShapeType.SPHERE;
+            break;
+          case 'cylinder':
+            shapeType = PhysicsShapeType.CYLINDER;
+            break;
+          case 'mesh':
+            shapeType = PhysicsShapeType.MESH;
+            break;
+          case 'convex_hull':
+            shapeType = PhysicsShapeType.CONVEX_HULL;
+            break;
+          case 'plane':
+            shapeType = PhysicsShapeType.BOX;
+            break;
+          case 'box':
+          default:
+            shapeType = PhysicsShapeType.BOX;
+            break;
         }
       }
-      
-      console.log(`Creating physics shape: ${detectedType} for object: ${this.babylonObject.name}, class: ${this.babylonObject.getClassName()}`);
-      
-      // Handle TransformNode containers - apply physics to child meshes
-      if (this.babylonObject.getClassName() === 'TransformNode') {
-        const childMeshes = this.babylonObject.getChildMeshes();
-        console.log(`Found ${childMeshes.length} child meshes for physics`);
-        
-        if (childMeshes.length > 0) {
-          // Find the first child mesh with actual geometry (vertices > 0)
-          let targetMesh = childMeshes.find(mesh => mesh.getTotalVertices && mesh.getTotalVertices() > 0);
-          if (!targetMesh) {
-            // Fallback to first mesh if none have vertices
-            targetMesh = childMeshes[0];
-          }
-          console.log(`Applying physics to child mesh: ${targetMesh.name}`);
-          console.log(`🔍 Target mesh position: ${targetMesh.position.x}, ${targetMesh.position.y}, ${targetMesh.position.z}`);
-          console.log(`🔍 Target mesh has vertices: ${targetMesh.getTotalVertices ? targetMesh.getTotalVertices() : 'unknown'}`);
-          console.log(`🔍 Target mesh bounding info: ${targetMesh.getBoundingInfo ? 'yes' : 'no'}`);
-          
-          const motionType = mass > 0 ? PhysicsMotionType.DYNAMIC : PhysicsMotionType.STATIC;
-          
-          // Don't move the target mesh - let it stay in its relative position
-          console.log(`🔍 Keeping target mesh at relative position: ${targetMesh.position.x}, ${targetMesh.position.y}, ${targetMesh.position.z}`);
-          
-          // Create physics body using Physics v2 API
-          const physicsBody = new PhysicsBody(targetMesh, motionType, false, this.scene);
-          console.log(`🔍 Physics body created, checking properties...`);
-          console.log(`🔍 Physics body mass: ${physicsBody.getMassProperties ? physicsBody.getMassProperties()?.mass : 'unknown'}`);
-          console.log(`🔍 Physics body motion type: ${physicsBody.getMotionType ? physicsBody.getMotionType() : 'unknown'}`);
-          console.log(`🔍 Target mesh position after physics creation: ${targetMesh.position.x}, ${targetMesh.position.y}, ${targetMesh.position.z}`);
-          
-          // Set mass properties for dynamic objects
-          if (mass > 0) {
-            physicsBody.setMassProperties({ mass: mass });
-            // Make sure the object starts at rest
-            physicsBody.setLinearVelocity(new Vector3(0, 0, 0));
-            physicsBody.setAngularVelocity(new Vector3(0, 0, 0));
-            console.log(`🔍 Set initial velocity to zero for dynamic object`);
-          }
-          
-          // Create and assign shape based on mesh geometry
-          let shape;
-          switch (detectedType) {
-            case 'sphere':
-              shape = new PhysicsShapeSphere(new Vector3(0, 0, 0), 0.5, this.scene);
-              break;
-            case 'cylinder':
-              shape = new PhysicsShapeCylinder(new Vector3(0, 0, 0), new Vector3(0, 1, 0), 0.5, 1, this.scene);
-              break;
-            default:
-              shape = new PhysicsShapeBox(new Vector3(0, 0, 0), new Vector3(0, 0, 0), new Vector3(0.5, 0.5, 0.5), this.scene);
-          }
-          
-          physicsBody.shape = shape;
-          targetMesh.physicsBody = physicsBody;
-          
-          // Store reference on parent container for easy access
-          this.babylonObject.physicsBody = physicsBody;
-          this.babylonObject._physicsTargetMesh = targetMesh;
-          
-          console.log(`✅ Physics body created for child mesh ${targetMesh.name} with mass: ${mass}, motionType: ${motionType}`);
-          console.log(`🌍 Scene physics enabled: ${this.scene.physicsEnabled}`);
-          if (this.scene.physicsEnabled) {
-            const physicsEngine = this.scene.getPhysicsEngine();
-            console.log(`🔧 Physics engine: ${physicsEngine ? physicsEngine.constructor.name : 'none'}`);
-            if (physicsEngine && physicsEngine.gravity) {
-              console.log(`⬇️ Gravity: ${physicsEngine.gravity.x}, ${physicsEngine.gravity.y}, ${physicsEngine.gravity.z}`);
-              console.log(`🧭 Scene coordinate system check:`);
-              console.log(`  Container Y position: ${this.babylonObject.position.y} (should be > 0 for objects above ground)`);
-              console.log(`  If Y+ is up, then gravity Y should be negative (currently: ${physicsEngine.gravity.y})`);
-            }
-          }
-          return physicsBody;
-        }
-      }
-      
-      // Create physics body for regular meshes
-      const motionType = mass > 0 ? PhysicsMotionType.DYNAMIC : PhysicsMotionType.STATIC;
-      const physicsBody = new PhysicsBody(this.babylonObject, motionType, false, this.scene);
-      
-      // Set mass properties for dynamic objects
-      if (mass > 0) {
-        physicsBody.setMassProperties({ mass: mass });
-      }
-      
-      // Create and assign shape based on mesh geometry
-      let shape;
-      switch (detectedType) {
-        case 'sphere':
-          shape = new PhysicsShapeSphere(new Vector3(0, 0, 0), 0.5, this.scene);
-          break;
-        case 'cylinder':
-          shape = new PhysicsShapeCylinder(new Vector3(0, 0, 0), new Vector3(0, 1, 0), 0.5, 1, this.scene);
-          break;
-        default:
-          shape = new PhysicsShapeBox(new Vector3(0, 0, 0), new Vector3(0, 0, 0), new Vector3(0.5, 0.5, 0.5), this.scene);
-      }
-      
-      physicsBody.shape = shape;
-      this.babylonObject.physicsBody = physicsBody;
-      
-      // Apply material options
-      if (options.restitution !== undefined || options.friction !== undefined) {
-        physicsBody.setMaterialProperties({ 
-          restitution: options.restitution || 0.7,
-          friction: options.friction || 0.1
-        });
-      }
-      
-      console.log(`✅ Physics body created for ${this.babylonObject.name} with ${detectedType} shape, mass: ${mass}`);
-      return physicsBody;
     } else {
-      // Fallback to Physics v1 (legacy)
-      let impostorType;
+      // Use provided type
       switch (type.toLowerCase()) {
-        case 'box':
-          impostorType = PhysicsImpostor.BoxImpostor;
-          break;
         case 'sphere':
-          impostorType = PhysicsImpostor.SphereImpostor;
+          shapeType = PhysicsShapeType.SPHERE;
           break;
         case 'cylinder':
-          impostorType = PhysicsImpostor.CylinderImpostor;
-          break;
-        case 'plane':
-          impostorType = PhysicsImpostor.PlaneImpostor;
+          shapeType = PhysicsShapeType.CYLINDER;
           break;
         case 'mesh':
-          impostorType = PhysicsImpostor.MeshImpostor;
+          shapeType = PhysicsShapeType.MESH;
           break;
         case 'convex_hull':
-          impostorType = PhysicsImpostor.ConvexHullImpostor;
+          shapeType = PhysicsShapeType.CONVEX_HULL;
           break;
+        case 'plane':
+          shapeType = PhysicsShapeType.BOX;
+          break;
+        case 'box':
         default:
-          impostorType = PhysicsImpostor.BoxImpostor;
+          shapeType = PhysicsShapeType.BOX;
+          break;
+      }
+    }
+    
+    console.log(`Creating physics aggregate: ${type} for object: ${this.babylonObject.name}`);
+    console.log(`Object position: ${this.babylonObject.position.x}, ${this.babylonObject.position.y}, ${this.babylonObject.position.z}`);
+    console.log(`Object scaling: ${this.babylonObject.scaling.x}, ${this.babylonObject.scaling.y}, ${this.babylonObject.scaling.z}`);
+    
+    try {
+      // Dispose existing physics aggregate if it exists
+      if (this.babylonObject.aggregate) {
+        console.log(`🗑️ Disposing existing physics aggregate for ${this.babylonObject.name}`);
+        this.babylonObject.aggregate.dispose();
+        this.babylonObject.aggregate = null;
       }
       
-      const impostor = new PhysicsImpostor(this.babylonObject, impostorType, { 
+      // Create PhysicsAggregate (Physics v2 API)
+      const aggregate = new PhysicsAggregate(this.babylonObject, shapeType, {
         mass: mass,
-        ...options 
+        restitution: options.restitution || 0.3,
+        friction: options.friction || 0.5,
+        ...options
       }, this.scene);
       
-      return impostor;
+      // Store aggregate reference
+      this.babylonObject.aggregate = aggregate;
+      
+      console.log(`✅ Physics aggregate created for ${this.babylonObject.name} with ${type} shape, mass: ${mass}`);
+      console.log(`Final object position after physics: ${this.babylonObject.position.x}, ${this.babylonObject.position.y}, ${this.babylonObject.position.z}`);
+      
+      // For dynamic objects, log initial state
+      if (mass > 0 && aggregate.body) {
+        const velocity = aggregate.body.getLinearVelocity();
+        console.log(`Initial velocity: ${velocity.x}, ${velocity.y}, ${velocity.z}`);
+      }
+      
+      return aggregate;
+    } catch (error) {
+      console.error('Failed to create physics aggregate:', error);
+      return null;
     }
   }
 
   removePhysicsImpostor() {
-    if (!this.babylonObject?.physicsImpostor) return;
-    
-    this.babylonObject.physicsImpostor.dispose();
-    this.babylonObject.physicsImpostor = null;
+    if (this.babylonObject?.aggregate) {
+      this.babylonObject.aggregate.dispose();
+      this.babylonObject.aggregate = null;
+    }
   }
 
   hasPhysicsImpostor() {
-    return !!this.babylonObject?.physicsImpostor;
+    return !!this.babylonObject?.aggregate;
   }
 
   // === PHYSICS FORCES ===
   
   applyImpulse(forceX, forceY, forceZ, contactPointX = 0, contactPointY = 0, contactPointZ = 0) {
-    if (!this.babylonObject?.physicsImpostor) return;
+    if (!this.babylonObject?.aggregate?.body) return;
     
     const force = new Vector3(forceX, forceY, forceZ);
     const contactPoint = new Vector3(contactPointX, contactPointY, contactPointZ);
     
-    this.babylonObject.physicsImpostor.applyImpulse(force, contactPoint);
+    this.babylonObject.aggregate.body.applyImpulse(force, contactPoint);
   }
 
   applyForce(forceX, forceY, forceZ, contactPointX = 0, contactPointY = 0, contactPointZ = 0) {
-    if (!this.babylonObject?.physicsImpostor) return;
+    if (!this.babylonObject?.aggregate?.body) return;
     
     const force = new Vector3(forceX, forceY, forceZ);
-    const contactPoint = new Vector3(contactPointX, contactPointY, contactPointZ);
     
-    // Apply continuous force (would need to be called each frame)
-    this.babylonObject.physicsImpostor.setLinearVelocity(
-      this.babylonObject.physicsImpostor.getLinearVelocity().add(force)
-    );
+    this.babylonObject.aggregate.body.applyForce(force);
   }
 
   setLinearVelocity(velocityX, velocityY, velocityZ) {
-    if (!this.babylonObject?.physicsImpostor) return;
+    if (!this.babylonObject?.aggregate?.body) return;
     
     const velocity = new Vector3(velocityX, velocityY, velocityZ);
-    this.babylonObject.physicsImpostor.setLinearVelocity(velocity);
+    this.babylonObject.aggregate.body.setLinearVelocity(velocity);
   }
 
   getLinearVelocity() {
-    if (!this.babylonObject?.physicsImpostor) return [0, 0, 0];
+    if (!this.babylonObject?.aggregate?.body) return [0, 0, 0];
     
-    const velocity = this.babylonObject.physicsImpostor.getLinearVelocity();
+    const velocity = this.babylonObject.aggregate.body.getLinearVelocity();
     return [velocity.x, velocity.y, velocity.z];
   }
 
   setAngularVelocity(velocityX, velocityY, velocityZ) {
-    if (!this.babylonObject?.physicsImpostor) return;
+    if (!this.babylonObject?.aggregate?.body) return;
     
     const velocity = new Vector3(velocityX, velocityY, velocityZ);
-    this.babylonObject.physicsImpostor.setAngularVelocity(velocity);
+    this.babylonObject.aggregate.body.setAngularVelocity(velocity);
   }
 
   getAngularVelocity() {
-    if (!this.babylonObject?.physicsImpostor) return [0, 0, 0];
+    if (!this.babylonObject?.aggregate?.body) return [0, 0, 0];
     
-    const velocity = this.babylonObject.physicsImpostor.getAngularVelocity();
+    const velocity = this.babylonObject.aggregate.body.getAngularVelocity();
     return [velocity.x, velocity.y, velocity.z];
   }
 
   // === PHYSICS BODY SYNC ===
   
-  havok_update() {
-    // Handle TransformNode with child mesh physics
-    if (this.babylonObject?._physicsTargetMesh?.physicsBody) {
-      const physicsBody = this.babylonObject._physicsTargetMesh.physicsBody;
-      const physicsPos = this.babylonObject._physicsTargetMesh.position;
-      const containerPosition = this.babylonObject.position;
-      
-      // Check if this is a dynamic object (mass > 0)
-      const isDynamic = physicsBody.getMassProperties?.()?.mass > 0;
-      
-      if (isDynamic) {
-        // For dynamic objects, let physics control the movement
-        // Don't sync positions - let the physics engine handle everything
-        console.log(`🎯 Dynamic object - physics controls movement. Physics: ${physicsPos.x.toFixed(2)}, ${physicsPos.y.toFixed(2)}, ${physicsPos.z.toFixed(2)} | Container: ${containerPosition.x.toFixed(2)}, ${containerPosition.y.toFixed(2)}, ${containerPosition.z.toFixed(2)}`);
-        return;
-      } else {
-        // For kinematic/static objects, sync manual changes to physics
-        if (!this.babylonObject._lastPhysicsPos) {
-          this.babylonObject._lastPhysicsPos = containerPosition.clone();
-        }
-        
-        const lastPos = this.babylonObject._lastPhysicsPos;
-        const threshold = 0.001;
-        const dx = Math.abs(containerPosition.x - lastPos.x);
-        const dy = Math.abs(containerPosition.y - lastPos.y);
-        const dz = Math.abs(containerPosition.z - lastPos.z);
-        
-        if (dx > threshold || dy > threshold || dz > threshold) {
-          console.log(`🔄 Position manually changed on kinematic object, syncing to physics: ${containerPosition.x.toFixed(2)}, ${containerPosition.y.toFixed(2)}, ${containerPosition.z.toFixed(2)}`);
-          physicsBody.setTargetTransform(containerPosition, this.babylonObject.rotation);
-          this.babylonObject._lastPhysicsPos.copyFrom(containerPosition);
-        }
-      }
+  updatePhysics(options = {}) {
+    if (!this.babylonObject?.aggregate) {
+      console.warn('No physics aggregate found, cannot update physics properties');
       return;
     }
     
-    // Handle regular mesh physics
-    if (this.babylonObject?.physicsBody) {
-      const position = this.babylonObject.position;
-      const rotation = this.babylonObject.rotation;
-      
-      // Store last known position to detect changes
-      if (!this.babylonObject._lastPhysicsPos) {
-        this.babylonObject._lastPhysicsPos = position.clone();
-      }
-      
-      // Only sync if position actually changed
-      const lastPos = this.babylonObject._lastPhysicsPos;
-      const threshold = 0.001;
-      const dx = Math.abs(position.x - lastPos.x);
-      const dy = Math.abs(position.y - lastPos.y);
-      const dz = Math.abs(position.z - lastPos.z);
-      
-      if (dx > threshold || dy > threshold || dz > threshold) {
-        console.log(`🔄 Position changed, syncing to physics: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}, ${position.z.toFixed(2)}`);
-        this.babylonObject.physicsBody.setTargetTransform(position, rotation);
-        this.babylonObject._lastPhysicsPos.copyFrom(position);
-      }
-      return;
-    }
+    // For V2 API, we need to recreate the aggregate with new properties
+    // Store current aggregate type
+    const currentType = this.babylonObject.aggregate.shape?.type || PhysicsShapeType.BOX;
+    
+    // Get current options and merge with new ones
+    const currentOptions = {
+      mass: this.getMass(),
+      friction: 0.5, // Default fallback
+      restitution: 0.3, // Default fallback
+      ...options // Override with new values
+    };
+    
+    // Dispose current aggregate
+    this.babylonObject.aggregate.dispose();
+    this.babylonObject.aggregate = null;
+    
+    // Recreate with updated properties
+    const aggregate = new PhysicsAggregate(this.babylonObject, currentType, currentOptions, this.scene);
+    this.babylonObject.aggregate = aggregate;
+    
+    console.log(`Physics properties updated:`, options);
   }
+  
 
   // === PHYSICS PROPERTIES ===
   
   setMass(mass) {
-    if (!this.babylonObject?.physicsImpostor) return;
+    if (!this.babylonObject?.aggregate?.body) return;
     
-    this.babylonObject.physicsImpostor.setMass(mass);
+    this.babylonObject.aggregate.body.setMassProperties({ mass: mass });
   }
 
   getMass() {
-    if (!this.babylonObject?.physicsImpostor) return 0;
+    if (!this.babylonObject?.aggregate?.body) return 0;
     
-    return this.babylonObject.physicsImpostor.mass;
+    const massProps = this.babylonObject.aggregate.body.getMassProperties();
+    return massProps ? massProps.mass : 0;
   }
 
   setFriction(friction) {
-    if (!this.babylonObject?.physicsImpostor) return;
-    
-    this.babylonObject.physicsImpostor.friction = friction;
+    console.warn('setFriction: Use updatePhysics() instead for V2 API');
   }
 
   getFriction() {
-    if (!this.babylonObject?.physicsImpostor) return 0;
-    
-    return this.babylonObject.physicsImpostor.friction;
+    return 0.5; // Default fallback
   }
 
   setRestitution(restitution) {
-    if (!this.babylonObject?.physicsImpostor) return;
-    
-    this.babylonObject.physicsImpostor.restitution = restitution;
+    console.warn('setRestitution: Use updatePhysics() instead for V2 API');
   }
 
   getRestitution() {
-    if (!this.babylonObject?.physicsImpostor) return 0;
-    
-    return this.babylonObject.physicsImpostor.restitution;
+    return 0.3; // Default fallback
+  }
+
+  // === SHORT NAME ALIASES ===
+  
+  mass() {
+    return this.getMass();
+  }
+  
+  friction() {
+    return this.getFriction();
+  }
+  
+  restitution() {
+    return this.getRestitution();
+  }
+  
+  gravity() {
+    return this.getGravity();
+  }
+  
+  linearVelocity() {
+    return this.getLinearVelocity();
+  }
+  
+  angularVelocity() {
+    return this.getAngularVelocity();
   }
 
   // === PHYSICS CONSTRAINTS/JOINTS ===
@@ -729,9 +601,9 @@ export class PhysicsAPI {
   // === CLEANUP ===
   
   disposePhysics() {
-    if (this.babylonObject?.physicsImpostor) {
-      this.babylonObject.physicsImpostor.dispose();
-      this.babylonObject.physicsImpostor = null;
+    if (this.babylonObject?.aggregate) {
+      this.babylonObject.aggregate.dispose();
+      this.babylonObject.aggregate = null;
     }
     
     if (this.babylonObject?.physicsJoints) {

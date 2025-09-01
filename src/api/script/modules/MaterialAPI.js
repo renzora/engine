@@ -442,4 +442,14 @@ export class MaterialAPI {
       specularColor: material.specularColor ? [material.specularColor.r, material.specularColor.g, material.specularColor.b] : null
     };
   }
+  
+  // === SHORT NAME ALIASES ===
+  
+  materialProperty(material, property) {
+    return this.getMaterialProperty(material, property);
+  }
+  
+  materialInfo(material) {
+    return this.getMaterialInfo(material);
+  }
 }

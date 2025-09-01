@@ -1,0 +1,18 @@
+script SimpleRotator {
+  props {
+    speed: range {
+      default: 1.0,
+      min: 0.0,
+      max: 5.0,
+      description: "Rotation speed"
+    }
+  }
+  
+  start {
+    log("Starting rotation")
+  }
+  
+  update() {
+    rotate(0, time() * speed, 0)
+  }
+}

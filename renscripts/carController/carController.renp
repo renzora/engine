@@ -1,0 +1,130 @@
+props Engine {
+  max_speed: range {
+    default: 200.0,
+    min: 50.0,
+    max: 400.0,
+    description: "Maximum speed in mph"
+  }
+  
+  acceleration: range {
+    default: 50.0,
+    min: 10.0,
+    max: 150.0,
+    description: "Engine acceleration power"
+  }
+  
+  engine_brake: range {
+    default: 0.95,
+    min: 0.9,
+    max: 0.99,
+    description: "Engine braking when off throttle"
+  }
+}
+
+props Braking {
+  brake_force: range {
+    default: 150.0,
+    min: 50.0,
+    max: 300.0,
+    description: "Brake system strength"
+  }
+  
+  reverse_max: range {
+    default: 30.0,
+    min: 10.0,
+    max: 60.0,
+    description: "Maximum reverse speed"
+  }
+}
+
+props Steering {
+  max_wheel_angle: range {
+    default: 35.0,
+    min: 15.0,
+    max: 60.0,
+    description: "Maximum steering wheel angle"
+  }
+  
+  steering_speed: range {
+    default: 3.0,
+    min: 1.0,
+    max: 8.0,
+    description: "Steering response speed"
+  }
+  
+  steering_return: range {
+    default: 8.0,
+    min: 2.0,
+    max: 15.0,
+    description: "Wheel return to center speed"
+  }
+}
+
+props Physics {
+  car_mass: range {
+    default: 1200.0,
+    min: 800.0,
+    max: 3000.0,
+    description: "Car weight in kg"
+  }
+  
+  drag_coefficient: range {
+    default: 0.98,
+    min: 0.95,
+    max: 0.995,
+    description: "Air and rolling resistance"
+  }
+  
+  tire_grip: range {
+    default: 0.85,
+    min: 0.5,
+    max: 0.95,
+    description: "Tire grip level"
+  }
+  
+  weight_transfer: range {
+    default: 0.3,
+    min: 0.0,
+    max: 0.8,
+    description: "Weight transfer effect strength"
+  }
+}
+
+props Drifting {
+  drift_threshold: range {
+    default: 0.7,
+    min: 0.3,
+    max: 1.0,
+    description: "Speed threshold for auto-drift"
+  }
+  
+  skid_grip_reduction: range {
+    default: 0.7,
+    min: 0.3,
+    max: 0.9,
+    description: "Grip loss during skidding"
+  }
+  
+  skid_recovery_rate: range {
+    default: 1.5,
+    min: 0.5,
+    max: 3.0,
+    description: "How quickly skid ends"
+  }
+}
+
+props Audio {
+  engine_volume: range {
+    default: 0.4,
+    min: 0.0,
+    max: 1.0,
+    description: "Engine sound volume"
+  }
+  
+  skid_volume: range {
+    default: 0.8,
+    min: 0.0,
+    max: 1.0,
+    description: "Tire skid sound volume"
+  }
+}

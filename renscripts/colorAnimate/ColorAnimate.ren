@@ -1,0 +1,11 @@
+script ColorAnimator {
+  update() {
+    time = time() * 0.001
+    
+    red = sin(time * cycle_speed) * 0.5 + 0.5
+    green = sin(time * cycle_speed + 2.0) * 0.5 + 0.5  
+    blue = sin(time * cycle_speed + 4.0) * 0.5 + 0.5
+    
+    color(red * brightness, green * brightness, blue * brightness)
+  }
+}

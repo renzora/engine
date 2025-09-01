@@ -7,14 +7,40 @@ export class ModelProcessingAPI {
 
   // Convert camelCase settings to snake_case for Rust server
   transformSettingsToSnakeCase(settings) {
-    const camelToSnake = (str) => str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    // Map of specific problematic conversions
+    const specialCases = {
+      'importUDIMs': 'import_udims',
+      'importSparsVolumeTextures': 'import_sparse_volume_textures', 
+      'importAnimatedSparseVolumeTextures': 'import_animated_sparse_volume_textures',
+      'use30HzToBakeBoneAnimation': 'use_30hz_to_bake_bone_animation',
+    };
+    
+    const camelToSnake = (str) => {
+      // Check for special cases first
+      if (specialCases[str]) {
+        return specialCases[str];
+      }
+      
+      // Handle regular camelCase conversion
+      return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    };
     
     const transformObject = (obj) => {
       const result = {};
       for (const [key, value] of Object.entries(obj)) {
         const snakeKey = camelToSnake(key);
+        
         if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-          result[snakeKey] = transformObject(value);
+          // Handle special cases for nested objects that should become arrays
+          if (key === 'frameImportRange' && value.start !== undefined && value.end !== undefined) {
+            result[snakeKey] = [value.start, value.end];
+          } else if (key === 'offsetTranslation' && value.x !== undefined) {
+            result[snakeKey] = [value.x, value.y, value.z];
+          } else if (key === 'offsetRotation' && value.x !== undefined) {
+            result[snakeKey] = [value.x, value.y, value.z];
+          } else {
+            result[snakeKey] = transformObject(value);
+          }
         } else {
           result[snakeKey] = value;
         }
@@ -42,11 +68,11 @@ export class ModelProcessingAPI {
       
       onProgress?.({ stage: 'processing', message: 'Processing model on server...', progress: 25 });
       
+      // Send only the file - let Rust extract everything
       const requestData = {
         file_data: base64Data,
         filename: file.name,
-        project_name: projectName,
-        settings: this.transformSettingsToSnakeCase(settings)
+        project_name: projectName
       };
       
       const response = await fetch(`${this.apiPrefix}/process-model`, {
@@ -62,12 +88,9 @@ export class ModelProcessingAPI {
         throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
       }
       
-      onProgress?.({ stage: 'finalizing', message: 'Finalizing import...', progress: 90 });
-      
-      const result = await response.json();
-      
       onProgress?.({ stage: 'complete', message: 'Model processing complete!', progress: 100 });
       
+      const result = await response.json();
       return result;
       
     } catch (error) {
@@ -180,6 +203,31 @@ export class ModelProcessingAPI {
       return await response.json();
     } catch (error) {
       console.error('Model analysis failed:', error);
+      throw error;
+    }
+  }
+
+  async updateModelSummary(summaryPath, sceneAnalysis) {
+    try {
+      const response = await fetch(`${this.apiPrefix}/update-model-summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          summary_path: summaryPath,
+          scene_analysis: sceneAnalysis
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Failed to update model summary:', error);
       throw error;
     }
   }

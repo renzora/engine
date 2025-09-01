@@ -1,5 +1,4 @@
 import { ScriptManager } from './ScriptManager.js';
-import { ScriptAPI } from './ScriptAPI.js';
 import { getScriptLoader } from './ScriptLoader.js';
 
 /**
@@ -20,21 +19,36 @@ class ScriptRuntime {
    * @param {Scene} scene - The Babylon.js scene
    */
   initialize(scene) {
+    console.log('🚀 ScriptRuntime: Initialize called');
+    console.log('🚀 ScriptRuntime: Scene provided:', !!scene);
+    console.log('🚀 ScriptRuntime: Already initialized:', this.isInitialized);
+    
     if (this.isInitialized) {
       console.warn('🔧 ScriptRuntime: Already initialized');
       return;
     }
     
     this.scene = scene;
-    this.scriptManager = new ScriptManager(scene);
+    
+    console.log('🚀 ScriptRuntime: Creating ScriptManager...');
+    try {
+      this.scriptManager = new ScriptManager(scene);
+      console.log('✅ ScriptRuntime: ScriptManager created successfully');
+    } catch (error) {
+      console.error('❌ ScriptRuntime: Failed to create ScriptManager:', error);
+      throw error;
+    }
+    
     this.isInitialized = true;
     
     console.log('🔧 ScriptRuntime: Initialized with scene');
     
     // Set up event listener for live property updates
+    console.log('🚀 ScriptRuntime: Setting up property update listener...');
     this.setupPropertyUpdateListener();
     
     // Start the script manager
+    console.log('🚀 ScriptRuntime: Starting script manager...');
     this.start();
   }
   
@@ -124,31 +138,53 @@ class ScriptRuntime {
    * @returns {Promise<boolean>} Success status
    */
   async attachScript(objectId, scriptPath) {
+    console.log('🎬 ScriptRuntime: ========== SCRIPT ATTACH PROCESS START ==========');
+    console.log('🎬 ScriptRuntime: Target object ID:', objectId);
+    console.log('🎬 ScriptRuntime: Script path:', scriptPath);
+    console.log('🎬 ScriptRuntime: Runtime initialized:', this.isInitialized);
+    
     if (!this.isInitialized) {
-      console.error('🔧 ScriptRuntime: Not initialized');
+      console.error('❌ ScriptRuntime: Not initialized');
       return false;
     }
     
     try {
-      console.log('🔧 ScriptRuntime: Attaching script', scriptPath, 'to', objectId);
+      console.log('📋 ScriptRuntime: Step 1 - Loading script class...');
       
       // Load the script if not already loaded
       const ScriptClass = await this.scriptLoader.loadScript(scriptPath);
+      console.log('✅ ScriptRuntime: Script class loaded:', !!ScriptClass);
+      console.log('🔍 ScriptRuntime: Script class type:', typeof ScriptClass);
+      console.log('🔍 ScriptRuntime: Script class name:', ScriptClass?.name || 'unknown');
+      
+      console.log('📋 ScriptRuntime: Step 2 - Registering with script manager...');
       
       // Register with script manager
-      this.scriptManager.registerScript(scriptPath, ScriptClass);
+      const registerSuccess = this.scriptManager.registerScript(scriptPath, ScriptClass);
+      console.log('✅ ScriptRuntime: Script registration result:', registerSuccess);
+      
+      console.log('📋 ScriptRuntime: Step 3 - Attaching to object...');
       
       // Attach to object
       const success = this.scriptManager.addScriptToObject(objectId, scriptPath);
+      console.log('✅ ScriptRuntime: Attachment result:', success);
       
       if (success) {
-        console.log('🔧 ScriptRuntime: Script attached successfully');
+        console.log('🎉 ScriptRuntime: Script attached successfully');
+      } else {
+        console.error('❌ ScriptRuntime: Script attachment failed');
       }
       
+      console.log('🎬 ScriptRuntime: ========== SCRIPT ATTACH PROCESS END ==========');
       return success;
       
     } catch (error) {
-      console.error('🔧 ScriptRuntime: Failed to attach script', error);
+      console.error('❌ ScriptRuntime: ========== SCRIPT ATTACH ERROR ==========');
+      console.error('❌ ScriptRuntime: Script path:', scriptPath);
+      console.error('❌ ScriptRuntime: Object ID:', objectId);
+      console.error('❌ ScriptRuntime: Error:', error);
+      console.error('❌ ScriptRuntime: Stack:', error.stack);
+      console.error('❌ ScriptRuntime: ============================================');
       return false;
     }
   }

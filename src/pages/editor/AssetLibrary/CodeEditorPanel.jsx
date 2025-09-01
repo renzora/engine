@@ -3,7 +3,6 @@ import { X, Save, FileText, Code, Forward, Back } from '@/ui/icons';
 import MonacoEditor from '@/components/MonacoEditor';
 import { readFile, writeFile, deleteFile } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
-import { RenScriptCompiler } from '@/api/script/renscript/RenScriptCompiler';
 import { getScriptRuntime } from '@/api/script';
 import { editorStore } from '@/layout/stores/EditorStore';
 
@@ -81,8 +80,7 @@ function CodeEditorPanel({
     }
 
     try {
-      // Use the RenScriptCompiler.compile method which already parses the AST
-      const compiled = RenScriptCompiler.compile(content);
+      // Server-side compilation is now used - client-side compiler removed
       
       // We need to extract the AST data. Since compile() returns JavaScript code,
       // we'll need to parse the source code directly to extract properties.

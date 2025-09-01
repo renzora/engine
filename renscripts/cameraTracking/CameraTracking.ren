@@ -1,0 +1,49 @@
+script CameraTracking {
+  # Camera state
+  camera_x = 0.0
+  camera_y = 0.0
+  camera_z = 0.0
+  
+  start {
+    log("📹 Camera Tracker initialized - tracking this object")
+  }
+  
+  update(dt) {
+    if (!enabled) {
+      return
+    }
+    
+    # Get this object's position and rotation
+    target_pos = position()
+    target_rot = rotation()
+    
+    # Calculate camera position behind target
+    target_forward_x = sin(target_rot[1])
+    target_forward_z = cos(target_rot[1])
+    
+    # Position camera behind and above target
+    target_camera_x = target_pos[0] - target_forward_x * follow_distance
+    target_camera_y = target_pos[1] + follow_height
+    target_camera_z = target_pos[2] - target_forward_z * follow_distance
+    
+    # Smooth camera movement
+    camera_x = camera_x + (target_camera_x - camera_x) * (1.0 - smoothing)
+    camera_y = camera_y + (target_camera_y - camera_y) * (1.0 - smoothing)
+    camera_z = camera_z + (target_camera_z - camera_z) * (1.0 - smoothing)
+    
+    # Set camera position
+    cameraPosition(camera_x, camera_y, camera_z)
+    
+    # Look ahead of target
+    look_ahead_x = target_pos[0] + target_forward_x * look_ahead
+    look_ahead_y = target_pos[1]
+    look_ahead_z = target_pos[2] + target_forward_z * look_ahead
+    
+    # Set camera target
+    cameraTarget(look_ahead_x, look_ahead_y, look_ahead_z)
+  }
+  
+  destroy {
+    log("Camera tracker destroyed")
+  }
+}

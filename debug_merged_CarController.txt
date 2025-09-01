@@ -1,0 +1,411 @@
+props Engine {
+  max_speed: range {
+    default: 200.0,
+    min: 50.0,
+    max: 400.0,
+    description: "Maximum speed in mph"
+  }
+  
+  acceleration: range {
+    default: 50.0,
+    min: 10.0,
+    max: 150.0,
+    description: "Engine acceleration power"
+  }
+  
+  engine_brake: range {
+    default: 0.95,
+    min: 0.9,
+    max: 0.99,
+    description: "Engine braking when off throttle"
+  }
+}
+
+props Braking {
+  brake_force: range {
+    default: 150.0,
+    min: 50.0,
+    max: 300.0,
+    description: "Brake system strength"
+  }
+  
+  reverse_max: range {
+    default: 30.0,
+    min: 10.0,
+    max: 60.0,
+    description: "Maximum reverse speed"
+  }
+}
+
+props Steering {
+  max_wheel_angle: range {
+    default: 35.0,
+    min: 15.0,
+    max: 60.0,
+    description: "Maximum steering wheel angle"
+  }
+  
+  steering_speed: range {
+    default: 3.0,
+    min: 1.0,
+    max: 8.0,
+    description: "Steering response speed"
+  }
+  
+  steering_return: range {
+    default: 8.0,
+    min: 2.0,
+    max: 15.0,
+    description: "Wheel return to center speed"
+  }
+}
+
+props Physics {
+  car_mass: range {
+    default: 1200.0,
+    min: 800.0,
+    max: 3000.0,
+    description: "Car weight in kg"
+  }
+  
+  drag_coefficient: range {
+    default: 0.98,
+    min: 0.95,
+    max: 0.995,
+    description: "Air and rolling resistance"
+  }
+  
+  tire_grip: range {
+    default: 0.85,
+    min: 0.5,
+    max: 0.95,
+    description: "Tire grip level"
+  }
+  
+  weight_transfer: range {
+    default: 0.3,
+    min: 0.0,
+    max: 0.8,
+    description: "Weight transfer effect strength"
+  }
+}
+
+props Drifting {
+  drift_threshold: range {
+    default: 0.7,
+    min: 0.3,
+    max: 1.0,
+    description: "Speed threshold for auto-drift"
+  }
+  
+  skid_grip_reduction: range {
+    default: 0.7,
+    min: 0.3,
+    max: 0.9,
+    description: "Grip loss during skidding"
+  }
+  
+  skid_recovery_rate: range {
+    default: 1.5,
+    min: 0.5,
+    max: 3.0,
+    description: "How quickly skid ends"
+  }
+}
+
+props Audio {
+  engine_volume: range {
+    default: 0.4,
+    min: 0.0,
+    max: 1.0,
+    description: "Engine sound volume"
+  }
+  
+  skid_volume: range {
+    default: 0.8,
+    min: 0.0,
+    max: 1.0,
+    description: "Tire skid sound volume"
+  }
+}
+
+script RealisticCarController {
+  
+  # Car physics state
+  velocity_x = 0.0
+  velocity_z = 0.0
+  angular_velocity = 0.0
+  wheel_angle = 0.0
+  engine_rpm = 800.0
+  
+  # Car settings
+  max_speed = 200.0       # Top speed in mph
+  acceleration = 50.0     # Engine power
+  brake_force = 150.0     # Braking power
+  reverse_max = 30.0      # Reverse speed limit
+  
+  # Steering settings
+  max_wheel_angle = 35.0  # Maximum wheel turn angle
+  steering_speed = 3.0    # How fast wheels turn
+  steering_return = 8.0   # How fast wheels return to center
+  
+  # Realistic physics
+  drag_coefficient = 0.98  # Air/rolling resistance
+  grip = 0.85             # Tire grip (affects turning)
+  weight_transfer = 0.3   # Weight transfer during turns
+  drift_threshold = 0.7   # When tires start sliding
+  
+  # Skid/drift mechanics
+  is_skidding = false
+  skid_factor = 0.0
+  skid_particles = null
+  
+  # Audio
+  engine_sound = null
+  skid_sound = null
+  skid_sound_playing = false
+
+  start {
+    log("🏎️ Realistic Car Controller Started")
+    log("Controls: R2=Accelerate, L2=Brake/Reverse, Left Stick=Steering, Square=Skid")
+    
+    # Initialize Havok v2 physics
+    physics("havok", [0, -9.81, 0])
+    mass(car_mass)
+    friction(tire_grip)
+    restitution(0.1)
+    
+    # Create engine sound
+    engine_sound = spatialSound("engine", "assets/car_engine.wav", {
+      loop: true,
+      volume: engine_volume,
+      maxDistance: 100
+    })
+    soundPosition("engine", 0, 0, 0)
+    playSound("engine")
+    
+    # Create skid sound
+    skid_sound = spatialSound("skid", "assets/tire_skid.wav", {
+      loop: true,
+      volume: 0.0,
+      maxDistance: 50
+    })
+    
+    # Create skid particle effect
+    skid_particles = particleSystem("skid_smoke", 500)
+    particleTexture(skid_particles, "assets/smoke.png")
+    particleColor(skid_particles, [0.3, 0.3, 0.3, 1.0], [0.1, 0.1, 0.1, 0.5])
+    particleSize(skid_particles, 0.5, 2.0)
+    particleLifeTime(skid_particles, 1.0, 3.0)
+    particleEmissionRate(skid_particles, 0)
+    
+    addTag("car")
+    addTag("vehicle")
+  }
+
+  update() {
+    # Get gamepad input
+    steering_input = leftX(0)           # Left stick X for steering
+    r2_accelerate = rightTrigger(0)     # R2 for acceleration
+    l2_brake = leftTrigger(0)           # L2 for brake/reverse
+    square_skid = button(0, 0)          # Square button for skidding (button 0 = X/Square)
+    
+    # Get current transform
+    pos = position()
+    current_rotation = rotation()
+    
+    # Calculate current speed and direction
+    current_speed = sqrt(velocity_x * velocity_x + velocity_z * velocity_z)
+    
+    # Determine if moving forward or backward
+    forward_vector_x = sin(current_rotation[1])
+    forward_vector_z = cos(current_rotation[1])
+    forward_dot = velocity_x * forward_vector_x + velocity_z * forward_vector_z
+    is_moving_forward = forward_dot > 0.1
+    is_moving_backward = forward_dot < -0.1
+    
+    # === STEERING SYSTEM ===
+    # Update wheel angle based on input
+    target_wheel_angle = steering_input * max_wheel_angle
+    wheel_angle_diff = target_wheel_angle - wheel_angle
+    
+    if (abs(wheel_angle_diff) > 0.1) {
+      wheel_angle = wheel_angle + wheel_angle_diff * steering_speed * time()
+    } else {
+      # Return to center when no input
+      wheel_angle = wheel_angle * (1.0 - steering_return * time())
+    }
+    
+    # Apply steering force (speed-dependent effectiveness)
+    steering_effectiveness = clamp(current_speed / 10.0, 0.1, 1.0)
+    
+    if (current_speed > 0.5) {
+      steering_force = (wheel_angle / max_wheel_angle) * steering_effectiveness * tire_grip
+      
+      # Reduce steering during skidding
+      if (is_skidding) {
+        steering_force = steering_force * 0.3
+      }
+      
+      angular_velocity = angular_velocity + steering_force * 2.0 * time()
+    }
+    
+    # === ENGINE AND BRAKING ===
+    # Calculate engine RPM for sound
+    base_rpm = 800.0
+    speed_rpm = current_speed * 30.0
+    target_rpm = base_rpm + speed_rpm + (r2_accelerate * 2000.0)
+    engine_rpm = lerp(engine_rpm, target_rpm, time() * 5.0)
+    
+    # Update engine sound pitch
+    rpm_factor = clamp(engine_rpm / 4000.0, 0.3, 2.0)
+    
+    # Acceleration
+    if (r2_accelerate > 0.0) {
+      accel_force = r2_accelerate * acceleration * time()
+      
+      # Reduced acceleration when skidding
+      if (is_skidding) {
+        accel_force = accel_force * 0.6
+      }
+      
+      velocity_x = velocity_x + forward_vector_x * accel_force
+      velocity_z = velocity_z + forward_vector_z * accel_force
+    } else {
+      # Engine braking when off throttle
+      velocity_x = velocity_x * engine_brake
+      velocity_z = velocity_z * engine_brake
+    }
+    
+    # Braking and reverse
+    if (l2_brake > 0.0) {
+      if (is_moving_forward && current_speed > 1.0) {
+        # Apply brakes
+        brake_drag = 1.0 - (l2_brake * brake_force * time() * 0.08)
+        velocity_x = velocity_x * brake_drag
+        velocity_z = velocity_z * brake_drag
+        
+        # Increase skid chance when braking hard
+        if (l2_brake > 0.7 && current_speed > 15.0) {
+          skid_factor = skid_factor + time() * 2.0
+        }
+      } else {
+        # Reverse
+        reverse_force = l2_brake * 20.0 * time()
+        velocity_x = velocity_x - forward_vector_x * reverse_force
+        velocity_z = velocity_z - forward_vector_z * reverse_force
+      }
+    }
+    
+    # === SKIDDING SYSTEM ===
+    # Manual skid with Square button
+    if (square_skid && current_speed > 5.0) {
+      is_skidding = true
+      skid_factor = 1.0
+    }
+    
+    # Auto-skid detection (sharp turns at high speed)
+    turn_sharpness = abs(steering_input * current_speed)
+    if (turn_sharpness > drift_threshold * 25.0) {
+      is_skidding = true
+      skid_factor = clamp(turn_sharpness / 50.0, 0.0, 1.0)
+    }
+    
+    # Skid physics
+    if (is_skidding) {
+      # Reduce grip during skid
+      grip_reduction = 1.0 - (skid_factor * skid_grip_reduction)
+      velocity_x = velocity_x * (drag_coefficient * grip_reduction)
+      velocity_z = velocity_z * (drag_coefficient * grip_reduction)
+      
+      # Enhanced angular velocity during skid
+      angular_velocity = angular_velocity + steering_input * 3.0 * time() * skid_factor
+      
+      # Start skid effects
+      particleEmissionRate(skid_particles, skid_factor * 300)
+      soundVolume("skid", skid_factor * skid_volume)
+      if (!skid_sound_playing) {
+        playSound("skid")
+        skid_sound_playing = true
+      }
+      
+      # Gradually reduce skid
+      skid_factor = skid_factor - time() * skid_recovery_rate
+      if (skid_factor <= 0.0) {
+        is_skidding = false
+        skid_factor = 0.0
+      }
+    } else {
+      # Stop skid effects
+      particleEmissionRate(skid_particles, 0)
+      soundVolume("skid", 0.0)
+      if (skid_sound_playing) {
+        stopSound("skid")
+        skid_sound_playing = false
+      }
+    }
+    
+    # === PHYSICS INTEGRATION ===
+    # Apply natural drag and rolling resistance
+    velocity_x = velocity_x * drag_coefficient
+    velocity_z = velocity_z * drag_coefficient
+    
+    # Angular velocity damping
+    angular_velocity = angular_velocity * 0.92
+    
+    # Speed limiting
+    current_speed = sqrt(velocity_x * velocity_x + velocity_z * velocity_z)
+    
+    if (is_moving_forward && current_speed > max_speed) {
+      scale = max_speed / current_speed
+      velocity_x = velocity_x * scale
+      velocity_z = velocity_z * scale
+    } else if (is_moving_backward && current_speed > reverse_max) {
+      scale = reverse_max / current_speed
+      velocity_x = velocity_x * scale
+      velocity_z = velocity_z * scale
+    }
+    
+    # === REALISTIC WEIGHT TRANSFER ===
+    # Simulate weight transfer during acceleration/braking
+    accel_magnitude = (r2_accelerate - l2_brake) * weight_transfer
+    
+    # Slight pitch during acceleration/braking
+    pitch_angle = accel_magnitude * 0.05
+    temp_rotation = rotation()
+    setRotation(temp_rotation[0] + pitch_angle, temp_rotation[1], temp_rotation[2])
+    
+    # === UPDATE TRANSFORM ===
+    # Apply rotation
+    new_rot_y = current_rotation[1] + angular_velocity * time()
+    setRotation(current_rotation[0], new_rot_y, current_rotation[2])
+    
+    # Apply movement with momentum
+    new_pos_x = pos[0] + velocity_x * time()
+    new_pos_z = pos[2] + velocity_z * time()
+    setPosition(new_pos_x, pos[1], new_pos_z)
+    
+    # Particle system follows object automatically
+    
+    # Update audio positions
+    soundPosition("engine", pos[0], pos[1], pos[2])
+    soundPosition("skid", pos[0], pos[1], pos[2])
+  }
+  
+  destroy {
+    log("🏎️ Realistic car controller destroyed")
+    
+    # Cleanup
+    velocity_x = 0.0
+    velocity_z = 0.0
+    angular_velocity = 0.0
+    
+    # Stop audio
+    stopSound("engine")
+    stopSound("skid")
+    
+    # Stop particles
+    stopParticles(skid_particles)
+  }
+  
+}

@@ -1,0 +1,15 @@
+props Basics {
+    health: range {
+        default: 100,
+        min: 0,
+        max: 100
+    },
+    defence: range {
+        default: 100,
+        min: 0,
+        max: 100
+    }
+}
+props Skills {
+
+}

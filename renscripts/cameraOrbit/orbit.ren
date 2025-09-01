@@ -1,0 +1,45 @@
+script OrbitController {
+  start {
+    addTag("orbit_controller")
+  }
+  
+  update() {
+    # Get object's bounding box to calculate size and center
+    let bounds = get_bounding_info()
+    if (bounds == null) {
+      return
+    }
+    
+    # Use the center point directly from bounds
+    let center_x = bounds.center[0]
+    let center_y = bounds.center[1]
+    let center_z = bounds.center[2]
+    
+    # Calculate object size (largest dimension)
+    let size_x = bounds.size[0]
+    let size_y = bounds.size[1]
+    let size_z = bounds.size[2]
+    let max_size = size_x
+    if (size_y > max_size) {
+      max_size = size_y
+    }
+    if (size_z > max_size) {
+      max_size = size_z
+    }
+    
+    # Calculate orbit radius based on object size
+    let orbit_radius = max_size * radius_multiplier
+    if (orbit_radius < 2.0) {
+      orbit_radius = 2.0
+    }
+    
+    # Set camera to orbit around object's center point
+    set_camera_target(center_x, center_y, center_z)
+    set_camera_radius(orbit_radius)
+    
+    # Orbit around this object's center
+    if (auto_orbit) {
+      orbit_camera(orbit_speed, direction)
+    }
+  }
+}

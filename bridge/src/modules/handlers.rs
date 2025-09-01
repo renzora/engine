@@ -5,7 +5,7 @@ use hyper::body::Frame;
 use bytes::Bytes;
 use async_stream::stream;
 use std::convert::Infallible;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH, Instant, Duration};
 use log::{info, warn, error, debug};
 use percent_encoding::percent_decode_str;
@@ -17,20 +17,35 @@ use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
 use crate::system_monitor::get_system_stats;
-use crate::model_processor::{process_model_import, ModelImportSettings};
+use crate::model_processor::{process_model_import, extract_model_settings, SceneAnalysis};
+use crate::project_manager::get_projects_path;
+use crate::renscript_compiler::compile_renscript;
+use std::fs;
+use crate::database::DatabaseManager;
+use crate::redis_cache::RedisCache;
 
-// Static variable to store startup time
+// Static variables for shared state
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
+static DATABASE: OnceLock<Arc<DatabaseManager>> = OnceLock::new();
+static REDIS_CACHE: OnceLock<Arc<tokio::sync::Mutex<RedisCache>>> = OnceLock::new();
 
 pub fn set_startup_time(timestamp: u64) {
     STARTUP_TIME.set(timestamp).ok();
+}
+
+pub fn set_database(database: Arc<DatabaseManager>) {
+    DATABASE.set(database).ok();
+}
+
+pub fn set_redis_cache(redis_cache: Arc<tokio::sync::Mutex<RedisCache>>) {
+    REDIS_CACHE.set(redis_cache).ok();
 }
 
 pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<Response<BoxBody<Bytes, Infallible>>, Infallible> {
     let start_time = Instant::now();
     let method = req.method().clone();
     let path = req.uri().path().to_string();
-    let query = req.uri().query().unwrap_or("");
+    let query = req.uri().query().unwrap_or("").to_string();
     let user_agent = req.headers().get("user-agent")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown");
@@ -122,6 +137,26 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
             let file_path = &path[8..];
             handle_delete_file(file_path)
         }
+        (&Method::GET, path) if path.starts_with("/script/") => {
+            let script_name = &path[8..];
+            let decoded_name = match decode_url_path(script_name) {
+                Ok(name) => name,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
+            return Ok(handle_compile_script(&decoded_name).await);
+        }
+        (&Method::GET, "/scripts/search") => {
+            return Ok(handle_search_scripts(&query).await);
+        }
+        (&Method::GET, "/scripts") => {
+            return Ok(handle_list_scripts().await);
+        }
+        (&Method::POST, "/scripts/cache/clear") => {
+            return Ok(handle_clear_script_cache().await);
+        }
+        (&Method::GET, "/scripts/cache/stats") => {
+            return Ok(handle_cache_stats().await);
+        }
         (&Method::GET, path) if path.starts_with("/file/") => {
             let file_path = &path[6..];
             let decoded_path = match decode_url_path(file_path) {
@@ -174,6 +209,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::POST, "/process-model") => {
             match &body {
                 Some(body_content) => handle_process_model(body_content).await,
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
+        (&Method::POST, "/update-model-summary") => {
+            match &body {
+                Some(body_content) => handle_update_model_summary(body_content).await,
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
@@ -609,7 +650,6 @@ async fn handle_process_model(body: &str) -> Response<BoxBody<Bytes, Infallible>
         file_data: String, // base64 encoded file data
         filename: String,
         project_name: String,
-        settings: ModelImportSettings,
     }
     
     let request: ModelProcessRequest = match serde_json::from_str(body) {
@@ -631,8 +671,11 @@ async fn handle_process_model(body: &str) -> Response<BoxBody<Bytes, Infallible>
         }
     };
     
+    // Extract settings from the model file itself and use intelligent defaults
+    let extracted_settings = extract_model_settings(&file_data, &request.filename);
+    
     // Process the model import
-    match process_model_import(file_data, &request.filename, &request.project_name, request.settings) {
+    match process_model_import(file_data, &request.filename, &request.project_name, extracted_settings) {
         Ok(result) => {
             info!("✅ Model processing completed: {}", request.filename);
             json_response(&result)
@@ -642,6 +685,240 @@ async fn handle_process_model(body: &str) -> Response<BoxBody<Bytes, Infallible>
             error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
         }
     }
+}
+
+async fn handle_update_model_summary(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    #[derive(serde::Deserialize)]
+    struct UpdateSummaryRequest {
+        summary_path: String,
+        scene_analysis: SceneAnalysis,
+    }
+    
+    let request: UpdateSummaryRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(e) => {
+            error!("❌ Failed to parse update summary request: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
+        }
+    };
+    
+    info!("📊 Updating model summary with scene analysis: {}", request.summary_path);
+    
+    // Read existing summary
+    let projects_path = get_projects_path();
+    let summary_file_path = projects_path.join(&request.summary_path);
+    
+    let mut summary_data: serde_json::Value = match fs::read_to_string(&summary_file_path) {
+        Ok(content) => match serde_json::from_str(&content) {
+            Ok(data) => data,
+            Err(e) => {
+                error!("❌ Failed to parse existing summary JSON: {}", e);
+                return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Invalid summary file format");
+            }
+        },
+        Err(e) => {
+            error!("❌ Failed to read summary file: {:?} - Error: {}", summary_file_path, e);
+            return error_response(StatusCode::NOT_FOUND, "Summary file not found");
+        }
+    };
+    
+    // Update with scene analysis
+    summary_data["scene_analysis"] = serde_json::to_value(&request.scene_analysis).unwrap();
+    
+    // Write back to file
+    let updated_json = match serde_json::to_string_pretty(&summary_data) {
+        Ok(json) => json,
+        Err(e) => {
+            error!("❌ Failed to serialize updated summary: {}", e);
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to serialize summary");
+        }
+    };
+    
+    if let Err(e) = fs::write(&summary_file_path, updated_json) {
+        error!("❌ Failed to write updated summary: {:?} - Error: {}", summary_file_path, e);
+        return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to write updated summary");
+    }
+    
+    info!("✅ Updated model summary with scene analysis: {}", request.summary_path);
+    
+    let response = ApiResponse {
+        success: true,
+        content: Some("Summary updated with scene analysis".to_string()),
+        error: None,
+    };
+    json_response(&response)
+}
+
+async fn handle_compile_script(script_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    // Check Redis cache first
+    if let Some(redis_cache) = REDIS_CACHE.get() {
+        let mut cache = redis_cache.lock().await;
+        if let Some(cached_js) = cache.get_cached_compiled_script(script_name) {
+            info!("🔴 Cache hit for compiled script: {}", script_name);
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/javascript")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(BoxBody::new(Full::new(Bytes::from(cached_js))))
+                .unwrap();
+        }
+    }
+    
+    // Cache miss - compile the script
+    match compile_renscript(script_name) {
+        Ok(compiled_js) => {
+            // Cache the compiled result
+            if let Some(redis_cache) = REDIS_CACHE.get() {
+                let mut cache = redis_cache.lock().await;
+                cache.cache_compiled_script(script_name, &compiled_js);
+            }
+            
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/javascript")
+                .header(ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                .body(BoxBody::new(Full::new(Bytes::from(compiled_js))))
+                .unwrap()
+        }
+        Err(e) => {
+            error!("❌ Failed to compile script '{}': {}", script_name, e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+        }
+    }
+}
+
+async fn handle_search_scripts(query: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    // Parse query parameters
+    let search_term = match query.split('=').nth(1) {
+        Some(term) => percent_decode_str(term).decode_utf8().unwrap_or_default().to_string(),
+        None => String::new(),
+    };
+    
+    // Check Redis cache first
+    if let Some(redis_cache) = REDIS_CACHE.get() {
+        let mut cache = redis_cache.lock().await;
+        if let Some(cached_scripts) = cache.get_cached_script_list() {
+            let filtered_scripts: Vec<_> = if search_term.is_empty() {
+                cached_scripts
+            } else {
+                cached_scripts.into_iter()
+                    .filter(|script| script.name.to_lowercase().contains(&search_term.to_lowercase()) 
+                             || script.directory.to_lowercase().contains(&search_term.to_lowercase()))
+                    .collect()
+            };
+            
+            if !filtered_scripts.is_empty() {
+                info!("🔴 Cache hit for script search: '{}' ({} results)", search_term, filtered_scripts.len());
+                let response = ApiResponse {
+                    success: true,
+                    content: Some(serde_json::to_string(&filtered_scripts).unwrap()),
+                    error: None,
+                };
+                return json_response(&response);
+            }
+        }
+    }
+    
+    // Cache miss - search database
+    let database = match DATABASE.get() {
+        Some(db) => db,
+        None => {
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database not initialized");
+        }
+    };
+    
+    let results = if search_term.is_empty() {
+        database.get_all_scripts().await
+    } else {
+        database.search_scripts(&search_term).await
+    };
+    
+    match results {
+        Ok(scripts) => {
+            // Cache the results
+            if let Some(redis_cache) = REDIS_CACHE.get() {
+                let mut cache = redis_cache.lock().await;
+                cache.cache_script_list(&scripts);
+            }
+            
+            let response = ApiResponse {
+                success: true,
+                content: Some(serde_json::to_string(&scripts).unwrap()),
+                error: None,
+            };
+            json_response(&response)
+        }
+        Err(e) => {
+            error!("❌ Failed to search scripts: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Database search failed: {}", e))
+        }
+    }
+}
+
+async fn handle_list_scripts() -> Response<BoxBody<Bytes, Infallible>> {
+    handle_search_scripts("").await
+}
+
+async fn handle_clear_script_cache() -> Response<BoxBody<Bytes, Infallible>> {
+    if let Some(redis_cache) = REDIS_CACHE.get() {
+        let mut cache = redis_cache.lock().await;
+        let cleared = cache.clear_all_cache();
+        
+        let response = ApiResponse {
+            success: true,
+            content: Some(format!("Cache cleared: {}", cleared)),
+            error: None,
+        };
+        json_response(&response)
+    } else {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, "Redis cache not initialized")
+    }
+}
+
+async fn handle_cache_stats() -> Response<BoxBody<Bytes, Infallible>> {
+    let mut stats = serde_json::json!({
+        "redis": {
+            "enabled": false,
+            "status": "not_initialized"
+        },
+        "database": {
+            "enabled": false,
+            "status": "not_initialized"
+        }
+    });
+    
+    // Get Redis stats
+    if let Some(redis_cache) = REDIS_CACHE.get() {
+        let mut cache = redis_cache.lock().await;
+        stats["redis"] = cache.get_cache_stats();
+    }
+    
+    // Get Database stats
+    if let Some(database) = DATABASE.get() {
+        match database.get_compilation_stats().await {
+            Ok(db_stats) => {
+                stats["database"] = serde_json::json!({
+                    "enabled": true,
+                    "status": "connected",
+                    "stats": db_stats
+                });
+            }
+            Err(e) => {
+                stats["database"] = serde_json::json!({
+                    "enabled": true,
+                    "status": "error",
+                    "error": e.to_string()
+                });
+            }
+        }
+    }
+    
+    let response = ApiResponse {
+        success: true,
+        content: Some(stats.to_string()),
+        error: None,
+    };
+    json_response(&response)
 }
 
 

@@ -94,6 +94,31 @@ export function GizmoManagerComponent() {
         // Set scale ratio after enabling
         if (gizmoManager.gizmos.scaleGizmo) {
           gizmoManager.gizmos.scaleGizmo.scaleRatio = 1.8;
+          
+          // For plane objects, constrain Y-axis scaling by monitoring the gizmo
+          const selectedObject = renderStore.selectedObject;
+          if (selectedObject && selectedObject.name && selectedObject.name.toLowerCase().includes('plane')) {
+            console.log('🎯 Plane detected - setting up Y-axis scaling constraint');
+            
+            // Monitor scaling changes and override Y-axis
+            const scaleGizmo = gizmoManager.gizmos.scaleGizmo;
+            if (scaleGizmo && !scaleGizmo._planeConstraintAdded) {
+              const originalOnDragObservable = scaleGizmo.onDragStartObservable.clone();
+              let initialScale = null;
+              
+              scaleGizmo.onDragStartObservable.add(() => {
+                initialScale = selectedObject.scaling.clone();
+              });
+              
+              scaleGizmo.onDragObservable.add(() => {
+                if (initialScale && selectedObject.scaling.y !== initialScale.y) {
+                  selectedObject.scaling.y = initialScale.y;
+                }
+              });
+              
+              scaleGizmo._planeConstraintAdded = true;
+            }
+          }
         }
         break;
       default:

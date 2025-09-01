@@ -371,7 +371,9 @@ function Toolbar() {
         objectPropertiesActions.ensureDefaultComponents(objectId);
         objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [position.x, position.y, position.z]);
         objectPropertiesActions.updateObjectProperty(objectId, 'transform.rotation', [0, 0, 0]);
-        objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', [1, 1, 1]);
+        // Set proper scale for planes (thin Y-axis for physics)
+        const scaleValue = type === 'plane' ? [1, 0.01, 1] : [1, 1, 1];
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', scaleValue);
         
         editorActions.selectEntity(objectId);
         setTransformMode('move'); // Set to move mode when creating objects

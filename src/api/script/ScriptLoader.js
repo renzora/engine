@@ -1,4 +1,4 @@
-import { RenScriptCompiler } from './renscript/RenScriptCompiler.js';
+// Using Rust RenScript compiler via bridge API
 
 /**
  * ScriptLoader - Handles loading and evaluation of script files
@@ -16,35 +16,51 @@ class ScriptLoader {
    * @returns {Promise<Function>} Promise that resolves to the script class
    */
   async loadScript(scriptPath) {
+    console.log('📂 ScriptLoader: ========== SCRIPT LOAD START ==========');
+    console.log('📂 ScriptLoader: Script path:', scriptPath);
+    console.log('📂 ScriptLoader: Already loading?', this.loadingPromises.has(scriptPath));
+    console.log('📂 ScriptLoader: Already loaded?', this.loadedScripts.has(scriptPath));
+    
     // Check if already loading
     if (this.loadingPromises.has(scriptPath)) {
+      console.log('⏳ ScriptLoader: Script is already loading, waiting for existing promise...');
       return this.loadingPromises.get(scriptPath);
     }
     
     // Check if already loaded
     if (this.loadedScripts.has(scriptPath)) {
+      console.log('💾 ScriptLoader: Script already loaded, returning cached version');
       return this.loadedScripts.get(scriptPath).module;
     }
     
-    console.log('🔧 ScriptLoader: Loading script', scriptPath);
+    console.log('📥 ScriptLoader: Starting fresh script load...');
     
     const loadPromise = this._loadScriptFromServer(scriptPath);
     this.loadingPromises.set(scriptPath, loadPromise);
+    console.log('🔄 ScriptLoader: Added to loading promises map');
     
     try {
+      console.log('⚙️ ScriptLoader: Awaiting script class from server...');
       const scriptClass = await loadPromise;
+      console.log('✅ ScriptLoader: Script class received:', typeof scriptClass);
+      
       this.loadedScripts.set(scriptPath, {
         module: scriptClass,
         timestamp: Date.now()
       });
       this.loadingPromises.delete(scriptPath);
       
-      console.log('🔧 ScriptLoader: Script loaded successfully', scriptPath);
+      console.log('💾 ScriptLoader: Script cached successfully');
+      console.log('📂 ScriptLoader: ========== SCRIPT LOAD SUCCESS ==========');
       return scriptClass;
       
     } catch (error) {
       this.loadingPromises.delete(scriptPath);
-      console.error('🔧 ScriptLoader: Failed to load script', scriptPath, error);
+      console.error('❌ ScriptLoader: ========== SCRIPT LOAD ERROR ==========');
+      console.error('❌ ScriptLoader: Script path:', scriptPath);
+      console.error('❌ ScriptLoader: Error:', error.message);
+      console.error('❌ ScriptLoader: Stack:', error.stack);
+      console.error('❌ ScriptLoader: =====================================');
       throw error;
     }
   }
@@ -54,69 +70,97 @@ class ScriptLoader {
    * @private
    */
   async _loadScriptFromServer(scriptPath) {
+    console.log('🌐 ScriptLoader: ========== SERVER LOAD START ==========');
+    console.log('🌐 ScriptLoader: Script path:', scriptPath);
+    
     try {
       let url;
       
-      // Check if this is a built-in script from src/renscripts
-      if (scriptPath.startsWith('src/renscripts/')) {
-        // Built-in script - use root path
-        url = `http://localhost:3001/read/${scriptPath}`;
+      // Check if this is a RenScript file that needs compilation
+      if (scriptPath.endsWith('.ren')) {
+        // Extract script name for compilation endpoint
+        const scriptName = scriptPath.replace(/.*\/([^\/]+)\.ren$/, '$1');
+        url = `http://localhost:3001/script/${scriptName}`;
+        console.log('🔥 ScriptLoader: RenScript detected, using compilation endpoint for:', scriptName);
       } else {
-        // Project script - use project path
+        // Regular JavaScript file - read directly
+        console.log('📁 ScriptLoader: JavaScript file detected, getting current project...');
         const { getCurrentProject } = await import('@/api/bridge/projects');
         const projectName = getCurrentProject()?.name || 'demo';
+        console.log('📁 ScriptLoader: Current project:', projectName);
         url = `http://localhost:3001/read/projects/${projectName}/${scriptPath}`;
       }
       
-      console.log('🔧 ScriptLoader: Fetching script from URL:', url);
+      console.log('🌐 ScriptLoader: Fetching from URL:', url);
       
       const response = await fetch(url);
+      console.log('🌐 ScriptLoader: Response status:', response.status, response.statusText);
+      
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const responseData = await response.json();
-      if (!responseData.success) {
-        throw new Error(`Failed to read script: ${responseData.error || 'Unknown error'}`);
-      }
+      let scriptContent;
       
-      const scriptContent = responseData.content;
+      // Handle compilation endpoint (returns JavaScript directly)
+      if (scriptPath.endsWith('.ren')) {
+        scriptContent = await response.text();
+        console.log('🔥 ScriptLoader: Received compiled JavaScript from Rust server');
+        console.log('🔥 ScriptLoader: Compiled JS length:', scriptContent?.length || 0);
+        console.log('🔥 ScriptLoader: Compiled JS preview:', scriptContent?.substring(0, 100) + '...');
+      } else {
+        // Handle regular file reading (returns JSON response)
+        const responseData = await response.json();
+        console.log('🌐 ScriptLoader: Response success:', responseData.success);
+        
+        if (!responseData.success) {
+          throw new Error(`Failed to read script: ${responseData.error || 'Unknown error'}`);
+        }
+        
+        scriptContent = responseData.content;
+      }
+      console.log('🌐 ScriptLoader: Script content length:', scriptContent?.length || 0);
+      console.log('🌐 ScriptLoader: Script content preview:', scriptContent?.substring(0, 100) + '...');
       
       // Check if it's a RenScript file
       if (scriptPath.endsWith('.ren')) {
-        return this._evaluateRenScript(scriptContent, scriptPath);
+        console.log('🎯 ScriptLoader: RenScript file detected, using pre-compiled JavaScript from server');
+        return this._evaluateCompiledRenScript(scriptContent, scriptPath);
       } else {
+        console.log('📜 ScriptLoader: JavaScript file detected, starting evaluation...');
         return this._evaluateScript(scriptContent, scriptPath);
       }
       
     } catch (error) {
+      console.error('❌ ScriptLoader: Server load failed:', error.message);
       throw new Error(`Failed to load script ${scriptPath}: ${error.message}`);
     }
   }
   
   /**
-   * Evaluate RenScript content and return script class
+   * Evaluate compiled RenScript JavaScript and return script class
    * @private
    */
-  _evaluateRenScript(renScriptContent, scriptPath) {
+  async _evaluateCompiledRenScript(compiledJS, scriptPath) {
+    console.log('🎯 ScriptLoader: ========== COMPILED RENSCRIPT EVAL START ==========');
+    console.log('🎯 ScriptLoader: Script path:', scriptPath);
+    console.log('🎯 ScriptLoader: Compiled JS length:', compiledJS?.length || 0);
+    
     try {
-      console.log('🔧 ScriptLoader: Compiling RenScript', scriptPath);
-      
-      // Compile RenScript to JavaScript
-      const jsCode = RenScriptCompiler.compile(renScriptContent);
-      console.log('🔧 ScriptLoader: RenScript compiled to JavaScript');
-      console.log('🔧 Generated JS Code:', jsCode);
-      
       // Create evaluation context
       const scriptModule = { exports: {} };
       const require = this._createRequireFunction();
       
-      // The generated code already includes the wrapper function
+      // The compiled JavaScript contains a createRenScript function
+      // We need to make it available but not call it yet (ScriptManager will call it)
       const wrappedCode = `
-        ${jsCode}
+        ${compiledJS}
         
+        // Export the createRenScript function itself, not its result
         module.exports = createRenScript;
       `;
+      
+      console.log('🏗️ ScriptLoader: Creating script function wrapper...');
       
       // Execute the script
       const scriptFunction = new Function(
@@ -125,28 +169,43 @@ class ScriptLoader {
         'require',
         'console',
         'BABYLON',
+        'scene',
+        'api',
         wrappedCode
       );
+      
+      console.log('🚀 ScriptLoader: Executing compiled RenScript...');
       
       scriptFunction(
         scriptModule.exports,
         scriptModule,
         require,
         this._createSafeConsole(scriptPath),
-        this._createBabylonAPI()
+        this._createBabylonAPI(),
+        null, // scene will be provided by ScriptManager
+        null  // api will be provided by ScriptManager
       );
       
-      const RenScriptClass = scriptModule.exports;
+      const ScriptClass = scriptModule.exports;
+      console.log('✅ ScriptLoader: Compiled RenScript execution completed');
+      console.log('🔍 ScriptLoader: Exported class type:', typeof ScriptClass);
+      console.log('🔍 ScriptLoader: Exported class name:', ScriptClass?.name || 'unknown');
       
-      if (typeof RenScriptClass !== 'function') {
-        throw new Error('RenScript compilation did not produce a valid script class');
+      if (typeof ScriptClass !== 'function') {
+        console.error('❌ ScriptLoader: Invalid script class - expected function, got:', typeof ScriptClass);
+        throw new Error('Compiled RenScript did not produce a valid script class');
       }
       
-      console.log('🔧 ScriptLoader: RenScript successfully compiled and evaluated');
-      return RenScriptClass;
+      console.log('🎯 ScriptLoader: ========== COMPILED RENSCRIPT EVAL SUCCESS ==========');
+      return ScriptClass;
       
     } catch (error) {
-      throw new Error(`Failed to evaluate RenScript ${scriptPath}: ${error.message}`);
+      console.error('❌ ScriptLoader: ========== COMPILED RENSCRIPT EVAL ERROR ==========');
+      console.error('❌ ScriptLoader: Script path:', scriptPath);
+      console.error('❌ ScriptLoader: Error message:', error.message);
+      console.error('❌ ScriptLoader: Error stack:', error.stack);
+      console.error('❌ ScriptLoader: ===============================================');
+      throw new Error(`Failed to evaluate compiled RenScript ${scriptPath}: ${error.message}`);
     }
   }
 

@@ -13,19 +13,6 @@ mod modules;
 use modules::*;
 use modules::update_manager::check_for_updates;
 
-// Shared application state
-#[derive(Clone, Debug)]
-pub struct AppState {
-    pub startup_time: u64, // Unix timestamp when bridge started
-}
-
-// Global state instance
-use std::sync::OnceLock;
-static APP_STATE: OnceLock<Arc<AppState>> = OnceLock::new();
-
-pub fn get_app_state() -> Arc<AppState> {
-    APP_STATE.get().expect("App state not initialized").clone()
-}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -41,12 +28,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .duration_since(UNIX_EPOCH)
         .expect("Time went backwards")
         .as_secs();
-    
-    let state = Arc::new(AppState { startup_time });
-    APP_STATE.set(state.clone()).expect("Failed to set app state");
-    
-    // Also set startup time in handlers module
-    set_startup_time(startup_time);
     
     let port = env::var("BRIDGE_PORT").unwrap_or_else(|_| "3001".to_string());
     let base_path = get_base_path();
@@ -68,6 +49,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Initialize system monitor
     initialize_system_monitor();
+    
+    // Initialize database (in-memory for testing)
+    info!("📊 Initializing in-memory database for testing...");
+    let database = match DatabaseManager::new(":memory:").await {
+        Ok(db) => {
+            info!("📊 Database ready");
+            Arc::new(db)
+        }
+        Err(e) => {
+            error!("❌ Failed to initialize database: {}", e);
+            return Err(e);
+        }
+    };
+    
+    // Initialize Redis cache
+    info!("🔴 Initializing Redis cache...");
+    let redis_cache = Arc::new(tokio::sync::Mutex::new(RedisCache::new()));
+    
+    
+    // Set state in handlers module
+    set_startup_time(startup_time);
+    set_database(database);
+    set_redis_cache(redis_cache);
     
     // File watching now uses SSE streaming endpoint instead of separate WebSocket server
     

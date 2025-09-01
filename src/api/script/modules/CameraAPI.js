@@ -182,4 +182,30 @@ export class CameraAPI {
     
     console.log(`Camera mode changed to: ${type}`);
   }
+  
+  // === SHORT NAME ALIASES ===
+  
+  activeCamera() {
+    return this.getActiveCamera();
+  }
+  
+  cameraPosition() {
+    return this.getCameraPosition();
+  }
+  
+  cameraTarget() {
+    return this.getCameraTarget();
+  }
+  
+  cameraRotation() {
+    return this.getCameraRotation();
+  }
+  
+  cameraFOV() {
+    return this.getCameraFOV();
+  }
+  
+  cameraRadius() {
+    return this.getCameraRadius();
+  }
 }
