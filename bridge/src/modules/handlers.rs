@@ -173,6 +173,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::POST, "/renscripts/cache/refresh") => {
             return Ok(handle_refresh_renscript_cache().await);
         }
+        (&Method::POST, "/database/query") => {
+            match &body {
+                Some(body_content) => return Ok(handle_database_query(body_content).await),
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
         (&Method::GET, path) if path.starts_with("/file/") => {
             let file_path = &path[6..];
             let decoded_path = match decode_url_path(file_path) {
@@ -1062,6 +1068,36 @@ async fn handle_refresh_renscript_cache() -> Response<BoxBody<Bytes, Infallible>
         }
     } else {
         error_response(StatusCode::SERVICE_UNAVAILABLE, "RenScript cache not available")
+    }
+}
+
+async fn handle_database_query(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    #[derive(serde::Deserialize)]
+    struct QueryRequest {
+        query: String,
+    }
+
+    let request: QueryRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(e) => {
+            error!("❌ Failed to parse database query request: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
+        }
+    };
+
+    if let Some(database) = DATABASE.get() {
+        match database.execute_raw_query(&request.query).await {
+            Ok(results) => {
+                info!("✅ Database query executed successfully");
+                json_response(&results)
+            }
+            Err(e) => {
+                error!("❌ Database query failed: {}", e);
+                error_response(StatusCode::BAD_REQUEST, &e.to_string())
+            }
+        }
+    } else {
+        error_response(StatusCode::SERVICE_UNAVAILABLE, "Database not available")
     }
 }
 

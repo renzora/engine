@@ -2,12 +2,26 @@ import { createPlugin } from '@/api/plugin';
 import SplashScreen from './SplashScreen.jsx';
 import { ProjectProvider, useProject } from './ProjectStore.jsx';
 import { Home, Folder, Settings } from '@/ui/icons';
-import { createSignal, Show } from 'solid-js';
+import { createSignal, Show, createEffect } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
+import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 
-function SplashViewport() {
+function SplashViewport({ tab }) {
   const { currentProject, isProjectLoaded, setCurrentProject } = useProject();
   const pluginAPI = usePluginAPI();
+
+  // Hide UI elements when this splash viewport is active
+  createEffect(() => {
+    const activeTabId = viewportStore.activeTabId;
+    const isThisTabActive = activeTabId === tab?.id;
+    
+    if (isThisTabActive) {
+      pluginAPI.hidePanel();
+      pluginAPI.hideProps();
+      pluginAPI.hideMenu();
+      pluginAPI.hideTabs();
+    }
+  });
 
   const handleProjectSelect = (project) => {
     console.log('🎯 Project selected from splash viewport:', project.name);

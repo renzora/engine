@@ -44,6 +44,8 @@ import { useCameraController } from './hooks/cameraMovement.jsx';
 import { GizmoManagerComponent } from './hooks/gizmo.jsx';
 import { useAssetLoader } from './hooks/assetLoader.jsx';
 import { LoadingTooltip } from './components/LoadingTooltip.jsx';
+import { pluginAPI } from '@/api/plugin';
+import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 
 
 
@@ -131,6 +133,19 @@ export default function BabylonRenderer(props) {
   
   // Initialize asset loader
   const { loadingTooltip, handleDragOver, handleDrop, loadAssetIntoScene } = useAssetLoader(scene, () => canvasRef);
+
+  // Show UI panels when this 3D viewport is active
+  createEffect(() => {
+    const activeTabId = viewportStore.activeTabId;
+    const activeTab = viewportStore.tabs.find(t => t.id === activeTabId);
+    
+    if (activeTab?.type === '3d-viewport') {
+      pluginAPI.showPanel();
+      pluginAPI.showProps();
+      pluginAPI.showMenu();
+      pluginAPI.showTabs();
+    }
+  });
 
   onMount(() => {
     initializeBabylon();

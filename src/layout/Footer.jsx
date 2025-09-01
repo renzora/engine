@@ -1,6 +1,7 @@
-import { createSignal, createEffect, onCleanup } from 'solid-js';
+import { createSignal, createEffect, onCleanup, For } from 'solid-js';
 import { editorStore } from '@/layout/stores/EditorStore';
 import { Alert } from '@/ui/icons';
+import { footerButtons } from '@/api/plugin';
 
 const Footer = () => {
   const [currentTime, setCurrentTime] = createSignal('');
@@ -172,6 +173,14 @@ const Footer = () => {
       
       {/* Right side - Status info */}
       <div class="flex items-center gap-4">
+        {/* Plugin footer buttons */}
+        <For each={Array.from(footerButtons().entries())}>
+          {([id, button]) => {
+            const Component = button.component;
+            return Component ? <Component /> : null;
+          }}
+        </For>
+        
         {renderSystemStatsInfo()}
         <span class="text-base-content/90">
           {engineInfo()}

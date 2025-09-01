@@ -19,10 +19,13 @@ const [propertyTabs, setPropertyTabs] = createSignal(new Map());
 const [bottomPanelTabs, setBottomPanelTabs] = createSignal(new Map());
 const [viewportTypes, setViewportTypes] = createSignal(new Map());
 const [toolbarButtons, setToolbarButtons] = createSignal(new Map());
+const [footerButtons, setFooterButtons] = createSignal(new Map());
 const [registeredPlugins, setRegisteredPlugins] = createSignal(new Map());
 const [propertiesPanelVisible, setPropertiesPanelVisible] = createSignal(true);
 const [bottomPanelVisible, setBottomPanelVisible] = createSignal(true);
 const [horizontalMenuButtonsEnabled, setHorizontalMenuButtonsEnabled] = createSignal(true);
+const [footerVisible, setFooterVisible] = createSignal(true);
+const [viewportTabsVisible, setViewportTabsVisible] = createSignal(true);
 const [layoutComponents, setLayoutComponents] = createSignal(new Map());
 const [plugins, setPlugins] = createSignal(new Map());
 const [pluginStates, setPluginStates] = createSignal(new Map());
@@ -60,7 +63,8 @@ class PluginLoader {
     const pluginLocations = [
       { path: '/src/plugins/splash', main: 'index.jsx', priority: -1 },
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
-      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 }
+      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
+      { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 }
     ];
 
     for (const location of pluginLocations) {
@@ -150,6 +154,9 @@ class PluginLoader {
           case 'core-bridge-plugin':
             pluginModule = await import(`@/plugins/core/bridge/BridgePluginClass.jsx`);
             break;
+          case 'bridge-plugin':
+            pluginModule = await import(`@/plugins/bridge/index.jsx`);
+            break;
           default:
             try {
               const mainPath = `${path}/${manifest.main}`;
@@ -172,7 +179,28 @@ class PluginLoader {
       }
 
       const PluginFactory = pluginModule.default || pluginModule.Plugin;
-      const pluginInstance = PluginFactory(this.PluginAPI);
+      let pluginInstance;
+      
+      // Handle class-based plugins
+      if (PluginFactory.prototype && PluginFactory.prototype.constructor) {
+        pluginInstance = new PluginFactory(this.PluginAPI);
+        // Add required methods for class-based plugins
+        if (!pluginInstance.getId) {
+          pluginInstance.getId = () => pluginInstance.id;
+        }
+        if (!pluginInstance.getName) {
+          pluginInstance.getName = () => pluginInstance.name;
+        }
+        if (!pluginInstance.getVersion) {
+          pluginInstance.getVersion = () => pluginInstance.version;
+        }
+        if (!pluginInstance.onInit) {
+          pluginInstance.onInit = () => pluginInstance.initialize();
+        }
+      } else {
+        // Handle function-based plugins
+        pluginInstance = PluginFactory(this.PluginAPI);
+      }
       const requiredMethods = ['getId', 'getName', 'getVersion'];
       requiredMethods.forEach(method => {
         if (typeof pluginInstance[method] !== 'function') {
@@ -521,6 +549,21 @@ export class PluginAPI {
     return true;
   }
 
+  registerFooterButton(id, config) {
+    const button = {
+      id,
+      component: config.component,
+      order: config.order || 100,
+      priority: config.priority || 100,
+      section: config.section || 'status',
+      plugin: config.plugin || 'unknown'
+    };
+
+    setFooterButtons(prev => new Map(prev.set(id, button)));
+    console.log(`[PluginAPI] Footer button registered: ${id}`);
+    return true;
+  }
+
 
   registerLayoutComponent(region, component) {
     setLayoutComponents(prev => new Map(prev.set(region, component)));
@@ -567,6 +610,7 @@ export class PluginAPI {
   panel(id, config) { return this.registerBottomPanelTab(id, config); }
   viewport(id, config) { return this.registerViewportType(id, config); }
   button(id, config) { return this.registerToolbarButton(id, config); }
+  footer(id, config) { return this.registerFooterButton(id, config); }
   open(typeId, options) { return this.createViewportTab(typeId, options); }
 
   createViewportTab(typeId, options = {}) {
@@ -660,6 +704,22 @@ export class PluginAPI {
   showMenu(enabled = true) { return this.setHorizontalMenuButtonsEnabled(enabled); }
   hideMenu() { return this.setHorizontalMenuButtonsEnabled(false); }
 
+  setFooterVisible(visible) {
+    setFooterVisible(visible);
+    console.log(`[PluginAPI] Footer visible: ${visible}`);
+  }
+  
+  showFooter(visible = true) { return this.setFooterVisible(visible); }
+  hideFooter() { return this.setFooterVisible(false); }
+
+  setViewportTabsVisible(visible) {
+    setViewportTabsVisible(visible);
+    console.log(`[PluginAPI] Viewport tabs visible: ${visible}`);
+  }
+  
+  showTabs(visible = true) { return this.setViewportTabsVisible(visible); }
+  hideTabs() { return this.setViewportTabsVisible(false); }
+
 
   getTopMenuItems() {
     return Array.from(topMenuItems().values()).sort((a, b) => a.order - b.order);
@@ -679,6 +739,10 @@ export class PluginAPI {
 
   getToolbarButtons() {
     return Array.from(toolbarButtons().values());
+  }
+
+  getFooterButtons() {
+    return Array.from(footerButtons().values()).sort((a, b) => a.order - b.order);
   }
 
 
@@ -789,10 +853,13 @@ export {
   bottomPanelTabs,
   viewportTypes,
   toolbarButtons,
+  footerButtons,
   registeredPlugins,
   propertiesPanelVisible,
   bottomPanelVisible,
   horizontalMenuButtonsEnabled,
+  footerVisible,
+  viewportTabsVisible,
   layoutComponents,
   plugins,
   pluginStates,

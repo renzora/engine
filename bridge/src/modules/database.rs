@@ -1,4 +1,4 @@
-use sqlx::{SqlitePool, Row};
+use sqlx::{SqlitePool, Row, Column};
 use serde::{Serialize, Deserialize};
 use std::path::Path;
 use log::{info, debug};
@@ -147,6 +147,60 @@ impl DatabaseManager {
             "successful_compilations": row.get::<i64, _>("successful"),
             "compilation_errors": row.get::<i64, _>("errors"),
             "last_update": row.get::<i64, _>("last_update")
+        }))
+    }
+
+    pub async fn execute_raw_query(&self, query: &str) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+        debug!("🔍 Executing raw SQL query: {}", query);
+        
+        // Validate query to prevent dangerous operations
+        let query_lower = query.to_lowercase();
+        let query_trimmed = query_lower.trim();
+        if query_trimmed.starts_with("drop") || 
+           query_trimmed.starts_with("delete") || 
+           query_trimmed.starts_with("truncate") ||
+           query_trimmed.starts_with("alter") ||
+           query_trimmed.starts_with("create") ||
+           query_trimmed.starts_with("insert") ||
+           query_trimmed.starts_with("update") {
+            return Err("Only SELECT queries are allowed for security".into());
+        }
+
+        let rows = sqlx::query(query)
+            .fetch_all(&self.pool)
+            .await?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let mut row_data = serde_json::Map::new();
+            
+            // Extract column names and values
+            for (i, column) in row.columns().iter().enumerate() {
+                let column_name = column.name();
+                
+                // Try to get the value as different types
+                let value = if let Ok(val) = row.try_get::<String, _>(i) {
+                    serde_json::Value::String(val)
+                } else if let Ok(val) = row.try_get::<i64, _>(i) {
+                    serde_json::Value::Number(serde_json::Number::from(val))
+                } else if let Ok(val) = row.try_get::<f64, _>(i) {
+                    serde_json::Value::Number(serde_json::Number::from_f64(val).unwrap_or(serde_json::Number::from(0)))
+                } else if let Ok(val) = row.try_get::<bool, _>(i) {
+                    serde_json::Value::Bool(val)
+                } else {
+                    serde_json::Value::Null
+                };
+                
+                row_data.insert(column_name.to_string(), value);
+            }
+            
+            results.push(serde_json::Value::Object(row_data));
+        }
+
+        Ok(serde_json::json!({
+            "success": true,
+            "rows": results,
+            "count": results.len()
         }))
     }
 }

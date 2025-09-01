@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import TopMenu from './topMenu.jsx';
 import Toolbar from './Toolbar.jsx';
 import Viewport from './viewport.jsx';
@@ -6,6 +6,7 @@ import RightPanel from './rightPanel.jsx';
 import BottomPanel from './bottomPanel.jsx';
 import Footer from './Footer.jsx';
 import ModelImporter from '@/pages/editor/AssetLibrary/ModelImporter';
+import { horizontalMenuButtonsEnabled, propertiesPanelVisible, bottomPanelVisible, footerVisible } from '@/api/plugin';
 
 const Layout = () => {
   const [showModelImporter, setShowModelImporter] = createSignal(false);
@@ -32,16 +33,24 @@ const Layout = () => {
       <div class="fixed inset-0 flex flex-col pointer-events-none z-10" onContextMenu={(e) => e.preventDefault()}>
         <div class="flex-shrink-0 pointer-events-auto z-50">
           <TopMenu />
-          <Toolbar />
+          <Show when={horizontalMenuButtonsEnabled()}>
+            <Toolbar />
+          </Show>
         </div>
       
         <div class="flex-1 relative overflow-hidden pointer-events-auto">
           <Viewport />
-          <RightPanel />
-          <BottomPanel />
+          <Show when={propertiesPanelVisible()}>
+            <RightPanel />
+          </Show>
+          <Show when={bottomPanelVisible()}>
+            <BottomPanel />
+          </Show>
         </div>
         
-        <Footer />
+        <Show when={footerVisible()}>
+          <Footer />
+        </Show>
       </div>
 
       <ModelImporter

@@ -2,7 +2,7 @@ import { editorStore } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { Settings, X } from '@/ui/icons';
 import ViewportTabs from './ViewportTabs.jsx';
-import { viewportTypes, propertiesPanelVisible, bottomPanelVisible } from "@/api/plugin";
+import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, pluginAPI } from "@/api/plugin";
 import { Show, createMemo, createSignal, createEffect, onCleanup } from 'solid-js';
 import CodeEditorPanel from '@/pages/editor/AssetLibrary/CodeEditorPanel.jsx';
 import BabylonRenderer from '@/render/index.jsx';
@@ -213,7 +213,7 @@ const Viewport = () => {
     const left = isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
     const right = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
     const bottomPanelSpace = isAssetPanelOpen() ? `${bottomPanelHeight()}px` : (bottomPanelVisible() ? '40px' : '0px');
-    const footerHeight = '24px'; // 6 * 4 = 24px (h-6 in Tailwind)
+    const footerHeight = footerVisible() ? '24px' : '0px'; // 6 * 4 = 24px (h-6 in Tailwind)
     const bottom = bottomPanelSpace === '0px' ? footerHeight : `calc(${bottomPanelSpace} + ${footerHeight})`;
     
     return { top, left, right, bottom };
@@ -226,6 +226,8 @@ const Viewport = () => {
     console.log('🎯 ViewportContainer - Active tab ID:', viewportStore.activeTabId);
     return tab;
   });
+  
+  
   const isOverlayActive = createMemo(() => {
     const active = activeTab() && activeTab().type !== '3d-viewport';
     console.log('🎯 ViewportContainer - Overlay active:', active, activeTab()?.type);
@@ -307,7 +309,9 @@ const Viewport = () => {
       style={getViewportPositioning()}
     >
       <div className="w-full h-full flex flex-col bg-base-100">
-        <ViewportTabs />
+        <Show when={viewportTabsVisible()}>
+          <ViewportTabs />
+        </Show>
         <div 
           className="flex-1 relative overflow-hidden"
           onContextMenu={(e) => {

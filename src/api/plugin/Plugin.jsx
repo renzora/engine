@@ -95,6 +95,9 @@ export function createPlugin(config) {
       button: (buttonId, config) => 
         api.registerToolbarButton(buttonId, { ...config, plugin: id }),
       
+      footer: (buttonId, config) => 
+        api.registerFooterButton(buttonId, { ...config, plugin: id }),
+      
       open: (typeId, options = {}) => 
         api.createViewportTab(typeId, options),
 
@@ -119,5 +122,56 @@ export function createPlugin(config) {
 
     return plugin;
   };
+}
+
+// Base Plugin class for class-based plugins
+export class Plugin {
+  constructor(engineAPI) {
+    this.engineAPI = engineAPI;
+    this.id = null;
+    this.name = null;
+    this.version = null;
+    this.description = null;
+  }
+
+  async initialize() {
+    // Override in subclasses
+  }
+
+  registerViewportType(id, config) {
+    return this.engineAPI.registerViewportType(id, { ...config, plugin: this.id });
+  }
+
+  registerToolbarButton(id, config) {
+    return this.engineAPI.registerToolbarButton(id, { ...config, plugin: this.id });
+  }
+
+  registerFooterButton(id, config) {
+    return this.engineAPI.registerFooterButton(id, { ...config, plugin: this.id });
+  }
+
+  registerTopMenuItem(id, config) {
+    return this.engineAPI.registerTopMenuItem(id, { ...config, plugin: this.id });
+  }
+
+  registerPropertyTab(id, config) {
+    return this.engineAPI.registerPropertyTab(id, { ...config, plugin: this.id });
+  }
+
+  registerBottomPanelTab(id, config) {
+    return this.engineAPI.registerBottomPanelTab(id, { ...config, plugin: this.id });
+  }
+
+  createViewportTab(typeId, options = {}) {
+    return this.engineAPI.createViewportTab(typeId, options);
+  }
+
+  emit(eventType, data) {
+    return this.engineAPI.emit(`${this.id}:${eventType}`, data);
+  }
+
+  on(eventType, callback) {
+    return this.engineAPI.on(eventType, callback);
+  }
 }
 
