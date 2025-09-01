@@ -29,6 +29,21 @@ export class ModelProcessor {
     }
   }
 
+  async convertToGlbAndExtract(file, settings, projectName, importMode, onProgress) {
+    try {
+      onProgress?.({ stage: 'converting', message: 'Converting to GLB and extracting assets...', progress: 10 });
+      
+      // Use the new GLB conversion and extraction API
+      const result = await modelProcessingAPI.convertToGlbAndExtract(file, settings, projectName, importMode, onProgress);
+      
+      return result;
+      
+    } catch (error) {
+      console.error('GLB conversion and extraction failed:', error);
+      throw error;
+    }
+  }
+
   async processModelFile(file, settings, projectName, onProgress) {
     const fileName = file.name;
     const fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, "");

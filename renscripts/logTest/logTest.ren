@@ -1,0 +1,15 @@
+script LogTest {
+  
+  start {
+    log("Log test: Script started successfully!")
+    log("Message with variable: " + test_message)
+  }
+  
+  once {
+    log("Message with variable: " + test_message + " " + time())
+  }
+  
+  destroy {
+    log("Log test: Script destroyed")
+  }
+}

@@ -1,0 +1,83 @@
+  props water_settings {
+    wind_force: float {
+      default: 45.0,
+      min: 0.0,
+      max: 100.0,
+      description: "Wind force applied on water surface",
+      once: true
+    }
+    
+    wave_height: float {
+      default: 1.3,
+      min: 0.0,
+      max: 10.0,
+      description: "Height of water waves",
+      once: true
+    }
+    
+    bump_height: float {
+      default: 0.3,
+      min: 0.0,
+      max: 2.0,
+      description: "Bump map perturbation strength",
+      once: true
+    }
+    
+    wave_length: float {
+      default: 0.1,
+      min: 0.01,
+      max: 1.0,
+      description: "Length of waves (smaller = more waves)",
+      once: true
+    }
+    
+    color_blend_factor: float {
+      default: 2.0,
+      min: 0.0,
+      max: 10.0,
+      description: "Water color blending factor",
+      once: true
+    }
+  }
+  
+  props water_appearance {
+    water_color_r: range {
+      default: 0.1,
+      min: 0.0,
+      max: 1.0,
+      description: "Water color red component",
+      once: true
+    }
+    
+    water_color_g: range {
+      default: 0.1,
+      min: 0.0,
+      max: 1.0,
+      description: "Water color green component",
+      once: true
+    }
+    
+    water_color_b: range {
+      default: 0.6,
+      min: 0.0,
+      max: 1.0,
+      description: "Water color blue component",
+      once: true
+    }
+    
+    wind_direction_x: float {
+      default: 1.0,
+      min: -1.0,
+      max: 1.0,
+      description: "Wind direction X component",
+      once: true
+    }
+    
+    wind_direction_y: float {
+      default: 1.0,
+      min: -1.0,
+      max: 1.0,
+      description: "Wind direction Y component",
+      once: true
+    }
+  }

@@ -1,0 +1,11 @@
+script AddTagTest {
+  
+  start {
+    addTag("findme")
+    log("Added tag: findme")
+  }
+  
+  destroy {
+    log("AddTag test destroyed")
+  }
+}

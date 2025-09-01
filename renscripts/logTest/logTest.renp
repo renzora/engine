@@ -1,0 +1,7 @@
+props test_settings {
+  test_message: string {
+    default: "Hello from properties!",
+    description: "Test message to display in log",
+    once: true
+  }
+}

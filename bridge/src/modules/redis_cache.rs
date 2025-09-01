@@ -258,4 +258,39 @@ impl RedisCache {
             })
         }
     }
+
+    pub async fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
+        if !self.is_enabled() {
+            return Err("Redis not enabled".to_string());
+        }
+
+        // Since we can't modify self.connection (it's not mutable), we'll create a new connection
+        let client = redis::Client::open("redis://127.0.0.1:6379/")
+            .map_err(|e| format!("Failed to create Redis client: {}", e))?;
+        let mut conn = client.get_connection()
+            .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
+        
+        let _: () = conn.set_ex(key, value, 300) // 5 minutes TTL
+            .map_err(|e| format!("Failed to set value in Redis: {}", e))?;
+        
+        Ok(())
+    }
+
+    pub async fn get_string(&self, key: &str) -> Result<Option<String>, String> {
+        if !self.is_enabled() {
+            return Ok(None);
+        }
+
+        // Since we can't modify self.connection (it's not mutable), we'll create a new connection
+        let client = redis::Client::open("redis://127.0.0.1:6379/")
+            .map_err(|e| format!("Failed to create Redis client: {}", e))?;
+        let mut conn = client.get_connection()
+            .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
+        
+        let result: RedisResult<String> = conn.get(key);
+        match result {
+            Ok(value) => Ok(Some(value)),
+            Err(_) => Ok(None), // Key doesn't exist or other error
+        }
+    }
 }

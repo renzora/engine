@@ -18,16 +18,19 @@ use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
 use crate::system_monitor::get_system_stats;
 use crate::model_processor::{process_model_import, extract_model_settings, SceneAnalysis};
+use crate::model_converter::{convert_model_to_glb_and_extract, ImportMode, CompressionSettings};
 use crate::project_manager::get_projects_path;
 use crate::renscript_compiler::compile_renscript;
 use std::fs;
 use crate::database::DatabaseManager;
 use crate::redis_cache::RedisCache;
+use crate::renscript_cache::RenScriptCache;
 
 // Static variables for shared state
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
 static DATABASE: OnceLock<Arc<DatabaseManager>> = OnceLock::new();
 static REDIS_CACHE: OnceLock<Arc<tokio::sync::Mutex<RedisCache>>> = OnceLock::new();
+static RENSCRIPT_CACHE: OnceLock<Arc<RenScriptCache>> = OnceLock::new();
 
 pub fn set_startup_time(timestamp: u64) {
     STARTUP_TIME.set(timestamp).ok();
@@ -39,6 +42,10 @@ pub fn set_database(database: Arc<DatabaseManager>) {
 
 pub fn set_redis_cache(redis_cache: Arc<tokio::sync::Mutex<RedisCache>>) {
     REDIS_CACHE.set(redis_cache).ok();
+}
+
+pub fn set_renscript_cache(renscript_cache: Arc<RenScriptCache>) {
+    RENSCRIPT_CACHE.set(renscript_cache).ok();
 }
 
 pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<Response<BoxBody<Bytes, Infallible>>, Infallible> {
@@ -157,6 +164,15 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::GET, "/scripts/cache/stats") => {
             return Ok(handle_cache_stats().await);
         }
+        (&Method::GET, "/renscripts/search") => {
+            return Ok(handle_search_renscripts(&query).await);
+        }
+        (&Method::GET, "/renscripts") => {
+            return Ok(handle_list_renscripts().await);
+        }
+        (&Method::POST, "/renscripts/cache/refresh") => {
+            return Ok(handle_refresh_renscript_cache().await);
+        }
         (&Method::GET, path) if path.starts_with("/file/") => {
             let file_path = &path[6..];
             let decoded_path = match decode_url_path(file_path) {
@@ -215,6 +231,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::POST, "/update-model-summary") => {
             match &body {
                 Some(body_content) => handle_update_model_summary(body_content).await,
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
+        (&Method::POST, "/convert-to-glb") => {
+            match &body {
+                Some(body_content) => handle_convert_to_glb(body_content).await,
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
@@ -919,6 +941,128 @@ async fn handle_cache_stats() -> Response<BoxBody<Bytes, Infallible>> {
         error: None,
     };
     json_response(&response)
+}
+
+async fn handle_convert_to_glb(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    #[derive(serde::Deserialize)]
+    struct ConvertToGlbRequest {
+        file_data: String, // base64 encoded file data
+        filename: String,
+        project_name: String,
+        settings: Option<serde_json::Value>, // Optional import settings
+        import_mode: Option<String>, // "separate" or "combined", defaults to "separate"
+    }
+    let request: ConvertToGlbRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(e) => {
+            error!("❌ Failed to parse convert-to-glb request: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
+        }
+    };
+    
+    info!("🔄 Converting {} to GLB with extraction for project: {}", request.filename, request.project_name);
+    
+    // Decode base64 file data
+    let file_data = match general_purpose::STANDARD.decode(&request.file_data) {
+        Ok(data) => data,
+        Err(e) => {
+            error!("❌ Failed to decode base64 file data: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid base64 file data");
+        }
+    };
+    
+    // Parse import mode
+    let import_mode = match request.import_mode.as_deref() {
+        Some("combined") => Some(ImportMode::Combined),
+        Some("separate") => Some(ImportMode::Separate),
+        None => Some(ImportMode::Separate), // Default to separate (Unreal-style)
+        _ => Some(ImportMode::Separate),
+    };
+    
+    // Parse compression settings
+    let compression = if let Some(settings) = &request.settings {
+        if let Some(materials) = settings.get("materials") {
+            CompressionSettings {
+                draco_compression: materials.get("dracoCompression").and_then(|v| v.as_bool()),
+                tmf_encoding: materials.get("tmfEncoding").and_then(|v| v.as_bool()),
+            }
+        } else {
+            CompressionSettings {
+                draco_compression: Some(false),
+                tmf_encoding: Some(false),
+            }
+        }
+    } else {
+        CompressionSettings {
+            draco_compression: Some(false),
+            tmf_encoding: Some(false),
+        }
+    };
+    
+    // Convert to GLB and extract assets
+    match convert_model_to_glb_and_extract(file_data, &request.filename, &request.project_name, import_mode, Some(compression)) {
+        Ok(result) => {
+            info!("✅ GLB conversion and extraction completed: {}", request.filename);
+            json_response(&result)
+        }
+        Err(e) => {
+            error!("❌ GLB conversion and extraction failed: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+        }
+    }
+}
+
+// RenScript cache handlers
+async fn handle_search_renscripts(query: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    // Parse query parameters
+    let search_term = match query.split('=').nth(1) {
+        Some(term) => percent_decode_str(term).decode_utf8().unwrap_or_default().to_string(),
+        None => String::new(),
+    };
+    
+    if let Some(renscript_cache) = RENSCRIPT_CACHE.get() {
+        match renscript_cache.search(&search_term).await {
+            Ok(results) => json_response(&results),
+            Err(e) => {
+                error!("❌ Failed to search renscripts: {}", e);
+                error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to search renscripts")
+            }
+        }
+    } else {
+        error_response(StatusCode::SERVICE_UNAVAILABLE, "RenScript cache not available")
+    }
+}
+
+async fn handle_list_renscripts() -> Response<BoxBody<Bytes, Infallible>> {
+    if let Some(renscript_cache) = RENSCRIPT_CACHE.get() {
+        match renscript_cache.get_all_scripts().await {
+            Ok(scripts) => json_response(&scripts),
+            Err(e) => {
+                error!("❌ Failed to list renscripts: {}", e);
+                error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to list renscripts")
+            }
+        }
+    } else {
+        error_response(StatusCode::SERVICE_UNAVAILABLE, "RenScript cache not available")
+    }
+}
+
+async fn handle_refresh_renscript_cache() -> Response<BoxBody<Bytes, Infallible>> {
+    if let Some(renscript_cache) = RENSCRIPT_CACHE.get() {
+        let renscripts_path = std::path::Path::new("renscripts");
+        match renscript_cache.refresh_cache(renscripts_path).await {
+            Ok(_) => {
+                info!("✅ RenScript cache refreshed successfully");
+                json_response(&serde_json::json!({"success": true, "message": "Cache refreshed"}))
+            }
+            Err(e) => {
+                error!("❌ Failed to refresh renscript cache: {}", e);
+                error_response(StatusCode::INTERNAL_SERVER_ERROR, "Failed to refresh cache")
+            }
+        }
+    } else {
+        error_response(StatusCode::SERVICE_UNAVAILABLE, "RenScript cache not available")
+    }
 }
 
 

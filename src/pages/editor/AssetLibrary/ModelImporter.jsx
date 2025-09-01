@@ -11,6 +11,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
   const [expandedSections, setExpandedSections] = createSignal(new Set(['general', 'skeletalMeshes', 'animations', 'materials', 'advanced']));
   const [importSettings, setImportSettings] = createSignal({
     general: {
+      importMode: 'separate', // 'separate' (Unreal-style) or 'combined'
       useSourceName: true,
       sceneNameSubFolder: false,
       assetTypeSubFolders: true,
@@ -70,7 +71,8 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
       fileExtensionsForLongLatCubemap: 'hdr,exr',
       preferCompressedSourceData: true,
       allowNonPowerOfTwo: true,
-      dracoCompression: false
+      dracoCompression: true,
+      tmfEncoding: false
     },
     advanced: {
       fileUnits: 'meters',
@@ -122,7 +124,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
     const files = Array.from(e.dataTransfer.files);
     const supportedFiles = files.filter(file => {
       const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0];
-      return ['.fbx', '.obj', '.gltf', '.glb', '.dae', '.3ds', '.blend', '.max'].includes(ext);
+      return ['.fbx', '.obj', '.gltf', '.glb', '.dae', '.3ds', '.blend', '.max', '.stl', '.ply', '.x3d', '.md2', '.md3', '.md5', '.lwo', '.ac', '.ms3d', '.cob', '.ifc', '.xgl', '.csm', '.bvh', '.b3d', '.ndo', '.dxf'].includes(ext);
     });
     setSelectedFiles(supportedFiles);
   };
@@ -151,14 +153,15 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
         
         // Use advanced model processor for supported 3D formats
         const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
-        const is3DModel = ['.fbx', '.obj', '.gltf', '.glb', '.dae'].includes(ext);
+        const is3DModel = ['.fbx', '.obj', '.gltf', '.glb', '.dae', '.3ds', '.blend', '.max', '.stl', '.ply', '.x3d', '.md2', '.md3', '.md5', '.lwo', '.ac', '.ms3d', '.cob', '.ifc', '.xgl', '.csm', '.bvh', '.b3d', '.ndo', '.dxf'].includes(ext);
         
         if (is3DModel) {
-          // Use advanced processing
-          await modelProcessor.processModelFile(
+          // Use GLB conversion and extraction
+          await modelProcessor.convertToGlbAndExtract(
             file,
             settings,
             currentProject.name,
+            settings.general.importMode,
             (progress) => {
               const overallProgress = fileProgress + (progress.progress / totalFiles);
               setImportProgress(overallProgress);
@@ -247,7 +250,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
                     Drop files here or click to browse
                   </p>
                   <p class="text-xs text-base-content/40">
-                    Supports: FBX, OBJ, GLTF, GLB, DAE, 3DS, Blend, Max
+                    Supports: FBX, OBJ, GLTF, GLB, DAE, 3DS, Blend, Max, STL, PLY, X3D, MD2/3/5, LWO, AC, IFC, and more
                   </p>
                 </Show>
                 
@@ -320,6 +323,16 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
                   onToggle={() => toggleSection('general')}
                 >
                   <div class="space-y-3">
+                    <SelectSetting
+                      label="Import Mode"
+                      value={importSettings().general.importMode}
+                      options={[
+                        { value: 'separate', label: 'Separate Assets (Unreal-style)' },
+                        { value: 'combined', label: 'Combined Object' }
+                      ]}
+                      onChange={(value) => updateSetting('general', 'importMode', value)}
+                    />
+                    
                     <CheckboxSetting
                       label="Use source name for asset"
                       checked={importSettings().general.useSourceName}
@@ -510,6 +523,12 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
                     />
 
                     <CheckboxSetting
+                      label="TMF encoding (animations)"
+                      checked={importSettings().materials.tmfEncoding}
+                      onChange={(checked) => updateSetting('materials', 'tmfEncoding', checked)}
+                    />
+
+                    <CheckboxSetting
                       label="Allow non power of two"
                       checked={importSettings().materials.allowNonPowerOfTwo}
                       onChange={(checked) => updateSetting('materials', 'allowNonPowerOfTwo', checked)}
@@ -561,7 +580,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
             ref={fileInputRef}
             type="file"
             multiple
-            accept=".fbx,.obj,.gltf,.glb,.dae,.3ds,.blend,.max"
+            accept=".fbx,.obj,.gltf,.glb,.dae,.3ds,.blend,.max,.stl,.ply,.x3d,.md2,.md3,.md5,.lwo,.ac,.ms3d,.cob,.ifc,.xgl,.csm,.bvh,.b3d,.ndo,.dxf"
             onChange={handleFileInputChange}
             style={{ display: 'none' }}
           />

@@ -67,11 +67,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🔴 Initializing Redis cache...");
     let redis_cache = Arc::new(tokio::sync::Mutex::new(RedisCache::new()));
     
+    // Initialize RenScript cache
+    info!("📜 Initializing RenScript cache...");
+    let renscript_cache = Arc::new(RenScriptCache::new(None)); // For now, skip Redis integration
+    
+    // Initialize the RenScript cache with directory scanning
+    let renscripts_path = base_path.join("renscripts");
+    if let Err(e) = renscript_cache.initialize(&renscripts_path).await {
+        warn!("⚠️ Failed to initialize RenScript cache: {}", e);
+    }
     
     // Set state in handlers module
     set_startup_time(startup_time);
     set_database(database);
     set_redis_cache(redis_cache);
+    set_renscript_cache(renscript_cache);
     
     // File watching now uses SSE streaming endpoint instead of separate WebSocket server
     

@@ -231,6 +231,58 @@ export class ModelProcessingAPI {
       throw error;
     }
   }
+
+  async convertToGlbAndExtract(file, settings, projectName, importMode = 'separate', onProgress) {
+    try {
+      onProgress?.({ stage: 'uploading', message: 'Uploading model for conversion...', progress: 5 });
+      
+      // Convert file to base64
+      const base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64String = reader.result.split(',')[1];
+          resolve(base64String);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      onProgress?.({ stage: 'converting', message: 'Converting to GLB format...', progress: 25 });
+      
+      const requestData = {
+        file_data: base64Data,
+        filename: file.name,
+        project_name: projectName,
+        settings: settings,
+        import_mode: importMode
+      };
+      
+      const response = await fetch(`${this.apiPrefix}/convert-to-glb`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestData)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+      
+      onProgress?.({ stage: 'extracting', message: 'Extracting assets...', progress: 75 });
+      
+      const result = await response.json();
+      
+      onProgress?.({ stage: 'complete', message: 'Conversion and extraction complete!', progress: 100 });
+      
+      return result;
+      
+    } catch (error) {
+      console.error('GLB conversion and extraction failed:', error);
+      throw error;
+    }
+  }
 }
 
 export const modelProcessingAPI = new ModelProcessingAPI();

@@ -1,0 +1,11 @@
+script FindTagTest {
+  
+  start {
+    tagged_objects = findByTag("findme")
+    log("Found " + tagged_objects.length + " objects with 'findme' tag")
+  }
+  
+  destroy {
+    log("FindTag test destroyed")
+  }
+}

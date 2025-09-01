@@ -1,0 +1,9 @@
+props time_settings {
+  update_interval: float {
+    default: 1.0,
+    min: 0.1,
+    max: 10.0,
+    description: "How often to log time updates (seconds)",
+    once: true
+  }
+}

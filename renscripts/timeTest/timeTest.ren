@@ -1,0 +1,21 @@
+script TimeTest {
+  
+  elapsed_time = 0
+  
+  start {
+    log("Time test: Script started at time: " + time())
+    elapsed_time = 0
+  }
+  
+  update {
+    elapsed_time = elapsed_time + time()
+    if (elapsed_time > update_interval) {
+      log("Current time: " + time() + ", Elapsed: " + elapsed_time)
+      elapsed_time = 0
+    }
+  }
+  
+  destroy {
+    log("Time test: Script destroyed at time: " + time())
+  }
+}

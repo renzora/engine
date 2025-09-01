@@ -1,0 +1,18 @@
+script FindTagTest {
+  
+  start {
+    log("Checking my own tags first:")
+    if (hasTag("findme")) {
+      log("I have the findme tag!")
+    } else {
+      log("I don't have the findme tag")
+    }
+    
+    tagged_objects = findByTag("findme")
+    log("Found " + tagged_objects.length + " objects with 'findme' tag")
+  }
+  
+  destroy {
+    log("FindTag test destroyed")
+  }
+}

@@ -1,0 +1,50 @@
+script Water {
+  
+  # Variables
+  water_material = null
+  skybox_ref = null
+  
+  start {
+    log("Creating water surface...")
+    
+    # Create water material and apply to this mesh
+    water_material = waterMaterial("water_material")
+    applyMaterialToMesh(mesh(), water_material)
+    
+    # Configure water properties
+    materialProperty(water_material, "windForce", wind_force)
+    materialProperty(water_material, "waveHeight", wave_height)
+    materialProperty(water_material, "bumpHeight", bump_height)
+    materialProperty(water_material, "windDirection", [wind_direction_x, wind_direction_y])
+    materialProperty(water_material, "waterColor", [water_color_r, water_color_g, water_color_b])
+    materialProperty(water_material, "colorBlendFactor", color_blend_factor)
+    materialProperty(water_material, "waveLength", wave_length)
+    
+    # Find skybox to add to render list
+    skybox_ref = findByName("skybox")
+    if (skybox_ref != null) {
+      materialProperty(water_material, "addToRenderList", skybox_ref)
+    }
+    
+    addTag("water")
+    log("Water surface created")
+  }
+  
+  once {
+    # Update water material properties if they changed
+    materialProperty(water_material, "windForce", wind_force)
+    materialProperty(water_material, "waveHeight", wave_height)
+    materialProperty(water_material, "bumpHeight", bump_height)
+    materialProperty(water_material, "windDirection", [wind_direction_x, wind_direction_y])
+    materialProperty(water_material, "waterColor", [water_color_r, water_color_g, water_color_b])
+    materialProperty(water_material, "colorBlendFactor", color_blend_factor)
+    materialProperty(water_material, "waveLength", wave_length)
+  }
+  
+  destroy {
+    log("Disposing water surface...")
+    if (water_material != null) {
+      dispose(water_material)
+    }
+  }
+}

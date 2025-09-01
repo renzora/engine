@@ -28,127 +28,58 @@ function ObjectProperties() {
   const [scriptMetadataVersion, setScriptMetadataVersion] = createSignal(0);
   let previousScriptSections = {};
 
-  // Cache for RenScript directory structure
+  // Simple cache to avoid repeated API calls
   let scriptCache = null;
   let cacheTimestamp = 0;
   const CACHE_DURATION = 30000; // 30 seconds
 
-  // Function to load and cache all RenScript files
+  // Function to load scripts from bridge API
   const loadScriptCache = async () => {
     try {
-      //console.log('📂 Loading RenScript cache...');
-      //console.log('📂 Requesting directory: renscripts');
-      const directories = await bridgeService.listDirectory('renscripts');
-      //console.log('📂 Found directories:', directories);
-      const allScripts = [];
-      
-      for (const dir of directories) {
-        //console.log('📂 Processing directory:', dir);
-        /*console.log('📂 Directory properties:', { 
-          name: dir.name, 
-          isDirectory: dir.isDirectory, 
-          is_directory: dir.is_directory,
-          type: typeof dir.isDirectory,
-          keys: Object.keys(dir)
-        });*/
-        if (dir.isDirectory || dir.is_directory) {
-          try {
-            //console.log(`📂 Reading subdirectory: renscripts/${dir.name}`);
-            const dirContents = await bridgeService.listDirectory(`renscripts/${dir.name}`);
-            //console.log(`📂 Contents of ${dir.name}:`, dirContents);
-            const scriptFiles = dirContents.filter(file => file.name.endsWith('.ren'));
-            //console.log(`📂 Script files in ${dir.name}:`, scriptFiles);
-            
-            scriptFiles.forEach(script => {
-              const scriptEntry = {
-                name: script.name.replace('.ren', ''),
-                path: `renscripts/${dir.name}/${script.name}`,
-                directory: dir.name,
-                searchableText: `${dir.name} ${script.name}`.toLowerCase()
-              };
-              //console.log('📂 Adding script:', scriptEntry);
-              allScripts.push(scriptEntry);
-            });
-          } catch (dirError) {
-            console.warn(`❌ Error reading directory ${dir.name}:`, dirError);
-          }
-        } else {
-          //console.log('📂 Skipping non-directory:', dir);
-        }
+      const response = await fetch('http://localhost:3001/renscripts');
+      if (response.ok) {
+        const scripts = await response.json();
+        scriptCache = scripts;
+        cacheTimestamp = Date.now();
+        //console.log(`📂 RenScript cache loaded from bridge: ${scripts.length} scripts`);
+        return scripts;
+      } else {
+        console.warn('Failed to fetch scripts from bridge:', response.status);
+        return [];
       }
-      
-      scriptCache = allScripts;
-      cacheTimestamp = Date.now();
-      //console.log(`📂 RenScript cache loaded: ${allScripts.length} scripts`);
-      return allScripts;
     } catch (error) {
-      console.warn('Error loading script cache:', error);
+      console.warn('Error loading script cache from bridge:', error);
       return [];
     }
   };
 
-  // Dynamic script search using cached data
+  // Dynamic script search using bridge API
   const searchScripts = async (searchTerm) => {
-    //console.log('🔍 searchScripts called with term:', searchTerm);
-    
     if (!searchTerm || searchTerm.length < 1) {
-      //console.log('🔍 Empty search term, clearing results');
       setSearchResults([]);
       setShowSearchResults(false);
       return;
     }
     
-    //console.log('🔍 Starting search for:', searchTerm);
     setIsSearching(true);
     try {
-      // Check if cache is valid
-      const now = Date.now();
-      const cacheExpired = !scriptCache || (now - cacheTimestamp) > CACHE_DURATION;
-      /*console.log('🔍 Cache status:', { 
-        hasCache: !!scriptCache, 
-        cacheTimestamp, 
-        now, 
-        expired: cacheExpired,
-        cacheAge: now - cacheTimestamp 
-      });*/
-      
-      if (cacheExpired) {
-        //console.log('📂 Cache expired or missing, reloading...');
-        await loadScriptCache();
-        //console.log('📂 Cache reload complete. New cache:', scriptCache);
+      // Use bridge API for search
+      const response = await fetch(`http://localhost:3001/renscripts/search?q=${encodeURIComponent(searchTerm)}`);
+      if (response.ok) {
+        const results = await response.json();
+        setSearchResults(results);
+        setShowSearchResults(results.length > 0);
       } else {
-        //console.log('📂 Using cached RenScript data, cache size:', scriptCache?.length);
-      }
-      
-      if (!scriptCache || scriptCache.length === 0) {
-        console.warn('⚠️ No scripts in cache after loading!');
+        console.warn('Failed to search scripts via bridge:', response.status);
         setSearchResults([]);
         setShowSearchResults(false);
-        return;
       }
-      
-      // Filter cached scripts based on search term
-      const searchTermLower = searchTerm.toLowerCase();
-      //console.log('🔍 Filtering scripts with term:', searchTermLower);
-      //console.log('🔍 Available scripts:', scriptCache.map(s => s.searchableText));
-      
-      const matchingScripts = scriptCache.filter(script => {
-        const matches = script.searchableText.includes(searchTermLower);
-        //console.log(`🔍 Script "${script.name}" (${script.searchableText}) matches "${searchTermLower}":`, matches);
-        return matches;
-      });
-      
-      //console.log('🔍 Final matching scripts:', matchingScripts);
-      setSearchResults(matchingScripts);
-      setShowSearchResults(matchingScripts.length > 0);
-      //console.log('📜 Script search results:', matchingScripts);
     } catch (error) {
-      console.warn('❌ Error searching scripts:', error);
+      console.warn('❌ Error searching scripts via bridge:', error);
       setSearchResults([]);
       setShowSearchResults(false);
     } finally {
       setIsSearching(false);
-      //console.log('🔍 Search complete');
     }
   };
 
@@ -1174,7 +1105,7 @@ function ObjectProperties() {
                               <CodeSlash className="w-4 h-4 text-secondary" />
                               <div className="flex flex-col">
                                 <span className="text-sm font-medium">{script.name}</span>
-                                <span className="text-xs text-base-content/50">{script.directory}/</span>
+                                <span className="text-xs text-base-content/50">{script.full_path || script.directory}</span>
                               </div>
                             </div>
                           </div>
