@@ -1,9 +1,11 @@
 import { createSignal } from 'solid-js'
 import { Vector3, Matrix, Plane } from '@babylonjs/core/Maths/math'
+import { Color3 } from '@babylonjs/core/Maths/math.color'
 import '@babylonjs/loaders'
 import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial'
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
 import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
@@ -19,6 +21,9 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
     position: { x: 0, y: 0 },
     progress: null
   })
+  
+  const [previewMesh, setPreviewMesh] = createSignal(null)
+  const [isPositioning, setIsPositioning] = createSignal(false)
 
   const getWorldPositionFromMouse = async (event, scene) => {
     if (!scene || !scene.activeCamera) {
@@ -55,38 +60,91 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
     return Vector3.Zero()
   }
 
+
   const handleDragOver = (e) => {
     e.preventDefault()
-    console.log('🔄 Drag over canvas:', e.dataTransfer.types)
+    
     if (e.dataTransfer.types.includes('application/x-asset-drag')) {
       e.dataTransfer.dropEffect = 'copy'
+      
+      // Update preview position during drag
+      if (isPositioning()) {
+        const preview = previewMesh()
+        if (preview) {
+          const scene = sceneInstance()
+          if (scene) {
+            getWorldPositionFromMouse(e, scene).then(position => {
+              preview.position = position
+            })
+          }
+        }
+      }
     }
   }
 
   const handleDrop = async (e) => {
     e.preventDefault()
     console.log('📦 Drop event on canvas:', e.dataTransfer.types)
-    console.log('📦 Available data formats:', Array.from(e.dataTransfer.types))
     
-    // Try different data formats
-    for (const type of e.dataTransfer.types) {
-      console.log(`📦 Data for ${type}:`, e.dataTransfer.getData(type))
+    // Check if we have a preview mesh to convert to final
+    const preview = previewMesh()
+    if (preview && isPositioning()) {
+      console.log('✅ Converting preview mesh to final model')
+      
+      // Get the final position
+      const finalPosition = preview.position.clone()
+      
+      // Get the original asset data
+      const assetData = preview.metadata?.originalAssetData
+      
+      // Remove preview state
+      setPreviewMesh(null)
+      setIsPositioning(false)
+      
+      // Make the preview mesh fully opaque and permanent
+      const scene = sceneInstance()
+      if (scene) {
+        // Restore full opacity to all materials
+        scene.meshes.forEach(mesh => {
+          if (mesh.parent === preview && mesh.material) {
+            mesh.material.alpha = 1.0
+          }
+        })
+        
+        // Rename the preview container to remove "_preview" suffix
+        if (assetData) {
+          preview.name = assetData.name
+        }
+        
+        // Add to scene hierarchy and select
+        renderActions.addObject(preview)
+        renderActions.selectObject(preview)
+        // Don't automatically set transform mode - let user choose from toolbar
+        
+        // Initialize object properties
+        const objectId = preview.uniqueId || preview.name
+        const { objectPropertiesActions } = await import('@/layout/stores/ViewportStore')
+        objectPropertiesActions.ensureDefaultComponents(objectId)
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [finalPosition.x, finalPosition.y, finalPosition.z])
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.rotation', [0, 0, 0])
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', [1, 1, 1])
+        
+        console.log('✅ Preview converted to final model:', preview.name)
+        editorActions.addConsoleMessage(`Loaded ${assetData?.name || 'model'}`, 'success')
+        
+        // Hide loading tooltip
+        setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
+      }
+      return
     }
     
-    // Check for our custom asset drag format
+    // Fallback: Check for our custom asset drag format (for non-3D assets)
     if (e.dataTransfer.types.includes('application/x-asset-drag')) {
       try {
         const assetData = JSON.parse(e.dataTransfer.getData('application/json'))
         console.log('Asset dropped in viewport:', assetData)
         
         if (assetData.type === 'asset' && assetData.assetType === 'file') {
-          setLoadingTooltip({
-            isVisible: true,
-            message: `Loading ${assetData.name}...`,
-            position: { x: e.clientX, y: e.clientY },
-            progress: 0
-          })
-          
           const scene = sceneInstance()
           const dropPosition = await getWorldPositionFromMouse(e, scene)
           await loadAssetIntoScene(assetData, dropPosition)
@@ -94,7 +152,6 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
       } catch (error) {
         console.error('Error handling asset drop:', error)
         editorActions.addConsoleMessage(`Failed to load asset: ${error.message}`, 'error')
-        setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
       }
     }
     // Check for standard JSON format
@@ -295,15 +352,16 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
           console.log(`Final position: ${finalMesh.position.x}, ${finalMesh.position.y}, ${finalMesh.position.z}`)
           
           
-          // Also add shadow casting to all child meshes
+          // Add shadow casting and receiving to all child meshes
           if (scene.shadowGenerator) {
             const allChildren = finalMesh.getChildMeshes();
             allChildren.forEach(childMesh => {
               if (childMesh.getClassName && childMesh.getClassName() === 'Mesh') {
                 scene.shadowGenerator.addShadowCaster(childMesh);
+                childMesh.receiveShadows = true;
               }
             });
-            console.log(`🌑 Added ${allChildren.filter(m => m.getClassName && m.getClassName() === 'Mesh').length} child meshes to shadow casting`);
+            console.log(`🌑 Added ${allChildren.filter(m => m.getClassName && m.getClassName() === 'Mesh').length} child meshes to shadow casting and receiving`);
           }
           
           // Add to render store hierarchy and select it
@@ -317,14 +375,28 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
         setLoadingTooltip(prev => ({ ...prev, message: `Loading texture: ${assetData.name}...` }))
         
         const plane = MeshBuilder.CreatePlane(assetData.name, { size: 2 }, scene)
-        const material = new StandardMaterial(assetData.name + "_material", scene)
+        const material = new PBRMaterial(assetData.name + "_material", scene)
         const texture = new Texture(assetUrl, scene, undefined, undefined, undefined, () => {
           // Texture loaded successfully
           setLoadingTooltip(prev => ({ ...prev, progress: 1 }))
         })
-        material.diffuseTexture = texture
+        material.baseTexture = texture
+        material.metallicFactor = 0.0
+        material.roughnessFactor = 0.9
+        material.enableSpecularAntiAliasing = true
+        
+        // Enable reflections from environment
+        material.environmentIntensity = 1.0
+        material.usePhysicalLightFalloff = true
         plane.material = material
         plane.position = position || Vector3.Zero()
+        
+        // Add shadow casting and receiving
+        if (scene.shadowGenerator) {
+          scene.shadowGenerator.addShadowCaster(plane);
+          plane.receiveShadows = true;
+          console.log(`🌑 Added texture plane ${plane.name} to shadow casting and receiving`);
+        }
         
         // Add to render store hierarchy and select it
         renderActions.addObject(plane);
@@ -354,6 +426,13 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
             const material = materialFunction(assetData.name + "_material", scene);
             sphere.material = material;
             sphere.position = position || Vector3.Zero();
+            
+            // Add shadow casting and receiving
+            if (scene.shadowGenerator) {
+              scene.shadowGenerator.addShadowCaster(sphere);
+              sphere.receiveShadows = true;
+              console.log(`🌑 Added material sphere ${sphere.name} to shadow casting and receiving`);
+            }
             
             // Store material source for later use
             if (!sphere.metadata) sphere.metadata = {};
@@ -385,11 +464,143 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
     }
   }
 
+    const handleDragEnter = async (e) => {
+    console.log('🔍 DragEnter event:', e.dataTransfer.types)
+    if (!e.dataTransfer.types.includes('application/x-asset-drag')) {
+      console.log('❌ No asset drag type found')
+      return
+    }
+    
+    e.preventDefault()
+    
+    // Use global drag data to load actual model for preview
+    const assetData = window._currentDragData
+    console.log('🔍 Current drag data:', assetData)
+    if (!assetData) {
+      console.log('❌ No current drag data')
+      return
+    }
+    
+    const extension = assetData.extension?.toLowerCase()
+    console.log('🔍 File extension:', extension)
+    
+    // Load actual model for 3D assets during drag
+    if (['.glb', '.gltf', '.obj'].includes(extension)) {
+      const scene = sceneInstance()
+      if (!scene) {
+        console.log('❌ No scene available')
+        return
+      }
+      if (isPositioning()) {
+        console.log('❌ Already positioning')
+        return
+      }
+      
+      console.log('🎯 Loading actual model for preview:', assetData.name)
+      setIsPositioning(true)
+      
+      // Show loading tooltip
+      setLoadingTooltip({
+        isVisible: true,
+        message: `Loading ${assetData.name}...`,
+        position: { x: e.clientX, y: e.clientY },
+        progress: 0
+      })
+      
+      try {
+        // Get current project
+        const currentProject = getCurrentProject();
+        
+        if (!currentProject?.name) {
+          console.error('❌ No project loaded');
+          setIsPositioning(false);
+          return;
+        }
+        
+        // Construct proper project path (same as main loading function)
+        const assetPath = `projects/${currentProject.name}/${assetData.path}`;
+        const assetUrl = `http://localhost:3001/file/${encodeURIComponent(assetPath)}`
+        console.log('🔗 Loading from URL:', assetUrl)
+        const result = await SceneLoader.ImportMeshAsync("", "", assetUrl, scene)
+        
+        if (result.meshes && result.meshes.length > 0) {
+          console.log('✅ Model loaded successfully, meshes:', result.meshes.length)
+          
+          // Update loading tooltip to show completion
+          setLoadingTooltip(prev => ({ ...prev, progress: 1, message: `${assetData.name} loaded` }))
+          
+          // Create container for the preview
+          const previewContainer = new TransformNode(assetData.name + "_preview", scene)
+          
+          // Parent all loaded meshes to the container
+          result.meshes.forEach(mesh => {
+            if (mesh.name !== "__root__") {
+              mesh.setParent(previewContainer)
+            }
+          })
+          
+          // Make preview semi-transparent and add shadow casting
+          result.meshes.forEach(mesh => {
+            if (mesh.material) {
+              mesh.material.alpha = 0.7
+            }
+            // Add shadow casting to preview meshes
+            if (scene.shadowGenerator && mesh.getClassName && mesh.getClassName() === 'Mesh') {
+              scene.shadowGenerator.addShadowCaster(mesh);
+              mesh.receiveShadows = true;
+            }
+          })
+          
+          previewContainer.metadata = { originalAssetData: assetData }
+          setPreviewMesh(previewContainer)
+          
+          // Position at mouse location
+          const dropPosition = await getWorldPositionFromMouse(e, scene)
+          previewContainer.position = dropPosition
+          
+          console.log('✅ Preview mesh created and positioned')
+          
+          // Hide loading tooltip after a brief delay
+          setTimeout(() => {
+            setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
+          }, 500)
+        } else {
+          console.log('❌ No meshes found in loaded model')
+          setIsPositioning(false)
+          setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
+        }
+      } catch (error) {
+        console.error('❌ Error loading preview model:', error)
+        setIsPositioning(false)
+        setLoadingTooltip(prev => ({ ...prev, isVisible: false }))
+      }
+    } else {
+      console.log('❌ Not a 3D model extension')
+    }
+  }
+
+  const handleDragLeave = (e) => {
+    // Clean up preview when leaving canvas
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      const preview = previewMesh()
+      if (preview) {
+        preview.dispose()
+        setPreviewMesh(null)
+        setIsPositioning(false)
+        console.log('🧹 Cleaned up preview mesh on drag leave')
+      }
+      window._currentDragData = null
+    }
+  }
+
   return {
     loadingTooltip,
     setLoadingTooltip,
     handleDragOver,
+    handleDragEnter,
+    handleDragLeave,
     handleDrop,
-    loadAssetIntoScene
+    loadAssetIntoScene,
+    isPositioning
   }
 }

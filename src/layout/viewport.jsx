@@ -92,10 +92,20 @@ const Viewport = () => {
     // Exclude specific elements that should handle their own drops
     const shouldExclude = e.target.closest('.overflow-y-auto') || // Scene properties panels
                           e.target.closest('[data-drop-zone="scripts"]') || // Script drop zones
-                          e.target.getAttribute('data-drop-zone'); // Any element marked as drop zone
+                          e.target.getAttribute('data-drop-zone') ||
+                          e.target.tagName === 'CANVAS'; // Let canvas handle 3D model drops
     
     if (shouldExclude) {
       return;
+    }
+    
+    // Check if this is a 3D model drag - let canvas handle it
+    const dragData = window._currentDragData;
+    if (dragData) {
+      const extension = dragData.extension?.toLowerCase();
+      if (['.glb', '.gltf', '.obj'].includes(extension)) {
+        return; // Let canvas handle 3D models
+      }
     }
     
     // Only handle script drag operations and avoid interfering with other drags
@@ -118,10 +128,20 @@ const Viewport = () => {
     // Exclude specific elements that should handle their own drops
     const shouldExclude = e.target.closest('.overflow-y-auto') || // Scene properties panels
                           e.target.closest('[data-drop-zone="scripts"]') || // Script drop zones
-                          e.target.getAttribute('data-drop-zone'); // Any element marked as drop zone
+                          e.target.getAttribute('data-drop-zone') ||
+                          e.target.tagName === 'CANVAS'; // Let canvas handle 3D model drops
     
     if (shouldExclude) {
       return;
+    }
+    
+    // Check if this is a 3D model drag - let canvas handle it
+    const dragData = window._currentDragData;
+    if (dragData) {
+      const extension = dragData.extension?.toLowerCase();
+      if (['.glb', '.gltf', '.obj'].includes(extension)) {
+        return; // Let canvas handle 3D models
+      }
     }
     
     // Minimal interference - just prevent default for potential drops
@@ -134,10 +154,20 @@ const Viewport = () => {
     // Exclude specific elements that should handle their own drops
     const shouldExclude = e.target.closest('.overflow-y-auto') || // Scene properties panels
                           e.target.closest('[data-drop-zone="scripts"]') || // Script drop zones
-                          e.target.getAttribute('data-drop-zone'); // Any element marked as drop zone
+                          e.target.getAttribute('data-drop-zone') ||
+                          e.target.tagName === 'CANVAS'; // Let canvas handle 3D model drops
     
     if (shouldExclude) {
       return;
+    }
+    
+    // Check if this is a 3D model drag - let canvas handle it
+    const dragData = window._currentDragData;
+    if (dragData) {
+      const extension = dragData.extension?.toLowerCase();
+      if (['.glb', '.gltf', '.obj'].includes(extension)) {
+        return; // Let canvas handle 3D models
+      }
     }
     
     // Only prevent default, don't stop propagation to avoid blocking other handlers
@@ -150,11 +180,21 @@ const Viewport = () => {
     // Exclude specific elements that should handle their own drops
     const shouldExclude = e.target.closest('.overflow-y-auto') || // Scene properties panels
                           e.target.closest('[data-drop-zone="scripts"]') || // Script drop zones
-                          e.target.getAttribute('data-drop-zone'); // Any element marked as drop zone
+                          e.target.getAttribute('data-drop-zone') ||
+                          e.target.tagName === 'CANVAS'; // Let canvas handle 3D model drops
     
     if (shouldExclude) {
       // The drop is on a child element that should handle it, let it handle the drop
       return;
+    }
+    
+    // Check if this is a 3D model drag - let canvas handle it
+    const dragData = window._currentDragData;
+    if (dragData) {
+      const extension = dragData.extension?.toLowerCase();
+      if (['.glb', '.gltf', '.obj'].includes(extension)) {
+        return; // Let canvas handle 3D models
+      }
     }
     
     try {

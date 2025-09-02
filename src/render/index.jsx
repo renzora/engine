@@ -5,7 +5,9 @@ import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Ray } from '@babylonjs/core/Culling/ray';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator';
+import { ReflectionProbe } from '@babylonjs/core/Probes/reflectionProbe';
 import '@babylonjs/core/Lights/Shadows/shadowGeneratorSceneComponent';
 import { Color4 } from '@babylonjs/core/Maths/math.color';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
@@ -15,9 +17,17 @@ import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture';
 import '@babylonjs/core/Materials/Textures/Loaders/envTextureLoader';
 import { CreateSkyBox } from '@babylonjs/core/Helpers/environmentHelper';
+import { SkyMaterial } from '@babylonjs/materials/sky/skyMaterial';
+import '@babylonjs/materials/sky';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
+import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration';
+import '@babylonjs/core/Materials/Textures/Loaders/hdrTextureLoader';
+import { ParticleSystem } from '@babylonjs/core/Particles/particleSystem';
+import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import '@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput';
 import '@babylonjs/core/Cameras/Inputs/arcRotateCameraKeyboardMoveInput';
 import '@babylonjs/core/Cameras/Inputs/arcRotateCameraMouseWheelInput';
@@ -62,68 +72,428 @@ const loadDefaultSceneContent = (scene, canvas) => {
   camera.setTarget(Vector3.Zero());
 
 
-  // Enhanced lighting setup with skybox and better shadows
+  // Unreal Engine style lighting setup
   
-  // Create a simple gradient skybox manually
-  const skybox = CreateBox('skyBox', { size: 1000 }, scene);
-  const skyboxMaterial = new StandardMaterial('skyBox', scene);
+  // Configure image processing for realistic tone mapping
+  scene.imageProcessingConfiguration.toneMappingEnabled = true;
+  scene.imageProcessingConfiguration.toneMappingType = ImageProcessingConfiguration.TONEMAPPING_ACES;
+  scene.imageProcessingConfiguration.exposure = 1.0;
+  scene.imageProcessingConfiguration.contrast = 1.1;
+  scene.imageProcessingConfiguration.vignetteEnabled = false;
+  
+  // Day/Night Cycle System
+  const dayNightCycle = {
+    timeOfDay: 12.0, // Current hour (0-24, 12 = noon)
+    speed: 0.2, // Hours per minute real time (0.2 = 1 hour per 5 minutes)
+    enabled: true,
+    // Configurable timing
+    sunriseHour: 6.0,    // When sun starts rising
+    sunsetHour: 21.0,    // When sun starts setting
+    transitionDuration: 1.0 // Hours for sunrise/sunset transitions
+  };
+
+  // Sky material
+  var skyboxMaterial = new SkyMaterial("skyMaterial", scene);
   skyboxMaterial.backFaceCulling = false;
-  skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
-  skyboxMaterial.specularColor = new Color3(0, 0, 0);
-  skyboxMaterial.emissiveColor = new Color3(0.5, 0.7, 1.0); // Sky blue emission
+  
+  // Add clouds to the sky
+  skyboxMaterial.cloudsEnabled = true;
+  skyboxMaterial.cumulusCloudSize = 20;
+  skyboxMaterial.cumulusCloudDensity = 0.3;
+
+  // Sky mesh (sphere)
+  var skybox = CreateSphere("skyBox", { diameter: 1000.0 }, scene);
   skybox.material = skyboxMaterial;
   skybox.infiniteDistance = true;
   
-  // Sky ambient light - reduced intensity since we have skybox
+  // Create ground plane to receive shadows
+  const ground = CreateGround("ground", { width: 200, height: 200 }, scene);
+  ground.receiveShadows = true;
+  ground.position.y = 0;
+  
+  // Ground material
+  const groundMaterial = new PBRMaterial("groundMaterial", scene);
+  groundMaterial.baseColor = new Color3(0.4, 0.5, 0.3); // Earthy green
+  groundMaterial.metallicFactor = 0.0;
+  groundMaterial.roughnessFactor = 0.9;
+  groundMaterial.enableSpecularAntiAliasing = true;
+  
+  // Enable reflections from environment
+  groundMaterial.environmentIntensity = 1.0;
+  groundMaterial.usePhysicalLightFalloff = true;
+  ground.material = groundMaterial;
+  ground._isInternalMesh = true;
+  
+  // Sky light - will be controlled by day/night cycle
   const skyLight = new HemisphericLight('skyLight', new Vector3(0, 1, 0), scene);
-  skyLight.intensity = 0.3;
-  skyLight.diffuse = new Color3(0.6, 0.8, 1.0);
-  skyLight.groundColor = new Color3(0.2, 0.3, 0.4);
+  skyLight.intensity = 1.0; // Initial intensity, will be updated by cycle
+  skyLight.diffuse = new Color3(0.8, 0.9, 1.0); // Initial color, will be updated
+  skyLight.groundColor = new Color3(0.6, 0.55, 0.5); // Initial ground color
   
-  // Main sun light - stronger and more dramatic
-  const sunLight = new DirectionalLight('sunLight', new Vector3(-0.4, -0.7, -0.6), scene);
-  sunLight.intensity = 1.2;
-  sunLight.diffuse = new Color3(1.0, 0.95, 0.85);
-  sunLight.specular = new Color3(1.0, 0.9, 0.8);
+  // Main directional light - will be controlled by day/night cycle
+  const sunLight = new DirectionalLight('sunLight', new Vector3(-0.3, -0.8, -0.5), scene);
+  sunLight.intensity = 1.0; // Initial intensity, will be updated by cycle
+  sunLight.diffuse = new Color3(1.0, 0.98, 0.9); // Initial color, will be updated
+  sunLight.specular = new Color3(1.0, 0.95, 0.85);
   
-  // Position sun higher for better shadow angles
-  const sunElevation = 60 * Math.PI / 180; // 60 degrees elevation
-  const sunAzimuth = 135 * Math.PI / 180; // Southeast direction
+  // Realistic sun position (45 degree elevation, southeast)
+  const sunElevation = 45 * Math.PI / 180;
+  const sunAzimuth = 130 * Math.PI / 180;
   sunLight.direction = new Vector3(
     Math.cos(sunElevation) * Math.cos(sunAzimuth),
     -Math.sin(sunElevation),
     Math.cos(sunElevation) * Math.sin(sunAzimuth)
   );
   
-  // Fill light - simulates bounce light from environment
-  const fillLight = new DirectionalLight('fillLight', new Vector3(0.3, -0.2, 0.8), scene);
-  fillLight.intensity = 0.15;
-  fillLight.diffuse = new Color3(0.7, 0.8, 1.0);
-  fillLight.specular = new Color3(0.0, 0.0, 0.0);
+  // Rim light - simulates atmospheric scattering
+  const rimLight = new DirectionalLight('rimLight', new Vector3(0.8, 0.2, -0.6), scene);
+  rimLight.intensity = 0.4;
+  rimLight.diffuse = new Color3(0.9, 0.7, 0.5); // Warm rim
+  rimLight.specular = new Color3(0.0, 0.0, 0.0); // No specular for rim
+  
+  // Bounce light - simulates indirect lighting
+  const bounceLight = new DirectionalLight('bounceLight', new Vector3(-0.2, 0.3, 0.9), scene);
+  bounceLight.intensity = 0.3;
+  bounceLight.diffuse = new Color3(0.4, 0.5, 0.7); // Cool bounce from sky
+  bounceLight.specular = new Color3(0.0, 0.0, 0.0); // No specular for bounce
 
-  // Enhanced shadow generator with better quality
-  const shadowGenerator = new ShadowGenerator(4096, sunLight); // Higher resolution
+  // Enhanced shadow generator with Unreal-style settings
+  const shadowGenerator = new ShadowGenerator(4096, sunLight);
   shadowGenerator.usePercentageCloserFiltering = true;
   shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
-  shadowGenerator.darkness = 0.4; // More pronounced shadows
-  shadowGenerator.bias = 0.0001; // Tighter bias for sharper shadows
+  shadowGenerator.darkness = 0.3; // Softer shadows for realism
+  shadowGenerator.bias = 0.00005; // Reduced bias for cleaner shadows
   
   // Contact hardening for realistic shadow softness
   shadowGenerator.useContactHardeningShadow = true;
-  shadowGenerator.contactHardeningLightSizeUVRatio = 0.075;
+  shadowGenerator.contactHardeningLightSizeUVRatio = 0.05; // Tighter contact hardening
   
-  // Set shadow map size and enable blur
-  shadowGenerator.blurBoxOffset = 2.0;
-  shadowGenerator.blurScale = 2.0;
-  shadowGenerator.blurKernel = 32;
+  // Cascade shadow maps for better distance shadows
+  shadowGenerator.useCascades = true;
+  shadowGenerator.numCascades = 4;
+  shadowGenerator.cascadeBlendPercentage = 0.1;
+  
+  // Exponential shadow maps for softer shadows
+  shadowGenerator.useExponentialShadowMap = true;
+  shadowGenerator.blurKernel = 64; // Larger blur for softer edges
   
   // Store shadow generator for access by physics objects
   scene.shadowGenerator = shadowGenerator;
+  
+  // Set environment intensity for realistic IBL
+  scene.environmentIntensity = 1.2; // Higher for brighter environment
+  
+  // Create reflection probe to capture sky material for reflections
+  const reflectionProbe = new ReflectionProbe('skyReflection', 512, scene);
+  reflectionProbe.renderList.push(skybox);
+  scene.environmentTexture = reflectionProbe.cubeTexture;
+  
+  // Configure global lighting settings for Unreal-style rendering
+  scene.autoClear = true;
+  scene.autoClearDepthAndStencil = true;
+  
+  // Enable realistic fog for depth and atmosphere
+  scene.fogEnabled = true;
+  scene.fogMode = 2; // FOGMODE_EXP2
+  scene.fogDensity = 0.001; // Very light atmospheric fog
+  scene.fogColor = new Color3(0.7, 0.8, 0.9); // Light blue-gray fog
+  
+
+  // Create snow particle system
+  const snowSystem = new ParticleSystem('snow', 2000, scene);
+  
+  // Create a simple white circle texture for snowflakes
+  const snowTexture = new DynamicTexture('snowTexture', { width: 64, height: 64 }, scene);
+  const snowContext = snowTexture.getContext();
+  snowContext.clearRect(0, 0, 64, 64);
+  snowContext.fillStyle = 'white';
+  snowContext.beginPath();
+  snowContext.arc(32, 32, 24, 0, 2 * Math.PI);
+  snowContext.fill();
+  
+  // Add soft edge
+  const snowGradient = snowContext.createRadialGradient(32, 32, 0, 32, 32, 24);
+  snowGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  snowGradient.addColorStop(0.8, 'rgba(255, 255, 255, 0.8)');
+  snowGradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  snowContext.fillStyle = snowGradient;
+  snowContext.beginPath();
+  snowContext.arc(32, 32, 24, 0, 2 * Math.PI);
+  snowContext.fill();
+  snowTexture.update();
+  
+  snowSystem.particleTexture = snowTexture;
+  snowSystem.emitter = new Vector3(0, 20, 0); // Emit from above
+  snowSystem.minEmitBox = new Vector3(-25, 0, -25); // Spread area
+  snowSystem.maxEmitBox = new Vector3(25, 0, 25);
+  
+  // Snow particle behavior
+  snowSystem.color1 = new Color4(1, 1, 1, 0.8);
+  snowSystem.color2 = new Color4(0.9, 0.9, 1, 0.6);
+  snowSystem.colorDead = new Color4(1, 1, 1, 0);
+  
+  snowSystem.minSize = 0.02;
+  snowSystem.maxSize = 0.08;
+  snowSystem.minLifeTime = 8;
+  snowSystem.maxLifeTime = 12;
+  snowSystem.emitRate = 100;
+  
+  // Gentle falling motion
+  snowSystem.gravity = new Vector3(0, -1.5, 0);
+  snowSystem.direction1 = new Vector3(-0.2, -1, -0.2);
+  snowSystem.direction2 = new Vector3(0.2, -1, 0.2);
+  snowSystem.minAngularSpeed = 0;
+  snowSystem.maxAngularSpeed = Math.PI;
+  
+  // Add slight wind drift
+  snowSystem.minEmitPower = 0.5;
+  snowSystem.maxEmitPower = 1.0;
+  
+  snowSystem.start();
+
+  // Create star particle system for hemisphere coverage
+  const starSystem = new ParticleSystem('stars', 800, scene);
+  
+  // Create small white dot texture for stars
+  const starTexture = new DynamicTexture('starTexture', { width: 16, height: 16 }, scene);
+  const starContext = starTexture.getContext();
+  starContext.clearRect(0, 0, 16, 16);
+  starContext.fillStyle = 'white';
+  starContext.beginPath();
+  starContext.arc(8, 8, 6, 0, 2 * Math.PI);
+  starContext.fill();
+  starTexture.update();
+  
+  starSystem.particleTexture = starTexture;
+  starSystem.emitter = new Vector3(0, 0, 0);
+  starSystem.minEmitBox = new Vector3(-450, 50, -450); // Wide spread, above horizon
+  starSystem.maxEmitBox = new Vector3(450, 450, 450); // Full hemisphere coverage
+  
+  // Star properties
+  starSystem.color1 = new Color4(1, 1, 1, 1);
+  starSystem.color2 = new Color4(0.9, 0.9, 1, 0.8);
+  starSystem.colorDead = new Color4(1, 1, 1, 0);
+  
+  starSystem.minSize = 0.1;
+  starSystem.maxSize = 0.3;
+  
+  // Make stars emit light
+  starSystem.blendMode = ParticleSystem.BLENDMODE_ADD; // Additive blending for glow effect
+  starSystem.minLifeTime = 999999; // Very long lifetime
+  starSystem.maxLifeTime = 999999;
+  starSystem.emitRate = 0; // Don't emit continuously
+  
+  // No gravity or movement - stars should be stationary
+  starSystem.gravity = Vector3.Zero();
+  starSystem.direction1 = Vector3.Zero();
+  starSystem.direction2 = Vector3.Zero();
+  starSystem.minEmitPower = 0;
+  starSystem.maxEmitPower = 0;
+  
+  // Don't start immediately - will be controlled by day/night cycle
+  // starSystem.start();
+
+  // Create moon with light
+  const moon = CreateSphere('moon', { diameter: 20 }, scene);
+  moon.position = new Vector3(100, 300, 200);
+  const moonMaterial = new PBRMaterial('moonMaterial', scene);
+  moonMaterial.baseColor = new Color3(0.9, 0.9, 0.8);
+  moonMaterial.emissiveColor = new Color3(0.3, 0.3, 0.25);
+  moonMaterial.metallicFactor = 0.0;
+  moonMaterial.roughnessFactor = 0.8;
+  moonMaterial.disableLighting = true;
+  moon.material = moonMaterial;
+  moon._isInternalMesh = true;
+  
+  // Moon light source
+  const moonLight = new PointLight('moonLight', moon.position, scene);
+  moonLight.diffuse = new Color3(0.3, 0.3, 0.4);
+  moonLight.specular = new Color3(0.2, 0.2, 0.3);
+  moonLight.intensity = 0;
+  moonLight.range = 1000;
+
+
+  // Function to update day/night cycle
+  const updateDayNightCycle = () => {
+    if (!dayNightCycle.enabled) return;
+    
+    // Advance time (speed is hours per minute)
+    dayNightCycle.timeOfDay += dayNightCycle.speed * (1/60); // Convert to hours per frame
+    if (dayNightCycle.timeOfDay >= 24) dayNightCycle.timeOfDay = 0;
+    
+    const currentHour = dayNightCycle.timeOfDay;
+    
+    // Check if it's after sunset (needed for stars and moon)
+    const isAfterSunset = currentHour > dayNightCycle.sunsetHour || currentHour < dayNightCycle.sunriseHour;
+    
+    // Calculate periods based on configurable values
+    const dawnStart = dayNightCycle.sunriseHour - dayNightCycle.transitionDuration;
+    const dayStart = dayNightCycle.sunriseHour;
+    const duskStart = dayNightCycle.sunsetHour;
+    const nightStart = dayNightCycle.sunsetHour + dayNightCycle.transitionDuration;
+    
+    let sunElevation, lightIntensity;
+    
+    if (currentHour >= dayNightCycle.sunriseHour && currentHour <= dayNightCycle.sunsetHour) {
+      // Clean arc from sunrise to sunset
+      const dayDuration = dayNightCycle.sunsetHour - dayNightCycle.sunriseHour; // 12 hours (6am to 6pm)
+      const dayProgress = (currentHour - dayNightCycle.sunriseHour) / dayDuration; // 0 to 1
+      
+      // Simple sine arc: starts at 0 (sunrise), peaks at 0.5 (noon), ends at 0 (sunset)
+      const sunAngle = dayProgress * Math.PI; // 0 to PI
+      sunElevation = Math.sin(sunAngle); // 0 to 1 to 0
+      lightIntensity = sunElevation;
+    } else {
+      // Night time (including transitions)
+      sunElevation = 0;
+      lightIntensity = 0.0; // Pitch black
+    }
+    
+    // Calculate sun position for SkyMaterial
+    // SkyMaterial inclination: 0 = zenith (high), -0.5 = horizon (low)
+    let inclination = -0.5 + (sunElevation * 0.5); // -0.5 (horizon) to 0.0 (zenith)
+    
+    // Calculate sun azimuth (east to west movement)
+    let azimuth = 0.25; // Default position
+    if (currentHour >= dayNightCycle.sunriseHour && currentHour <= dayNightCycle.sunsetHour) {
+      const dayProgress = (currentHour - dayNightCycle.sunriseHour) / (dayNightCycle.sunsetHour - dayNightCycle.sunriseHour); // 0 to 1
+      azimuth = dayProgress * 0.5; // 0 (east) to 0.5 (west)
+    }
+    
+    // Update SkyMaterial - all properties gradual
+    skyboxMaterial.inclination = lightIntensity > 0 ? inclination : -1.0; // Hide sun below horizon at night
+    skyboxMaterial.azimuth = azimuth;
+    skyboxMaterial.turbidity = 2 + ((1 - lightIntensity) * 198); // 2 (clear day) to 200 (black night)
+    skyboxMaterial.luminance = lightIntensity * 1.0; // 0.0 (black) to 1.0 (bright)
+    
+    // Remove sun glare at night by hiding sun disk
+    if (lightIntensity > 0.1) {
+      skyboxMaterial.sunPosition = new Vector3(0, 1, 0); // Sun visible during day
+    } else {
+      skyboxMaterial.sunPosition = new Vector3(0, -20, 0); // Hide sun completely at night
+    }
+    
+    // Update moon visibility and light - only at night
+    const moonVisibility = isAfterSunset ? Math.max(0.5, 1 - lightIntensity) : 0.0;
+    if (moon && moon.material) {
+      moon.material.alpha = moonVisibility;
+      // Make moon glow brighter at night
+      moon.material.emissiveColor = new Color3(
+        moonVisibility * 0.4,
+        moonVisibility * 0.4, 
+        moonVisibility * 0.35
+      );
+    }
+    
+    // Update moon light intensity
+    if (moonLight) {
+      moonLight.intensity = moonVisibility * 15; // Bright moonlight at night
+    }
+    
+    // Update directional light (sun/moon) - always gradual
+    sunLight.intensity = lightIntensity * 4.0;
+    
+    if (lightIntensity > 0.1) {
+      // Strong sunrise/sunset colors
+      const warmth = 1.0 - sunElevation; // 0 at noon, 1 at sunrise/sunset
+      if (warmth > 0.7) {
+        // Deep sunrise/sunset: intense orange/red
+        sunLight.diffuse = new Color3(1.0, 0.4, 0.1); // Bright orange-red
+      } else if (warmth > 0.4) {
+        // Mid sunrise/sunset: warm yellow-orange
+        sunLight.diffuse = new Color3(1.0, 0.7, 0.2); // Golden orange
+      } else {
+        // Noon: bright white-yellow
+        sunLight.diffuse = new Color3(1.0, 0.98, 0.9); // Clean daylight
+      }
+    } else {
+      // Night: cool blue moonlight
+      sunLight.diffuse = new Color3(0.2, 0.2, 0.4);
+    }
+    
+    // Update sky light (ambient) - gradual based on light intensity
+    skyLight.intensity = lightIntensity * 4.0; // Pure scaling, no base intensity
+    
+    // Color transitions gradually from night blue to day blue
+    const dayColorMix = Math.max(0, Math.min(1, lightIntensity * 2)); // 0 to 1
+    skyLight.diffuse = new Color3(
+      0.02 + (dayColorMix * 0.68), // 0.02 to 0.7 (red)
+      0.02 + (dayColorMix * 0.78), // 0.02 to 0.8 (green) 
+      0.05 + (dayColorMix * 0.95)  // 0.05 to 1.0 (blue)
+    );
+    
+    skyLight.groundColor = new Color3(
+      dayColorMix * 0.4, // 0 to 0.4 (red)
+      dayColorMix * 0.3, // 0 to 0.3 (green)
+      dayColorMix * 0.2  // 0 to 0.2 (blue)
+    );
+    
+    // Update rim light - gradual with day/night cycle
+    rimLight.intensity = lightIntensity * 0.4;
+    
+    const rimColorMix = Math.max(0, Math.min(1, lightIntensity));
+    rimLight.diffuse = new Color3(
+      0.1 + (rimColorMix * 0.8), // 0.1 to 0.9 (red)
+      0.1 + (rimColorMix * 0.6), // 0.1 to 0.7 (green)
+      0.2 + (rimColorMix * 0.3)  // 0.2 to 0.5 (blue)
+    );
+    
+    // Update bounce light - gradual with day/night cycle
+    bounceLight.intensity = lightIntensity * 0.3;
+    
+    const bounceColorMix = Math.max(0, Math.min(1, lightIntensity));
+    bounceLight.diffuse = new Color3(
+      0.05 + (bounceColorMix * 0.35), // 0.05 to 0.4 (red)
+      0.05 + (bounceColorMix * 0.45), // 0.05 to 0.5 (green)
+      0.1 + (bounceColorMix * 0.6)    // 0.1 to 0.7 (blue)
+    );
+    
+    // Control star system based on time
+    if (isAfterSunset && lightIntensity < 0.2) {
+      // Start stars at night if not already started
+      if (!starSystem.isStarted()) {
+        starSystem.manualEmitCount = 800;
+        starSystem.start();
+      }
+      
+      // Make stars twinkle
+      if (starSystem.particles) {
+        starSystem.particles.forEach((particle, index) => {
+          if (particle.color) {
+            const individualTwinkle = Math.sin(Date.now() * 0.002 + index * 0.1) * 0.3 + 0.7;
+            particle.color.a = individualTwinkle;
+          }
+        });
+      }
+    } else {
+      // Hide stars during day
+      if (starSystem.isStarted()) {
+        starSystem.stop();
+        starSystem.reset();
+      }
+    }
+    
+    // Update time display
+    const hours = Math.floor(currentHour);
+    const minutes = Math.floor((currentHour - hours) * 60);
+    const timeString = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+    
+    const timeDisplay = document.getElementById('time-display');
+    if (timeDisplay) {
+      timeDisplay.textContent = timeString;
+    }
+  };
+  
+  // Register update function to render loop
+  scene.registerBeforeRender(updateDayNightCycle);
+  
+  // Store day/night system globally for external control
+  window._dayNightCycle = dayNightCycle;
 
   // Set camera in render store
   renderActions.setCamera(camera);
   
-  console.log('✅ Default scene content loaded with lighting');
+  console.log('✅ Default scene content loaded with Unreal-style lighting');
 };
 
 export default function BabylonRenderer(props) {
@@ -132,7 +502,7 @@ export default function BabylonRenderer(props) {
   const [scene, setScene] = createSignal(null);
   
   // Initialize asset loader
-  const { loadingTooltip, handleDragOver, handleDrop, loadAssetIntoScene } = useAssetLoader(scene, () => canvasRef);
+  const { loadingTooltip, handleDragOver, handleDragEnter, handleDragLeave, handleDrop, loadAssetIntoScene, isPositioning } = useAssetLoader(scene, () => canvasRef);
 
   // Show UI panels when this 3D viewport is active
   createEffect(() => {
@@ -554,10 +924,20 @@ export default function BabylonRenderer(props) {
         style={{ 'touch-action': 'none' }}
         onContextMenu={props.onContextMenu}
         onDragOver={handleDragOver}
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
         onDrop={handleDrop}
       />
       <GizmoManagerComponent />
       <LoadingTooltip loadingTooltip={loadingTooltip} />
+      
+      {/* Time Display */}
+      <div 
+        id="time-display"
+        className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-lg font-mono text-sm backdrop-blur-sm"
+      >
+        12:00
+      </div>
     </>
   );
 }

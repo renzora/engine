@@ -15,6 +15,7 @@ import { Ray } from '@babylonjs/core/Culling/ray';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { SpotLight } from '@babylonjs/core/Lights/spotLight';
@@ -348,10 +349,23 @@ function Toolbar() {
       if (mesh) {
         mesh.parent = mainContainer;
         mesh.position = Vector3.Zero();
-        const material = new StandardMaterial(`${objectName}_material`, scene);
-        material.diffuseColor = new Color3(0.7, 0.7, 0.9);
-        material.specularColor = new Color3(0.2, 0.2, 0.2);
+        const material = new PBRMaterial(`${objectName}_material`, scene);
+        material.baseColor = new Color3(0.7, 0.7, 0.9);
+        material.metallicFactor = 0.0; // Non-metallic by default
+        material.roughnessFactor = 0.8; // Slightly rough for realistic appearance
+        material.enableSpecularAntiAliasing = true;
+        
+        // Enable reflections from environment
+        material.environmentIntensity = 1.0;
+        material.usePhysicalLightFalloff = true;
         mesh.material = material;
+        
+        // Add shadow casting and receiving
+        if (scene.shadowGenerator) {
+          scene.shadowGenerator.addShadowCaster(mesh);
+          mesh.receiveShadows = true;
+          console.log(`🌑 Added ${mesh.name} to shadow casting and receiving`);
+        }
         
         if (scene._applyRenderMode) {
           const currentRenderMode = renderMode();
@@ -441,6 +455,12 @@ function Toolbar() {
       lightHelper.material = helperMaterial;
       lightHelper._isInternalMesh = true;
       
+      // Add shadow receiving to light helper
+      if (scene.shadowGenerator) {
+        lightHelper.receiveShadows = true;
+        console.log(`🌑 Added light helper ${lightHelper.name} to shadow receiving`);
+      }
+      
       // Add to scene tree and select
       renderActions.addObject(mainContainer);
       renderActions.selectObject(mainContainer);
@@ -487,6 +507,12 @@ function Toolbar() {
       helperMaterial.specularColor = new Color3(0.1, 0.1, 0.1);
       cameraHelper.material = helperMaterial;
       cameraHelper._isInternalMesh = true;
+      
+      // Add shadow receiving to camera helper
+      if (scene.shadowGenerator) {
+        cameraHelper.receiveShadows = true;
+        console.log(`🌑 Added camera helper ${cameraHelper.name} to shadow receiving`);
+      }
       
       // Add to scene tree and select
       renderActions.addObject(mainContainer);

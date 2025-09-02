@@ -287,6 +287,7 @@ function AssetItem({
     
     const dragData = {
       type: selectedAssetObjects.length > 1 ? 'multiple-assets' : 'asset',
+      assetType: 'file',
       assets: selectedAssetObjects.map(a => ({
         id: a.id,
         name: a.name,
@@ -311,11 +312,26 @@ function AssetItem({
       } : {})
     };
     
+    // Store drag data globally for viewport access
+    window._currentDragData = dragData;
+    
     e.dataTransfer.setData('application/json', JSON.stringify(dragData));
     e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('application/x-asset-drag', JSON.stringify(dragData));
+    e.dataTransfer.effectAllowed = 'copy';
     
-    if (selectedAssetObjects.length > 1) {
+    // Hide default drag image for 3D models to avoid duplicate visuals
+    const extension = asset.extension?.toLowerCase();
+    if (['.glb', '.gltf', '.obj'].includes(extension)) {
+      // Create transparent drag image to hide default clone
+      const transparentDiv = document.createElement('div');
+      transparentDiv.style.opacity = '0';
+      transparentDiv.style.position = 'absolute';
+      transparentDiv.style.top = '-1000px';
+      document.body.appendChild(transparentDiv);
+      e.dataTransfer.setDragImage(transparentDiv, 0, 0);
+      setTimeout(() => document.body.removeChild(transparentDiv), 0);
+    } else if (selectedAssetObjects.length > 1) {
       const dragImage = document.createElement('div');
       dragImage.className = 'fixed top-[-1000px] bg-primary text-primary-content px-3 py-2 rounded-lg font-medium shadow-lg';
       dragImage.textContent = `Moving ${selectedAssetObjects.length} files`;
@@ -380,6 +396,7 @@ function AssetItem({
           setDragOverFolder(null);
           setDragOverTreeFolder(null);
           setDragOverBreadcrumb(null);
+          window._currentDragData = null;
         }}
       >
         <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 relative">
@@ -502,6 +519,7 @@ function AssetItem({
         setDragOverFolder(null);
         setDragOverTreeFolder(null);
         setDragOverBreadcrumb(null);
+        window._currentDragData = null;
       }}
     >
       {/* Square Thumbnail */}
