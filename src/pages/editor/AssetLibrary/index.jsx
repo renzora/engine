@@ -64,6 +64,7 @@ function AssetLibrary({ onContextMenu }) {
   const [isSearching, setIsSearching] = createSignal(false);
   const [isCodeEditorOpen, setIsCodeEditorOpen] = createSignal(false);
   const [selectedFileForEdit, setSelectedFileForEdit] = createSignal(null);
+  const [tooltip, setTooltip] = createSignal(null);
   
   let fileInputRef;
   let folderInputRef;
@@ -581,7 +582,6 @@ function AssetLibrary({ onContextMenu }) {
     
     const currentAssets = [...assets()];
     let updatedAssets = currentAssets;
-    let needsFolderTreeUpdate = false;
     
     // Process all changes
     for (const change of changes) {
@@ -638,9 +638,6 @@ function AssetLibrary({ onContextMenu }) {
             }
           }
         }
-        
-        // Always update folder tree for any file changes to update counts
-        needsFolderTreeUpdate = true;
       }
     }
     
@@ -650,20 +647,6 @@ function AssetLibrary({ onContextMenu }) {
     // Update cache with new asset list
     assetsActions.setAssetsForPath(currentPath(), updatedAssets);
     
-    // Update folder tree to reflect new file counts
-    if (needsFolderTreeUpdate) {
-      console.log('📝 Updating folder tree to refresh file counts');
-      // Pass the affected paths for targeted updates
-      const affectedPaths = [...new Set(changes.flatMap(c => 
-        c.paths.map(p => {
-          const relativePath = p.replace(`${currentProject.name}/`, '').replace(`${currentProject.name}\\`, '');
-          const pathParts = relativePath.split(/[/\\]/);
-          pathParts.pop(); // Remove filename
-          return pathParts.join('/');
-        })
-      ))];
-      await updateFolderTreeIncrementally(currentProject, affectedPaths);
-    }
   };
   
   // Update folder tree without full reload
@@ -673,14 +656,8 @@ function AssetLibrary({ onContextMenu }) {
       const currentTree = folderTree();
       
       if (currentTree) {
-        // Always update file counts when we have a tree
-        console.log('📊 Updating folder tree file counts');
-        const updatedTree = await updateTreeFileCounts(currentTree, currentProject);
-        
-        batch(() => {
-          setFolderTree(updatedTree);
-          assetsActions.setFolderTree(updatedTree);
-        });
+        // Keep existing tree without updating file counts
+        console.log('📊 Keeping existing folder tree');
       } else {
         // Fallback to fetching new tree if we don't have one
         console.log('📊 Fetching new folder tree');
@@ -696,44 +673,6 @@ function AssetLibrary({ onContextMenu }) {
     }
   };
   
-  // Helper to update file counts in tree
-  const updateTreeFileCounts = async (tree, currentProject) => {
-    console.log('🔢 Updating tree file counts, current tree:', tree);
-    if (!tree || !Array.isArray(tree)) return tree;
-    
-    const updateNode = async (node) => {
-      if (!node) return node;
-      
-      // Fetch current files for this folder
-      try {
-        const dirPath = node.path 
-          ? `projects/${currentProject.name}/${node.path}` 
-          : `projects/${currentProject.name}`;
-        
-        console.log('🔢 Fetching files for:', dirPath);
-        const items = await listDirectory(dirPath);
-        const files = items.filter(item => !item.is_directory && !isWindowsReservedName(item.name));
-        console.log(`🔢 Folder ${node.name} has ${files.length} files (was ${node.files?.length || 0})`);
-        
-        // Update the node with new file list
-        const updatedNode = {
-          ...node,
-          files: files,
-          children: node.children ? await Promise.all(node.children.map(child => updateNode(child))) : []
-        };
-        
-        return updatedNode;
-      } catch (error) {
-        console.error(`Failed to update file count for ${node.path}:`, error);
-        return node;
-      }
-    };
-    
-    // Update all root nodes
-    const updatedTree = await Promise.all(tree.map(node => updateNode(node)));
-    console.log('🔢 Updated tree:', updatedTree);
-    return updatedTree;
-  };
 
   // Event handlers
   const handleFileChange = async (changeData) => {
@@ -1041,6 +980,11 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   const handleAssetDoubleClick = (asset) => {
+    if (asset.type === 'folder') {
+      handleFolderClick(asset.path);
+      return;
+    }
+    
     const isTextFile = asset.extension && ['.js', '.ts', '.jsx', '.tsx', '.json', '.txt', '.md', '.ren', '.html', '.css', '.xml', '.yaml', '.yml'].includes(asset.extension.toLowerCase());
     
     if (isTextFile) {
@@ -1369,15 +1313,15 @@ function AssetLibrary({ onContextMenu }) {
   });
 
   const filteredAssets = createMemo(() => {
-    const fileAssets = assets().filter(asset => asset.type === 'file');
+    const allAssets = assets(); // Include both files and folders
     
-    if (!searchQuery()) return fileAssets;
+    if (!searchQuery()) return allAssets;
     
     if (globalSearchResults().length > 0) {
-      return globalSearchResults().filter(asset => asset.type === 'file');
+      return globalSearchResults(); // Include both files and folders in search results
     }
     
-    return fileAssets.filter(asset => {
+    return allAssets.filter(asset => {
       const matchesSearch = asset.name.toLowerCase().includes(searchQuery().toLowerCase()) ||
                            asset.fileName?.toLowerCase().includes(searchQuery().toLowerCase());
       return matchesSearch;
@@ -1775,6 +1719,7 @@ function AssetLibrary({ onContextMenu }) {
                 isAssetSelected={isAssetSelected}
                 hoveredItem={hoveredItem}
                 setHoveredItem={setHoveredItem}
+                setTooltip={setTooltip}
                 toggleAssetSelection={toggleAssetSelection}
                 handleAssetDoubleClick={handleAssetDoubleClick}
                 isInternalDrag={isInternalDrag}
@@ -1822,6 +1767,19 @@ function AssetLibrary({ onContextMenu }) {
           </Show>
         </div>
         
+        {/* Unreal Engine style footer */}
+        <div class="bg-base-200 border-t border-base-300 px-3 py-1.5 flex items-center justify-between text-xs text-base-content/60">
+          <div class="flex items-center gap-3">
+            <span>{filteredAssets().length} items</span>
+            <span>•</span>
+            <span>{selectedAssets().size} selected</span>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-base-content/40">View:</span>
+            <span>{layoutMode()}</span>
+          </div>
+        </div>
+        
         <input
           ref={fileInputRef}
           type="file"
@@ -1854,6 +1812,15 @@ function AssetLibrary({ onContextMenu }) {
           onConfirm={handleConfirmCreateScript}
         />
 
+        {/* Global Tooltip */}
+        <Show when={tooltip()}>
+          <div class="fixed z-[99999] bg-red-500 text-white text-xs p-3 w-48 pointer-events-none rounded shadow-xl" 
+               style={`left: ${tooltip().x}px; top: ${tooltip().y}px;`}>
+            <div class="font-semibold mb-1">{tooltip().asset.name}</div>
+            <div>Type: {tooltip().asset.extension?.toUpperCase() || 'Unknown'}</div>
+            <div>Size: {tooltip().asset.size ? `${Math.round(tooltip().asset.size / 1024)} KB` : 'Unknown'}</div>
+          </div>
+        </Show>
         
       </div>
     </div>

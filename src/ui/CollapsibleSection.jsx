@@ -14,28 +14,20 @@ function CollapsibleSection({
   const toggle = () => setIsOpen(!isOpen())
   
   const getDynamicHeaderStyle = (title) => {
-    const lowerTitle = title.toLowerCase()
-    if (lowerTitle.includes('script')) {
-      return 'bg-base-300/90 text-base-content border-b border-neutral'
-    } else if (lowerTitle.includes('transform')) {
-      return 'bg-base-300/90 text-base-content border-b border-neutral'
-    } else if (lowerTitle.includes('prop') || lowerTitle.includes('properties')) {
-      return 'bg-base-300/90 text-base-content border-b border-neutral'
-    }
-    return 'bg-base-300/90 text-base-content border-b border-neutral'
+    return 'bg-base-300 text-base-content'
   }
   
   return (
-    <div className={`${className}`}>
+    <div className={`${className} rounded-lg overflow-hidden bg-base-300`}>
       <button
         onClick={toggle}
         className={`
-          w-full pl-2 pr-4 py-3 text-left font-semibold text-sm 
+          w-full pl-2 pr-4 py-2 text-left font-semibold text-sm 
           transition-all duration-200 flex items-center gap-2 group
           focus:outline-none focus:ring-0 active:outline-none
           ${isOpen() 
             ? getDynamicHeaderStyle(title) 
-            : 'text-base-content/70 hover:bg-gradient-to-r hover:from-base-300/40 hover:to-base-200/60 hover:text-base-content active:bg-base-300/70 border-b border-base-content/10'
+            : 'bg-base-300 text-base-content/70 hover:text-base-content active:bg-base-300'
           }
           ${headerClassName}
         `}

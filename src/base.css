@@ -8,6 +8,7 @@
   body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     overflow: hidden;
+    background: oklch(var(--b3) / 0.6);
   }
   
   /* Selection colors */

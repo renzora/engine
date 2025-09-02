@@ -2,7 +2,7 @@ import { createSignal, onMount, For } from 'solid-js';
 import { allThemes } from '../themes/index.js';
 
 const ThemeSwitcher = () => {
-  const [currentTheme, setCurrentTheme] = createSignal('renzora');
+  const [currentTheme, setCurrentTheme] = createSignal('dark');
   
   // Group themes by category
   const themesByCategory = () => {
@@ -19,7 +19,7 @@ const ThemeSwitcher = () => {
   onMount(() => {
     const html = document.documentElement;
     const savedTheme = localStorage.getItem('theme');
-    const theme = savedTheme || html.getAttribute('data-theme') || 'renzora';
+    const theme = savedTheme || html.getAttribute('data-theme') || 'dark';
     
     // Apply the theme to the DOM
     html.setAttribute('data-theme', theme);

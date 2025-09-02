@@ -82,19 +82,19 @@ function AssetSidebar({
               {error() ? error() : 'Loading asset categories...'}
             </div>
           }>
-            <div class="space-y-0.5 p-1">
+            <div class="space-y-0.5 p-0.5">
               <For each={categoryList()}>
                 {(category) => (
                   <button
                     onClick={() => setSelectedCategory(category.id)}
-                    class={`w-full flex items-center justify-between px-2 py-1.5 text-left text-xs rounded hover:bg-base-200 transition-colors ${
+                    class={`w-full flex items-center justify-between px-2 py-1 text-left text-xs rounded hover:bg-base-200 transition-colors ${
                       selectedCategory() === category.id 
                         ? 'bg-primary text-primary-content' 
                         : 'text-base-content/70 hover:text-base-content'
                     }`}
                   >
                     <span class="flex items-center">
-                      <category.icon class={`w-3 h-3 mr-2 ${
+                      <category.icon class={`w-3 h-3 mr-1.5 ${
                         selectedCategory() === category.id ? 'text-primary-content' : 'text-base-content/60'
                       }`} />
                       {category.label}

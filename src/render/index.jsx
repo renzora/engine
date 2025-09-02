@@ -52,10 +52,10 @@ import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 const loadDefaultSceneContent = (scene, canvas) => {
   console.log('🌟 Loading default scene content');
   
-  // Create default camera
+  // Create default camera positioned diagonally to show X and Z axis intersection
   const camera = new UniversalCamera(
     'camera',
-    new Vector3(0, 5, -10),
+    new Vector3(7, 5, 7),
     scene
   );
   // Don't attach Babylon's native controls - we use custom camera controller
@@ -417,6 +417,9 @@ export default function BabylonRenderer(props) {
       babylonScene.clearColor = new Color4(0.1, 0.1, 0.15, 1);
       // Lower overall exposure to avoid overly bright results
       babylonScene.imageProcessingConfiguration.exposure = 0.85;
+      
+      // Enable FXAA for better anti-aliasing on lines and edges
+      babylonScene.imageProcessingConfiguration.fxaaEnabled = true;
 
       // Enable Havok physics for RenScript
       try {

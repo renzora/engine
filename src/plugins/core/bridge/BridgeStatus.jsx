@@ -46,16 +46,16 @@ export default function BridgeStatus({ onOpenViewport }) {
         onClick={handleClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        class="flex items-center gap-1 px-1 py-0.5 text-xs rounded hover:bg-gray-700/50 transition-colors group cursor-pointer"
+        class="flex items-center gap-1 px-1 py-0.5 text-xs hover:bg-gray-700/50 transition-colors group cursor-pointer"
       >
         <span class="text-gray-300 group-hover:text-white transition-colors">
           {currentProject()?.name || 'No Project'}
         </span>
-        <div class={`w-2 h-2 rounded-full ${bridgeConnected() ? 'bg-green-400' : 'bg-orange-400'}`}></div>
+        <div class={`w-2 h-2 ${bridgeConnected() ? 'bg-green-400' : 'bg-orange-400'}`}></div>
       </button>
       
       <Show when={showTooltip()}>
-        <div class="absolute right-full top-1/2 transform -translate-y-1/2 mr-2 px-2 py-1 bg-gray-900/95 text-white text-xs rounded whitespace-nowrap z-[120]">
+        <div class="absolute right-full top-1/2 transform -translate-y-1/2 mr-2 px-2 py-1 bg-gray-900/95 text-white text-xs whitespace-nowrap z-[120]">
           <span class={bridgeConnected() ? 'text-green-400' : 'text-yellow-400'}>Bridge {bridgeConnected() ? 'Connected' : 'Disconnected'}</span> {getProjectPath()}
           <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-gray-900/95" />
         </div>

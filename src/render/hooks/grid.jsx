@@ -155,6 +155,8 @@ export function grid(sceneSignal) {
       const actualGridCells = Math.min(gridCells, maxCells);
       const regularLines = [];
       const sectionLines = [];
+      const xAxisLine = [];
+      const zAxisLine = [];
       const halfSize = gridSize / 2;
       
       for (let i = -actualGridCells; i <= actualGridCells; i++) {
@@ -165,7 +167,10 @@ export function grid(sceneSignal) {
             new Vector3(x, 0, halfSize)
           ];
           
-          if (i % sectionSize === 0) {
+          if (i === 0) {
+            // Z-axis line (blue) - runs along X direction at X=0
+            zAxisLine.push(line);
+          } else if (i % sectionSize === 0) {
             sectionLines.push(line);
           } else {
             regularLines.push(line);
@@ -181,7 +186,10 @@ export function grid(sceneSignal) {
             new Vector3(halfSize, 0, z)
           ];
           
-          if (i % sectionSize === 0) {
+          if (i === 0) {
+            // X-axis line (red) - runs along Z direction at Z=0
+            xAxisLine.push(line);
+          } else if (i % sectionSize === 0) {
             sectionLines.push(line);
           } else {
             regularLines.push(line);
@@ -198,8 +206,8 @@ export function grid(sceneSignal) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
-        regularGrid.material.alpha = 0.15;
-        regularGrid.color = getDaisyUIColor('bc').scale(0.3); // Use theme border color, dimmed
+        regularGrid.material.alpha = 0.6;
+        regularGrid.color = new Color3(0.16, 0.17, 0.19); // Slightly lighter grid lines
       }
       
       if (sectionLines.length > 0) {
@@ -208,8 +216,25 @@ export function grid(sceneSignal) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
-        sectionGrid.material.alpha = 0.25;
-        sectionGrid.color = getDaisyUIColor('bc').scale(0.5); // Use theme border color, brighter for sections
+        sectionGrid.material.alpha = 0.8;
+        sectionGrid.color = new Color3(0.22, 0.23, 0.26); // Slightly lighter section lines
+      }
+      
+      // Create colored axis lines like Blender
+      if (xAxisLine.length > 0) {
+        const xAxis = MeshBuilder.CreateLineSystem("__grid_x_axis__", { lines: xAxisLine }, scene);
+        xAxis.parent = gridContainer;
+        xAxis.isPickable = false;
+        xAxis.material.alpha = 0.8;
+        xAxis.color = new Color3(0.6, 0.3, 0.3); // More noticeable red for X-axis
+      }
+      
+      if (zAxisLine.length > 0) {
+        const zAxis = MeshBuilder.CreateLineSystem("__grid_z_axis__", { lines: zAxisLine }, scene);
+        zAxis.parent = gridContainer;
+        zAxis.isPickable = false;
+        zAxis.material.alpha = 0.8;
+        zAxis.color = new Color3(0.3, 0.4, 0.6); // More noticeable blue for Z-axis
       }
     } else {
       const gridSize = gridSettings.size * unitScale;
@@ -255,8 +280,8 @@ export function grid(sceneSignal) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
-        regularGrid.material.alpha = 0.15;
-        regularGrid.color = getDaisyUIColor('bc').scale(0.3); // Use theme border color, dimmed
+        regularGrid.material.alpha = 0.6;
+        regularGrid.color = new Color3(0.16, 0.17, 0.19); // Slightly lighter grid lines
       }
       
       if (sectionLines.length > 0) {
@@ -265,8 +290,8 @@ export function grid(sceneSignal) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
-        sectionGrid.material.alpha = 0.25;
-        sectionGrid.color = getDaisyUIColor('bc').scale(0.5); // Use theme border color, brighter for sections
+        sectionGrid.material.alpha = 0.8;
+        sectionGrid.color = new Color3(0.22, 0.23, 0.26); // Slightly lighter section lines
       }
     }
     

@@ -288,7 +288,7 @@ function Scene(props) {
     }
   };
 
-  const renderSceneItem = (item, depth = 0, index = 0, parent = null) => {
+  const renderSceneItem = (item, depth = 0, index = 0, parent = null, globalIndex = 0) => {
     if (!item) return null;
     
     const isSelected = () => selection.entity === item.id;
@@ -308,10 +308,12 @@ function Scene(props) {
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none" />
         </Show>
         <div 
-          className={`group flex items-center transition-all duration-200 text-xs relative overflow-hidden rounded ${
+          className={`group flex items-center transition-all duration-200 text-xs relative overflow-hidden ${
             isSelected() 
               ? 'bg-primary/25 text-primary-content shadow-sm' 
-              : 'hover:bg-base-300/40 text-base-content/70 hover:text-base-content active:bg-base-300/60'
+              : globalIndex % 2 === 0 
+                ? 'bg-neutral/20 hover:bg-base-300/10 text-base-content/70 hover:text-base-content active:bg-base-300/60'
+                : 'bg-base-300/30 hover:bg-base-300/20 text-base-content/70 hover:text-base-content active:bg-base-300/80'
           } ${
             draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
@@ -455,7 +457,7 @@ function Scene(props) {
         <Show when={hasChildren && isExpanded()}>
           <div className="transition-all duration-300 ease-out">
             <For each={item.children}>
-              {(child, i) => renderSceneItem(child, depth + 1, i(), item)}
+              {(child, i) => renderSceneItem(child, depth + 1, i(), item, globalIndex + i() + 1)}
             </For>
           </div>
         </Show>
@@ -473,12 +475,19 @@ function Scene(props) {
       className="flex flex-col flex-1 overflow-hidden"
       onContextMenu={(e) => props.onContextMenu(e, null)}
     >
+      {/* Scene header */}
+      <div className="px-3 py-2">
+        <div className="text-xs text-base-content/60 uppercase tracking-wide">
+          Scene
+        </div>
+      </div>
+      
       <div
         className="flex-1 overflow-y-auto scrollbar-thin"
         onContextMenu={(e) => props.onContextMenu(e, null)}
       >
         <For each={hierarchyData()}>
-          {(item, i) => renderSceneItem(item, 0, i(), hierarchyData())}
+          {(item, i) => renderSceneItem(item, 0, i(), hierarchyData(), i())}
         </For>
       </div>
       

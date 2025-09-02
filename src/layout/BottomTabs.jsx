@@ -304,7 +304,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
   const currentWorkflow = getCurrentWorkflow();
 
   return (
-    <div ref={containerRef} class="h-10 bg-base-200/95 border-t border-base-content/10 border-b border-base-content/10 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
+    <div ref={containerRef} class="h-8 bg-base-200/95 border-t border-base-content/10 border-b border-base-content/10 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
         if (!panelResize) return;
         e.preventDefault();
         panelResize.handleBottomResizeStart(e);
@@ -344,7 +344,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                 onDrop={(e) => handleDrop(e, tab)}
                 onDragEnd={handleDragEnd}
                 classList={{
-                  'relative flex items-center px-4 py-2.5 text-sm font-medium transition-all whitespace-nowrap select-none': true,
+                  'relative flex items-center px-3 py-1.5 text-sm font-medium transition-all whitespace-nowrap select-none': true,
                   'opacity-50 cursor-grabbing': isDragged(),
                   'hover:bg-base-300 cursor-grab': !isDragged(),
                   'text-primary': isActive(),
@@ -410,7 +410,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                 }
               }}
               classList={{
-                'relative flex items-center px-3 py-2.5 text-sm font-medium transition-colors': true,
+                'relative flex items-center px-2 py-1.5 text-sm font-medium transition-colors': true,
                 'bg-primary/20 border border-primary': dragOverOverflowButton(),
                 'hover:bg-base-300': !dragOverOverflowButton(),
                 'text-primary': overflowTabs().some(tab => tab.id === currentActiveTab()),
@@ -464,7 +464,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
             const currentState = bottomPanelOpen();
             onToggleAssetPanel(!currentState);
           }}
-          class="p-1.5 hover:bg-base-300 rounded transition-colors text-base-content/60 hover:text-base-content"
+          class="p-1 hover:bg-base-300 rounded transition-colors text-base-content/60 hover:text-base-content"
           title={bottomPanelOpen() ? 'Hide panel' : 'Show panel'}
         >
           {bottomPanelOpen() ? (

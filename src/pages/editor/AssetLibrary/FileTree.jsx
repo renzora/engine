@@ -53,15 +53,20 @@ function FileTree({
   return (
     <div class="select-none relative">
       <div
-        class={`flex items-center py-1 pr-8 text-xs cursor-pointer transition-colors relative overflow-hidden ${ 
+        class={`flex items-center py-0.5 pr-6 text-xs cursor-pointer transition-colors relative overflow-hidden ${ 
           dragOverTreeFolder() === node.path 
-            ? 'bg-primary/30 border-2 border-primary border-dashed rounded'
+            ? 'bg-primary/50'
             : isSelected() 
               ? 'bg-primary text-primary-content' 
               : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
         }`}
-        style={{ 'padding-left': `${8 + depth * 20}px` }}
-        onClick={() => onFolderClick(node.path)}
+        style={{ 'padding-left': `${6 + depth * 16}px` }}
+        onClick={() => {
+          onFolderClick(node.path);
+          if (hasChildren) {
+            onFolderToggle(node.path);
+          }
+        }}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -75,48 +80,40 @@ function FileTree({
           <div class="absolute left-0 top-0 bottom-0 pointer-events-none">
             <div
               class="absolute top-0 bottom-0 w-px bg-base-content/30"
-              style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
+              style={{ left: `${6 + (depth - 1) * 16 + 8}px` }}
             />
             <div
-              class="absolute top-1/2 w-3 h-px bg-base-content/30"
-              style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
+              class="absolute top-1/2 w-2 h-px bg-base-content/30"
+              style={{ left: `${6 + (depth - 1) * 16 + 8}px` }}
             />
           </div>
         </Show>
         
-        <Show when={hasChildren}>
+        <div class="relative flex items-center">
+          <Folder class={`w-3 h-3 mr-1.5 ${
+            isSelected() ? 'text-primary-content' : 'text-warning'
+          }`} />
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onFolderToggle(node.path);
+              if (hasChildren) {
+                onFolderToggle(node.path);
+              }
             }}
-            class="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
+            class="absolute -left-0.5 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
           >
             <ChevronRight 
-              class={`w-3 h-3 transition-all duration-200 ${
-                isExpanded() 
+              class={`w-2.5 h-2.5 transition-all duration-200 ${
+                hasChildren && isExpanded() 
                   ? 'rotate-90 text-primary' 
-                  : 'text-base-content/50 hover:text-base-content/70'
+                  : hasChildren
+                    ? 'text-base-content/50 hover:text-base-content/70'
+                    : 'text-base-content/20'
               }`} 
             />
           </button>
-        </Show>
-        <Show when={!hasChildren}>
-          <div class="w-4 mr-1" />
-        </Show>
-        <Folder class={`w-4 h-4 mr-2 ${
-          isSelected() ? 'text-primary-content' : 'text-warning'
-        }`} />
+        </div>
         <span class="flex-1 text-base-content/80 truncate">{node.name}</span>
-        <Show when={node.files && node.files.length > 0}>
-          <span class={`absolute right-2 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 rounded-full ${
-            isSelected() 
-              ? 'text-primary-content bg-primary-content/20' 
-              : 'text-base-content/60 bg-base-300'
-          }`}>
-            {node.files.length}
-          </span>
-        </Show>
       </div>
       
       <Show when={hasChildren && isExpanded()}>

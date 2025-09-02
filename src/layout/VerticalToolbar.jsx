@@ -319,8 +319,8 @@ function Toolbar(props) {
 
 
   return (
-    <div class="relative w-12 h-full bg-base-300/85 backdrop-blur-md border-l border-l-base-content/10 border-r border-r-base-content/10 shadow-2xl shadow-black/40 flex flex-col py-2 pointer-events-auto no-select">
-      <div class="flex flex-col space-y-1 px-1">
+    <div class="relative w-10 h-full bg-base-300 border-l border-t border-r border-base-content/10 flex flex-col pointer-events-auto no-select">
+      <div class="flex flex-col space-y-0.5">
         <For each={tools()}>
           {(tool) => {
             const isDragged = () => dragState().draggedTool?.id === tool.id;
@@ -335,16 +335,16 @@ function Toolbar(props) {
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, tool, false)}
                 onDragEnd={handleDragEnd}
-                class={`p-2 rounded-lg transition-all duration-200 group relative select-none ${
+                class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center ${
                   isDragged() 
                     ? 'opacity-50 cursor-grabbing scale-95' 
                     : props.selectedTool === tool.id 
-                      ? 'bg-gradient-to-b from-primary to-primary/80 text-primary-content shadow-lg shadow-primary/40 scale-105 cursor-grab' 
-                      : 'text-base-content/60 hover:text-base-content hover:bg-gradient-to-b hover:from-base-300/80 hover:to-base-200/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
+                      ? 'bg-primary text-primary-content cursor-grab' 
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
                 }`}
                 title={tool.title}
               >
-                <tool.icon class="w-6 h-6" />
+                <tool.icon class="w-5 h-5" />
                 
                 {isDragOver() && (
                   <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>
@@ -434,7 +434,7 @@ function Toolbar(props) {
         )}
       </div>
       
-      <div class="flex flex-col space-y-1 px-1">
+      <div class="flex flex-col space-y-0.5">
         <For each={bottomTools()}>
           {(tool) => {
             const isDragged = () => dragState().draggedTool?.id === tool.id;
@@ -449,16 +449,16 @@ function Toolbar(props) {
                 onDragLeave={handleDragLeave}
                 onDrop={(e) => handleDrop(e, tool, true)}
                 onDragEnd={handleDragEnd}
-                class={`p-2 rounded-lg transition-all duration-200 group relative select-none ${
+                class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center ${
                   isDragged() 
                     ? 'opacity-50 cursor-grabbing scale-95' 
                     : props.selectedTool === tool.id
-                      ? 'bg-gradient-to-b from-primary to-primary/80 text-primary-content shadow-lg shadow-primary/40 scale-105 cursor-grab' 
-                      : 'text-base-content/60 hover:text-base-content hover:bg-gradient-to-b hover:from-base-300/80 hover:to-base-200/90 hover:shadow-md hover:shadow-black/30 hover:scale-102 cursor-grab'
+                      ? 'bg-primary text-primary-content cursor-grab' 
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
                 }`}
                 title={tool.title}
               >
-                <tool.icon class="w-6 h-6" />
+                <tool.icon class="w-5 h-5" />
                 
                 {isDragOver() && (
                   <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>

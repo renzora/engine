@@ -1,5 +1,5 @@
 import { Show, createSignal, createEffect } from 'solid-js';
-import { Photo, Code, X, Check, CodeSlash, ArrowRight, Video } from '@/ui/icons';
+import { Photo, Code, X, Check, CodeSlash, ArrowRight, Video, Folder } from '@/ui/icons';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -53,16 +53,16 @@ const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
 
   return (
     <Show when={!isLoading()} fallback={
-      <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+      <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
         <div class="w-4 h-4 border-2 border-success border-t-transparent rounded-full animate-spin"></div>
       </div>
     }>
       <Show when={!error() && thumbnailUrl()} fallback={
-        <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+        <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
           <Photo class="w-10 h-10 text-base-content/40" />
         </div>
       }>
-        <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110`}>
+        <div class={`${size} bg-base-300 rounded overflow-hidden`}>
           <img 
             src={thumbnailUrl()}
             alt={asset.name}
@@ -95,14 +95,14 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   
   if (!thumbnailUrl) {
     return (
-      <div class={`${size} bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-110`}>
+      <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
         <Photo class="w-10 h-10 text-success" />
       </div>
     );
   }
   
   return (
-    <div class={`${size} bg-base-300 rounded overflow-hidden transition-all group-hover:scale-110 relative`}>
+    <div class={`${size} bg-base-300 rounded overflow-hidden relative`}>
       <Show when={!imageError()} fallback={
         <div class="w-full h-full flex items-center justify-center">
           <Photo class="w-10 h-10 text-success" />
@@ -137,6 +137,7 @@ function AssetItem({
   isAssetSelected,
   hoveredItem,
   setHoveredItem,
+  setTooltip,
   toggleAssetSelection,
   handleAssetDoubleClick,
   isInternalDrag,
@@ -158,6 +159,50 @@ function AssetItem({
   getExtensionStyle
 }) {
   const [contextMenu, setContextMenu] = createSignal(null);
+  const [showTooltip, setShowTooltip] = createSignal(false);
+  const [isDragging, setIsDragging] = createSignal(false);
+  
+  let globalMouseX = 0;
+  let globalMouseY = 0;
+  let tooltipTimeout;
+  
+  const updateGlobalMousePosition = (e) => {
+    globalMouseX = e.clientX;
+    globalMouseY = e.clientY;
+    if (showTooltip() && !isDragging()) {
+      document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
+        detail: {
+          x: globalMouseX + 10,
+          y: globalMouseY - 80,
+          asset: asset
+        }
+      }));
+    }
+  };
+  
+  const showTooltipDelayed = () => {
+    if (isDragging()) return;
+    tooltipTimeout = setTimeout(() => {
+      setShowTooltip(true);
+      const rect = document.querySelector(`[data-asset-id="${asset.id}"]`)?.getBoundingClientRect();
+      if (rect) {
+        document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
+          detail: {
+            x: Math.max(10, Math.min(globalMouseX + 10, window.innerWidth - 320)),
+            y: Math.max(10, globalMouseY - 80),
+            asset: asset
+          }
+        }));
+      }
+    }, 500);
+  };
+  
+  const hideTooltip = () => {
+    clearTimeout(tooltipTimeout);
+    setShowTooltip(false);
+    document.dispatchEvent(new CustomEvent('global:tooltip-hide'));
+    document.removeEventListener('mousemove', updateGlobalMousePosition);
+  };
   
   const handleContextMenu = (e) => {
     console.log('🐛 Context menu triggered for:', asset.name, asset.extension);
@@ -228,6 +273,8 @@ function AssetItem({
 
   const startDrag = (e, asset) => {
     setIsInternalDrag(true);
+    setIsDragging(true);
+    hideTooltip();
     
     if (!isAssetSelected(asset.id)) {
       setSelectedAssets(new Set([asset.id]));
@@ -303,7 +350,7 @@ function AssetItem({
   if (layoutMode() === 'list') {
     return (
       <div
-        class={`group cursor-pointer transition-all duration-200 p-2 flex items-center gap-3 ${
+        class={`group cursor-pointer transition-all duration-200 p-1 flex items-center gap-2 ${
           isAssetSelected(asset.id)
             ? 'bg-primary/20 border-l-2 border-primary hover:bg-primary/30'
             : typeof index === 'function' && index() % 2 === 0 
@@ -317,22 +364,25 @@ function AssetItem({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          hideTooltip();
           toggleAssetSelection(asset, e.ctrlKey || e.metaKey, e.shiftKey);
         }}
         onDblClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          hideTooltip();
           handleAssetDoubleClick(asset);
         }}
         onDragStart={(e) => startDrag(e, asset)}
         onDragEnd={() => {
           setIsInternalDrag(false);
+          setIsDragging(false);
           setDragOverFolder(null);
           setDragOverTreeFolder(null);
           setDragOverBreadcrumb(null);
         }}
       >
-        <div class="w-10 h-10 flex items-center justify-center flex-shrink-0 relative">
+        <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 relative">
           <Show when={is3DModelFile(asset.extension)} fallback={
             <Show when={isImageFile(asset.extension)} fallback={
               <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center ${
@@ -342,10 +392,12 @@ function AssetItem({
                       ? 'opacity-40 grayscale' 
                       : 'opacity-60'
                 }`}>
-                {isScriptFile(asset.extension) ? (
-                  <CodeSlash class="w-6 h-6 text-primary" />
+                {asset.type === 'folder' ? (
+                  <Folder class="w-5 h-5 text-warning" />
+                ) : isScriptFile(asset.extension) ? (
+                  <CodeSlash class="w-5 h-5 text-primary" />
                 ) : (
-                  <Photo class="w-6 h-6 text-base-content/60" />
+                  <Photo class="w-5 h-5 text-base-content/60" />
                 )}
               </div>
             }>
@@ -402,18 +454,28 @@ function AssetItem({
 
   return (
     <div
-      class={`group cursor-pointer transition-all duration-200 p-2 rounded-lg ${
+      class={`group cursor-pointer relative ${
         isAssetSelected(asset.id) 
-          ? 'bg-primary/20 ring-2 ring-primary/50 hover:bg-primary/30' 
-          : 'hover:bg-base-300/30'
+          ? 'border border-blue-500' 
+          : 'border border-transparent'
       }`}
       data-asset-id={asset.id}
       draggable={true}
-      onMouseEnter={() => setHoveredItem(asset.id)}
-      onMouseLeave={() => setHoveredItem(null)}
+      onMouseEnter={(e) => {
+        setHoveredItem(asset.id);
+        globalMouseX = e.clientX;
+        globalMouseY = e.clientY;
+        document.addEventListener('mousemove', updateGlobalMousePosition);
+        showTooltipDelayed();
+      }}
+      onMouseLeave={() => {
+        setHoveredItem(null);
+        hideTooltip();
+      }}
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        hideTooltip();
         
         if (failedAssets().includes(asset.id)) {
           setFailedAssets(prev => prev.filter(id => id !== asset.id));
@@ -429,90 +491,54 @@ function AssetItem({
       onDblClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
+        hideTooltip();
         handleAssetDoubleClick(asset);
       }}
       onDragStart={(e) => startDrag(e, asset)}
       onContextMenu={handleContextMenu}
       onDragEnd={() => {
         setIsInternalDrag(false);
+        setIsDragging(false);
         setDragOverFolder(null);
         setDragOverTreeFolder(null);
         setDragOverBreadcrumb(null);
       }}
     >
-      <div class="relative">
-        <div class="w-full aspect-square mb-2 flex items-center justify-center relative">
-          <Show when={is3DModelFile(asset.extension)} fallback={
-            <Show when={isImageFile(asset.extension)} fallback={
-              <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center transition-all group-hover:scale-105 ${
-                  loadedAssets().includes(asset.id) 
-                    ? 'opacity-100' 
-                    : failedAssets().includes(asset.id) 
-                      ? 'opacity-40 grayscale' 
-                      : 'opacity-60'
-                }`}>
-                {isScriptFile(asset.extension) ? (
-                  <CodeSlash class="w-12 h-12 text-primary" />
-                ) : (
-                  <Photo class="w-12 h-12 text-base-content/60" />
-                )}
-              </div>
-            }>
-              <ImageThumbnail asset={asset} />
-            </Show>
+      {/* Square Thumbnail */}
+      <div class="w-full aspect-square bg-base-300 flex items-center justify-center relative border-t border-l border-r border-base-content/20">
+        <Show when={is3DModelFile(asset.extension)} fallback={
+          <Show when={isImageFile(asset.extension)} fallback={
+            <div>
+              {asset.type === 'folder' ? (
+                <Folder class="w-16 h-16 text-yellow-500" />
+              ) : isScriptFile(asset.extension) ? (
+                <CodeSlash class="w-16 h-16 text-blue-500" />
+              ) : (
+                <Photo class="w-16 h-16 text-base-content/60" />
+              )}
+            </div>
           }>
-            <ModelThumbnail asset={asset} />
+            <ImageThumbnail asset={asset} size="w-full h-full" />
           </Show>
-          
-          <Show when={asset.extension}>
-            {(() => {
-              const style = getExtensionStyle(asset.extension);
-              return (
-                <div class={`absolute top-0 right-0 ${style.bgColor} ${style.textColor} text-xs font-bold px-2 py-1 rounded-full text-center leading-none flex items-center transition-colors ${style.hoverColor} ${style.icon ? 'gap-1' : ''} shadow-sm`}>
-                  {style.icon}
-                  <span>{asset.extension.replace('.', '').toUpperCase()}</span>
-                </div>
-              );
-            })()}
-          </Show>
-
-          <div class="absolute -bottom-1 -right-1">
-            <Show when={preloadingAssets().includes(asset.id)}>
-              <div class="w-6 h-6 bg-warning rounded-full flex items-center justify-center">
-                <div class="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-              </div>
-            </Show>
-            <Show when={failedAssets().includes(asset.id)}>
-              <div class="w-6 h-6 bg-error rounded-full flex items-center justify-center" title={`Failed to load ${asset.name}`}>
-                <X class="w-3 h-3 text-white" />
-              </div>
-            </Show>
-            <Show when={loadedAssets().includes(asset.id)}>
-              <div class="w-6 h-6 bg-success rounded-full flex items-center justify-center">
-                <Check class="w-3 h-3 text-white" />
-              </div>
-            </Show>
-          </div>
-          
-          {/* Viewport Button for Script Files */}
-          <Show when={isScriptFile(asset.extension)}>
-            <button
-              class="absolute top-1 left-1 w-6 h-6 bg-primary text-primary-content rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 shadow-lg"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                openInViewport('left');
-              }}
-              title="Open in Viewport"
-            >
-              <Video class="w-3 h-3" />
-            </button>
-          </Show>
-        </div>
+        }>
+          <ModelThumbnail asset={asset} size="w-full h-full" />
+        </Show>
+        
+        {/* Colored separator between thumbnail and text */}
+        <div class={`absolute bottom-0 left-0 right-0 h-0.5 ${
+          asset.type === 'folder' 
+            ? 'bg-yellow-500' 
+            : isScriptFile(asset.extension) 
+              ? 'bg-blue-500' 
+              : 'bg-gray-500'
+        }`}></div>
       </div>
       
-      <div class="text-xs text-base-content/70 group-hover:text-base-content transition-colors truncate text-center leading-tight" title={asset.name}>
-        {asset.name}
+      {/* Text Label */}
+      <div class="w-full bg-base-200 border-x border-b border-base-content/20 p-2 text-center">
+        <div class="text-xs text-base-content leading-tight line-clamp-2" title={asset.name}>
+          {asset.name}
+        </div>
       </div>
       
       {/* Context Menu */}
@@ -550,6 +576,7 @@ function AssetItem({
           </button>
         </div>
       </Show>
+      
     </div>
   );
 }

@@ -5,6 +5,7 @@ import PanelToggleButton from '@/ui/PanelToggleButton.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
 import { Show, createMemo, createSignal } from 'solid-js';
+import { renderStore } from '@/render/store.jsx';
 
 const RightPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
@@ -74,6 +75,11 @@ const RightPanel = () => {
     
     const clampedWidth = Math.max(minPanelWidth, Math.min(newWidth, maxPanelWidth, window.innerWidth));
     editorActions.setRightPanelWidth(clampedWidth);
+    
+    // Resize Babylon engine to match new viewport size
+    if (renderStore.engine) {
+      renderStore.engine.resize();
+    }
   };
 
   const handleObjectSelect = (objectId) => {
@@ -165,10 +171,11 @@ const RightPanel = () => {
             position={{
               left: '-8px',
               top: 0,
-              bottom: `${bottomPanelHeight() + 24}px`, // Add 24px for footer
+              bottom: `${bottomPanelHeight() + 24}px`,
               width: '8px',
               zIndex: 30
             }}
+            className="!bg-transparent !opacity-0 hover:!bg-transparent hover:!opacity-0"
           />
         </Show>
         
@@ -190,35 +197,9 @@ const RightPanel = () => {
             </div>
             
             <div className="flex-1 min-w-0 overflow-hidden">
-              <div 
-                className={`relative w-full h-full bg-base-200/95 backdrop-blur-md border-l border-base-content/10 shadow-2xl shadow-black/40 flex flex-col pointer-events-auto no-select overflow-hidden`}
-              >
-              <div className="px-3 py-2 relative cursor-col-resize" onMouseDown={(e) => {
-                if (!isResizingRight()) {
-                  e.preventDefault();
-                  handleRightResizeStart(e);
-                  
-                  const handleMouseMove = (moveEvent) => {
-                    moveEvent.preventDefault();
-                    handleRightResizeMove(moveEvent);
-                  };
-
-                  const handleMouseUp = (upEvent) => {
-                    upEvent.preventDefault();
-                    handleRightResizeEnd();
-                    document.removeEventListener('mousemove', handleMouseMove);
-                    document.removeEventListener('mouseup', handleMouseUp);
-                  };
-
-                  document.addEventListener('mousemove', handleMouseMove);
-                  document.addEventListener('mouseup', handleMouseUp);
-                }
-              }}>
-                <div className="text-xs text-base-content/60 uppercase tracking-wide">
-                  {getTabTitle()}
-                </div>
-                
-                <div className="absolute flex items-center" style={{ top: '4px', right: '-1px' }}>
+              <div className="flex flex-col h-full">
+                {/* Close button - positioned inside panel */}
+                <div className="absolute top-2 right-2 z-10">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -248,9 +229,11 @@ const RightPanel = () => {
                     </div>
                   </button>
                 </div>
-              </div>
-              
-                {renderTabContent()}
+                
+                {/* Tab content with integrated header */}
+                <div className="h-full bg-base-200 border-t border-r border-base-content/10 shadow-lg overflow-hidden rounded-tr-lg">
+                  {renderTabContent()}
+                </div>
               </div>
             </div>
           </div>

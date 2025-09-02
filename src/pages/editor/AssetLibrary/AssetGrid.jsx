@@ -8,6 +8,7 @@ function AssetGrid({
   isAssetSelected,
   hoveredItem,
   setHoveredItem,
+  setTooltip,
   toggleAssetSelection,
   handleAssetDoubleClick,
   isInternalDrag,
@@ -40,6 +41,7 @@ function AssetGrid({
                 isAssetSelected={isAssetSelected}
                 hoveredItem={hoveredItem}
                 setHoveredItem={setHoveredItem}
+                setTooltip={setTooltip}
                 toggleAssetSelection={toggleAssetSelection}
                 handleAssetDoubleClick={handleAssetDoubleClick}
                 isInternalDrag={isInternalDrag}
@@ -66,7 +68,8 @@ function AssetGrid({
       }>
         <div 
           ref={assetGridRef}
-          class="grid grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10 gap-3 relative"
+          class="grid gap-2.5 relative items-start"
+          style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))"
         >
           <For each={filteredAssets()}>
             {(asset) => (
@@ -76,6 +79,7 @@ function AssetGrid({
                 isAssetSelected={isAssetSelected}
                 hoveredItem={hoveredItem}
                 setHoveredItem={setHoveredItem}
+                setTooltip={setTooltip}
                 toggleAssetSelection={toggleAssetSelection}
                 handleAssetDoubleClick={handleAssetDoubleClick}
                 isInternalDrag={isInternalDrag}

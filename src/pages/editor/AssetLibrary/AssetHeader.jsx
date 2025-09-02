@@ -14,12 +14,6 @@ function AssetHeader({
 }) {
   return (
     <div class="flex items-center gap-3">
-          <Show when={selectedAssets().size > 0}>
-            <span class="text-xs text-primary font-medium bg-primary/20 px-2 py-1 rounded">
-              {selectedAssets().size} selected
-            </span>
-          </Show>
-          <span class="text-xs text-base-content/60">{filteredAssets().length} items</span>
           
           <Show when={isUploading()}>
             <div class="flex items-center gap-2 transition-all duration-300 opacity-100">

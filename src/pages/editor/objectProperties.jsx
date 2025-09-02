@@ -462,8 +462,8 @@ function ObjectProperties() {
     const value = getSignalValue();
     
     return (
-    <div className="mb-3">
-      <div className="flex items-center justify-between mb-1">
+    <div className="mb-2">
+      <div className="flex items-center justify-between mb-0.5">
         <label className="block text-xs text-base-content/60">{label}</label>
         <button
           onClick={(e) => {
@@ -497,7 +497,7 @@ function ObjectProperties() {
           <Reset className="w-3 h-3" />
         </button>
       </div>
-      <div className="grid grid-cols-3 gap-1">
+      <div className="grid grid-cols-3 gap-0.5">
         <For each={['X', 'Y', 'Z']}>
           {(axis, index) => (
             <div className="relative">
@@ -560,7 +560,7 @@ function ObjectProperties() {
                     //console.log(`🔧 Updated scaling[${axisIndex}] to ${newValue}, new scaling:`, newScale);
                   }
                 }}
-                className={`w-full text-xs p-1.5 pl-7 pr-1.5 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary ${
+                className={`w-full text-xs p-1 pl-6 pr-1 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary ${
                   isNodeControlled(`${propertyPath}.${index()}`) 
                     ? 'border-primary bg-primary/20 text-primary' 
                     : 'border-base-300 bg-secondary/10 text-base-content'
@@ -572,7 +572,7 @@ function ObjectProperties() {
         </For>
       </div>
       <Show when={isNodeControlled(propertyPath)}>
-        <div className="text-xs text-primary mt-1">Controlled by node</div>
+        <div className="text-xs text-primary mt-0.5">Controlled by node</div>
       </Show>
     </div>
     );
@@ -865,8 +865,8 @@ function ObjectProperties() {
           </Match>
           
           <Match when={property.type === 'range'}>
-            <div className="space-y-3">
-              <div className="flex items-center gap-3">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
                 <input
                   id={`script-${property.name}-slider-${selection.entity || 'unknown'}`}
                   type="range"
@@ -933,7 +933,7 @@ function ObjectProperties() {
       {/* Header with object name and reset button */}
       <Show when={selection.entity}>
         <div 
-          className="flex items-center justify-between p-2 border-b border-base-content/10 bg-base-200/50 cursor-row-resize hover:bg-base-200/70 transition-colors duration-150 select-none"
+          className="flex items-center justify-between p-1.5 border-b border-base-content/10 bg-base-200/50 cursor-row-resize hover:bg-base-200/70 transition-colors duration-150 select-none"
           onMouseDown={(e) => {
             // Don't trigger resize if clicking on the reset button
             if (e.target.closest('button')) {
@@ -976,7 +976,7 @@ function ObjectProperties() {
               //console.log('🔄 Main reset button clicked');
               resetToDefaults();
             }}
-            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:scale-95 pointer-events-auto"
+            className="p-1 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:scale-95 pointer-events-auto"
             title="Reset to defaults"
           >
             <Reset className="w-4 h-4" />
@@ -997,18 +997,18 @@ function ObjectProperties() {
         
         if (!objectProps) {
           return (
-            <div className="p-4 text-base-content/50 text-sm">
+            <div className="p-2 text-base-content/50 text-sm">
               No object selected.
             </div>
           );
         }
         
         return (
-          <div className="space-y-0">
+          <div className="space-y-2 m-2">
             <CollapsibleSection title="Scripts" defaultOpen={true} index={0}>
-              <div>
+              <div className="px-2 pb-2">
                 {/* Script Search Box */}
-                <div className="mb-3 relative">
+                <div className="relative">
                   <input
                     type="text"
                     placeholder="Search scripts..."
@@ -1030,7 +1030,7 @@ function ObjectProperties() {
                       // Delay hiding to allow clicking on dropdown items
                       setTimeout(() => setShowSearchResults(false), 150);
                     }}
-                    className="input input-sm w-full text-sm rounded-none bg-gradient-to-b from-base-300/80 to-base-300 border-0 focus:outline-none"
+                    className="w-full text-sm rounded bg-neutral/40 border-0 focus:outline-none focus:ring-0 p-1"
                   />
                   
                   {/* Available Scripts Dropdown */}
@@ -1224,7 +1224,7 @@ function ObjectProperties() {
                 {/* Drop Zone */}
                 <div 
                   data-drop-zone="scripts"
-                  className={`min-h-[60px] bg-base-200/30 text-center ${isDragOverScript() ? 'animate-pulse brightness-110' : ''}`}
+                  className={`min-h-[60px] text-center ${isDragOverScript() ? 'animate-pulse brightness-110' : ''}`}
                   onDragOver={(e) => {
                     e.preventDefault();
                     // Check if it's a script file being dragged
@@ -1334,7 +1334,7 @@ function ObjectProperties() {
 
             <Show when={positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0}>
               <CollapsibleSection title="Transform" defaultOpen={true} index={1}>
-                <div className="p-4 bg-base-100/50">
+                <div className="px-2 pb-2">
                   <Show when={positionSignal().length > 0}>
                     {renderVector3Input('Position', 'transform.position')}
                   </Show>

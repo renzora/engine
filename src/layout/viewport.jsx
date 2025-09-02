@@ -1,11 +1,29 @@
-import { editorStore } from "@/layout/stores/EditorStore";
-import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { Settings, X } from '@/ui/icons';
+import { editorStore, editorActions } from "@/layout/stores/EditorStore";
+import { viewportStore, viewportActions, objectPropertiesActions } from "@/layout/stores/ViewportStore";
+import { Settings, X, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle, Sun, Lightbulb } from '@/ui/icons';
+import { Play, Pause } from '@/ui/icons/media';
 import ViewportTabs from './ViewportTabs.jsx';
 import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, pluginAPI } from "@/api/plugin";
-import { Show, createMemo, createSignal, createEffect, onCleanup } from 'solid-js';
+import { Show, createMemo, createSignal, createEffect, onCleanup, For } from 'solid-js';
 import CodeEditorPanel from '@/pages/editor/AssetLibrary/CodeEditorPanel.jsx';
 import BabylonRenderer from '@/render/index.jsx';
+import { renderStore, renderActions } from '@/render/store.jsx';
+import { getScriptRuntime } from '@/api/script';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Ray } from '@babylonjs/core/Culling/ray';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
+import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { PointLight } from '@babylonjs/core/Lights/pointLight';
+import { SpotLight } from '@babylonjs/core/Lights/spotLight';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
+import '@babylonjs/core/Meshes/Builders/boxBuilder';
+import '@babylonjs/core/Meshes/Builders/sphereBuilder';
+import '@babylonjs/core/Meshes/Builders/cylinderBuilder';
+import '@babylonjs/core/Meshes/Builders/planeBuilder';
 
 // Babylon.js viewport with new render system
 const BabylonViewport = (props) => {
@@ -34,6 +52,8 @@ const Viewport = () => {
   const [splitViewMode, setSplitViewMode] = createSignal(false);
   const [selectedScript, setSelectedScript] = createSignal(null);
   const [editorSide, setEditorSide] = createSignal('left'); // 'left' or 'right'
+  const [scriptRuntimePlaying, setScriptRuntimePlaying] = createSignal(true);
+  const [showLightDropdown, setShowLightDropdown] = createSignal(false);
   
   // Get reactive store values
   const ui = () => editorStore.ui;
@@ -208,6 +228,179 @@ const Viewport = () => {
     });
   });
   
+  // Toolbar functionality
+  const selectedTool = () => editorStore.ui.selectedTool;
+  const selection = () => editorStore.selection;
+  const selectedEntity = () => selection().entity;
+  const transformMode = () => selection().transformMode;
+  
+  const { setSelectedTool, setTransformMode, selectEntity } = editorActions;
+  
+  const getSelectedTool = () => {
+    if (['select', 'move', 'rotate', 'scale'].includes(transformMode())) {
+      return transformMode();
+    }
+    return selectedTool();
+  };
+  
+  const getCurrentScene = () => {
+    return renderStore.scene;
+  };
+  
+  const getObjectName = (type) => {
+    return type.toLowerCase();
+  };
+  
+  const createBabylonPrimitive = async (type) => {
+    const scene = getCurrentScene();
+    if (!scene) {
+      editorActions.addConsoleMessage('No active scene available', 'error');
+      return;
+    }
+
+    const position = new Vector3(0, 0.5, 0);
+    const objectName = getObjectName(type);
+    
+    try {
+      const mainContainer = new TransformNode(objectName, scene);
+      mainContainer.position = position;
+      let mesh;
+      const meshName = `${objectName}_mesh`;
+      
+      switch (type) {
+        case 'cube':
+          mesh = MeshBuilder.CreateBox(meshName, { size: 1 }, scene);
+          break;
+        case 'sphere':
+          mesh = MeshBuilder.CreateSphere(meshName, { diameter: 1 }, scene);
+          break;
+        case 'cylinder':
+          mesh = MeshBuilder.CreateCylinder(meshName, { height: 1, diameter: 1 }, scene);
+          break;
+        case 'plane':
+          mesh = MeshBuilder.CreatePlane(meshName, { size: 1 }, scene);
+          mesh.rotation.x = Math.PI / 2;
+          break;
+      }
+      
+      if (mesh) {
+        mesh.parent = mainContainer;
+        mesh.position = Vector3.Zero();
+        const material = new StandardMaterial(`${objectName}_material`, scene);
+        material.diffuseColor = new Color3(0.7, 0.7, 0.9);
+        material.specularColor = new Color3(0.2, 0.2, 0.2);
+        mesh.material = material;
+        
+        renderActions.addObject(mainContainer);
+        renderActions.selectObject(mainContainer);
+        renderActions.setTransformMode('move');
+        
+        const objectId = mainContainer.uniqueId || mainContainer.name;
+        objectPropertiesActions.ensureDefaultComponents(objectId);
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [position.x, position.y, position.z]);
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.rotation', [0, 0, 0]);
+        const scaleValue = type === 'plane' ? [1, 0.01, 1] : [1, 1, 1];
+        objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', scaleValue);
+        
+        editorActions.selectEntity(objectId);
+        setTransformMode('move');
+        
+        editorActions.addConsoleMessage(`Created ${type}`, 'success');
+      }
+    } catch (error) {
+      editorActions.addConsoleMessage(`Failed to create ${type}: ${error.message}`, 'error');
+    }
+  };
+  
+  const createBabylonLight = async (lightType = 'directional') => {
+    const scene = getCurrentScene();
+    if (!scene) {
+      editorActions.addConsoleMessage('No active scene available', 'error');
+      return;
+    }
+
+    try {
+      const lightName = getObjectName('light');
+      const lightPosition = new Vector3(0, 4, 0);
+      
+      const mainContainer = new TransformNode(lightName, scene);
+      mainContainer.position = lightPosition;
+      
+      let light;
+      switch (lightType) {
+        case 'point':
+          light = new PointLight(`${lightName}_light`, Vector3.Zero(), scene);
+          light.diffuse = new Color3(1, 0.95, 0.8);
+          light.intensity = 10;
+          break;
+        case 'spot':
+          light = new SpotLight(`${lightName}_light`, Vector3.Zero(), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
+          light.diffuse = new Color3(1, 0.95, 0.8);
+          light.intensity = 15;
+          break;
+        case 'hemisphere':
+          light = new HemisphericLight(`${lightName}_light`, new Vector3(0, 1, 0), scene);
+          light.diffuse = new Color3(1, 0.95, 0.8);
+          light.intensity = 0.7;
+          break;
+        default:
+          light = new DirectionalLight(`${lightName}_light`, new Vector3(-1, -1, -1), scene);
+          light.diffuse = new Color3(1, 0.95, 0.8);
+          light.intensity = 1;
+          break;
+      }
+      
+      light.position = Vector3.Zero();
+      light.parent = mainContainer;
+      
+      renderActions.addObject(mainContainer);
+      renderActions.selectObject(mainContainer);
+      
+      const objectId = mainContainer.uniqueId || mainContainer.name;
+      objectPropertiesActions.ensureDefaultComponents(objectId);
+      objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [lightPosition.x, lightPosition.y, lightPosition.z]);
+      
+      editorActions.selectEntity(objectId);
+      editorActions.addConsoleMessage(`Created ${lightType} light`, 'success');
+    } catch (error) {
+      editorActions.addConsoleMessage(`Failed to create light: ${error.message}`, 'error');
+    }
+  };
+  
+  const handleToolbarClick = async (toolId) => {
+    if (['select', 'move', 'rotate', 'scale'].includes(toolId)) {
+      if (toolId !== 'select' && !selectedEntity()) {
+        editorActions.addConsoleMessage('Please select an object first', 'warning');
+        return;
+      }
+      setTransformMode(toolId);
+      renderActions.setTransformMode(toolId);
+    }
+    else if (['cube', 'sphere', 'cylinder', 'plane'].includes(toolId)) {
+      await createBabylonPrimitive(toolId);
+    }
+    else if (toolId === 'light') {
+      await createBabylonLight();
+    }
+    else if (toolId === 'camera') {
+      // Camera creation logic would go here
+    }
+    else if (toolId === 'duplicate') {
+      if (!selectedEntity()) {
+        editorActions.addConsoleMessage('Please select an object to duplicate', 'warning');
+        return;
+      }
+      // Duplicate logic would go here
+    }
+    else if (toolId === 'delete') {
+      if (!selectedEntity()) {
+        editorActions.addConsoleMessage('Please select an object to delete', 'warning');
+        return;
+      }
+      // Delete logic would go here
+    }
+  };
+  
   const getViewportPositioning = () => {
     const top = '0px';
     const left = isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
@@ -275,7 +468,7 @@ const Viewport = () => {
       class="absolute pointer-events-auto viewport-container"
       style={getViewportPositioning()}
     >
-      <div className="w-full h-full flex flex-col bg-base-100">
+      <div className="w-full h-full flex flex-col gap-0">
         <Show when={viewportTabsVisible()}>
           <ViewportTabs />
         </Show>
@@ -300,7 +493,7 @@ const Viewport = () => {
             className={`${splitViewMode() ? 
               (editorSide() === 'left' ? 'w-1/2 ml-auto' : 'w-1/2 border-r border-base-300') : 
               'w-full'
-            } bg-base-100 h-full`}
+            } bg-base-100 h-full overflow-hidden`}
             {...(splitViewMode() && {
               onDragOver: handleDragOver,
               onDragEnter: handleDragEnter, 
@@ -308,10 +501,54 @@ const Viewport = () => {
               onDrop: handleDrop
             })}
           >
-            <PersistentRenderViewport
-              contextMenuHandler={() => handleContextMenu}
-              showGrid={true}
-            />
+            <div class="relative w-full h-full">
+              <PersistentRenderViewport
+                contextMenuHandler={() => handleContextMenu}
+                showGrid={true}
+              />
+              
+              {/* Vertical Toolbar in Viewport */}
+              <div class="absolute top-4 left-0 flex flex-col gap-0.5 bg-base-300 rounded-tr rounded-br p-1">
+                <For each={[
+                  { id: 'select', icon: Pointer, tooltip: 'Select' },
+                  { id: 'move', icon: Move, tooltip: 'Move' },
+                  { id: 'rotate', icon: Refresh, tooltip: 'Rotate' },
+                  { id: 'scale', icon: Maximize, tooltip: 'Scale' },
+                  null, // Separator
+                  { id: 'cube', icon: Box, tooltip: 'Add Cube' },
+                  { id: 'sphere', icon: Circle, tooltip: 'Add Sphere' },
+                  { id: 'cylinder', icon: Box, tooltip: 'Add Cylinder' },
+                  { id: 'plane', icon: Rectangle, tooltip: 'Add Plane' },
+                  { id: 'light', icon: Sun, tooltip: 'Add Light' },
+                  { id: 'camera', icon: Video, tooltip: 'Add Camera' },
+                  null, // Separator
+                  { id: 'duplicate', icon: Copy, tooltip: 'Duplicate' },
+                  { id: 'delete', icon: Trash, tooltip: 'Delete' }
+                ]}>
+                  {(tool) => 
+                    tool === null ? (
+                      <div class="w-full h-px bg-base-content/20 my-1"></div>
+                    ) : (
+                      <button 
+                        onClick={() => handleToolbarClick(tool.id)}
+                        class={`w-8 h-8 flex items-center justify-center rounded transition-all group ${
+                          getSelectedTool() === tool.id
+                            ? 'bg-primary text-primary-content'
+                            : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
+                        }`} 
+                        title={tool.tooltip}
+                      >
+                        <tool.icon class="w-5 h-5" />
+                        
+                        <div class="absolute left-full ml-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                          {tool.tooltip}
+                        </div>
+                      </button>
+                    )
+                  }
+                </For>
+              </div>
+            </div>
             
             <Show when={isOverlayActive()}>
               {renderOverlayPanel(activeTab())}

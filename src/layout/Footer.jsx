@@ -163,7 +163,7 @@ const Footer = () => {
   };
   
   return (
-    <div class="fixed bottom-0 left-0 right-0 h-6 bg-base-200/90 backdrop-blur-md border-t border-base-content/10 text-xs flex items-center justify-between px-3 pointer-events-auto z-50">
+    <div class="fixed bottom-0 left-0 right-0 h-6 bg-base-200/90 backdrop-blur-md border-t border-base-content/10 text-xs flex items-center justify-between px-3 pointer-events-auto z-50 rounded-t-none">
       {/* Left side - Selection and tool info */}
       <div class="flex items-center gap-4">
         <span class="text-base-content/90">
@@ -173,14 +173,6 @@ const Footer = () => {
       
       {/* Right side - Status info */}
       <div class="flex items-center gap-4">
-        {/* Plugin footer buttons */}
-        <For each={Array.from(footerButtons().entries())}>
-          {([id, button]) => {
-            const Component = button.component;
-            return Component ? <Component /> : null;
-          }}
-        </For>
-        
         {renderSystemStatsInfo()}
         <span class="text-base-content/90">
           {engineInfo()}
@@ -188,6 +180,14 @@ const Footer = () => {
         <span class="text-base-content/90">
           {currentTime()}
         </span>
+        
+        {/* Plugin footer buttons */}
+        <For each={Array.from(footerButtons().entries())}>
+          {([id, button]) => {
+            const Component = button.component;
+            return Component ? <Component /> : null;
+          }}
+        </For>
       </div>
     </div>
   );

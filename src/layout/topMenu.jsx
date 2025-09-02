@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup, createMemo, For, Show } from 'solid-js';
-import { ArrowDown, ArrowUp, Refresh, ChevronRight, Minimize, Maximize, X } from '@/ui/icons';
+import { ArrowDown, ArrowUp, Refresh, ChevronRight, Minimize, MaximizeWindows, Restore, X } from '@/ui/icons';
 import { Settings } from '@/ui/icons/development';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { topMenuItems } from '@/api/plugin';
@@ -15,12 +15,16 @@ function TopMenu() {
   const [showUpdateTooltip, setShowUpdateTooltip] = createSignal(false);
   const [showProjectManager, setShowProjectManager] = createSignal(false);
   const [menuPosition, setMenuPosition] = createSignal(null);
+  const [isMaximized, setIsMaximized] = createSignal(false);
 
   // Tauri window control functions
   const handleMinimize = async () => {
     try {
+      console.log('Attempting to minimize window...');
       const window = getCurrentWindow();
+      console.log('Got window instance:', window);
       await window.minimize();
+      console.log('Minimize completed');
     } catch (error) {
       console.error('Failed to minimize window:', error);
     }
@@ -28,12 +32,19 @@ function TopMenu() {
 
   const handleMaximize = async () => {
     try {
+      console.log('Attempting to maximize/unmaximize window...');
       const window = getCurrentWindow();
-      const isMaximized = await window.isMaximized();
-      if (isMaximized) {
+      console.log('Got window instance:', window);
+      const currentMaximized = await window.isMaximized();
+      console.log('Is maximized:', currentMaximized);
+      if (currentMaximized) {
         await window.unmaximize();
+        setIsMaximized(false);
+        console.log('Unmaximize completed');
       } else {
         await window.maximize();
+        setIsMaximized(true);
+        console.log('Maximize completed');
       }
     } catch (error) {
       console.error('Failed to toggle maximize:', error);
@@ -42,8 +53,11 @@ function TopMenu() {
 
   const handleClose = async () => {
     try {
+      console.log('Attempting to close window...');
       const window = getCurrentWindow();
+      console.log('Got window instance:', window);
       await window.close();
+      console.log('Close completed');
     } catch (error) {
       console.error('Failed to close window:', error);
     }
@@ -240,50 +254,23 @@ function TopMenu() {
         </div>
         
         <div class="flex-1" />
-        <div 
-          class="flex items-center gap-3 text-xs text-gray-500"
-          style={{
-            '-webkit-app-region': 'no-drag'
-          }}
-        >
-          <div class="flex items-center gap-2">
-            <span class="text-base-content/60">
-              Renzora Engine v1.0.0
-            </span>
-            <div 
-              class={`w-1.5 h-1.5 ${getSyncStatusInfo().color} rounded-full cursor-pointer relative`}
-              onMouseEnter={() => setShowSyncTooltip(true)}
-              onMouseLeave={() => setShowSyncTooltip(false)}
-            >
-              <Show when={showSyncTooltip()}>
-                <div class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-base-200 text-base-content text-xs rounded whitespace-nowrap z-[120]">
-                  {getSyncStatusInfo().tooltip}
-                  <div class="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-base-200" />
-                </div>
-              </Show>
-            </div>
-          </div>
-          
-          <div class="flex items-center gap-2">
-            <span class="text-base-content/30">•</span>
-            <span 
-              class="text-accent text-xs font-medium flex items-center gap-1 cursor-pointer relative"
-              onMouseEnter={() => setShowUpdateTooltip(true)}
-              onMouseLeave={() => setShowUpdateTooltip(false)}
-            >
-              Renzora Engine r1
-              <ArrowDown class="w-3 h-3" />
-              <Show when={showUpdateTooltip()}>
-                <div class="absolute right-full top-1/2 transform -translate-y-1/2 mr-2 px-2 py-1 bg-base-200 text-base-content text-xs rounded whitespace-nowrap z-[120]">
-                  Update to r2
-                  <div class="absolute left-full top-1/2 transform -translate-y-1/2 border-4 border-transparent border-l-base-200" />
-                </div>
-              </Show>
-            </span>
-            {/* Tauri Window Controls */}
+        
+        {/* Tauri Window Controls - Only show in desktop app */}
+        {typeof window !== 'undefined' && window.__TAURI_INTERNALS__ && (
+          <div 
+            class="flex items-center gap-3 text-xs text-gray-500"
+            style={{
+              '-webkit-app-region': 'no-drag'
+            }}
+          >
             <div class="flex items-center ml-4">
               <button
-                onClick={handleMinimize}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Minimize button clicked!');
+                  handleMinimize();
+                }}
                 class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors"
                 title="Minimize"
                 style={{ '-webkit-app-region': 'no-drag' }}
@@ -293,10 +280,10 @@ function TopMenu() {
               <button
                 onClick={handleMaximize}
                 class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors"
-                title="Maximize"
+                title={isMaximized() ? "Restore" : "Maximize"}
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
-                <Maximize class="w-4 h-4" />
+                {isMaximized() ? <Restore class="w-4 h-4" /> : <MaximizeWindows class="w-4 h-4" />}
               </button>
               <button
                 onClick={handleClose}
@@ -308,7 +295,7 @@ function TopMenu() {
               </button>
             </div>
           </div>
-        </div>
+        )}
       </div>
       
       <Show when={activeMenu() && menuPosition()}>

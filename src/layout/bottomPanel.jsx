@@ -4,6 +4,7 @@ import AssetLibrary from '@/pages/editor/AssetLibrary';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
+import { renderStore } from '@/render/store.jsx';
 
 const BottomPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
@@ -71,6 +72,11 @@ const BottomPanel = () => {
     const maxHeight = (window.innerHeight - footerHeight) * 0.8;
     const clampedHeight = Math.max(100, Math.min(newHeight, maxHeight));
     editorActions.setBottomPanelHeight(clampedHeight);
+    
+    // Resize Babylon engine to match new viewport size
+    if (renderStore.engine) {
+      renderStore.engine.resize();
+    }
   };
 
   const handleContextMenu = (e, item, context = 'scene') => {
@@ -124,34 +130,35 @@ const BottomPanel = () => {
           height: '8px',
           zIndex: 9999
         }}
-        className="hover:h-3"
+        className="!bg-transparent !opacity-0 hover:!bg-transparent hover:!opacity-0"
       />
       
-      <BottomTabs 
-        activeTab={activeTab()}
-        onTabChange={(tabId) => {
-          setActiveTab(tabId);
-          if (!isAssetPanelOpen()) {
-            setAssetPanelOpen(true);
-          }
-        }}
-        isAssetPanelOpen={isAssetPanelOpen()}
-        onToggleAssetPanel={(newState) => {
-          const currentState = isAssetPanelOpen();
-          const targetState = newState !== undefined ? newState : !currentState;
-          setAssetPanelOpen(targetState);
-        }}
-        rightPanelWidth={rightPanelWidth()}
-        isScenePanelOpen={isScenePanelOpen()}
-        panelResize={{
-          handleBottomResizeStart,
-          handleBottomResizeMove,
-          handleBottomResizeEnd
-        }}
-      />
-      
-      <Show when={isAssetPanelOpen()}>
-        <div class="flex-1 bg-base-200/90 backdrop-blur-sm overflow-hidden border-t border-base-content/10" style={{ height: `${getPanelHeight() - 40}px` }}>
+      <div class="flex-1 bg-base-200/90 backdrop-blur-sm overflow-hidden flex flex-col" style={{ height: `${getPanelHeight() - 1}px` }}>
+        <BottomTabs 
+          activeTab={activeTab()}
+          onTabChange={(tabId) => {
+            setActiveTab(tabId);
+            if (!isAssetPanelOpen()) {
+              setAssetPanelOpen(true);
+            }
+          }}
+          isAssetPanelOpen={isAssetPanelOpen()}
+          onToggleAssetPanel={(newState) => {
+            const currentState = isAssetPanelOpen();
+            const targetState = newState !== undefined ? newState : !currentState;
+            setAssetPanelOpen(targetState);
+          }}
+          rightPanelWidth={rightPanelWidth()}
+          isScenePanelOpen={isScenePanelOpen()}
+          panelResize={{
+            handleBottomResizeStart,
+            handleBottomResizeMove,
+            handleBottomResizeEnd
+          }}
+        />
+        
+        <Show when={isAssetPanelOpen()}>
+          <div class="flex-1 overflow-hidden">
           <Switch>
             <Match when={currentActiveTab() === 'assets'}>
               <AssetLibrary onContextMenu={handleContextMenu} />
@@ -172,8 +179,9 @@ const BottomPanel = () => {
               </div>
             </Match>
           </Switch>
-        </div>
-      </Show>
+          </div>
+        </Show>
+      </div>
       </div>
     </Show>
   );
