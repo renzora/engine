@@ -105,11 +105,23 @@ export const editorActions = {
   },
   
   setScenePanelOpen: (isOpen) => {
-    setEditorStore('panels', 'isScenePanelOpen', isOpen)
+    setEditorStore('panels', 'isScenePanelOpen', isOpen);
+    
+    // Trigger Babylon engine resize to prevent viewport squishing
+    const { renderStore } = require('@/render/store.jsx');
+    if (renderStore.engine) {
+      renderStore.engine.resize();
+    }
   },
 
   setAssetPanelOpen: (isOpen) => {
-    setEditorStore('panels', 'isAssetPanelOpen', isOpen)
+    setEditorStore('panels', 'isAssetPanelOpen', isOpen);
+    
+    // Trigger Babylon engine resize to prevent viewport squishing
+    const { renderStore } = require('@/render/store.jsx');
+    if (renderStore.engine) {
+      renderStore.engine.resize();
+    }
   },
   
   setResizingPanels: (isResizing) => {
