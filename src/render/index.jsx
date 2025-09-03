@@ -1,4 +1,4 @@
-import { onMount, onCleanup, createSignal, createEffect } from 'solid-js';
+import { onMount, onCleanup, createSignal, createEffect, onCleanup as solidOnCleanup } from 'solid-js';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
 import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
@@ -55,6 +55,7 @@ import { useCameraController } from './hooks/cameraMovement.jsx';
 import { GizmoManagerComponent } from './hooks/gizmo.jsx';
 import { useAssetLoader } from './hooks/assetLoader.jsx';
 import { LoadingTooltip } from './components/LoadingTooltip.jsx';
+import Stats from 'stats.js';
 import { pluginAPI } from '@/api/plugin';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 
@@ -574,45 +575,45 @@ const loadDefaultSceneContent = (scene, canvas) => {
     if (currentLightingSettings.starsEnabled && isAfterSunset && lightIntensity < 0.3) {
       // Start stars at night if not already started
       if (!starSystem.isStarted()) {
-        starSystem.manualEmitCount = currentLightingSettings.starIntensity;
+        starSystem.manualEmitCount = Math.min(500, currentLightingSettings.starIntensity); // Limit to 500 stars
         starSystem.start();
       }
       
-      // Enhanced star twinkling with varied patterns
-      if (starSystem.particles) {
-        const currentTime = Date.now() * 0.001; // Slower base twinkling
-        starSystem.particles.forEach((particle, index) => {
-          if (particle.color) {
-            // Different twinkling speeds for different stars
-            const twinkleSpeed = 0.5 + (index % 3) * 0.3; // Vary speed by star
-            const phase = index * 0.1; // Phase offset for each star
+      // Optimized star twinkling - update only every 4th frame to reduce GC pressure
+      if (starSystem.particles && scene.getFrameId() % 4 === 0) {
+        const currentTime = Date.now() * 0.001;
+        const particleCount = Math.min(starSystem.particles.length, 500); // Limit processing
+        
+        for (let i = 0; i < particleCount; i++) {
+          const particle = starSystem.particles[i];
+          if (particle?.color) {
+            // Pre-calculated values to avoid repeated calculations
+            const twinkleSpeed = 0.5 + (i % 3) * 0.3;
+            const phase = i * 0.1;
             const twinkle = Math.sin(currentTime * twinkleSpeed + phase) * 0.4 + 0.8;
+            const twinkleIntensity = i % 5 === 0 ? 0.6 : 0.3;
             
-            // Some stars twinkle more than others
-            const twinkleIntensity = index % 5 === 0 ? 0.6 : 0.3; // Every 5th star twinkles more
-            const finalAlpha = Math.max(0.4, twinkle * twinkleIntensity + (1 - twinkleIntensity));
+            particle.color.a = Math.max(0.4, twinkle * twinkleIntensity + (1 - twinkleIntensity));
             
-            particle.color.a = finalAlpha;
-            
-            // Vary star colors slightly (white, blue-white, yellow-white)
-            if (index % 7 === 0) {
-              // Blue-white stars
-              particle.color.r = 0.9;
-              particle.color.g = 0.95;
-              particle.color.b = 1.0;
-            } else if (index % 11 === 0) {
-              // Yellow-white stars
-              particle.color.r = 1.0;
-              particle.color.g = 0.98;
-              particle.color.b = 0.9;
-            } else {
-              // Pure white stars
-              particle.color.r = 1.0;
-              particle.color.g = 1.0;
-              particle.color.b = 1.0;
+            // Set star colors only once during initialization, not every frame
+            if (!particle._colorSet) {
+              if (i % 7 === 0) {
+                particle.color.r = 0.9;
+                particle.color.g = 0.95;
+                particle.color.b = 1.0;
+              } else if (i % 11 === 0) {
+                particle.color.r = 1.0;
+                particle.color.g = 0.98;
+                particle.color.b = 0.9;
+              } else {
+                particle.color.r = 1.0;
+                particle.color.g = 1.0;
+                particle.color.b = 1.0;
+              }
+              particle._colorSet = true;
             }
           }
-        });
+        }
       }
     } else {
       // Hide stars during day or if disabled
@@ -649,6 +650,7 @@ export default function BabylonRenderer(props) {
   let canvasRef;
   const [engine, setEngine] = createSignal(null);
   const [scene, setScene] = createSignal(null);
+  const [stats, setStats] = createSignal(null);
   
   // Initialize asset loader
   const { loadingTooltip, handleDragOver, handleDragEnter, handleDragLeave, handleDrop, loadAssetIntoScene, isPositioning } = useAssetLoader(scene, () => canvasRef);
@@ -715,6 +717,12 @@ export default function BabylonRenderer(props) {
       
       console.log('🎯 Focusing camera on object:', selectedObject.name);
       
+      // Cancel any existing focus animation
+      if (window._focusAnimationId) {
+        cancelAnimationFrame(window._focusAnimationId);
+        window._focusAnimationId = null;
+      }
+      
       // Get the bounding box of the selected object
       let boundingInfo, center, size;
       
@@ -766,14 +774,15 @@ export default function BabylonRenderer(props) {
         }
         
         if (progress < 1) {
-          requestAnimationFrame(animate);
+          window._focusAnimationId = requestAnimationFrame(animate);
         } else {
+          window._focusAnimationId = null;
           console.log('✅ Camera focused on object');
           editorActions.addConsoleMessage(`Focused camera on "${selectedObject.name}"`, 'success');
         }
       };
       
-      animate();
+      window._focusAnimationId = requestAnimationFrame(animate);
     },
     // Focus on mouse point
     focusOnMousePoint: () => {
@@ -783,6 +792,12 @@ export default function BabylonRenderer(props) {
       if (!camera || !currentScene) {
         console.log('⚠️ No camera or scene available for focus');
         return;
+      }
+      
+      // Cancel any existing mouse focus animation
+      if (window._mouseFocusAnimationId) {
+        cancelAnimationFrame(window._mouseFocusAnimationId);
+        window._mouseFocusAnimationId = null;
       }
       
       // Get current mouse position from last known coordinates
@@ -828,14 +843,15 @@ export default function BabylonRenderer(props) {
           }
           
           if (progress < 1) {
-            requestAnimationFrame(animate);
+            window._mouseFocusAnimationId = requestAnimationFrame(animate);
           } else {
+            window._mouseFocusAnimationId = null;
             console.log('✅ Camera focused on mouse point');
             editorActions.addConsoleMessage('Focused camera on mouse point', 'success');
           }
         };
         
-        animate();
+        window._mouseFocusAnimationId = requestAnimationFrame(animate);
       } else {
         console.log('⚠️ No surface found at mouse position');
         editorActions.addConsoleMessage('No surface found at mouse position', 'warning');
@@ -960,10 +976,93 @@ export default function BabylonRenderer(props) {
       // Store in render store (gizmo manager will be set by GizmoManagerComponent)
       renderActions.setHighlightLayer(highlightLayer);
 
-      // Start render loop
-      babylonEngine.runRenderLoop(() => {
-        babylonScene.render();
+      // Initialize stats.js with custom object count panel
+      const statsInstance = new Stats();
+      
+      // Add custom panel for scene objects
+      const objectPanel = statsInstance.addPanel(new Stats.Panel('OBJ', '#ff8', '#221'));
+      
+      // Show all panels simultaneously by modifying the DOM structure
+      statsInstance.showPanel(-1); // Show all panels
+      
+      statsInstance.dom.style.position = 'absolute';
+      statsInstance.dom.style.left = '8px';
+      statsInstance.dom.style.bottom = '8px';
+      statsInstance.dom.style.top = 'auto';
+      statsInstance.dom.style.right = 'auto';
+      statsInstance.dom.style.zIndex = '100';
+      
+      // Force all panels to display inline
+      statsInstance.dom.style.display = 'flex';
+      statsInstance.dom.style.flexDirection = 'row';
+      statsInstance.dom.style.gap = '4px';
+      
+      // Override the default click behavior to prevent panel switching
+      statsInstance.dom.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
       });
+      
+      // Force all panels to be visible
+      setTimeout(() => {
+        const panels = statsInstance.dom.children;
+        for (let i = 0; i < panels.length; i++) {
+          panels[i].style.display = 'block';
+        }
+      }, 100);
+      
+      // Find the canvas container and append stats
+      const canvasContainer = canvasRef.parentElement;
+      if (canvasContainer) {
+        canvasContainer.style.position = 'relative';
+        canvasContainer.appendChild(statsInstance.dom);
+      }
+      
+      // Function to count scene objects
+      const getObjectCount = () => {
+        const meshes = babylonScene.meshes.filter(mesh => 
+          !mesh.name.includes('gizmo') && 
+          !mesh.name.includes('helper') && 
+          !mesh.name.startsWith('__')
+        );
+        const lights = babylonScene.lights.filter(light => 
+          !light.name.includes('gizmo') && 
+          !light.name.includes('helper') && 
+          !light.name.startsWith('__')
+        );
+        const cameras = babylonScene.cameras.filter(camera => 
+          !camera.name.includes('gizmo') && 
+          !camera.name.includes('helper') && 
+          !camera.name.startsWith('__')
+        );
+        return meshes.length + lights.length + cameras.length;
+      };
+      
+      setStats(statsInstance);
+      
+      // Start render loop with stats and pause capability
+      let renderLoopRunning = true;
+      
+      const renderLoop = () => {
+        if (!renderLoopRunning) return;
+        
+        // Check if rendering is paused
+        if (editorStore.settings.editor.renderPaused) {
+          requestAnimationFrame(renderLoop);
+          return;
+        }
+        
+        statsInstance.begin();
+        
+        // Update object count panel
+        const objectCount = getObjectCount();
+        objectPanel.update(objectCount, 1000); // Max 1000 objects for scale
+        
+        babylonScene.render();
+        statsInstance.end();
+      };
+      
+      babylonEngine.runRenderLoop(renderLoop);
 
       // Handle resize
       window.addEventListener('resize', () => {
@@ -1051,7 +1150,33 @@ export default function BabylonRenderer(props) {
   const cleanup = () => {
     const babylonEngine = engine();
     const babylonScene = scene();
+    const statsInstance = stats();
     
+    renderLoopRunning = false;
+    
+    // Cancel any running animations
+    if (window._focusAnimationId) {
+      cancelAnimationFrame(window._focusAnimationId);
+      window._focusAnimationId = null;
+    }
+    if (window._mouseFocusAnimationId) {
+      cancelAnimationFrame(window._mouseFocusAnimationId);
+      window._mouseFocusAnimationId = null;
+    }
+    
+    // Clean up particle systems before disposing scene
+    if (babylonScene) {
+      const particleSystems = babylonScene.particleSystems?.slice() || [];
+      particleSystems.forEach(system => {
+        if (system && typeof system.dispose === 'function') {
+          system.stop();
+          system.dispose();
+        }
+      });
+      
+      // Unregister all before render callbacks to prevent memory leaks
+      babylonScene.unregisterBeforeRender();
+    }
     
     // Use render store for cleanup
     renderActions.cleanup();
@@ -1061,7 +1186,13 @@ export default function BabylonRenderer(props) {
       babylonEngine.dispose();
     }
     
+    // Clean up stats
+    if (statsInstance && statsInstance.dom && statsInstance.dom.parentElement) {
+      statsInstance.dom.parentElement.removeChild(statsInstance.dom);
+    }
+    
     window._cleanBabylonScene = null;
+    window._dayNightCycle = null;
     renderActions.setEngine(null);
     renderActions.setScene(null);
     renderActions.setCamera(null);

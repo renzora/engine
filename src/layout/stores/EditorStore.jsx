@@ -67,7 +67,8 @@ const [editorStore, setEditorStore] = createStore({
     editor: {
       showStats: savedSettings.editor?.showStats !== undefined ? savedSettings.editor.showStats : true,
       panelPosition: savedSettings.editor?.panelPosition || 'right',
-      scriptReloadDebounceMs: savedSettings.editor?.scriptReloadDebounceMs || 500
+      scriptReloadDebounceMs: savedSettings.editor?.scriptReloadDebounceMs || 500,
+      renderPaused: savedSettings.editor?.renderPaused || false
     },
     grid: {
       enabled: savedSettings.grid?.enabled !== undefined ? savedSettings.grid.enabled : true,

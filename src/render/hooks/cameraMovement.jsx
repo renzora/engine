@@ -444,9 +444,9 @@ export function useCameraController(camera, canvas, scene) {
       }
       
       canvas().removeEventListener('contextmenu', handleContextMenu);
-      canvas().removeEventListener('mousedown', handleMouseDown);
-      canvas().removeEventListener('mousemove', handleMouseMove);
-      canvas().removeEventListener('mouseup', handleMouseUp);
+      canvas().removeEventListener('pointerdown', handlePointerDown);
+      canvas().removeEventListener('pointermove', handleMouseMove);
+      canvas().removeEventListener('pointerup', handleMouseUp);
       canvas().removeEventListener('wheel', handleWheel);
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
@@ -459,6 +459,7 @@ export function useCameraController(camera, canvas, scene) {
       
       if (fovAnimationId) {
         cancelAnimationFrame(fovAnimationId);
+        fovAnimationId = null;
       }
     });
   });

@@ -262,6 +262,25 @@ function Settings() {
                 />
               </button>
             </div>
+
+            <div class="flex items-center justify-between p-3 bg-base-200/40 rounded-lg border border-base-300/50">
+              <div>
+                <label class="text-xs font-medium text-base-content/80">Pause Rendering</label>
+                <p class="text-xs text-base-content/60 mt-0.5">Stop the render loop to debug performance issues</p>
+              </div>
+              <button
+                onClick={() => {
+                  const newValue = !settings.editor.renderPaused;
+                  editorActions.updateEditorSettings({ renderPaused: newValue });
+                  editorActions.addConsoleMessage(`Rendering ${newValue ? 'paused' : 'resumed'}`, 'info');
+                }}
+                class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.renderPaused ? 'bg-error shadow-lg shadow-error/30' : 'bg-base-content/40'}`}
+              >
+                <span
+                  class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.renderPaused ? 'translate-x-6' : 'translate-x-1'}`}
+                />
+              </button>
+            </div>
           </div>
         </CollapsibleSection>
       </div>
