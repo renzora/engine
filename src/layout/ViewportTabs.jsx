@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
-import { IconSettings, IconFileText, IconX, IconStar, IconCopy, IconPlayerPlay, IconPlayerPause, IconPlus, IconGrid3x3 } from '@tabler/icons-solidjs';
+import { IconSettings, IconFileText, IconX, IconStar, IconCopy, IconPlayerPlay, IconPlayerPause, IconPlus, IconChairDirector } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { viewportTypes, toolbarButtons, horizontalMenuButtonsEnabled } from "@/api/plugin";
@@ -22,7 +22,7 @@ const ViewportTabs = () => {
       {
         id: '3d-viewport',
         label: 'New Scene',
-        icon: IconGrid3x3,
+        icon: IconChairDirector,
         description: 'Create a new 3D scene viewport'
       },
       {
@@ -45,7 +45,7 @@ const ViewportTabs = () => {
       }
       // Return proper icon for 3d-viewport
       if (type === '3d-viewport') {
-        return IconGrid3x3;
+        return IconChairDirector;
       }
       return IconFileText;
     } catch (error) {
@@ -204,7 +204,7 @@ const ViewportTabs = () => {
                 <div
                   classList={{
                     'group flex items-center gap-2 px-3 py-1 border-r border-neutral cursor-pointer transition-all select-none min-w-0 max-w-48 flex-shrink-0 h-full relative border-t border-b border-neutral': true,
-                    'bg-primary/20 text-primary': isActive(),
+                    'bg-primary/15 text-primary': isActive(),
                     'text-base-content/60 hover:text-base-content': !isActive()
                   }}
                   onClick={() => handleTabClick(tab.id)}
@@ -261,7 +261,7 @@ const ViewportTabs = () => {
             }}
           </For>
 
-          <div className="relative flex-shrink-0 h-full bg-neutral rounded-tr-lg">
+          <div className="relative flex-shrink-0 h-full bg-neutral">
             <button
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -271,7 +271,7 @@ const ViewportTabs = () => {
                 });
                 setIsAddDropdownOpen(!isAddDropdownOpen());
               }}
-              className="flex items-center px-3 text-base-content hover:text-base-content/60 bg-base-300/80 hover:bg-neutral transition-colors h-full cursor-pointer"
+              className="flex items-center px-3 text-base-content hover:text-base-content/60 bg-base-300/80 hover:bg-base-300/83 border-t border-r border-b border-neutral transition-colors h-full cursor-pointer"
               title="Add Viewport"
             >
               <IconPlus className="w-4 h-4" />
@@ -299,7 +299,7 @@ const ViewportTabs = () => {
                       {(viewportType) => (
                         <button
                           onClick={() => handleAddViewport(viewportType.id)}
-                          className="w-full flex items-start px-3 py-2 text-sm text-base-content hover:bg-base-300 hover:text-base-content rounded-md transition-colors group"
+                          className="w-full flex items-start px-3 py-2 text-sm text-base-content hover:bg-base-300 hover:text-base-content rounded-md transition-colors group cursor-pointer"
                         >
                           <div className="w-4 h-4 mr-3 mt-0.5 text-base-content/60 group-hover:text-base-content flex-shrink-0">
                             <viewportType.icon className="w-4 h-4" />

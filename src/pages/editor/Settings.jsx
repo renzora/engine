@@ -81,7 +81,7 @@ function Settings() {
   return (
     <div class="flex-1 p-2 space-y-2">
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('viewport')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().viewport ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('viewport')}>
             <IconDeviceDesktop class="w-3 h-3" />
             Viewport
           </div>
@@ -167,7 +167,7 @@ function Settings() {
         </div>
 
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('interface')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().interface ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('interface')}>
             <IconPalette class="w-3 h-3" />
             Interface
           </div>
@@ -207,7 +207,7 @@ function Settings() {
         </div>
         
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('editor')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().editor ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('editor')}>
             <IconSettings class="w-3 h-3" />
             Editor
           </div>
@@ -253,7 +253,7 @@ function Settings() {
         </div>
         
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('world')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().world ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('world')}>
             <IconUser class="w-3 h-3" />
             World
           </div>
@@ -287,7 +287,7 @@ function Settings() {
         </div>
         
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('performance')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().performance ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('performance')}>
             <IconAdjustments class="w-3 h-3" />
             Performance
           </div>

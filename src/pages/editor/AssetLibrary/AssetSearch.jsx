@@ -16,7 +16,7 @@ function AssetSearch({ searchQuery, setSearchQuery, isSearching }) {
         placeholder="Search"
         value={searchQuery()}
         onInput={(e) => setSearchQuery(e.target.value)}
-        class="w-full pl-6 pr-2 py-1 bg-base-200 border border-base-300 rounded text-xs text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary transition-colors"
+        class="w-full pl-6 pr-2 py-1 bg-base-100 border border-base-300 rounded text-xs text-base-content placeholder-base-content/50 focus:outline-none focus:border-primary transition-colors"
       />
     </div>
   );

@@ -970,7 +970,7 @@ function ObjectProperties() {
             <>
               {/* Scripts */}
               <div class="bg-base-100 border-base-300 border rounded-lg">
-                <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
+                <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().scripts ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
                   <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('scripts')}>
                     <IconCode class="w-3 h-3" />
                     Scripts
@@ -1185,7 +1185,7 @@ function ObjectProperties() {
               {/* Transform */}
               <Show when={positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0}>
                 <div class="bg-base-100 border-base-300 border rounded-lg">
-                  <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
+                  <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().transform ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
                     <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('transform')}>
                       <IconArrowsMove class="w-3 h-3" />
                       Transform
@@ -1247,7 +1247,7 @@ function ObjectProperties() {
                             <For each={Object.entries(propertiesBySection)}>
                               {([sectionName, properties]) => (
                                 <div class="bg-base-100 border-base-300 border rounded-lg">
-                                  <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer">
+                                  <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer bg-primary/15 text-white rounded-t-lg">
                                     <IconCode class="w-3 h-3" />
                                     {sectionName}
                                   </div>

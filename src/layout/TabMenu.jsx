@@ -297,7 +297,7 @@ function TabMenu(props) {
 
 
   return (
-    <div class="relative w-10 h-full bg-neutral/50 border-r border-neutral/50 flex flex-col pointer-events-auto no-select">
+    <div class="relative w-10 h-full bg-base-300 border-r border-base-300/70 flex flex-col pointer-events-auto no-select">
       <div class="flex-1 overflow-y-hidden overflow-x-hidden h-full">
         <div class="flex flex-col space-y-0.5 h-full">
           <For each={tools()}>
@@ -318,7 +318,7 @@ function TabMenu(props) {
                     isDragged() 
                       ? 'opacity-50 cursor-grabbing scale-95' 
                       : props.selectedTool === tool.id 
-                        ? 'bg-primary text-primary-content cursor-grab' 
+                        ? 'bg-primary/30 text-primary cursor-grab' 
                         : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
                   }`}
                   title={tool.title}

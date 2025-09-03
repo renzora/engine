@@ -221,7 +221,7 @@ export default function CameraPanel() {
         
         {/* Camera Controls */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('camera')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().camera ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('camera')}>
             <IconCamera class="w-3 h-3" />
             Camera Controls
           </div>
@@ -312,7 +312,7 @@ export default function CameraPanel() {
         
         {/* Render Mode */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('render')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().render ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('render')}>
             <IconPalette class="w-3 h-3" />
             Render Mode
           </div>
@@ -340,7 +340,7 @@ export default function CameraPanel() {
         
         {/* Visual Effects */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('effects')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().effects ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('effects')}>
             <IconEye class="w-3 h-3" />
             Visual Effects
           </div>

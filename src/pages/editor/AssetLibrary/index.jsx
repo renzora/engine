@@ -1607,7 +1607,7 @@ function AssetLibrary({ onContextMenu }) {
   });
 
   return (
-    <div class="h-full flex bg-base-200 no-select overflow-hidden">
+    <div class="h-full flex bg-base-100 no-select overflow-hidden">
       <AssetSidebar
         treePanelWidth={treePanelWidth}
         isResizing={isResizing}
@@ -1640,10 +1640,10 @@ function AssetLibrary({ onContextMenu }) {
       
       <div 
         class={`flex-1 flex flex-col transition-all duration-200 relative overflow-hidden ${
-          isDragOver() ? 'bg-primary/20 border-2 border-primary border-dashed' : 'bg-base-200'
+          isDragOver() ? 'bg-primary/20 border-2 border-primary border-dashed' : 'bg-base-100'
         }`}
       >
-        <div class="bg-base-200 flex-shrink-0 border-b border-base-300">
+        <div class="bg-base-200/50 flex-shrink-0 border-b border-base-300/50">
           <div class="flex items-center justify-between pr-3 py-2">
             <div class="flex items-center gap-2 ml-2">
               <button
@@ -1768,7 +1768,7 @@ function AssetLibrary({ onContextMenu }) {
         </div>
         
         {/* Unreal Engine style footer */}
-        <div class="bg-base-200 border-t border-base-300 px-3 py-1.5 flex items-center justify-between text-xs text-base-content/60">
+        <div class="bg-base-200/60 border-t border-base-300/50 px-3 py-1.5 flex items-center justify-between text-xs text-base-content/60">
           <div class="flex items-center gap-3">
             <span>{filteredAssets().length} items</span>
             <span>•</span>

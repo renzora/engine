@@ -152,7 +152,7 @@ export default function GridPanel() {
         
         {/* Grid Settings */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('grid')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().grid ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('grid')}>
             <IconGrid3x3 class="w-3 h-3" />
             Grid Settings
           </div>
@@ -247,7 +247,7 @@ export default function GridPanel() {
         
         {/* Snapping */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('snapping')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().snapping ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('snapping')}>
             <IconSettings class="w-3 h-3" />
             Snapping
           </div>
@@ -267,7 +267,7 @@ export default function GridPanel() {
         
         {/* Appearance */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('appearance')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().appearance ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('appearance')}>
             <IconPalette class="w-3 h-3" />
             Appearance
           </div>

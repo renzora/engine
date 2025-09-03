@@ -366,7 +366,7 @@ export default function LightingPanel() {
         {/* Time Control */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
-            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('time')}>
+            <div class={`flex items-center gap-1.5 cursor-pointer ${sectionsOpen().time ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('time')}>
               <IconClock class="w-3 h-3" />
               Time Control
             </div>
@@ -449,7 +449,7 @@ export default function LightingPanel() {
         
         {/* Post Processing */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('postProcessing')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().postProcessing ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('postProcessing')}>
             <IconCamera class="w-3 h-3" />
             Post Processing
           </div>
@@ -556,7 +556,7 @@ export default function LightingPanel() {
         
         {/* Sky & Atmosphere */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('sky')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().sky ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('sky')}>
             <IconPalette class="w-3 h-3" />
             Sky & Atmosphere
           </div>
@@ -628,7 +628,7 @@ export default function LightingPanel() {
         
         {/* Clouds */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('clouds')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().clouds ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('clouds')}>
             <IconCloud class="w-3 h-3" />
             Clouds
           </div>
@@ -666,7 +666,7 @@ export default function LightingPanel() {
         
         {/* Fog */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('fog')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().fog ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('fog')}>
             <IconEye class="w-3 h-3" />
             Fog
           </div>
@@ -721,7 +721,7 @@ export default function LightingPanel() {
 
         {/* Light Sources */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('lights')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().lights ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('lights')}>
             <IconSun class="w-3 h-3" />
             Light Sources
           </div>
@@ -838,7 +838,7 @@ export default function LightingPanel() {
         
         {/* Shadows */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('shadows')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().shadows ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('shadows')}>
             <IconSettings class="w-3 h-3" />
             Shadows
           </div>
@@ -892,7 +892,7 @@ export default function LightingPanel() {
         
         {/* Particles */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('particles')}>
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer ${sectionsOpen().particles ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'}`} onClick={() => toggleSection('particles')}>
             <IconBulb class="w-3 h-3" />
             Particles
           </div>

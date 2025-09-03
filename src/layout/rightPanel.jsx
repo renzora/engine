@@ -96,11 +96,15 @@ const RightPanel = () => {
   };
 
   const handleTabResizeStart = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     setIsResizingTabs(true);
     const startY = e.clientY;
     const startHeight = tabContainerHeight();
     
     const handleMouseMove = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const deltaY = startY - e.clientY;
       
       // Calculate available space dynamically
@@ -123,7 +127,9 @@ const RightPanel = () => {
       setTabContainerHeight(newHeight);
     };
     
-    const handleMouseUp = () => {
+    const handleMouseUp = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       setIsResizingTabs(false);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
@@ -261,7 +267,7 @@ const RightPanel = () => {
                 </div>
                 
                 {/* Panel content */}
-                <div className="h-full bg-base-300 border-t border-l border-r border-base-content/10 shadow-lg overflow-hidden rounded-tr-lg flex">
+                <div className="h-full bg-base-300 border-l border-base-300 shadow-lg overflow-hidden flex">
                   {/* Scene panel - always at top */}
                   <div className="flex-1 flex flex-col">
                     <div className="flex-1 min-h-0 overflow-y-auto" style="scrollbar-width: thin;">
@@ -269,6 +275,7 @@ const RightPanel = () => {
                         selectedObject={selectedObject()}
                         onObjectSelect={handleObjectSelect}
                         onContextMenu={handleContextMenu}
+                        isResizing={isResizingTabs()}
                       />
                     </div>
                     

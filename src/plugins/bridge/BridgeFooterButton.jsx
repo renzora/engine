@@ -44,7 +44,7 @@ function BridgeFooterButton() {
   return (
     <button
       onClick={openBridgeViewport}
-      className={`flex items-center gap-2 px-3 py-1 rounded text-xs transition-all duration-200 ${
+      className={`flex items-center gap-2 px-3 py-1 text-xs transition-all duration-200 ${
         isOnline() 
           ? 'bg-success/20 text-success hover:bg-success/30' 
           : 'bg-error/20 text-error hover:bg-error/30'

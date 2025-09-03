@@ -560,28 +560,64 @@ export const renderActions = {
       return !isSystemObject && !obj.parent;
     });
     
-    // Separate lights from other objects to organize them under a virtual Lighting folder
+    // Separate lights, cameras, environment objects, and other objects for organization
     const lights = rootObjects.filter(obj => obj.getClassName && obj.getClassName().includes('Light'));
-    const nonLights = rootObjects.filter(obj => !obj.getClassName || !obj.getClassName().includes('Light'));
+    const cameras = rootObjects.filter(obj => obj.getClassName && obj.getClassName().includes('Camera'));
+    const environmentObjects = rootObjects.filter(obj => 
+      obj.name && (obj.name.toLowerCase().includes('skybox') || 
+      (obj.name.toLowerCase().includes('moon') && (!obj.getClassName || !obj.getClassName().includes('Light'))))
+    );
+    const otherObjects = rootObjects.filter(obj => 
+      (!obj.getClassName || (!obj.getClassName().includes('Light') && !obj.getClassName().includes('Camera'))) &&
+      (!obj.name || (!obj.name.toLowerCase().includes('skybox') && 
+      !(obj.name.toLowerCase().includes('moon') && (!obj.getClassName || !obj.getClassName().includes('Light')))))
+    );
     
-    const hierarchyItems = nonLights.map(obj => this.buildHierarchyFromBabylon(obj));
+    const hierarchyItems = [];
     
-    // Create virtual Lighting folder if there are lights
+    // Add cameras first
+    hierarchyItems.push(...cameras.map(obj => this.buildHierarchyFromBabylon(obj)));
+    
+    // Add other objects
+    hierarchyItems.push(...otherObjects.map(obj => this.buildHierarchyFromBabylon(obj)));
+    
+    // Create virtual Environment folder if there are environment objects
+    if (environmentObjects.length > 0) {
+      // Check if folder already exists to prevent duplicates
+      const existingEnvFolder = hierarchyItems.find(item => item.id === 'environment-folder');
+      if (!existingEnvFolder) {
+        const environmentFolder = {
+          id: 'environment-folder',
+          name: 'Environment',
+          type: 'folder',
+          visible: true,
+          expanded: true,
+          children: environmentObjects.map(obj => this.buildHierarchyFromBabylon(obj))
+        };
+        hierarchyItems.push(environmentFolder);
+      }
+    }
+    
+    // Create virtual Lighting folder if there are lights (add at end)
     if (lights.length > 0) {
-      const lightingFolder = {
-        id: 'lighting-folder',
-        name: 'Lighting',
-        type: 'folder',
-        visible: true,
-        expanded: true,
-        children: lights.map(light => this.buildHierarchyFromBabylon(light))
-      };
-      hierarchyItems.unshift(lightingFolder);
+      // Check if folder already exists to prevent duplicates
+      const existingLightFolder = hierarchyItems.find(item => item.id === 'lighting-folder');
+      if (!existingLightFolder) {
+        const lightingFolder = {
+          id: 'lighting-folder',
+          name: 'Lighting',
+          type: 'folder',
+          visible: true,
+          expanded: true,
+          children: lights.map(light => this.buildHierarchyFromBabylon(light))
+        };
+        hierarchyItems.push(lightingFolder);
+      }
     }
     
     const hierarchy = [{
       id: 'scene-root',
-      name: 'Clean Scene',
+      name: 'New Scene',
       type: 'scene',
       expanded: true,
       children: hierarchyItems

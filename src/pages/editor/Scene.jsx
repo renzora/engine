@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, For, Show } from 'solid-js';
-import { IconBox, IconBulb, IconCamera, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit } from '@tabler/icons-solidjs';
+import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
@@ -297,8 +297,9 @@ function Scene(props) {
           case 'spot': return IconBulb;
           default: return IconBulb;
         }
-      case 'camera': return IconCamera;
+      case 'camera': return IconVideo;
       case 'folder': return (hasChildren && isExpanded) ? IconFolderOpen : IconFolder;
+      case 'scene': return IconChairDirector;
       default: return IconCircle;
     }
   };
@@ -330,6 +331,10 @@ function Scene(props) {
     const Icon = getIcon(item.type, item.lightType, hasChildren, isExpanded());
     const iconColor = getIconColor(item.type, item.lightType);
     
+    // Scene root is always visible and active
+    const isSceneRoot = item.type === 'scene';
+    const itemVisible = isSceneRoot ? true : (item.visible !== undefined ? item.visible : true);
+    
     const isDraggedOver = () => dragOverItem()?.id === item.id;
     const isFolderDrop = () => isDraggedOver() && dropPosition() === 'inside' && item.type === 'folder';
 
@@ -350,8 +355,8 @@ function Scene(props) {
         <div 
           className={`group flex items-center py-0.5 pr-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${
             isSelected() 
-              ? 'bg-primary text-primary-content' 
-              : 'text-base-content/70 hover:bg-neutral/70 hover:text-base-content'
+              ? 'bg-primary/80 text-primary-content' 
+              : 'text-base-content/70 hover:bg-primary/20 hover:text-base-content'
           } ${
             draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
@@ -363,10 +368,10 @@ function Scene(props) {
             'padding-left': `${6 + depth * 16}px`,
             cursor: 'pointer'
           }}
-          draggable="true"
-          onDragStart={(e) => handleDragStart(e, item)}
-          onDragOver={(e) => handleDragOver(e, item)}
-          onDrop={(e) => handleDropWithAnimation(e, item)}
+          draggable={!props.isResizing}
+          onDragStart={(e) => !props.isResizing && handleDragStart(e, item)}
+          onDragOver={(e) => !props.isResizing && handleDragOver(e, item)}
+          onDrop={(e) => !props.isResizing && handleDropWithAnimation(e, item)}
           onDragEnd={handleDragEnd}
           tabIndex={0}
           onKeyDown={(e) => handleKeyDown(e, item)}
@@ -425,7 +430,11 @@ function Scene(props) {
             className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
-              if (item.babylonObject) {
+              if (isSceneRoot) {
+                // Scene root visibility toggle - could control overall scene visibility
+                const newVisibility = !itemVisible;
+                renderActions.updateObjectVisibility(item.id, newVisibility);
+              } else if (item.babylonObject) {
                 const newVisibility = !item.babylonObject.isVisible;
                 item.babylonObject.isVisible = newVisibility;
                 
@@ -435,7 +444,7 @@ function Scene(props) {
             }}
           >
             <Show 
-              when={item.visible}
+              when={itemVisible}
               fallback={<IconEyeOff class="w-4 h-4 cursor-pointer" style={{ color: '#ef4444' }} />}
             >
               <IconEye class="w-4 h-4 cursor-pointer" style={{ color: '#9ca3af' }} />
@@ -495,7 +504,7 @@ function Scene(props) {
   return (
     <div 
       ref={containerRef} 
-      className="flex flex-col h-full overflow-hidden"
+      className="flex flex-col h-full overflow-hidden bg-base-100"
       onContextMenu={(e) => props.onContextMenu(e, null)}
     >
       {/* Scene header - fixed */}

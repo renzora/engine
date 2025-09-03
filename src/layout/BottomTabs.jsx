@@ -304,7 +304,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
   const currentWorkflow = getCurrentWorkflow();
 
   return (
-    <div ref={containerRef} class="h-8 bg-base-200/95 border-t border-base-content/10 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
+    <div ref={containerRef} class="h-8 bg-base-200/90 border-t border-b border-base-content/15 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
         if (!panelResize) return;
         e.preventDefault();
         panelResize.handleBottomResizeStart(e);
@@ -347,7 +347,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                   'relative flex items-center px-3 py-1.5 text-sm font-medium transition-all whitespace-nowrap select-none': true,
                   'opacity-50 cursor-grabbing': isDragged(),
                   'hover:bg-base-300 cursor-grab': !isDragged(),
-                  'text-primary': isActive(),
+                  'text-primary bg-primary/20': isActive(),
                   'text-base-content/60 hover:text-base-content': !isActive()
                 }}
                 style={{

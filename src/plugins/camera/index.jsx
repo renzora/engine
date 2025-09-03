@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { IconCamera } from '@tabler/icons-solidjs';
+import { IconVideo } from '@tabler/icons-solidjs';
 import CameraPanel from './CameraPanel.jsx';
 
 export default createPlugin({
@@ -19,7 +19,7 @@ export default createPlugin({
     api.tab('camera', {
       title: 'Camera',
       component: CameraPanel,
-      icon: IconCamera,
+      icon: IconVideo,
       order: 5
     });
     
