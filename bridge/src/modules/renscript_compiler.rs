@@ -505,35 +505,48 @@ pub fn compile_renscript(script_name: &str) -> Result<String, String> {
     }
 }
 
-fn compile_renscript_internal(script_name: &str) -> Result<String, RenScriptError> {
-    info!("📜 Compiling RenScript: {}", script_name);
+fn compile_renscript_internal(script_path_or_name: &str) -> Result<String, RenScriptError> {
+    info!("📜 Compiling RenScript: {}", script_path_or_name);
     
-    // Construct file paths - bridge runs from bridge directory, engine root should be current working directory
-    let current_dir = std::env::current_dir().unwrap_or_else(|_| get_base_path());
-    let engine_root = if current_dir.file_name().and_then(|n| n.to_str()) == Some("bridge") {
-        current_dir.parent().unwrap_or(&current_dir).to_path_buf()
+    let (ren_path_str, renp_path_str, script_name) = if script_path_or_name.ends_with(".ren") {
+        // Full path provided - extract script name and derive renp path
+        let script_name = std::path::Path::new(script_path_or_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        
+        let renp_path_str = script_path_or_name.replace(".ren", ".renp");
+        info!("🔍 Using provided full path: {}", script_path_or_name);
+        (script_path_or_name.to_string(), renp_path_str, script_name)
     } else {
-        current_dir
+        // Script name provided - construct paths as before
+        let current_dir = std::env::current_dir().unwrap_or_else(|_| get_base_path());
+        let engine_root = if current_dir.file_name().and_then(|n| n.to_str()) == Some("bridge") {
+            current_dir.parent().unwrap_or(&current_dir).to_path_buf()
+        } else {
+            current_dir
+        };
+        
+        // Try subdirectory structure first: renscripts/{script_name}/{script_name}.ren
+        let subdir_ren_path = engine_root.join("renscripts").join(&script_path_or_name).join(format!("{}.ren", script_path_or_name));
+        let subdir_renp_path = engine_root.join("renscripts").join(&script_path_or_name).join(format!("{}.renp", script_path_or_name));
+        
+        // Fallback to old structure: renscripts/{script_name}.ren  
+        let old_ren_path = engine_root.join("renscripts").join(format!("{}.ren", script_path_or_name));
+        let old_renp_path = engine_root.join("renscripts").join(format!("{}.renp", script_path_or_name));
+        
+        // Determine which paths to use
+        let (ren_path, renp_path) = if subdir_ren_path.exists() {
+            info!("🔍 Found script in subdirectory: {}", subdir_ren_path.display());
+            (subdir_ren_path, subdir_renp_path)
+        } else {
+            info!("🔍 Looking for script in root: {}", old_ren_path.display());
+            (old_ren_path, old_renp_path)
+        };
+        
+        (ren_path.to_string_lossy().to_string(), renp_path.to_string_lossy().to_string(), script_path_or_name.to_string())
     };
-    // Try subdirectory structure first: renscripts/{script_name}/{script_name}.ren
-    let subdir_ren_path = engine_root.join("renscripts").join(&script_name).join(format!("{}.ren", script_name));
-    let subdir_renp_path = engine_root.join("renscripts").join(&script_name).join(format!("{}.renp", script_name));
-    
-    // Fallback to old structure: renscripts/{script_name}.ren  
-    let old_ren_path = engine_root.join("renscripts").join(format!("{}.ren", script_name));
-    let old_renp_path = engine_root.join("renscripts").join(format!("{}.renp", script_name));
-    
-    // Determine which paths to use
-    let (ren_path, renp_path) = if subdir_ren_path.exists() {
-        info!("🔍 Found script in subdirectory: {}", subdir_ren_path.display());
-        (subdir_ren_path, subdir_renp_path)
-    } else {
-        info!("🔍 Looking for script in root: {}", old_ren_path.display());
-        (old_ren_path, old_renp_path)
-    };
-    
-    let ren_path_str = ren_path.to_string_lossy();
-    let renp_path_str = renp_path.to_string_lossy();
     
     // Read the main .ren file
     let ren_content = match read_file_content(&ren_path_str) {
