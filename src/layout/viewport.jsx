@@ -258,11 +258,11 @@ const Viewport = () => {
     const top = '0px';
     const left = isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
     const right = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
-    const bottomPanelSpace = isAssetPanelOpen() ? `${bottomPanelHeight()}px` : (bottomPanelVisible() ? '40px' : '0px');
+    const bottomPanelSpace = isAssetPanelOpen() ? `${bottomPanelHeight()}px` : (bottomPanelVisible() ? '32px' : '0px');
     const footerHeight = footerVisible() ? '24px' : '0px'; // 6 * 4 = 24px (h-6 in Tailwind)
-    // Account for the 8px adjustment in bottom panel positioning
-    const bottomAdjustment = bottomPanelVisible() ? '8px' : '0px';
-    const bottom = bottomPanelSpace === '0px' ? `calc(${footerHeight} - ${bottomAdjustment})` : `calc(${bottomPanelSpace} + ${footerHeight} - ${bottomAdjustment})`;
+    // Match the bottom panel positioning: both positions use same adjustment
+    const bottomAdjustment = '-1px';
+    const bottom = bottomPanelSpace === '0px' ? `calc(${footerHeight} + ${bottomAdjustment})` : `calc(${bottomPanelSpace} + ${footerHeight} + ${bottomAdjustment})`;
     
     return { top, left, right, bottom };
   };

@@ -304,7 +304,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
   const currentWorkflow = getCurrentWorkflow();
 
   return (
-    <div ref={containerRef} class="h-8 bg-base-200/95 border-t border-base-content/10 border-b border-base-content/10 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
+    <div ref={containerRef} class="h-8 bg-base-200/95 border-t border-base-content/10 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {
         if (!panelResize) return;
         e.preventDefault();
         panelResize.handleBottomResizeStart(e);

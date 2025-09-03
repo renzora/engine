@@ -26,14 +26,17 @@ const BottomPanel = () => {
 
   // Recalculate viewport when bottom panel visibility or position changes
   createEffect(() => {
-    if (bottomPanelVisible()) {
-      // Trigger resize after position changes
-      setTimeout(() => {
-        if (renderStore.engine) {
-          renderStore.engine.resize();
-        }
-      }, 0);
-    }
+    // Watch for changes in panel state and position
+    const panelOpen = isAssetPanelOpen();
+    const panelHeight = bottomPanelHeight();
+    
+    // Trigger resize for any bottom panel changes (open/close/resize)
+    setTimeout(() => {
+      if (renderStore.engine) {
+        renderStore.engine.resize();
+        console.log('🔄 Viewport recalculated for bottom panel change');
+      }
+    }, 50); // Slightly longer delay to ensure positioning is complete
   });
   
   // Get reactive store values
@@ -110,7 +113,7 @@ const BottomPanel = () => {
   const currentActiveTab = () => activeTab();
   
   const getPanelHeight = () => {
-    return isAssetPanelOpen() ? bottomPanelHeight() : 40;
+    return isAssetPanelOpen() ? bottomPanelHeight() : 32;
   };
   
   const getPositioning = () => {
@@ -118,7 +121,7 @@ const BottomPanel = () => {
     const rightPos = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0';
     const heightVal = `${getPanelHeight()}px`;
     const footerHeight = 24; // 24px footer height
-    const bottomPos = `${footerHeight - 8}px`;
+    const bottomPos = isAssetPanelOpen() ? `${footerHeight + 1}px` : `${footerHeight + 1}px`;
     
     return { left: leftPos, right: rightPos, height: heightVal, bottom: bottomPos };
   };
