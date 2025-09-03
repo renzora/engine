@@ -45,33 +45,33 @@ export const [renderStore, setRenderStore] = createStore({
     environmentIntensity: 1.2,
     
     // Fog
-    fogEnabled: true,
+    fogEnabled: false,
     fogDensityDay: 0.001,
     fogDensityNight: 0.0001,
     fogColorDay: [0.7, 0.8, 0.9],
     fogColorNight: [0.05, 0.05, 0.1],
     
     // Post Processing
-    exposure: 0.85,
-    contrast: 1.1,
+    exposure: 1.0,
+    contrast: 1.0,
     brightness: 0.0,
     saturation: 1.0,
     vignetteEnabled: false,
     vignetteWeight: 3.0,
     vignetteStretch: 0.2,
     vignetteCameraFov: 0.5,
-    toneMappingEnabled: true,
+    toneMappingEnabled: false,
     toneMappingType: 'ACES', // 'ACES', 'Standard', 'Photographic'
-    fxaaEnabled: true,
+    fxaaEnabled: false,
     
     // Shadows
-    shadowMapSize: 4096,
+    shadowMapSize: 1024,
     shadowDarkness: 0.3,
     shadowBias: 0.00005,
-    shadowBlur: 64,
-    cascadeShadows: true,
-    shadowCascades: 4,
-    contactHardeningShadows: true,
+    shadowBlur: 16,
+    cascadeShadows: false,
+    shadowCascades: 2,
+    contactHardeningShadows: false,
     
     // Day/Night Cycle
     timeOfDay: 12.0,
@@ -80,15 +80,16 @@ export const [renderStore, setRenderStore] = createStore({
     sunriseHour: 6.0,
     sunsetHour: 21.0,
     transitionDuration: 1.0,
+    dayNightUpdateFrames: 60,
     
     // Particles
-    snowEnabled: true,
+    snowEnabled: false,
     snowIntensity: 100,
-    starsEnabled: true,
-    starIntensity: 2000,
+    starsEnabled: false,
+    starIntensity: 500,
     
     // Clouds
-    cloudsEnabled: true,
+    cloudsEnabled: false,
     cloudSize: 20,
     cloudDensity: 0.3
   }
@@ -456,10 +457,19 @@ export const renderActions = {
   },
 
   // Hierarchy management functions
+  // Cached hierarchy building with memoization
+  _hierarchyCache: new Map(),
+  
   buildHierarchyFromBabylon(babylonObject, depth = 0) {
     if (!babylonObject) return null;
     
     const objectId = babylonObject.uniqueId || babylonObject.name || `${babylonObject.getClassName()}-${Math.random()}`;
+    
+    // Check cache first to avoid rebuilding unchanged objects
+    const cacheKey = `${objectId}-${depth}-${babylonObject.isVisible}-${babylonObject.getChildren?.()?.length || 0}`;
+    if (this._hierarchyCache.has(cacheKey)) {
+      return this._hierarchyCache.get(cacheKey);
+    }
     
     let type = 'mesh';
     let lightType = null;
@@ -492,16 +502,16 @@ export const renderActions = {
                            );
     
     // Only build children for non-imported assets or when specifically requested
-    if (babylonObject.getChildren && !isImportedAsset) {
+    if (babylonObject.getChildren && !isImportedAsset && depth < 3) { // Limit depth for performance
       const babylonChildren = babylonObject.getChildren();
-      babylonChildren.forEach(child => {
+      for (const child of babylonChildren) {
         if (child.name && !child.name.startsWith('__') && !child.name.includes('gizmo')) {
           children.push(this.buildHierarchyFromBabylon(child, depth + 1));
         }
-      });
+      }
     }
     
-    return {
+    const result = {
       id: objectId,
       name: babylonObject.name || `Unnamed ${className}`,
       type: type,
@@ -512,6 +522,17 @@ export const renderActions = {
       expanded: depth < 2,
       babylonObject: babylonObject
     };
+    
+    // Cache the result
+    this._hierarchyCache.set(cacheKey, result);
+    
+    // Limit cache size to prevent memory leaks
+    if (this._hierarchyCache.size > 100) {
+      const firstKey = this._hierarchyCache.keys().next().value;
+      this._hierarchyCache.delete(firstKey);
+    }
+    
+    return result;
   },
 
   initializeHierarchy() {

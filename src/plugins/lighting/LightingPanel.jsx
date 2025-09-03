@@ -1,4 +1,4 @@
-import { createEffect, onCleanup, createMemo, createSignal } from 'solid-js';
+import { createEffect, onCleanup, createMemo, createSignal, Show } from 'solid-js';
 import { renderStore, renderActions } from '@/render/store';
 import { Sun, Lightbulb, Moon, Palette, Camera, Settings, Eye, Cloud, Clock } from '@/ui/icons';
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration';
@@ -55,7 +55,8 @@ export default function LightingPanel() {
     snowEnabled: false,
     snowIntensity: 500,
     starsEnabled: false,
-    starIntensity: 5000
+    starIntensity: 5000,
+    dayNightUpdateFrames: 60
   };
   
   // Section collapse state
@@ -260,19 +261,24 @@ export default function LightingPanel() {
     
     return (
       <div>
-        <div class="flex items-center justify-between mb-1">
-          <label class="text-sm text-base-content/80">
-            {label}: {displayValue()}{unit}
+        <div class="flex items-center justify-between">
+          <label class="text-xs text-base-content/80 leading-none">
+            {label}
           </label>
-          {resetKey && (
-            <button
-              onClick={handleReset}
-              class="btn btn-xs btn-ghost opacity-60 hover:opacity-100 min-h-0 h-6 w-6 p-0"
-              title={`Reset ${label}`}
-            >
-              ↺
-            </button>
-          )}
+          <div class="flex items-center gap-1">
+            <span class="text-xs font-mono text-base-content/60 min-w-[3rem] text-right">
+              {displayValue()}{unit}
+            </span>
+            {resetKey && (
+              <button
+                onClick={handleReset}
+                class="btn btn-xs btn-ghost opacity-60 hover:opacity-100 min-h-0 h-3 w-3 p-0 text-xs"
+                title={`Reset ${label}`}
+              >
+                ↺
+              </button>
+            )}
+          </div>
         </div>
         <input
           type="range"
@@ -281,7 +287,7 @@ export default function LightingPanel() {
           step={step}
           value={getValue()}
           onInput={(e) => onChange(parseFloat(e.target.value))}
-          class="range range-primary w-full"
+          class="range range-primary range-xs w-full mt-0.5"
         />
       </div>
     );
@@ -296,8 +302,8 @@ export default function LightingPanel() {
     
     return (
       <div>
-        <div class="flex items-center justify-between mb-1">
-          <label class="text-sm text-base-content/80">{label}</label>
+        <div class="flex items-center justify-between mb-0.5">
+          <label class="text-xs text-base-content/80">{label}</label>
           {resetKey && (
             <button
               onClick={handleReset}
@@ -327,15 +333,15 @@ export default function LightingPanel() {
     
     return (
       <div class="flex items-center justify-between">
-        <label class="text-sm text-base-content/80 flex items-center gap-1">
-          {icon && <icon class="w-4 h-4" />}
+        <label class="text-xs text-base-content/80 flex items-center gap-1 leading-none">
+          {icon && <icon class="w-3 h-3" />}
           {label}
         </label>
         <div class="flex items-center gap-1">
           {resetKey && (
             <button
               onClick={handleReset}
-              class="btn btn-xs btn-ghost opacity-60 hover:opacity-100 min-h-0 h-6 w-6 p-0"
+              class="btn btn-xs btn-ghost opacity-60 hover:opacity-100 min-h-0 h-3 w-3 p-0 text-xs"
               title={`Reset ${label}`}
             >
               ↺
@@ -345,7 +351,7 @@ export default function LightingPanel() {
             type="checkbox"
             checked={value}
             onChange={(e) => onChange(e.target.checked)}
-            class="toggle toggle-primary toggle-sm"
+            class="toggle toggle-primary toggle-xs"
           />
         </div>
       </div>
@@ -354,104 +360,102 @@ export default function LightingPanel() {
 
   return (
     <div class="h-full flex flex-col bg-base-200">
-      {/* Header */}
-      <div class="px-2 py-1 border-b border-base-300/50 bg-base-100/80 backdrop-blur-sm">
-        <div class="flex items-center gap-2">
-          <div class="p-1 bg-gradient-to-br from-primary/20 to-secondary/20 rounded border border-primary/30">
-            <Sun class="w-3 h-3 text-primary" />
-          </div>
-          <div>
-            <h2 class="text-xs font-medium text-base-content">Lighting</h2>
-          </div>
-        </div>
-      </div>
-
       {/* Content */}
-      <div class="flex-1 overflow-y-auto p-1 space-y-1">
+      <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
         
         {/* Time Control */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().time}
-            onChange={() => toggleSection('time')}
-          />
-          <div class="collapse-title flex items-center justify-between font-medium">
-            <div class="flex items-center gap-2">
-              <Clock class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
+            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('time')}>
+              <Clock class="w-3 h-3" />
               Time Control
             </div>
-            <button
-              onClick={toggleTime}
-              class={`btn btn-xs ${timeStatusClass()}`}
-            >
-              {timeStatus()}
-            </button>
+            <input
+              type="checkbox"
+              checked={lighting().timeEnabled}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleTime();
+              }}
+              onClick={(e) => e.stopPropagation()}
+              class="toggle toggle-primary toggle-xs"
+            />
           </div>
-          <div class="collapse-content">
-            <div class="bg-base-200 rounded-lg p-1 text-center mb-1">
-              <div class="text-base font-mono">{currentTime()}</div>
-              <div class="text-xs text-base-content/60">Current Time</div>
+          <Show when={sectionsOpen().time}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+              
+              <div class="bg-base-200 rounded-lg p-1 text-center">
+                <div class="text-xs font-mono">{currentTime()}</div>
+                <div class="text-xs text-base-content/60">Current Time</div>
+              </div>
+              
+              <div class="space-y-1">
+                <SliderControl 
+                  label="Time of Day" 
+                  getValue={() => lighting().timeOfDay} 
+                  min={0} 
+                  max={24} 
+                  step={0.1} 
+                  onChange={setTimeOfDay}
+                  unit="h"
+                  resetKey="timeOfDay"
+                />
+                <SliderControl 
+                  label="Time Speed" 
+                  getValue={() => lighting().timeSpeed} 
+                  min={0} 
+                  max={5} 
+                  step={0.1} 
+                  onChange={setTimeSpeed}
+                  unit="x" 
+                  resetKey="timeSpeed"
+                />
+                <SliderControl 
+                  label="Update Every" 
+                  getValue={() => lighting().dayNightUpdateFrames || 60} 
+                  min={1} 
+                  max={60} 
+                  step={1} 
+                  onChange={(v) => setSetting('dayNightUpdateFrames', v)}
+                  unit=" frames" 
+                  resetKey="dayNightUpdateFrames"
+                />
+                <SliderControl 
+                  label="Sunrise Hour" 
+                  getValue={() => lighting().sunriseHour} 
+                  min={0} 
+                  max={12} 
+                  step={0.5} 
+                  onChange={(v) => setSetting('sunriseHour', v)}
+                  unit="h" 
+                  resetKey="sunriseHour"
+                />
+                <SliderControl 
+                  label="Sunset Hour" 
+                  getValue={() => lighting().sunsetHour} 
+                  min={12} 
+                  max={24} 
+                  step={0.5} 
+                  onChange={(v) => setSetting('sunsetHour', v)}
+                  unit="h" 
+                  resetKey="sunsetHour"
+                />
+              </div>
+              </div>
             </div>
-            
-            <div class="space-y-2">
-              <SliderControl 
-                label="Time of Day" 
-                getValue={() => lighting().timeOfDay} 
-                min={0} 
-                max={24} 
-                step={0.1} 
-                onChange={setTimeOfDay}
-                unit="h"
-                resetKey="timeOfDay"
-              />
-              <SliderControl 
-                label="Time Speed" 
-                getValue={() => lighting().timeSpeed} 
-                min={0} 
-                max={5} 
-                step={0.1} 
-                onChange={setTimeSpeed}
-                unit="x" 
-                resetKey="timeSpeed"
-              />
-              <SliderControl 
-                label="Sunrise Hour" 
-                getValue={() => lighting().sunriseHour} 
-                min={0} 
-                max={12} 
-                step={0.5} 
-                onChange={(v) => setSetting('sunriseHour', v)}
-                unit="h" 
-                resetKey="sunriseHour"
-              />
-              <SliderControl 
-                label="Sunset Hour" 
-                getValue={() => lighting().sunsetHour} 
-                min={12} 
-                max={24} 
-                step={0.5} 
-                onChange={(v) => setSetting('sunsetHour', v)}
-                unit="h" 
-                resetKey="sunsetHour"
-              />
-            </div>
-          </div>
+          </Show>
         </div>
         
         {/* Post Processing */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().postProcessing}
-            onChange={() => toggleSection('postProcessing')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Camera class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('postProcessing')}>
+            <Camera class="w-3 h-3" />
             Post Processing
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().postProcessing}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             <ToggleControl 
               label="Tone Mapping" 
               value={lighting().toneMappingEnabled} 
@@ -461,7 +465,7 @@ export default function LightingPanel() {
             
             {lighting().toneMappingEnabled && (
               <div>
-                <label class="block text-sm text-base-content/80 mb-1">Tone Mapping Type</label>
+                <label class="block text-xs text-base-content/80 mb-0.5">Tone Mapping Type</label>
                 <select 
                   value={lighting().toneMappingType}
                   onChange={(e) => setSetting('toneMappingType', e.target.value)}
@@ -546,22 +550,19 @@ export default function LightingPanel() {
               </>
             )}
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
         
         {/* Sky & Atmosphere */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().sky}
-            onChange={() => toggleSection('sky')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Palette class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('sky')}>
+            <Palette class="w-3 h-3" />
             Sky & Atmosphere
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().sky}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             <ColorControl 
               label="Night Sky Color" 
               value={lighting().nightSkyColor} 
@@ -621,22 +622,19 @@ export default function LightingPanel() {
               resetKey="environmentIntensity"
             />
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
         
         {/* Clouds */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().clouds}
-            onChange={() => toggleSection('clouds')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Cloud class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('clouds')}>
+            <Cloud class="w-3 h-3" />
             Clouds
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().clouds}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             <ToggleControl 
               label="Enable Clouds" 
               value={lighting().cloudsEnabled} 
@@ -662,22 +660,19 @@ export default function LightingPanel() {
               resetKey="cloudDensity"
             />
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
         
         {/* Fog */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().fog}
-            onChange={() => toggleSection('fog')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Eye class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('fog')}>
+            <Eye class="w-3 h-3" />
             Fog
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().fog}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             <ToggleControl 
               label="Enable Fog" 
               value={lighting().fogEnabled} 
@@ -720,25 +715,22 @@ export default function LightingPanel() {
               </>
             )}
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
 
-        {/* Lights */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().lights}
-            onChange={() => toggleSection('lights')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Sun class="w-4 h-4" />
+        {/* Light Sources */}
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('lights')}>
+            <Sun class="w-3 h-3" />
             Light Sources
           </div>
-          <div class="collapse-content">
-            <div class="space-y-3">
+          <Show when={sectionsOpen().lights}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             {/* Sun Light */}
-            <div class="bg-base-200/50 rounded-lg p-1">
-              <div class="text-xs font-medium mb-1">Sun Light</div>
+            <div class="bg-base-200/50 rounded-lg p-0.5">
+              <div class="text-xs font-medium mb-0.5">Sun Light</div>
               <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
@@ -759,8 +751,8 @@ export default function LightingPanel() {
             </div>
             
             {/* Sky Light */}
-            <div class="bg-base-200/50 rounded-lg p-1">
-              <div class="text-xs font-medium mb-1">Sky Light (Ambient)</div>
+            <div class="bg-base-200/50 rounded-lg p-0.5">
+              <div class="text-xs font-medium mb-0.5">Sky Light (Ambient)</div>
               <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
@@ -781,8 +773,8 @@ export default function LightingPanel() {
             </div>
             
             {/* Rim Light */}
-            <div class="bg-base-200/50 rounded-lg p-1">
-              <div class="text-xs font-medium mb-1">Rim Light (Atmospheric)</div>
+            <div class="bg-base-200/50 rounded-lg p-0.5">
+              <div class="text-xs font-medium mb-0.5">Rim Light (Atmospheric)</div>
               <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
@@ -803,8 +795,8 @@ export default function LightingPanel() {
             </div>
             
             {/* Bounce Light */}
-            <div class="bg-base-200/50 rounded-lg p-1">
-              <div class="text-xs font-medium mb-1">Bounce Light (Indirect)</div>
+            <div class="bg-base-200/50 rounded-lg p-0.5">
+              <div class="text-xs font-medium mb-0.5">Bounce Light (Indirect)</div>
               <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
@@ -825,8 +817,8 @@ export default function LightingPanel() {
             </div>
             
             {/* Moon Light */}
-            <div class="bg-base-200/50 rounded-lg p-1">
-              <div class="text-xs font-medium mb-1">Moon Light</div>
+            <div class="bg-base-200/50 rounded-lg p-0.5">
+              <div class="text-xs font-medium mb-0.5">Moon Light</div>
               <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
@@ -840,22 +832,19 @@ export default function LightingPanel() {
               </div>
             </div>
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
         
         {/* Shadows */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().shadows}
-            onChange={() => toggleSection('shadows')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Settings class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('shadows')}>
+            <Settings class="w-3 h-3" />
             Shadows
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().shadows}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             <ToggleControl 
               label="Cascade Shadows" 
               value={lighting().cascadeShadows} 
@@ -897,22 +886,19 @@ export default function LightingPanel() {
               resetKey="shadowMapSize"
             />
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
         
         {/* Particles */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().particles}
-            onChange={() => toggleSection('particles')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium">
-            <Lightbulb class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('particles')}>
+            <Lightbulb class="w-3 h-3" />
             Particles
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().particles}>
+            <div class="!p-2">
+            <div class="space-y-0.5">
             <ToggleControl 
               label="Snow" 
               value={lighting().snowEnabled} 
@@ -945,14 +931,15 @@ export default function LightingPanel() {
               resetKey="starIntensity"
             />
             </div>
-          </div>
+            </div>
+          </Show>
         </div>
         
         {/* Reset Button */}
-        <div class="bg-base-100 rounded-lg p-4 border border-base-300/50">
+        <div class="bg-base-100 rounded-lg p-1 border border-base-300/50">
           <button 
             onClick={() => renderActions.resetLightingSettings()}
-            class="btn btn-outline btn-error btn-sm w-full"
+            class="btn btn-outline btn-error btn-xs w-full"
           >
             Reset All Settings
           </button>

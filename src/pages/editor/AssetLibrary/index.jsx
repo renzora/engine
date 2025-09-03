@@ -73,7 +73,7 @@ function AssetLibrary({ onContextMenu }) {
 
   const ui = () => editorStore.ui;
   const assetCache = () => assetsStore;
-  const treePanelWidth = () => ui().assetsLibraryWidth && ui().assetsLibraryWidth > 150 ? ui().assetsLibraryWidth : 150;
+  const treePanelWidth = () => ui().assetsLibraryWidth && ui().assetsLibraryWidth > 100 ? ui().assetsLibraryWidth : 100;
   const { setAssetsLibraryWidth: setTreePanelWidth } = editorActions;
   const contextMenuActions = createContextMenuActions(editorActions);
   const { handleCreateObject } = contextMenuActions;
@@ -728,7 +728,7 @@ function AssetLibrary({ onContextMenu }) {
   const handleResizeMouseMove = (e) => {
     if (!isResizing()) return;
     const newWidth = e.clientX;
-    setTreePanelWidth(Math.max(150, Math.min(400, newWidth)));
+    setTreePanelWidth(Math.max(100, Math.min(400, newWidth)));
   };
 
   const handleResizeMouseUp = () => {

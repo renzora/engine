@@ -29,6 +29,11 @@ function Scene(props) {
     
     window.addEventListener('resize', handleWindowResize);
     onCleanup(() => window.removeEventListener('resize', handleWindowResize));
+    
+    // Select scene root by default on load
+    if (!selection.entity && props.onObjectSelect) {
+      props.onObjectSelect('scene-root');
+    }
   });
   
   const [droppedItemId, setDroppedItemId] = createSignal(null);

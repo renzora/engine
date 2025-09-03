@@ -68,8 +68,8 @@ function AssetGrid({
       }>
         <div 
           ref={assetGridRef}
-          class="grid gap-2.5 relative items-start"
-          style="grid-template-columns: repeat(auto-fill, minmax(120px, 1fr))"
+          class="grid gap-1.5 relative items-start"
+          style="grid-template-columns: repeat(auto-fill, minmax(100px, 1fr))"
         >
           <For each={filteredAssets()}>
             {(asset) => (

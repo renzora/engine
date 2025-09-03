@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { Settings } from '@/ui/icons';
+import { Box } from '@/ui/icons';
 import ObjectProperties from '@/pages/editor/objectProperties.jsx';
 
 export default createPlugin({
@@ -16,11 +16,11 @@ export default createPlugin({
   async onStart(api) {
     console.log('[ObjectPropertiesPlugin] Starting...');
     
-    api.tab('properties', {
+    api.tab('object-properties', {
       title: 'Properties',
       component: ObjectProperties,
-      icon: Settings,
-      order: 99
+      icon: Box,
+      order: 1
     });
     
     console.log('[ObjectPropertiesPlugin] Started');

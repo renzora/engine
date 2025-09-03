@@ -25,7 +25,7 @@ export default function EditorPage() {
       title: 'Settings',
       component: SettingsComponent,
       icon: SettingsIcon,
-      order: 20
+      order: 999
     });
 
 

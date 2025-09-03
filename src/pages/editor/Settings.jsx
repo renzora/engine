@@ -1,5 +1,4 @@
 import { createSignal, onMount, Show } from 'solid-js';
-import { CollapsibleSection } from '@/ui';
 import { Select } from '@/ui';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
@@ -62,13 +61,35 @@ function Settings() {
     checkWebGPUSupport();
   });
 
+  // Section collapse state
+  const [sectionsOpen, setSectionsOpen] = createSignal({
+    viewport: true,
+    interface: false,
+    editor: false,
+    world: false,
+    performance: false
+  });
+  
+  const toggleSection = (section) => {
+    setSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
   return (
-    <div class="flex-1 overflow-y-auto scrollbar-thin">
+    <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
       <div>
-        <CollapsibleSection title="Viewport" defaultOpen={true} index={1}>
-          <div class="space-y-4 p-4">
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Rendering Engine</label>
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('viewport')}>
+            <span>📺</span>
+            Viewport
+          </div>
+          <Show when={sectionsOpen().viewport}>
+            <div class="!p-2">
+              <div class="space-y-1">
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-base-content/80">Rendering Engine</label>
               <Select
                 value={viewportSettings.renderingEngine || 'webgl'}
                 onChange={(e) => {
@@ -92,8 +113,8 @@ function Settings() {
               </Show>
             </div>
 
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Background Color</label>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-base-content/80">Background Color</label>
               <div class="flex items-center gap-2">
                 <input 
                   type="color" 
@@ -110,8 +131,8 @@ function Settings() {
               </div>
             </div>
 
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Quick Presets</label>
+            <div class="space-y-1">
+              <label class="text-xs font-medium text-base-content/80">Quick Presets</label>
               <div class="grid grid-cols-4 gap-2">
                 <button
                   onClick={() => updateViewportSettings({ backgroundColor: 'theme' })}
@@ -140,149 +161,183 @@ function Settings() {
                 />
               </div>
             </div>
-          </div>
-        </CollapsibleSection>
+              </div>
+            </div>
+          </Show>
+        </div>
 
-        <CollapsibleSection title="Interface" defaultOpen={false} index={2}>
-          <div class="space-y-4 p-4">
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Theme</label>
-              <ThemeSwitcher />
-              <div class="text-xs text-base-content/60 mt-1">
-                Choose your preferred visual theme for the editor interface
-              </div>
-            </div>
-            
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Panel Position</label>
-              <Select
-                value={settings.editor.panelPosition || 'right'}
-                onChange={(e) => {
-                  const newPosition = e.target.value;
-                  editorActions.updateEditorSettings({ panelPosition: newPosition });
-                  editorActions.addConsoleMessage(`Panel moved to ${newPosition} side`, 'info');
-                }}
-                options={[
-                  { value: 'right', label: 'Right Side' },
-                  { value: 'left', label: 'Left Side' }
-                ]}
-                size="sm"
-              />
-              <div class="text-xs text-base-content/60 mt-1">
-                Choose which side of the screen to display the properties panel
-              </div>
-            </div>
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('interface')}>
+            <span>🎨</span>
+            Interface
           </div>
-        </CollapsibleSection>
-        
-        <CollapsibleSection title="Editor" defaultOpen={false} index={3}>
-          <div class="space-y-4 p-4">
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide flex items-center justify-between">
-                Script Reload Delay
-                <span class="badge badge-primary badge-outline font-mono text-xs">
-                  {settings.editor.scriptReloadDebounceMs || 500}ms
-                </span>
-              </label>
-              <div class="flex items-center gap-3">
-                <input
-                  type="range"
-                  min={100}
-                  max={3000}
-                  step={50}
-                  value={settings.editor.scriptReloadDebounceMs || 500}
-                  onChange={(e) => {
-                    const newDelay = parseInt(e.target.value);
-                    editorActions.updateEditorSettings({ scriptReloadDebounceMs: newDelay });
-                  }}
-                  onMouseUp={(e) => {
-                    const newDelay = parseInt(e.target.value);
-                    editorActions.addConsoleMessage(`Script reload delay set to ${newDelay}ms`, 'info');
-                  }}
-                  class="range range-primary range-sm flex-1"
-                />
-              </div>
-              <div class="flex justify-between text-xs text-base-content/60">
-                <span>100ms (Fast)</span>
-                <span>3000ms (Slow)</span>
-              </div>
-              <div class="text-xs text-base-content/60 mt-1">
-                How long to wait after you stop typing before reloading scripts
+          <Show when={sectionsOpen().interface}>
+            <div class="!p-2">
+              <div class="space-y-1">
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-base-content/80">Theme</label>
+                  <ThemeSwitcher />
+                  <div class="text-xs text-base-content/60">
+                    Choose your preferred visual theme for the editor interface
+                  </div>
+                </div>
+                
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-base-content/80">Panel Position</label>
+                  <Select
+                    value={settings.editor.panelPosition || 'right'}
+                    onChange={(e) => {
+                      const newPosition = e.target.value;
+                      editorActions.updateEditorSettings({ panelPosition: newPosition });
+                      editorActions.addConsoleMessage(`Panel moved to ${newPosition} side`, 'info');
+                    }}
+                    options={[
+                      { value: 'right', label: 'Right Side' },
+                      { value: 'left', label: 'Left Side' }
+                    ]}
+                    size="sm"
+                  />
+                  <div class="text-xs text-base-content/60">
+                    Choose which side of the screen to display the properties panel
+                  </div>
+                </div>
               </div>
             </div>
+          </Show>
+        </div>
+        
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('editor')}>
+            <span>⚙️</span>
+            Editor
           </div>
-        </CollapsibleSection>
-        
-        <CollapsibleSection title="World" defaultOpen={false} index={4}>
-          <div class="space-y-4 p-4">
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content/80 uppercase tracking-wide">Unit Measurement</label>
-              <Select
-                value={settings.grid.unit || 'centimeters'}
-                onChange={(e) => {
-                  const newUnit = e.target.value;
-                  editorActions.updateGridSettings({ unit: newUnit });
-                  editorActions.addConsoleMessage(`Changed unit measurement to ${newUnit}`, 'info');
-                }}
-                options={[
-                  { value: 'centimeters', label: 'Centimeters (cm)' },
-                  { value: 'meters', label: 'Meters (m)' },
-                  { value: 'inches', label: 'Inches (in)' },
-                  { value: 'feet', label: 'Feet (ft)' }
-                ]}
-                size="sm"
-              />
-              <div class="text-xs text-base-content/60 mt-1">
-                Choose the unit of measurement for position and size values
+          <Show when={sectionsOpen().editor}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-base-content/80 flex items-center justify-between">
+                    Script Reload Delay
+                    <span class="badge badge-primary badge-outline font-mono text-xs">
+                      {settings.editor.scriptReloadDebounceMs || 500}ms
+                    </span>
+                  </label>
+                  <div class="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={100}
+                      max={3000}
+                      step={50}
+                      value={settings.editor.scriptReloadDebounceMs || 500}
+                      onChange={(e) => {
+                        const newDelay = parseInt(e.target.value);
+                        editorActions.updateEditorSettings({ scriptReloadDebounceMs: newDelay });
+                      }}
+                      onMouseUp={(e) => {
+                        const newDelay = parseInt(e.target.value);
+                        editorActions.addConsoleMessage(`Script reload delay set to ${newDelay}ms`, 'info');
+                      }}
+                      class="range range-primary range-sm flex-1"
+                    />
+                  </div>
+                  <div class="flex justify-between text-xs text-base-content/60">
+                    <span>100ms (Fast)</span>
+                    <span>3000ms (Slow)</span>
+                  </div>
+                  <div class="text-xs text-base-content/60">
+                    How long to wait after you stop typing before reloading scripts
+                  </div>
+                </div>
               </div>
             </div>
+          </Show>
+        </div>
+        
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('world')}>
+            <span>🌍</span>
+            World
           </div>
-        </CollapsibleSection>
-        
-        <CollapsibleSection title="Performance" defaultOpen={false} index={5}>
-          <div class="space-y-4 p-4">
-            <div class="flex items-center justify-between p-3 bg-base-200/40 rounded-lg border border-base-300/50">
-              <div>
-                <label class="text-xs font-medium text-base-content/80">Performance Stats</label>
-                <p class="text-xs text-base-content/60 mt-0.5">Show FPS, memory usage, and render statistics</p>
+          <Show when={sectionsOpen().world}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="space-y-1">
+                  <label class="text-xs font-medium text-base-content/80">Unit Measurement</label>
+                  <Select
+                    value={settings.grid.unit || 'centimeters'}
+                    onChange={(e) => {
+                      const newUnit = e.target.value;
+                      editorActions.updateGridSettings({ unit: newUnit });
+                      editorActions.addConsoleMessage(`Changed unit measurement to ${newUnit}`, 'info');
+                    }}
+                    options={[
+                      { value: 'centimeters', label: 'Centimeters (cm)' },
+                      { value: 'meters', label: 'Meters (m)' },
+                      { value: 'inches', label: 'Inches (in)' },
+                      { value: 'feet', label: 'Feet (ft)' }
+                    ]}
+                    size="sm"
+                  />
+                  <div class="text-xs text-base-content/60">
+                    Choose the unit of measurement for position and size values
+                  </div>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  const newValue = !settings.editor.showStats;
-                  console.log('Settings: Stats toggle clicked, newValue:', newValue);
-                  
-                  editorActions.updateEditorSettings({ showStats: newValue });
-                  
-                  editorActions.addConsoleMessage(`Performance stats ${newValue ? 'enabled' : 'disabled'}`, 'success');
-                }}
-                class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.showStats ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-base-content/40'}`}
-              >
-                <span
-                  class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.showStats ? 'translate-x-6' : 'translate-x-1'}`}
-                />
-              </button>
             </div>
+          </Show>
+        </div>
+        
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('performance')}>
+            <span>⚡</span>
+            Performance
+          </div>
+          <Show when={sectionsOpen().performance}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="flex items-center justify-between p-2 bg-base-200/40 rounded-lg border border-base-300/50">
+                  <div>
+                    <label class="text-xs font-medium text-base-content/80">Performance Stats</label>
+                    <p class="text-xs text-base-content/60 mt-0.5">Show FPS, memory usage, and render statistics</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newValue = !settings.editor.showStats;
+                      console.log('Settings: Stats toggle clicked, newValue:', newValue);
+                      
+                      editorActions.updateEditorSettings({ showStats: newValue });
+                      
+                      editorActions.addConsoleMessage(`Performance stats ${newValue ? 'enabled' : 'disabled'}`, 'success');
+                    }}
+                    class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.showStats ? 'bg-primary shadow-lg shadow-primary/30' : 'bg-base-content/40'}`}
+                  >
+                    <span
+                      class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.showStats ? 'translate-x-6' : 'translate-x-1'}`}
+                    />
+                  </button>
+                </div>
 
-            <div class="flex items-center justify-between p-3 bg-base-200/40 rounded-lg border border-base-300/50">
-              <div>
-                <label class="text-xs font-medium text-base-content/80">Pause Rendering</label>
-                <p class="text-xs text-base-content/60 mt-0.5">Stop the render loop to debug performance issues</p>
+                <div class="flex items-center justify-between p-2 bg-base-200/40 rounded-lg border border-base-300/50">
+                  <div>
+                    <label class="text-xs font-medium text-base-content/80">Pause Rendering</label>
+                    <p class="text-xs text-base-content/60 mt-0.5">Stop the render loop to debug performance issues</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newValue = !settings.editor.renderPaused;
+                      editorActions.updateEditorSettings({ renderPaused: newValue });
+                      editorActions.addConsoleMessage(`Rendering ${newValue ? 'paused' : 'resumed'}`, 'info');
+                    }}
+                    class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.renderPaused ? 'bg-error shadow-lg shadow-error/30' : 'bg-base-content/40'}`}
+                  >
+                    <span
+                      class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.renderPaused ? 'translate-x-6' : 'translate-x-1'}`}
+                    />
+                  </button>
+                </div>
               </div>
-              <button
-                onClick={() => {
-                  const newValue = !settings.editor.renderPaused;
-                  editorActions.updateEditorSettings({ renderPaused: newValue });
-                  editorActions.addConsoleMessage(`Rendering ${newValue ? 'paused' : 'resumed'}`, 'info');
-                }}
-                class={`relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-200 ${settings.editor.renderPaused ? 'bg-error shadow-lg shadow-error/30' : 'bg-base-content/40'}`}
-              >
-                <span
-                  class={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-200 shadow-sm ${settings.editor.renderPaused ? 'translate-x-6' : 'translate-x-1'}`}
-                />
-              </button>
             </div>
-          </div>
-        </CollapsibleSection>
+          </Show>
+        </div>
       </div>
     </div>
   );

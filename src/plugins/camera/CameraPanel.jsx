@@ -1,4 +1,4 @@
-import { createSignal, createEffect } from 'solid-js';
+import { createSignal, createEffect, Show } from 'solid-js';
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { Camera, Move, Eye, Palette, Sun, Cube, Grid3x3 } from '@/ui/icons';
 
@@ -229,21 +229,17 @@ export default function CameraPanel() {
       </div>
 
       {/* Content */}
-      <div class="flex-1 overflow-y-auto p-1 space-y-1">
+      <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
         
         {/* Camera Controls */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().camera}
-            onChange={() => toggleSection('camera')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium text-xs">
-            <Camera class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('camera')}>
+            <Camera class="w-3 h-3" />
             Camera Controls
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
+          <Show when={sectionsOpen().camera}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
               {/* Camera Type */}
               <div>
                 <label class="block text-xs font-medium text-base-content/80 mb-1">Camera Type</label>
@@ -321,90 +317,85 @@ export default function CameraPanel() {
                 unit="°"
                 resetKey="fov"
               />
+              </div>
             </div>
-          </div>
+          </Show>
         </div>
         
         {/* Render Mode */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().render}
-            onChange={() => toggleSection('render')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium text-xs">
-            <Palette class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('render')}>
+            <Palette class="w-3 h-3" />
             Render Mode
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
-              <div class="grid grid-cols-2 gap-1">
-                {renderModes.map((mode) => (
-                  <button
-                    onClick={() => setRenderMode(mode.id)}
-                    class={`btn btn-xs flex items-center gap-1 justify-start ${
-                      renderMode() === mode.id ? 'btn-primary' : 'btn-ghost'
-                    }`}
-                    title={mode.label}
-                  >
-                    <mode.icon class="w-3 h-3" />
-                    <span class="text-xs">{mode.label}</span>
-                  </button>
-                ))}
+          <Show when={sectionsOpen().render}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="grid grid-cols-2 gap-1">
+                  {renderModes.map((mode) => (
+                    <button
+                      onClick={() => setRenderMode(mode.id)}
+                      class={`btn btn-xs flex items-center gap-1 justify-start ${
+                        renderMode() === mode.id ? 'btn-primary' : 'btn-ghost'
+                      }`}
+                      title={mode.label}
+                    >
+                      <mode.icon class="w-3 h-3" />
+                      <span class="text-xs">{mode.label}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          </Show>
         </div>
         
         {/* Visual Effects */}
-        <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
-          <input 
-            type="checkbox" 
-            checked={sectionsOpen().effects}
-            onChange={() => toggleSection('effects')}
-          />
-          <div class="collapse-title flex items-center gap-2 font-medium text-xs">
-            <Eye class="w-4 h-4" />
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('effects')}>
+            <Eye class="w-3 h-3" />
             Visual Effects
           </div>
-          <div class="collapse-content">
-            <div class="space-y-2">
-              <ToggleControl 
-                label="Vignette" 
-                value={vignetteEnabled()} 
-                onChange={(v) => setVignetteEnabled(v)}
-                resetKey="vignetteEnabled"
-              />
-              
-              {vignetteEnabled() && (
-                <div class="space-y-2">
-                  <SliderControl 
-                    label="Vignette Amount" 
-                    getValue={() => vignetteAmount()} 
-                    min={0} 
-                    max={1} 
-                    step={0.01} 
-                    onChange={(v) => setVignetteAmount(v)}
-                    resetKey="vignetteAmount"
-                  />
-                  
-                  <ColorControl 
-                    label="Vignette Color" 
-                    value={vignetteColor()} 
-                    onChange={(v) => setVignetteColor(v)}
-                    resetKey="vignetteColor"
-                  />
-                </div>
-              )}
-              
-              <ColorControl 
-                label="Night Color Tint" 
-                value={nightColor()} 
-                onChange={(v) => setNightColor(v)}
-                resetKey="nightColor"
-              />
+          <Show when={sectionsOpen().effects}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <ToggleControl 
+                  label="Vignette" 
+                  value={vignetteEnabled()} 
+                  onChange={(v) => setVignetteEnabled(v)}
+                  resetKey="vignetteEnabled"
+                />
+                
+                {vignetteEnabled() && (
+                  <div class="space-y-0.5">
+                    <SliderControl 
+                      label="Vignette Amount" 
+                      getValue={() => vignetteAmount()} 
+                      min={0} 
+                      max={1} 
+                      step={0.01} 
+                      onChange={(v) => setVignetteAmount(v)}
+                      resetKey="vignetteAmount"
+                    />
+                    
+                    <ColorControl 
+                      label="Vignette Color" 
+                      value={vignetteColor()} 
+                      onChange={(v) => setVignetteColor(v)}
+                      resetKey="vignetteColor"
+                    />
+                  </div>
+                )}
+                
+                <ColorControl 
+                  label="Night Color Tint" 
+                  value={nightColor()} 
+                  onChange={(v) => setNightColor(v)}
+                  resetKey="nightColor"
+                />
+              </div>
             </div>
-          </div>
+          </Show>
         </div>
       </div>
     </div>

@@ -7,6 +7,7 @@ import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
 import { Show, createMemo, createSignal } from 'solid-js';
 import { renderStore } from '@/render/store.jsx';
+import { Box } from '@/ui/icons';
 
 const RightPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
@@ -37,7 +38,7 @@ const RightPanel = () => {
   const [isResizingRight, setIsResizingRight] = createSignal(false);
   const [rightDragOffset, setRightDragOffset] = createSignal(0);
   const [isResizingTabs, setIsResizingTabs] = createSignal(false);
-  const [tabContainerHeight, setTabContainerHeight] = createSignal(320);
+  const [tabContainerHeight, setTabContainerHeight] = createSignal(480);
   
   const handleRightResizeStart = (e) => {
     setIsResizingRight(true);
@@ -186,8 +187,9 @@ const RightPanel = () => {
       
       default:
         return (
-          <div class="p-4 text-center text-base-content/60">
-            <p>No properties panel available</p>
+          <div class="h-full flex flex-col items-center justify-center text-center text-base-content/60 p-4">
+            <Box class="w-8 h-8 mb-2 opacity-40" />
+            <p class="text-xs">No properties panel available</p>
           </div>
         );
     }
@@ -295,7 +297,7 @@ const RightPanel = () => {
                       </div>
                       
                       {/* Tab content */}
-                      <div className="flex-1 min-w-0 bg-base-200">
+                      <div className="flex-1 min-w-0 bg-base-200 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) rgba(0,0,0,0.1);">
                         {renderTabContent()}
                       </div>
                     </div>

@@ -1,5 +1,5 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match, createComponent } from 'solid-js';
-import { CodeSlash, X, Reset } from '@/ui/icons';
+import { CodeSlash, X, Reset, Settings, Move } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
 import { renderStore } from '@/render/store';
@@ -27,6 +27,19 @@ function ObjectProperties() {
   const [scriptPropertiesSignal, setScriptPropertiesSignal] = createSignal({});
   const [scriptMetadataVersion, setScriptMetadataVersion] = createSignal(0);
   let previousScriptSections = {};
+
+  // Section collapse state
+  const [sectionsOpen, setSectionsOpen] = createSignal({
+    scripts: true,
+    transform: true
+  });
+  
+  const toggleSection = (section) => {
+    setSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
 
   // Simple cache to avoid repeated API calls
   let scriptCache = null;
@@ -929,122 +942,212 @@ function ObjectProperties() {
   //console.log('🎨 Script properties signal:', Object.keys(scriptPropertiesSignal()));
   
   return (
-    <div className="flex flex-col h-full" data-object-properties>
-      {/* Header with object name and reset button */}
-      <Show when={selection.entity}>
-        <div className="flex items-center justify-between p-1.5 border-b border-base-content/10 bg-base-200/50">
-          <div className="text-sm font-medium text-base-content/80 hover:text-base-content/50 transition-colors duration-150">
-            {getSelectedBabylonObject()?.name || 'Unknown Object'} Properties
-          </div>
-          <button
-            onMouseDown={() => {}}
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              //console.log('🔄 Main reset button clicked');
-              resetToDefaults();
-            }}
-            className="p-1 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:scale-95 pointer-events-auto"
-            title="Reset to defaults"
-          >
-            <Reset className="w-4 h-4" />
-          </button>
-        </div>
-      </Show>
-      
-      {/* Scrollable content */}
-      <div className="overflow-y-auto flex-1" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) rgba(0,0,0,0.1);"
-        onWheel={(e) => e.stopPropagation()}>
+    <div class="h-full flex flex-col bg-base-200">
+      {/* Content */}
+      <div class="flex-1 p-0.5 space-y-0.5">
         {(() => {
-        let objectProps = objectPropertiesStore.objects[selection.entity];
-        
-        if (!objectProps && selection.entity) {
-          objectPropertiesActions.ensureDefaultComponents(selection.entity);
-          objectProps = objectPropertiesStore.objects[selection.entity];
-        }
-        
-        if (!objectProps) {
+          let objectProps = objectPropertiesStore.objects[selection.entity];
+          
+          if (!objectProps && selection.entity) {
+            objectPropertiesActions.ensureDefaultComponents(selection.entity);
+            objectProps = objectPropertiesStore.objects[selection.entity];
+          }
+          
+          if (!objectProps) {
+            return (
+              <div class="p-4 text-center">
+                <div class="text-base-content/50 text-xs mb-1">
+                  No object selected
+                </div>
+                <div class="text-base-content/40 text-xs">
+                  Select an object to view its properties
+                </div>
+              </div>
+            );
+          }
+          
           return (
-            <div className="p-2 text-base-content/50 text-sm">
-              No object selected.
-            </div>
-          );
-        }
-        
-        return (
-          <div className="space-y-2 m-2">
-            <CollapsibleSection title="Scripts" defaultOpen={true} index={0}>
-              <div className="px-2 pb-2">
-                {/* Script Search Box */}
-                <div className="relative">
+            <>
+              {/* Scripts */}
+              <div class="bg-base-100 border-base-300 border rounded-lg">
+                <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
+                  <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('scripts')}>
+                    <CodeSlash class="w-3 h-3" />
+                    Scripts
+                  </div>
                   <input
-                    type="text"
-                    placeholder="Search scripts..."
-                    value={scriptSearchTerm()}
-                    onInput={(e) => {
-                      setScriptSearchTerm(e.target.value);
-                      if (e.target.value.length > 0) {
-                        setShowSearchResults(true);
-                      }
+                    type="checkbox"
+                    checked={sectionsOpen().scripts}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      toggleSection('scripts');
                     }}
-                    onFocus={() => {
-                      keyboardShortcuts.disable();
-                      if (scriptSearchTerm().length > 0 && searchResults().length > 0) {
-                        setShowSearchResults(true);
-                      }
-                    }}
-                    onBlur={() => {
-                      keyboardShortcuts.enable();
-                      // Delay hiding to allow clicking on dropdown items
-                      setTimeout(() => setShowSearchResults(false), 150);
-                    }}
-                    className="w-full text-sm rounded bg-neutral/40 border-0 focus:outline-none focus:ring-0 p-1"
+                    onClick={(e) => e.stopPropagation()}
+                    class="toggle toggle-primary toggle-xs"
                   />
-                  
-                  {/* Available Scripts Dropdown */}
-                  <Show when={showSearchResults() && scriptSearchTerm() && searchResults().length > 0}>
-                    <div className="absolute top-full left-0 right-0 z-50 max-h-32 overflow-y-auto bg-base-100 border border-base-300 rounded shadow-lg">
-                      <For each={searchResults()}>
-                        {(script) => (
-                          <div 
-                            className="p-2 hover:bg-base-200 cursor-pointer border-b border-base-300/50 last:border-b-0"
-                            onClick={async () => {
-                              if (!selection.entity) return;
-                              
-                              //console.log('🔧 Adding script from search:', script.path, 'to', selection.entity);
+                </div>
+                <Show when={sectionsOpen().scripts}>
+                  <div class="!p-2">
+                  <div class="space-y-0.5">
+                    {/* Script Search Box */}
+                    <div class="relative">
+                      <input
+                        type="text"
+                        placeholder="Search scripts..."
+                        value={scriptSearchTerm()}
+                        onInput={(e) => {
+                          setScriptSearchTerm(e.target.value);
+                          if (e.target.value.length > 0) {
+                            setShowSearchResults(true);
+                          }
+                        }}
+                        onFocus={() => {
+                          keyboardShortcuts.disable();
+                          if (scriptSearchTerm().length > 0 && searchResults().length > 0) {
+                            setShowSearchResults(true);
+                          }
+                        }}
+                        onBlur={() => {
+                          keyboardShortcuts.enable();
+                          setTimeout(() => setShowSearchResults(false), 150);
+                        }}
+                        class="w-full text-sm rounded bg-neutral/40 border-0 focus:outline-none focus:ring-0 p-1"
+                      />
+                      
+                      {/* Available Scripts Dropdown */}
+                      <Show when={showSearchResults() && scriptSearchTerm() && searchResults().length > 0}>
+                        <div class="absolute top-full left-0 right-0 z-50 max-h-32 overflow-y-auto bg-base-100 border border-base-300 rounded shadow-lg">
+                          <For each={searchResults()}>
+                            {(script) => (
+                              <div 
+                                class="p-2 hover:bg-base-200 cursor-pointer border-b border-base-300/50 last:border-b-0"
+                                onClick={async () => {
+                                  if (!selection.entity) return;
+                                  
+                                  const currentScripts = objectProps.scripts || [];
+                                  if (!currentScripts.find(s => s.path === script.path)) {
+                                    const runtime = getScriptRuntime();
+                                    const success = await runtime.attachScript(selection.entity, script.path);
+                                    
+                                    if (success) {
+                                      const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
+                                      const babylonObject = getSelectedBabylonObject();
+                                      
+                                      if (scriptInstance && babylonObject) {
+                                        addScriptDefaults(babylonObject, scriptInstance);
+                                      }
+                                      
+                                      const metadata = scriptInstance?._scriptProperties || [];
+                                      const defaultValues = {};
+                                      
+                                      if (Array.isArray(metadata)) {
+                                        metadata.forEach(prop => {
+                                          defaultValues[prop.name] = prop.defaultValue;
+                                        });
+                                      }
+                                      
+                                      const newScripts = [...currentScripts, { 
+                                        path: script.path, 
+                                        name: script.name + '.ren',
+                                        enabled: true,
+                                        metadata: metadata,
+                                        defaultValues: defaultValues,
+                                        properties: defaultValues
+                                      }];
+                                      updateObjectProperty(selection.entity, 'scripts', newScripts);
+                                      
+                                      if (babylonObject?.metadata?.scriptProperties) {
+                                        setScriptPropertiesSignal({ ...babylonObject.metadata.scriptProperties });
+                                      }
+                                      
+                                      editorActions.addConsoleMessage(`Script "${script.name}" attached and started`, 'success');
+                                      setScriptSearchTerm('');
+                                      setShowSearchResults(false);
+                                    } else {
+                                      editorActions.addConsoleMessage(`Cannot attach "${script.name}" - check console for details`, 'error');
+                                    }
+                                  } else {
+                                    editorActions.addConsoleMessage(`Script "${script.name}" already attached`, 'warning');
+                                  }
+                                }}
+                              >
+                                <div class="flex items-center gap-2">
+                                  <CodeSlash class="w-4 h-4 text-secondary" />
+                                  <div class="flex flex-col">
+                                    <span class="text-sm font-medium">{script.name}</span>
+                                    <span class="text-xs text-base-content/50">{script.full_path || script.directory}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </For>
+                        </div>
+                      </Show>
+                    </div>
+                    
+                    {/* Drop Zone */}
+                    <div 
+                      data-drop-zone="scripts"
+                      class={`min-h-[60px] text-center border-2 border-dashed border-base-300 rounded-lg ${isDragOverScript() ? 'animate-pulse brightness-110' : ''}`}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        const types = Array.from(e.dataTransfer.types);
+                        if (types.includes('text/plain')) {
+                          e.currentTarget.classList.add('bg-success/20');
+                          e.currentTarget.classList.remove('bg-error/20');
+                          setIsDragOverScript(true);
+                        } else {
+                          e.currentTarget.classList.add('bg-error/20');
+                          e.currentTarget.classList.remove('bg-success/20');
+                          setIsDragOverScript(true);
+                        }
+                      }}
+                      onDragLeave={(e) => {
+                        e.currentTarget.classList.remove('bg-success/20', 'bg-error/20');
+                        setIsDragOverScript(false);
+                      }}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        e.currentTarget.classList.remove('bg-success/20', 'bg-error/20');
+                        setIsDragOverScript(false);
+                        
+                        const droppedData = e.dataTransfer.getData('text/plain');
+                        try {
+                          const data = JSON.parse(droppedData);
+                          if (data.type === 'asset' && data.fileType === 'script') {
+                            const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.ren'];
+                            const fileExt = data.name.substring(data.name.lastIndexOf('.')).toLowerCase();
+                            
+                            if (validExtensions.includes(fileExt)) {
+                              if (!objectProps.scripts) {
+                                objectPropertiesActions.addPropertySection(selection.entity, 'scripts', []);
+                              }
                               
                               const currentScripts = objectProps.scripts || [];
-                              if (!currentScripts.find(s => s.path === script.path)) {
-                                // Use script runtime to attach and start the script
+                              if (!currentScripts.find(s => s.path === data.path)) {
                                 const runtime = getScriptRuntime();
-                                const success = await runtime.attachScript(selection.entity, script.path);
+                                const success = await runtime.attachScript(selection.entity, data.path);
                                 
                                 if (success) {
-                                  // Get script instance and add its defaults to Babylon metadata
-                                  const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
+                                  const scriptInstance = runtime.getScriptInstance(selection.entity, data.path);
                                   const babylonObject = getSelectedBabylonObject();
                                   
                                   if (scriptInstance && babylonObject) {
-                                    // Add script defaults to originalProperties in Babylon metadata
                                     addScriptDefaults(babylonObject, scriptInstance);
                                   }
                                   
                                   const metadata = scriptInstance?._scriptProperties || [];
                                   const defaultValues = {};
                                   
-                                  //console.log('📝 Script metadata:', metadata);
-                                  
-                                  // Extract default values from metadata (for UI compatibility)
                                   if (Array.isArray(metadata)) {
                                     metadata.forEach(prop => {
                                       defaultValues[prop.name] = prop.defaultValue;
-                                      //console.log(`📝 Storing default: ${prop.name} = ${prop.defaultValue}`);
                                     });
                                   }
                                   
                                   const newScripts = [...currentScripts, { 
-                                    path: script.path, 
-                                    name: script.name + '.ren', // Add .ren extension back for display
+                                    path: data.path, 
+                                    name: data.name,
                                     enabled: true,
                                     metadata: metadata,
                                     defaultValues: defaultValues,
@@ -1052,365 +1155,140 @@ function ObjectProperties() {
                                   }];
                                   updateObjectProperty(selection.entity, 'scripts', newScripts);
                                   
-                                  // Force immediate script properties signal update
                                   if (babylonObject?.metadata?.scriptProperties) {
                                     setScriptPropertiesSignal({ ...babylonObject.metadata.scriptProperties });
-                                    //console.log('🔄 Forced script properties signal update after attachment');
                                   }
                                   
-                                  editorActions.addConsoleMessage(`Script "${script.name}" attached and started`, 'success');
-                                  setScriptSearchTerm(''); // Clear search
-                                  setShowSearchResults(false); // Hide dropdown
+                                  editorActions.addConsoleMessage(`Script "${data.name}" attached and started`, 'success');
                                 } else {
-                                  editorActions.addConsoleMessage(`Cannot attach "${script.name}" - check console for details`, 'error');
+                                  editorActions.addConsoleMessage(`Cannot attach "${data.name}" - check console for details`, 'error');
                                 }
-                              } else {
-                                editorActions.addConsoleMessage(`Script "${script.name}" already attached`, 'warning');
                               }
-                            }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <CodeSlash className="w-4 h-4 text-secondary" />
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium">{script.name}</span>
-                                <span className="text-xs text-base-content/50">{script.full_path || script.directory}</span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </For>
+                            }
+                          }
+                        } catch (err) {
+                          console.warn('Invalid drop data:', droppedData);
+                        }
+                      }}
+                    >
+                      <div class="flex flex-col items-center gap-2 p-4">
+                        <CodeSlash class="w-5 h-5 text-base-content/40" />
+                        <div class="text-base-content/60 text-sm">drop scripts here</div>
+                        <div class="text-xs text-base-content/40">.ren, .js, .jsx, .ts, .tsx</div>
+                      </div>
+                    </div>
+                  </div>
+                  </div>
+                </Show>
+              </div>
+
+              {/* Transform */}
+              <Show when={positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0}>
+                <div class="bg-base-100 border-base-300 border rounded-lg">
+                  <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
+                    <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('transform')}>
+                      <Move class="w-3 h-3" />
+                      Transform
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={sectionsOpen().transform}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleSection('transform');
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      class="toggle toggle-primary toggle-xs"
+                    />
+                  </div>
+                  <Show when={sectionsOpen().transform}>
+                    <div class="!p-2">
+                      <div class="space-y-0.5">
+                        <Show when={positionSignal().length > 0}>
+                          {renderVector3Input('Position', 'transform.position')}
+                        </Show>
+                        <Show when={rotationSignal().length > 0}>
+                          {renderVector3Input('Rotation', 'transform.rotation')}
+                        </Show>
+                        <Show when={scaleSignal().length > 0}>
+                          {renderVector3Input('Scale', 'transform.scale')}
+                        </Show>
+                      </div>
                     </div>
                   </Show>
                 </div>
-                
-                {/* Attached Scripts List - Outside the drop zone */}
-                <Show when={objectProps.scripts && objectProps.scripts.length > 0}>
-                  <div>
-                    <For each={objectProps.scripts}>
-                      {(script, index) => (
-                        <div className="flex items-center justify-between bg-base-200 border border-base-300 px-2 py-1.5 shadow-sm">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <input
-                              id={`script-enable-${index()}-${selection.entity || 'unknown'}`}
-                              type="checkbox"
-                              checked={script.enabled !== false}
-                              onChange={async (e) => {
-                                const runtime = getScriptRuntime();
-                                const entityId = selection.entity;
-                                
-                                if (e.target.checked) {
-                                  // Enable script - attach it to runtime
-                                  const success = await runtime.attachScript(entityId, script.path);
-                                  if (success) {
-                                    // Update the enabled state in the UI
-                                    const updatedScripts = objectProps.scripts.map((s, i) => 
-                                      i === index() ? { ...s, enabled: true } : s
-                                    );
-                                    updateObjectProperty(entityId, 'scripts', updatedScripts);
-                                    editorActions.addConsoleMessage(`Enabled script "${script.name}"`, 'success');
-                                  } else {
-                                    editorActions.addConsoleMessage(`Cannot enable "${script.name}" - check console for details`, 'error');
-                                  }
-                                } else {
-                                  // Disable script - detach from runtime
-                                  runtime.detachScript(entityId, script.path);
-                                  // Update the enabled state in the UI
-                                  const updatedScripts = objectProps.scripts.map((s, i) => 
-                                    i === index() ? { ...s, enabled: false } : s
-                                  );
-                                  updateObjectProperty(entityId, 'scripts', updatedScripts);
-                                  editorActions.addConsoleMessage(`Disabled script "${script.name}"`, 'info');
-                                }
-                              }}
-                              className="toggle toggle-xs toggle-success flex-shrink-0"
-                              title={script.enabled !== false ? "Disable script" : "Enable script"}
-                            />
-                            <div className="flex flex-col min-w-0 flex-1">
-                              <span className={`text-sm font-medium truncate ${
-                                script.enabled !== false ? 'text-base-content' : 'text-base-content/40'
-                              }`} title={script.name}>{script.name}</span>
-                              {script.enabled === false && (
-                                <span className="text-xs text-warning">Disabled</span>
-                              )}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              //console.log('🔧 Removing script:', script.path, 'from', selection.entity);
-                              
-                              // Get script instance before detaching to clean up properties
-                              const runtime = getScriptRuntime();
-                              const scriptInstance = runtime.getScriptInstance(selection.entity, script.path);
-                              const babylonObject = getSelectedBabylonObject();
-                              
-                              // Remove script properties from Babylon metadata
-                              if (scriptInstance && babylonObject) {
-                                removeScriptProperties(babylonObject, scriptInstance);
-                              }
-                              
-                              // Detach from runtime
-                              runtime.detachScript(selection.entity, script.path);
-                              
-                              // Update UI
-                              const updatedScripts = objectProps.scripts.filter((_, i) => i !== index());
-                              updateObjectProperty(selection.entity, 'scripts', updatedScripts);
-                              
-                              // Force immediate cleanup of script properties signals
-                              if (babylonObject?.metadata?.scriptProperties) {
-                                // Clear any properties that belonged to this script
-                                const remainingScripts = runtime?.scriptManager?.getScriptsForObject?.(selection.entity) || [];
-                                
-                                // Rebuild script properties from remaining scripts only
-                                const remainingProperties = {};
-                                remainingScripts.forEach(remainingScript => {
-                                  const scriptAPI = remainingScript.instance?._scriptAPI;
-                                  if (scriptAPI && scriptAPI.getScriptProperties) {
-                                    const props = scriptAPI.getScriptProperties();
-                                    props.forEach(prop => {
-                                      remainingProperties[prop.name] = babylonObject.metadata.scriptProperties[prop.name];
-                                    });
-                                  }
-                                });
-                                
-                                babylonObject.metadata.scriptProperties = remainingProperties;
-                                setScriptPropertiesSignal(remainingProperties);
-                                //console.log('🗑️ Forced script properties signal update after removal');
-                              }
-                              
-                              editorActions.addConsoleMessage(`Script "${script.name}" removed`, 'info');
-                            }}
-                            className="p-1.5 hover:bg-base-300 rounded transition-colors"
-                          >
-                            <X className="w-4 h-4 text-base-content/60 hover:text-error" />
-                          </button>
-                        </div>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+              </Show>
 
-                {/* Drop Zone */}
-                <div 
-                  data-drop-zone="scripts"
-                  className={`min-h-[60px] text-center ${isDragOverScript() ? 'animate-pulse brightness-110' : ''}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    // Check if it's a script file being dragged
-                    const types = Array.from(e.dataTransfer.types);
-                    if (types.includes('text/plain')) {
-                      // Assume it's valid for now - we'll validate on drop
-                      e.currentTarget.classList.add('bg-success/20');
-                      e.currentTarget.classList.remove('bg-error/20');
-                      setIsDragOverScript(true);
-                    } else {
-                      e.currentTarget.classList.add('bg-error/20');
-                      e.currentTarget.classList.remove('bg-success/20');
-                      setIsDragOverScript(true);
-                    }
-                  }}
-                  onDragLeave={(e) => {
-                    e.currentTarget.classList.remove('bg-success/20', 'bg-error/20');
-                    setIsDragOverScript(false);
-                  }}
-                  onDrop={async (e) => {
-                    e.preventDefault();
-                    e.currentTarget.classList.remove('bg-success/20', 'bg-error/20');
-                    setIsDragOverScript(false);
-                    
-                    const droppedData = e.dataTransfer.getData('text/plain');
-                    try {
-                      const data = JSON.parse(droppedData);
-                      if (data.type === 'asset' && data.fileType === 'script') {
-                        const validExtensions = ['.js', '.jsx', '.ts', '.tsx', '.ren'];
-                        const fileExt = data.name.substring(data.name.lastIndexOf('.')).toLowerCase();
-                        
-                        if (validExtensions.includes(fileExt)) {
-                          if (!objectProps.scripts) {
-                            objectPropertiesActions.addPropertySection(selection.entity, 'scripts', []);
-                          }
-                          
-                          const currentScripts = objectProps.scripts || [];
-                          if (!currentScripts.find(s => s.path === data.path)) {
-                            //console.log('🔧 Attaching script via drag and drop:', data.path, 'to', selection.entity);
-                            
-                            // Use script runtime to attach and start the script
-                            const runtime = getScriptRuntime();
-                            const success = await runtime.attachScript(selection.entity, data.path);
-                            
-                            if (success) {
-                              // Get script instance and add its defaults to Babylon metadata
-                              const scriptInstance = runtime.getScriptInstance(selection.entity, data.path);
-                              const babylonObject = getSelectedBabylonObject();
-                              
-                              if (scriptInstance && babylonObject) {
-                                // Add script defaults to originalProperties in Babylon metadata
-                                addScriptDefaults(babylonObject, scriptInstance);
-                              }
-                              
-                              const metadata = scriptInstance?._scriptProperties || [];
-                              const defaultValues = {};
-                              
-                              //console.log('📝 Script metadata:', metadata);
-                              
-                              // Extract default values from metadata (for UI compatibility)
-                              if (Array.isArray(metadata)) {
-                                metadata.forEach(prop => {
-                                  defaultValues[prop.name] = prop.defaultValue;
-                                  //console.log(`📝 Storing default: ${prop.name} = ${prop.defaultValue}`);
-                                });
-                              }
-                              
-                              const newScripts = [...currentScripts, { 
-                                path: data.path, 
-                                name: data.name,
-                                enabled: true,
-                                metadata: metadata,
-                                defaultValues: defaultValues,
-                                properties: defaultValues
-                              }];
-                              updateObjectProperty(selection.entity, 'scripts', newScripts);
-                              
-                              // Force signal update to ensure properties are displayed
-                              if (babylonObject?.metadata?.scriptProperties) {
-                                setScriptPropertiesSignal({ ...babylonObject.metadata.scriptProperties });
-                                //console.log('🔧 ObjectProperties: Forced signal update after drag-and-drop script attachment');
-                              }
-                              
-                              editorActions.addConsoleMessage(`Script "${data.name}" attached and started`, 'success');
-                            } else {
-                              // The error message from ScriptManager will be more specific about type mismatches
-                              editorActions.addConsoleMessage(`Cannot attach "${data.name}" - check console for details`, 'error');
-                            }
-                          } else {
-                            //console.log('🔧 Script already attached:', data.path);
-                          }
+              {/* Script Properties */}
+              <Show when={Object.keys(scriptPropertiesSignal()).length > 0}>
+                {(() => {
+                  const metadataVersion = scriptMetadataVersion();
+                  const babylonObject = getSelectedBabylonObject();
+                  if (!babylonObject) {
+                    return null;
+                  }
+                  
+                  const runtime = getScriptRuntime();
+                  const scripts = runtime?.scriptManager?.getScriptsForObject?.(selection.entity) || [];
+                  const scriptInstances = scripts.map(s => s.instance).filter(Boolean);
+                  
+                  return (
+                    <For each={scriptInstances}>
+                      {(scriptInstance) => {
+                        const scriptAPI = scriptInstance._scriptAPI;
+                        if (!scriptAPI) {
+                          return null;
                         }
-                      }
-                    } catch (err) {
-                      console.warn('Invalid drop data:', droppedData);
-                    }
-                  }}
-                >
-                  <div className="flex flex-col items-center gap-2 p-4">
-                    <CodeSlash className="w-5 h-5 text-base-content/40" />
-                    <div className="text-base-content/60 text-sm">drop scripts here</div>
-                    <div className="text-xs text-base-content/40">.ren, .js, .jsx, .ts, .tsx</div>
-                  </div>
-                </div>
-              </div>
-            </CollapsibleSection>
-
-            <Show when={positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0}>
-              <CollapsibleSection title="Transform" defaultOpen={true} index={1}>
-                <div className="px-2 pb-2">
-                  <Show when={positionSignal().length > 0}>
-                    {renderVector3Input('Position', 'transform.position')}
-                  </Show>
-                  <Show when={rotationSignal().length > 0}>
-                    {renderVector3Input('Rotation', 'transform.rotation')}
-                  </Show>
-                  <Show when={scaleSignal().length > 0}>
-                    {renderVector3Input('Scale', 'transform.scale')}
-                  </Show>
-                </div>
-              </CollapsibleSection>
-            </Show>
-
-            {/* Script Properties Sections - Read from script properties signal */}
-            {(() => {
-              const scriptProps = scriptPropertiesSignal();
-              const scriptPropsKeys = Object.keys(scriptProps);
-              //console.log('🔍 SCRIPT PROPERTIES SECTION - scriptPropertiesSignal():', scriptProps);
-              //console.log('🔍 SCRIPT PROPERTIES SECTION - keys:', scriptPropsKeys);
-              //console.log('🔍 SCRIPT PROPERTIES SECTION - keys.length:', scriptPropsKeys.length);
-              //console.log('🔍 SCRIPT PROPERTIES SECTION - Show condition result:', scriptPropsKeys.length > 0);
-              return null; // Temporary return to see if this logging appears
-            })()}
-            <Show when={Object.keys(scriptPropertiesSignal()).length > 0}>
-              {(() => {
-                
-                // Force reactivity by accessing the metadata version signal
-                const metadataVersion = scriptMetadataVersion();
-                
-                const babylonObject = getSelectedBabylonObject();
-                if (!babylonObject) {
-                  return null;
-                }
-                
-                //console.log(`🔍 Getting script instances for metadata version: ${metadataVersion}`);
-                const runtime = getScriptRuntime();
-                //console.log(`🔍 Runtime available:`, !!runtime);
-                //console.log(`🔍 ScriptManager available:`, !!runtime?.scriptManager);
-                //console.log(`🔍 getScriptsForObject method available:`, !!runtime?.scriptManager?.getScriptsForObject);
-                const scripts = runtime?.scriptManager?.getScriptsForObject?.(selection.entity) || [];
-                //console.log(`🔍 Raw scripts for entity ${selection.entity}:`, scripts);
-                const scriptInstances = scripts.map(s => s.instance).filter(Boolean);
-                //console.log(`🔍 Found ${scriptInstances.length} script instances`);
-                //console.log(`🔍 Script instances:`, scriptInstances.map(s => ({path: s._scriptPath, hasAPI: !!s._scriptAPI})));
-                
-                
-                
-                return (
-                  <For each={scriptInstances}>
-                    {(scriptInstance) => {
-                      
-                      const scriptAPI = scriptInstance._scriptAPI;
-                      if (!scriptAPI) {
-                        return null;
-                      }
-                      
-                      //console.log(`🔍 Getting properties by section for script:`, scriptInstance._scriptPath);
-                      const propertiesBySection = scriptAPI.getScriptPropertiesBySection?.() || {};
-                      //console.log(`🔍 Properties by section:`, propertiesBySection);
-                      
-                      return (
-                        <Show when={Object.keys(propertiesBySection).length > 0}>
-                          <For each={Object.entries(propertiesBySection)}>
-                            {([sectionName, properties]) => {
-                              //console.log(`🔍 Rendering section: ${sectionName} with ${properties.length} properties`);
-                        //console.log(`🔍 Section properties:`, properties);
-                              
-                              return (
-                                <CollapsibleSection
-                                  title={sectionName}
-                                  icon={<CodeSlash className="w-4 h-4 text-secondary" />}
-                                  defaultExpanded={true}
-                                >
-                                  <div className="space-y-6 p-4 bg-base-100/50">
-                                    <For each={properties}>
-                                      {(property) => {
-                                        //console.log(`🔍 About to render property: ${property.name}`);
-                                        //console.log(`🔍 Property details:`, property);
-                                        //console.log(`🔍 BabylonObject for property:`, babylonObject?.name);
-                                        return <ScriptPropertyInput property={property} babylonObject={babylonObject} />;
-                                      }}
-                                    </For>
+                        
+                        const propertiesBySection = scriptAPI.getScriptPropertiesBySection?.() || {};
+                        
+                        return (
+                          <Show when={Object.keys(propertiesBySection).length > 0}>
+                            <For each={Object.entries(propertiesBySection)}>
+                              {([sectionName, properties]) => (
+                                <div class="bg-base-100 border-base-300 border rounded-lg">
+                                  <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer">
+                                    <CodeSlash class="w-3 h-3" />
+                                    {sectionName}
                                   </div>
-                                </CollapsibleSection>
-                              );
-                            }}
-                          </For>
-                        </Show>
-                      );
-                    }}
-                  </For>
-                );
-              })()}
-            </Show>
+                                  <div class="!p-2">
+                                    <div class="space-y-0.5">
+                                      <For each={properties}>
+                                        {(property) => (
+                                          <ScriptPropertyInput property={property} babylonObject={babylonObject} />
+                                        )}
+                                      </For>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </For>
+                          </Show>
+                        );
+                      }}
+                    </For>
+                  );
+                })()}
+              </Show>
 
-            <Show when={positionSignal().length === 0 && rotationSignal().length === 0 && scaleSignal().length === 0 && Object.keys(scriptPropertiesSignal()).length === 0}>
-              <div className="p-4 text-center">
-                <div className="text-base-content/50 text-sm mb-2">
-                  No properties available
+              {/* Reset All Button */}
+              <Show when={selection.entity}>
+                <div class="bg-base-100 rounded-lg p-1 border border-base-300/50">
+                  <button 
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      resetToDefaults();
+                    }}
+                    class="btn btn-outline btn-error btn-xs w-full"
+                  >
+                    Reset All Properties
+                  </button>
                 </div>
-                <div className="text-base-content/40 text-xs">
-                  Select an object to view its properties
-                </div>
-              </div>
-            </Show>
-          </div>
-        );
-      })()}
+              </Show>
+            </>
+          );
+        })()}
       </div>
     </div>
   );

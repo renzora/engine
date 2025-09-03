@@ -62,7 +62,7 @@ import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 
 
 const loadDefaultSceneContent = (scene, canvas) => {
-  console.log('🌟 Loading default scene content');
+  if (window.DEBUG_RENDER) console.log('🌟 Loading default scene content');
   
   // Create default camera positioned diagonally to show X and Z axis intersection
   const camera = new UniversalCamera(
@@ -150,46 +150,45 @@ const loadDefaultSceneContent = (scene, canvas) => {
   bounceLight._baseIntensity = lightingSettings.bounceIntensity;
   bounceLight._baseColor = lightingSettings.bounceColor;
 
-  // Enhanced shadow generator with settings from lighting store
-  const shadowGenerator = new ShadowGenerator(lightingSettings.shadowMapSize, sunLight);
+  // Optimized shadow generator with performance-focused settings
+  const optimizedShadowSize = Math.min(2048, lightingSettings.shadowMapSize); // Cap at 2048 for performance
+  const shadowGenerator = new ShadowGenerator(optimizedShadowSize, sunLight);
   shadowGenerator.usePercentageCloserFiltering = true;
-  shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+  shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_MEDIUM; // Reduced from HIGH
   shadowGenerator.darkness = lightingSettings.shadowDarkness;
   shadowGenerator.bias = lightingSettings.shadowBias;
   
-  // Contact hardening for realistic shadow softness
-  shadowGenerator.useContactHardeningShadow = lightingSettings.contactHardeningShadows;
-  shadowGenerator.contactHardeningLightSizeUVRatio = 0.05;
+  // Disable expensive contact hardening for better performance
+  shadowGenerator.useContactHardeningShadow = false;
   
-  // Cascade shadow maps for better distance shadows
+  // Reduce cascade count for performance
   shadowGenerator.useCascades = lightingSettings.cascadeShadows;
-  shadowGenerator.numCascades = lightingSettings.shadowCascades;
+  shadowGenerator.numCascades = Math.min(2, lightingSettings.shadowCascades); // Max 2 cascades
   shadowGenerator.cascadeBlendPercentage = 0.1;
   
-  // Exponential shadow maps for softer shadows
-  shadowGenerator.useExponentialShadowMap = true;
-  shadowGenerator.blurKernel = lightingSettings.shadowBlur;
+  // Use faster shadow mapping instead of exponential
+  shadowGenerator.useExponentialShadowMap = false;
+  shadowGenerator.usePoissonSampling = true; // Faster than exponential
+  shadowGenerator.blurKernel = Math.min(32, lightingSettings.shadowBlur); // Reduce blur kernel
   
   // Store shadow generator for access by physics objects
   scene.shadowGenerator = shadowGenerator;
   
-  // Set environment intensity for realistic IBL - will be updated by day/night cycle
+  // Disable expensive reflection probe for better performance
+  // Use static environment texture instead
   scene.environmentIntensity = lightingSettings.environmentIntensity;
-  
-  // Create reflection probe to capture sky material for reflections
-  const reflectionProbe = new ReflectionProbe('skyReflection', 512, scene);
-  reflectionProbe.renderList.push(skybox);
-  scene.environmentTexture = reflectionProbe.cubeTexture;
   
   // Configure global lighting settings for Unreal-style rendering
   scene.autoClear = true;
   scene.autoClearDepthAndStencil = true;
   
-  // Enable realistic fog for depth and atmosphere - will be updated by day/night cycle
+  // Fog disabled by default for performance
   scene.fogEnabled = lightingSettings.fogEnabled;
-  scene.fogMode = 2; // FOGMODE_EXP2
-  scene.fogDensity = lightingSettings.fogDensityDay; // Initial value, will be updated by cycle
-  scene.fogColor = new Color3(lightingSettings.fogColorDay[0], lightingSettings.fogColorDay[1], lightingSettings.fogColorDay[2]);
+  if (lightingSettings.fogEnabled) {
+    scene.fogMode = 2; // FOGMODE_EXP2
+    scene.fogDensity = lightingSettings.fogDensityDay;
+    scene.fogColor = new Color3(lightingSettings.fogColorDay[0], lightingSettings.fogColorDay[1], lightingSettings.fogColorDay[2]);
+  }
   
 
   // Create snow particle system - controlled by lighting settings
@@ -318,9 +317,20 @@ const loadDefaultSceneContent = (scene, canvas) => {
   moonLight._baseMoonIntensity = lightingSettings.moonIntensity;
 
 
-  // Function to update day/night cycle
+  // Function to update day/night cycle - configurable frame rate
+  let frameCounter = 0;
   const updateDayNightCycle = () => {
+    // Early exit if disabled to avoid any calculations
     if (!dayNightCycle.enabled) return;
+    
+    // Get lighting settings for feature checks
+    const currentLightingSettings = renderStore.lighting;
+    
+    // Get update frequency from lighting settings
+    const updateFrames = renderStore.lighting.dayNightUpdateFrames || 60;
+    frameCounter++;
+    if (frameCounter < updateFrames) return;
+    frameCounter = 0;
     
     // Advance time (speed is hours per minute)
     dayNightCycle.timeOfDay += dayNightCycle.speed * (1/60); // Convert to hours per frame
@@ -392,8 +402,7 @@ const loadDefaultSceneContent = (scene, canvas) => {
     skyboxMaterial.inclination = lightIntensity > 0 ? inclination : -1.0; // Hide sun below horizon at night
     skyboxMaterial.azimuth = azimuth;
     
-    // Use lighting settings from renderStore
-    const currentLightingSettings = renderStore.lighting;
+    // Use lighting settings from renderStore (reuse existing variable)
     
     // Dynamic turbidity and luminance
     skyboxMaterial.turbidity = currentLightingSettings.dayTurbidity + ((1 - lightIntensity) * (currentLightingSettings.nightTurbidity - currentLightingSettings.dayTurbidity));
@@ -559,19 +568,17 @@ const loadDefaultSceneContent = (scene, canvas) => {
       0.1 + (bounceColorMix * baseBounceColor[2])
     );
     
-    // Control snow system
+    // Control snow system - only process if enabled
     if (currentLightingSettings.snowEnabled) {
       if (!snowSystem.isStarted()) {
         snowSystem.start();
       }
       snowSystem.emitRate = currentLightingSettings.snowIntensity;
-    } else {
-      if (snowSystem.isStarted()) {
-        snowSystem.stop();
-      }
+    } else if (snowSystem.isStarted()) {
+      snowSystem.stop();
     }
     
-    // Control realistic star field based on time and settings
+    // Control realistic star field based on time and settings - only if enabled
     if (currentLightingSettings.starsEnabled && isAfterSunset && lightIntensity < 0.3) {
       // Start stars at night if not already started
       if (!starSystem.isStarted()) {
@@ -615,12 +622,10 @@ const loadDefaultSceneContent = (scene, canvas) => {
           }
         }
       }
-    } else {
+    } else if (starSystem.isStarted()) {
       // Hide stars during day or if disabled
-      if (starSystem.isStarted()) {
-        starSystem.stop();
-        starSystem.reset();
-      }
+      starSystem.stop();
+      starSystem.reset();
     }
     
     // Update time display
@@ -643,7 +648,7 @@ const loadDefaultSceneContent = (scene, canvas) => {
   // Set camera in render store
   renderActions.setCamera(camera);
   
-  console.log('✅ Default scene content loaded with Unreal-style lighting');
+  if (window.DEBUG_RENDER) console.log('✅ Default scene content loaded with Unreal-style lighting');
 };
 
 export default function BabylonRenderer(props) {
@@ -938,7 +943,7 @@ export default function BabylonRenderer(props) {
     if (!canvasRef) return;
 
     try {
-      console.log('🎮 Initializing Babylon.js...');
+      if (window.DEBUG_RENDER) console.log('🎮 Initializing Babylon.js...');
 
       // Create engine
       const babylonEngine = new Engine(canvasRef, true, {
@@ -962,13 +967,13 @@ export default function BabylonRenderer(props) {
         const havokInstance = await HavokPhysics();
         const hk = new HavokPlugin(true, havokInstance);
         const enableResult = babylonScene.enablePhysics(new Vector3(0, -9.81, 0), hk);
-        console.log('✅ Havok physics enabled for RenScript, result:', enableResult);
+        if (window.DEBUG_RENDER) console.log('✅ Havok physics enabled for RenScript, result:', enableResult);
       } catch (error) {
         console.warn('⚠️ Failed to enable Havok physics:', error);
       }
 
       // Scene content will be loaded separately
-      console.log('🎮 Scene created, ready for content loading');
+      if (window.DEBUG_RENDER) console.log('🎮 Scene created, ready for content loading');
 
       // Create highlight layer for selection
       const highlightLayer = new HighlightLayer('highlight', babylonScene);
@@ -983,7 +988,7 @@ export default function BabylonRenderer(props) {
       const objectPanel = statsInstance.addPanel(new Stats.Panel('OBJ', '#ff8', '#221'));
       
       // Show all panels simultaneously by modifying the DOM structure
-      statsInstance.showPanel(-1); // Show all panels
+      statsInstance.showPanel(0); // Show only FPS panel
       
       statsInstance.dom.style.position = 'absolute';
       statsInstance.dom.style.left = '8px';
@@ -992,24 +997,7 @@ export default function BabylonRenderer(props) {
       statsInstance.dom.style.right = 'auto';
       statsInstance.dom.style.zIndex = '100';
       
-      // Force all panels to display inline
-      statsInstance.dom.style.display = 'flex';
-      statsInstance.dom.style.flexDirection = 'row';
-      statsInstance.dom.style.gap = '4px';
-      
-      // Override the default click behavior to prevent panel switching
-      statsInstance.dom.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-      });
-      
-      // Force all panels to be visible
-      setTimeout(() => {
-        const panels = statsInstance.dom.children;
-        for (let i = 0; i < panels.length; i++) {
-          panels[i].style.display = 'block';
-        }
-      }, 100);
+      // Let stats.js handle panel display naturally
       
       // Find the canvas container and append stats
       const canvasContainer = canvasRef.parentElement;
@@ -1040,8 +1028,9 @@ export default function BabylonRenderer(props) {
       
       setStats(statsInstance);
       
-      // Start render loop with stats and pause capability
+      // Optimized render loop with frame skipping and pause capability
       let renderLoopRunning = true;
+      let renderFrameCounter = 0;
       
       const renderLoop = () => {
         if (!renderLoopRunning) return;
@@ -1054,9 +1043,13 @@ export default function BabylonRenderer(props) {
         
         statsInstance.begin();
         
-        // Update object count panel
-        const objectCount = getObjectCount();
-        objectPanel.update(objectCount, 1000); // Max 1000 objects for scale
+        // Update object count panel only every 10th frame for performance
+        renderFrameCounter++;
+        if (renderFrameCounter >= 10) {
+          const objectCount = getObjectCount();
+          objectPanel.update(objectCount, 1000);
+          renderFrameCounter = 0;
+        }
         
         babylonScene.render();
         statsInstance.end();
@@ -1140,7 +1133,7 @@ export default function BabylonRenderer(props) {
       setEngine(babylonEngine);
       setScene(babylonScene);
 
-      console.log('✅ Babylon.js initialized successfully');
+      if (window.DEBUG_RENDER) console.log('✅ Babylon.js initialized successfully');
 
     } catch (error) {
       console.error('❌ Failed to initialize Babylon.js:', error);
@@ -1197,7 +1190,7 @@ export default function BabylonRenderer(props) {
     renderActions.setScene(null);
     renderActions.setCamera(null);
     
-    console.log('🗑️ Babylon.js cleaned up');
+    if (window.DEBUG_RENDER) console.log('🗑️ Babylon.js cleaned up');
   };
 
   return (

@@ -170,10 +170,12 @@ function AssetItem({
     globalMouseX = e.clientX;
     globalMouseY = e.clientY;
     if (showTooltip() && !isDragging()) {
+      const tooltipHeight = 64;
+      const tooltipWidth = 192;
       document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
         detail: {
-          x: globalMouseX + 10,
-          y: globalMouseY - 80,
+          x: Math.max(10, Math.min(globalMouseX - (tooltipWidth / 2) + 50, window.innerWidth - tooltipWidth - 10)),
+          y: Math.max(10, globalMouseY - tooltipHeight - 50),
           asset: asset
         }
       }));
@@ -186,10 +188,12 @@ function AssetItem({
       setShowTooltip(true);
       const rect = document.querySelector(`[data-asset-id="${asset.id}"]`)?.getBoundingClientRect();
       if (rect) {
+        const tooltipHeight = 64;
+        const tooltipWidth = 192;
         document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
           detail: {
-            x: Math.max(10, Math.min(globalMouseX + 10, window.innerWidth - 320)),
-            y: Math.max(10, globalMouseY - 80),
+            x: Math.max(10, Math.min(globalMouseX - (tooltipWidth / 2) + 50, window.innerWidth - tooltipWidth - 10)),
+            y: Math.max(10, globalMouseY - tooltipHeight - 50),
             asset: asset
           }
         }));
@@ -553,7 +557,7 @@ function AssetItem({
       </div>
       
       {/* Text Label */}
-      <div class="w-full bg-base-200 border-x border-b border-base-content/20 p-2 text-center">
+      <div class="w-full bg-base-200 border-x border-b border-base-content/20 p-2 text-center h-12 flex items-center justify-center">
         <div class="text-xs text-base-content leading-tight line-clamp-2" title={asset.name}>
           {asset.name}
         </div>
