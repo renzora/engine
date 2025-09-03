@@ -17,6 +17,20 @@ const [viewportStore, setViewportStore] = createStore({
     type: 'universal',
     position: [0, 0, 5],
     target: [0, 0, 0]
+  },
+  
+  lighting: {
+    sunIntensity: 4.0,
+    skyIntensity: 4.0,
+    rimIntensity: 0.4,
+    bounceIntensity: 0.3,
+    moonIntensity: 15.0,
+    nightTurbidity: 48,
+    baseLuminance: 0.1,
+    sunColor: [1.0, 0.98, 0.9],
+    skyColor: [0.8, 0.9, 1.0],
+    rimColor: [0.9, 0.7, 0.5],
+    bounceColor: [0.4, 0.5, 0.7]
   }
 })
 

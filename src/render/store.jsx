@@ -19,6 +19,78 @@ export const [renderStore, setRenderStore] = createStore({
     enableGrid: true,
     gridSize: 10,
     renderingEngine: 'webgl'
+  },
+  
+  lighting: {
+    // Light Sources
+    sunIntensity: 4.0,
+    skyIntensity: 4.0,
+    rimIntensity: 0.4,
+    bounceIntensity: 0.3,
+    moonIntensity: 15.0,
+    
+    // Light Colors
+    sunColor: [1.0, 0.98, 0.9],
+    skyColor: [0.8, 0.9, 1.0],
+    rimColor: [0.9, 0.7, 0.5],
+    bounceColor: [0.4, 0.5, 0.7],
+    
+    // Sky & Atmosphere
+    nightTurbidity: 48,
+    dayTurbidity: 2,
+    nightSkyColor: [0.02, 0.02, 0.05],
+    daySkyColor: [0.7, 0.8, 1.0],
+    baseLuminance: 0.3,
+    dayLuminance: 1.0,
+    environmentIntensity: 1.2,
+    
+    // Fog
+    fogEnabled: true,
+    fogDensityDay: 0.001,
+    fogDensityNight: 0.0001,
+    fogColorDay: [0.7, 0.8, 0.9],
+    fogColorNight: [0.05, 0.05, 0.1],
+    
+    // Post Processing
+    exposure: 0.85,
+    contrast: 1.1,
+    brightness: 0.0,
+    saturation: 1.0,
+    vignetteEnabled: false,
+    vignetteWeight: 3.0,
+    vignetteStretch: 0.2,
+    vignetteCameraFov: 0.5,
+    toneMappingEnabled: true,
+    toneMappingType: 'ACES', // 'ACES', 'Standard', 'Photographic'
+    fxaaEnabled: true,
+    
+    // Shadows
+    shadowMapSize: 4096,
+    shadowDarkness: 0.3,
+    shadowBias: 0.00005,
+    shadowBlur: 64,
+    cascadeShadows: true,
+    shadowCascades: 4,
+    contactHardeningShadows: true,
+    
+    // Day/Night Cycle
+    timeOfDay: 12.0,
+    timeSpeed: 0.2,
+    timeEnabled: true,
+    sunriseHour: 6.0,
+    sunsetHour: 21.0,
+    transitionDuration: 1.0,
+    
+    // Particles
+    snowEnabled: true,
+    snowIntensity: 100,
+    starsEnabled: true,
+    starIntensity: 2000,
+    
+    // Clouds
+    cloudsEnabled: true,
+    cloudSize: 20,
+    cloudDensity: 0.3
   }
 });
 
@@ -535,6 +607,100 @@ export const renderActions = {
     });
 
     console.log('🌳 Scene Tree: Removed object from hierarchy:', objectId);
+  },
+
+  // Lighting actions with persistence
+  setLightingSetting(key, value) {
+    setRenderStore('lighting', key, value);
+    
+    // Save to localStorage for persistence
+    try {
+      const currentSettings = JSON.parse(localStorage.getItem('renzora-lighting-settings') || '{}');
+      currentSettings[key] = value;
+      localStorage.setItem('renzora-lighting-settings', JSON.stringify(currentSettings));
+    } catch (error) {
+      console.warn('Failed to persist lighting setting:', error);
+    }
+  },
+
+  // Load persisted lighting settings
+  loadPersistedLightingSettings() {
+    try {
+      const saved = localStorage.getItem('renzora-lighting-settings');
+      if (saved) {
+        const settings = JSON.parse(saved);
+        Object.keys(settings).forEach(key => {
+          if (renderStore.lighting.hasOwnProperty(key)) {
+            setRenderStore('lighting', key, settings[key]);
+          }
+        });
+        console.log('✅ Loaded persisted lighting settings');
+      }
+    } catch (error) {
+      console.warn('Failed to load persisted lighting settings:', error);
+    }
+  },
+
+  // Reset lighting settings to defaults
+  resetLightingSettings() {
+    const defaults = {
+      sunIntensity: 4.0,
+      skyIntensity: 4.0,
+      rimIntensity: 0.4,
+      bounceIntensity: 0.3,
+      moonIntensity: 15.0,
+      sunColor: [1.0, 0.98, 0.9],
+      skyColor: [0.8, 0.9, 1.0],
+      rimColor: [0.9, 0.7, 0.5],
+      bounceColor: [0.4, 0.5, 0.7],
+      nightTurbidity: 48,
+      dayTurbidity: 2,
+      nightSkyColor: [0.02, 0.02, 0.05],
+      daySkyColor: [0.7, 0.8, 1.0],
+      baseLuminance: 0.3,
+      dayLuminance: 1.0,
+      environmentIntensity: 1.2,
+      fogEnabled: true,
+      fogDensityDay: 0.001,
+      fogDensityNight: 0.0001,
+      fogColorDay: [0.7, 0.8, 0.9],
+      fogColorNight: [0.05, 0.05, 0.1],
+      exposure: 0.85,
+      contrast: 1.1,
+      brightness: 0.0,
+      saturation: 1.0,
+      vignetteEnabled: false,
+      vignetteWeight: 3.0,
+      vignetteStretch: 0.2,
+      vignetteCameraFov: 0.5,
+      toneMappingEnabled: true,
+      toneMappingType: 'ACES',
+      fxaaEnabled: true,
+      shadowMapSize: 4096,
+      shadowDarkness: 0.3,
+      shadowBias: 0.00005,
+      shadowBlur: 64,
+      cascadeShadows: true,
+      shadowCascades: 4,
+      contactHardeningShadows: true,
+      timeOfDay: 12.0,
+      timeSpeed: 0.2,
+      timeEnabled: true,
+      sunriseHour: 6.0,
+      sunsetHour: 21.0,
+      transitionDuration: 1.0,
+      snowEnabled: true,
+      snowIntensity: 100,
+      starsEnabled: true,
+      starIntensity: 2000,
+      cloudsEnabled: true,
+      cloudSize: 20,
+      cloudDensity: 0.3
+    };
+    
+    setRenderStore('lighting', defaults);
+    localStorage.removeItem('renzora-lighting-settings');
+    console.log('🔄 Reset lighting settings to defaults');
   },
 
   cleanup() {

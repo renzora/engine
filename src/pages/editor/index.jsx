@@ -1,11 +1,12 @@
 import { onMount, onCleanup, createSignal, createEffect, For, Show } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { 
-  Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder, Grid
+  Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder, Grid, Clock, Sun
 } from '@/ui/icons';
 import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
 import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
 import GizmoDropdownContent from '@/ui/display/GizmoDropdownContent.jsx';
+import LightDropdownContent from '@/ui/display/LightDropdownContent.jsx';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
 import Scene from './Scene.jsx';
@@ -76,6 +77,16 @@ export default function EditorPage() {
       dropdownWidth: 256
     });
     
+    
+    api.button('light-helper', {
+      title: 'Environment & Lighting',
+      icon: Sun,
+      section: 'right',
+      order: 25,
+      hasDropdown: true,
+      dropdownComponent: LightDropdownContent,
+      dropdownWidth: 400
+    });
     
     api.button('theme-switcher', {
       title: 'Theme',

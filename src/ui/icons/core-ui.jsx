@@ -38,3 +38,4 @@ export const ChevronLeft = createIcon("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83
 export const Grid = createIcon("M3 11h8V3H3v8zm2-6h4v4H5V5zM13 3v8h8V3h-8zm6 6h-4V5h4v4zM3 21h8v-8H3v8zm2-6h4v4H5v-4zM18 13h-2v2h2v-2zM18 17h-2v2h2v-2zM16 15h2v2h-2v-2z");
 export const GridDots = createIcon("M4 8h4V4H4v4zM10 20h4v-4h-4v4zM4 20h4v-4H4v4zM4 14h4v-4H4v4zM10 14h4v-4h-4v4zM16 4v4h4V4h-4zM10 8h4V4h-4v4zM16 14h4v-4h-4v4zM16 20h4v-4h-4v4z");
 export const GripVertical = createIcon("M9 5h2v14H9V5zm4 0h2v14h-2V5z");
+export const Clock = createIcon("M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17V7h2v7.5l4.5 2.6-.75 1.3L11 15.5z");
