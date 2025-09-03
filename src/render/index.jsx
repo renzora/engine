@@ -37,6 +37,7 @@ import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
 import '@babylonjs/core/Layers/effectLayerSceneComponent';
 import '@babylonjs/core/Materials/standardMaterial';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
+import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';

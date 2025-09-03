@@ -50,7 +50,15 @@ function Scene(props) {
   const handleDragStart = (e, item) => {
     setDraggedItem(item);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene-item', item }));
+    // Only serialize safe properties to avoid circular references
+    const safeItem = {
+      id: item.id,
+      name: item.name,
+      type: item.type,
+      lightType: item.lightType,
+      visible: item.visible
+    };
+    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene-item', item: safeItem }));
   };
 
   const handleDragOver = (e, item) => {

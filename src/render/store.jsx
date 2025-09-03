@@ -539,7 +539,24 @@ export const renderActions = {
       return !isSystemObject && !obj.parent;
     });
     
-    const hierarchyItems = rootObjects.map(obj => this.buildHierarchyFromBabylon(obj));
+    // Separate lights from other objects to organize them under a virtual Lighting folder
+    const lights = rootObjects.filter(obj => obj.getClassName && obj.getClassName().includes('Light'));
+    const nonLights = rootObjects.filter(obj => !obj.getClassName || !obj.getClassName().includes('Light'));
+    
+    const hierarchyItems = nonLights.map(obj => this.buildHierarchyFromBabylon(obj));
+    
+    // Create virtual Lighting folder if there are lights
+    if (lights.length > 0) {
+      const lightingFolder = {
+        id: 'lighting-folder',
+        name: 'Lighting',
+        type: 'folder',
+        visible: true,
+        expanded: true,
+        children: lights.map(light => this.buildHierarchyFromBabylon(light))
+      };
+      hierarchyItems.unshift(lightingFolder);
+    }
     
     const hierarchy = [{
       id: 'scene-root',
