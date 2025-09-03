@@ -720,6 +720,23 @@ export const renderActions = {
     console.log('🔄 Reset lighting settings to defaults');
   },
 
+  updateObjectVisibility(objectId, visible) {
+    setRenderStore('hierarchy', prev => {
+      const updateVisibilityInNodes = (nodes) => {
+        return nodes.map(node => {
+          if (node.id === objectId) {
+            return { ...node, visible: visible };
+          }
+          if (node.children) {
+            return { ...node, children: updateVisibilityInNodes(node.children) };
+          }
+          return node;
+        });
+      };
+      return updateVisibilityInNodes(prev);
+    });
+  },
+
   cleanup() {
     // Dispose of gizmo manager and highlight layer
     if (renderStore.gizmoManager) {

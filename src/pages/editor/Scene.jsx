@@ -296,6 +296,22 @@ function Scene(props) {
     }
   };
 
+  const getIconColor = (type, lightType) => {
+    switch (type) {
+      case 'mesh': return '#60a5fa'; // blue-400
+      case 'light': 
+        switch (lightType) {
+          case 'directional': return '#facc15'; // yellow-400
+          case 'point': return '#fb923c'; // orange-400
+          case 'spot': return '#fbbf24'; // amber-400
+          default: return '#fde047'; // yellow-300
+        }
+      case 'camera': return '#a78bfa'; // purple-400
+      case 'folder': return '#eab308'; // yellow-500
+      default: return '#9ca3af'; // gray-400
+    }
+  };
+
   const renderSceneItem = (item, depth = 0, index = 0, parent = null, globalIndex = 0) => {
     if (!item) return null;
     
@@ -303,6 +319,7 @@ function Scene(props) {
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = () => expandedItems().hasOwnProperty(item.id) ? expandedItems()[item.id] : (item.expanded || false);
     const Icon = getIcon(item.type, item.lightType);
+    const iconColor = getIconColor(item.type, item.lightType);
     
     const isDraggedOver = () => dragOverItem()?.id === item.id;
     const isFolderDrop = () => isDraggedOver() && dropPosition() === 'inside' && item.type === 'folder';
@@ -316,12 +333,10 @@ function Scene(props) {
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none" />
         </Show>
         <div 
-          className={`group flex items-center transition-all duration-200 text-xs relative overflow-hidden ${
+          className={`group flex items-center py-0.5 pr-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${
             isSelected() 
-              ? 'bg-primary/25 text-primary-content shadow-sm' 
-              : globalIndex % 2 === 0 
-                ? 'bg-neutral/20 hover:bg-base-300/10 text-base-content/70 hover:text-base-content active:bg-base-300/60'
-                : 'bg-base-300/30 hover:bg-base-300/20 text-base-content/70 hover:text-base-content active:bg-base-300/80'
+              ? 'bg-primary text-primary-content' 
+              : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
           } ${
             draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
@@ -330,10 +345,7 @@ function Scene(props) {
             droppedItemId() === item.id ? 'bg-success/50' : ''
           }`}
           style={{ 
-            'padding-left': `${8 + depth * 20}px`,
-            'padding-right': '8px',
-            'padding-top': '2px',
-            'padding-bottom': '2px',
+            'padding-left': `${6 + depth * 16}px`,
             cursor: 'grab'
           }}
           draggable="true"
@@ -369,67 +381,63 @@ function Scene(props) {
           <Show when={depth > 0}>
             <div className="absolute left-0 top-0 bottom-0 pointer-events-none">
               <div
-                className="absolute top-0 bottom-0 w-px bg-base-content/25"
-                style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
+                className="absolute top-0 bottom-0 w-px bg-base-content/30"
+                style={{ left: `${6 + (depth - 1) * 16 + 8}px` }}
               />
               <div
-                className="absolute top-1/2 w-3 h-px bg-base-content/25"
-                style={{ left: `${8 + (depth - 1) * 20 + 10}px` }}
+                className="absolute top-1/2 w-2 h-px bg-base-content/30"
+                style={{ left: `${6 + (depth - 1) * 16 + 8}px` }}
               />
             </div>
           </Show>
           
-          <Show when={hasChildren}>
-            <button 
-              className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
-              }}
-            >
-              <ChevronRight class={`w-3 h-3 transition-all duration-200 ${
-                isExpanded() 
-                  ? 'rotate-90 text-primary' 
-                  : 'text-base-content/50 group-hover:text-base-content/70'
-              }`} />
-            </button>
-          </Show>
+          <div class="relative flex items-center">
+            <Icon class="w-3 h-3 mr-0.5 cursor-pointer" style={{ color: iconColor }} />
+            <Show when={hasChildren}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
+                }}
+                class="absolute -left-0.5 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
+              >
+                <ChevronRight 
+                  class={`w-2.5 h-2.5 transition-all duration-200 ${
+                    hasChildren && isExpanded() 
+                      ? 'rotate-90 text-primary' 
+                      : hasChildren
+                        ? 'text-base-content/50 hover:text-base-content/70'
+                        : 'text-base-content/20'
+                  }`} 
+                />
+              </button>
+            </Show>
+          </div>
           
           <button 
-            className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
+            className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50 cursor-pointer"
             onClick={(e) => {
               e.stopPropagation();
               if (item.babylonObject) {
-                if (item.babylonObject.isVisible !== undefined) {
-                  item.babylonObject.isVisible = !item.babylonObject.isVisible;
-                } else if (item.babylonObject.isEnabled) {
-                  item.babylonObject.setEnabled(!item.babylonObject.isEnabled());
-                }
+                const newVisibility = !item.babylonObject.isVisible;
+                item.babylonObject.isVisible = newVisibility;
+                
+                // Update the hierarchy item's visibility directly to trigger reactive update
+                renderActions.updateObjectVisibility(item.id, newVisibility);
               }
             }}
           >
             <Show 
               when={item.visible}
-              fallback={<EyeOff className="w-4 h-4 text-base-content/40 hover:text-base-content/60" />}
+              fallback={<EyeOff class="w-3 h-3 cursor-pointer" style={{ color: '#ef4444' }} />}
             >
-              <Eye className="w-4 h-4 text-base-content/60 hover:text-base-content/80" />
+              <Eye class="w-3 h-3 cursor-pointer" style={{ color: '#9ca3af' }} />
             </Show>
-          </button>
-          
-          <button 
-            className="mr-2 p-0.5 rounded transition-colors opacity-70 hover:opacity-100 hover:bg-base-200"
-            onClick={(e) => {
-              e.stopPropagation();
-              createNodeEditorTab(item.id, item.name);
-            }}
-            title="Open Node Editor"
-          >
-            <Icon className="w-4 h-4 text-base-content/60" />
           </button>
           
           <Show 
             when={renamingItemId() === item.id}
-            fallback={<span className="flex-1 text-base-content/80 truncate">{item.name}</span>}
+            fallback={<span className="flex-1 text-base-content/80 truncate text-xs">{item.name}</span>}
           >
             <input
               id={`rename-input-${renamingItemId() || 'unknown'}`}
@@ -454,11 +462,11 @@ function Scene(props) {
           </Show>
           
           <button 
-            className="ml-2 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100"
+            className="ml-1 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100"
             onClick={(e) => handleDeleteObject(item, e)}
             title="Delete object"
           >
-            <Trash className="w-4 h-4 text-base-content/70 hover:text-error" />
+            <Trash className="w-3 h-3 text-base-content/70 hover:text-error" />
           </button>
         </div>
         
