@@ -64,7 +64,8 @@ class PluginLoader {
       { path: '/src/plugins/splash', main: 'index.jsx', priority: -1 },
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
       { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
-      { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 }
+      { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 },
+      { path: '/src/plugins/lighting', main: 'index.jsx', priority: 2 }
     ];
 
     for (const location of pluginLocations) {
@@ -156,6 +157,9 @@ class PluginLoader {
             break;
           case 'bridge-plugin':
             pluginModule = await import(`@/plugins/bridge/index.jsx`);
+            break;
+          case 'lighting-plugin':
+            pluginModule = await import(`@/plugins/lighting/index.jsx`);
             break;
           default:
             try {

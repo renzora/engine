@@ -6,7 +6,6 @@ import {
 import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
 import GridDropdownContent from '@/ui/display/GridDropdownContent.jsx';
 import GizmoDropdownContent from '@/ui/display/GizmoDropdownContent.jsx';
-import LightDropdownContent from '@/ui/display/LightDropdownContent.jsx';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
 import Scene from './Scene.jsx';
@@ -78,15 +77,6 @@ export default function EditorPage() {
     });
     
     
-    api.button('light-helper', {
-      title: 'Environment & Lighting',
-      icon: Sun,
-      section: 'right',
-      order: 25,
-      hasDropdown: true,
-      dropdownComponent: LightDropdownContent,
-      dropdownWidth: 400
-    });
     
     api.button('theme-switcher', {
       title: 'Theme',
