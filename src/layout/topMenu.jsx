@@ -212,7 +212,7 @@ function TopMenu() {
   return (
     <>
       <div 
-        class="relative w-full h-8 bg-base-300/60 backdrop-blur-md shadow-sm flex items-center px-2"
+        class="relative w-full h-8 bg-base-300/60 backdrop-blur-md shadow-sm border-b border-black/30 flex items-center px-2"
         data-tauri-drag-region
       >
         <div 
@@ -254,6 +254,11 @@ function TopMenu() {
         </div>
         
         <div class="flex-1" />
+        
+        {/* Theme Switcher */}
+        <div class="flex items-center mr-2" style={{ '-webkit-app-region': 'no-drag' }}>
+          <ThemeSwitcher />
+        </div>
         
         {/* Tauri Window Controls - Only show in desktop app */}
         {typeof window !== 'undefined' && window.__TAURI_INTERNALS__ && (

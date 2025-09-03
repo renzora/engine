@@ -932,39 +932,7 @@ function ObjectProperties() {
     <div className="flex flex-col h-full" data-object-properties>
       {/* Header with object name and reset button */}
       <Show when={selection.entity}>
-        <div 
-          className="flex items-center justify-between p-1.5 border-b border-base-content/10 bg-base-200/50 cursor-row-resize hover:bg-base-200/70 transition-colors duration-150 select-none"
-          onMouseDown={(e) => {
-            // Don't trigger resize if clicking on the reset button
-            if (e.target.closest('button')) {
-              return;
-            }
-            
-            e.preventDefault();
-            e.stopPropagation();
-            //console.log('🔧 Object Properties header drag started');
-            
-            let startY = e.clientY;
-            let startHeight = parseInt(getComputedStyle(document.querySelector('[data-object-properties]')).height);
-            
-            const handleMouseMove = (moveEvent) => {
-              const deltaY = startY - moveEvent.clientY; // Inverted because we want to resize from top
-              const newHeight = Math.max(200, Math.min(800, startHeight + deltaY));
-              
-              // Update the height via EditorStore action
-              editorActions.setScenePropertiesHeight(newHeight);
-            };
-            
-            const handleMouseUp = () => {
-              document.removeEventListener('mousemove', handleMouseMove);
-              document.removeEventListener('mouseup', handleMouseUp);
-              //console.log('🔧 Object Properties header drag ended');
-            };
-            
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-          }}
-        >
+        <div className="flex items-center justify-between p-1.5 border-b border-base-content/10 bg-base-200/50">
           <div className="text-sm font-medium text-base-content/80 hover:text-base-content/50 transition-colors duration-150">
             {getSelectedBabylonObject()?.name || 'Unknown Object'} Properties
           </div>

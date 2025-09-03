@@ -10,8 +10,6 @@ const ViewportTabs = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
   const [editingTab, setEditingTab] = createSignal(null);
   const [editingName, setEditingName] = createSignal('');
-  const [activePluginDropdown, setActivePluginDropdown] = createSignal(null);
-  const [pluginDropdownPosition, setPluginDropdownPosition] = createSignal(null);
   
   // Access store properties reactively
   const tabs = () => viewportStore.tabs;
@@ -192,23 +190,10 @@ const ViewportTabs = () => {
     }
   };
 
-  const handlePluginDropdownToggle = (e, button) => {
-    if (activePluginDropdown() === button.id) {
-      setActivePluginDropdown(null);
-      setPluginDropdownPosition(null);
-    } else {
-      const rect = e.currentTarget.getBoundingClientRect();
-      setPluginDropdownPosition({
-        left: rect.left,
-        top: rect.bottom + 4
-      });
-      setActivePluginDropdown(button.id);
-    }
-  };
 
   return (
     <>
-      <div className="flex items-stretch h-8 overflow-hidden relative">
+      <div className="flex items-stretch h-8 overflow-hidden relative bg-base-300">
         <div className="flex items-center min-w-0 flex-1 overflow-x-hidden">
           <For each={tabs()}>
             {(tab) => {
@@ -335,58 +320,6 @@ const ViewportTabs = () => {
           </div>
         </div>
 
-        {/* Right side - Plugin buttons */}
-        <div class="flex items-center gap-1 pr-2">
-          <For each={Array.from(toolbarButtons().values()).filter(button => button.section === 'right').sort((a, b) => (a.order || 0) - (b.order || 0))}>
-            {(button) => {
-              const isEnabled = horizontalMenuButtonsEnabled();
-
-              // Handle custom component buttons
-              if (button.isCustomComponent && button.customComponent) {
-                const CustomComponent = button.customComponent;
-                return (
-                  <div class="flex items-center" title={button.title}>
-                    <CustomComponent />
-                  </div>
-                );
-              }
-
-              if (button.hasDropdown && button.dropdownComponent) {
-                const isActive = activePluginDropdown() === button.id;
-                return (
-                  <button
-                    onClick={(e) => isEnabled && handlePluginDropdownToggle(e, button)}
-                    disabled={!isEnabled}
-                    class={`toolbar-button w-6 h-6 flex items-center justify-center rounded transition-all relative group ${
-                      !isEnabled 
-                        ? 'cursor-not-allowed text-base-content/30 opacity-50'
-                        : isActive
-                          ? 'bg-primary text-primary-content cursor-pointer' 
-                          : 'text-base-content/60 hover:text-base-content hover:bg-base-300 cursor-pointer'
-                    }`}
-                  >
-                    <button.icon class="w-4 h-4" />
-                  </button>
-                );
-              }
-              
-              return (
-                <button
-                  onClick={() => isEnabled && button.onClick?.()}
-                  disabled={!isEnabled}
-                  class={`toolbar-button w-6 h-6 flex items-center justify-center rounded transition-all relative group ${
-                    !isEnabled
-                      ? 'cursor-not-allowed text-base-content/30 opacity-50'
-                      : 'cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300'
-                  }`}
-                  title={button.title}
-                >
-                  <button.icon class="w-4 h-4" />
-                </button>
-              );
-            }}
-          </For>
-        </div>
 
       </div>
 
@@ -450,26 +383,6 @@ const ViewportTabs = () => {
         </>
       </Show>
 
-      {/* Plugin dropdowns */}
-      {activePluginDropdown() && pluginDropdownPosition() && (
-        <div 
-          class="dropdown-content fixed bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 z-[210] text-base-content text-xs"
-          style={{
-            left: `${pluginDropdownPosition().left}px`,
-            top: `${pluginDropdownPosition().top}px`
-          }}
-        >
-          {(() => {
-            const activeButton = Array.from(toolbarButtons().values())
-              .find(b => b.id === activePluginDropdown());
-            if (activeButton && activeButton.dropdownComponent) {
-              const DropdownComponent = activeButton.dropdownComponent;
-              return <DropdownComponent />;
-            }
-            return null;
-          })()}
-        </div>
-      )}
     </>
   );
 };

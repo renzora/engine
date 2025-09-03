@@ -1,5 +1,6 @@
-import Toolbar from '@/layout/VerticalToolbar.jsx';
+import TabMenu from '@/layout/TabMenu.jsx';
 import Settings from '@/pages/editor/Settings.jsx';
+import Scene from '@/pages/editor/Scene.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import PanelToggleButton from '@/ui/PanelToggleButton.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
@@ -35,6 +36,8 @@ const RightPanel = () => {
   // Panel resize functionality
   const [isResizingRight, setIsResizingRight] = createSignal(false);
   const [rightDragOffset, setRightDragOffset] = createSignal(0);
+  const [isResizingTabs, setIsResizingTabs] = createSignal(false);
+  const [tabContainerHeight, setTabContainerHeight] = createSignal(320);
   
   const handleRightResizeStart = (e) => {
     setIsResizingRight(true);
@@ -86,7 +89,47 @@ const RightPanel = () => {
     setSelectedEntity(objectId);
     if (objectId) {
       setTransformMode('move');
+      // Switch to object properties tab when an object is selected
+      setSelectedRightTool('object-properties');
     }
+  };
+
+  const handleTabResizeStart = (e) => {
+    setIsResizingTabs(true);
+    const startY = e.clientY;
+    const startHeight = tabContainerHeight();
+    
+    const handleMouseMove = (e) => {
+      const deltaY = startY - e.clientY;
+      
+      // Calculate available space dynamically
+      const rightPanelElement = document.querySelector(`[style*="width: ${rightPanelWidth()}px"]`);
+      const sceneElement = rightPanelElement?.querySelector('.flex-1.min-h-0');
+      
+      let maxHeight = window.innerHeight - 200; // Default fallback
+      
+      if (rightPanelElement && sceneElement) {
+        const panelRect = rightPanelElement.getBoundingClientRect();
+        const sceneRect = sceneElement.getBoundingClientRect();
+        
+        // Reserve minimum 150px for Scene.jsx (header + some content + bottom panel)
+        const minSceneHeight = 150;
+        const availableSpace = panelRect.height - minSceneHeight - 24; // 24px for resize bar + padding
+        maxHeight = Math.max(200, availableSpace);
+      }
+      
+      const newHeight = Math.max(200, Math.min(maxHeight, startHeight + deltaY));
+      setTabContainerHeight(newHeight);
+    };
+    
+    const handleMouseUp = () => {
+      setIsResizingTabs(false);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
   };
 
   const handleContextMenu = (e, item, context = 'scene') => {
@@ -181,21 +224,6 @@ const RightPanel = () => {
         
         <Show when={isScenePanelOpen()}>
           <div className="absolute inset-0 flex overflow-hidden">
-            <div className="w-auto flex-shrink-1">
-              <Toolbar 
-                selectedTool={selectedRightTool()}
-                onToolSelect={setSelectedRightTool}
-                scenePanelOpen={isScenePanelOpen()}
-                onScenePanelToggle={handleRightPanelToggle}
-                isLeftPanel={isLeftPanel()}
-                panelResize={{
-                  handleRightResizeStart,
-                  handleRightResizeMove,
-                  handleRightResizeEnd
-                }}
-              />
-            </div>
-            
             <div className="flex-1 min-w-0 overflow-hidden">
               <div className="flex flex-col h-full">
                 {/* Close button - positioned inside panel */}
@@ -230,9 +258,48 @@ const RightPanel = () => {
                   </button>
                 </div>
                 
-                {/* Tab content with integrated header */}
-                <div className="h-full bg-base-200 border-t border-r border-base-content/10 shadow-lg overflow-hidden rounded-tr-lg">
-                  {renderTabContent()}
+                {/* Panel content */}
+                <div className="h-full bg-base-200 border-t border-l border-r border-base-content/10 shadow-lg overflow-hidden rounded-tr-lg flex">
+                  {/* Scene panel - always at top */}
+                  <div className="flex-1 flex flex-col">
+                    <div className="flex-1 min-h-0 overflow-y-auto" style="scrollbar-width: thin;">
+                      <Scene 
+                        selectedObject={selectedObject()}
+                        onObjectSelect={handleObjectSelect}
+                        onContextMenu={handleContextMenu}
+                      />
+                    </div>
+                    
+                    {/* Resize bar for tab container */}
+                    <div
+                      className={`h-1 cursor-row-resize transition-colors ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-300/50 hover:bg-primary/75'}`}
+                      onMouseDown={handleTabResizeStart}
+                    />
+                    
+                    {/* Tab system for properties */}
+                    <div className="flex bg-base-100" style={{ height: `${tabContainerHeight()}px` }}>
+                      {/* Vertical toolbar inside right panel */}
+                      <div className="w-auto flex-shrink-0 h-full">
+                        <TabMenu 
+                          selectedTool={selectedRightTool()}
+                          onToolSelect={setSelectedRightTool}
+                          scenePanelOpen={isScenePanelOpen()}
+                          onScenePanelToggle={handleRightPanelToggle}
+                          isLeftPanel={isLeftPanel()}
+                          panelResize={{
+                            handleRightResizeStart,
+                            handleRightResizeMove,
+                            handleRightResizeEnd
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Tab content */}
+                      <div className="flex-1 min-w-0 bg-base-200">
+                        {renderTabContent()}
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

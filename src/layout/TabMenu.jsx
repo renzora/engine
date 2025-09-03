@@ -4,46 +4,24 @@ import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
 import { propertyTabs, toolbarButtons } from '@/api/plugin';
 
-const defaultTools = [
-  { id: 'scene', icon: Cube, title: 'Scene' }
-];
+const defaultTools = [];
 
 const defaultBottomTools = [];
 
 const workflowTools = {
-  '3d-viewport': [
-    'scene'
-  ],
-  'daw-editor': [
-    'scene'
-  ],
-  'material-editor': [
-    'scene'
-  ],
-  'node-editor': [
-    'scene'
-  ],
-  'animation-editor': [
-    'scene'
-  ],
-  'text-editor': [
-    'scene'
-  ],
-  'video-editor': [
-    'scene'
-  ],
-  'photo-editor': [
-    'scene'
-  ],
-  'model-preview': [
-    'scene'
-  ],
-  'default': [
-    'scene'
-  ]
+  '3d-viewport': [],
+  'daw-editor': [],
+  'material-editor': [],
+  'node-editor': [],
+  'animation-editor': [],
+  'text-editor': [],
+  'video-editor': [],
+  'photo-editor': [],
+  'model-preview': [],
+  'default': []
 };
 
-function Toolbar(props) {
+function TabMenu(props) {
   const [tools, setTools] = createSignal(() => getOrderedTools());
   
   createEffect(() => {
@@ -165,6 +143,7 @@ function Toolbar(props) {
     const orderedTools = getOrderedTools();
     setTools(orderedTools);
   });
+
   
   createEffect(() => {
     toolbarButtons();
@@ -320,47 +299,49 @@ function Toolbar(props) {
 
   return (
     <div class="relative w-10 h-full bg-base-300 border-l border-t border-r border-base-content/10 flex flex-col pointer-events-auto no-select">
-      <div class="flex flex-col space-y-0.5">
-        <For each={tools()}>
-          {(tool) => {
-            const isDragged = () => dragState().draggedTool?.id === tool.id;
-            const isDragOver = () => dragState().dragOverTool?.id === tool.id;
-            
-            return (
-              <button
-                draggable
-                onClick={() => handleToolClick(tool)}
-                onDragStart={(e) => handleDragStart(e, tool, false)}
-                onDragOver={(e) => handleDragOver(e, tool, false)}
-                onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, tool, false)}
-                onDragEnd={handleDragEnd}
-                class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center ${
-                  isDragged() 
-                    ? 'opacity-50 cursor-grabbing scale-95' 
-                    : props.selectedTool === tool.id 
-                      ? 'bg-primary text-primary-content cursor-grab' 
-                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
-                }`}
-                title={tool.title}
-              >
-                <tool.icon class="w-5 h-5" />
-                
-                {isDragOver() && (
-                  <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>
-                )}
-                
-                {!dragState().isDragging && (
-                  <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-base-300/95 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
-                       style={{ 'z-index': 999999 }}>
-                    {tool.title}
-                    <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-base-300' : 'border-l-4 border-l-base-300'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
-                  </div>
-                )}
-              </button>
-            );
-          }}
-        </For>
+      <div class="flex-1 overflow-y-hidden overflow-x-hidden h-full">
+        <div class="flex flex-col space-y-0.5 p-0.5 h-full">
+          <For each={tools()}>
+            {(tool) => {
+              const isDragged = () => dragState().draggedTool?.id === tool.id;
+              const isDragOver = () => dragState().dragOverTool?.id === tool.id;
+              
+              return (
+                <button
+                  draggable
+                  onClick={() => handleToolClick(tool)}
+                  onDragStart={(e) => handleDragStart(e, tool, false)}
+                  onDragOver={(e) => handleDragOver(e, tool, false)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, tool, false)}
+                  onDragEnd={handleDragEnd}
+                  class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center ${
+                    isDragged() 
+                      ? 'opacity-50 cursor-grabbing scale-95' 
+                      : props.selectedTool === tool.id 
+                        ? 'bg-primary text-primary-content cursor-grab' 
+                        : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
+                  }`}
+                  title={tool.title}
+                >
+                  <tool.icon class="w-5 h-5" />
+                  
+                  {isDragOver() && (
+                    <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>
+                  )}
+                  
+                  {!dragState().isDragging && (
+                    <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-base-300/95 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
+                         style={{ 'z-index': 999999 }}>
+                      {tool.title}
+                      <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-base-300' : 'border-l-4 border-l-base-300'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
+                    </div>
+                  )}
+                </button>
+              );
+            }}
+          </For>
+        </div>
       </div>
       
       <div 
@@ -480,4 +461,4 @@ function Toolbar(props) {
   );
 }
 
-export default Toolbar;
+export default TabMenu;

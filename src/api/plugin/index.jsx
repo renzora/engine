@@ -65,7 +65,10 @@ class PluginLoader {
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
       { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
       { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/lighting', main: 'index.jsx', priority: 2 }
+      { path: '/src/plugins/lighting', main: 'index.jsx', priority: 2 },
+      { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
+      { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
+      { path: '/src/plugins/object-properties', main: 'index.jsx', priority: 5 }
     ];
 
     for (const location of pluginLocations) {
@@ -160,6 +163,15 @@ class PluginLoader {
             break;
           case 'lighting-plugin':
             pluginModule = await import(`@/plugins/lighting/index.jsx`);
+            break;
+          case 'camera-plugin':
+            pluginModule = await import(`@/plugins/camera/index.jsx`);
+            break;
+          case 'grid-plugin':
+            pluginModule = await import(`@/plugins/grid/index.jsx`);
+            break;
+          case 'object-properties-plugin':
+            pluginModule = await import(`@/plugins/object-properties/index.jsx`);
             break;
           default:
             try {
@@ -553,6 +565,27 @@ export class PluginAPI {
     return true;
   }
 
+  registerHelperButton(id, config) {
+    const button = {
+      id,
+      title: config.title,
+      icon: config.icon,
+      onClick: config.onClick,
+      order: config.order || 100,
+      section: 'helper',
+      plugin: config.plugin || 'unknown',
+      hasDropdown: config.hasDropdown || false,
+      dropdownComponent: config.dropdownComponent || null,
+      dropdownWidth: config.dropdownWidth || 192,
+      isCustomComponent: config.isCustomComponent || false,
+      customComponent: config.customComponent || null
+    };
+
+    setToolbarButtons(prev => new Map(prev.set(id, button)));
+    console.log(`[PluginAPI] Helper button registered: ${id}`);
+    return true;
+  }
+
   registerFooterButton(id, config) {
     const button = {
       id,
@@ -614,6 +647,7 @@ export class PluginAPI {
   panel(id, config) { return this.registerBottomPanelTab(id, config); }
   viewport(id, config) { return this.registerViewportType(id, config); }
   button(id, config) { return this.registerToolbarButton(id, config); }
+  helper(id, config) { return this.registerHelperButton(id, config); }
   footer(id, config) { return this.registerFooterButton(id, config); }
   open(typeId, options) { return this.createViewportTab(typeId, options); }
 

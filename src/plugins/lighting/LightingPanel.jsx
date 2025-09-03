@@ -361,14 +361,13 @@ export default function LightingPanel() {
             <Sun class="w-3 h-3 text-primary" />
           </div>
           <div>
-            <h2 class="text-sm font-semibold text-base-content">Lighting</h2>
-            <p class="text-xs text-base-content/60">Environment controls</p>
+            <h2 class="text-xs font-medium text-base-content">Lighting</h2>
           </div>
         </div>
       </div>
 
       {/* Content */}
-      <div class="flex-1 overflow-y-auto p-2 space-y-1">
+      <div class="flex-1 overflow-y-auto p-1 space-y-1">
         
         {/* Time Control */}
         <div class="collapse collapse-arrow bg-base-100 border-base-300 border">
@@ -390,7 +389,7 @@ export default function LightingPanel() {
             </button>
           </div>
           <div class="collapse-content">
-            <div class="bg-base-200 rounded-lg p-2 text-center mb-2">
+            <div class="bg-base-200 rounded-lg p-1 text-center mb-1">
               <div class="text-base font-mono">{currentTime()}</div>
               <div class="text-xs text-base-content/60">Current Time</div>
             </div>
@@ -738,9 +737,9 @@ export default function LightingPanel() {
           <div class="collapse-content">
             <div class="space-y-3">
             {/* Sun Light */}
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-sm font-medium mb-2">Sun Light</div>
-              <div class="space-y-1.5">
+            <div class="bg-base-200/50 rounded-lg p-1">
+              <div class="text-xs font-medium mb-1">Sun Light</div>
+              <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
                   getValue={() => lighting().sunIntensity} 
@@ -760,9 +759,9 @@ export default function LightingPanel() {
             </div>
             
             {/* Sky Light */}
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-sm font-medium mb-2">Sky Light (Ambient)</div>
-              <div class="space-y-1.5">
+            <div class="bg-base-200/50 rounded-lg p-1">
+              <div class="text-xs font-medium mb-1">Sky Light (Ambient)</div>
+              <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
                   getValue={() => lighting().skyIntensity} 
@@ -782,9 +781,9 @@ export default function LightingPanel() {
             </div>
             
             {/* Rim Light */}
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-sm font-medium mb-2">Rim Light (Atmospheric)</div>
-              <div class="space-y-1.5">
+            <div class="bg-base-200/50 rounded-lg p-1">
+              <div class="text-xs font-medium mb-1">Rim Light (Atmospheric)</div>
+              <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
                   getValue={() => lighting().rimIntensity} 
@@ -804,9 +803,9 @@ export default function LightingPanel() {
             </div>
             
             {/* Bounce Light */}
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-sm font-medium mb-2">Bounce Light (Indirect)</div>
-              <div class="space-y-1.5">
+            <div class="bg-base-200/50 rounded-lg p-1">
+              <div class="text-xs font-medium mb-1">Bounce Light (Indirect)</div>
+              <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
                   getValue={() => lighting().bounceIntensity} 
@@ -826,9 +825,9 @@ export default function LightingPanel() {
             </div>
             
             {/* Moon Light */}
-            <div class="bg-base-200/50 rounded-lg p-2">
-              <div class="text-sm font-medium mb-2">Moon Light</div>
-              <div class="space-y-1.5">
+            <div class="bg-base-200/50 rounded-lg p-1">
+              <div class="text-xs font-medium mb-1">Moon Light</div>
+              <div class="space-y-1">
                 <SliderControl 
                   label="Intensity" 
                   getValue={() => lighting().moonIntensity} 

@@ -1,21 +1,15 @@
-import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
-import { horizontalMenuButtonsEnabled } from '@/api/plugin';
-import { Sun, Lightbulb, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle } from '@/ui/icons';
-import { Play, Pause } from '@/ui/icons/media';
-import { Settings } from '@/ui/icons/development';
-import { editorStore, editorActions } from '@/layout/stores/EditorStore';
-import { toolbarButtons } from '@/api/plugin';
-import ThemeSwitcher from '@/ui/ThemeSwitcher';
-import { getScriptRuntime } from '@/api/script';
-import { viewportStore, viewportActions, objectPropertiesActions } from '@/layout/stores/ViewportStore';
+import { createSignal, For } from 'solid-js';
+import Helper from './Helper.jsx';
+import { editorStore, editorActions } from "@/layout/stores/EditorStore";
+import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
+import { Settings, X, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle, Sun, Lightbulb } from '@/ui/icons';
 import { renderStore, renderActions } from '@/render/store.jsx';
-import GridHelpers from '@/ui/display/GridHelpers.jsx';
+import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Ray } from '@babylonjs/core/Culling/ray';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { SpotLight } from '@babylonjs/core/Lights/spotLight';
@@ -28,238 +22,29 @@ import '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import '@babylonjs/core/Meshes/Builders/planeBuilder';
 
 function Toolbar() {
-  const [showProjectManager, setShowProjectManager] = createSignal(false);
-  const [flashingTool, setFlashingTool] = createSignal(null);
-  const [showLightDropdown, setShowLightDropdown] = createSignal(false);
-  const [lightDropdownPosition, setLightDropdownPosition] = createSignal(null);
-  const [activePluginDropdown, setActivePluginDropdown] = createSignal(null);
-  const [pluginDropdownPosition, setPluginDropdownPosition] = createSignal(null);
-  const [scriptRuntimePlaying, setScriptRuntimePlaying] = createSignal(true);
-  
-  createEffect(() => {
-    const handleClickOutside = (event) => {
-      const target = event.target;
-      const isToolbarButton = target.closest('.toolbar-button');
-      const isDropdownContent = target.closest('.dropdown-content');
-      
-      if (!isToolbarButton && !isDropdownContent) {
-        setActivePluginDropdown(null);
-        setPluginDropdownPosition(null);
-        setShowLightDropdown(false);
-        setLightDropdownPosition(null);
-      }
-    };
-
-    if (activePluginDropdown() || showLightDropdown()) {
-      document.addEventListener('mousedown', handleClickOutside);
-      onCleanup(() => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      });
-    }
-  });
-
-  // Sync script runtime state
-  createEffect(() => {
-    const interval = setInterval(() => {
-      try {
-        const runtime = getScriptRuntime();
-        const stats = runtime.getStats();
-        setScriptRuntimePlaying(stats.running);
-      } catch (error) {
-        // Runtime might not be initialized yet
-        setScriptRuntimePlaying(false);
-      }
-    }, 1000);
-
-    onCleanup(() => clearInterval(interval));
-  });
-  
-  const selectedTool = () => editorStore.ui.selectedTool;
+  // Access store properties reactively
   const selection = () => editorStore.selection;
   const selectedEntity = () => selection().entity;
+  const selectedTool = () => editorStore.ui.selectedTool;
   const transformMode = () => selection().transformMode;
-  const renderMode = () => viewportStore.renderMode || 'solid';
   
   const { setSelectedTool, setTransformMode, selectEntity } = editorActions;
-  const { setRenderMode, setShowGrid } = viewportActions;
   
-  const getCurrentWorkflow = () => {
-    const currentViewport = viewportStore;
-    if (!currentViewport.tabs || currentViewport.tabs.length === 0) {
-      return '3d-viewport';
-    }
-    const activeTabData = currentViewport.tabs.find(tab => tab.id === currentViewport.activeTabId);
-    return activeTabData?.type || '3d-viewport';
-  };
-
-  const lightTypes = [
-    { id: 'directional', label: 'Directional Light', icon: Sun },
-    { id: 'point', label: 'Point Light', icon: Lightbulb },
-    { id: 'spot', label: 'Spot Light', icon: Sun },
-    { id: 'hemisphere', label: 'Hemisphere Light', icon: Lightbulb }
-  ];
-  
-  const workflowTools = {
-    '3d-viewport': [
-      { id: 'select', icon: Pointer, tooltip: 'Select' },
-      { id: 'move', icon: Move, tooltip: 'Move', requiresSelection: true },
-      { id: 'rotate', icon: Refresh, tooltip: 'Rotate', requiresSelection: true },
-      { id: 'scale', icon: Maximize, tooltip: 'Scale', requiresSelection: true },
-      { id: 'cube', icon: Box, tooltip: 'Add Cube' },
-      { id: 'sphere', icon: Circle, tooltip: 'Add Sphere' },
-      { id: 'cylinder', icon: Box, tooltip: 'Add Cylinder' },
-      { id: 'plane', icon: Rectangle, tooltip: 'Add Plane' },
-      { id: 'light', icon: Sun, tooltip: 'Add Light', isDropdown: true },
-      { id: 'camera', icon: Video, tooltip: 'Add Camera' },
-      { id: 'duplicate', icon: Copy, tooltip: 'Duplicate', requiresSelection: true },
-      { id: 'delete', icon: Trash, tooltip: 'Delete', requiresSelection: true },
-    ]
-  };
-  
-  const currentWorkflow = () => getCurrentWorkflow();
-  const tools = () => workflowTools[currentWorkflow()] || workflowTools['3d-viewport'];
-
-  const getEffectiveSelectedTool = () => {
+  const getSelectedTool = () => {
     if (['select', 'move', 'rotate', 'scale'].includes(transformMode())) {
       return transformMode();
     }
     return selectedTool();
   };
-
-  const handleToolClick = async (toolId) => {
-    console.log('HorizontalToolbar: Tool clicked:', toolId);
-    
-    const pluginButton = toolbarButtons().get(toolId);
-    if (pluginButton && pluginButton.onClick) {
-      pluginButton.onClick();
-      return;
-    }
-    
-    editorActions.addConsoleMessage(`Clicked ${toolId} button`, 'info');
-    
-    if (['select', 'move', 'rotate', 'scale'].includes(toolId)) {
-      if (toolId !== 'select' && !selectedEntity()) {
-        editorActions.addConsoleMessage('Please select an object first', 'warning');
-        return;
-      }
-      
-      setTransformMode(toolId);
-      
-      // Use render store for gizmo management
-      renderActions.setTransformMode(toolId);
-      
-      editorActions.addConsoleMessage(`Switched to ${toolId} tool`, 'info');
-    }
-    else if (['cube', 'sphere', 'cylinder', 'plane'].includes(toolId)) {
-      await createBabylonPrimitive(toolId);
-    }
-    else if (toolId === 'light') {
-      return;
-    }
-    else if (toolId === 'camera') {
-      await createBabylonCamera();
-    }
-    else if (toolId === 'duplicate') {
-      if (!selectedEntity()) {
-        editorActions.addConsoleMessage('Please select an object to duplicate', 'warning');
-        return;
-      }
-      await duplicateSelectedObject();
-    }
-    else if (toolId === 'delete') {
-      if (!selectedEntity()) {
-        editorActions.addConsoleMessage('Please select an object to delete', 'warning');
-        return;
-      }
-      deleteSelectedObject();
-    }
-    else {
-      editorActions.addConsoleMessage(`Tool activated: ${toolId}`, 'info');
-    }
-  };
-
-  const handleLightCreate = async (lightType) => {
-    await createBabylonLight(lightType);
-    setShowLightDropdown(false);
-    setLightDropdownPosition(null);
-  };
-
-  const handleScriptPlayToggle = () => {
-    const runtime = getScriptRuntime();
-    const stats = runtime.getStats();
-    
-    if (stats.running) {
-      runtime.pause();
-      setScriptRuntimePlaying(false);
-      editorActions.addConsoleMessage('Script execution paused', 'info');
-      console.log('🔧 Script execution paused');
-    } else {
-      runtime.start();
-      setScriptRuntimePlaying(true);
-      editorActions.addConsoleMessage('Script execution resumed', 'success');
-      console.log('🔧 Script execution resumed');
-    }
-  };
-
-  const handleLightDropdownToggle = (e) => {
-    if (showLightDropdown()) {
-      setShowLightDropdown(false);
-      setLightDropdownPosition(null);
-    } else {
-      setActivePluginDropdown(null);
-      setPluginDropdownPosition(null);
-      
-      const rect = e.currentTarget.getBoundingClientRect();
-      const position = calculateDropdownPosition(rect, 192);
-      setLightDropdownPosition(position);
-      setShowLightDropdown(true);
-    }
-  };
-
-  const calculateDropdownPosition = (buttonRect, dropdownWidth = 192) => {
-    const viewportWidth = window.innerWidth;
-    const margin = 8;
-    let left = buttonRect.left + (buttonRect.width / 2) - (dropdownWidth / 2);
-    
-    if (left + dropdownWidth + margin > viewportWidth) {
-      left = viewportWidth - dropdownWidth - margin;
-    }
-    
-    if (left < margin) {
-      left = margin;
-    }
-    
-    return {
-      left,
-      top: buttonRect.bottom + 4
-    };
-  };
-
-
-  const handlePluginDropdownToggle = (e, button) => {
-    if (activePluginDropdown() === button.id) {
-      setActivePluginDropdown(null);
-      setPluginDropdownPosition(null);
-    } else {
-      setShowLightDropdown(false);
-      setLightDropdownPosition(null);
-      
-      const rect = e.currentTarget.getBoundingClientRect();
-      const dropdownWidth = button.dropdownWidth || 192;
-      const position = calculateDropdownPosition(rect, dropdownWidth);
-      setPluginDropdownPosition(position);
-      setActivePluginDropdown(button.id);
-    }
-  };
-
+  
   const getCurrentScene = () => {
     return renderStore.scene;
   };
-
+  
   const getObjectName = (type) => {
     return type.toLowerCase();
   };
-
+  
   const getViewportCenterPosition = async (scene, distance = 5) => {
     if (!scene || !scene._camera) {
       console.log('No scene or camera, using fallback position');
@@ -269,37 +54,29 @@ function Toolbar() {
     const camera = scene._camera;
     
     try {
-      const forward = camera.getForwardRay().direction.normalize();
-      const viewportCenter = camera.position.add(forward.scale(distance));
+      const forward = camera.getDirection(Vector3.Forward()).normalize();
+      const centerPosition = camera.position.add(forward.scale(distance));
       
-      // Cast ray downward from high position to find ground
-      const rayOrigin = new Vector3(viewportCenter.x, 100, viewportCenter.z);
-      const rayDirection = new Vector3(0, -1, 0);
-      const ray = new Ray(rayOrigin, rayDirection);
-      
-      // Look for ground or any solid surface
+      const ray = new Ray(centerPosition.add(Vector3.Up().scale(100)), Vector3.Down());
       const hit = scene.pickWithRay(ray, (mesh) => {
-        // Skip gizmos and helper objects
-        if (mesh._isInternalMesh || mesh.name.includes('gizmo') || mesh.name.includes('helper')) {
+        if (!mesh || mesh.name === 'ground' || mesh.name === 'skybox') {
           return false;
         }
         return mesh.isPickable !== false && mesh.isVisible && mesh.material;
       });
       
-      let finalY = 1; // Default height above ground
+      let finalY = 1;
       
       if (hit.hit && hit.pickedPoint) {
-        finalY = hit.pickedPoint.y + 1; // Place 1 unit above the surface
-        console.log('Found surface at Y:', hit.pickedPoint.y, 'placing object at Y:', finalY);
+        finalY = hit.pickedPoint.y + 0.5;
+        console.log('Hit ground at Y:', hit.pickedPoint.y, 'placing object at Y:', finalY);
       } else {
-        // No surface found, place at ground level (Y = 0.5 so bottom of cube touches Y = 0)
-        finalY = 0.5;
-        console.log('No surface found, placing at ground level Y:', finalY);
+        console.log('No ground hit, using default Y:', finalY);
       }
       
-      const finalPosition = new Vector3(viewportCenter.x, finalY, viewportCenter.z);
+      const finalPosition = new Vector3(centerPosition.x, finalY, centerPosition.z);
+      console.log('Final object position:', finalPosition);
       
-      console.log('Calculated position:', finalPosition, 'from viewport center at distance:', distance);
       return finalPosition;
     } catch (error) {
       console.error('Error calculating viewport center:', error);
@@ -309,94 +86,55 @@ function Toolbar() {
 
   const createBabylonPrimitive = async (type) => {
     console.log('Creating primitive:', type);
-    const scene = getCurrentScene();
-    console.log('Current scene:', scene);
     
+    const scene = getCurrentScene();
     if (!scene) {
-      console.error('No scene available');
       editorActions.addConsoleMessage('No active scene available', 'error');
       return;
     }
 
-    // For now, place objects at origin to debug the positioning issue
     const position = new Vector3(0, 0.5, 0);
     const objectName = getObjectName(type);
-    
-    console.log('Creating', type, 'at position:', position);
-    
+
     try {
-      const mainContainer = new TransformNode(objectName, scene);
-      mainContainer.position = position;
-      let mesh;
-      const meshName = `${objectName}_mesh`;
-      
+      let primitive;
+
       switch (type) {
         case 'cube':
-          mesh = MeshBuilder.CreateBox(meshName, { size: 1 }, scene);
+          primitive = MeshBuilder.CreateBox(objectName, { size: 1 }, scene);
           break;
         case 'sphere':
-          mesh = MeshBuilder.CreateSphere(meshName, { diameter: 1 }, scene);
+          primitive = MeshBuilder.CreateSphere(objectName, { diameter: 1 }, scene);
           break;
         case 'cylinder':
-          mesh = MeshBuilder.CreateCylinder(meshName, { height: 1, diameter: 1 }, scene);
+          primitive = MeshBuilder.CreateCylinder(objectName, { height: 1, diameter: 1 }, scene);
           break;
         case 'plane':
-          mesh = MeshBuilder.CreatePlane(meshName, { size: 1 }, scene);
-          mesh.rotation.x = Math.PI / 2; // Rotate 90 degrees to lay flat
+          primitive = MeshBuilder.CreateGround(objectName, { width: 1, height: 1 }, scene);
           break;
+        default:
+          throw new Error(`Unknown primitive type: ${type}`);
+      }
+
+      primitive.position = position;
+      
+      let material;
+      if (type === 'plane') {
+        material = new StandardMaterial(`${objectName}_material`, scene);
+        material.diffuseColor = new Color3(0.8, 0.8, 0.8);
+      } else {
+        material = new PBRMaterial(`${objectName}_material`, scene);
+        material.baseColor = new Color3(0.8, 0.8, 0.8);
+        material.metallicFactor = 0.1;
+        material.roughnessFactor = 0.8;
       }
       
-      if (mesh) {
-        mesh.parent = mainContainer;
-        mesh.position = Vector3.Zero();
-        const material = new PBRMaterial(`${objectName}_material`, scene);
-        material.baseColor = new Color3(0.7, 0.7, 0.9);
-        material.metallicFactor = 0.0; // Non-metallic by default
-        material.roughnessFactor = 0.8; // Slightly rough for realistic appearance
-        material.enableSpecularAntiAliasing = true;
-        
-        // Enable reflections from environment
-        material.environmentIntensity = 1.0;
-        material.usePhysicalLightFalloff = true;
-        mesh.material = material;
-        
-        // Add shadow casting and receiving
-        if (scene.shadowGenerator) {
-          scene.shadowGenerator.addShadowCaster(mesh);
-          mesh.receiveShadows = true;
-          console.log(`🌑 Added ${mesh.name} to shadow casting and receiving`);
-        }
-        
-        if (scene._applyRenderMode) {
-          const currentRenderMode = renderMode();
-          if (currentRenderMode === 'wireframe') {
-            material.wireframe = true;
-          }
-        }
-        
-        // Add to scene tree and select
-        renderActions.addObject(mainContainer);
-        renderActions.selectObject(mainContainer);
-        renderActions.setTransformMode('move'); // Set to move mode when creating objects
-        
-        const objectId = mainContainer.uniqueId || mainContainer.name;
-        
-        // Initialize object properties with transform data
-        objectPropertiesActions.ensureDefaultComponents(objectId);
-        objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [position.x, position.y, position.z]);
-        objectPropertiesActions.updateObjectProperty(objectId, 'transform.rotation', [0, 0, 0]);
-        // Set proper scale for planes (thin Y-axis for physics)
-        const scaleValue = type === 'plane' ? [1, 0.01, 1] : [1, 1, 1];
-        objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', scaleValue);
-        
-        editorActions.selectEntity(objectId);
-        setTransformMode('move'); // Set to move mode when creating objects
-        
-        console.log('Primitive created successfully:', mainContainer.name, 'ID:', mainContainer.uniqueId);
-        editorActions.addConsoleMessage(`Created ${type}`, 'success');
-      }
+      primitive.material = material;
+      
+      renderActions.selectObject(primitive);
+      editorActions.addConsoleMessage(`Created ${type}`, 'info');
     } catch (error) {
-      console.error(`Error creating ${type}:`, error);
+      console.error('Failed to create primitive:', error);
       editorActions.addConsoleMessage(`Failed to create ${type}: ${error.message}`, 'error');
     }
   };
@@ -447,37 +185,15 @@ function Toolbar() {
       light.position = Vector3.Zero();
       light.parent = mainContainer;
       const lightHelper = MeshBuilder.CreateSphere(`${lightName}_helper`, { diameter: 0.5 }, scene);
-      lightHelper.position = Vector3.Zero();
+      lightHelper.material = new StandardMaterial(`${lightName}_helper_material`, scene);
+      lightHelper.material.emissiveColor = new Color3(1, 1, 0);
+      lightHelper.material.disableLighting = true;
       lightHelper.parent = mainContainer;
-      const helperMaterial = new StandardMaterial(`${lightName}_helper_material`, scene);
-      helperMaterial.emissiveColor = new Color3(1, 1, 0.8);
-      helperMaterial.disableLighting = true;
-      lightHelper.material = helperMaterial;
-      lightHelper._isInternalMesh = true;
-      
-      // Add shadow receiving to light helper
-      if (scene.shadowGenerator) {
-        lightHelper.receiveShadows = true;
-        console.log(`🌑 Added light helper ${lightHelper.name} to shadow receiving`);
-      }
-      
-      // Add to scene tree and select
-      renderActions.addObject(mainContainer);
+
       renderActions.selectObject(mainContainer);
-      
-      const objectId = mainContainer.uniqueId || mainContainer.name;
-      
-      // Initialize object properties with transform data
-      objectPropertiesActions.ensureDefaultComponents(objectId);
-      objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [lightPosition.x, lightPosition.y, lightPosition.z]);
-      objectPropertiesActions.updateObjectProperty(objectId, 'transform.rotation', [0, 0, 0]);
-      objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', [1, 1, 1]);
-      
-      editorActions.selectEntity(objectId);
-      
-      editorActions.addConsoleMessage(`Created ${lightType} light`, 'success');
+      editorActions.addConsoleMessage(`Created ${lightType} light`, 'info');
     } catch (error) {
-      console.error('Error creating light:', error);
+      console.error('Failed to create light:', error);
       editorActions.addConsoleMessage(`Failed to create light: ${error.message}`, 'error');
     }
   };
@@ -492,54 +208,22 @@ function Toolbar() {
     try {
       const cameraName = getObjectName('camera');
       const cameraPosition = await getViewportCenterPosition(scene, 6);
-      cameraPosition.y += 1.7;
-      const mainContainer = new TransformNode(cameraName, scene);
-      mainContainer.position = cameraPosition;
-      const camera = new UniversalCamera(`${cameraName}_camera`, Vector3.Zero(), scene);
-      camera.setTarget(new Vector3(0, 0, 1));
-      camera.fov = Math.PI / 3;
-      camera.parent = mainContainer;
-      const cameraHelper = MeshBuilder.CreateBox(`${cameraName}_helper`, { width: 1, height: 0.6, depth: 1.5 }, scene);
-      cameraHelper.position = Vector3.Zero();
-      cameraHelper.parent = mainContainer;
-      const helperMaterial = new StandardMaterial(`${cameraName}_helper_material`, scene);
-      helperMaterial.diffuseColor = new Color3(0.2, 0.2, 0.8);
-      helperMaterial.specularColor = new Color3(0.1, 0.1, 0.1);
-      cameraHelper.material = helperMaterial;
-      cameraHelper._isInternalMesh = true;
-      
-      // Add shadow receiving to camera helper
-      if (scene.shadowGenerator) {
-        cameraHelper.receiveShadows = true;
-        console.log(`🌑 Added camera helper ${cameraHelper.name} to shadow receiving`);
-      }
-      
-      // Add to scene tree and select
-      renderActions.addObject(mainContainer);
-      renderActions.selectObject(mainContainer);
-      
-      const objectId = mainContainer.uniqueId || mainContainer.name;
-      
-      // Initialize object properties with transform data
-      objectPropertiesActions.ensureDefaultComponents(objectId);
-      objectPropertiesActions.updateObjectProperty(objectId, 'transform.position', [cameraPosition.x, cameraPosition.y, cameraPosition.z]);
-      objectPropertiesActions.updateObjectProperty(objectId, 'transform.rotation', [0, 0, 0]);
-      objectPropertiesActions.updateObjectProperty(objectId, 'transform.scale', [1, 1, 1]);
-      
-      editorActions.selectEntity(objectId);
-      
-      editorActions.addConsoleMessage('Created camera', 'success');
+      cameraPosition.y += 2;
+
+      const camera = new UniversalCamera(cameraName, cameraPosition, scene);
+      camera.setTarget(Vector3.Zero());
+
+      renderActions.selectObject(camera);
+      editorActions.addConsoleMessage('Created camera', 'info');
     } catch (error) {
-      console.error('Error creating camera:', error);
+      console.error('Failed to create camera:', error);
       editorActions.addConsoleMessage(`Failed to create camera: ${error.message}`, 'error');
     }
   };
 
   const duplicateSelectedObject = async () => {
-    const scene = getCurrentScene();
     const selectedObject = renderStore.selectedObject;
-    
-    if (!scene || !selectedObject) {
+    if (!selectedObject) {
       editorActions.addConsoleMessage('No object selected to duplicate', 'warning');
       return;
     }
@@ -548,35 +232,21 @@ function Toolbar() {
       let newObject = selectedObject.clone(selectedObject.name + '_duplicate', null, false, true);
       
       if (newObject) {
-        newObject.parent = null;
-        newObject.position = selectedObject.position.add(new Vector3(2, 0, 2));
-        if (selectedObject.rotation && newObject.rotation) {
-          newObject.rotation = selectedObject.rotation.clone();
-        }
-        if (selectedObject.scaling && newObject.scaling) {
-          newObject.scaling = selectedObject.scaling.clone();
-        }
+        newObject.position.x += 1;
+        newObject.position.z += 1;
         
-        const objectId = newObject.uniqueId || newObject.name;
-        
-        // Use render store for selection
         renderActions.selectObject(newObject);
-        
-        editorActions.selectEntity(objectId);
-        
-        editorActions.addConsoleMessage('Object duplicated', 'success');
+        editorActions.addConsoleMessage(`Duplicated ${selectedObject.name}`, 'info');
       }
     } catch (error) {
-      console.error('Error duplicating object:', error);
+      console.error('Failed to duplicate object:', error);
       editorActions.addConsoleMessage(`Failed to duplicate object: ${error.message}`, 'error');
     }
   };
 
   const deleteSelectedObject = () => {
-    const scene = getCurrentScene();
     const selectedObject = renderStore.selectedObject;
-    
-    if (!scene || !selectedObject) {
+    if (!selectedObject) {
       editorActions.addConsoleMessage('No object selected to delete', 'warning');
       return;
     }
@@ -589,71 +259,99 @@ function Toolbar() {
     try {
       selectedObject.dispose();
       
-      // Use render store to clear selection
       renderActions.selectObject(null);
-      
-      editorActions.selectEntity(null);
-      
-      editorActions.addConsoleMessage('Object deleted', 'success');
+      editorActions.addConsoleMessage(`Deleted ${selectedObject.name}`, 'info');
     } catch (error) {
-      console.error('Error deleting object:', error);
+      console.error('Failed to delete object:', error);
       editorActions.addConsoleMessage(`Failed to delete object: ${error.message}`, 'error');
     }
   };
 
-  return (
-    <>
-      <div class="relative w-full h-10 flex items-center">
-        <div class="flex items-center h-full px-4 gap-1">
-        </div>
-        
-      </div>
+  const handleToolbarClick = async (toolId) => {
+    if (['select', 'move', 'rotate', 'scale'].includes(toolId)) {
+      if (toolId !== 'select' && !selectedEntity()) {
+        editorActions.addConsoleMessage('Please select an object first', 'warning');
+        return;
+      }
       
-      {/* Light dropdown */}
-      {showLightDropdown() && lightDropdownPosition() && (
-        <div 
-          class="dropdown-content fixed w-48 bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 z-[210]"
-          style={{
-            left: `${lightDropdownPosition().left}px`,
-            top: `${lightDropdownPosition().top}px`
-          }}
-        >
-          <For each={lightTypes}>
-            {(lightType) => (
-              <button
-                onClick={() => handleLightCreate(lightType.id)}
-                class="w-full px-3 py-2 text-left text-sm transition-colors flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg text-base-content hover:bg-base-300 hover:text-base-content"
-              >
-                <lightType.icon class="w-4 h-4" />
-                {lightType.label}
-              </button>
-            )}
-          </For>
-        </div>
-      )}
+      setTransformMode(toolId);
+      renderActions.setTransformMode(toolId);
+    }
+    else if (['cube', 'sphere', 'cylinder', 'plane'].includes(toolId)) {
+      await createBabylonPrimitive(toolId);
+    }
+    else if (toolId === 'light') {
+      await createBabylonLight();
+    }
+    else if (toolId === 'camera') {
+      await createBabylonCamera();
+    }
+    else if (toolId === 'duplicate') {
+      if (!selectedEntity()) {
+        editorActions.addConsoleMessage('Please select an object first', 'warning');
+        return;
+      }
+      await duplicateSelectedObject();
+    }
+    else if (toolId === 'delete') {
+      if (!selectedEntity()) {
+        editorActions.addConsoleMessage('Please select an object first', 'warning');
+        return;
+      }
+      deleteSelectedObject();
+    }
+    else {
+      editorActions.addConsoleMessage(`Tool activated: ${toolId}`, 'info');
+    }
+  };
 
+  const tools = [
+    { id: 'select', icon: Pointer, tooltip: 'Select' },
+    { id: 'move', icon: Move, tooltip: 'Move' },
+    { id: 'rotate', icon: Refresh, tooltip: 'Rotate' },
+    { id: 'scale', icon: Maximize, tooltip: 'Scale' },
+    null, // Separator
+    { id: 'cube', icon: Box, tooltip: 'Add Cube' },
+    { id: 'sphere', icon: Circle, tooltip: 'Add Sphere' },
+    { id: 'cylinder', icon: Box, tooltip: 'Add Cylinder' },
+    { id: 'plane', icon: Rectangle, tooltip: 'Add Plane' },
+    { id: 'light', icon: Sun, tooltip: 'Add Light' },
+    { id: 'camera', icon: Video, tooltip: 'Add Camera' },
+    null, // Separator
+    { id: 'duplicate', icon: Copy, tooltip: 'Duplicate' },
+    { id: 'delete', icon: Trash, tooltip: 'Delete' }
+  ];
 
-      {/* Plugin dropdowns */}
-      {activePluginDropdown() && pluginDropdownPosition() && (
-        <div 
-          class="dropdown-content fixed bg-base-200 backdrop-blur-sm rounded-lg shadow-xl border border-base-300 z-[210] text-base-content text-xs"
-          style={{
-            left: `${pluginDropdownPosition().left}px`,
-            top: `${pluginDropdownPosition().top}px`
-          }}
-        >
-          {(() => {
-            const activeButton = Array.from(toolbarButtons().values())
-              .find(b => b.id === activePluginDropdown());
-            if (activeButton && activeButton.dropdownComponent) {
-              const DropdownComponent = activeButton.dropdownComponent;
-              return <DropdownComponent />;
-            }
-            return null;
-          })()}
-        </div>
-      )}
-    </>
+  return (
+    <div class="w-full h-10 flex items-center bg-base-200 border-b border-base-content/10 px-2 gap-1">
+      <For each={tools}>
+        {(tool) => 
+          tool === null ? (
+            <div class="w-px h-6 bg-base-content/20 mx-1"></div>
+          ) : (
+            <button 
+              onClick={() => handleToolbarClick(tool.id)}
+              class={`w-8 h-8 flex items-center justify-center rounded transition-all group ${
+                getSelectedTool() === tool.id
+                  ? 'bg-primary text-primary-content'
+                  : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
+              }`} 
+              title={tool.tooltip}
+            >
+              <tool.icon class="w-4 h-4" />
+              
+              <div class="absolute top-full mt-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                {tool.tooltip}
+              </div>
+            </button>
+          )
+        }
+      </For>
+      
+      <div class="flex-1" />
+      
+      <Helper />
+    </div>
   );
 }
 

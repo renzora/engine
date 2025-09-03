@@ -4,7 +4,6 @@ import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { renderStore, renderActions } from '@/render/store';
-import ObjectProperties from './objectProperties';
 
 
 function Scene(props) {
@@ -363,6 +362,10 @@ function Scene(props) {
                 // Fallback for non-Babylon objects (like folders)
                 setSelectedEntity(item.id);
               }
+              // Call the parent's onObjectSelect to switch to object properties tab
+              if (props.onObjectSelect) {
+                props.onObjectSelect(item.id);
+              }
             }
           }}
           onDoubleClick={() => {
@@ -488,11 +491,11 @@ function Scene(props) {
   return (
     <div 
       ref={containerRef} 
-      className="flex flex-col flex-1 overflow-hidden"
+      className="flex flex-col h-full overflow-hidden"
       onContextMenu={(e) => props.onContextMenu(e, null)}
     >
-      {/* Scene header */}
-      <div className="px-3 py-2">
+      {/* Scene header - fixed */}
+      <div className="flex-shrink-0 px-3 py-2">
         <div className="text-xs text-base-content/60 uppercase tracking-wide">
           Scene
         </div>
@@ -507,7 +510,7 @@ function Scene(props) {
         </For>
       </div>
       
-      <div className="flex items-center justify-between px-2 py-1 border-t border-base-content/5">
+      <div className="flex-shrink-0 flex items-center justify-between px-2 py-1 border-t border-base-content/5">
         <div className="flex items-center gap-1">
           <button
             onClick={handleCreateFolder}
@@ -563,17 +566,6 @@ function Scene(props) {
         </div>
       </div>
       
-      <Show when={selection.entity}>
-        <>
-          <div
-            className={`h-1 cursor-row-resize transition-colors ${isResizing() ? 'bg-primary/75' : 'bg-base-300/50 hover:bg-primary/75'}`}
-            onMouseDown={handleMouseDown}
-          />
-          <div style={{ height: `${bottomPanelHeight()}px` }}>
-            <ObjectProperties />
-          </div>
-        </>
-      </Show>
     </div>
   );
 }
