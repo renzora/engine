@@ -2,7 +2,7 @@ import { createPlugin } from '@/api/plugin';
 import { setCurrentProject } from '@/api/bridge/projects';
 import BridgeStatus from './BridgeStatus.jsx';
 import BridgeViewport from './BridgeViewport.jsx';
-import { Server, Database, Cloud } from '@/ui/icons';
+import { IconServer, IconDatabase, IconCloud } from '@tabler/icons-solidjs';
 
 let projectSelectedHandler = null;
 

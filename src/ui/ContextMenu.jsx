@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup } from 'solid-js';
-import { ChevronRight } from '@/ui/icons';
+import { IconChevronRight } from '@tabler/icons-solidjs';
 
 const ContextMenu = ({ items, position, onClose }) => {
   let menuRef;
@@ -142,7 +142,7 @@ const ContextMenu = ({ items, position, onClose }) => {
                   )}
                   {item.icon && <span class="mr-2">{item.icon}</span>}
                   <span class="flex-1">{item.label}</span>
-                  {item.submenu && <ChevronRight class="w-3 h-3 ml-1" />}
+                  {item.submenu && <IconChevronRight class="w-3 h-3 ml-1" />}
                 </button>
               )}
             </li>

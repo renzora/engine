@@ -1,5 +1,5 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match, createComponent } from 'solid-js';
-import { CodeSlash, X, Reset, Settings, Move } from '@/ui/icons';
+import { IconCode, IconX, IconRotateClockwise, IconSettings, IconArrowsMove } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
 import { renderStore } from '@/render/store';
@@ -507,7 +507,7 @@ function ObjectProperties() {
           className="p-0.5 rounded hover:bg-base-300/50 text-base-content/40 hover:text-base-content/60 transition-all duration-150"
           title={`Reset ${label.toLowerCase()}`}
         >
-          <Reset className="w-3 h-3" />
+          <IconRotateClockwise className="w-3 h-3" />
         </button>
       </div>
       <div className="grid grid-cols-3 gap-0.5">
@@ -718,7 +718,7 @@ function ObjectProperties() {
             className="p-0.5 rounded hover:bg-base-300/50 text-base-content/40 hover:text-base-content/60 transition-all duration-150"
             title={`Reset ${property.name.replace(/_/g, ' ')} to default`}
           >
-            <Reset className="w-3 h-3" />
+            <IconRotateClockwise className="w-3 h-3" />
           </button>
         </label>
         
@@ -942,9 +942,9 @@ function ObjectProperties() {
   //console.log('🎨 Script properties signal:', Object.keys(scriptPropertiesSignal()));
   
   return (
-    <div class="h-full flex flex-col bg-base-200">
+    <div class="h-full flex flex-col">
       {/* Content */}
-      <div class="flex-1 p-0.5 space-y-0.5">
+      <div class="flex-1 p-2 space-y-2">
         {(() => {
           let objectProps = objectPropertiesStore.objects[selection.entity];
           
@@ -972,7 +972,7 @@ function ObjectProperties() {
               <div class="bg-base-100 border-base-300 border rounded-lg">
                 <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
                   <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('scripts')}>
-                    <CodeSlash class="w-3 h-3" />
+                    <IconCode class="w-3 h-3" />
                     Scripts
                   </div>
                   <input
@@ -1072,7 +1072,7 @@ function ObjectProperties() {
                                 }}
                               >
                                 <div class="flex items-center gap-2">
-                                  <CodeSlash class="w-4 h-4 text-secondary" />
+                                  <IconCode class="w-4 h-4 text-secondary" />
                                   <div class="flex flex-col">
                                     <span class="text-sm font-medium">{script.name}</span>
                                     <span class="text-xs text-base-content/50">{script.full_path || script.directory}</span>
@@ -1172,7 +1172,7 @@ function ObjectProperties() {
                       }}
                     >
                       <div class="flex flex-col items-center gap-2 p-4">
-                        <CodeSlash class="w-5 h-5 text-base-content/40" />
+                        <IconCode class="w-5 h-5 text-base-content/40" />
                         <div class="text-base-content/60 text-sm">drop scripts here</div>
                         <div class="text-xs text-base-content/40">.ren, .js, .jsx, .ts, .tsx</div>
                       </div>
@@ -1187,7 +1187,7 @@ function ObjectProperties() {
                 <div class="bg-base-100 border-base-300 border rounded-lg">
                   <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
                     <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('transform')}>
-                      <Move class="w-3 h-3" />
+                      <IconArrowsMove class="w-3 h-3" />
                       Transform
                     </div>
                     <input
@@ -1248,7 +1248,7 @@ function ObjectProperties() {
                               {([sectionName, properties]) => (
                                 <div class="bg-base-100 border-base-300 border rounded-lg">
                                   <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer">
-                                    <CodeSlash class="w-3 h-3" />
+                                    <IconCode class="w-3 h-3" />
                                     {sectionName}
                                   </div>
                                   <div class="!p-2">
@@ -1273,7 +1273,7 @@ function ObjectProperties() {
 
               {/* Reset All Button */}
               <Show when={selection.entity}>
-                <div class="bg-base-100 rounded-lg p-1 border border-base-300/50">
+                <div class="p-1">
                   <button 
                     onClick={(e) => {
                       e.preventDefault();

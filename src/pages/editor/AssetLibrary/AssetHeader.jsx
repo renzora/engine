@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import { Grid, Menu, Refresh, CodeSlash, Plus } from '@/ui/icons';
+import { IconGrid3x3, IconMenu2, IconRefresh, IconCode, IconPlus } from '@tabler/icons-solidjs';
 
 function AssetHeader({ 
   selectedAssets, 
@@ -29,7 +29,7 @@ function AssetHeader({
             onClick={onImport}
             class="flex items-center gap-1.5 px-3 py-1 text-xs rounded bg-primary text-primary-content hover:bg-primary/80 transition-colors"
           >
-            <Plus class="w-3 h-3" />
+            <IconPlus class="w-3 h-3" />
             <span>Import</span>
           </button>
           
@@ -43,7 +43,7 @@ function AssetHeader({
               }`}
               title="Toggle Code Editor"
             >
-              <CodeSlash class="w-3 h-3" />
+              <IconCode class="w-3 h-3" />
             </button>
             <button
               onClick={() => setLayoutMode('grid')}
@@ -54,7 +54,7 @@ function AssetHeader({
               }`}
               title="Grid View"
             >
-              <Grid class="w-3 h-3" />
+              <IconGrid3x3 class="w-3 h-3" />
             </button>
             <button
               onClick={() => setLayoutMode('list')}
@@ -65,7 +65,7 @@ function AssetHeader({
               }`}
               title="List View"
             >
-              <Menu class="w-3 h-3" />
+              <IconMenu2 class="w-3 h-3" />
             </button>
           </div>
           

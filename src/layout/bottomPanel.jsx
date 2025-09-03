@@ -23,6 +23,18 @@ const BottomPanel = () => {
     window.addEventListener('resize', handleWindowResize);
     onCleanup(() => window.removeEventListener('resize', handleWindowResize));
   });
+
+  // Recalculate viewport when bottom panel visibility or position changes
+  createEffect(() => {
+    if (bottomPanelVisible()) {
+      // Trigger resize after position changes
+      setTimeout(() => {
+        if (renderStore.engine) {
+          renderStore.engine.resize();
+        }
+      }, 0);
+    }
+  });
   
   // Get reactive store values
   const ui = () => editorStore.ui;
@@ -106,7 +118,7 @@ const BottomPanel = () => {
     const rightPos = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0';
     const heightVal = `${getPanelHeight()}px`;
     const footerHeight = 24; // 24px footer height
-    const bottomPos = `${footerHeight}px`;
+    const bottomPos = `${footerHeight - 8}px`;
     
     return { left: leftPos, right: rightPos, height: heightVal, bottom: bottomPos };
   };

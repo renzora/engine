@@ -1,6 +1,6 @@
 import { onMount, onCleanup, createSignal, createMemo } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
-import { Git } from '@/ui/icons';
+import { IconBrandGit } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { NodeLibrary } from './NodeLibrary';
 import NodeCanvas from './NodeCanvas';
@@ -215,7 +215,7 @@ export default function NodeEditorPage() {
     
     api.button('node-editor-create', {
       title: 'Node Editor',
-      icon: Git,
+      icon: IconBrandGit,
       onClick: () => {
         console.log('[NodeEditorPage] Switch to Node Editor page');
       },

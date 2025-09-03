@@ -1,6 +1,6 @@
 import { createEffect, onCleanup, createMemo, createSignal, Show } from 'solid-js';
 import { renderStore, renderActions } from '@/render/store';
-import { Sun, Lightbulb, Moon, Palette, Camera, Settings, Eye, Cloud, Clock } from '@/ui/icons';
+import { IconSun, IconBulb, IconMoon, IconPalette, IconCamera, IconSettings, IconEye, IconCloud, IconClock } from '@tabler/icons-solidjs';
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration';
 
 export default function LightingPanel() {
@@ -359,15 +359,15 @@ export default function LightingPanel() {
   };
 
   return (
-    <div class="h-full flex flex-col bg-base-200">
+    <div class="h-full flex flex-col">
       {/* Content */}
-      <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
+      <div class="flex-1 p-2 space-y-2">
         
         {/* Time Control */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50">
             <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('time')}>
-              <Clock class="w-3 h-3" />
+              <IconClock class="w-3 h-3" />
               Time Control
             </div>
             <input
@@ -385,7 +385,7 @@ export default function LightingPanel() {
             <div class="!p-2">
               <div class="space-y-0.5">
               
-              <div class="bg-base-200 rounded-lg p-1 text-center">
+              <div class="bg-base-100/50 rounded-lg p-1 text-center">
                 <div class="text-xs font-mono">{currentTime()}</div>
                 <div class="text-xs text-base-content/60">Current Time</div>
               </div>
@@ -450,7 +450,7 @@ export default function LightingPanel() {
         {/* Post Processing */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('postProcessing')}>
-            <Camera class="w-3 h-3" />
+            <IconCamera class="w-3 h-3" />
             Post Processing
           </div>
           <Show when={sectionsOpen().postProcessing}>
@@ -557,7 +557,7 @@ export default function LightingPanel() {
         {/* Sky & Atmosphere */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('sky')}>
-            <Palette class="w-3 h-3" />
+            <IconPalette class="w-3 h-3" />
             Sky & Atmosphere
           </div>
           <Show when={sectionsOpen().sky}>
@@ -629,7 +629,7 @@ export default function LightingPanel() {
         {/* Clouds */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('clouds')}>
-            <Cloud class="w-3 h-3" />
+            <IconCloud class="w-3 h-3" />
             Clouds
           </div>
           <Show when={sectionsOpen().clouds}>
@@ -667,7 +667,7 @@ export default function LightingPanel() {
         {/* Fog */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('fog')}>
-            <Eye class="w-3 h-3" />
+            <IconEye class="w-3 h-3" />
             Fog
           </div>
           <Show when={sectionsOpen().fog}>
@@ -722,14 +722,14 @@ export default function LightingPanel() {
         {/* Light Sources */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('lights')}>
-            <Sun class="w-3 h-3" />
+            <IconSun class="w-3 h-3" />
             Light Sources
           </div>
           <Show when={sectionsOpen().lights}>
             <div class="!p-2">
             <div class="space-y-0.5">
             {/* Sun Light */}
-            <div class="bg-base-200/50 rounded-lg p-0.5">
+            <div class="bg-base-100/30 rounded-lg p-0.5">
               <div class="text-xs font-medium mb-0.5">Sun Light</div>
               <div class="space-y-1">
                 <SliderControl 
@@ -751,7 +751,7 @@ export default function LightingPanel() {
             </div>
             
             {/* Sky Light */}
-            <div class="bg-base-200/50 rounded-lg p-0.5">
+            <div class="bg-base-100/30 rounded-lg p-0.5">
               <div class="text-xs font-medium mb-0.5">Sky Light (Ambient)</div>
               <div class="space-y-1">
                 <SliderControl 
@@ -773,7 +773,7 @@ export default function LightingPanel() {
             </div>
             
             {/* Rim Light */}
-            <div class="bg-base-200/50 rounded-lg p-0.5">
+            <div class="bg-base-100/30 rounded-lg p-0.5">
               <div class="text-xs font-medium mb-0.5">Rim Light (Atmospheric)</div>
               <div class="space-y-1">
                 <SliderControl 
@@ -795,7 +795,7 @@ export default function LightingPanel() {
             </div>
             
             {/* Bounce Light */}
-            <div class="bg-base-200/50 rounded-lg p-0.5">
+            <div class="bg-base-100/30 rounded-lg p-0.5">
               <div class="text-xs font-medium mb-0.5">Bounce Light (Indirect)</div>
               <div class="space-y-1">
                 <SliderControl 
@@ -817,7 +817,7 @@ export default function LightingPanel() {
             </div>
             
             {/* Moon Light */}
-            <div class="bg-base-200/50 rounded-lg p-0.5">
+            <div class="bg-base-100/30 rounded-lg p-0.5">
               <div class="text-xs font-medium mb-0.5">Moon Light</div>
               <div class="space-y-1">
                 <SliderControl 
@@ -839,7 +839,7 @@ export default function LightingPanel() {
         {/* Shadows */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('shadows')}>
-            <Settings class="w-3 h-3" />
+            <IconSettings class="w-3 h-3" />
             Shadows
           </div>
           <Show when={sectionsOpen().shadows}>
@@ -893,7 +893,7 @@ export default function LightingPanel() {
         {/* Particles */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('particles')}>
-            <Lightbulb class="w-3 h-3" />
+            <IconBulb class="w-3 h-3" />
             Particles
           </div>
           <Show when={sectionsOpen().particles}>
@@ -936,7 +936,7 @@ export default function LightingPanel() {
         </div>
         
         {/* Reset Button */}
-        <div class="bg-base-100 rounded-lg p-1 border border-base-300/50">
+        <div class="p-1">
           <button 
             onClick={() => renderActions.resetLightingSettings()}
             class="btn btn-outline btn-error btn-xs w-full"

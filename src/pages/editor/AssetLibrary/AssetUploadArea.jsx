@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import { Upload, FolderOpen, Folder, Photo, Cube, Code } from '@/ui/icons';
+import { IconUpload, IconFolderOpen, IconFolder, IconPhoto, IconCube, IconCode } from '@tabler/icons-solidjs';
 
 function AssetUploadArea({ 
   isDragOver, 
@@ -18,12 +18,12 @@ function AssetUploadArea({
 }) {
   const getCategoryIcon = (categoryId) => {
     const iconMap = {
-      '3d-models': Cube,
-      'textures': Photo,
-      'scripts': Code,
-      'misc': Folder
+      '3d-models': IconCube,
+      'textures': IconPhoto,
+      'scripts': IconCode,
+      'misc': IconFolder
     };
-    return iconMap[categoryId] || Folder;
+    return iconMap[categoryId] || IconFolder;
   };
 
   return (
@@ -59,7 +59,7 @@ function AssetUploadArea({
         <div class="absolute inset-0 flex items-center justify-center bg-primary/20 backdrop-blur-sm z-10">
           <div class="text-center">
             <div class="w-16 h-16 mx-auto mb-4 border-2 border-primary border-dashed rounded-lg flex items-center justify-center">
-              <Upload class="w-8 h-8 text-primary" />
+              <IconUpload class="w-8 h-8 text-primary" />
             </div>
             <p class="text-lg font-medium text-primary">Drop files to upload</p>
             <p class="text-sm text-primary/80">Supports 3D models, textures, audio, and more</p>
@@ -75,7 +75,7 @@ function AssetUploadArea({
                 <div class="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 sm:mb-6 border-2 border-base-content/40 border-dashed rounded-xl flex items-center justify-center bg-base-200/30">
                   {(() => {
                     if (viewMode() === 'folder') {
-                      return <FolderOpen class="w-8 h-8 sm:w-10 sm:h-10 text-base-content/50" />;
+                      return <IconFolderOpen class="w-8 h-8 sm:w-10 sm:h-10 text-base-content/50" />;
                     } else {
                       const CategoryIcon = getCategoryIcon(selectedCategory());
                       return <CategoryIcon class="w-8 h-8 sm:w-10 sm:h-10 text-base-content/50" />;
@@ -96,7 +96,7 @@ function AssetUploadArea({
                       onClick={() => fileInputRef?.click()}
                       class="flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/80 text-primary-content text-sm font-medium rounded-lg transition-colors min-w-[120px]"
                     >
-                      <Upload class="w-4 h-4" />
+                      <IconUpload class="w-4 h-4" />
                       Upload Files
                     </button>
                     
@@ -104,7 +104,7 @@ function AssetUploadArea({
                       onClick={() => folderInputRef?.click()}
                       class="flex items-center justify-center gap-2 px-4 py-2 border border-base-300 hover:border-base-content/50 hover:bg-base-200/50 text-base-content/70 text-sm font-medium rounded-lg transition-colors min-w-[120px]"
                     >
-                      <Folder class="w-4 h-4" />
+                      <IconFolder class="w-4 h-4" />
                       Upload Folder
                     </button>
                   </div>

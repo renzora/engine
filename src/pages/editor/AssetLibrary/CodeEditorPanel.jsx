@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
-import { X, Save, FileText, Code, Forward, Back } from '@/ui/icons';
+import { IconX, IconDeviceFloppy, IconFileText, IconCode, IconChevronRight, IconChevronLeft } from '@tabler/icons-solidjs';
 import MonacoEditor from '@/components/MonacoEditor';
 import { readFile, writeFile, deleteFile } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -822,7 +822,7 @@ function CodeEditorPanel({
         {/* Header */}
         <div class="flex items-center justify-between py-2 pl-3 pr-1 border-b border-base-300 bg-base-200">
           <div class="flex items-center gap-1.5 min-w-0 flex-1">
-            <FileText class="w-4 h-4 text-primary flex-shrink-0" />
+            <IconFileText class="w-4 h-4 text-primary flex-shrink-0" />
             <Show when={hasChanges()}>
               <div class="w-2 h-2 bg-warning rounded-full flex-shrink-0" title="Unsaved changes" />
             </Show>
@@ -876,7 +876,7 @@ function CodeEditorPanel({
                 class="px-1.5 py-0.5 text-xs rounded text-base-content/60 hover:text-base-content hover:bg-base-300/60 transition-colors cursor-grab active:cursor-grabbing"
                 title="Drag to attach script to object"
               >
-                <Code class="w-3 h-3" />
+                <IconCode class="w-3 h-3" />
               </button>
             </Show>
             
@@ -886,7 +886,7 @@ function CodeEditorPanel({
                 class="px-1.5 py-0.5 text-xs rounded text-base-content/60 hover:text-base-content hover:bg-base-300/60 transition-colors cursor-pointer"
                 title={`Move editor to ${currentSide === 'left' ? 'right' : 'left'} side`}
               >
-                {currentSide === 'left' ? <Forward class="w-3 h-3" /> : <Back class="w-3 h-3" />}
+                {currentSide === 'left' ? <IconChevronRight class="w-3 h-3" /> : <IconChevronLeft class="w-3 h-3" />}
               </button>
             </Show>
             
@@ -900,7 +900,7 @@ function CodeEditorPanel({
               }`}
               title="Save (Ctrl+S)"
             >
-              <Show when={saving()} fallback={<Save class="w-3 h-3" />}>
+              <Show when={saving()} fallback={<IconDeviceFloppy class="w-3 h-3" />}>
                 <div class="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
               </Show>
             </button>
@@ -910,7 +910,7 @@ function CodeEditorPanel({
               class="px-1.5 py-0.5 text-xs rounded text-base-content/60 hover:text-base-content hover:bg-base-300/60 transition-colors cursor-pointer"
               title="Close"
             >
-              <X class="w-3 h-3" />
+              <IconX class="w-3 h-3" />
             </button>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup } from 'solid-js'
-import { Search, Refresh, X } from '@/ui/icons'
+import { IconSearch, IconRefresh, IconX } from '@tabler/icons-solidjs'
 
 function SearchInput({ 
   value = '',
@@ -57,7 +57,7 @@ function SearchInput({
   return (
     <div class={`relative ${className}`}>
       <div class="relative">
-        <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <IconSearch class="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
         
         <input
           type="text"
@@ -76,7 +76,7 @@ function SearchInput({
         
         <div class="absolute right-3 top-1/2 transform -translate-y-1/2 flex items-center gap-1">
           {loading && (
-            <Refresh class="w-4 h-4 text-blue-500 animate-spin" />
+            <IconRefresh class="w-4 h-4 text-blue-500 animate-spin" />
           )}
           
           {localValue() && (
@@ -85,7 +85,7 @@ function SearchInput({
               class="p-0.5 hover:bg-slate-600 rounded transition-colors"
               title="Clear search"
             >
-              <X class="w-3 h-3 text-gray-400 hover:text-gray-200" />
+              <IconX class="w-3 h-3 text-gray-400 hover:text-gray-200" />
             </button>
           )}
         </div>

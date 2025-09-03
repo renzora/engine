@@ -1,5 +1,5 @@
 import { Show, createSignal, createEffect } from 'solid-js';
-import { Photo, Code, X, Check, CodeSlash, ArrowRight, Video, Folder } from '@/ui/icons';
+import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder } from '@tabler/icons-solidjs';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -59,7 +59,7 @@ const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
     }>
       <Show when={!error() && thumbnailUrl()} fallback={
         <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-          <Photo class="w-10 h-10 text-base-content/40" />
+          <IconPhoto class="w-10 h-10 text-base-content/40" />
         </div>
       }>
         <div class={`${size} bg-base-300 rounded overflow-hidden`}>
@@ -96,7 +96,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   if (!thumbnailUrl) {
     return (
       <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-        <Photo class="w-10 h-10 text-success" />
+        <IconPhoto class="w-10 h-10 text-success" />
       </div>
     );
   }
@@ -105,7 +105,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
     <div class={`${size} bg-base-300 rounded overflow-hidden relative`}>
       <Show when={!imageError()} fallback={
         <div class="w-full h-full flex items-center justify-center">
-          <Photo class="w-10 h-10 text-success" />
+          <IconPhoto class="w-10 h-10 text-success" />
         </div>
       }>
         <img 
@@ -414,11 +414,11 @@ function AssetItem({
                       : 'opacity-60'
                 }`}>
                 {asset.type === 'folder' ? (
-                  <Folder class="w-5 h-5 text-warning" />
+                  <IconFolder class="w-5 h-5 text-warning" />
                 ) : isScriptFile(asset.extension) ? (
-                  <CodeSlash class="w-5 h-5 text-primary" />
+                  <IconCodeSlash class="w-5 h-5 text-primary" />
                 ) : (
-                  <Photo class="w-5 h-5 text-base-content/60" />
+                  <IconPhoto class="w-5 h-5 text-base-content/60" />
                 )}
               </div>
             }>
@@ -436,12 +436,12 @@ function AssetItem({
             </Show>
             <Show when={failedAssets().includes(asset.id)}>
               <div class="w-3 h-3 bg-error rounded-full flex items-center justify-center">
-                <X class="w-2 h-2 text-white" />
+                <IconX class="w-2 h-2 text-white" />
               </div>
             </Show>
             <Show when={loadedAssets().includes(asset.id)}>
               <div class="w-3 h-3 bg-success rounded-full flex items-center justify-center">
-                <Check class="w-2 h-2 text-white" />
+                <IconCheck class="w-2 h-2 text-white" />
               </div>
             </Show>
           </div>
@@ -532,11 +532,11 @@ function AssetItem({
           <Show when={isImageFile(asset.extension)} fallback={
             <div>
               {asset.type === 'folder' ? (
-                <Folder class="w-16 h-16 text-yellow-500" />
+                <IconFolder class="w-16 h-16 text-yellow-500" />
               ) : isScriptFile(asset.extension) ? (
-                <CodeSlash class="w-16 h-16 text-blue-500" />
+                <IconCodeSlash class="w-16 h-16 text-blue-500" />
               ) : (
-                <Photo class="w-16 h-16 text-base-content/60" />
+                <IconPhoto class="w-16 h-16 text-base-content/60" />
               )}
             </div>
           }>
@@ -585,7 +585,7 @@ function AssetItem({
             class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-base-300/50 transition-colors flex items-center gap-2"
             onClick={() => openInViewport('left')}
           >
-            <ArrowRight class="w-4 h-4 rotate-180" />
+            <IconArrowRight class="w-4 h-4 rotate-180" />
             Open in Viewport (Left)
           </button>
           
@@ -593,7 +593,7 @@ function AssetItem({
             class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-base-300/50 transition-colors flex items-center gap-2"
             onClick={() => openInViewport('right')}
           >
-            <ArrowRight class="w-4 h-4" />
+            <IconArrowRight class="w-4 h-4" />
             Open in Viewport (Right)
           </button>
         </div>

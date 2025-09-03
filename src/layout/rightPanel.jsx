@@ -7,7 +7,7 @@ import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
 import { Show, createMemo, createSignal } from 'solid-js';
 import { renderStore } from '@/render/store.jsx';
-import { Box } from '@/ui/icons';
+import { IconBox } from '@tabler/icons-solidjs';
 
 const RightPanel = () => {
   const [contextMenu, setContextMenu] = createSignal(null);
@@ -188,7 +188,7 @@ const RightPanel = () => {
       default:
         return (
           <div class="h-full flex flex-col items-center justify-center text-center text-base-content/60 p-4">
-            <Box class="w-8 h-8 mb-2 opacity-40" />
+            <IconBox class="w-8 h-8 mb-2 opacity-40" />
             <p class="text-xs">No properties panel available</p>
           </div>
         );
@@ -252,16 +252,16 @@ const RightPanel = () => {
                       </svg>
                     </div>
                     
-                    <div className="absolute right-full mr-1 top-1/2 -translate-y-1/2 bg-base-200 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl" 
+                    <div className="absolute right-full mr-1 top-1/2 -translate-y-1/2 bg-base-300 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl" 
                          style={{ 'z-index': 50 }}>
                       Close panel
-                      <div className="absolute left-full top-1/2 -translate-y-1/2 w-0 h-0 border-l-4 border-l-base-200 border-t-4 border-t-transparent border-b-4 border-b-transparent"></div>
+                      <div className="absolute left-full top-1/2 -translate-y-1/2 w-0 h-0 border-l-4 border-l-base-300 border-t-4 border-t-transparent border-b-4 border-b-transparent"></div>
                     </div>
                   </button>
                 </div>
                 
                 {/* Panel content */}
-                <div className="h-full bg-base-200 border-t border-l border-r border-base-content/10 shadow-lg overflow-hidden rounded-tr-lg flex">
+                <div className="h-full bg-base-300 border-t border-l border-r border-base-content/10 shadow-lg overflow-hidden rounded-tr-lg flex">
                   {/* Scene panel - always at top */}
                   <div className="flex-1 flex flex-col">
                     <div className="flex-1 min-h-0 overflow-y-auto" style="scrollbar-width: thin;">
@@ -274,12 +274,12 @@ const RightPanel = () => {
                     
                     {/* Resize bar for tab container */}
                     <div
-                      className={`h-1 cursor-row-resize transition-colors ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-300/50 hover:bg-primary/75'}`}
+                      className={`h-1 cursor-row-resize transition-colors border-t border-base-content/20 ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-content/15 hover:bg-primary/75'}`}
                       onMouseDown={handleTabResizeStart}
                     />
                     
                     {/* Tab system for properties */}
-                    <div className="flex bg-base-100" style={{ height: `${tabContainerHeight()}px` }}>
+                    <div className="flex bg-base-200" style={{ height: `${tabContainerHeight()}px` }}>
                       {/* Vertical toolbar inside right panel */}
                       <div className="w-auto flex-shrink-0 h-full">
                         <TabMenu 
@@ -297,7 +297,7 @@ const RightPanel = () => {
                       </div>
                       
                       {/* Tab content */}
-                      <div className="flex-1 min-w-0 bg-base-200 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) rgba(0,0,0,0.1);">
+                      <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin">
                         {renderTabContent()}
                       </div>
                     </div>

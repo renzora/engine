@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
-import { Refresh, Video, Edit, ArrowLeft, ArrowRight, Plus, Folder, File, ArrowDown, ArrowUp, Scissors, Copy, Clipboard, Trash, Cube, Download, Upload, Photo, GameController, Globe, Box
-} from '@/ui/icons';
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconBox
+} from '@tabler/icons-solidjs';
 
 export default createPlugin({
   id: 'menu-plugin',
@@ -18,75 +18,75 @@ export default createPlugin({
 
     api.menu('file', {
       label: 'File',
-      icon: File,
+      icon: IconFile,
       order: 1,
       submenu: [
         { 
           id: 'new', 
           label: 'New Project', 
-          icon: Plus,
+          icon: IconPlus,
           submenu: [
-            { id: 'new-blank', label: 'Blank Project', icon: File },
-            { id: 'new-template', label: 'From Template', icon: Folder,
+            { id: 'new-blank', label: 'Blank Project', icon: IconFile },
+            { id: 'new-template', label: 'From Template', icon: IconFolder,
               submenu: [
-                { id: 'template-basic', label: 'Basic Scene', icon: Cube },
-                { id: 'template-game', label: 'Game Template', icon: GameController },
-                { id: 'template-arch', label: 'Architecture', icon: Box },
-                { id: 'template-product', label: 'Product Viz', icon: Box }
+                { id: 'template-basic', label: 'Basic Scene', icon: IconCube },
+                { id: 'template-game', label: 'Game Template', icon: IconDeviceGamepad2 },
+                { id: 'template-arch', label: 'Architecture', icon: IconBox },
+                { id: 'template-product', label: 'Product Viz', icon: IconBox }
               ]
             },
-            { id: 'new-import', label: 'Import Existing', icon: ArrowDown }
+            { id: 'new-import', label: 'Import Existing', icon: IconArrowDown }
           ]
         },
-        { id: 'open', label: 'Open Project', icon: Folder, shortcut: 'Ctrl+O' },
-        { id: 'save', label: 'Save Project', icon: File, shortcut: 'Ctrl+S' },
-        { id: 'save-as', label: 'Save As...', icon: File, shortcut: 'Ctrl+Shift+S' },
+        { id: 'open', label: 'Open Project', icon: IconFolder, shortcut: 'Ctrl+O' },
+        { id: 'save', label: 'Save Project', icon: IconFile, shortcut: 'Ctrl+S' },
+        { id: 'save-as', label: 'Save As...', icon: IconFile, shortcut: 'Ctrl+Shift+S' },
         { divider: true },
         { 
           id: 'import', 
           label: 'Import', 
-          icon: ArrowDown,
+          icon: IconArrowDown,
           submenu: [
-            { id: 'import-model', label: 'Model Importer...', icon: Download, 
+            { id: 'import-model', label: 'Model Importer...', icon: IconDownload, 
               action: () => {
                 document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
               }
             },
             { divider: true },
-            { id: 'import-fbx', label: 'FBX File', icon: Download },
-            { id: 'import-obj', label: 'OBJ File', icon: Download },
-            { id: 'import-gltf', label: 'GLTF/GLB File', icon: Download },
-            { id: 'import-blend', label: 'Blender File', icon: Download },
+            { id: 'import-fbx', label: 'FBX File', icon: IconDownload },
+            { id: 'import-obj', label: 'OBJ File', icon: IconDownload },
+            { id: 'import-gltf', label: 'GLTF/GLB File', icon: IconDownload },
+            { id: 'import-blend', label: 'Blender File', icon: IconDownload },
             { divider: true },
-            { id: 'import-image', label: 'Image as Plane', icon: Photo },
-            { id: 'import-hdri', label: 'HDRI Environment', icon: Globe }
+            { id: 'import-image', label: 'Image as Plane', icon: IconPhoto },
+            { id: 'import-hdri', label: 'HDRI Environment', icon: IconWorld }
           ]
         },
         { 
           id: 'export', 
           label: 'Export', 
-          icon: ArrowUp,
+          icon: IconArrowUp,
           submenu: [
-            { id: 'export-scene', label: 'Export Scene', icon: Cube,
+            { id: 'export-scene', label: 'Export Scene', icon: IconCube,
               submenu: [
-                { id: 'export-fbx', label: 'FBX Format', icon: Upload },
-                { id: 'export-obj', label: 'OBJ Format', icon: Upload },
-                { id: 'export-gltf', label: 'GLTF Format', icon: Upload },
-                { id: 'export-blend', label: 'Blender Format', icon: Upload }
+                { id: 'export-fbx', label: 'FBX Format', icon: IconUpload },
+                { id: 'export-obj', label: 'OBJ Format', icon: IconUpload },
+                { id: 'export-gltf', label: 'GLTF Format', icon: IconUpload },
+                { id: 'export-blend', label: 'Blender Format', icon: IconUpload }
               ]
             },
-            { id: 'export-render', label: 'Export Render', icon: Video,
+            { id: 'export-render', label: 'Export Render', icon: IconVideo,
               submenu: [
-                { id: 'export-png', label: 'PNG Image', icon: Photo },
-                { id: 'export-jpg', label: 'JPEG Image', icon: Photo },
-                { id: 'export-exr', label: 'EXR Image', icon: Photo },
-                { id: 'export-animation', label: 'Animation Sequence', icon: Refresh }
+                { id: 'export-png', label: 'PNG Image', icon: IconPhoto },
+                { id: 'export-jpg', label: 'JPEG Image', icon: IconPhoto },
+                { id: 'export-exr', label: 'EXR Image', icon: IconPhoto },
+                { id: 'export-animation', label: 'Animation Sequence', icon: IconRefresh }
               ]
             }
           ]
         },
         { divider: true },
-        { id: 'recent', label: 'Recent Projects', icon: Refresh },
+        { id: 'recent', label: 'Recent Projects', icon: IconRefresh },
       ],
       onClick: () => {
         console.log('[MenuPlugin] File menu clicked');
@@ -95,17 +95,17 @@ export default createPlugin({
 
     api.menu('edit', {
       label: 'Edit',
-      icon: Edit,
+      icon: IconEdit,
       order: 2,
       submenu: [
-        { id: 'undo', label: 'Undo', icon: ArrowLeft, shortcut: 'Ctrl+Z' },
-        { id: 'redo', label: 'Redo', icon: ArrowRight, shortcut: 'Ctrl+Y' },
+        { id: 'undo', label: 'Undo', icon: IconArrowLeft, shortcut: 'Ctrl+Z' },
+        { id: 'redo', label: 'Redo', icon: IconArrowRight, shortcut: 'Ctrl+Y' },
         { divider: true },
-        { id: 'cut', label: 'Cut', icon: Scissors, shortcut: 'Ctrl+X' },
-        { id: 'copy', label: 'Copy', icon: Copy, shortcut: 'Ctrl+C' },
-        { id: 'paste', label: 'Paste', icon: Clipboard, shortcut: 'Ctrl+V' },
-        { id: 'duplicate', label: 'Duplicate', icon: Copy, shortcut: 'Ctrl+D' },
-        { id: 'delete', label: 'Delete', icon: Trash, shortcut: 'Delete' },
+        { id: 'cut', label: 'Cut', icon: IconScissors, shortcut: 'Ctrl+X' },
+        { id: 'copy', label: 'Copy', icon: IconCopy, shortcut: 'Ctrl+C' },
+        { id: 'paste', label: 'Paste', icon: IconClipboard, shortcut: 'Ctrl+V' },
+        { id: 'duplicate', label: 'Duplicate', icon: IconCopy, shortcut: 'Ctrl+D' },
+        { id: 'delete', label: 'Delete', icon: IconTrash, shortcut: 'Delete' },
         { divider: true },
         { id: 'select-all', label: 'Select All', shortcut: 'Ctrl+A' },
       ],

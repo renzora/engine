@@ -9,6 +9,4 @@ export { default as ContextMenu } from './ContextMenu.jsx';
 // Export utilities
 export * from './utils/cn.js';
 
-// Export icons separately to avoid conflicts
-import * as Icons from './icons/index.jsx';
-export { Icons };
+// Icons are now imported directly from @tabler/icons-solidjs

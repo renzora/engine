@@ -1,6 +1,5 @@
 import { createSignal, createEffect, onCleanup, createMemo, For, Show } from 'solid-js';
-import { ArrowDown, ArrowUp, Refresh, ChevronRight, Minimize, MaximizeWindows, Restore, X } from '@/ui/icons';
-import { Settings } from '@/ui/icons/development';
+import { IconArrowDown, IconArrowUp, IconRefresh, IconChevronRight, IconMinus, IconRectangle, IconCopy, IconX, IconSettings } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { topMenuItems } from '@/api/plugin';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
@@ -280,7 +279,7 @@ function TopMenu() {
                 title="Minimize"
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
-                <Minimize class="w-4 h-4" />
+                <IconMinus class="w-4 h-4" />
               </button>
               <button
                 onClick={handleMaximize}
@@ -288,7 +287,7 @@ function TopMenu() {
                 title={isMaximized() ? "Restore" : "Maximize"}
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
-                {isMaximized() ? <Restore class="w-4 h-4" /> : <MaximizeWindows class="w-4 h-4" />}
+                {isMaximized() ? <IconCopy class="w-4 h-4" /> : <IconRectangle class="w-4 h-4" />}
               </button>
               <button
                 onClick={handleClose}
@@ -296,7 +295,7 @@ function TopMenu() {
                 title="Close"
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
-                <X class="w-4 h-4" />
+                <IconX class="w-4 h-4" />
               </button>
             </div>
           </div>
@@ -340,7 +339,7 @@ function TopMenu() {
                           <span class="ml-auto text-xs text-base-content/40 group-hover/item:text-primary-content/70">{item.shortcut}</span>
                         </Show>
                         <Show when={item.submenu}>
-                          <ChevronRight class="w-3 h-3 text-base-content/60 group-hover/item:text-primary-content ml-auto" />
+                          <IconChevronRight class="w-3 h-3 text-base-content/60 group-hover/item:text-primary-content ml-auto" />
                         </Show>
                       </button>
                       
@@ -372,7 +371,7 @@ function TopMenu() {
                                           <span class="ml-auto text-xs text-base-content/40 group-hover/subitem:text-primary-content/70">{subItem.shortcut}</span>
                                         </Show>
                                         <Show when={subItem.submenu}>
-                                          <ChevronRight class="w-3 h-3 text-base-content/60 group-hover/subitem:text-primary-content ml-auto" />
+                                          <IconChevronRight class="w-3 h-3 text-base-content/60 group-hover/subitem:text-primary-content ml-auto" />
                                         </Show>
                                       </button>
                                       

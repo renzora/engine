@@ -1,5 +1,4 @@
 import { createSignal, createEffect, createMemo, For } from 'solid-js';
-import { Cube, Plus, Settings, Maximize } from '@/ui/icons';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
 import { propertyTabs, toolbarButtons } from '@/api/plugin';
@@ -298,9 +297,9 @@ function TabMenu(props) {
 
 
   return (
-    <div class="relative w-10 h-full bg-base-300 border-l border-base-content/10 flex flex-col pointer-events-auto no-select">
+    <div class="relative w-10 h-full bg-neutral/50 border-r border-neutral/50 flex flex-col pointer-events-auto no-select">
       <div class="flex-1 overflow-y-hidden overflow-x-hidden h-full">
-        <div class="flex flex-col space-y-0.5 p-0.5 h-full">
+        <div class="flex flex-col space-y-0.5 h-full">
           <For each={tools()}>
             {(tool) => {
               const isDragged = () => dragState().draggedTool?.id === tool.id;

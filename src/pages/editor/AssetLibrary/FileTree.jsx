@@ -1,5 +1,5 @@
 import { Show, For } from 'solid-js';
-import { Folder, ChevronRight } from '@/ui/icons';
+import { IconFolder, IconFolderOpen } from '@tabler/icons-solidjs';
 
 function FileTree({ 
   node, 
@@ -90,28 +90,19 @@ function FileTree({
         </Show>
         
         <div class="relative flex items-center">
-          <Folder class={`w-3 h-3 mr-1.5 ${
-            isSelected() ? 'text-primary-content' : 'text-warning'
-          }`} />
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (hasChildren) {
-                onFolderToggle(node.path);
-              }
-            }}
-            class="absolute -left-0.5 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
-          >
-            <ChevronRight 
-              class={`w-2.5 h-2.5 transition-all duration-200 ${
-                hasChildren && isExpanded() 
-                  ? 'rotate-90 text-primary' 
-                  : hasChildren
-                    ? 'text-base-content/50 hover:text-base-content/70'
-                    : 'text-base-content/20'
-              }`} 
-            />
-          </button>
+          {(hasChildren && isExpanded()) ? (
+            <IconFolderOpen class={`w-4 h-4 mr-0.5 ${
+              isSelected() ? 'text-primary-content' : 'text-warning'
+            }`} style={{ 
+              fill: 'none'
+            }} />
+          ) : (
+            <IconFolder class={`w-4 h-4 mr-0.5 ${
+              isSelected() ? 'text-primary-content' : 'text-warning'
+            }`} style={{ 
+              fill: hasChildren ? (isSelected() ? 'currentColor' : '#eab308') : 'none'
+            }} />
+          )}
         </div>
         <span class="flex-1 text-base-content/80 truncate">{node.name}</span>
       </div>

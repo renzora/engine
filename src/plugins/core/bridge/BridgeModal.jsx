@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
-import { Server, Refresh, Trash } from '@/ui/icons';
+import { IconServer, IconRefresh, IconTrash } from '@tabler/icons-solidjs';
 import { useProject } from '@/plugins/splash/ProjectStore';
 
 export default function BridgeModal({ isOpen, onClose }) {
@@ -152,7 +152,7 @@ export default function BridgeModal({ isOpen, onClose }) {
         >
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-lg font-bold text-white flex items-center gap-2">
-              <Server class="w-5 h-5 text-blue-400" />
+              <IconServer class="w-5 h-5 text-blue-400" />
               Bridge Server Status
             </h2>
             <button
@@ -241,7 +241,7 @@ export default function BridgeModal({ isOpen, onClose }) {
                 <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
               </Show>
               <Show when={!isRestarting()}>
-                <Refresh class="w-4 h-4" />
+                <IconRefresh class="w-4 h-4" />
               </Show>
               {isRestarting() ? 'Restarting...' : 'Restart Bridge'}
             </button>
@@ -256,7 +256,7 @@ export default function BridgeModal({ isOpen, onClose }) {
                   <div class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 </Show>
                 <Show when={!isClearingCache()}>
-                  <Trash class="w-4 h-4" />
+                  <IconTrash class="w-4 h-4" />
                 </Show>
               </button>
             </Show>

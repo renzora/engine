@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { Box } from '@/ui/icons';
+import { IconBox } from '@tabler/icons-solidjs';
 import ObjectProperties from '@/pages/editor/objectProperties.jsx';
 
 export default createPlugin({
@@ -19,7 +19,7 @@ export default createPlugin({
     api.tab('object-properties', {
       title: 'Properties',
       component: ObjectProperties,
-      icon: Box,
+      icon: IconBox,
       order: 1
     });
     

@@ -1,6 +1,6 @@
 import { createSignal, createEffect } from 'solid-js';
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { Grid3x3, Cube, Palette, Sun, Pointer, Camera, Rotate360, Eye, Move } from '@/ui/icons';
+import { IconGrid3x3, IconCube, IconPalette, IconSun, IconPointer, IconCamera, IconRotate360, IconEye, IconMove } from '@tabler/icons-solidjs';
 import { Dynamic } from 'solid-js/web';
 
 export default function CameraDropdownContent() {

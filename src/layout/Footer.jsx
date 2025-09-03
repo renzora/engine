@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onCleanup, For } from 'solid-js';
 import { editorStore } from '@/layout/stores/EditorStore';
-import { Alert } from '@/ui/icons';
+import { IconAlertTriangle } from '@tabler/icons-solidjs';
 import { footerButtons } from '@/api/plugin';
 
 const Footer = () => {
@@ -128,7 +128,7 @@ const Footer = () => {
             CPU: {cpu}%
           </span>
           {needsWarningIcon(cpu, 'cpu') && (
-            <Alert class="w-3 h-3 text-error animate-pulse" />
+            <IconAlertTriangle class="w-3 h-3 text-error animate-pulse" />
           )}
         </div>
         
@@ -140,7 +140,7 @@ const Footer = () => {
             RAM: {memory}%
           </span>
           {needsWarningIcon(memory, 'memory') && (
-            <Alert class="w-3 h-3 text-error animate-pulse" />
+            <IconAlertTriangle class="w-3 h-3 text-error animate-pulse" />
           )}
         </div>
         
@@ -153,7 +153,7 @@ const Footer = () => {
                 GPU: {gpu}%
               </span>
               {needsWarningIcon(gpu, 'gpu') && (
-                <Alert class="w-3 h-3 text-error animate-pulse" />
+                <IconAlertTriangle class="w-3 h-3 text-error animate-pulse" />
               )}
             </div>
           </>

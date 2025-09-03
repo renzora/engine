@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
-import { Settings, FileText, X, Star, Copy, Play, Pause, Plus, Grid3x3 } from '@/ui/icons';
+import { IconSettings, IconFileText, IconX, IconStar, IconCopy, IconPlayerPlay, IconPlayerPause, IconPlus, IconGrid3x3 } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { viewportTypes, toolbarButtons, horizontalMenuButtonsEnabled } from "@/api/plugin";
@@ -22,13 +22,13 @@ const ViewportTabs = () => {
       {
         id: '3d-viewport',
         label: 'New Scene',
-        icon: Grid3x3,
+        icon: IconGrid3x3,
         description: 'Create a new 3D scene viewport'
       },
       {
         id: 'node-editor',
         label: 'Node Editor',
-        icon: Settings,
+        icon: IconSettings,
         description: 'Create a new node editor for visual scripting'
       }
     ];
@@ -45,12 +45,12 @@ const ViewportTabs = () => {
       }
       // Return proper icon for 3d-viewport
       if (type === '3d-viewport') {
-        return Grid3x3;
+        return IconGrid3x3;
       }
-      return FileText;
+      return IconFileText;
     } catch (error) {
       console.error('Error in getViewportIcon:', error, 'type:', type);
-      return FileText;
+      return IconFileText;
     }
   };
 
@@ -120,22 +120,22 @@ const ViewportTabs = () => {
       items: [
         {
           label: 'Rename Tab',
-          icon: FileText,
+          icon: IconFileText,
           action: () => handleStartRename(tab)
         },
         {
           label: tab.isPinned ? 'Unpin Tab' : 'Pin Tab',
-          icon: tab.isPinned ? X : Star,
+          icon: tab.isPinned ? IconX : IconStar,
           action: () => viewportActions.pinViewportTab(tab.id)
         },
         {
           label: 'Duplicate Tab',
-          icon: Copy,
+          icon: IconCopy,
           action: () => viewportActions.duplicateViewportTab(tab.id)
         },
         {
           label: (suspendedTabs() || []).includes(tab.id) ? 'Resume Tab' : 'Suspend Tab',
-          icon: (suspendedTabs() || []).includes(tab.id) ? Play : Pause,
+          icon: (suspendedTabs() || []).includes(tab.id) ? IconPlayerPlay : IconPlayerPause,
           action: () => {
             // TODO: Implement suspend/resume functionality
             console.log('Suspend/Resume not yet implemented');
@@ -151,13 +151,13 @@ const ViewportTabs = () => {
         { divider: true },
         {
           label: 'Close Tab',
-          icon: X,
+          icon: IconX,
           action: () => viewportActions.removeViewportTab(tab.id),
           disabled: tabs().length === 1
         },
         {
           label: 'Close Other Tabs',
-          icon: X,
+          icon: IconX,
           action: () => {
             tabs().forEach(t => {
               if (t.id !== tab.id && !t.isPinned) {
@@ -169,7 +169,7 @@ const ViewportTabs = () => {
         },
         {
           label: 'Close All Tabs',
-          icon: X,
+          icon: IconX,
           action: () => {
             tabs().forEach(t => {
               if (!t.isPinned) {
@@ -236,11 +236,11 @@ const ViewportTabs = () => {
                   </Show>
                   
                   <Show when={(suspendedTabs() || []).includes(tab.id)}>
-                    <Pause className="w-3 h-3 text-gray-500 flex-shrink-0" title="Tab Suspended" />
+                    <IconPlayerPause className="w-3 h-3 text-gray-500 flex-shrink-0" title="Tab Suspended" />
                   </Show>
                   
                   <Show when={tab.isPinned}>
-                    <Star className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+                    <IconStar className="w-3 h-3 text-yellow-500 flex-shrink-0" />
                   </Show>
                   
                   <Show when={tab.hasUnsavedChanges}>
@@ -253,7 +253,7 @@ const ViewportTabs = () => {
                       className="w-4 h-4 flex items-center justify-center rounded hover:bg-base-300 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
                       title="Close Tab"
                     >
-                      <X className="w-3 h-3" />
+                      <IconX className="w-3 h-3" />
                     </button>
                   </Show>
                 </div>
@@ -274,7 +274,7 @@ const ViewportTabs = () => {
               className="flex items-center px-3 text-base-content hover:text-base-content/60 bg-base-300/80 hover:bg-neutral transition-colors h-full cursor-pointer"
               title="Add Viewport"
             >
-              <Plus className="w-4 h-4" />
+              <IconPlus className="w-4 h-4" />
             </button>
 
             <Show when={isAddDropdownOpen()}>

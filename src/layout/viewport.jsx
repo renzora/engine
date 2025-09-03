@@ -1,7 +1,6 @@
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions, objectPropertiesActions } from "@/layout/stores/ViewportStore";
-import { Settings, X, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle, Sun, Lightbulb } from '@/ui/icons';
-import { Play, Pause } from '@/ui/icons/media';
+import { IconSettings, IconX, IconPointer, IconMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
 import ViewportTabs from './ViewportTabs.jsx';
 import Toolbar from './Toolbar.jsx';
 import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, pluginAPI } from "@/api/plugin";
@@ -261,7 +260,9 @@ const Viewport = () => {
     const right = !isLeftPanel() && isScenePanelOpen() && propertiesPanelVisible() ? `${rightPanelWidth()}px` : '0px';
     const bottomPanelSpace = isAssetPanelOpen() ? `${bottomPanelHeight()}px` : (bottomPanelVisible() ? '40px' : '0px');
     const footerHeight = footerVisible() ? '24px' : '0px'; // 6 * 4 = 24px (h-6 in Tailwind)
-    const bottom = bottomPanelSpace === '0px' ? footerHeight : `calc(${bottomPanelSpace} + ${footerHeight})`;
+    // Account for the 8px adjustment in bottom panel positioning
+    const bottomAdjustment = bottomPanelVisible() ? '8px' : '0px';
+    const bottom = bottomPanelSpace === '0px' ? `calc(${footerHeight} - ${bottomAdjustment})` : `calc(${bottomPanelSpace} + ${footerHeight} - ${bottomAdjustment})`;
     
     return { top, left, right, bottom };
   };

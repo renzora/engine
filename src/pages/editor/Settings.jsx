@@ -3,6 +3,7 @@ import { Select } from '@/ui';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
+import { IconDeviceDesktop, IconSettings, IconPalette, IconUser, IconAdjustments } from '@tabler/icons-solidjs';
 
 function Settings() {
   const { settings } = editorStore;
@@ -78,11 +79,10 @@ function Settings() {
   };
 
   return (
-    <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
-      <div>
+    <div class="flex-1 p-2 space-y-2">
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('viewport')}>
-            <span>📺</span>
+            <IconDeviceDesktop class="w-3 h-3" />
             Viewport
           </div>
           <Show when={sectionsOpen().viewport}>
@@ -168,7 +168,7 @@ function Settings() {
 
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('interface')}>
-            <span>🎨</span>
+            <IconPalette class="w-3 h-3" />
             Interface
           </div>
           <Show when={sectionsOpen().interface}>
@@ -208,7 +208,7 @@ function Settings() {
         
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('editor')}>
-            <span>⚙️</span>
+            <IconSettings class="w-3 h-3" />
             Editor
           </div>
           <Show when={sectionsOpen().editor}>
@@ -254,7 +254,7 @@ function Settings() {
         
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('world')}>
-            <span>🌍</span>
+            <IconUser class="w-3 h-3" />
             World
           </div>
           <Show when={sectionsOpen().world}>
@@ -288,7 +288,7 @@ function Settings() {
         
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('performance')}>
-            <span>⚡</span>
+            <IconAdjustments class="w-3 h-3" />
             Performance
           </div>
           <Show when={sectionsOpen().performance}>
@@ -338,7 +338,6 @@ function Settings() {
             </div>
           </Show>
         </div>
-      </div>
     </div>
   );
 }

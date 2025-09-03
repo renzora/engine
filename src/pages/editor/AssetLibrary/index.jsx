@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, createMemo, batch } from 'solid-js';
-import { Photo, Wave, FileText, File, Cube, Video, Code, Circle, Rectangle, Grid, Lightbulb, Plus, Refresh } from '@/ui/icons';
+import { IconPhoto, IconWaveSawTool, IconFileText, IconFile, IconCube, IconVideo, IconCode, IconCircle, IconRectangle, IconGrid3x3, IconBulb, IconPlus, IconRefresh } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { assetsStore, assetsActions } from '@/layout/stores/AssetStore';
 import { createContextMenuActions } from '@/ui/ContextMenuActions.jsx';
@@ -146,7 +146,7 @@ function AssetLibrary({ onContextMenu }) {
     
     if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) {
       return {
-        icon: <Photo class="w-3 h-3" />,
+        icon: <IconPhoto class="w-3 h-3" />,
         bgColor: 'bg-success', 
         hoverColor: 'hover:bg-success/80',
         textColor: 'text-white'
@@ -155,7 +155,7 @@ function AssetLibrary({ onContextMenu }) {
     
     if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) {
       return {
-        icon: <Wave class="w-3 h-3" />,
+        icon: <IconWaveSawTool class="w-3 h-3" />,
         bgColor: 'bg-warning',
         hoverColor: 'hover:bg-warning/80', 
         textColor: 'text-white'
@@ -173,7 +173,7 @@ function AssetLibrary({ onContextMenu }) {
     
     if (['.json', '.xml', '.txt', '.md'].includes(ext)) {
       return {
-        icon: <FileText class="w-3 h-3" />,
+        icon: <IconFileText class="w-3 h-3" />,
         bgColor: 'bg-info',
         hoverColor: 'hover:bg-info/80',
         textColor: 'text-white'
@@ -181,7 +181,7 @@ function AssetLibrary({ onContextMenu }) {
     }
     
     return {
-      icon: <File class="w-3 h-3" />,
+      icon: <IconFile class="w-3 h-3" />,
       bgColor: 'bg-base-300',
       hoverColor: 'hover:bg-base-300/80',
       textColor: 'text-base-content'
@@ -831,22 +831,22 @@ function AssetLibrary({ onContextMenu }) {
       {
         label: 'Create Object',
         action: () => {},
-        icon: <Plus class="w-4 h-4" />,
+        icon: <IconPlus class="w-4 h-4" />,
         submenu: [
-          { label: 'Cube', action: () => handleCreateObject('cube'), icon: <Cube class="w-4 h-4" /> },
-          { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <Circle class="w-4 h-4" /> },
-          { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <Rectangle class="w-4 h-4" /> },
-          { label: 'Plane', action: () => handleCreateObject('plane'), icon: <Grid class="w-4 h-4" /> },
+          { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconCube class="w-4 h-4" /> },
+          { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
+          { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
+          { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
           { separator: true },
-          { label: 'Light', action: () => handleCreateObject('light'), icon: <Lightbulb class="w-4 h-4" /> },
-          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <Video class="w-4 h-4" /> },
+          { label: 'Light', action: () => handleCreateObject('light'), icon: <IconBulb class="w-4 h-4" /> },
+          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
         ]
       },
       { separator: true },
       {
         label: 'Create Script',
         action: () => setShowScriptDialog(true),
-        icon: <Code class="w-4 h-4" />
+        icon: <IconCode class="w-4 h-4" />
       }
     ];
     
@@ -1289,15 +1289,15 @@ function AssetLibrary({ onContextMenu }) {
 
   const getCategoryIcon = (categoryId) => {
     const iconMap = {
-      '3d-models': Cube,
-      'textures': Photo,
-      'audio': Wave,
-      'video': Video,
-      'scripts': Code,
-      'documents': FileText,
-      'other': File
+      '3d-models': IconCube,
+      'textures': IconPhoto,
+      'audio': IconWaveSawTool,
+      'video': IconVideo,
+      'scripts': IconCode,
+      'documents': IconFileText,
+      'other': IconFile
     };
-    return iconMap[categoryId] || File;
+    return iconMap[categoryId] || IconFile;
   };
 
   const categoryList = createMemo(() => {
@@ -1654,7 +1654,7 @@ function AssetLibrary({ onContextMenu }) {
                 class="p-1 text-xs rounded bg-base-300/70 text-base-content/60 hover:text-base-content hover:bg-base-300/90 transition-colors opacity-80"
                 title="Refresh Assets"
               >
-                <Refresh class="w-3 h-3" />
+                <IconRefresh class="w-3 h-3" />
               </button>
               
               <AssetBreadcrumbs

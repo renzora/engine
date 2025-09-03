@@ -1,5 +1,5 @@
 import { createSignal, createEffect, Show, For } from 'solid-js';
-import { X, ChevronDown, ChevronRight, Upload, Settings, Download, FolderOpen, AlertTriangle, CheckCircle, Circle } from '@/ui/icons';
+import { IconX, IconChevronDown, IconChevronRight, IconUpload, IconSettings, IconDownload, IconFolderOpen, IconAlertTriangle, IconCheckCircle, IconCircle } from '@tabler/icons-solidjs';
 import { bridgeService } from '@/plugins/core/bridge';
 import { getCurrentProject } from '@/api/bridge/projects';
 import { modelProcessor } from './ModelProcessor';
@@ -229,7 +229,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
               onClick={onClose}
               class="p-1 hover:bg-base-300 rounded transition-colors"
             >
-              <X class="w-5 h-5" />
+              <IconX class="w-5 h-5" />
             </button>
           </div>
 
@@ -245,7 +245,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
                 onDragOver={handleDragOver}
               >
                 <Show when={selectedFiles().length === 0}>
-                  <FolderOpen class="w-12 h-12 text-base-content/40 mb-3" />
+                  <IconFolderOpen class="w-12 h-12 text-base-content/40 mb-3" />
                   <p class="text-sm text-base-content/60 mb-2">
                     Drop files here or click to browse
                   </p>
@@ -293,7 +293,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
                 >
                   <Show when={isImporting()} fallback={
                     <>
-                      <Upload class="w-4 h-4" />
+                      <IconUpload class="w-4 h-4" />
                       Import Selected
                     </>
                   }>
@@ -601,8 +601,8 @@ function ImportSection({ title, isExpanded, onToggle, children }) {
         class="w-full p-3 text-left flex items-center justify-between bg-primary/10 hover:bg-primary/20 transition-colors rounded-t-lg border-b border-primary/20"
       >
         <span class="font-semibold text-sm text-primary">{title}</span>
-        <Show when={expanded()} fallback={<ChevronRight class="w-4 h-4" />}>
-          <ChevronDown class="w-4 h-4" />
+        <Show when={expanded()} fallback={<IconChevronRight class="w-4 h-4" />}>
+          <IconChevronDown class="w-4 h-4" />
         </Show>
       </button>
       <Show when={expanded()}>

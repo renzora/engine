@@ -2,7 +2,7 @@ import { createSignal, For } from 'solid-js';
 import Helper from './Helper.jsx';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { Settings, X, Pointer, Move, Refresh, Maximize, Video, Copy, Trash, Box, Circle, Rectangle, Sun, Lightbulb } from '@/ui/icons';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -10,6 +10,7 @@ import { Ray } from '@babylonjs/core/Culling/ray';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { SpotLight } from '@babylonjs/core/Lights/spotLight';
@@ -306,20 +307,20 @@ function Toolbar() {
   };
 
   const tools = [
-    { id: 'select', icon: Pointer, tooltip: 'Select' },
-    { id: 'move', icon: Move, tooltip: 'Move' },
-    { id: 'rotate', icon: Refresh, tooltip: 'Rotate' },
-    { id: 'scale', icon: Maximize, tooltip: 'Scale' },
+    { id: 'select', icon: IconPointer, tooltip: 'Select' },
+    { id: 'move', icon: IconArrowsMove, tooltip: 'Move' },
+    { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
+    { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
     null, // Separator
-    { id: 'cube', icon: Box, tooltip: 'Add Cube' },
-    { id: 'sphere', icon: Circle, tooltip: 'Add Sphere' },
-    { id: 'cylinder', icon: Box, tooltip: 'Add Cylinder' },
-    { id: 'plane', icon: Rectangle, tooltip: 'Add Plane' },
-    { id: 'light', icon: Sun, tooltip: 'Add Light' },
-    { id: 'camera', icon: Video, tooltip: 'Add Camera' },
+    { id: 'cube', icon: IconBox, tooltip: 'Add Cube' },
+    { id: 'sphere', icon: IconCircle, tooltip: 'Add Sphere' },
+    { id: 'cylinder', icon: IconBox, tooltip: 'Add Cylinder' },
+    { id: 'plane', icon: IconRectangle, tooltip: 'Add Plane' },
+    { id: 'light', icon: IconSun, tooltip: 'Add Light' },
+    { id: 'camera', icon: IconVideo, tooltip: 'Add Camera' },
     null, // Separator
-    { id: 'duplicate', icon: Copy, tooltip: 'Duplicate' },
-    { id: 'delete', icon: Trash, tooltip: 'Delete' }
+    { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },
+    { id: 'delete', icon: IconTrash, tooltip: 'Delete' }
   ];
 
   return (

@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { Grid3x3 } from '@/ui/icons';
+import { IconGrid3x3 } from '@tabler/icons-solidjs';
 import GridPanel from './GridPanel.jsx';
 
 export default createPlugin({
@@ -19,7 +19,7 @@ export default createPlugin({
     api.tab('grid', {
       title: 'Grid',
       component: GridPanel,
-      icon: Grid3x3,
+      icon: IconGrid3x3,
       order: 8
     });
     

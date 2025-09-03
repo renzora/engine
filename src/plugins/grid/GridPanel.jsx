@@ -1,7 +1,7 @@
 import { createSignal, Show } from 'solid-js';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { Grid3x3, Settings, Palette } from '@/ui/icons';
+import { IconGrid3x3, IconSettings, IconPalette } from '@tabler/icons-solidjs';
 
 export default function GridPanel() {
   const store = editorStore;
@@ -145,26 +145,15 @@ export default function GridPanel() {
   };
 
   return (
-    <div class="h-full flex flex-col bg-base-200">
-      {/* Header */}
-      <div class="px-2 py-1 border-b border-base-300/50 bg-base-100/80 backdrop-blur-sm">
-        <div class="flex items-center gap-2">
-          <div class="p-1 bg-gradient-to-br from-primary/20 to-secondary/20 rounded border border-primary/30">
-            <Grid3x3 class="w-3 h-3 text-primary" />
-          </div>
-          <div>
-            <h2 class="text-xs font-medium text-base-content">Grid</h2>
-          </div>
-        </div>
-      </div>
+    <div class="h-full flex flex-col">
 
       {/* Content */}
-      <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
+      <div class="flex-1 space-y-2 p-2">
         
         {/* Grid Settings */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('grid')}>
-            <Grid3x3 class="w-3 h-3" />
+            <IconGrid3x3 class="w-3 h-3" />
             Grid Settings
           </div>
           <Show when={sectionsOpen().grid}>
@@ -259,7 +248,7 @@ export default function GridPanel() {
         {/* Snapping */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('snapping')}>
-            <Settings class="w-3 h-3" />
+            <IconSettings class="w-3 h-3" />
             Snapping
           </div>
           <Show when={sectionsOpen().snapping}>
@@ -279,7 +268,7 @@ export default function GridPanel() {
         {/* Appearance */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('appearance')}>
-            <Palette class="w-3 h-3" />
+            <IconPalette class="w-3 h-3" />
             Appearance
           </div>
           <Show when={sectionsOpen().appearance}>

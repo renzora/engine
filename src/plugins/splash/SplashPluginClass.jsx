@@ -1,7 +1,7 @@
 import { createPlugin } from '@/api/plugin';
 import SplashScreen from './SplashScreen.jsx';
 import { ProjectProvider, useProject } from './ProjectStore.jsx';
-import { Home, Folder, Settings } from '@/ui/icons';
+import { IconHome, IconFolder, IconSettings } from '@tabler/icons-solidjs';
 import { createSignal, Show, createEffect } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
@@ -61,7 +61,7 @@ function SplashViewport({ tab }) {
         <div class="text-center max-w-md mx-auto p-6">
           <div class="mb-4">
             <div class="p-3 bg-green-600/20 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <Folder class="w-8 h-8 text-green-400" />
+              <IconFolder class="w-8 h-8 text-green-400" />
             </div>
             <h1 class="text-xl font-bold mb-2">Project Ready</h1>
             <p class="text-lg text-green-400 font-semibold">{currentProject()?.name}</p>
@@ -95,7 +95,7 @@ export default createPlugin({
     api.viewport('splash-viewport', {
       label: 'Project Home',
       component: SplashViewport,
-      icon: Home,
+      icon: IconHome,
       description: 'Project selection and management screen'
     });
     console.log('[SplashPlugin] Splash viewport type registered');

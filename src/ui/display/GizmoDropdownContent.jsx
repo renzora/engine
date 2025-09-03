@@ -1,6 +1,6 @@
 import { createSignal, For } from 'solid-js';
 import { renderStore, renderActions } from '@/render/store.jsx';
-import { Grid, Close } from '@/ui/icons';
+import { IconGrid3x3, IconX } from '@tabler/icons-solidjs';
 
 export default function GizmoDropdownContent() {
   const [snapEnabled, setSnapEnabled] = createSignal(true);
@@ -66,9 +66,9 @@ export default function GizmoDropdownContent() {
             }`}
           >
             {snapEnabled() ? (
-              <Grid class="w-4 h-4" />
+              <IconGrid3x3 class="w-4 h-4" />
             ) : (
-              <Close class="w-4 h-4" />
+              <IconX class="w-4 h-4" />
             )}
             <span>{snapEnabled() ? 'Snap On' : 'Snap Off'}</span>
           </button>

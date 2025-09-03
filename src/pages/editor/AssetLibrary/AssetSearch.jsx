@@ -1,11 +1,11 @@
 import { Show } from 'solid-js';
-import { Search } from '@/ui/icons';
+import { IconSearch } from '@tabler/icons-solidjs';
 
 function AssetSearch({ searchQuery, setSearchQuery, isSearching }) {
   return (
     <div class="relative">
       <Show when={isSearching()} fallback={
-        <Search class="w-3 h-3 absolute left-2 top-1.5 text-base-content/40" />
+        <IconSearch class="w-3 h-3 absolute left-2 top-1.5 text-base-content/40" />
       }>
         <div class="w-3 h-3 absolute left-2 top-1.5 animate-spin">
           <div class="w-3 h-3 border border-base-content/40 border-t-primary rounded-full"></div>

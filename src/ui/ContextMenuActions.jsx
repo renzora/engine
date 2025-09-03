@@ -1,4 +1,4 @@
-import { Edit, Copy, Trash, Folder, Box, Code, Archive, Mountain, Brush, Palette, X, CirclePlus, Circle, Rectangle, Grid3x3, Bulb, Video, Clipboard, ArrowBackUp, ArrowForwardUp, Maximize, Search, Rotate, ArrowUp, ArrowRight, ArrowDown, Pointer, CircleMinus } from '@/ui/icons';
+import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconRectangle, IconGrid3x3, IconBulb, IconVideo, IconClipboard, IconArrowBackUp, IconArrowForwardUp, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus } from '@tabler/icons-solidjs';
 
 export const createContextMenuActions = (editorActions) => {
   const {
@@ -10,12 +10,12 @@ export const createContextMenuActions = (editorActions) => {
   const getContextMenuItems = (item, context) => {
     if (item) {
       const baseItems = [
-        { label: 'Rename', action: () => handleRename(item.id), icon: <Edit class="w-4 h-4" /> },
+        { label: 'Rename', action: () => handleRename(item.id), icon: <IconEdit class="w-4 h-4" /> },
         { separator: true },
-        { label: 'Copy', action: () => handleCopy(item.id), icon: <Copy class="w-4 h-4" /> },
-        { label: 'Duplicate', action: () => handleDuplicate(item.id), icon: <Copy class="w-4 h-4" /> },
-        { label: 'Delete', action: () => handleDelete(item.id), icon: <Trash class="w-4 h-4" /> },
-        { label: 'Add to New Folder', action: () => handleAddToNewFolder(item.id), icon: <Folder class="w-4 h-4" /> },
+        { label: 'Copy', action: () => handleCopy(item.id), icon: <IconCopy class="w-4 h-4" /> },
+        { label: 'Duplicate', action: () => handleDuplicate(item.id), icon: <IconCopy class="w-4 h-4" /> },
+        { label: 'Delete', action: () => handleDelete(item.id), icon: <IconTrash class="w-4 h-4" /> },
+        { label: 'Add to New Folder', action: () => handleAddToNewFolder(item.id), icon: <IconFolder class="w-4 h-4" /> },
         { separator: true },
       ];
 
@@ -23,78 +23,78 @@ export const createContextMenuActions = (editorActions) => {
       
       if (item.type === 'model' || item.type === 'mesh') {
         typeSpecificItems.push(
-          { label: 'Add Material', action: () => handleAddMaterial(item.id), icon: <Box class="w-4 h-4" /> },
-          { label: 'Add Script', action: () => handleAddScript(item.id), icon: <Code class="w-4 h-4" /> },
+          { label: 'Add Material', action: () => handleAddMaterial(item.id), icon: <IconBox class="w-4 h-4" /> },
+          { label: 'Add Script', action: () => handleAddScript(item.id), icon: <IconCode class="w-4 h-4" /> },
         );
 
         if (item.hasChildMeshes) {
           typeSpecificItems.push(
             { separator: true },
             item.isUnpacked 
-              ? { label: 'Pack Mesh', action: () => handlePackMesh(item.id), icon: <Archive class="w-4 h-4" /> }
-              : { label: 'Unpack Mesh', action: () => handleUnpackMesh(item.id), icon: <Folder class="w-4 h-4" /> }
+              ? { label: 'Pack Mesh', action: () => handlePackMesh(item.id), icon: <IconArchive class="w-4 h-4" /> }
+              : { label: 'Unpack Mesh', action: () => handleUnpackMesh(item.id), icon: <IconFolder class="w-4 h-4" /> }
           );
         }
       }
 
       if (item.type === 'terrain') {
         typeSpecificItems.push(
-          { label: 'Edit Terrain', action: () => handleEditTerrain(item.id), icon: <Mountain class="w-4 h-4" /> },
-          { label: 'Paint Texture', action: () => handlePaintTexture(item.id), icon: <Brush class="w-4 h-4" /> },
+          { label: 'Edit Terrain', action: () => handleEditTerrain(item.id), icon: <IconMountain class="w-4 h-4" /> },
+          { label: 'Paint Texture', action: () => handlePaintTexture(item.id), icon: <IconBrush class="w-4 h-4" /> },
         );
       }
 
       const colorItems = [
         { separator: true },
-        { label: 'Color Code', action: () => {}, icon: <Palette class="w-4 h-4" />, submenu: [
+        { label: 'Color Code', action: () => {}, icon: <IconPalette class="w-4 h-4" />, submenu: [
           { label: 'Red', action: () => handleColorCode(item.id, 'red'), color: '#ef4444' },
           { label: 'Orange', action: () => handleColorCode(item.id, 'orange'), color: '#f97316' },
           { label: 'Yellow', action: () => handleColorCode(item.id, 'yellow'), color: '#eab308' },
           { label: 'Green', action: () => handleColorCode(item.id, 'green'), color: '#22c55e' },
           { label: 'Blue', action: () => handleColorCode(item.id, 'blue'), color: '#3b82f6' },
           { label: 'Purple', action: () => handleColorCode(item.id, 'purple'), color: '#a855f7' },
-          { label: 'Clear', action: () => handleColorCode(item.id, null), icon: <X class="w-3 h-3" /> },
+          { label: 'Clear', action: () => handleColorCode(item.id, null), icon: <IconX class="w-3 h-3" /> },
         ]},
       ];
 
       return [...baseItems, ...typeSpecificItems, ...colorItems];
     } else {
       const baseGeneralItems = [
-        { label: 'Create Object', action: () => {}, icon: <CirclePlus class="w-4 h-4" />, submenu: [
-          { label: 'Cube', action: () => handleCreateObject('cube'), icon: <Box class="w-4 h-4" /> },
-          { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <Circle class="w-4 h-4" /> },
-          { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <Rectangle class="w-4 h-4" /> },
-          { label: 'Plane', action: () => handleCreateObject('plane'), icon: <Grid3x3 class="w-4 h-4" /> },
+        { label: 'Create Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
+          { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconBox class="w-4 h-4" /> },
+          { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
+          { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
+          { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
           { separator: true },
-          { label: 'Light', action: () => handleCreateObject('light'), icon: <Bulb class="w-4 h-4" /> },
-          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <Video class="w-4 h-4" /> },
+          { label: 'Light', action: () => handleCreateObject('light'), icon: <IconBulb class="w-4 h-4" /> },
+          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
         ]},
         { separator: true },
-        { label: 'Paste', action: () => handlePaste(), icon: <Clipboard class="w-4 h-4" /> },
+        { label: 'Paste', action: () => handlePaste(), icon: <IconClipboard class="w-4 h-4" /> },
         { separator: true },
-        { label: 'Undo', action: () => handleUndo(), icon: <ArrowBackUp class="w-4 h-4" /> },
-        { label: 'Redo', action: () => handleRedo(), icon: <ArrowForwardUp class="w-4 h-4" /> },
+        { label: 'Undo', action: () => handleUndo(), icon: <IconArrowBackUp class="w-4 h-4" /> },
+        { label: 'Redo', action: () => handleRedo(), icon: <IconArrowForwardUp class="w-4 h-4" /> },
       ];
 
       if (context === 'viewport') {
         return [
           ...baseGeneralItems,
           { separator: true },
-          { label: 'Frame All', action: () => handleFrameAll(), icon: <Maximize class="w-4 h-4" /> },
-          { label: 'Frame Selected', action: () => handleFocusSelected(), icon: <Search class="w-4 h-4" /> },
+          { label: 'Frame All', action: () => handleFrameAll(), icon: <IconMaximize class="w-4 h-4" /> },
+          { label: 'Frame Selected', action: () => handleFocusSelected(), icon: <IconSearch class="w-4 h-4" /> },
           { separator: true },
-          { label: 'Reset View', action: () => handleResetView(), icon: <Rotate class="w-4 h-4" /> },
-          { label: 'Top View', action: () => handleSetView('top'), icon: <ArrowUp class="w-4 h-4" /> },
-          { label: 'Front View', action: () => handleSetView('front'), icon: <ArrowRight class="w-4 h-4" /> },
-          { label: 'Right View', action: () => handleSetView('right'), icon: <ArrowDown class="w-4 h-4" /> },
+          { label: 'Reset View', action: () => handleResetView(), icon: <IconRotate class="w-4 h-4" /> },
+          { label: 'Top View', action: () => handleSetView('top'), icon: <IconArrowUp class="w-4 h-4" /> },
+          { label: 'Front View', action: () => handleSetView('front'), icon: <IconArrowRight class="w-4 h-4" /> },
+          { label: 'Right View', action: () => handleSetView('right'), icon: <IconArrowDown class="w-4 h-4" /> },
         ];
       } else {
         return [
           ...baseGeneralItems,
           { separator: true },
-          { label: 'Select All', action: () => handleSelectAll(), icon: <Pointer class="w-4 h-4" /> },
-          { label: 'Expand All', action: () => handleExpandAll(), icon: <CirclePlus class="w-4 h-4" /> },
-          { label: 'Collapse All', action: () => handleCollapseAll(), icon: <CircleMinus class="w-4 h-4" /> },
+          { label: 'Select All', action: () => handleSelectAll(), icon: <IconPointer class="w-4 h-4" /> },
+          { label: 'Expand All', action: () => handleExpandAll(), icon: <IconCirclePlus class="w-4 h-4" /> },
+          { label: 'Collapse All', action: () => handleCollapseAll(), icon: <IconCircleMinus class="w-4 h-4" /> },
         ];
       }
     }

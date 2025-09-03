@@ -1,5 +1,5 @@
 import { Show, For } from 'solid-js';
-import { Folder, Cube } from '@/ui/icons';
+import { IconFolder, IconCube } from '@tabler/icons-solidjs';
 import AssetSearch from './AssetSearch';
 import FileTree from './FileTree';
 
@@ -58,7 +58,7 @@ function AssetSidebar({
               }`}
               title="Folder View"
             >
-              <Folder class="w-3 h-3" />
+              <IconFolder class="w-3 h-3" />
             </button>
             <button
               onClick={() => setViewMode('type')}
@@ -69,7 +69,7 @@ function AssetSidebar({
               }`}
               title="Asset Type View"
             >
-              <Cube class="w-3 h-3" />
+              <IconCube class="w-3 h-3" />
             </button>
           </div>
         </div>

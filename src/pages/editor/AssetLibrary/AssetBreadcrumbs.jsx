@@ -1,5 +1,5 @@
 import { Show, For } from 'solid-js';
-import { ChevronRight } from '@/ui/icons';
+import { IconChevronRight } from '@tabler/icons-solidjs';
 
 function AssetBreadcrumbs({ 
   breadcrumbs, 
@@ -73,7 +73,7 @@ function AssetBreadcrumbs({
                 {crumb.name}
               </button>
               <Show when={index() < breadcrumbs().length - 1}>
-                <ChevronRight class="w-3 h-3 mx-1 text-base-content/40" />
+                <IconChevronRight class="w-3 h-3 mx-1 text-base-content/40" />
               </Show>
             </>
           )}

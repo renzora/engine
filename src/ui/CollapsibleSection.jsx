@@ -1,5 +1,5 @@
 import { createSignal, Show } from 'solid-js'
-import { ChevronRight } from '@/ui/icons'
+import { IconChevronRight } from '@tabler/icons-solidjs'
 
 function CollapsibleSection({ 
   title, 
@@ -32,7 +32,7 @@ function CollapsibleSection({
           ${headerClassName}
         `}
       >
-        <ChevronRight 
+        <IconChevronRight 
           class={`
             w-3.5 h-3.5 transition-all duration-200 
             ${isOpen() 

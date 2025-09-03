@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, For, Show } from 'solid-js';
-import { ChevronRight, Box, Lightbulb, Camera, Folder, Circle, Eye, EyeOff, Trash, Edit } from '@/ui/icons';
+import { IconBox, IconBulb, IconCamera, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
@@ -41,6 +41,9 @@ function Scene(props) {
   const [renamingItemId, setRenamingItemId] = createSignal(null);
   const [renameValue, setRenameValue] = createSignal('');
   const [folderCounter, setFolderCounter] = createSignal(1);
+  
+  // Global counter for alternating backgrounds
+  let globalRowCounter = { value: 0 };
   
   // Use hierarchy from render store
   const hierarchyData = () => renderStore.hierarchy;
@@ -284,19 +287,19 @@ function Scene(props) {
     }
   };
 
-  const getIcon = (type, lightType) => {
+  const getIcon = (type, lightType, hasChildren, isExpanded) => {
     switch (type) {
-      case 'mesh': return Box;
+      case 'mesh': return IconBox;
       case 'light': 
         switch (lightType) {
-          case 'directional': return Lightbulb;
-          case 'point': return Lightbulb;
-          case 'spot': return Lightbulb;
-          default: return Lightbulb;
+          case 'directional': return IconBulb;
+          case 'point': return IconBulb;
+          case 'spot': return IconBulb;
+          default: return IconBulb;
         }
-      case 'camera': return Camera;
-      case 'folder': return Folder;
-      default: return Circle;
+      case 'camera': return IconCamera;
+      case 'folder': return (hasChildren && isExpanded) ? IconFolderOpen : IconFolder;
+      default: return IconCircle;
     }
   };
 
@@ -316,13 +319,15 @@ function Scene(props) {
     }
   };
 
-  const renderSceneItem = (item, depth = 0, index = 0, parent = null, globalIndex = 0) => {
+  const renderSceneItem = (item, depth = 0, index = 0, parent = null, globalCounter = { value: 0 }) => {
     if (!item) return null;
+    
+    const currentIndex = globalCounter.value++;
     
     const isSelected = () => selection.entity === item.id;
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = () => expandedItems().hasOwnProperty(item.id) ? expandedItems()[item.id] : (item.expanded || false);
-    const Icon = getIcon(item.type, item.lightType);
+    const Icon = getIcon(item.type, item.lightType, hasChildren, isExpanded());
     const iconColor = getIconColor(item.type, item.lightType);
     
     const isDraggedOver = () => dragOverItem()?.id === item.id;
@@ -332,7 +337,13 @@ function Scene(props) {
     const showBottomDivider = () => isDraggedOver() && dropPosition() === 'below';
 
     return (
-      <div className="select-none relative">
+      <div className={`select-none relative ${
+        isSelected() 
+          ? '' 
+          : currentIndex % 2 === 0 
+            ? 'bg-base-100/80'
+            : 'bg-base-200/60'
+      }`}>
         <Show when={showTopDivider()}>
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none" />
         </Show>
@@ -340,7 +351,7 @@ function Scene(props) {
           className={`group flex items-center py-0.5 pr-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${
             isSelected() 
               ? 'bg-primary text-primary-content' 
-              : 'text-base-content/70 hover:bg-base-200 hover:text-base-content'
+              : 'text-base-content/70 hover:bg-neutral/70 hover:text-base-content'
           } ${
             draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
@@ -350,7 +361,7 @@ function Scene(props) {
           }`}
           style={{ 
             'padding-left': `${6 + depth * 16}px`,
-            cursor: 'grab'
+            cursor: 'pointer'
           }}
           draggable="true"
           onDragStart={(e) => handleDragStart(e, item)}
@@ -370,6 +381,10 @@ function Scene(props) {
               // Call the parent's onObjectSelect to switch to object properties tab
               if (props.onObjectSelect) {
                 props.onObjectSelect(item.id);
+              }
+              // Toggle folder expansion
+              if (hasChildren) {
+                setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
               }
             }
           }}
@@ -400,26 +415,10 @@ function Scene(props) {
           </Show>
           
           <div class="relative flex items-center">
-            <Icon class="w-3 h-3 mr-0.5 cursor-pointer" style={{ color: iconColor }} />
-            <Show when={hasChildren}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
-                }}
-                class="absolute -left-0.5 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50"
-              >
-                <ChevronRight 
-                  class={`w-2.5 h-2.5 transition-all duration-200 ${
-                    hasChildren && isExpanded() 
-                      ? 'rotate-90 text-primary' 
-                      : hasChildren
-                        ? 'text-base-content/50 hover:text-base-content/70'
-                        : 'text-base-content/20'
-                  }`} 
-                />
-              </button>
-            </Show>
+            <Icon class="w-4 h-4 mr-0.5 cursor-pointer" style={{ 
+              color: iconColor,
+              fill: item.type === 'folder' && hasChildren && !isExpanded() ? iconColor : 'none'
+            }} />
           </div>
           
           <button 
@@ -437,9 +436,9 @@ function Scene(props) {
           >
             <Show 
               when={item.visible}
-              fallback={<EyeOff class="w-3 h-3 cursor-pointer" style={{ color: '#ef4444' }} />}
+              fallback={<IconEyeOff class="w-4 h-4 cursor-pointer" style={{ color: '#ef4444' }} />}
             >
-              <Eye class="w-3 h-3 cursor-pointer" style={{ color: '#9ca3af' }} />
+              <IconEye class="w-4 h-4 cursor-pointer" style={{ color: '#9ca3af' }} />
             </Show>
           </button>
           
@@ -470,18 +469,18 @@ function Scene(props) {
           </Show>
           
           <button 
-            className="ml-1 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100"
+            className="ml-1 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100 cursor-pointer"
             onClick={(e) => handleDeleteObject(item, e)}
             title="Delete object"
           >
-            <Trash className="w-3 h-3 text-base-content/70 hover:text-error" />
+            <IconTrash className="w-4 h-4 text-base-content/70 hover:text-error" />
           </button>
         </div>
         
         <Show when={hasChildren && isExpanded()}>
           <div className="transition-all duration-300 ease-out">
             <For each={item.children}>
-              {(child, i) => renderSceneItem(child, depth + 1, i(), item, globalIndex + i() + 1)}
+              {(child, i) => renderSceneItem(child, depth + 1, i(), item, globalCounter)}
             </For>
           </div>
         </Show>
@@ -511,65 +510,13 @@ function Scene(props) {
         onContextMenu={(e) => props.onContextMenu(e, null)}
       >
         <For each={hierarchyData()}>
-          {(item, i) => renderSceneItem(item, 0, i(), hierarchyData(), i())}
+          {(item, i) => {
+            if (i() === 0) globalRowCounter.value = 0; // Only reset on first item
+            return renderSceneItem(item, 0, i(), hierarchyData(), globalRowCounter);
+          }}
         </For>
       </div>
       
-      <div className="flex-shrink-0 flex items-center justify-between px-2 py-1 border-t border-base-content/5">
-        <div className="flex items-center gap-1">
-          <button
-            onClick={handleCreateFolder}
-            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95"
-            title="Create Folder"
-          >
-            <Folder className="w-4 h-4" />
-          </button>
-          
-          <div className="w-px h-4 bg-base-content/40 mx-1" />
-          
-          <button
-            onClick={() => {
-              if (selection.entity && selection.entity !== 'scene-root') {
-                const findItemName = (nodes, targetId) => {
-                  for (let node of nodes) {
-                    if (node.id === targetId) return node.name;
-                    if (node.children) {
-                      const childName = findItemName(node.children, targetId);
-                      if (childName) return childName;
-                    }
-                  }
-                  return targetId;
-                };
-                const itemName = findItemName(hierarchyData(), selection.entity);
-                startRename(selection.entity, itemName);
-              }
-            }}
-            disabled={!selection.entity || selection.entity === 'scene-root'}
-            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
-            title="Rename Selected (F2)"
-          >
-            <Edit className="w-4 h-4" />
-          </button>
-        </div>
-        
-        <div className="flex items-center gap-1">
-          <button
-            onClick={expandAll}
-            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95"
-            title="Expand All"
-          >
-            <ChevronRight className="w-4 h-4 rotate-90" />
-          </button>
-          
-          <button
-            onClick={collapseAll}
-            className="p-1.5 rounded hover:bg-base-300/50 text-base-content/60 hover:text-base-content transition-all duration-150 active:bg-base-200/50 active:scale-95"
-            title="Collapse All"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
-        </div>
-      </div>
       
     </div>
   );

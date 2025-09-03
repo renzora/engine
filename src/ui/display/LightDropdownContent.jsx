@@ -1,6 +1,6 @@
 import { createEffect, onCleanup, createMemo } from 'solid-js';
 import { renderStore, renderActions } from '@/render/store';
-import { Sun, Lightbulb, Moon, Palette, Camera, Settings, Eye, Cloud, Clock } from '@/ui/icons';
+import { IconSun, IconBulb, IconMoon, IconPalette, IconCamera, IconSettings, IconEye, IconCloud, IconClock } from '@tabler/icons-solidjs';
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration';
 
 export default function LightDropdownContent() {
@@ -233,7 +233,7 @@ export default function LightDropdownContent() {
       <div>
         <div class="flex items-center justify-between mb-2">
           <label class="block font-medium text-base-content flex items-center gap-1">
-            <Clock class="w-4 h-4" />
+            <IconClock class="w-4 h-4" />
             Time Control
           </label>
           <button
@@ -292,7 +292,7 @@ export default function LightDropdownContent() {
       {/* Post Processing */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Camera class="w-4 h-4 inline mr-1" />
+          <IconCamera class="w-4 h-4 inline mr-1" />
           Post Processing
         </label>
         
@@ -387,7 +387,7 @@ export default function LightDropdownContent() {
       {/* Sky & Atmosphere */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Palette class="w-4 h-4 inline mr-1" />
+          <IconPalette class="w-4 h-4 inline mr-1" />
           Sky & Atmosphere
         </label>
         
@@ -449,7 +449,7 @@ export default function LightDropdownContent() {
       {/* Clouds */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Cloud class="w-4 h-4 inline mr-1" />
+          <IconCloud class="w-4 h-4 inline mr-1" />
           Clouds
         </label>
         
@@ -481,7 +481,7 @@ export default function LightDropdownContent() {
       {/* Fog */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Eye class="w-4 h-4 inline mr-1" />
+          <IconEye class="w-4 h-4 inline mr-1" />
           Fog
         </label>
         
@@ -528,7 +528,7 @@ export default function LightDropdownContent() {
       {/* Lights */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Sun class="w-4 h-4 inline mr-1" />
+          <IconSun class="w-4 h-4 inline mr-1" />
           Light Sources
         </label>
         
@@ -633,7 +633,7 @@ export default function LightDropdownContent() {
       {/* Shadows */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Settings class="w-4 h-4 inline mr-1" />
+          <IconSettings class="w-4 h-4 inline mr-1" />
           Shadows
         </label>
         
@@ -679,7 +679,7 @@ export default function LightDropdownContent() {
       {/* Particles */}
       <div>
         <label class="block font-medium text-base-content mb-2">
-          <Lightbulb class="w-4 h-4 inline mr-1" />
+          <IconBulb class="w-4 h-4 inline mr-1" />
           Particles
         </label>
         

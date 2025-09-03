@@ -1,7 +1,7 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal, createEffect, onMount, onCleanup, For, Show, Switch, Match } from 'solid-js';
 import { CollapsibleSection } from '@/ui';
-import { Settings } from '@/ui/icons';
+import { IconSettings } from '@tabler/icons-solidjs';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 import { editorActions } from '@/layout/stores/EditorStore.jsx';
 import { pluginAPI } from '@/api/plugin';
@@ -188,7 +188,7 @@ function BridgeViewport({ tab }) {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2 bg-gradient-to-br from-primary/20 to-secondary/20 rounded-xl border border-primary/30">
-              <Settings className="w-5 h-5 text-primary" />
+              <IconSettings className="w-5 h-5 text-primary" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-base-content">Bridge Management</h1>
@@ -211,7 +211,7 @@ function BridgeViewport({ tab }) {
           className="btn btn-sm btn-primary btn-outline gap-2"
           disabled={isLoading()}
         >
-          <Settings className="w-4 h-4" />
+          <IconSettings className="w-4 h-4" />
           {isLoading() ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
@@ -223,7 +223,7 @@ function BridgeViewport({ tab }) {
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab() === 'cache' 
               ? 'text-primary bg-primary/5 border-b-2 border-primary' 
-              : 'text-base-content/60 hover:text-base-content hover:bg-base-200/50'
+              : 'text-base-content/60 hover:text-base-content hover:bg-base-100/50'
           }`}
         >
           Cache & Search
@@ -233,7 +233,7 @@ function BridgeViewport({ tab }) {
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab() === 'database' 
               ? 'text-primary bg-primary/5 border-b-2 border-primary' 
-              : 'text-base-content/60 hover:text-base-content hover:bg-base-200/50'
+              : 'text-base-content/60 hover:text-base-content hover:bg-base-100/50'
           }`}
         >
           Database
@@ -243,7 +243,7 @@ function BridgeViewport({ tab }) {
           className={`px-6 py-3 text-sm font-medium transition-all relative ${
             activeTab() === 'logs' 
               ? 'text-primary bg-primary/5 border-b-2 border-primary' 
-              : 'text-base-content/60 hover:text-base-content hover:bg-base-200/50'
+              : 'text-base-content/60 hover:text-base-content hover:bg-base-100/50'
           }`}
         >
           System Logs
@@ -259,7 +259,7 @@ function BridgeViewport({ tab }) {
                 <div className="bg-gradient-to-br from-base-100 to-base-200 p-4 rounded-xl border border-base-300/50 shadow-sm">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-primary/10 rounded-lg">
-                      <Settings className="w-4 h-4 text-primary" />
+                      <IconSettings className="w-4 h-4 text-primary" />
                     </div>
                     <div>
                       <div className="text-xs text-base-content/60 uppercase tracking-wide">Cache Size</div>
@@ -271,7 +271,7 @@ function BridgeViewport({ tab }) {
                 <div className="bg-gradient-to-br from-base-100 to-base-200 p-4 rounded-xl border border-base-300/50 shadow-sm">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-secondary/10 rounded-lg">
-                      <Settings className="w-4 h-4 text-secondary" />
+                      <IconSettings className="w-4 h-4 text-secondary" />
                     </div>
                     <div>
                       <div className="text-xs text-base-content/60 uppercase tracking-wide">Thumbnails</div>
@@ -283,7 +283,7 @@ function BridgeViewport({ tab }) {
                 <div className="bg-gradient-to-br from-base-100 to-base-200 p-4 rounded-xl border border-base-300/50 shadow-sm">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="p-2 bg-accent/10 rounded-lg">
-                      <Settings className="w-4 h-4 text-accent" />
+                      <IconSettings className="w-4 h-4 text-accent" />
                     </div>
                     <div>
                       <div className="text-xs text-base-content/60 uppercase tracking-wide">Scripts</div>
@@ -302,7 +302,7 @@ function BridgeViewport({ tab }) {
                     className="btn btn-warning btn-sm gap-2"
                     disabled={isLoading()}
                   >
-                    <Settings className="w-4 h-4" />
+                    <IconSettings className="w-4 h-4" />
                     {isLoading() ? 'Clearing...' : 'Clear Cache'}
                   </button>
                   <button
@@ -310,7 +310,7 @@ function BridgeViewport({ tab }) {
                     className="btn btn-primary btn-sm gap-2"
                     disabled={isLoading()}
                   >
-                    <Settings className="w-4 h-4" />
+                    <IconSettings className="w-4 h-4" />
                     {isLoading() ? 'Refreshing...' : 'Refresh Scripts'}
                   </button>
                 </div>
@@ -337,7 +337,7 @@ function BridgeViewport({ tab }) {
                   <Show when={searchTerm().length > 0} fallback={
                     <For each={allScripts().slice(0, 15)}>
                       {(script) => (
-                        <div className="p-3 bg-base-200/50 rounded-lg border border-base-300/30 hover:bg-base-200 transition-colors">
+                        <div className="p-3 bg-base-100/30 rounded-lg border border-base-300/30 hover:bg-base-100/50 transition-colors">
                           <div className="font-medium text-sm text-base-content">{script.name}</div>
                           <div className="text-xs text-base-content/60 mt-1">{script.full_path}</div>
                         </div>
@@ -389,7 +389,7 @@ function BridgeViewport({ tab }) {
                     <textarea
                       value={sqlQuery()}
                       onInput={(e) => setSqlQuery(e.target.value)}
-                      className="textarea textarea-bordered w-full h-32 font-mono text-sm bg-base-200/50"
+                      className="textarea textarea-bordered w-full h-32 font-mono text-sm bg-base-100/30"
                       placeholder="SELECT * FROM scripts WHERE name LIKE '%camera%';"
                     />
                   </div>
@@ -400,14 +400,14 @@ function BridgeViewport({ tab }) {
                       className="btn btn-primary gap-2"
                       disabled={isLoading() || !isOnline()}
                     >
-                      <Settings className="w-4 h-4" />
+                      <IconSettings className="w-4 h-4" />
                       {isLoading() ? 'Executing...' : 'Execute Query'}
                     </button>
                     <button
                       onClick={() => setSqlQuery('SELECT * FROM scripts LIMIT 10;')}
                       className="btn btn-ghost gap-2"
                     >
-                      <Settings className="w-4 h-4" />
+                      <IconSettings className="w-4 h-4" />
                       Sample Query
                     </button>
                   </div>
@@ -418,7 +418,7 @@ function BridgeViewport({ tab }) {
               <Show when={queryResults()}>
                 <div className="bg-base-100 p-6 rounded-xl border border-base-300/50 shadow-sm">
                   <h4 className="text-lg font-semibold text-base-content mb-4">Query Results</h4>
-                  <div className="bg-base-200/50 rounded-lg p-4 max-h-96 overflow-auto">
+                  <div className="bg-base-100/30 rounded-lg p-4 max-h-96 overflow-auto">
                     <pre className="text-xs font-mono text-base-content whitespace-pre-wrap">
                       {JSON.stringify(queryResults(), null, 2)}
                     </pre>
@@ -439,7 +439,7 @@ function BridgeViewport({ tab }) {
                       onClick={() => setLogs([])}
                       className="btn btn-ghost btn-sm gap-2"
                     >
-                      <Settings className="w-4 h-4" />
+                      <IconSettings className="w-4 h-4" />
                       Clear Logs
                     </button>
                   </div>
@@ -458,7 +458,7 @@ function BridgeViewport({ tab }) {
                         <div className={`mb-2 p-2 rounded ${
                           log.level === 'error' ? 'bg-error/10 text-error' :
                           log.level === 'warn' ? 'bg-warning/10 text-warning' :
-                          log.level === 'info' ? 'bg-info/10 text-info' : 'bg-base-200/50'
+                          log.level === 'info' ? 'bg-info/10 text-info' : 'bg-base-100/30'
                         }`}>
                           <span className="text-base-content/60 text-xs">[{log.timestamp}]</span>
                           <span className="ml-2">{log.message}</span>
@@ -515,7 +515,7 @@ export default createPlugin({
     api.viewport('bridge-mgmt', {
       label: 'Bridge Management',
       component: BridgeViewport,
-      icon: Settings,
+      icon: IconSettings,
       description: 'Bridge server management and monitoring'
     });
 

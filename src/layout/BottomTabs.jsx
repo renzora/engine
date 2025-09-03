@@ -1,5 +1,5 @@
 import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
-import { Menu, ChevronDown, ChevronUp, GripVertical } from '@/ui/icons';
+import { IconMenu2, IconChevronDown, IconChevronUp, IconGripVertical } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
 import { bottomPanelTabs } from '@/api/plugin';
@@ -417,7 +417,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
                 'text-base-content/60 hover:text-base-content': !overflowTabs().some(tab => tab.id === currentActiveTab())
               }}
             >
-              <Menu class="w-4 h-4" />
+              <IconMenu2 class="w-4 h-4" />
               
               <Show when={overflowTabs().some(tab => tab.id === currentActiveTab())}>
                 <div class="absolute bottom-0 left-0 right-0 h-0.5 bg-theme-accent"></div>
@@ -453,7 +453,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
             class="p-1.5 hover:bg-base-300 rounded transition-colors text-base-content/60 hover:text-base-content cursor-row-resize mr-1"
             title="Drag to resize panel"
           >
-            <GripVertical class="w-4 h-4" />
+            <IconGripVertical class="w-4 h-4" />
           </button>
         </Show>
         
@@ -468,9 +468,9 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
           title={bottomPanelOpen() ? 'Hide panel' : 'Show panel'}
         >
           {bottomPanelOpen() ? (
-            <ChevronDown class="w-4 h-4" />
+            <IconChevronDown class="w-4 h-4" />
           ) : (
-            <ChevronUp class="w-4 h-4" />
+            <IconChevronUp class="w-4 h-4" />
           )}
         </button>
       </div>

@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { Sun } from '@/ui/icons';
+import { IconSun } from '@tabler/icons-solidjs';
 import LightingPanel from './LightingPanel.jsx';
 
 export default createPlugin({
@@ -19,7 +19,7 @@ export default createPlugin({
     api.tab('lighting', {
       title: 'Lighting',
       component: LightingPanel,
-      icon: Sun,
+      icon: IconSun,
       order: 15
     });
     

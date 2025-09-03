@@ -1,8 +1,8 @@
 import { onMount, onCleanup, createSignal, createEffect, For, Show } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { 
-  Camera, Grid3x3, Settings as SettingsIcon, Maximize, Video, Folder, Grid, Clock, Sun
-} from '@/ui/icons';
+  IconCamera, IconGrid3x3, IconSettings as SettingsIcon, IconMaximize, IconVideo, IconFolder, IconGrid3x3 as Grid, IconClock, IconSun
+} from '@tabler/icons-solidjs';
 import GizmoDropdownContent from '@/ui/display/GizmoDropdownContent.jsx';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
@@ -32,7 +32,7 @@ export default function EditorPage() {
     api.panel('assets', {
       title: 'Assets',
       component: AssetLibrary,
-      icon: Folder,
+      icon: IconFolder,
       order: 10,
       defaultHeight: 300
     });
@@ -53,7 +53,7 @@ export default function EditorPage() {
     
     api.helper('fullscreen-button', {
       title: 'Toggle Fullscreen',
-      icon: Maximize,
+      icon: IconMaximize,
       order: 40,
       onClick: () => {
         if (!document.fullscreenElement) {

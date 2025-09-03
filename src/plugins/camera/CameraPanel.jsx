@@ -1,6 +1,6 @@
 import { createSignal, createEffect, Show } from 'solid-js';
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { Camera, Move, Eye, Palette, Sun, Cube, Grid3x3 } from '@/ui/icons';
+import { IconCamera, IconArrowsMove, IconEye, IconPalette, IconSun, IconCube, IconGrid3x3 } from '@tabler/icons-solidjs';
 
 export default function CameraPanel() {
   const { setCameraType, setCameraSpeed, setCameraSensitivity, setCameraFriction, setRenderMode } = viewportActions;
@@ -89,10 +89,10 @@ export default function CameraPanel() {
   };
   
   const renderModes = [
-    { id: 'wireframe', label: 'Wireframe', icon: Grid3x3 },
-    { id: 'solid', label: 'Solid', icon: Cube },
-    { id: 'material', label: 'Material', icon: Palette },
-    { id: 'rendered', label: 'Rendered', icon: Sun }
+    { id: 'wireframe', label: 'Wireframe', icon: IconGrid3x3 },
+    { id: 'solid', label: 'Solid', icon: IconCube },
+    { id: 'material', label: 'Material', icon: IconPalette },
+    { id: 'rendered', label: 'Rendered', icon: IconSun }
   ];
   
   const speedPresets = [
@@ -103,8 +103,8 @@ export default function CameraPanel() {
   ];
 
   const cameraTypes = [
-    { id: 'universal', label: 'Fly Camera', icon: Move, description: 'WASD + QE flight controls' },
-    { id: 'arcrotate', label: 'Orbit Camera', icon: Eye, description: 'Orbit around target' }
+    { id: 'universal', label: 'Fly Camera', icon: IconArrowsMove, description: 'WASD + QE flight controls' },
+    { id: 'arcrotate', label: 'Orbit Camera', icon: IconEye, description: 'Orbit around target' }
   ];
 
   const SliderControl = ({ label, getValue, min, max, step, onChange, unit = '', resetKey }) => {
@@ -215,26 +215,14 @@ export default function CameraPanel() {
   };
 
   return (
-    <div class="h-full flex flex-col bg-base-200">
-      {/* Header */}
-      <div class="px-2 py-1 border-b border-base-300/50 bg-base-100/80 backdrop-blur-sm">
-        <div class="flex items-center gap-2">
-          <div class="p-1 bg-gradient-to-br from-primary/20 to-secondary/20 rounded border border-primary/30">
-            <Camera class="w-3 h-3 text-primary" />
-          </div>
-          <div>
-            <h2 class="text-xs font-medium text-base-content">Camera</h2>
-          </div>
-        </div>
-      </div>
-
+    <div class="h-full flex flex-col">
       {/* Content */}
-      <div class="flex-1 overflow-y-auto p-0.5 space-y-0.5">
+      <div class="flex-1 space-y-2 p-2">
         
         {/* Camera Controls */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('camera')}>
-            <Camera class="w-3 h-3" />
+            <IconCamera class="w-3 h-3" />
             Camera Controls
           </div>
           <Show when={sectionsOpen().camera}>
@@ -325,7 +313,7 @@ export default function CameraPanel() {
         {/* Render Mode */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('render')}>
-            <Palette class="w-3 h-3" />
+            <IconPalette class="w-3 h-3" />
             Render Mode
           </div>
           <Show when={sectionsOpen().render}>
@@ -353,7 +341,7 @@ export default function CameraPanel() {
         {/* Visual Effects */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer" onClick={() => toggleSection('effects')}>
-            <Eye class="w-3 h-3" />
+            <IconEye class="w-3 h-3" />
             Visual Effects
           </div>
           <Show when={sectionsOpen().effects}>
