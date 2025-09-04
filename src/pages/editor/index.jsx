@@ -1,7 +1,7 @@
 import { onMount, onCleanup, createSignal, createEffect, For, Show } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { 
-  IconCamera, IconGrid3x3, IconSettings as SettingsIcon, IconMaximize, IconVideo, IconFolder, IconGrid3x3 as Grid, IconClock, IconSun
+  IconCamera, IconGrid3x3, IconSettings as SettingsIcon, IconMaximize, IconVideo, IconFolder, IconGridDots, IconClock, IconSun
 } from '@tabler/icons-solidjs';
 import GizmoDropdownContent from '@/ui/display/GizmoDropdownContent.jsx';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
@@ -40,7 +40,7 @@ export default function EditorPage() {
     
     api.helper('gizmo-helper', {
       title: 'Gizmo Options',
-      icon: Grid,
+      icon: IconGridDots,
       order: 5,
       hasDropdown: true,
       dropdownComponent: GizmoDropdownContent,

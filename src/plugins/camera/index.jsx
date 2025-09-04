@@ -20,7 +20,7 @@ export default createPlugin({
       title: 'Camera',
       component: CameraPanel,
       icon: IconVideo,
-      order: 5
+      order: 3
     });
     
     console.log('[CameraPlugin] Started');

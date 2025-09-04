@@ -2,7 +2,7 @@ import { createSignal, For } from 'solid-js';
 import Helper from './Helper.jsx';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconChairDirector, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -312,11 +312,11 @@ function Toolbar() {
     { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
     { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
     null, // Separator
-    { id: 'camera', icon: IconChairDirector, tooltip: 'Add Camera' },
+    { id: 'camera', icon: IconVideo, tooltip: 'Add Camera' },
     { id: 'cube', icon: IconBox, tooltip: 'Add Cube' },
     { id: 'sphere', icon: IconCircle, tooltip: 'Add Sphere' },
-    { id: 'cylinder', icon: IconBox, tooltip: 'Add Cylinder' },
-    { id: 'plane', icon: IconRectangle, tooltip: 'Add Plane' },
+    { id: 'cylinder', icon: IconCylinder, tooltip: 'Add Cylinder' },
+    { id: 'plane', icon: IconSquare, tooltip: 'Add Plane' },
     { id: 'light', icon: IconSun, tooltip: 'Add Light' },
     null, // Separator
     { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },

@@ -65,7 +65,9 @@ class PluginLoader {
       { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
       { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
       { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/lighting', main: 'index.jsx', priority: 2 },
+      { path: '/src/plugins/scripts', main: 'index.jsx', priority: 1 },
+      { path: '/src/plugins/web-browser', main: 'index.jsx', priority: 1 },
+      { path: '/src/plugins/environment', main: 'index.jsx', priority: 2 },
       { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
       { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
       { path: '/src/plugins/object-properties', main: 'index.jsx', priority: 5 }
@@ -161,8 +163,8 @@ class PluginLoader {
           case 'bridge-plugin':
             pluginModule = await import(`@/plugins/bridge/index.jsx`);
             break;
-          case 'lighting-plugin':
-            pluginModule = await import(`@/plugins/lighting/index.jsx`);
+          case 'environment-plugin':
+            pluginModule = await import(`@/plugins/environment/index.jsx`);
             break;
           case 'camera-plugin':
             pluginModule = await import(`@/plugins/camera/index.jsx`);
@@ -172,6 +174,12 @@ class PluginLoader {
             break;
           case 'object-properties-plugin':
             pluginModule = await import(`@/plugins/object-properties/index.jsx`);
+            break;
+          case 'scripts-plugin':
+            pluginModule = await import(`@/plugins/scripts/index.jsx`);
+            break;
+          case 'web-browser-plugin':
+            pluginModule = await import(`@/plugins/web-browser/index.jsx`);
             break;
           default:
             try {

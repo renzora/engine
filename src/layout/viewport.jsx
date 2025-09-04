@@ -324,10 +324,10 @@ const Viewport = () => {
       style={getViewportPositioning()}
     >
       <div className="w-full h-full flex flex-col gap-0">
+        <Toolbar />
         <Show when={viewportTabsVisible()}>
           <ViewportTabs />
         </Show>
-        <Toolbar />
         <div 
           className="flex-1 relative overflow-hidden"
           onContextMenu={(e) => {

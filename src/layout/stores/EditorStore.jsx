@@ -38,7 +38,7 @@ const [editorStore, setEditorStore] = createStore({
     selectedTool: 'scene',
     selectedBottomTab: 'assets',
     toolbarTabOrder: [
-      'scene', 'light', 'effects', 'folder', 'star', 'wifi', 'cloud', 'monitor'
+      'object-properties', 'scripts', 'camera', 'environment', 'grid', 'settings'
     ],
     toolbarBottomTabOrder: [
       'add', 'settings', 'fullscreen'

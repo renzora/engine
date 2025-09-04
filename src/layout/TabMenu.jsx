@@ -298,124 +298,8 @@ function TabMenu(props) {
 
   return (
     <div class="relative w-10 h-full bg-base-300 border-r border-base-300/70 flex flex-col pointer-events-auto no-select">
-      <div class="flex-1 overflow-y-hidden overflow-x-hidden h-full">
-        <div class="flex flex-col space-y-0.5 h-full">
-          <For each={tools()}>
-            {(tool) => {
-              const isDragged = () => dragState().draggedTool?.id === tool.id;
-              const isDragOver = () => dragState().dragOverTool?.id === tool.id;
-              
-              return (
-                <button
-                  draggable
-                  onClick={() => handleToolClick(tool)}
-                  onDragStart={(e) => handleDragStart(e, tool, false)}
-                  onDragOver={(e) => handleDragOver(e, tool, false)}
-                  onDragLeave={handleDragLeave}
-                  onDrop={(e) => handleDrop(e, tool, false)}
-                  onDragEnd={handleDragEnd}
-                  class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center ${
-                    isDragged() 
-                      ? 'opacity-50 cursor-grabbing scale-95' 
-                      : props.selectedTool === tool.id 
-                        ? 'bg-primary/30 text-primary cursor-grab' 
-                        : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
-                  }`}
-                  title={tool.title}
-                >
-                  <tool.icon class="w-5 h-5" />
-                  
-                  {isDragOver() && (
-                    <div class="absolute inset-x-0 top-0 h-0.5 bg-primary rounded-full"></div>
-                  )}
-                  
-                  {!dragState().isDragging && (
-                    <div class={`absolute ${shouldTooltipGoRight() ? 'left-full ml-1' : 'right-full mr-1'} top-1/2 -translate-y-1/2 bg-base-300/95 backdrop-blur-sm border border-base-300 text-base-content text-xs px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-2xl`} 
-                         style={{ 'z-index': 999999 }}>
-                      {tool.title}
-                      <div class={`absolute ${shouldTooltipGoRight() ? 'right-full' : 'left-full'} top-1/2 -translate-y-1/2 w-0 h-0 ${shouldTooltipGoRight() ? 'border-r-4 border-r-base-300' : 'border-l-4 border-l-base-300'} border-t-4 border-t-transparent border-b-4 border-b-transparent`}></div>
-                    </div>
-                  )}
-                </button>
-              );
-            }}
-          </For>
-        </div>
-      </div>
-      
-      <div 
-        class="flex-1 flex items-center justify-center cursor-col-resize"
-        onMouseDown={(e) => {
-          if (!props.panelResize) return;
-          e.preventDefault();
-          props.panelResize.handleRightResizeStart(e);
-          
-          const handleMouseMove = (e) => {
-            e.preventDefault();
-            props.panelResize.handleRightResizeMove(e, { 
-              isScenePanelOpen: typeof props.scenePanelOpen === 'function' ? props.scenePanelOpen : () => props.scenePanelOpen,
-              isLeftPanel: props.isLeftPanel,
-              selectedRightTool: props.selectedTool
-            });
-          };
-
-          const handleMouseUp = (e) => {
-            e.preventDefault();
-            props.panelResize.handleRightResizeEnd();
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
-          };
-
-          document.addEventListener('mousemove', handleMouseMove);
-          document.addEventListener('mouseup', handleMouseUp);
-        }}
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (dragState().draggedTool) {
-            e.dataTransfer.dropEffect = 'move';
-          }
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          const currentDragState = dragState();
-          if (currentDragState.draggedTool) {
-            const sourceArray = currentDragState.draggedFromBottom ? bottomTools() : tools();
-            const setSourceArray = currentDragState.draggedFromBottom ? setBottomTools : setTools;
-            const targetArray = currentDragState.draggedFromBottom ? tools() : bottomTools();
-            const setTargetArray = currentDragState.draggedFromBottom ? setTools : setBottomTools;
-            const newSourceArray = sourceArray.filter(tool => tool.id !== currentDragState.draggedTool.id);
-            setSourceArray(newSourceArray);
-            
-            const newTargetArray = [...targetArray, currentDragState.draggedTool];
-            setTargetArray(newTargetArray);
-            
-            if (currentDragState.draggedFromBottom) {
-              editorActions.setToolbarBottomTabOrder(newSourceArray.map(tool => tool.id));
-              editorActions.setToolbarTabOrder(newTargetArray.map(tool => tool.id));
-            } else {
-              editorActions.setToolbarTabOrder(newSourceArray.map(tool => tool.id));
-              editorActions.setToolbarBottomTabOrder(newTargetArray.map(tool => tool.id));
-            }
-            
-            setDragState({
-              isDragging: false,
-              draggedTool: null,
-              dragOverTool: null,
-              draggedFromBottom: false
-            });
-          }
-        }}
-      >
-        {dragState().isDragging && (
-          <div class="w-8 h-0.5 bg-primary/50 rounded-full opacity-50 transition-opacity">
-          </div>
-        )}
-      </div>
-      
-      <div class="flex flex-col space-y-0.5">
-        <For each={bottomTools()}>
+      <div class="flex-1 overflow-hidden h-full flex flex-col">
+        <For each={tools()}>
           {(tool) => {
             const isDragged = () => dragState().draggedTool?.id === tool.id;
             const isDragOver = () => dragState().dragOverTool?.id === tool.id;
@@ -424,17 +308,17 @@ function TabMenu(props) {
               <button
                 draggable
                 onClick={() => handleToolClick(tool)}
-                onDragStart={(e) => handleDragStart(e, tool, true)}
-                onDragOver={(e) => handleDragOver(e, tool, true)}
+                onDragStart={(e) => handleDragStart(e, tool, false)}
+                onDragOver={(e) => handleDragOver(e, tool, false)}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, tool, true)}
+                onDrop={(e) => handleDrop(e, tool, false)}
                 onDragEnd={handleDragEnd}
-                class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center ${
+                class={`p-1.5 transition-all duration-200 group relative select-none w-full flex items-center justify-center border border-transparent ${
                   isDragged() 
-                    ? 'opacity-50 cursor-grabbing scale-95' 
-                    : props.selectedTool === tool.id
-                      ? 'bg-primary text-primary-content cursor-grab' 
-                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-grab'
+                    ? 'opacity-50 cursor-pointerbing scale-95' 
+                    : props.selectedTool === tool.id 
+                      ? 'bg-primary/30 text-primary cursor-pointer border-primary/10' 
+                      : 'text-base-content/60 hover:text-base-content hover:bg-base-200 cursor-pointer'
                 }`}
                 title={tool.title}
               >

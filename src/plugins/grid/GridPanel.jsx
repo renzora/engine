@@ -1,7 +1,7 @@
 import { createSignal, Show } from 'solid-js';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconGrid3x3, IconSettings, IconPalette } from '@tabler/icons-solidjs';
+import { IconGridDots, IconSettings, IconPalette } from '@tabler/icons-solidjs';
 
 export default function GridPanel() {
   const store = editorStore;
@@ -153,7 +153,7 @@ export default function GridPanel() {
         {/* Grid Settings */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
           <div class={`!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${ sectionsOpen().grid ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`} onClick={() => toggleSection('grid')}>
-            <IconGrid3x3 class="w-3 h-3" />
+            <IconGridDots class="w-3 h-3" />
             Grid Settings
           </div>
           <Show when={sectionsOpen().grid}>

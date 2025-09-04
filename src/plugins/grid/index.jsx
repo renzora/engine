@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { IconGrid3x3 } from '@tabler/icons-solidjs';
+import { IconGridDots } from '@tabler/icons-solidjs';
 import GridPanel from './GridPanel.jsx';
 
 export default createPlugin({
@@ -19,8 +19,8 @@ export default createPlugin({
     api.tab('grid', {
       title: 'Grid',
       component: GridPanel,
-      icon: IconGrid3x3,
-      order: 8
+      icon: IconGridDots,
+      order: 5
     });
     
     console.log('[GridPlugin] Started');

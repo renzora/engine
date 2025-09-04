@@ -281,7 +281,7 @@ const RightPanel = () => {
                     
                     {/* Resize bar for tab container */}
                     <div
-                      className={`h-1 cursor-row-resize transition-colors border-t border-base-content/20 ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-content/15 hover:bg-primary/75'}`}
+                      className={`h-2 cursor-row-resize transition-colors border-b-base-300 border-base-content/20 ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-content/15 hover:bg-primary/75'}`}
                       onMouseDown={handleTabResizeStart}
                     />
                     

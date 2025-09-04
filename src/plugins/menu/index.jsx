@@ -1,5 +1,5 @@
 import { createPlugin } from '@/api/plugin';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconBox
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconRecord, IconChairDirector, IconNetwork, IconBridge, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle
 } from '@tabler/icons-solidjs';
 
 export default createPlugin({
@@ -24,19 +24,7 @@ export default createPlugin({
         { 
           id: 'new', 
           label: 'New Project', 
-          icon: IconPlus,
-          submenu: [
-            { id: 'new-blank', label: 'Blank Project', icon: IconFile },
-            { id: 'new-template', label: 'From Template', icon: IconFolder,
-              submenu: [
-                { id: 'template-basic', label: 'Basic Scene', icon: IconCube },
-                { id: 'template-game', label: 'Game Template', icon: IconDeviceGamepad2 },
-                { id: 'template-arch', label: 'Architecture', icon: IconBox },
-                { id: 'template-product', label: 'Product Viz', icon: IconBox }
-              ]
-            },
-            { id: 'new-import', label: 'Import Existing', icon: IconArrowDown }
-          ]
+          icon: IconPlus
         },
         { id: 'open', label: 'Open Project', icon: IconFolder, shortcut: 'Ctrl+O' },
         { id: 'save', label: 'Save Project', icon: IconFile, shortcut: 'Ctrl+S' },
@@ -46,43 +34,17 @@ export default createPlugin({
           id: 'import', 
           label: 'Import', 
           icon: IconArrowDown,
-          submenu: [
-            { id: 'import-model', label: 'Model Importer...', icon: IconDownload, 
-              action: () => {
-                document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
-              }
-            },
-            { divider: true },
-            { id: 'import-fbx', label: 'FBX File', icon: IconDownload },
-            { id: 'import-obj', label: 'OBJ File', icon: IconDownload },
-            { id: 'import-gltf', label: 'GLTF/GLB File', icon: IconDownload },
-            { id: 'import-blend', label: 'Blender File', icon: IconDownload },
-            { divider: true },
-            { id: 'import-image', label: 'Image as Plane', icon: IconPhoto },
-            { id: 'import-hdri', label: 'HDRI Environment', icon: IconWorld }
-          ]
+          action: () => {
+            document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
+          }
         },
         { 
           id: 'export', 
-          label: 'Export', 
-          icon: IconArrowUp,
+          label: 'Export Game', 
+          icon: IconDeviceGamepad2,
           submenu: [
-            { id: 'export-scene', label: 'Export Scene', icon: IconCube,
-              submenu: [
-                { id: 'export-fbx', label: 'FBX Format', icon: IconUpload },
-                { id: 'export-obj', label: 'OBJ Format', icon: IconUpload },
-                { id: 'export-gltf', label: 'GLTF Format', icon: IconUpload },
-                { id: 'export-blend', label: 'Blender Format', icon: IconUpload }
-              ]
-            },
-            { id: 'export-render', label: 'Export Render', icon: IconVideo,
-              submenu: [
-                { id: 'export-png', label: 'PNG Image', icon: IconPhoto },
-                { id: 'export-jpg', label: 'JPEG Image', icon: IconPhoto },
-                { id: 'export-exr', label: 'EXR Image', icon: IconPhoto },
-                { id: 'export-animation', label: 'Animation Sequence', icon: IconRefresh }
-              ]
-            }
+            { id: 'export-web', label: 'Web', icon: IconWorld },
+            { id: 'export-desktop', label: 'Desktop', icon: IconDeviceDesktop }
           ]
         },
         { divider: true },
@@ -112,6 +74,58 @@ export default createPlugin({
       onClick: () => {
         console.log('[MenuPlugin] Edit menu clicked');
       }
+    });
+
+    api.menu('create', {
+      label: 'Create',
+      icon: IconPlus,
+      order: 3,
+      submenu: [
+        { id: 'create-scene', label: 'Scene', icon: IconChairDirector },
+        { 
+          id: 'mesh', 
+          label: 'Mesh', 
+          icon: IconCube,
+          submenu: [
+            { id: 'add-cube', label: 'Cube', icon: IconBox },
+            { id: 'add-plane', label: 'Plane', icon: IconSquare },
+            { id: 'add-cylinder', label: 'Cylinder', icon: IconCylinder },
+            { id: 'add-sphere', label: 'Sphere', icon: IconCircle },
+            { id: 'add-torus', label: 'Torus', icon: IconRecord }
+          ]
+        }
+      ]
+    });
+
+    api.menu('viewports', {
+      label: 'Viewports',
+      icon: IconChairDirector,
+      order: 4,
+      submenu: [
+        { id: 'viewport-node-editor', label: 'Node Editor', icon: IconNetwork },
+        { id: 'viewport-bridge', label: 'Bridge', icon: IconBridge },
+        { id: 'viewport-web-browser', label: 'Web Browser', icon: IconWorld, 
+          action: () => {
+            const api = document.querySelector('[data-plugin-api]')?.__pluginAPI;
+            if (api) {
+              api.open('web-browser', { label: 'Web Browser' });
+            }
+          }
+        }
+      ]
+    });
+
+    api.menu('help', {
+      label: 'Help',
+      icon: IconHelp,
+      order: 5,
+      submenu: [
+        { id: 'help-support', label: 'Support', icon: IconHeadphones },
+        { id: 'help-youtube', label: 'YouTube', icon: IconBrandYoutube },
+        { id: 'help-discord', label: 'Discord', icon: IconBrandDiscord },
+        { id: 'help-documentation', label: 'Documentation', icon: IconBook },
+        { id: 'help-about', label: 'About', icon: IconInfoCircle }
+      ]
     });
 
     console.log('[MenuPlugin] All menu items registered');

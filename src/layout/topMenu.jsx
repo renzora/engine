@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup, createMemo, For, Show } from 'solid-js';
-import { IconArrowDown, IconArrowUp, IconRefresh, IconChevronRight, IconMinus, IconRectangle, IconCopy, IconX, IconSettings } from '@tabler/icons-solidjs';
+import { IconArrowDown, IconArrowUp, IconRefresh, IconChevronRight, IconMinus, IconSquare, IconCopy, IconX, IconSettings } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { topMenuItems } from '@/api/plugin';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
@@ -241,7 +241,7 @@ function TopMenu() {
                       console.log('No active menu, not switching');
                     }
                   }}
-                  class={`menu-button px-3 py-1 text-sm text-base-content hover:bg-base-300 rounded transition-colors ${
+                  class={`menu-button px-3 py-1 text-sm text-base-content hover:bg-base-300 rounded transition-colors cursor-pointer ${
                     activeMenu() === menuName ? 'bg-base-300' : ''
                   }`}
                 >
@@ -275,7 +275,7 @@ function TopMenu() {
                   console.log('Minimize button clicked!');
                   handleMinimize();
                 }}
-                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors"
+                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors cursor-pointer"
                 title="Minimize"
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
@@ -283,15 +283,15 @@ function TopMenu() {
               </button>
               <button
                 onClick={handleMaximize}
-                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors"
+                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-base-content hover:bg-base-300 rounded transition-colors cursor-pointer"
                 title={isMaximized() ? "Restore" : "Maximize"}
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
-                {isMaximized() ? <IconCopy class="w-4 h-4" /> : <IconRectangle class="w-4 h-4" />}
+                {isMaximized() ? <IconCopy class="w-4 h-4" /> : <IconSquare class="w-4 h-4" />}
               </button>
               <button
                 onClick={handleClose}
-                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-error hover:bg-error/10 rounded transition-colors"
+                class="w-8 h-8 flex items-center justify-center text-base-content/60 hover:text-error hover:bg-error/10 rounded transition-colors cursor-pointer"
                 title="Close"
                 style={{ '-webkit-app-region': 'no-drag' }}
               >
@@ -320,7 +320,7 @@ function TopMenu() {
                   <Show when={!item.divider}>
                     <div class="relative group/item">
                       <button
-                        class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center justify-between transition-all duration-150 relative rounded-md"
+                        class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center justify-between transition-all duration-150 relative rounded-md cursor-pointer"
                         onClick={() => item.submenu ? null : handleItemClick(item)}
                       >
                         <div class="flex items-center gap-2">
@@ -356,7 +356,7 @@ function TopMenu() {
                                   <Show when={!subItem.divider}>
                                     <div class="relative group/subitem">
                                       <button
-                                        class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center justify-between transition-all duration-150 rounded-md"
+                                        class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center justify-between transition-all duration-150 rounded-md cursor-pointer"
                                         onClick={() => subItem.submenu ? null : handleItemClick(subItem)}
                                       >
                                         <div class="flex items-center gap-2">
@@ -382,7 +382,7 @@ function TopMenu() {
                                             <For each={subItem.submenu}>
                                               {(thirdItem) => (
                                                 <button
-                                                  class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center gap-2 transition-all duration-150 rounded-md"
+                                                  class="w-full px-3 py-1.5 text-left text-sm text-base-content hover:bg-primary hover:text-primary-content flex items-center gap-2 transition-all duration-150 rounded-md cursor-pointer"
                                                   onClick={() => handleItemClick(thirdItem)}
                                                 >
                                                   <Show when={thirdItem.icon}>
