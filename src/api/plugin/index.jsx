@@ -26,6 +26,8 @@ const [bottomPanelVisible, setBottomPanelVisible] = createSignal(true);
 const [horizontalMenuButtonsEnabled, setHorizontalMenuButtonsEnabled] = createSignal(true);
 const [footerVisible, setFooterVisible] = createSignal(true);
 const [viewportTabsVisible, setViewportTabsVisible] = createSignal(true);
+const [toolbarVisible, setToolbarVisible] = createSignal(true);
+const [helperVisible, setHelperVisible] = createSignal(true);
 const [layoutComponents, setLayoutComponents] = createSignal(new Map());
 const [plugins, setPlugins] = createSignal(new Map());
 const [pluginStates, setPluginStates] = createSignal(new Map());
@@ -766,6 +768,22 @@ export class PluginAPI {
   showTabs(visible = true) { return this.setViewportTabsVisible(visible); }
   hideTabs() { return this.setViewportTabsVisible(false); }
 
+  setToolbarVisible(visible) {
+    setToolbarVisible(visible);
+    console.log(`[PluginAPI] Toolbar visible: ${visible}`);
+  }
+  
+  showToolbar(visible = true) { return this.setToolbarVisible(visible); }
+  hideToolbar() { return this.setToolbarVisible(false); }
+
+  setHelperVisible(visible) {
+    setHelperVisible(visible);
+    console.log(`[PluginAPI] Helper visible: ${visible}`);
+  }
+  
+  showHelper(visible = true) { return this.setHelperVisible(visible); }
+  hideHelper() { return this.setHelperVisible(false); }
+
 
   getTopMenuItems() {
     return Array.from(topMenuItems().values()).sort((a, b) => a.order - b.order);
@@ -906,6 +924,8 @@ export {
   horizontalMenuButtonsEnabled,
   footerVisible,
   viewportTabsVisible,
+  toolbarVisible,
+  helperVisible,
   layoutComponents,
   plugins,
   pluginStates,

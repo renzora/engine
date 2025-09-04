@@ -20,6 +20,8 @@ function SplashViewport({ tab }) {
       pluginAPI.hideProps();
       pluginAPI.hideMenu();
       pluginAPI.hideTabs();
+      pluginAPI.hideToolbar();
+      pluginAPI.hideHelper();
     }
   });
 
@@ -30,6 +32,9 @@ function SplashViewport({ tab }) {
     pluginAPI.showProps();
     pluginAPI.showPanel();
     pluginAPI.showMenu();
+    pluginAPI.showFooter();
+    pluginAPI.showToolbar();
+    pluginAPI.showHelper();
     
     pluginAPI.createSceneViewport({
       name: 'Scene 1',
@@ -103,6 +108,9 @@ export default createPlugin({
     api.hideProps();
     api.hidePanel();
     api.hideMenu();
+    api.hideFooter();
+    api.hideToolbar();
+    api.hideHelper();
     
     setTimeout(() => {
       console.log('[SplashPlugin] Creating splash viewport tab...');

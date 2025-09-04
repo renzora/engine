@@ -3,7 +3,7 @@ import { viewportStore, viewportActions, objectPropertiesActions } from "@/layou
 import { IconSettings, IconX, IconPointer, IconMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
 import ViewportTabs from './ViewportTabs.jsx';
 import Toolbar from './Toolbar.jsx';
-import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, pluginAPI } from "@/api/plugin";
+import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, toolbarVisible, helperVisible, pluginAPI } from "@/api/plugin";
 import { Show, createMemo, createSignal, createEffect, onCleanup, For } from 'solid-js';
 import CodeEditorPanel from '@/pages/editor/AssetLibrary/CodeEditorPanel.jsx';
 import BabylonRenderer from '@/render/index.jsx';
@@ -324,7 +324,9 @@ const Viewport = () => {
       style={getViewportPositioning()}
     >
       <div className="w-full h-full flex flex-col gap-0">
-        <Toolbar />
+        <Show when={toolbarVisible()}>
+          <Toolbar />
+        </Show>
         <Show when={viewportTabsVisible()}>
           <ViewportTabs />
         </Show>

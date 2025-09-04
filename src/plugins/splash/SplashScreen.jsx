@@ -62,6 +62,76 @@ export default function SplashScreen({ onProjectSelect }) {
 
   return (
     <div class="w-full h-full relative flex overflow-hidden bg-base-100">
+      <style>{`
+        @keyframes gradient-x {
+          0%, 100% { 
+            background-position: 0% 50%;
+          }
+          50% { 
+            background-position: 100% 50%;
+          }
+        }
+        
+        .animate-gradient-x {
+          background-size: 400% 400%;
+          animation: gradient-x 3s ease infinite;
+        }
+        
+        @keyframes float {
+          0%, 100% { 
+            transform: translateY(0px);
+          }
+          50% { 
+            transform: translateY(-10px);
+          }
+        }
+        
+        .animate-float {
+          animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes glow-pulse {
+          0%, 100% { 
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.3), 0 0 40px rgba(59, 130, 246, 0.2);
+          }
+          50% { 
+            box-shadow: 0 0 30px rgba(59, 130, 246, 0.5), 0 0 60px rgba(59, 130, 246, 0.3);
+          }
+        }
+        
+        .animate-glow-pulse {
+          animation: glow-pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes shimmer {
+          0% { 
+            transform: translateX(-100%);
+          }
+          100% { 
+            transform: translateX(100%);
+          }
+        }
+        
+        .animate-shimmer {
+          animation: shimmer 2s infinite;
+        }
+        
+        @keyframes reveal {
+          0% { 
+            opacity: 0;
+            transform: scale(0.8) translateY(20px);
+          }
+          100% { 
+            opacity: 1;
+            transform: scale(1) translateY(0);
+          }
+        }
+        
+        .animate-reveal {
+          animation: reveal 1s ease-out forwards;
+        }
+      `}</style>
+      
       {/* Animated 3D Neon Grid Background */}
       <AnimatedBackground />
       
@@ -72,7 +142,7 @@ export default function SplashScreen({ onProjectSelect }) {
             <IconRocket class="w-10 h-10 text-primary-content" />
           </div>
           <h1 class="text-4xl font-bold text-base-content mb-3 tracking-tight">
-            Renzora <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Engine</span> <span class="text-accent">r2</span>
+            Renzora <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Engine</span> <span class="text-accent">r3-broken-af</span>
           </h1>
           <p class="text-lg text-base-content/70 max-w-md mx-auto leading-relaxed mb-8">
             Open sourced and royalty free game engine to build console quality games for the web
@@ -82,7 +152,7 @@ export default function SplashScreen({ onProjectSelect }) {
           <div class="w-full">
             <button
               onClick={() => setShowCreateDialog(true)}
-              class="w-full p-5 border-2 border-dashed border-base-content/15 hover:border-primary hover:bg-gradient-to-br hover:from-primary/20 hover:to-secondary/20 rounded-xl transition-all duration-300 group bg-base-200 hover:shadow-lg"
+              class="w-full p-5 border border-base-content/15 hover:border-primary hover:bg-gradient-to-br hover:from-primary/20 hover:to-secondary/20 rounded-xl transition-all duration-300 group bg-base-200 hover:shadow-lg"
             >
               <div class="flex flex-col items-center gap-3 text-base-content/70 group-hover:text-primary">
                 <div class="w-12 h-12 bg-gradient-to-br from-primary/10 to-secondary/10 group-hover:from-primary/20 group-hover:to-secondary/20 rounded-xl flex items-center justify-center border border-base-content/10 group-hover:border-primary/30 transition-all">
@@ -232,6 +302,7 @@ export default function SplashScreen({ onProjectSelect }) {
           </div>
         </div>
       </Show>
+
     </div>
   );
 }

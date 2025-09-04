@@ -1,5 +1,6 @@
-import { createSignal, For } from 'solid-js';
+import { createSignal, For, Show } from 'solid-js';
 import Helper from './Helper.jsx';
+import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb } from '@tabler/icons-solidjs';
@@ -351,7 +352,9 @@ function Toolbar() {
       
       <div class="flex-1" />
       
-      <Helper />
+      <Show when={helperVisible()}>
+        <Helper />
+      </Show>
     </div>
   );
 }
