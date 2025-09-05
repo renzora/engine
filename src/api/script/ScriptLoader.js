@@ -73,6 +73,32 @@ class ScriptLoader {
     console.log('🌐 ScriptLoader: ========== SERVER LOAD START ==========');
     console.log('🌐 ScriptLoader: Script path:', scriptPath);
     
+    // Check if we have a pre-compiled script from scene bundle
+    const bulkScripts = window._sceneBundledScripts;
+    if (bulkScripts && bulkScripts[scriptPath]) {
+      console.log('📦 ScriptLoader: Using pre-compiled script from bundle cache:', scriptPath);
+      
+      const compiledScript = bulkScripts[scriptPath];
+      
+      // Check if compilation failed
+      if (typeof compiledScript === 'object' && compiledScript.error) {
+        console.error('❌ ScriptLoader: Pre-compiled script has error:', compiledScript.error);
+        throw new Error(`Script compilation failed: ${compiledScript.error}`);
+      }
+      
+      console.log('📦 ScriptLoader: Using bulk compiled script (length:', compiledScript.length, ')');
+      
+      // For RenScript files, use the pre-compiled JavaScript directly
+      if (scriptPath.endsWith('.ren')) {
+        return this._evaluateCompiledRenScript(compiledScript, scriptPath);
+      } else {
+        // For regular JS files, evaluate directly
+        return this._evaluateJavaScript(compiledScript, scriptPath);
+      }
+    }
+    
+    console.log('🌐 ScriptLoader: No bulk cache found, requesting from server');
+    
     try {
       let url;
       

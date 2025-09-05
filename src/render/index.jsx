@@ -39,19 +39,10 @@ import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 const loadDefaultSceneContent = (scene, canvas) => {
   if (window.DEBUG_RENDER) console.log('🌟 Loading default scene content');
   
-  // Create default camera positioned diagonally to show X and Z axis intersection
-  const camera = new UniversalCamera(
-    'camera',
-    new Vector3(7, 5, 7),
-    scene
-  );
-  // Don't attach Babylon's native controls - we use custom camera controller
-  camera.setTarget(Vector3.Zero());
-
-  // Set camera in render store
-  renderActions.setCamera(camera);
+  // Camera will be created during scene loading from saved data
+  // No default objects created here - everything comes from scene data
   
-  if (window.DEBUG_RENDER) console.log('✅ Default scene content loaded - lighting now handled by RenScript');
+  if (window.DEBUG_RENDER) console.log('✅ Default scene content loaded - objects will be restored from scene data');
 };
 
 export default function BabylonRenderer(props) {
@@ -413,7 +404,7 @@ export default function BabylonRenderer(props) {
       // Start render loop  
       let renderLoopRunning = true;
       babylonEngine.runRenderLoop(() => {
-        if (renderLoopRunning && babylonScene && !babylonScene.isDisposed) {
+        if (renderLoopRunning && babylonScene && !babylonScene.isDisposed && babylonScene.activeCamera) {
           babylonScene.render();
         }
       });

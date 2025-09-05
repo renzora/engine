@@ -11,6 +11,11 @@ import { sceneManager } from '@/api/scene/SceneManager.js';
 function SplashViewport({ tab }) {
   const { currentProject, isProjectLoaded, setCurrentProject } = useProject();
   const pluginAPI = usePluginAPI();
+  const [isLoading, setIsLoading] = createSignal(false);
+  const [loadingStage, setLoadingStage] = createSignal('');
+  const [currentFile, setCurrentFile] = createSignal('');
+  const [processedCount, setProcessedCount] = createSignal(0);
+  const [totalCount, setTotalCount] = createSignal(0);
 
   // Hide UI elements when this splash viewport is active
   createEffect(() => {
@@ -27,82 +32,156 @@ function SplashViewport({ tab }) {
     }
   });
 
+  // Listen for detailed scene loading progress
+  createEffect(() => {
+    const handleProgress = (event) => {
+      const { stage, currentFile, processedCount, totalCount } = event.detail;
+      setLoadingStage(stage || '');
+      setCurrentFile(currentFile || '');
+      setProcessedCount(processedCount || 0);
+      setTotalCount(totalCount || 0);
+    };
+
+    document.addEventListener('scene-loading-progress', handleProgress);
+    return () => document.removeEventListener('scene-loading-progress', handleProgress);
+  });
+
   const handleProjectSelect = async (project) => {
     console.log('🎯 Project selected from splash viewport:', project.name);
     
-    // Set project first
-    const { setCurrentProject: setApiProject } = await import('@/api/bridge/projects.js');
-    setApiProject(project);
-    setCurrentProject(project);
+    setIsLoading(true);
+    setLoadingStage('Initializing project...');
+    
+    try {
+      // Set project first
+      const { setCurrentProject: setApiProject } = await import('@/api/bridge/projects.js');
+      setApiProject(project);
+      setCurrentProject(project);
 
-    // Create Babylon scene now that project is loaded
-    if (window._createBabylonScene) {
-      console.log('🎮 Creating Babylon scene for project:', project.name);
-      const scene = await window._createBabylonScene();
-      
-      if (scene) {
-        // Now try to load the current scene
-        try {
-          const currentSceneName = await getProjectCurrentScene(project.name);
-          console.log('📂 Loading current scene:', currentSceneName);
-          
-          const result = await sceneManager.loadScene(currentSceneName);
-          if (result.success) {
-            console.log('✅ Current scene loaded successfully:', currentSceneName);
-          } else {
-            console.warn('⚠️ Failed to load current scene, using default scene:', result.error);
+      // Create Babylon scene
+      if (window._createBabylonScene) {
+        console.log('🎮 Creating Babylon scene for project:', project.name);
+        setLoadingStage('Creating 3D scene...');
+        const scene = await window._createBabylonScene();
+        
+        if (scene) {
+          // Load the current scene - this will emit detailed progress events
+          try {
+            const currentSceneName = await getProjectCurrentScene(project.name);
+            console.log('📂 Loading current scene:', currentSceneName);
+            
+            const result = await sceneManager.loadScene(currentSceneName);
+            
+            if (result.success) {
+              console.log('✅ Current scene loaded successfully:', currentSceneName);
+            } else {
+              console.warn('⚠️ Failed to load current scene:', result.error);
+            }
+          } catch (error) {
+            console.warn('⚠️ Failed to get/load current scene:', error);
           }
-        } catch (error) {
-          console.warn('⚠️ Failed to get/load current scene, using default scene:', error);
         }
       }
-    }
 
-    pluginAPI.showProps();
-    pluginAPI.showPanel();
-    pluginAPI.showMenu();
-    pluginAPI.showFooter();
-    pluginAPI.showToolbar();
-    pluginAPI.showHelper();
-    
-    pluginAPI.createSceneViewport({
-      name: 'Scene 1',
-      setActive: true
-    });
-    
-    setTimeout(() => {
-      import('@/layout/stores/ViewportStore.jsx').then(({ viewportActions, viewportStore }) => {
-        const splashTab = viewportStore.tabs.find(tab => tab.type === 'splash-viewport');
-        if (splashTab) {
-          console.log('🎯 Closing splash viewport tab:', splashTab.id);
-          viewportActions.removeViewportTab(splashTab.id);
-        }
-      }).catch(err => {
-        console.error('Failed to close splash viewport:', err);
+      setLoadingStage('Setting up interface...');
+
+      // Show UI elements
+      pluginAPI.showProps();
+      pluginAPI.showPanel();
+      pluginAPI.showMenu();
+      pluginAPI.showFooter();
+      pluginAPI.showToolbar();
+      pluginAPI.showHelper();
+      
+      // Create scene viewport
+      pluginAPI.createSceneViewport({
+        name: 'Scene 1',
+        setActive: true
       });
-    }, 100);
-    
-    document.dispatchEvent(new CustomEvent('engine:project-selected', { 
-      detail: { project } 
-    }));
+      
+      setLoadingStage('Complete!');
+      
+      // Close splash screen after a brief delay
+      setTimeout(() => {
+        import('@/layout/stores/ViewportStore.jsx').then(({ viewportActions, viewportStore }) => {
+          const splashTab = viewportStore.tabs.find(tab => tab.type === 'splash-viewport');
+          if (splashTab) {
+            console.log('🎯 Closing splash viewport tab:', splashTab.id);
+            viewportActions.removeViewportTab(splashTab.id);
+          }
+        }).catch(err => {
+          console.error('Failed to close splash viewport:', err);
+        });
+      }, 1000);
+      
+      document.dispatchEvent(new CustomEvent('engine:project-selected', { 
+        detail: { project } 
+      }));
+      
+    } catch (error) {
+      console.error('❌ Failed to load project:', error);
+      setIsLoading(false);
+      setLoadingStage('Failed to load project');
+    }
   };
 
   return (
-    <Show when={isProjectLoaded() && currentProject()} fallback={
-      <SplashScreen onProjectSelect={handleProjectSelect} />
+    <Show when={isProjectLoaded() && currentProject() && !isLoading()} fallback={
+      <Show when={isLoading()} fallback={<SplashScreen onProjectSelect={handleProjectSelect} />}>
+        <div class="w-full h-full bg-slate-900 text-white flex items-center justify-center">
+          <div class="text-center max-w-md mx-auto p-6">
+            <div class="mb-6">
+              <div class="p-3 bg-blue-600/20 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                <IconFolder class="w-8 h-8 text-blue-400 animate-pulse" />
+              </div>
+              <h1 class="text-xl font-bold mb-2">Loading Project</h1>
+              <p class="text-lg text-blue-400 font-semibold">{currentProject()?.name}</p>
+            </div>
+            
+            {/* Progress details */}
+            <div class="mb-4">
+              <div class="text-sm text-gray-300 mb-2">{loadingStage()}</div>
+              
+              {/* Show progress count if available */}
+              <Show when={totalCount() > 0}>
+                <div class="w-full bg-gray-700 rounded-full h-2.5 mb-2">
+                  <div 
+                    class="bg-blue-500 h-2.5 rounded-full transition-all duration-300 ease-out" 
+                    style={{ width: `${totalCount() > 0 ? (processedCount() / totalCount()) * 100 : 0}%` }}
+                  ></div>
+                </div>
+                <div class="text-xs text-gray-400 mb-2">
+                  {processedCount()} / {totalCount()} items processed
+                </div>
+              </Show>
+              
+              {/* Show current file being processed */}
+              <Show when={currentFile()}>
+                <div class="text-xs text-gray-500 font-mono bg-gray-800 p-2 rounded truncate">
+                  {currentFile()}
+                </div>
+              </Show>
+            </div>
+            
+            <p class="text-gray-400 text-sm">
+              Setting up your project and loading scene data...
+            </p>
+          </div>
+        </div>
+      </Show>
     }>
+      {/* This fallback will only show if there's an error or unexpected state */}
       <div class="w-full h-full bg-slate-900 text-white flex items-center justify-center">
         <div class="text-center max-w-md mx-auto p-6">
           <div class="mb-4">
-            <div class="p-3 bg-green-600/20 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
-              <IconFolder class="w-8 h-8 text-green-400" />
+            <div class="p-3 bg-red-600/20 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+              <IconFolder class="w-8 h-8 text-red-400" />
             </div>
-            <h1 class="text-xl font-bold mb-2">Project Ready</h1>
-            <p class="text-lg text-green-400 font-semibold">{currentProject()?.name}</p>
+            <h1 class="text-xl font-bold mb-2">Loading Error</h1>
+            <p class="text-lg text-red-400 font-semibold">{currentProject()?.name}</p>
           </div>
           <p class="text-gray-400 text-sm">
-            Your project is loaded and ready to use. 
-            Switch to other viewport tabs to start working with your 3D scenes.
+            There was an issue loading your project. Please try again.
           </p>
         </div>
       </div>

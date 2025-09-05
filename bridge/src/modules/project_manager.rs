@@ -225,15 +225,45 @@ pub fn create_project(name: &str, template: &str, settings: Option<&serde_json::
         println!("Warning: Failed to create project.json: {}", e);
     }
     
-    // Create default scene file
+    // Create default scene file with default camera
     let default_scene_path = scenes_path.join("main.json");
     let default_scene = serde_json::json!({
         "hierarchy": [{
             "id": "scene-root",
-            "name": "New Scene",
+            "name": "main",
             "type": "scene",
             "expanded": true,
-            "children": []
+            "children": [{
+                "id": 1,
+                "name": "camera",
+                "type": "camera",
+                "lightType": null,
+                "visible": true,
+                "expanded": true,
+                "babylonData": {
+                    "name": "camera",
+                    "id": "camera",
+                    "uniqueId": 1,
+                    "type": "UniversalCamera",
+                    "position": [7, 5, 7],
+                    "rotation": [0, 0, 0],
+                    "fov": 0.8,
+                    "minZ": 1,
+                    "maxZ": 10000,
+                    "metadata": {
+                        "properties": {},
+                        "originalProperties": {
+                            "position": [7, 5, 7],
+                            "rotation": [0, 0, 0],
+                            "scale": [1, 1, 1]
+                        }
+                    },
+                    "__engineObjectId": 1,
+                    "__engineClassName": "UniversalCamera",
+                    "__engineName": "camera",
+                    "__attachedScripts": []
+                }
+            }]
         }],
         "lighting": {
             "sunIntensity": 4.0,
@@ -341,17 +371,49 @@ pub fn load_scene_with_assets(project_name: &str, scene_name: &str) -> Result<se
         }
     }
     
-    // Create bundled response with scene data + assets
+    // Extract and compile all RenScripts used in the scene
+    let mut script_paths = std::collections::HashSet::new();
+    extract_script_paths_recursive(&scene_json, &mut script_paths);
+    
+    info!("🔍 Found {} script references in scene '{}'", script_paths.len(), scene_name);
+    
+    // Compile all scripts found in the scene
+    let mut compiled_scripts = serde_json::Map::new();
+    for script_path in &script_paths {
+        info!("📜 Compiling script: {}", script_path);
+        match crate::modules::renscript_compiler::compile_renscript(script_path) {
+            Ok(compiled_js) => {
+                compiled_scripts.insert(script_path.clone(), serde_json::Value::String(compiled_js));
+                info!("✅ Compiled script: {}", script_path);
+            },
+            Err(e) => {
+                warn!("⚠️ Failed to compile script {}: {}", script_path, e);
+                // Include error info so client can handle it
+                compiled_scripts.insert(
+                    script_path.clone(), 
+                    serde_json::Value::Object({
+                        let mut error_obj = serde_json::Map::new();
+                        error_obj.insert("error".to_string(), serde_json::Value::String(e));
+                        error_obj
+                    })
+                );
+            }
+        }
+    }
+    
+    // Create bundled response with scene data + assets + compiled scripts
     let bundled_response = serde_json::json!({
         "scene": scene_json,
         "assets": bundled_assets,
+        "scripts": compiled_scripts,
         "project": project_name,
         "sceneName": scene_name,
         "bundledAt": chrono::Utc::now().to_rfc3339(),
-        "assetCount": bundled_assets.len()
+        "assetCount": bundled_assets.len(),
+        "scriptCount": compiled_scripts.len()
     });
     
-    info!("✅ Created scene bundle with {} assets for scene '{}'", bundled_assets.len(), scene_name);
+    info!("✅ Created scene bundle with {} assets and {} scripts for scene '{}'", bundled_assets.len(), compiled_scripts.len(), scene_name);
     Ok(bundled_response)
 }
 
@@ -472,5 +534,52 @@ fn extract_asset_paths_with_depth(json: &serde_json::Value, asset_paths: &mut st
         _ => {
             // Don't log every primitive value to avoid spam
         }
+    }
+}
+
+fn extract_script_paths_recursive(json: &serde_json::Value, script_paths: &mut std::collections::HashSet<String>) {
+    extract_script_paths_with_depth(json, script_paths, 0, 10);
+}
+
+fn extract_script_paths_with_depth(json: &serde_json::Value, script_paths: &mut std::collections::HashSet<String>, depth: usize, max_depth: usize) {
+    if depth > max_depth {
+        debug!("🛑 Reached max recursion depth {}, stopping script extraction", max_depth);
+        return;
+    }
+
+    match json {
+        serde_json::Value::Object(map) => {
+            // Look for __attachedScripts in babylon data
+            if let Some(attached_scripts) = map.get("__attachedScripts") {
+                if let Some(scripts_array) = attached_scripts.as_array() {
+                    for script_obj in scripts_array {
+                        if let Some(script_map) = script_obj.as_object() {
+                            if let Some(script_path) = script_map.get("path") {
+                                if let Some(path_str) = script_path.as_str() {
+                                    if !path_str.is_empty() {
+                                        info!("📜 Found attached script: '{}'", path_str);
+                                        script_paths.insert(path_str.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Recurse into important sections
+            let important_keys = ["hierarchy", "children", "babylonData"];
+            for &key in &important_keys {
+                if let Some(value) = map.get(key) {
+                    extract_script_paths_with_depth(value, script_paths, depth + 1, max_depth);
+                }
+            }
+        },
+        serde_json::Value::Array(array) => {
+            for item in array {
+                extract_script_paths_with_depth(item, script_paths, depth + 1, max_depth);
+            }
+        },
+        _ => {}
     }
 }
