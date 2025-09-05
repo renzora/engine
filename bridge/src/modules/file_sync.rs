@@ -5,6 +5,23 @@ use base64::{Engine as _, engine::general_purpose};
 use crate::project_manager::get_projects_path;
 use log::{info, warn, error, debug};
 
+const BLACKLISTED_EXTENSIONS: &[&str] = &[
+    "exe", "com", "scr", "pif", "bat", "cmd", "ps1", "vbs", "vbe", "js", "jse", "jar", "msi",
+    "dll", "sys", "drv", "ocx", "cpl", "inf", "reg", "scf", "lnk", "url", "desktop", "app",
+    "deb", "rpm", "dmg", "pkg", "apk", "ipa", "bin", "run", "out", "sh", "bash", "zsh",
+    "fish", "csh", "tcsh", "py", "pl", "rb", "php", "asp", "aspx", "jsp", "cgi"
+];
+
+fn is_file_extension_allowed(file_path: &Path) -> Result<(), String> {
+    if let Some(extension) = file_path.extension().and_then(|s| s.to_str()) {
+        let ext_lower = extension.to_lowercase();
+        if BLACKLISTED_EXTENSIONS.contains(&ext_lower.as_str()) {
+            return Err(format!("File extension '{}' is not allowed for security reasons", extension));
+        }
+    }
+    Ok(())
+}
+
 pub fn sanitize_file_name(name: &str) -> String {
     name.chars()
         .map(|c| match c {
@@ -51,6 +68,12 @@ pub fn read_file_content(file_path: &str) -> Result<String, String> {
     
     debug!("📂 Full file path: {:?}", full_path);
     
+    // Security validation
+    if let Err(e) = is_file_extension_allowed(&full_path) {
+        error!("🚫 Security: {}", e);
+        return Err(e);
+    }
+    
     match fs::read_to_string(&full_path) {
         Ok(content) => {
             let file_size = content.len();
@@ -67,6 +90,13 @@ pub fn read_file_content(file_path: &str) -> Result<String, String> {
 pub fn write_file_content(file_path: &str, request: &WriteFileRequest) -> Result<(), String> {
     let projects_path = get_projects_path();
     let content_size = request.content.len();
+    
+    // Security validation
+    let full_path = projects_path.join(file_path);
+    if let Err(e) = is_file_extension_allowed(&full_path) {
+        error!("🚫 Security: {}", e);
+        return Err(e);
+    }
     info!("💾 Writing file: {} ({} bytes)", file_path, content_size);
     
     // Parse the path to extract project name and asset path
@@ -137,6 +167,12 @@ pub fn write_binary_file_content(file_path: &str, request: &WriteBinaryFileReque
     // Construct full path within project directory
     let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full binary file path: {:?}", project_assets_path);
+    
+    // Security validation
+    if let Err(e) = is_file_extension_allowed(&project_assets_path) {
+        error!("🚫 Security: {}", e);
+        return Err(e);
+    }
     
     if let Some(parent) = project_assets_path.parent() {
         match fs::create_dir_all(parent) {
@@ -267,6 +303,12 @@ pub fn read_binary_file(file_path: &str) -> Result<Vec<u8>, String> {
     // Construct full path within project directory
     let project_assets_path = projects_path.join(project_name).join(&asset_path);
     debug!("📂 Full binary file path: {:?}", project_assets_path);
+    
+    // Security validation
+    if let Err(e) = is_file_extension_allowed(&project_assets_path) {
+        error!("🚫 Security: {}", e);
+        return Err(e);
+    }
     
     if !project_assets_path.exists() {
         warn!("⚠️ Binary file not found: {}", file_path);

@@ -1,0 +1,183 @@
+script CompleteRenderPipeline {
+
+  start {
+    log("🎮 Initializing complete render pipeline...")
+    
+    // 1. Create lighting system
+    log("🌟 Setting up lighting...")
+    lights = standardLighting({
+      skyIntensity: skyIntensity,
+      skyColor: [0.7, 0.8, 1.0],
+      sunIntensity: sunIntensity,
+      sunColor: [1.0, 0.98, 0.9],
+      rimIntensity: rimIntensity,
+      rimColor: [0.9, 0.7, 0.5],
+      bounceIntensity: 0.3,
+      bounceColor: [0.4, 0.5, 0.7]
+    })
+    
+    // 2. Create environment system
+    log("🌍 Setting up environment...")
+    environment = createStandardEnvironment({
+      skyboxSize: 1000,
+      turbidity: turbidity,
+      luminance: 1.0,
+      cloudsEnabled: cloudsEnabled,
+      cloudSize: 25,
+      cloudDensity: cloudDensity,
+      toneMappingEnabled: true,
+      toneMappingType: 1,
+      exposure: exposure,
+      vignetteEnabled: true,
+      vignetteWeight: vignetteWeight,
+      fxaaEnabled: true
+    })
+    
+    // 3. Create shadows
+    if (shadowsEnabled) {
+      log("🔲 Setting up shadows...")
+      shadowGen = createOptimizedShadows("mainShadows", lights.sunLight, {
+        shadowMapSize: shadowMapSize,
+        shadowDarkness: shadowDarkness,
+        shadowBias: 0.00005,
+        cascadeShadows: true,
+        shadowCascades: 2,
+        shadowBlur: 16
+      })
+      
+      // Enable shadows for all meshes in scene
+      meshCount = enableShadowsForAllMeshes()
+      log("  Shadows enabled for " + meshCount + " meshes")
+    }
+    
+    // 4. Create moon system
+    log("🌙 Setting up moon...")
+    moon = createMoon("moon", {
+      diameter: 20,
+      position: [100, 300, 200]
+    })
+    
+    moonLight = moonLighting({
+      position: [100, 300, 200],
+      intensity: 0,
+      baseMoonIntensity: 15.0
+    })
+    
+    // 5. Create day/night cycle
+    log("⏰ Setting up day/night cycle...")
+    cycle = createDayNightCycle("mainCycle", {
+      timeOfDay: timeOfDay,
+      speed: timeSpeed,
+      enabled: cycleEnabled,
+      sunriseHour: 6.0,
+      sunsetHour: 18.0,
+      transitionDuration: 1.0,
+      
+      // All the color and intensity settings
+      skyColor: [0.7, 0.8, 1.0],
+      nightSkyColor: [0.05, 0.05, 0.15],
+      daySkyColor: [0.4, 0.6, 1.0],
+      sunColor: [1.0, 0.98, 0.9],
+      rimColor: [0.9, 0.7, 0.5],
+      bounceColor: [0.4, 0.5, 0.7],
+      
+      skyIntensity: skyIntensity,
+      sunIntensity: sunIntensity,
+      rimIntensity: rimIntensity,
+      bounceIntensity: 0.3,
+      moonIntensity: 15.0,
+      environmentIntensity: 1.0,
+      
+      dayTurbidity: 2,
+      nightTurbidity: 10,
+      baseLuminance: 0.1,
+      dayLuminance: 1.0,
+      
+      cloudsEnabled: cloudsEnabled,
+      cloudSize: 25,
+      cloudDensity: cloudDensity,
+      
+      snowEnabled: snowEnabled,
+      snowIntensity: 100,
+      starsEnabled: starsEnabled,
+      starIntensity: 300
+    })
+    
+    // Start the cycle
+    startResult = startDayNightCycle("mainCycle", lights, environment.skyMaterial, moon, moonLight, null, null)
+    
+    log("✅ Complete render pipeline initialized")
+    log("  Lights: " + (lights ? "OK" : "FAILED"))
+    log("  Environment: " + (environment ? "OK" : "FAILED"))
+    log("  Shadows: " + (shadowsEnabled && shadowGen ? "OK" : "DISABLED"))
+    log("  Moon: " + (moon ? "OK" : "FAILED"))
+    log("  Cycle: " + (startResult ? "OK" : "FAILED"))
+    
+    // Log initial status
+    info = getCycleInfo("mainCycle")
+    if (info) {
+      log("  Current time: " + info.timeString)
+      log("  Day/Night: " + (info.isDayTime ? "DAY" : "NIGHT"))
+    }
+  }
+
+  update() {
+    // Update cycle properties from UI
+    setTimeSpeed("mainCycle", timeSpeed)
+    enableCycle("mainCycle", cycleEnabled)
+    
+    // Manual time control when cycle disabled
+    if (!cycleEnabled) {
+      setTimeOfDay("mainCycle", timeOfDay)
+    }
+    
+    // Update lighting intensities
+    if (lights.sunLight) {
+      // Get base intensity and apply to current light
+      currentSunLight = lights.sunLight
+      currentSunLight._baseIntensity = sunIntensity
+    }
+    
+    if (lights.skyLight) {
+      currentSkyLight = lights.skyLight
+      currentSkyLight._baseIntensity = skyIntensity
+    }
+    
+    if (lights.rimLight) {
+      currentRimLight = lights.rimLight
+      currentRimLight._baseIntensity = rimIntensity
+    }
+    
+    // Update environment
+    if (environment.skyMaterial) {
+      setSkyTurbidity(environment.skyMaterial, turbidity)
+      enableSkyClouds(environment.skyMaterial, cloudsEnabled)
+      setSkyCloudDensity(environment.skyMaterial, cloudDensity)
+    }
+    
+    // Update shadows
+    if (shadowsEnabled && shadowGen) {
+      setShadowMapSize("mainShadows", shadowMapSize)
+      setShadowDarkness("mainShadows", shadowDarkness)
+    }
+    
+    // Update post-processing
+    setExposure(exposure)
+    setVignetteWeight(vignetteWeight)
+  }
+
+  destroy {
+    log("🧹 Cleaning up complete render pipeline...")
+    
+    // Stop day/night cycle
+    stopDayNightCycle("mainCycle")
+    disposeCycle("mainCycle")
+    
+    // Dispose shadows
+    if (shadowGen) {
+      disposeShadowGenerator("mainShadows")
+    }
+    
+    log("✅ Complete render pipeline cleanup completed")
+  }
+}

@@ -158,6 +158,13 @@ export const viewportActions = {
     if (index !== -1) {
       setViewportStore('tabs', index, 'name', newName);
     }
+  },
+  
+  setTabUnsavedChanges: (tabId, hasUnsavedChanges) => {
+    const index = viewportStore.tabs.findIndex(tab => tab.id === tabId);
+    if (index !== -1) {
+      setViewportStore('tabs', index, 'hasUnsavedChanges', hasUnsavedChanges);
+    }
   }
 }
 

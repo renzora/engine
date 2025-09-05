@@ -253,6 +253,32 @@ export class CoreAPI {
     return this.getId();
   }
 
+  // === STRING FUNCTIONS ===
+  
+  contains(str, substring) {
+    if (typeof str !== 'string' || typeof substring !== 'string') return false;
+    return str.includes(substring);
+  }
+
+  endsWith(str, suffix) {
+    if (typeof str !== 'string' || typeof suffix !== 'string') return false;
+    return str.endsWith(suffix);
+  }
+
+  startsWith(str, prefix) {
+    if (typeof str !== 'string' || typeof prefix !== 'string') return false;
+    return str.startsWith(prefix);
+  }
+
+  hasExtension(filePath, extension) {
+    if (typeof filePath !== 'string' || typeof extension !== 'string') return false;
+    return filePath.toLowerCase().endsWith(extension.toLowerCase());
+  }
+
+  ext(filePath, extension) {
+    return this.hasExtension(filePath, extension);
+  }
+
   // === UPDATE DELTA TIME ===
   
   _updateDeltaTime(deltaTime) {

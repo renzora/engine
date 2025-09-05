@@ -1,0 +1,37 @@
+props {
+hdriPath: string {
+  default: "",
+  description: "Drag .hdr or .exr file here to load HDRI skybox"
+}
+
+skyboxSize: range {
+  default: 1000,
+  min: 100,
+  max: 5000,
+  description: "Size of the skybox"
+}
+
+environmentIntensity: range {
+  default: 1.0,
+  min: 0.0,
+  max: 3.0,
+  description: "Environment lighting intensity"
+}
+
+rotation: range {
+  default: 0.0,
+  min: 0.0,
+  max: 360.0,
+  description: "Skybox rotation in degrees"
+}
+
+autoUpdateEnvironment: boolean {
+  default: true,
+  description: "Automatically update scene environment from HDRI"
+}
+
+enableReflections: boolean {
+  default: true,
+  description: "Enable reflections on materials"
+}
+}

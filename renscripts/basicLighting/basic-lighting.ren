@@ -1,0 +1,70 @@
+script BasicLighting {
+  props {
+    skyIntensity: range {
+      default: 4.0,
+      min: 0.0,
+      max: 10.0,
+      description: "Sky light intensity"
+    }
+    
+    sunIntensity: range {
+      default: 4.0,
+      min: 0.0,
+      max: 10.0,
+      description: "Sun light intensity"
+    }
+    
+    rimIntensity: range {
+      default: 0.4,
+      min: 0.0,
+      max: 2.0,
+      description: "Rim light intensity"
+    }
+    
+    bounceIntensity: range {
+      default: 0.3,
+      min: 0.0,
+      max: 2.0,
+      description: "Bounce light intensity"
+    }
+  }
+
+  start {
+    log("🌟 Initializing basic lighting system...")
+    
+    // Create standard lighting setup using the lighting API
+    lights = standardLighting({
+      skyIntensity: skyIntensity,
+      skyColor: [0.7, 0.8, 1.0],
+      sunIntensity: sunIntensity,
+      sunColor: [1.0, 0.98, 0.9],
+      rimIntensity: rimIntensity,
+      rimColor: [0.9, 0.7, 0.5],
+      bounceIntensity: bounceIntensity,
+      bounceColor: [0.4, 0.5, 0.7]
+    })
+    
+    log("✅ Basic lighting created")
+  }
+
+  update() {
+    // Update light intensities based on properties
+    if (lights.skyLight) {
+      setLightIntensity(lights.skyLight, skyIntensity)
+    }
+    if (lights.sunLight) {
+      setLightIntensity(lights.sunLight, sunIntensity)
+    }
+    if (lights.rimLight) {
+      setLightIntensity(lights.rimLight, rimIntensity)
+    }
+    if (lights.bounceLight) {
+      setLightIntensity(lights.bounceLight, bounceIntensity)
+    }
+  }
+
+  destroy {
+    log("🧹 Cleaning up basic lighting...")
+    log("✅ Basic lighting cleanup completed")
+  }
+}

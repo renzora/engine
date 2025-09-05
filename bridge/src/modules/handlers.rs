@@ -11,7 +11,7 @@ use log::{info, warn, error, debug};
 use percent_encoding::percent_decode_str;
 use base64::{Engine as _, engine::general_purpose};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
-use crate::project_manager::{list_projects, list_directory_contents, create_project};
+use crate::project_manager::{list_projects, list_directory_contents, create_project, load_scene_with_assets};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
 use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
@@ -246,6 +246,22 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
+        (&Method::GET, path) if path.starts_with("/scene-bundle/") => {
+            let path_parts: Vec<&str> = path[14..].split('/').collect();
+            if path_parts.len() != 2 {
+                error_response(StatusCode::BAD_REQUEST, "Expected format: /scene-bundle/PROJECT_NAME/SCENE_NAME")
+            } else {
+                let project_name = match decode_url_path(path_parts[0]) {
+                    Ok(name) => name,
+                    Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+                };
+                let scene_name = match decode_url_path(path_parts[1]) {
+                    Ok(name) => name,
+                    Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+                };
+                handle_get_scene_bundle(&project_name, &scene_name)
+            }
+        }
         _ => {
             warn!("❓ Unknown route: {} {}", method, path);
             error_response(StatusCode::NOT_FOUND, "Not Found")
@@ -322,6 +338,13 @@ fn handle_read_file(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
             };
             json_response(&response)
         }
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
+    }
+}
+
+fn handle_get_scene_bundle(project_name: &str, scene_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    match load_scene_with_assets(project_name, scene_name) {
+        Ok(bundle) => json_response(&bundle),
         Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
     }
 }
@@ -477,7 +500,7 @@ async fn handle_generate_thumbnail(body_content: &str) -> Response<BoxBody<Bytes
 fn handle_create_project(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match serde_json::from_str::<CreateProjectRequest>(body_content) {
         Ok(request) => {
-            match create_project(&request.name, &request.template.unwrap_or_else(|| "basic".to_string())) {
+            match create_project(&request.name, &request.template.unwrap_or_else(|| "basic".to_string()), request.settings.as_ref()) {
                 Ok(project) => json_response(&project),
                 Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
             }

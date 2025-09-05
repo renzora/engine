@@ -1,0 +1,60 @@
+props environment {
+  turbidity: range {
+    default: 2.0,
+    min: 0.0,
+    max: 50.0,
+    description: "Sky turbidity"
+  }
+  
+  luminance: range {
+    default: 1.0,
+    min: 0.0,
+    max: 2.0,
+    description: "Sky luminance"
+  }
+  
+  cloudsEnabled: toggle {
+    default: true,
+    description: "Enable clouds"
+  }
+  
+  cloudSize: range {
+    default: 25.0,
+    min: 1.0,
+    max: 100.0,
+    description: "Cloud size"
+  }
+  
+  cloudDensity: range {
+    default: 0.6,
+    min: 0.0,
+    max: 1.0,
+    description: "Cloud density"
+  }
+  
+  fogEnabled: toggle {
+    default: false,
+    description: "Enable fog"
+  }
+  
+  fogDensity: range {
+    default: 0.01,
+    min: 0.0,
+    max: 0.1,
+    description: "Fog density"
+  }
+  
+  exposure: range {
+    default: 1.0,
+    min: 0.0,
+    max: 3.0,
+    description: "Camera exposure"
+  }
+  
+  vignetteWeight: range {
+    default: 0.4,
+    min: 0.0,
+    max: 1.0,
+    description: "Vignette strength"
+  }
+}

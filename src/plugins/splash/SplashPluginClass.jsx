@@ -5,6 +5,8 @@ import { IconHome, IconFolder, IconSettings } from '@tabler/icons-solidjs';
 import { createSignal, Show, createEffect } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
+import { getProjectCurrentScene } from '@/api/bridge/projects.js';
+import { sceneManager } from '@/api/scene/SceneManager.js';
 
 function SplashViewport({ tab }) {
   const { currentProject, isProjectLoaded, setCurrentProject } = useProject();
@@ -25,9 +27,36 @@ function SplashViewport({ tab }) {
     }
   });
 
-  const handleProjectSelect = (project) => {
+  const handleProjectSelect = async (project) => {
     console.log('🎯 Project selected from splash viewport:', project.name);
+    
+    // Set project first
+    const { setCurrentProject: setApiProject } = await import('@/api/bridge/projects.js');
+    setApiProject(project);
     setCurrentProject(project);
+
+    // Create Babylon scene now that project is loaded
+    if (window._createBabylonScene) {
+      console.log('🎮 Creating Babylon scene for project:', project.name);
+      const scene = await window._createBabylonScene();
+      
+      if (scene) {
+        // Now try to load the current scene
+        try {
+          const currentSceneName = await getProjectCurrentScene(project.name);
+          console.log('📂 Loading current scene:', currentSceneName);
+          
+          const result = await sceneManager.loadScene(currentSceneName);
+          if (result.success) {
+            console.log('✅ Current scene loaded successfully:', currentSceneName);
+          } else {
+            console.warn('⚠️ Failed to load current scene, using default scene:', result.error);
+          }
+        } catch (error) {
+          console.warn('⚠️ Failed to get/load current scene, using default scene:', error);
+        }
+      }
+    }
 
     pluginAPI.showProps();
     pluginAPI.showPanel();

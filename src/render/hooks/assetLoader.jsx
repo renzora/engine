@@ -336,6 +336,11 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
           const finalMesh = container
           console.log(`Container created: ${finalMesh.name}`)
           
+          // Store asset source metadata for scene serialization
+          if (!finalMesh.metadata) finalMesh.metadata = {};
+          finalMesh.metadata.assetSource = assetData.path; // Store the original asset path
+          console.log(`📝 AssetLoader: Set assetSource metadata to: ${assetData.path}`);
+          
           // Set initial position at ground level
           finalMesh.position = new Vector3(targetPosition.x, 0, targetPosition.z)
           

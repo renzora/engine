@@ -219,7 +219,7 @@ const ViewportTabs = () => {
                     when={editingTab() === tab.id}
                     fallback={
                       <span className="text-sm font-medium truncate min-w-0">
-                        {tab.name}
+                        {tab.name}{tab.hasUnsavedChanges ? ' •' : ''}
                       </span>
                     }
                   >

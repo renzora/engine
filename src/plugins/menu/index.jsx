@@ -1,6 +1,15 @@
 import { createPlugin } from '@/api/plugin';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconRecord, IconChairDirector, IconNetwork, IconBridge, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle
+import { createSignal } from 'solid-js';
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconRecord, IconChairDirector, IconNetwork, IconBridge, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy
 } from '@tabler/icons-solidjs';
+import AboutOverlay from '@/ui/AboutOverlay.jsx';
+import ExportDialog from '@/ui/ExportDialog.jsx';
+import { sceneManager } from '@/api/scene/SceneManager.js';
+
+// About overlay state
+const [showAbout, setShowAbout] = createSignal(false);
+// Export dialog state
+const [showExport, setShowExport] = createSignal(false);
 
 export default createPlugin({
   id: 'menu-plugin',
@@ -27,8 +36,79 @@ export default createPlugin({
           icon: IconPlus
         },
         { id: 'open', label: 'Open Project', icon: IconFolder, shortcut: 'Ctrl+O' },
-        { id: 'save', label: 'Save Project', icon: IconFile, shortcut: 'Ctrl+S' },
-        { id: 'save-as', label: 'Save As...', icon: IconFile, shortcut: 'Ctrl+Shift+S' },
+        { 
+          id: 'load-scene', 
+          label: 'Load Scene', 
+          icon: IconFolder,
+          action: async () => {
+            const scenes = await sceneManager.getAvailableScenes();
+            if (scenes.length === 0) {
+              alert('No scenes found in current project');
+              return;
+            }
+            
+            const sceneList = scenes.join('\n');
+            const sceneName = prompt(`Available scenes:\n${sceneList}\n\nEnter scene name to load:`);
+            if (sceneName && sceneName.trim()) {
+              const result = await sceneManager.loadScene(sceneName.trim());
+              if (result.success) {
+                console.log('✅ Scene loaded successfully:', sceneName);
+                
+                // Switch to existing scene tab instead of creating new one
+                const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
+                
+                // Find existing scene tab
+                const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
+                
+                if (sceneTab) {
+                  // Switch to existing scene tab
+                  viewportActions.setActiveViewportTab(sceneTab.id);
+                  console.log('🔀 Switched to existing scene tab:', sceneTab.id);
+                } else {
+                  // Only create new tab if none exists
+                  console.log('📝 No existing scene tab found, creating one...');
+                  api.createSceneViewport({
+                    name: sceneName.trim(),
+                    setActive: true
+                  });
+                }
+              } else {
+                alert(`Failed to load scene: ${result.error}`);
+              }
+            }
+          }
+        },
+        { 
+          id: 'save', 
+          label: 'Save Scene', 
+          icon: IconDeviceFloppy, 
+          shortcut: 'Ctrl+S',
+          action: async () => {
+            const result = await sceneManager.saveScene();
+            if (result.success) {
+              console.log('✅ Scene saved successfully');
+            } else {
+              alert(`Failed to save scene: ${result.error}`);
+            }
+          }
+        },
+        { 
+          id: 'save-as', 
+          label: 'Save Scene As...', 
+          icon: IconDeviceFloppy, 
+          shortcut: 'Ctrl+Shift+S',
+          action: async () => {
+            const sceneName = prompt('Enter scene name:');
+            if (sceneName && sceneName.trim()) {
+              const result = await sceneManager.saveScene(sceneName.trim());
+              if (result.success) {
+                console.log('✅ Scene saved as:', sceneName);
+              } else {
+                alert(`Failed to save scene: ${result.error}`);
+              }
+            }
+          }
+        },
         { divider: true },
         { 
           id: 'import', 
@@ -41,11 +121,8 @@ export default createPlugin({
         { 
           id: 'export', 
           label: 'Export Game', 
-          icon: IconDeviceGamepad2,
-          submenu: [
-            { id: 'export-web', label: 'Web', icon: IconWorld },
-            { id: 'export-desktop', label: 'Desktop', icon: IconDeviceDesktop }
-          ]
+          icon: IconPackageExport,
+          action: () => setShowExport(true)
         },
         { divider: true },
         { id: 'recent', label: 'Recent Projects', icon: IconRefresh },
@@ -81,7 +158,41 @@ export default createPlugin({
       icon: IconPlus,
       order: 3,
       submenu: [
-        { id: 'create-scene', label: 'Scene', icon: IconChairDirector },
+        { 
+          id: 'create-scene', 
+          label: 'Scene', 
+          icon: IconChairDirector,
+          action: async () => {
+            const sceneName = prompt('Enter scene name:');
+            if (sceneName && sceneName.trim()) {
+              const result = await sceneManager.createNewScene(sceneName.trim());
+              if (result.success) {
+                console.log('✅ New scene created:', sceneName);
+                
+                // Switch to existing scene tab instead of creating new one
+                const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
+                
+                // Find existing scene tab
+                const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
+                
+                if (sceneTab) {
+                  // Switch to existing scene tab
+                  viewportActions.setActiveViewportTab(sceneTab.id);
+                  console.log('🔀 Switched to existing scene tab:', sceneTab.id);
+                } else {
+                  // Only create new tab if none exists
+                  console.log('📝 No existing scene tab found, creating one...');
+                  api.createSceneViewport({
+                    name: sceneName.trim(),
+                    setActive: true
+                  });
+                }
+              } else {
+                alert(`Failed to create scene: ${result.error}`);
+              }
+            }
+          }
+        },
         { 
           id: 'mesh', 
           label: 'Mesh', 
@@ -124,10 +235,27 @@ export default createPlugin({
         { id: 'help-youtube', label: 'YouTube', icon: IconBrandYoutube },
         { id: 'help-discord', label: 'Discord', icon: IconBrandDiscord },
         { id: 'help-documentation', label: 'Documentation', icon: IconBook },
-        { id: 'help-about', label: 'About', icon: IconInfoCircle }
+        { id: 'help-about', label: 'About', icon: IconInfoCircle, 
+          action: () => setShowAbout(true) }
       ]
     });
 
     console.log('[MenuPlugin] All menu items registered');
+    
+    // Register About overlay component
+    api.registerLayoutComponent('about-overlay', () => (
+      <AboutOverlay 
+        isOpen={showAbout} 
+        onClose={() => setShowAbout(false)} 
+      />
+    ));
+    
+    // Register Export dialog component
+    api.registerLayoutComponent('export-dialog', () => (
+      <ExportDialog 
+        isOpen={showExport} 
+        onClose={() => setShowExport(false)} 
+      />
+    ));
   }
 });

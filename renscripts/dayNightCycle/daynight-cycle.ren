@@ -1,0 +1,119 @@
+script DayNightCycle {
+
+  start {
+    log("🌅 Initializing day/night cycle system...")
+    
+    // First create lighting and environment
+    lights = standardLighting({
+      skyIntensity: 4.0,
+      skyColor: [0.7, 0.8, 1.0],
+      sunIntensity: 4.0,
+      sunColor: [1.0, 0.98, 0.9],
+      rimIntensity: 0.4,
+      rimColor: [0.9, 0.7, 0.5],
+      bounceIntensity: 0.3,
+      bounceColor: [0.4, 0.5, 0.7]
+    })
+    
+    environment = createStandardEnvironment({
+      skyboxSize: 1000,
+      turbidity: 2.0,
+      luminance: 1.0,
+      cloudsEnabled: true,
+      cloudSize: 25,
+      cloudDensity: 0.6,
+      toneMappingEnabled: true,
+      toneMappingType: 1,
+      exposure: 1.0,
+      fxaaEnabled: true
+    })
+    
+    // Create moon and moon light
+    moon = createMoon("moon", {
+      diameter: 20,
+      position: [100, 300, 200]
+    })
+    
+    moonLight = moonLighting({
+      position: [100, 300, 200],
+      intensity: 0,
+      baseMoonIntensity: 15.0
+    })
+    
+    // Create day/night cycle
+    cycle = createDayNightCycle("mainCycle", {
+      timeOfDay: timeOfDay,
+      speed: timeSpeed,
+      enabled: cycleEnabled,
+      sunriseHour: sunriseHour,
+      sunsetHour: sunsetHour,
+      transitionDuration: 1.0,
+      
+      // All the color and intensity settings
+      skyColor: [0.7, 0.8, 1.0],
+      nightSkyColor: [0.05, 0.05, 0.15],
+      daySkyColor: [0.4, 0.6, 1.0],
+      sunColor: [1.0, 0.98, 0.9],
+      rimColor: [0.9, 0.7, 0.5],
+      bounceColor: [0.4, 0.5, 0.7],
+      
+      skyIntensity: 4.0,
+      sunIntensity: 4.0,
+      rimIntensity: 0.4,
+      bounceIntensity: 0.3,
+      moonIntensity: 15.0,
+      environmentIntensity: 1.0,
+      
+      dayTurbidity: 2,
+      nightTurbidity: 10,
+      baseLuminance: 0.1,
+      dayLuminance: 1.0,
+      
+      cloudsEnabled: true,
+      cloudSize: 25,
+      cloudDensity: 0.6,
+      
+      snowEnabled: snowEnabled,
+      snowIntensity: 100,
+      starsEnabled: starsEnabled,
+      starIntensity: 300
+    })
+    
+    // Start the cycle
+    startResult = startDayNightCycle("mainCycle", lights, environment.skyMaterial, moon, moonLight, null, null)
+    
+    log("✅ Day/night cycle initialized")
+    log("  Lights: " + (lights ? "OK" : "FAILED"))
+    log("  Environment: " + (environment ? "OK" : "FAILED"))
+    log("  Cycle: " + (startResult ? "OK" : "FAILED"))
+    
+    // Log initial status
+    info = getCycleInfo("mainCycle")
+    if (info) {
+      log("  Current time: " + info.timeString)
+      log("  Day/Night: " + (info.isDayTime ? "DAY" : "NIGHT"))
+    }
+  }
+
+  update() {
+    // Update cycle properties from UI
+    setTimeSpeed("mainCycle", timeSpeed)
+    enableCycle("mainCycle", cycleEnabled)
+    setSunTimes("mainCycle", sunriseHour, sunsetHour)
+    
+    // Manual time control when cycle disabled
+    if (!cycleEnabled) {
+      setTimeOfDay("mainCycle", timeOfDay)
+    }
+  }
+
+  destroy {
+    log("🧹 Cleaning up day/night cycle...")
+    
+    // Stop the cycle
+    stopDayNightCycle("mainCycle")
+    disposeCycle("mainCycle")
+    
+    log("✅ Day/night cycle cleanup completed")
+  }
+}

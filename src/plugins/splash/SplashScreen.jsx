@@ -1,6 +1,7 @@
 import { createSignal, createEffect, onMount, Show, For } from 'solid-js';
 import { IconFolder, IconPlus, IconFolderOpen, IconSettings, IconCode, IconRocket, IconBox } from '@tabler/icons-solidjs';
 import { getProjects, createProject } from '@/api/bridge/projects';
+import { sceneManager } from '@/api/scene/SceneManager.js';
 import AnimatedBackground from './AnimatedBackground';
 
 export default function SplashScreen({ onProjectSelect }) {
@@ -10,6 +11,25 @@ export default function SplashScreen({ onProjectSelect }) {
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
   const [newProjectName, setNewProjectName] = createSignal('');
   const [creating, setCreating] = createSignal(false);
+  const [creationProgress, setCreationProgress] = createSignal({ step: 0, message: '', total: 4 });
+  const [showSceneDialog, setShowSceneDialog] = createSignal(false);
+  const [selectedProject, setSelectedProject] = createSignal(null);
+  const [availableScenes, setAvailableScenes] = createSignal([]);
+  const [loadingScenes, setLoadingScenes] = createSignal(false);
+  const [projectSettings, setProjectSettings] = createSignal({
+    template: 'basic',
+    folders: {
+      models: true,
+      textures: true,
+      materials: true,
+      scripts: true,
+      audio: true,
+      video: false,
+      images: false
+    },
+    physics: true,
+    resolution: { width: 1920, height: 1080 }
+  });
 
   // Load projects from bridge
   const loadProjects = async () => {
@@ -35,11 +55,20 @@ export default function SplashScreen({ onProjectSelect }) {
     try {
       setCreating(true);
       
-      // Create project directory structure via bridge API
-      await createProject(name, 'basic');
-
-      // Reload projects and select the new one
+      // Step 1: Initialize project structure
+      setCreationProgress({ step: 1, message: 'Creating project directory...', total: 4 });
+      await new Promise(resolve => setTimeout(resolve, 300)); // Small delay for UX
+      
+      // Step 2: Create project via bridge API
+      setCreationProgress({ step: 2, message: 'Setting up project files...', total: 4 });
+      await createProject(name, projectSettings().template, projectSettings());
+      
+      // Step 3: Reload project list
+      setCreationProgress({ step: 3, message: 'Refreshing project list...', total: 4 });
       await loadProjects();
+      
+      // Step 4: Select the new project
+      setCreationProgress({ step: 4, message: 'Opening project...', total: 4 });
       const newProject = projects().find(p => p.name === name);
       if (newProject) {
         onProjectSelect(newProject);
@@ -52,6 +81,54 @@ export default function SplashScreen({ onProjectSelect }) {
       setError('Failed to create project. Please try again.');
     } finally {
       setCreating(false);
+      setCreationProgress({ step: 0, message: '', total: 4 });
+    }
+  };
+
+  // Load scenes for a project
+  const loadScenesForProject = async (project) => {
+    try {
+      setLoadingScenes(true);
+      setSelectedProject(project);
+      
+      // Temporarily set current project for sceneManager
+      const currentProject = { name: project.name };
+      window.tempCurrentProject = currentProject;
+      
+      const scenes = await sceneManager.getAvailableScenes();
+      setAvailableScenes(scenes);
+      setShowSceneDialog(true);
+    } catch (err) {
+      console.error('Failed to load scenes:', err);
+      setError('Failed to load scenes for project');
+    } finally {
+      setLoadingScenes(false);
+    }
+  };
+
+  // Load a specific scene and open project
+  const loadSceneAndProject = async (sceneName) => {
+    try {
+      const project = selectedProject();
+      if (!project) return;
+      
+      // First open the project
+      onProjectSelect(project);
+      
+      // Wait a bit for project to load, then load the scene
+      setTimeout(async () => {
+        const result = await sceneManager.loadScene(sceneName);
+        if (result.success) {
+          console.log('✅ Scene loaded successfully:', sceneName);
+        } else {
+          alert(`Failed to load scene: ${result.error}`);
+        }
+      }, 500);
+      
+      setShowSceneDialog(false);
+    } catch (err) {
+      console.error('Failed to load scene:', err);
+      alert('Failed to load scene');
     }
   };
 
@@ -203,24 +280,37 @@ export default function SplashScreen({ onProjectSelect }) {
                   <div class="grid grid-cols-3 gap-4 mr-2">
                     <For each={projects()}>
                       {(project) => (
-                        <button
-                          onClick={() => onProjectSelect(project)}
-                          class="p-4 bg-gradient-to-br from-base-200 to-base-300 hover:from-base-200 hover:to-base-200 border border-primary/20 rounded-xl transition-all duration-300 text-left group shadow-lg hover:shadow-xl"
-                        >
-                          <div class="flex flex-col items-center text-center gap-3">
-                            <div class="p-3 bg-gradient-to-br from-primary/20 to-secondary/20 group-hover:from-primary/40 group-hover:to-secondary/40 rounded-xl border border-base-content/10 group-hover:border-primary/30 transition-all duration-300">
-                              <IconFolder class="w-6 h-6 text-primary group-hover:text-primary/80" />
-                            </div>
-                            <div class="w-full">
-                              <h3 class="font-bold text-base-content group-hover:text-primary truncate mb-2">{project.name}</h3>
-                              <p class="text-xs text-base-content/60 group-hover:text-base-content/70 truncate mb-2 font-mono">{project.path}</p>
-                              <div class="flex items-center justify-center gap-1 text-xs text-base-content/50 group-hover:text-base-content/60">
-                                <IconBox class="w-3 h-3" />
-                                <span class="font-medium">{project.files?.length || 0} assets</span>
+                        <div class="relative group">
+                          <button
+                            onClick={() => onProjectSelect(project)}
+                            class="w-full p-4 bg-gradient-to-br from-base-200 to-base-300 hover:from-base-200 hover:to-base-200 border border-primary/20 rounded-xl transition-all duration-300 text-left group shadow-lg hover:shadow-xl"
+                          >
+                            <div class="flex flex-col items-center text-center gap-3">
+                              <div class="p-3 bg-gradient-to-br from-primary/20 to-secondary/20 group-hover:from-primary/40 group-hover:to-secondary/40 rounded-xl border border-base-content/10 group-hover:border-primary/30 transition-all duration-300">
+                                <IconFolder class="w-6 h-6 text-primary group-hover:text-primary/80" />
+                              </div>
+                              <div class="w-full">
+                                <h3 class="font-bold text-base-content group-hover:text-primary truncate mb-2">{project.name}</h3>
+                                <p class="text-xs text-base-content/60 group-hover:text-base-content/70 truncate mb-2 font-mono">{project.path}</p>
+                                <div class="flex items-center justify-center gap-1 text-xs text-base-content/50 group-hover:text-base-content/60">
+                                  <IconBox class="w-3 h-3" />
+                                  <span class="font-medium">{project.files?.length || 0} assets</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </button>
+                          </button>
+                          {/* Load Scene Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              loadScenesForProject(project);
+                            }}
+                            class="absolute top-2 right-2 p-1 bg-base-300 hover:bg-primary/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
+                            title="Load Scene"
+                          >
+                            <IconCode class="w-4 h-4 text-base-content/70 hover:text-primary" />
+                          </button>
+                        </div>
                       )}
                     </For>
                   </div>
@@ -258,7 +348,7 @@ export default function SplashScreen({ onProjectSelect }) {
               <h2 class="text-2xl font-bold text-base-content">Create New Project</h2>
             </div>
             
-            <div class="mb-8">
+            <div class="mb-6">
               <label class="block text-sm font-semibold text-base-content/80 mb-3">
                 Project Name
               </label>
@@ -273,6 +363,95 @@ export default function SplashScreen({ onProjectSelect }) {
               />
               <p class="text-xs text-base-content/50 mt-2">Choose a descriptive name for your project</p>
             </div>
+
+            {/* Project Settings */}
+            <div class="space-y-4 mb-6">
+              <h3 class="text-sm font-semibold text-base-content/80">Project Settings</h3>
+              
+              {/* Template Selection */}
+              <div>
+                <label class="block text-xs font-medium text-base-content/70 mb-2">Template</label>
+                <select 
+                  class="select select-bordered select-sm w-full"
+                  value={projectSettings().template}
+                  onChange={(e) => setProjectSettings(prev => ({ ...prev, template: e.target.value }))}
+                >
+                  <option value="basic">Basic (Standard folders)</option>
+                  <option value="minimal">Minimal (Essential folders only)</option>
+                  <option value="game">Game (Full folder structure)</option>
+                </select>
+              </div>
+
+              {/* Asset Folders */}
+              <div>
+                <label class="block text-xs font-medium text-base-content/70 mb-2">Asset Folders</label>
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  {Object.entries(projectSettings().folders).map(([folder, enabled]) => (
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        class="checkbox checkbox-xs" 
+                        checked={enabled}
+                        onChange={(e) => setProjectSettings(prev => ({
+                          ...prev,
+                          folders: { ...prev.folders, [folder]: e.target.checked }
+                        }))}
+                      />
+                      <span class="capitalize">{folder}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              {/* Physics Setting */}
+              <div class="flex items-center justify-between">
+                <label class="text-xs font-medium text-base-content/70">Enable Physics</label>
+                <input 
+                  type="checkbox" 
+                  class="checkbox checkbox-sm" 
+                  checked={projectSettings().physics}
+                  onChange={(e) => setProjectSettings(prev => ({ ...prev, physics: e.target.checked }))}
+                />
+              </div>
+
+              {/* Resolution Setting */}
+              <div>
+                <label class="block text-xs font-medium text-base-content/70 mb-2">Default Resolution</label>
+                <div class="flex gap-2">
+                  <input 
+                    type="number" 
+                    class="input input-bordered input-xs flex-1" 
+                    value={projectSettings().resolution.width}
+                    onChange={(e) => setProjectSettings(prev => ({
+                      ...prev,
+                      resolution: { ...prev.resolution, width: parseInt(e.target.value) || 1920 }
+                    }))}
+                  />
+                  <span class="text-xs text-base-content/50 flex items-center">×</span>
+                  <input 
+                    type="number" 
+                    class="input input-bordered input-xs flex-1" 
+                    value={projectSettings().resolution.height}
+                    onChange={(e) => setProjectSettings(prev => ({
+                      ...prev,
+                      resolution: { ...prev.resolution, height: parseInt(e.target.value) || 1080 }
+                    }))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <Show when={creating()}>
+              <div class="mb-6">
+                <div class="w-full bg-base-300 rounded-full h-2">
+                  <div 
+                    class="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-500 ease-out"
+                    style={{width: `${(creationProgress().step / creationProgress().total) * 100}%`}}
+                  ></div>
+                </div>
+              </div>
+            </Show>
 
             <div class="flex justify-end gap-4">
               <button
@@ -296,9 +475,109 @@ export default function SplashScreen({ onProjectSelect }) {
                 <Show when={!creating()}>
                   <IconRocket class="w-5 h-5" />
                 </Show>
-                {creating() ? 'Creating...' : 'Create Project'}
+                {creating() ? (
+                  <div class="flex flex-col items-start">
+                    <span class="text-sm font-semibold">{creationProgress().message}</span>
+                    <span class="text-xs opacity-75">Step {creationProgress().step} of {creationProgress().total}</span>
+                  </div>
+                ) : 'Create Project'}
               </button>
             </div>
+          </div>
+        </div>
+      </Show>
+
+      {/* Scene Selection Dialog */}
+      <Show when={showSceneDialog()}>
+        <div class="fixed inset-0 bg-base-100/70 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
+          <div class="bg-base-200 backdrop-blur-xl rounded-2xl border border-base-content/30 p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center">
+                <IconCode class="w-6 h-6 text-primary-content" />
+              </div>
+              <div>
+                <h2 class="text-xl font-bold text-base-content">Load Scene</h2>
+                <p class="text-sm text-base-content/60">{selectedProject()?.name}</p>
+              </div>
+            </div>
+            
+            <Show when={loadingScenes()}>
+              <div class="text-center py-8">
+                <div class="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                <p class="text-base-content/60">Loading scenes...</p>
+              </div>
+            </Show>
+
+            <Show when={!loadingScenes()}>
+              <Show when={availableScenes().length === 0}>
+                <div class="text-center py-8">
+                  <p class="text-base-content/60 mb-4">No scenes found in this project</p>
+                  <div class="flex gap-2 justify-center">
+                    <button
+                      onClick={() => setShowSceneDialog(false)}
+                      class="btn btn-ghost btn-sm"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowSceneDialog(false);
+                        onProjectSelect(selectedProject());
+                      }}
+                      class="btn btn-primary btn-sm"
+                    >
+                      Open Project
+                    </button>
+                  </div>
+                </div>
+              </Show>
+
+              <Show when={availableScenes().length > 0}>
+                <div class="mb-6">
+                  <label class="block text-sm font-semibold text-base-content/80 mb-3">
+                    Available Scenes
+                  </label>
+                  <div class="space-y-2 max-h-64 overflow-y-auto">
+                    <For each={availableScenes()}>
+                      {(sceneName) => (
+                        <button
+                          onClick={() => loadSceneAndProject(sceneName)}
+                          class="w-full p-3 bg-base-100 hover:bg-primary/10 border border-base-300 hover:border-primary/30 rounded-lg transition-all duration-200 text-left group"
+                        >
+                          <div class="flex items-center gap-3">
+                            <div class="w-8 h-8 bg-primary/10 group-hover:bg-primary/20 rounded-lg flex items-center justify-center">
+                              <IconCode class="w-4 h-4 text-primary" />
+                            </div>
+                            <div class="flex-1">
+                              <div class="font-medium text-base-content group-hover:text-primary">{sceneName}</div>
+                              <div class="text-xs text-base-content/50">Scene file</div>
+                            </div>
+                          </div>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+
+                <div class="flex justify-end gap-2">
+                  <button
+                    onClick={() => setShowSceneDialog(false)}
+                    class="btn btn-ghost btn-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSceneDialog(false);
+                      onProjectSelect(selectedProject());
+                    }}
+                    class="btn btn-secondary btn-sm"
+                  >
+                    Open Project Only
+                  </button>
+                </div>
+              </Show>
+            </Show>
           </div>
         </div>
       </Show>

@@ -20,7 +20,8 @@
         "width": 1440,
         "height": 810,
         "center": true,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "devtools": true
       }
     ],
     "security": {

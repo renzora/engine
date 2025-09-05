@@ -1,0 +1,88 @@
+script EnvironmentSetup {
+
+  start {
+    log("🌍 Initializing environment system...")
+    
+    // Create standard environment with skybox and post-processing
+    environment = createStandardEnvironment({
+      skyboxSize: 1000,
+      turbidity: turbidity,
+      luminance: luminance,
+      inclination: 0.0,
+      azimuth: 0.25,
+      cloudsEnabled: cloudsEnabled,
+      cloudSize: cloudSize,
+      cloudDensity: cloudDensity,
+      clearColor: [0.7, 0.8, 1.0, 1],
+      environmentIntensity: 1.0,
+      fogEnabled: fogEnabled,
+      fogMode: 2,
+      fogDensity: fogDensity,
+      fogColor: [0.7, 0.8, 1.0],
+      toneMappingEnabled: true,
+      toneMappingType: 1,
+      exposure: exposure,
+      contrast: 1.0,
+      vignetteEnabled: true,
+      vignetteWeight: vignetteWeight,
+      vignetteStretch: 0.15,
+      vignetteCameraFov: 0.8,
+      fxaaEnabled: true
+    })
+    
+    log("✅ Standard environment created")
+    log("  Skybox: " + (environment.skybox ? "OK" : "FAILED"))
+    log("  Sky Material: " + (environment.skyMaterial ? "OK" : "FAILED"))
+    
+    // Create moon for night scenes
+    moon = createMoon("moon", {
+      diameter: 20,
+      position: [100, 300, 200],
+      baseColor: [0.9, 0.9, 0.8],
+      emissiveColor: [0.3, 0.3, 0.25],
+      metallicFactor: 0.0,
+      roughnessFactor: 0.8,
+      disableLighting: true
+    })
+    
+    log("  Moon: " + (moon ? "OK" : "FAILED"))
+    
+    // Test environment controls
+    log("🔧 Testing environment controls...")
+    
+    // Test fog
+    enableFog(fogEnabled)
+    setFogDensity(fogDensity)
+    setFogColor(0.8, 0.9, 1.0)
+    
+    fogSettings = getFogSettings()
+    log("  Fog: enabled=" + fogSettings.enabled + ", density=" + fogSettings.density)
+    
+    // Test exposure and vignette
+    setExposure(exposure)
+    setVignetteWeight(vignetteWeight)
+    
+    log("✅ Environment setup completed")
+  }
+
+  update() {
+    // Update environment based on property changes
+    if (environment.skyMaterial) {
+      setSkyTurbidity(environment.skyMaterial, turbidity)
+      setSkyLuminance(environment.skyMaterial, luminance)
+      enableSkyClouds(environment.skyMaterial, cloudsEnabled)
+      setSkyCloudSize(environment.skyMaterial, cloudSize)
+      setSkyCloudDensity(environment.skyMaterial, cloudDensity)
+    }
+    
+    enableFog(fogEnabled)
+    setFogDensity(fogDensity)
+    setExposure(exposure)
+    setVignetteWeight(vignetteWeight)
+  }
+
+  destroy {
+    log("🧹 Cleaning up environment...")
+    log("✅ Environment cleanup completed")
+  }
+}

@@ -1,0 +1,76 @@
+script Skybox {
+  
+  start {
+    log("🌌 HDRI Skybox Script Started")
+    
+    // Initialize variables
+    currentHDRIPath = ""
+    currentSkybox = null
+    currentEnvironmentTexture = null
+    
+    log("💡 Drag .hdr or .exr files to hdriPath property")
+    log("✅ HDRI Skybox ready for files")
+  }
+  
+  update() {
+    // Check if HDRI path changed (drag-drop updates this property)
+    if (hdriPath != currentHDRIPath) {
+      log("🔄 New file detected: " + hdriPath)
+      currentHDRIPath = hdriPath
+      
+      if (hdriPath != "") {
+        log("🌆 Loading HDRI: " + hdriPath)
+        
+        // Clean up existing skybox
+        if (currentSkybox) {
+          currentSkybox.dispose()
+          currentSkybox = null
+        }
+        
+        if (currentEnvironmentTexture) {
+          currentEnvironmentTexture.dispose()
+          currentEnvironmentTexture = null
+        }
+        
+        // Check if its a valid HDRI file
+        if (ext(hdriPath, ".hdr") || ext(hdriPath, ".exr")) {
+          log("✅ Valid HDRI file detected")
+          
+          // Create HDRI skybox
+          log("Creating HDRI skybox...")
+          setEnvironmentIntensity(environmentIntensity)
+          log("🎉 HDRI skybox loaded!")
+        } else {
+          log("❌ Invalid file type. Please use .hdr or .exr files")
+          log("  Received: " + hdriPath)
+        }
+      }
+    }
+    
+    // Update skybox rotation using API
+    if (currentSkybox) {
+      setRotation(0, rotation, 0)
+    }
+    
+    // Update environment intensity
+    if (autoUpdateEnvironment) {
+      setEnvironmentIntensity(environmentIntensity)
+    }
+  }
+  
+  destroy {
+    log("🧹 Cleaning up HDRI skybox...")
+    
+    if (currentSkybox) {
+      currentSkybox.dispose()
+      currentSkybox = null
+    }
+    
+    if (currentEnvironmentTexture) {
+      currentEnvironmentTexture.dispose()
+      currentEnvironmentTexture = null
+    }
+    
+    log("✅ HDRI skybox cleanup completed")
+  }
+}

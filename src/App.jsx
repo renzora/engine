@@ -1,7 +1,7 @@
-import { onMount } from 'solid-js'
+import { onMount, For } from 'solid-js'
 import './base.css'
 import './themes'
-import { Engine } from '@/api/plugin'
+import { Engine, layoutComponents } from '@/api/plugin'
 import Layout from './layout'
 import DevNotice from './components/DevNotice'
 import EditorPage from './pages/editor'
@@ -21,6 +21,11 @@ export default function App() {
           <Layout />
           <DevNotice />
           <EditorPage />
+          
+          {/* Render layout components from plugins */}
+          <For each={Array.from(layoutComponents().values())}>
+            {(Component) => <Component />}
+          </For>
         </div>
       </Project>
     </Engine>

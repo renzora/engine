@@ -517,7 +517,7 @@ export default function ScriptsPanel() {
                       handlePropertyChange(property.name, data.path);
                     }
                     // Check if it's a texture file (common texture formats)
-                    else if (/\.(jpg|jpeg|png|webp|tga|bmp|dds|hdr|ktx)$/i.test(data.name)) {
+                    else if (/\.(jpg|jpeg|png|webp|tga|bmp|dds|hdr|exr|ktx)$/i.test(data.name)) {
                       handlePropertyChange(property.name, data.path);
                     }
                   }

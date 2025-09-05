@@ -2,6 +2,7 @@ import { onMount, onCleanup } from 'solid-js';
 import { keyboardShortcuts } from '@/components/KeyboardShortcuts';
 import { renderStore, renderActions } from '../store.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
+import { Matrix } from '@babylonjs/core/Maths/math.vector.js';
 import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
 
@@ -10,8 +11,9 @@ export function renderShortcuts(callbacks = {}) {
   let keysPressed = new Set();
   let movementInterval = null;
   let isRightClickHeld = false;
+  let currentMousePos = { x: 0, y: 0 }; // Track current mouse position
   
-  // Blender-style transform state
+  // Blender-style transform state with smooth movement
   let transformState = {
     mode: null, // 'move', 'rotate', 'scale'
     axis: null, // 'x', 'y', 'z', null for free
@@ -22,7 +24,12 @@ export function renderShortcuts(callbacks = {}) {
     isFreeTransform: false,
     axisLine: null, // Babylon.js line mesh for axis visualization
     virtualCursor: null, // Virtual cursor element
-    savedHighlightedMeshes: [] // Store highlighted meshes before transform
+    savedHighlightedMeshes: [], // Store highlighted meshes before transform
+    smoothMovement: {
+      velocity: null, // Current movement velocity
+      damping: 0.85, // Movement damping factor for smoothness
+      threshold: 0.001 // Minimum velocity threshold
+    }
   };
   
   let statusDiv = null;
@@ -143,9 +150,6 @@ export function renderShortcuts(callbacks = {}) {
       // Focus on object
       'f': () => callbacks.focusObject?.(),
       
-      // Focus on mouse point
-      'shift+f': () => callbacks.focusOnMousePoint?.(),
-      
       // Delete object
       'delete': () => callbacks.deleteObject?.(),
       
@@ -195,44 +199,12 @@ export function renderShortcuts(callbacks = {}) {
 
     // Add mouse event handlers for transforms
     const handleMouseMove = (event) => {
+      // Always track mouse position for transform start
+      currentMousePos.x = event.clientX;
+      currentMousePos.y = event.clientY;
+      
       if (transformState.isActive) {
-        // Update virtual cursor position
-        if (transformState.virtualCursor && transformState.virtualCursor.style.display === 'block') {
-          if (document.pointerLockElement) {
-            // Get canvas bounds for proper viewport wrapping
-            const canvas = document.querySelector('canvas');
-            if (canvas) {
-              const canvasRect = canvas.getBoundingClientRect();
-              
-              // Move virtual cursor based on movement deltas with viewport wrapping
-              const currentLeft = parseInt(transformState.virtualCursor.style.left) || (canvasRect.left + canvasRect.width / 2);
-              const currentTop = parseInt(transformState.virtualCursor.style.top) || (canvasRect.top + canvasRect.height / 2);
-              
-              let newLeft = currentLeft + (event.movementX || 0);
-              let newTop = currentTop + (event.movementY || 0);
-              
-              // Wrap around canvas viewport edges
-              const margin = 20; // Small margin from edges
-              if (newLeft < canvasRect.left + margin) {
-                newLeft = canvasRect.right - margin;
-              } else if (newLeft > canvasRect.right - margin) {
-                newLeft = canvasRect.left + margin;
-              }
-              
-              if (newTop < canvasRect.top + margin) {
-                newTop = canvasRect.bottom - margin;
-              } else if (newTop > canvasRect.bottom - margin) {
-                newTop = canvasRect.top + margin;
-              }
-              
-              transformState.virtualCursor.style.left = newLeft + 'px';
-              transformState.virtualCursor.style.top = newTop + 'px';
-            }
-          } else {
-            transformState.virtualCursor.style.left = event.clientX + 'px';
-            transformState.virtualCursor.style.top = event.clientY + 'px';
-          }
-        }
+        // No virtual cursor updates needed anymore!
         
         if (document.pointerLockElement) {
           // Use movementX/Y when pointer is locked
@@ -247,6 +219,7 @@ export function renderShortcuts(callbacks = {}) {
           transformState.accumulatedDelta.x += deltaX;
           transformState.accumulatedDelta.y += deltaY;
           
+          // Use accumulated deltas instead of absolute cursor position
           applyFreeTransform(transformState.accumulatedDelta.x, transformState.accumulatedDelta.y);
         } else {
           // Fallback to regular mouse movement
@@ -279,12 +252,9 @@ export function renderShortcuts(callbacks = {}) {
     const customHandler = (event) => {
       const key = event.key.toLowerCase();
       
-      // Disable Ctrl+F (browser find)
-      if (event.ctrlKey && key === 'f') {
-        event.preventDefault();
-        event.stopPropagation();
-        console.log('🚫 Ctrl+F disabled in render viewport');
-        return;
+      // Debug all key presses
+      if (event.ctrlKey && key === 's') {
+        console.log('🔍 Ctrl+S detected in renderShortcuts!');
       }
       
       // Handle Blender-style transform shortcuts
@@ -294,7 +264,7 @@ export function renderShortcuts(callbacks = {}) {
       
       // First check if this is a gizmo shortcut without modifiers (these take priority)
       const gizmoKeys = ['g', 'r', 's'];
-      if (gizmoKeys.includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey && !transformState.isActive) {
+      if (gizmoKeys.includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey) {
         // Handle gizmo shortcuts first
         for (const [keyPattern, callback] of Object.entries(gameShortcuts)) {
           if (matchesKey(event, keyPattern)) {
@@ -313,9 +283,10 @@ export function renderShortcuts(callbacks = {}) {
         return; // Don't prevent default for movement keys
       }
       
-      // Handle other shortcuts (non-gizmo)
+      // Handle other shortcuts (non-gizmo) - debug this section
       for (const [keyPattern, callback] of Object.entries(gameShortcuts)) {
         if (matchesKey(event, keyPattern)) {
+          console.log(`🔍 Shortcut matched: ${keyPattern}`);
           event.preventDefault();
           event.stopPropagation();
           callback(event);
@@ -372,22 +343,19 @@ export function renderShortcuts(callbacks = {}) {
       transformState.numericInput = '';
       transformState.axis = null;
       transformState.isFreeTransform = true;
-      transformState.startMousePos = { x: event.clientX || 0, y: event.clientY || 0 };
+      
+      // Use current tracked mouse position
+      transformState.startMousePos = { x: currentMousePos.x, y: currentMousePos.y };
       transformState.accumulatedDelta = { x: 0, y: 0 };
+      
+      // Just hide the cursor - no virtual cursor needed
+      document.body.style.cursor = 'none';
       
       // Request pointer lock for infinite mouse movement
       const canvas = document.querySelector('canvas');
       if (canvas && canvas.requestPointerLock) {
         canvas.requestPointerLock();
       }
-      
-      // Show virtual cursor and hide real cursor
-      if (transformState.virtualCursor) {
-        transformState.virtualCursor.style.display = 'block';
-        transformState.virtualCursor.style.left = event.clientX + 'px';
-        transformState.virtualCursor.style.top = event.clientY + 'px';
-      }
-      document.body.style.cursor = 'none';
       
       // Store current highlights and disable highlighting during transform
       const highlightLayer = renderStore.highlightLayer;
@@ -534,62 +502,73 @@ export function renderShortcuts(callbacks = {}) {
 
     const camera = renderStore.camera;
     
-    // Calculate distance-based sensitivity for zoom-responsive movement
+    // Distance and zoom-based sensitivity for natural movement
     let sensitivity = 0.01;
     if (camera && selectedObject) {
       const distance = Vector3.Distance(camera.position, selectedObject.position);
-      // Scale sensitivity based on camera distance (closer = slower, farther = faster)
-      sensitivity = Math.max(0.001, distance * 0.002);
+      // Scale sensitivity based on distance - farther = faster movement, closer = slower movement
+      sensitivity = Math.max(0.001, Math.min(0.1, distance * 0.003));
+      
+      console.log(`Distance: ${distance.toFixed(2)}, Sensitivity: ${sensitivity.toFixed(4)}`);
     }
     
     switch (transformState.mode) {
       case 'move':
         if (transformState.axis) {
-          // Constrained axis movement - project mouse movement onto world axes relative to camera
+          // Constrained axis movement - project mouse movement onto world axis consistently
           if (camera) {
-            const forward = camera.getForwardRay().direction;
-            const right = Vector3.Cross(forward, Vector3.Up()).normalize();
-            const up = Vector3.Cross(right, forward).normalize();
-            
-            // Calculate movement based on camera orientation
-            let axisVector, mouseDelta;
-            
+            // Get world axis vector
+            let worldAxis;
             switch (transformState.axis) {
               case 'x':
-                axisVector = Vector3.Right(); // World X axis
-                // Project camera right vector onto world X to determine direction
-                const xDot = Vector3.Dot(right, axisVector);
-                mouseDelta = deltaX * (xDot > 0 ? 1 : -1) * sensitivity;
-                selectedObject.position.x = transformState.originalTransform.position.x + mouseDelta;
+                worldAxis = Vector3.Right(); // World X axis
                 break;
               case 'y':
-                axisVector = Vector3.Up(); // World Y axis
-                // Y axis is always up regardless of camera rotation
-                mouseDelta = -deltaY * sensitivity; // Invert for natural movement
-                selectedObject.position.y = transformState.originalTransform.position.y + mouseDelta;
+                worldAxis = Vector3.Up(); // World Y axis  
                 break;
               case 'z':
-                axisVector = Vector3.Forward(); // World Z axis
-                // Project camera forward vector onto world Z to determine direction
-                const zDot = Vector3.Dot(forward, axisVector);
-                mouseDelta = deltaY * (zDot > 0 ? -1 : 1) * sensitivity;
-                selectedObject.position.z = transformState.originalTransform.position.z + mouseDelta;
+                worldAxis = Vector3.Forward(); // World Z axis
                 break;
             }
+            
+            // Get camera's screen space axes
+            const cameraForward = camera.getDirection(Vector3.Forward()).normalize();
+            const cameraRight = Vector3.Cross(Vector3.Up(), cameraForward).normalize();
+            const cameraUp = Vector3.Cross(cameraRight, cameraForward).normalize();
+            
+            // Project world axis onto camera screen space to get consistent direction
+            const screenRightComponent = Vector3.Dot(worldAxis, cameraRight);
+            const screenUpComponent = Vector3.Dot(worldAxis, cameraUp);
+            
+            // Calculate movement based on screen projection with consistent behavior
+            let axisMovement = 0;
+            
+            // Use combined mouse movement weighted by screen projection
+            const rightContribution = (deltaX * screenRightComponent);
+            const upContribution = (deltaY * screenUpComponent); // Don't invert Y here - let projection handle it
+            
+            axisMovement = (rightContribution + upContribution) * sensitivity;
+            
+            // Apply movement along pure world axis
+            const movement = worldAxis.scale(axisMovement);
+            selectedObject.position.copyFrom(transformState.originalTransform.position);
+            selectedObject.position.addInPlace(movement);
+            
+            console.log(`🖱️ MOVE ${transformState.axis.toUpperCase()}: axisMovement=${axisMovement.toFixed(3)}, screenRight=${screenRightComponent.toFixed(3)}, screenUp=${screenUpComponent.toFixed(3)}`);
           }
         } else {
-          // Free movement in screen space
+          // Free movement in camera screen space
           if (camera) {
-            const forward = camera.getForwardRay().direction;
-            const right = Vector3.Cross(forward, Vector3.Up()).normalize();
-            const up = Vector3.Cross(right, forward).normalize();
+            const cameraForward = camera.getDirection(Vector3.Forward()).normalize();
+            const cameraRight = Vector3.Cross(Vector3.Up(), cameraForward).normalize();
+            const cameraUp = Vector3.Cross(cameraRight, cameraForward).normalize();
             
-            const moveAmount = deltaX * sensitivity;
-            const upAmount = -deltaY * sensitivity; // Invert Y for natural movement
+            const rightMovement = deltaX * sensitivity;
+            const upMovement = deltaY * sensitivity; // Remove Y inversion to test
             
             selectedObject.position.copyFrom(transformState.originalTransform.position);
-            selectedObject.position.addInPlace(right.scale(moveAmount));
-            selectedObject.position.addInPlace(up.scale(upAmount));
+            selectedObject.position.addInPlace(cameraRight.scale(rightMovement));
+            selectedObject.position.addInPlace(cameraUp.scale(upMovement));
           }
         }
         break;
@@ -597,15 +576,22 @@ export function renderShortcuts(callbacks = {}) {
       case 'rotate':
         const rotationSensitivity = 0.02;
         if (transformState.axis) {
-          const rotDelta = deltaX * rotationSensitivity;
+          // Constrained axis rotation - world-consistent (like Blender/Maya)
+          let rotDelta;
           switch (transformState.axis) {
             case 'x':
+              // X-axis rotation: horizontal mouse movement rotates around world X-axis
+              rotDelta = deltaX * rotationSensitivity;
               selectedObject.rotation.x = transformState.originalTransform.rotation.x + rotDelta;
               break;
             case 'y':
+              // Y-axis rotation: horizontal mouse movement rotates around world Y-axis
+              rotDelta = deltaX * rotationSensitivity;
               selectedObject.rotation.y = transformState.originalTransform.rotation.y + rotDelta;
               break;
             case 'z':
+              // Z-axis rotation: horizontal mouse movement rotates around world Z-axis
+              rotDelta = deltaX * rotationSensitivity;
               selectedObject.rotation.z = transformState.originalTransform.rotation.z + rotDelta;
               break;
           }
@@ -615,21 +601,22 @@ export function renderShortcuts(callbacks = {}) {
       case 'scale':
         const scaleSensitivity = 0.01;
         if (transformState.axis) {
+          // Constrained axis scaling - world-consistent (like Blender/Maya)
           let scaleDelta;
           switch (transformState.axis) {
             case 'x':
-              // X axis scaling uses horizontal mouse movement
+              // X-axis scaling: horizontal mouse movement scales world X-axis
               scaleDelta = 1 + (deltaX * scaleSensitivity);
               selectedObject.scaling.x = transformState.originalTransform.scaling.x * scaleDelta;
               break;
             case 'y':
-              // Y axis scaling uses vertical mouse movement (inverted)
+              // Y-axis scaling: vertical mouse movement scales world Y-axis (inverted)
               scaleDelta = 1 + (-deltaY * scaleSensitivity);
               selectedObject.scaling.y = transformState.originalTransform.scaling.y * scaleDelta;
               break;
             case 'z':
-              // Z axis scaling uses vertical mouse movement (forward/back)
-              scaleDelta = 1 + (deltaY * scaleSensitivity);
+              // Z-axis scaling: vertical mouse movement scales world Z-axis (inverted)
+              scaleDelta = 1 + (-deltaY * scaleSensitivity);
               selectedObject.scaling.z = transformState.originalTransform.scaling.z * scaleDelta;
               break;
           }
@@ -778,18 +765,54 @@ export function renderShortcuts(callbacks = {}) {
     console.log(`Created ${axis.toUpperCase()} axis line`);
   };
 
+
+  const snapObjectToCursor = () => {
+    const selectedObject = renderStore.selectedObject;
+    const camera = renderStore.camera;
+    const canvas = document.querySelector('canvas');
+    
+    if (!selectedObject || !camera || !canvas) return;
+    
+    try {
+      const scene = renderStore.scene;
+      const canvasRect = canvas.getBoundingClientRect();
+      
+      // Convert cursor screen position to canvas relative position
+      const cursorX = currentMousePos.x - canvasRect.left;
+      const cursorY = currentMousePos.y - canvasRect.top;
+      
+      // Use camera's unproject to get world position from screen position
+      const pickInfo = scene.pick(cursorX, cursorY);
+      if (pickInfo && pickInfo.pickedPoint) {
+        // Use the picked point as the new object position
+        selectedObject.position.copyFrom(pickInfo.pickedPoint);
+        // Update original transform for relative movements
+        transformState.originalTransform.position = selectedObject.position.clone();
+      } else {
+        // Fallback: project cursor to a plane in front of camera
+        const distance = Vector3.Distance(camera.position, selectedObject.position);
+        const ray = camera.getForwardRay(distance);
+        const newPos = ray.origin.add(ray.direction.scale(distance));
+        selectedObject.position.copyFrom(newPos);
+        transformState.originalTransform.position = selectedObject.position.clone();
+      }
+      
+      console.log(`📍 Snapped object to cursor position`);
+    } catch (error) {
+      console.warn('Could not snap object to cursor:', error);
+    }
+  };
+
   const resetTransformState = () => {
     transformState.isActive = false;
     transformState.mode = null;
     transformState.axis = null;
     transformState.numericInput = '';
     transformState.accumulatedDelta = null;
+    transformState.smoothMovement.velocity = null; // Reset smooth movement
     statusDiv.style.display = 'none';
     
-    // Hide virtual cursor and restore real cursor
-    if (transformState.virtualCursor) {
-      transformState.virtualCursor.style.display = 'none';
-    }
+    // Restore real cursor
     document.body.style.cursor = '';
     
     // Remove axis line

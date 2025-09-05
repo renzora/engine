@@ -1,0 +1,38 @@
+script Vignette {
+
+  start {
+    log("📷 Initializing vignette effect...")
+    
+    // Enable vignette with initial settings
+    enableVignette(enabled)
+    setVignetteWeight(weight)
+    setVignetteStretch(stretch)
+    setVignetteCameraFov(cameraFov)
+    
+    // Get current vignette settings to verify
+    vignetteSettings = getVignetteSettings()
+    
+    log("✅ Vignette effect initialized")
+    log("  Enabled: " + vignetteSettings.enabled)
+    log("  Weight: " + vignetteSettings.weight)
+    log("  Stretch: " + vignetteSettings.stretch)
+    log("  Camera FOV: " + vignetteSettings.cameraFov)
+  }
+
+  update() {
+    // Update vignette settings based on properties
+    enableVignette(enabled)
+    setVignetteWeight(weight)
+    setVignetteStretch(stretch)
+    setVignetteCameraFov(cameraFov)
+  }
+
+  destroy {
+    log("🧹 Cleaning up vignette effect...")
+    
+    // Disable vignette
+    enableVignette(false)
+    
+    log("✅ Vignette cleanup completed")
+  }
+}

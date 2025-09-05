@@ -13,6 +13,8 @@
     "build:app": "bun run kill && npx tauri build",
     "kill": "npx kill-port 3000 3001 || (taskkill /F /IM node.exe 2>nul || pkill -f \"rspack\\|tauri\" 2>/dev/null || echo \"Ports cleared\")",
     "clean": "bun run kill && rm -rf dist bridge/target src-tauri/target",
+    "build:runtime": "bunx rspack build --mode production --config runtime.rspack.config.js",
+    "export:project": "node bin/export-project.js",
     "lint": "oxlint",
     "renzora": "node bin/renzora.js",
     "rz": "node bin/renzora-tui.js"

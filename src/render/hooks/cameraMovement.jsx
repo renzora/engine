@@ -128,8 +128,8 @@ export function useCameraController(camera, canvas, scene) {
       const moveDirection = horizontalForward.scale(-deltaY * 0.025 * fovSpeedMultiplier * speedMultiplier * precisionMultiplier);
       camera().position = camera().position.add(moveDirection);
       
-      // Horizontal drag = turn/rotate camera (added) - inverted for natural feel
-      camera().rotation.y -= deltaX * rotationSpeed() * precisionMultiplier;
+      // Horizontal drag = turn/rotate camera (added) - natural feel
+      camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier;
     } else if (isRightMouseDown) {
       if (keysPressed.has('shift')) {
         // Shift + Right-click = Pan/strafe movement
@@ -144,8 +144,8 @@ export function useCameraController(camera, canvas, scene) {
       } else {
         // Regular right-click = Free-look
         console.log('🎮 Right-click free-look - deltaX:', deltaX, 'deltaY:', deltaY, 'rotationSpeed:', rotationSpeed());
-        camera().rotation.y -= deltaX * rotationSpeed() * precisionMultiplier; // Fixed horizontal inversion
-        camera().rotation.x -= deltaY * rotationSpeed() * precisionMultiplier; // Fixed vertical inversion
+        camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier; // Natural horizontal rotation
+        camera().rotation.x += deltaY * rotationSpeed() * precisionMultiplier; // Natural vertical rotation
         camera().rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera().rotation.x));
       }
     } else if (isMiddleMouseDown) {
@@ -156,9 +156,9 @@ export function useCameraController(camera, canvas, scene) {
         // Convert camera position to spherical coordinates relative to target
         const offset = camera().position.subtract(target);
         
-        // Apply rotation based on mouse delta - inverted for natural feel
-        const phi = Math.atan2(offset.x, offset.z) - deltaX * rotationSpeed() * precisionMultiplier;
-        const theta = Math.acos(offset.y / distance) - deltaY * rotationSpeed() * precisionMultiplier;
+        // Apply rotation based on mouse delta - natural feel
+        const phi = Math.atan2(offset.x, offset.z) + deltaX * rotationSpeed() * precisionMultiplier;
+        const theta = Math.acos(offset.y / distance) + deltaY * rotationSpeed() * precisionMultiplier;
         
         // Clamp theta to prevent flipping
         const clampedTheta = Math.max(0.1, Math.min(Math.PI - 0.1, theta));
@@ -371,8 +371,8 @@ export function useCameraController(camera, canvas, scene) {
       const up = Vector3.Up();
       
       // Add velocity instead of direct movement
-      if (keys.w) velocity = velocity.add(forward.scale(-finalSpeed)); // Forward (inverted)
-      if (keys.s) velocity = velocity.add(forward.scale(finalSpeed));   // Backward
+      if (keys.w) velocity = velocity.add(forward.scale(finalSpeed));   // Forward (natural)
+      if (keys.s) velocity = velocity.add(forward.scale(-finalSpeed));  // Backward
       if (keys.d) velocity = velocity.add(right.scale(finalSpeed));     // Right
       if (keys.a) velocity = velocity.add(right.scale(-finalSpeed));    // Left
       if (keys.e) velocity = velocity.add(up.scale(finalSpeed));        // Up

@@ -1,0 +1,113 @@
+props timeControl {
+  timeOfDay: range {
+    default: 12.0,
+    min: 0.0,
+    max: 24.0,
+    description: "Current time of day"
+  }
+  
+  timeSpeed: range {
+    default: 0.1,
+    min: 0.0,
+    max: 1.0,
+    description: "Time speed"
+  }
+  
+  cycleEnabled: toggle {
+    default: true,
+    description: "Enable day/night cycle"
+  }
+}
+
+props lighting {
+  sunIntensity: range {
+    default: 4.0,
+    min: 0.0,
+    max: 10.0,
+    description: "Sun intensity"
+  }
+  
+  skyIntensity: range {
+    default: 4.0,
+    min: 0.0,
+    max: 10.0,
+    description: "Sky intensity"
+  }
+  
+  rimIntensity: range {
+    default: 0.4,
+    min: 0.0,
+    max: 2.0,
+    description: "Rim light intensity"
+  }
+}
+
+props environment {
+  turbidity: range {
+    default: 2.0,
+    min: 0.0,
+    max: 50.0,
+    description: "Sky turbidity"
+  }
+  
+  cloudsEnabled: toggle {
+    default: true,
+    description: "Enable clouds"
+  }
+  
+  cloudDensity: range {
+    default: 0.6,
+    min: 0.0,
+    max: 1.0,
+    description: "Cloud density"
+  }
+}
+
+props shadows {
+  shadowsEnabled: toggle {
+    default: true,
+    description: "Enable shadows"
+  }
+  
+  shadowMapSize: range {
+    default: 1024.0,
+    min: 512.0,
+    max: 4096.0,
+    description: "Shadow map size"
+  }
+  
+  shadowDarkness: range {
+    default: 0.5,
+    min: 0.0,
+    max: 1.0,
+    description: "Shadow darkness"
+  }
+}
+
+props postProcessing {
+  exposure: range {
+    default: 1.0,
+    min: 0.0,
+    max: 3.0,
+    description: "Camera exposure"
+  }
+  
+  vignetteWeight: range {
+    default: 0.4,
+    min: 0.0,
+    max: 1.0,
+    description: "Vignette strength"
+  }
+}
+
+props particles {
+  snowEnabled: toggle {
+    default: false,
+    description: "Enable snow"
+  }
+  
+  starsEnabled: toggle {
+    default: true,
+    description: "Enable stars"
+  }
+}

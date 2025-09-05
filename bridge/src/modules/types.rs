@@ -35,6 +35,7 @@ pub struct WriteBinaryFileRequest {
 pub struct CreateProjectRequest {
     pub name: String,
     pub template: Option<String>,
+    pub settings: Option<serde_json::Value>,
 }
 
 

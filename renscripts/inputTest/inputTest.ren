@@ -1,0 +1,35 @@
+script SimpleInputTest {
+  props {
+    testMessage: string {
+      default: "Testing input...",
+      description: "Test message"
+    }
+  }
+
+  start {
+    log("🎮 Simple input test started")
+    
+    // Test basic functions that should work
+    log("Testing basic input functions:")
+    
+    // Try keyboard
+    log("  Testing isKeyPressed...")
+    pressed = isKeyPressed("w")
+    log("  W key pressed: " + pressed)
+    
+    // Try mouse
+    log("  Testing mouse functions...")
+    pos = mousePosition()
+    log("  Mouse position available: " + (pos != null))
+    
+    log("✅ Simple input test initialization complete")
+  }
+
+  update() {
+    // Simple update test
+  }
+
+  destroy {
+    log("🧹 Simple input test destroyed")
+  }
+}

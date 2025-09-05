@@ -16,6 +16,10 @@ import { DebugAPI } from './modules/DebugAPI.js';
 import { AssetAPI } from './modules/AssetAPI.js';
 import { UtilityAPI } from './modules/UtilityAPI.js';
 import { CameraAPI } from './modules/CameraAPI.js';
+import { LightingAPI } from './modules/LightingAPI.js';
+import { EnvironmentAPI } from './modules/EnvironmentAPI.js';
+import { DayNightAPI } from './modules/DayNightAPI.js';
+import { ShadowAPI } from './modules/ShadowAPI.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 
 /**
@@ -60,7 +64,11 @@ class ScriptManager {
         debug: new DebugAPI(this.scene),
         asset: new AssetAPI(this.scene),
         utility: new UtilityAPI(this.scene),
-        camera: new CameraAPI(this.scene, babylonObject)
+        camera: new CameraAPI(this.scene, babylonObject),
+        lighting: new LightingAPI(this.scene, babylonObject),
+        environment: new EnvironmentAPI(this.scene, babylonObject),
+        daynight: new DayNightAPI(this.scene, babylonObject),
+        shadow: new ShadowAPI(this.scene, babylonObject)
       };
       
       return apiModules;
