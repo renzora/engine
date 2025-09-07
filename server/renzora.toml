@@ -1,0 +1,51 @@
+# Renzora Server Configuration
+[server]
+# Server port (default: 3002)
+port = 3002
+
+# Server host (default: 127.0.0.1) 
+host = "127.0.0.1"
+
+# Number of workers (default: auto-detect CPU cores)
+# workers = 12
+
+[paths]
+# Base path for the engine (default: auto-detect)
+# base_path = "/path/to/renzora"
+
+# Projects directory (default: base_path/projects)  
+# projects_path = "/path/to/projects"
+
+# When running from server/ directory, use parent directory
+base_path = "../"
+
+[logging]
+# Log level: error, warn, info, debug, trace
+level = "info"
+
+# Enable file watching logs
+file_watching = true
+
+# Enable WebSocket connection logs  
+connections = true
+
+[features]
+# Enable file watching
+file_watching = true
+
+# Enable project auto-creation
+auto_create_projects = true
+
+# Enable system stats reporting
+system_stats = true
+
+[performance]
+# File change notification buffer size
+file_change_buffer = 1000
+
+# WebSocket message timeout (seconds)
+message_timeout = 30
+
+# Reconnection settings
+max_reconnect_attempts = 5
+reconnect_delay = 2000

@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconRecord, IconChairDirector, IconNetwork, IconBridge, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
 import ExportDialog from '@/ui/ExportDialog.jsx';
@@ -202,7 +202,7 @@ export default createPlugin({
             { id: 'add-plane', label: 'Plane', icon: IconSquare },
             { id: 'add-cylinder', label: 'Cylinder', icon: IconCylinder },
             { id: 'add-sphere', label: 'Sphere', icon: IconCircle },
-            { id: 'add-torus', label: 'Torus', icon: IconRecord }
+            { id: 'add-torus', label: 'Torus', icon: IconChartDonutFilled }
           ]
         }
       ]
@@ -214,7 +214,7 @@ export default createPlugin({
       order: 4,
       submenu: [
         { id: 'viewport-node-editor', label: 'Node Editor', icon: IconNetwork },
-        { id: 'viewport-bridge', label: 'Bridge', icon: IconBridge },
+        { id: 'viewport-bridge', label: 'Bridge', icon: IconLink },
         { id: 'viewport-web-browser', label: 'Web Browser', icon: IconWorld, 
           action: () => {
             const api = document.querySelector('[data-plugin-api]')?.__pluginAPI;
