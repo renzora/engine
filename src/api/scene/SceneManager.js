@@ -500,18 +500,21 @@ export class SceneManager {
     const totalObjects = this.countTotalObjects(hierarchy);
     let processedObjects = 0;
     
+    // Create progress tracker that can be called from anywhere in the hierarchy
+    const progressTracker = (currentItem) => {
+      processedObjects++;
+      if (dispatchProgress) {
+        const currentFile = currentItem?.babylonData?.metadata?.originalAssetData?.path || currentItem?.name || 'Unknown';
+        console.log(`📊 Progress: ${processedObjects}/${totalObjects} - Processing: ${currentFile}`);
+        dispatchProgress('Restoring objects...', currentFile, processedObjects, totalObjects);
+      }
+    };
+    
     // Process hierarchy items recursively
     for (let i = 0; i < hierarchy.length; i++) {
       const item = hierarchy[i];
       console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneObjects() - Processing hierarchy item ${i + 1}/${hierarchy.length}: "${item.name}"`);
-      
-      if (dispatchProgress) {
-        const currentFile = item.babylonData?.metadata?.originalAssetData?.path || item.name;
-        dispatchProgress('Restoring objects...', currentFile, processedObjects, totalObjects);
-      }
-      
-      await this.restoreHierarchyItem(item, assets, dispatchProgress);
-      processedObjects++;
+      await this.restoreHierarchyItem(item, assets, progressTracker);
     }
     
     console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneObjects() - COMPLETED processing ${hierarchy.length} hierarchy items`);
@@ -540,11 +543,17 @@ export class SceneManager {
    * Restore a single hierarchy item and its children
    * @param {Object} item - Hierarchy item
    * @param {Object} assets - Bundled assets
+   * @param {Function} progressTracker - Progress tracking function
    */
-  async restoreHierarchyItem(item, assets, dispatchProgress = null) {
+  async restoreHierarchyItem(item, assets, progressTracker = null) {
     console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Item: "${item.name}" Type: "${item.type}" HasBabylonData: ${!!item.babylonData} HasChildren: ${!!item.children}`);
 
-    // Skip system objects (scene root)
+    // Track progress for this item (every item counts towards progress)
+    if (progressTracker) {
+      progressTracker(item);
+    }
+
+    // Skip system objects (scene root) but still process children
     if (item.type === 'scene') {
       console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Scene root found, processing ${item.children?.length || 0} children...`);
       // Process children of scene root
@@ -552,7 +561,7 @@ export class SceneManager {
         for (let i = 0; i < item.children.length; i++) {
           const child = item.children[i];
           console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Processing scene child ${i + 1}/${item.children.length}: "${child.name}"`);
-          await this.restoreHierarchyItem(child, assets);
+          await this.restoreHierarchyItem(child, assets, progressTracker);
         }
       }
       return;
@@ -561,7 +570,7 @@ export class SceneManager {
     // Restore object based on babylon data (cameras, lights, meshes - all get restored)
     if (item.babylonData) {
       console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Restoring object with babylon data: "${item.name}"`);
-      await this.restoreObjectFromBabylonData(item, assets, dispatchProgress);
+      await this.restoreObjectFromBabylonData(item, assets);
     } else {
       console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Skipping item: "${item.name}" (type: ${item.type}, hasBabylonData: ${!!item.babylonData})`);
     }
@@ -572,7 +581,7 @@ export class SceneManager {
       for (let i = 0; i < item.children.length; i++) {
         const child = item.children[i];
         console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Processing child ${i + 1}/${item.children.length} of "${item.name}": "${child.name}"`);
-        await this.restoreHierarchyItem(child, assets);
+        await this.restoreHierarchyItem(child, assets, progressTracker);
       }
     }
   }
