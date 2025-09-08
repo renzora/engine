@@ -100,16 +100,12 @@ class ScriptManager {
     
     // Add property management methods
     scriptInstance.getScriptPropertiesBySection = () => {
-      console.log('🔍 getScriptPropertiesBySection called for script:', scriptInstance._scriptPath);
-      console.log('🔍 _scriptProperties exists:', !!scriptInstance._scriptProperties);
-      console.log('🔍 _scriptProperties type:', typeof scriptInstance._scriptProperties);
-      console.log('🔍 _scriptProperties is array:', Array.isArray(scriptInstance._scriptProperties));
-      console.log('🔍 _scriptProperties content:', scriptInstance._scriptProperties);
+      // Getting script properties by section
       
       const sections = {};
       if (scriptInstance._scriptProperties) {
         if (Array.isArray(scriptInstance._scriptProperties)) {
-          console.log('🔍 Processing array of', scriptInstance._scriptProperties.length, 'properties');
+          // Processing properties array
           scriptInstance._scriptProperties.forEach(property => {
             const section = property.section || 'General';
             if (!sections[section]) {
@@ -126,23 +122,23 @@ class ScriptManager {
             });
           });
         } else {
-          console.log('🔍 _scriptProperties is not an array, got:', scriptInstance._scriptProperties);
+          // Script properties not in expected array format
         }
       } else {
-        console.log('🔍 No _scriptProperties found on script instance');
+        // No script properties found on instance
       }
       
-      console.log('🔍 Final sections:', sections);
+      // Script properties organized into sections
       return sections;
     };
     
     // Add all missing property management methods from ScriptAPI
     scriptInstance.getScriptProperties = () => {
-      console.log('🔍 getScriptProperties called for script:', scriptInstance._scriptPath);
+      // Getting script properties
       const props = [];
       if (scriptInstance._scriptProperties) {
         if (Array.isArray(scriptInstance._scriptProperties)) {
-          console.log('🔍 Processing array of', scriptInstance._scriptProperties.length, 'properties');
+          // Processing properties array
           return scriptInstance._scriptProperties.map(property => ({
             name: property.name,
             type: property.type,
@@ -154,7 +150,7 @@ class ScriptManager {
             section: property.section || 'General'
           }));
         } else {
-          console.log('🔍 _scriptProperties is not an array, converting from Map format');
+          // Converting properties from Map format
           scriptInstance._scriptProperties.forEach((property, key) => {
             props.push({
               name: key,
@@ -169,44 +165,44 @@ class ScriptManager {
           });
         }
       }
-      console.log('🔍 Final properties:', props);
+      // Final properties list prepared
       return props;
     };
     
     scriptInstance.setScriptProperty = (propertyName, value) => {
-      console.log(`🔧 setScriptProperty called: ${propertyName} = ${value}`);
+      // Setting script property value
       
       const hasProperty = Array.isArray(scriptInstance._scriptProperties) ? 
         scriptInstance._scriptProperties.some(prop => prop.name === propertyName) :
         scriptInstance._scriptProperties && scriptInstance._scriptProperties.has(propertyName);
         
       if (hasProperty) {
-        console.log(`🔧 Property ${propertyName} found in script properties`);
+        // Property found in script definition
         scriptInstance[propertyName] = value;
         
         // Check if this property has triggerOnce and trigger onOnce if it does
         if (Array.isArray(scriptInstance._scriptProperties)) {
           const property = scriptInstance._scriptProperties.find(prop => prop.name === propertyName);
-          console.log(`🔧 Found property definition:`, property);
+          // Found property definition with triggerOnce
           if (property && property.triggerOnce === true) {
-            console.log(`🔄 Property ${propertyName} has triggerOnce: true, triggering onOnce`);
+            // Property has triggerOnce flag, calling onOnce
             if (typeof scriptInstance.onOnce === 'function') {
               try {
-                console.log(`🔄 Calling onOnce() method...`);
+                // Calling onOnce method
                 scriptInstance.onOnce();
-                console.log(`✅ onOnce() called successfully`);
+                // onOnce method called successfully
               } catch (error) {
                 console.error(`Error calling onOnce for property ${propertyName}:`, error);
               }
             } else {
-              console.log(`❌ No onOnce method found on script instance`);
+              // No onOnce method found on script instance
             }
           }
         }
         
         return true;
       } else {
-        console.log(`❌ Property ${propertyName} not found in script properties`);
+        // Property not found in script definition
       }
       return false;
     };
@@ -227,7 +223,7 @@ class ScriptManager {
    * @returns {boolean} True if property was updated
    */
   updateScriptProperty(scriptInstance, propertyName, value) {
-    console.log(`🔧 updateScriptProperty called: ${propertyName} = ${value}`);
+    // Updating script property
     
     if (!scriptInstance || !scriptInstance._apiModules) {
       console.error('❌ Invalid script instance for property update');
@@ -422,16 +418,16 @@ class ScriptManager {
     if (this.isRunning) return;
     
     this.isRunning = true;
-    console.log('🔧 ScriptManager: Starting script execution');
+    // Starting script execution
     
     // Refresh scene reference from global if available
     if (window._cleanBabylonScene) {
       this.scene = window._cleanBabylonScene;
-      console.log('🔧 ScriptManager: Refreshed scene reference from global');
+      // Refreshed scene reference from global
     }
     
-    console.log('🔧 ScriptManager: Scene available:', !!this.scene);
-    console.log('🔧 ScriptManager: Scene onBeforeRenderObservable available:', !!this.scene?.onBeforeRenderObservable);
+    // Scene availability check
+    // Scene render observable check
     
     // Ensure we have a valid scene
     if (!this.scene || !this.scene.onBeforeRenderObservable) {
@@ -460,7 +456,7 @@ class ScriptManager {
       this.update();
     });
     
-    console.log('🔧 ScriptManager: Observer registered, active scripts:', this.activeScripts.size);
+    // Script update observer registered
   }
   
   /**
@@ -470,7 +466,7 @@ class ScriptManager {
     if (!this.isRunning) return;
     
     this.isRunning = false;
-    console.log('🔧 ScriptManager: Pausing script execution');
+    // Pausing script execution
     
     // Dispose update observer only
     if (this.updateObserver) {
@@ -486,7 +482,7 @@ class ScriptManager {
     if (!this.isRunning) return;
     
     this.isRunning = false;
-    console.log('🔧 ScriptManager: Stopping script execution');
+    // Stopping script execution
     
     // Dispose update observer
     if (this.updateObserver) {
@@ -514,7 +510,7 @@ class ScriptManager {
     }
     
     this.scriptClasses.set(scriptPath, ScriptClass);
-    console.log('🔧 ScriptManager: Registered script class', scriptPath);
+    // Registered script class
     return true;
   }
   
@@ -600,7 +596,7 @@ class ScriptManager {
       // We need to call it to get the actual constructor
       let ActualScriptClass;
       if (ScriptClass.name === 'createRenScript') {
-        console.log('🔧 ScriptManager: RenScript detected, calling createRenScript to get constructor');
+        // RenScript detected, calling constructor
         ActualScriptClass = ScriptClass(this.scene, apiContext);
       } else {
         ActualScriptClass = ScriptClass;
@@ -657,11 +653,11 @@ class ScriptManager {
       
       // Call onOnce initially to apply any preset properties
       if (typeof scriptInstance.onOnce === 'function') {
-        console.log('🔧 ScriptManager: Calling initial onOnce() for script', scriptPath);
+        // Calling initial onOnce for script
         scriptInstance.onOnce();
       }
       
-      console.log('🔧 ScriptManager: Script attached', scriptPath, 'to', objectId);
+      // Script attached successfully
       return true;
       
     } catch (error) {
@@ -715,22 +711,22 @@ class ScriptManager {
    * Remove a specific script from an object
    */
   removeScriptFromObject(objectId, scriptPath) {
-    console.log('🗑️ ScriptManager: Attempting to remove script', scriptPath, 'from object', objectId);
-    console.log('🗑️ ScriptManager: Active scripts for object exists:', this.activeScripts.has(objectId));
+    // Attempting to remove script from object
+    // Checking if object has active scripts
     
     if (!this.activeScripts.has(objectId)) {
-      console.log('🗑️ ScriptManager: No active scripts for object', objectId);
+      // No active scripts found for object
       return false;
     }
     
     const scripts = this.activeScripts.get(objectId);
-    console.log('🗑️ ScriptManager: Found', scripts.size, 'scripts for object');
+    // Found scripts for object
     let scriptToRemove = null;
     
     for (const script of scripts) {
-      console.log('🗑️ ScriptManager: Checking script with path:', script._scriptPath);
+      // Checking script path
       if (script._scriptPath === scriptPath) {
-        console.log('🗑️ ScriptManager: Found matching script to remove');
+        // Found matching script to remove
         scriptToRemove = script;
         break;
       }
@@ -739,22 +735,22 @@ class ScriptManager {
     if (scriptToRemove) {
       // Call onDestroy if available
       if (typeof scriptToRemove.onDestroy === 'function') {
-        console.log('🗑️ ScriptManager: Calling onDestroy for script', scriptPath);
+        // Calling onDestroy for script
         try {
           scriptToRemove.onDestroy();
-          console.log('✅ ScriptManager: onDestroy completed for script', scriptPath);
+          // onDestroy completed successfully
         } catch (error) {
           console.error('❌ ScriptManager: Error in onDestroy', scriptPath, error);
         }
       } else {
-        console.log('⚠️ ScriptManager: No onDestroy method found for script', scriptPath);
+        // No onDestroy method found
       }
       
       // Dispose API module resources
       if (scriptToRemove._scriptAPI && typeof scriptToRemove._scriptAPI.dispose === 'function') {
         try {
           scriptToRemove._scriptAPI.dispose();
-          console.log('🔧 ScriptManager: API modules disposed for', scriptPath);
+          // API modules disposed
         } catch (error) {
           console.error('🔧 ScriptManager: Error disposing API modules', scriptPath, error);
         }
@@ -771,7 +767,7 @@ class ScriptManager {
         this.activeScripts.delete(objectId);
       }
       
-      console.log('🔧 ScriptManager: Script removed', scriptPath, 'from', objectId);
+      // Script removed successfully
       return true;
     }
     
@@ -798,7 +794,7 @@ class ScriptManager {
       if (script._scriptAPI && typeof script._scriptAPI.dispose === 'function') {
         try {
           script._scriptAPI.dispose();
-          console.log('🔧 ScriptManager: API modules disposed for', script._scriptPath);
+          // API modules disposed for script
         } catch (error) {
           console.error('🔧 ScriptManager: Error disposing API modules', script._scriptPath, error);
         }
@@ -810,7 +806,7 @@ class ScriptManager {
     });
     
     this.activeScripts.delete(objectId);
-    console.log('🔧 ScriptManager: All scripts removed from', objectId);
+    // All scripts removed from object
   }
   
   /**
@@ -821,7 +817,7 @@ class ScriptManager {
       this.pausedScripts.set(objectId, new Set());
     }
     this.pausedScripts.get(objectId).add(scriptPath);
-    console.log('🔧 ScriptManager: Paused script', scriptPath, 'on object', objectId);
+    // Paused script on object
   }
   
   /**
@@ -834,7 +830,7 @@ class ScriptManager {
         this.pausedScripts.delete(objectId);
       }
     }
-    console.log('🔧 ScriptManager: Resumed script', scriptPath, 'on object', objectId);
+    // Resumed script on object
   }
   
   /**
@@ -978,7 +974,7 @@ class ScriptManager {
    * @param {Object} propertyChanges - Changes object with added, removed, modified, renamed arrays
    */
   updateScriptProperties(scriptPath, newProperties, propertyChanges) {
-    console.log('🔧 ScriptManager: Updating properties for script', scriptPath);
+    // Updating properties for script
     
     let updatedInstances = 0;
     
@@ -991,7 +987,7 @@ class ScriptManager {
       });
     });
     
-    console.log('🔧 ScriptManager: Updated', updatedInstances, 'script instances');
+    // Updated script instances
   }
   
   /**
@@ -1015,7 +1011,7 @@ class ScriptManager {
           const defaultValue = this.evaluatePropertyDefault(prop.defaultValue);
           api.setScriptProperty(prop.name, defaultValue);
           scriptInstance[prop.name] = defaultValue;
-          console.log(`🔧 ScriptManager: Added property '${prop.name}' with default:`, defaultValue);
+          // Added property with default value
         } catch (error) {
           console.error(`🔧 ScriptManager: Failed to add property '${prop.name}':`, error);
         }
@@ -1033,21 +1029,21 @@ class ScriptManager {
           if (change.changes.includes('type')) {
             api.setScriptProperty(change.new.name, newDefault);
             scriptInstance[change.new.name] = newDefault;
-            console.log(`🔧 ScriptManager: Property '${change.new.name}' type changed, reset to default:`, newDefault);
+            // Property type changed, reset to default
           }
           // If default value changed and current value matches old default, update to new default
           else if (change.changes.includes('defaultValue') && currentValue === oldDefault) {
             api.setScriptProperty(change.new.name, newDefault);
             scriptInstance[change.new.name] = newDefault;
-            console.log(`🔧 ScriptManager: Property '${change.new.name}' default changed from ${oldDefault} to ${newDefault}, updating value`);
+            // Property default changed, updating value
           }
           // If default changed but current value was manually set, keep the manual value
           else if (change.changes.includes('defaultValue') && currentValue !== oldDefault) {
-            console.log(`🔧 ScriptManager: Property '${change.new.name}' default changed, but keeping manually set value:`, currentValue);
+            // Property default changed, keeping manual value
           }
           // For other changes (min, max, description), just update metadata
           else {
-            console.log(`🔧 ScriptManager: Property '${change.new.name}' updated (keeping current value)`);
+            // Property updated, keeping current value
           }
         } catch (error) {
           console.error(`🔧 ScriptManager: Failed to modify property '${change.new.name}':`, error);
@@ -1067,12 +1063,12 @@ class ScriptManager {
           let newValue = oldValue;
           if (rename.from.propType !== rename.to.propType) {
             newValue = this.evaluatePropertyDefault(rename.to.defaultValue);
-            console.log(`🔧 ScriptManager: Property type changed during rename, using default value`);
+            // Property type changed during rename
           }
           
           api.setScriptProperty(rename.to.name, newValue);
           scriptInstance[rename.to.name] = newValue;
-          console.log(`🔧 ScriptManager: Renamed property '${rename.from.name}' -> '${rename.to.name}'`);
+          // Property renamed successfully
         } catch (error) {
           console.error(`🔧 ScriptManager: Failed to rename property '${rename.from.name}' to '${rename.to.name}':`, error);
         }
@@ -1083,7 +1079,7 @@ class ScriptManager {
         try {
           api.setScriptProperty(prop.name, null);
           delete scriptInstance[prop.name];
-          console.log(`🔧 ScriptManager: Removed property '${prop.name}'`);
+          // Property removed successfully
         } catch (error) {
           console.error(`🔧 ScriptManager: Failed to remove property '${prop.name}':`, error);
         }

@@ -98,10 +98,6 @@ export const editorActions = {
   },
   
   selectEntity: (entityId) => {
-    console.log('🏪 Editor Store - selectEntity called:', {
-      'old value': editorStore.selection.entity,
-      'new value': entityId
-    })
     setEditorStore('selection', 'entity', entityId)
   },
   
@@ -196,7 +192,7 @@ export const editorActions = {
     // This will be used to sync changes from property panel to Babylon object
     // Note: This creates a circular dependency, so we'll implement this differently
     // by calling it from the Scene.jsx component where both stores are already imported
-    console.log('updateBabylonObjectFromProperties called for:', entityId);
+    // Update Babylon object properties
   }
 }
 

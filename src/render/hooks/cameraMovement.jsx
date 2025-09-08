@@ -38,7 +38,6 @@ export function useCameraController(camera, canvas, scene) {
   const shouldAllowCameraMovement = (event) => {
     // If gizmo is being dragged, block all camera movement
     if (renderStore.isGizmoDragging) {
-      console.log('🚫 Camera movement blocked - gizmo is being dragged');
       return false;
     }
     
@@ -47,7 +46,6 @@ export function useCameraController(camera, canvas, scene) {
     if (gizmoManager) {
       // Block camera movement when rotation or scale gizmos are active
       if (gizmoManager.rotationGizmoEnabled || gizmoManager.scaleGizmoEnabled) {
-        console.log('🚫 Camera movement blocked - rotation/scale gizmo is active');
         return false;
       }
       
@@ -71,7 +69,7 @@ export function useCameraController(camera, canvas, scene) {
   const handlePointerDown = (event) => {
     if (!camera() || !canvas()) return;
     
-    console.log('👆 Pointer down - button:', event.button, 'shouldAllow:', shouldAllowCameraMovement(event));
+    // Handle pointer down for camera movement
     
     if (!shouldAllowCameraMovement(event)) {
       return;
@@ -86,15 +84,12 @@ export function useCameraController(camera, canvas, scene) {
 
     if (event.button === 0) {
       isLeftMouseDown = true;
-      console.log('👆 Left pointer down');
     }
     if (event.button === 1) {
       isMiddleMouseDown = true;
-      console.log('👆 Middle pointer down');
     }
     if (event.button === 2) {
       isRightMouseDown = true;
-      console.log('👆 Right pointer down');
     }
 
   };
@@ -140,10 +135,9 @@ export function useCameraController(camera, canvas, scene) {
         const panVector = right.scale(-deltaX * panSpeed * speedMultiplier * precisionMultiplier)
           .add(up.scale(deltaY * panSpeed * speedMultiplier * precisionMultiplier));
         camera().position = camera().position.add(panVector);
-        console.log('🎯 Shift + Right-click panning');
+        // Shift + Right-click panning
       } else {
         // Regular right-click = Free-look
-        console.log('🎮 Right-click free-look - deltaX:', deltaX, 'deltaY:', deltaY, 'rotationSpeed:', rotationSpeed());
         camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier; // Natural horizontal rotation
         camera().rotation.x += deltaY * rotationSpeed() * precisionMultiplier; // Natural vertical rotation
         camera().rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera().rotation.x));
@@ -173,7 +167,7 @@ export function useCameraController(camera, canvas, scene) {
         camera().position = newPosition;
         camera().setTarget(target);
         
-        console.log('🔄 Middle-click orbiting around target');
+        // Middle-click orbiting around target
     }
 
     lastMouseX = event.clientX;
@@ -391,28 +385,22 @@ export function useCameraController(camera, canvas, scene) {
   createEffect(() => {
     if (!canvas()) return;
 
-    console.log('Camera controller: Setting up event listeners on canvas:', canvas());
-    console.log('Canvas element details:', canvas(), 'Camera:', camera());
+    // Set up camera event listeners
     
     if (camera()) {
       try {
         // IMPORTANT: Don't attach Babylon's native controls - we handle everything manually
         if (typeof camera().detachControls === 'function') {
           camera().detachControls();
-          console.log('🎮 Disabled UniversalCamera native controls - using custom system');
+          // Disabled native camera controls - using custom system
         }
       } catch (error) {
-        console.warn('🎮 Could not detach camera controls:', error);
+        console.warn('Could not detach camera controls:', error);
       }
     }
     
     const handleContextMenu = (e) => {
-      console.log('🚫 Context menu prevented - but mousedown should fire BEFORE this!');
       e.preventDefault();
-    };
-    const testMouseDown = (e) => {
-      console.log('🧪 TEST: Raw mouse event detected - button:', e.button);
-      handleMouseDown(e);
     };
     
     canvas().addEventListener('contextmenu', handleContextMenu);
@@ -430,16 +418,15 @@ export function useCameraController(camera, canvas, scene) {
     movementInterval = setInterval(handleKeyboardMovement, 16); // ~60fps
 
     onCleanup(() => {
-      console.log('Camera controller: Cleaning up event listeners from canvas:', canvas());
-      
+      // Clean up camera event listeners
       if (camera()) {
         try {
           if (typeof camera().detachControls === 'function') {
             camera().detachControls();
-            console.log('🎮 Camera controls detached');
+            // Camera controls detached
           }
         } catch (error) {
-          console.warn('🎮 Could not detach camera controls:', error);
+          console.warn('Could not detach camera controls:', error);
         }
       }
       

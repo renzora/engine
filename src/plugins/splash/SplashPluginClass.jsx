@@ -47,7 +47,7 @@ function SplashViewport({ tab }) {
   });
 
   const handleProjectSelect = async (project) => {
-    console.log('🎯 Project selected from splash viewport:', project.name);
+    // Project selected from splash viewport
     
     setIsLoading(true);
     setLoadingStage('Initializing project...');
@@ -60,7 +60,7 @@ function SplashViewport({ tab }) {
 
       // Create Babylon scene
       if (window._createBabylonScene) {
-        console.log('🎮 Creating Babylon scene for project:', project.name);
+        // Creating Babylon scene for project
         setLoadingStage('Creating 3D scene...');
         const scene = await window._createBabylonScene();
         
@@ -68,12 +68,12 @@ function SplashViewport({ tab }) {
           // Load the current scene - this will emit detailed progress events
           try {
             const currentSceneName = await getProjectCurrentScene(project.name);
-            console.log('📂 Loading current scene:', currentSceneName);
+            // Loading current scene
             
             const result = await sceneManager.loadScene(currentSceneName);
             
             if (result.success) {
-              console.log('✅ Current scene loaded successfully:', currentSceneName);
+              // Current scene loaded successfully
             } else {
               console.warn('⚠️ Failed to load current scene:', result.error);
             }
@@ -106,7 +106,7 @@ function SplashViewport({ tab }) {
         import('@/layout/stores/ViewportStore.jsx').then(({ viewportActions, viewportStore }) => {
           const splashTab = viewportStore.tabs.find(tab => tab.type === 'splash-viewport');
           if (splashTab) {
-            console.log('🎯 Closing splash viewport tab:', splashTab.id);
+            // Closing splash viewport tab
             viewportActions.removeViewportTab(splashTab.id);
           }
         }).catch(err => {
@@ -197,13 +197,11 @@ export default createPlugin({
   author: 'Renzora Engine Team',
 
   async onInit(api) {
-    console.log('[SplashPlugin] Initializing splash screen plugin...');
-    console.log('[SplashPlugin] Splash plugin initialized');
+    // Splash plugin initialized
   },
 
   async onStart(api) {
-    console.log('[SplashPlugin] Starting splash screen plugin...');
-    console.log('[SplashPlugin] Registering splash viewport type...');
+    // Starting splash screen plugin
     
     api.viewport('splash-viewport', {
       label: 'Project Home',
@@ -211,7 +209,7 @@ export default createPlugin({
       icon: IconHome,
       description: 'Project selection and management screen'
     });
-    console.log('[SplashPlugin] Splash viewport type registered');
+    // Splash viewport type registered
 
     api.hideProps();
     api.hidePanel();
@@ -221,7 +219,7 @@ export default createPlugin({
     api.hideHelper();
     
     setTimeout(() => {
-      console.log('[SplashPlugin] Creating splash viewport tab...');
+      // Creating splash viewport tab
       api.open('splash-viewport', {
         label: 'Project Home',
         setActive: true
@@ -229,18 +227,18 @@ export default createPlugin({
     }, 500);
 
     api.on('project-created', (data) => {
-      console.log('[SplashPlugin] Project created event received:', data);
+      // Project created event received
     });
 
     api.on('project-opened', (data) => {
-      console.log('[SplashPlugin] Project opened event received:', data);
+      // Project opened event received
     });
 
     api.on('project-selected', (data) => {
-      console.log('[SplashPlugin] Project selected:', data.project.name);
+      // Project selected
     });
 
-    console.log('[SplashPlugin] Splash screen plugin started');
+    // Splash screen plugin started
   },
 
   onUpdate() {
@@ -248,10 +246,10 @@ export default createPlugin({
   },
 
   async onStop() {
-    console.log('[SplashPlugin] Stopping splash screen plugin...');
+    // Stopping splash screen plugin
   },
 
   async onDispose() {
-    console.log('[SplashPlugin] Disposing splash screen plugin...');
+    // Disposing splash screen plugin
   }
 });

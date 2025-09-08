@@ -20,11 +20,11 @@ const KeyboardShortcuts = () => {
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    console.log('[KeyboardShortcuts] Global keyboard shortcut system initialized');
+    // Global keyboard shortcut system initialized
 
     onCleanup(() => {
       document.removeEventListener('keydown', handleKeyDown);
-      console.log('[KeyboardShortcuts] Global keyboard shortcut system cleaned up');
+      // Global keyboard shortcut system cleaned up
     });
   });
 
@@ -36,13 +36,13 @@ export const keyboardShortcuts = {
   // Disable all shortcuts (useful when text input is focused)
   disable() {
     isDisabled = true;
-    console.log('[KeyboardShortcuts] Shortcuts disabled');
+    // Keyboard shortcuts temporarily disabled
   },
 
   // Re-enable shortcuts
   enable() {
     isDisabled = false;
-    console.log('[KeyboardShortcuts] Shortcuts enabled');
+    // Keyboard shortcuts re-enabled
   },
 
   // Register a keyboard shortcut handler
@@ -53,14 +53,14 @@ export const keyboardShortcuts = {
     }
     
     activeHandlers.push(handler);
-    console.log('[KeyboardShortcuts] Handler registered, total handlers:', activeHandlers.length);
+    // Keyboard shortcut handler registered
     
     // Return unregister function
     return () => {
       const index = activeHandlers.indexOf(handler);
       if (index > -1) {
         activeHandlers.splice(index, 1);
-        console.log('[KeyboardShortcuts] Handler unregistered, total handlers:', activeHandlers.length);
+        // Keyboard shortcut handler unregistered
       }
     };
   },

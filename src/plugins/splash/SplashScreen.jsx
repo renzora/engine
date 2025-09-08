@@ -119,7 +119,7 @@ export default function SplashScreen({ onProjectSelect }) {
       setTimeout(async () => {
         const result = await sceneManager.loadScene(sceneName);
         if (result.success) {
-          console.log('✅ Scene loaded successfully:', sceneName);
+          // Scene loaded successfully
         } else {
           alert(`Failed to load scene: ${result.error}`);
         }

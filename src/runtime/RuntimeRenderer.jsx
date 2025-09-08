@@ -16,7 +16,7 @@ export class RuntimeRenderer {
    */
   async initialize() {
     try {
-      console.log('🎨 RuntimeRenderer: Initializing...');
+      // Initialize Babylon.js engine and scene
       
       // Import Babylon.js modules
       const { Engine } = await import('@babylonjs/core/Engines/engine.js');
@@ -56,7 +56,7 @@ export class RuntimeRenderer {
         this.engine.resize();
       });
       
-      console.log('✅ RuntimeRenderer: Initialized successfully');
+      // Renderer initialization complete
       
     } catch (error) {
       console.error('❌ RuntimeRenderer: Initialization failed:', error);
@@ -70,7 +70,7 @@ export class RuntimeRenderer {
   start() {
     if (this.isRunning) return;
     
-    console.log('🎨 RuntimeRenderer: Starting render loop');
+    // Start rendering loop
     this.isRunning = true;
     
     this.engine.runRenderLoop(() => {
@@ -86,7 +86,7 @@ export class RuntimeRenderer {
   stop() {
     if (!this.isRunning) return;
     
-    console.log('🎨 RuntimeRenderer: Stopping render loop');
+    // Stop rendering loop
     this.isRunning = false;
     this.engine.stopRenderLoop();
   }
@@ -95,7 +95,7 @@ export class RuntimeRenderer {
    * Dispose of renderer resources
    */
   dispose() {
-    console.log('🎨 RuntimeRenderer: Disposing...');
+    // Clean up renderer resources
     
     this.stop();
     

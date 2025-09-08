@@ -19,11 +19,11 @@ export default createPlugin({
   author: 'Renzora Engine Team',
 
   async onInit() {
-    console.log('[MenuPlugin] Menu plugin initialized');
+    // Menu plugin initialized
   },
 
   async onStart(api) {
-    console.log('[MenuPlugin] Registering menu items...');
+    // Registering menu items
 
     api.menu('file', {
       label: 'File',
@@ -52,7 +52,7 @@ export default createPlugin({
             if (sceneName && sceneName.trim()) {
               const result = await sceneManager.loadScene(sceneName.trim());
               if (result.success) {
-                console.log('✅ Scene loaded successfully:', sceneName);
+                // Scene loaded successfully
                 
                 // Switch to existing scene tab instead of creating new one
                 const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
@@ -63,10 +63,10 @@ export default createPlugin({
                 if (sceneTab) {
                   // Switch to existing scene tab
                   viewportActions.setActiveViewportTab(sceneTab.id);
-                  console.log('🔀 Switched to existing scene tab:', sceneTab.id);
+                  // Switched to existing scene tab
                 } else {
                   // Only create new tab if none exists
-                  console.log('📝 No existing scene tab found, creating one...');
+                  // Creating scene viewport
                   api.createSceneViewport({
                     name: sceneName.trim(),
                     setActive: true
@@ -86,7 +86,7 @@ export default createPlugin({
           action: async () => {
             const result = await sceneManager.saveScene();
             if (result.success) {
-              console.log('✅ Scene saved successfully');
+              // Scene saved successfully
             } else {
               alert(`Failed to save scene: ${result.error}`);
             }
@@ -102,7 +102,7 @@ export default createPlugin({
             if (sceneName && sceneName.trim()) {
               const result = await sceneManager.saveScene(sceneName.trim());
               if (result.success) {
-                console.log('✅ Scene saved as:', sceneName);
+                // Scene saved successfully
               } else {
                 alert(`Failed to save scene: ${result.error}`);
               }
@@ -128,7 +128,7 @@ export default createPlugin({
         { id: 'recent', label: 'Recent Projects', icon: IconRefresh },
       ],
       onClick: () => {
-        console.log('[MenuPlugin] File menu clicked');
+        // File menu clicked
       }
     });
 
@@ -149,7 +149,7 @@ export default createPlugin({
         { id: 'select-all', label: 'Select All', shortcut: 'Ctrl+A' },
       ],
       onClick: () => {
-        console.log('[MenuPlugin] Edit menu clicked');
+        // Edit menu clicked
       }
     });
 
@@ -167,7 +167,7 @@ export default createPlugin({
             if (sceneName && sceneName.trim()) {
               const result = await sceneManager.createNewScene(sceneName.trim());
               if (result.success) {
-                console.log('✅ New scene created:', sceneName);
+                // New scene created
                 
                 // Switch to existing scene tab instead of creating new one
                 const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
@@ -178,10 +178,10 @@ export default createPlugin({
                 if (sceneTab) {
                   // Switch to existing scene tab
                   viewportActions.setActiveViewportTab(sceneTab.id);
-                  console.log('🔀 Switched to existing scene tab:', sceneTab.id);
+                  // Switched to existing scene tab
                 } else {
                   // Only create new tab if none exists
-                  console.log('📝 No existing scene tab found, creating one...');
+                  // Creating scene viewport
                   api.createSceneViewport({
                     name: sceneName.trim(),
                     setActive: true
@@ -240,7 +240,7 @@ export default createPlugin({
       ]
     });
 
-    console.log('[MenuPlugin] All menu items registered');
+    // All menu items registered
     
     // Register About overlay component
     api.registerLayoutComponent('about-overlay', () => (

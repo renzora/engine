@@ -14,16 +14,15 @@ export default createPlugin({
   author: 'Renzora Engine Team',
 
   async onInit(api) {
-    console.log('[BridgePlugin] Initializing bridge server connection...');
-    console.log('[BridgePlugin] Bridge plugin initialized');
+    // Bridge plugin initialized
   },
 
   async onStart(api) {
-    console.log('[BridgePlugin] Starting bridge server plugin...');
+    // Starting bridge server plugin
 
     // Listen to engine events from plugin API
     api.on('project-selected', (data) => {
-      console.log('[BridgePlugin] Plugin API project selected event received:', data);
+      // Plugin API project selected event received
       if (data?.project) {
         setCurrentProject(data.project);
       }
@@ -31,7 +30,7 @@ export default createPlugin({
 
     // Listen to DOM events from splash screen
     projectSelectedHandler = (event) => {
-      console.log('[BridgePlugin] DOM project selected event received:', event.detail);
+      // DOM project selected event received
       if (event.detail?.project) {
         setCurrentProject(event.detail.project);
       }
@@ -39,7 +38,7 @@ export default createPlugin({
 
     document.addEventListener('engine:project-selected', projectSelectedHandler);
 
-    console.log('[BridgePlugin] Bridge server plugin started');
+    // Bridge server plugin started
   },
 
   onUpdate() {
@@ -48,7 +47,7 @@ export default createPlugin({
   },
 
   async onStop() {
-    console.log('[BridgePlugin] Stopping bridge server plugin...');
+    // Stopping bridge server plugin
     if (projectSelectedHandler) {
       document.removeEventListener('engine:project-selected', projectSelectedHandler);
       projectSelectedHandler = null;
@@ -56,7 +55,7 @@ export default createPlugin({
   },
 
   async onDispose() {
-    console.log('[BridgePlugin] Disposing bridge server plugin...');
+    // Disposing bridge server plugin
     if (projectSelectedHandler) {
       document.removeEventListener('engine:project-selected', projectSelectedHandler);
       projectSelectedHandler = null;

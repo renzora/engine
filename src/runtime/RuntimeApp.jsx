@@ -20,7 +20,7 @@ export default function RuntimeApp() {
 
   onMount(async () => {
     try {
-      console.log('🚀 RuntimeApp: Initializing runtime...');
+      // Initialize runtime components
       
       // Check for embedded project data
       if (!window.__RENZORA_PROJECT_DATA__) {
@@ -28,7 +28,7 @@ export default function RuntimeApp() {
       }
       
       const projectData = window.__RENZORA_PROJECT_DATA__;
-      console.log('📦 RuntimeApp: Project loaded:', projectData.project.name);
+      // Project data loaded successfully
       
       setLoadingStatus('Initializing renderer...');
       setLoadingProgress(10);
@@ -72,7 +72,7 @@ export default function RuntimeApp() {
       setLoadingProgress(100);
       setIsLoading(false);
       
-      console.log('✅ RuntimeApp: Initialization complete');
+      // Runtime initialization complete
       
     } catch (err) {
       console.error('❌ RuntimeApp: Initialization failed:', err);
@@ -82,7 +82,7 @@ export default function RuntimeApp() {
   });
 
   onCleanup(() => {
-    console.log('🔧 RuntimeApp: Cleaning up...');
+    // Clean up runtime resources
     
     if (scriptManager) {
       scriptManager.dispose();

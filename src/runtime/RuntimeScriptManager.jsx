@@ -17,13 +17,13 @@ export class RuntimeScriptManager {
    */
   async loadProjectScripts(scriptsData) {
     try {
-      console.log('📜 RuntimeScriptManager: Loading project scripts...');
+      // Load all project scripts
       
       for (const [scriptName, scriptData] of Object.entries(scriptsData)) {
         await this.loadScript(scriptName, scriptData);
       }
       
-      console.log(`✅ RuntimeScriptManager: Loaded ${this.loadedScripts.size} scripts`);
+      // Scripts loaded successfully
       
     } catch (error) {
       console.error('❌ RuntimeScriptManager: Script loading failed:', error);
@@ -38,7 +38,7 @@ export class RuntimeScriptManager {
    */
   async loadScript(scriptName, scriptData) {
     try {
-      console.log('📜 RuntimeScriptManager: Loading script:', scriptName);
+      // Load individual script
       
       // Create a function from the compiled code
       const scriptFunction = new Function(
@@ -61,7 +61,7 @@ export class RuntimeScriptManager {
       }
       
       this.loadedScripts.set(scriptName, ScriptClass);
-      console.log('✅ RuntimeScriptManager: Script loaded:', scriptName);
+      // Script compilation complete
       
     } catch (error) {
       console.error('❌ RuntimeScriptManager: Failed to load script:', scriptName, error);
@@ -77,7 +77,7 @@ export class RuntimeScriptManager {
    */
   attachScript(objectId, scriptName) {
     try {
-      console.log('📜 RuntimeScriptManager: Attaching script:', scriptName, 'to object:', objectId);
+      // Attach script to object
       
       const ScriptClass = this.loadedScripts.get(scriptName);
       if (!ScriptClass) {
@@ -115,7 +115,7 @@ export class RuntimeScriptManager {
         scriptInstance.onStart();
       }
       
-      console.log('✅ RuntimeScriptManager: Script attached successfully');
+      // Script attachment complete
       return true;
       
     } catch (error) {
@@ -130,7 +130,7 @@ export class RuntimeScriptManager {
   start() {
     if (this.isRunning) return;
     
-    console.log('📜 RuntimeScriptManager: Starting script execution');
+    // Start script execution loop
     this.isRunning = true;
     
     // Register update loop
@@ -145,7 +145,7 @@ export class RuntimeScriptManager {
   stop() {
     if (!this.isRunning) return;
     
-    console.log('📜 RuntimeScriptManager: Stopping script execution');
+    // Stop script execution loop
     this.isRunning = false;
     
     if (this.updateObserver) {
@@ -327,7 +327,7 @@ export class RuntimeScriptManager {
    * Dispose of renderer resources
    */
   dispose() {
-    console.log('🎨 RuntimeRenderer: Disposing...');
+    // Dispose of script manager resources
     
     if (this.scene) {
       this.scene.dispose();

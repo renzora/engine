@@ -135,9 +135,8 @@ export function useGrid(sceneSignal) {
   };
 
   const createGrid = async (scene, gridSettings) => {
-    console.log('🔳 Grid: createGrid called', { scene: !!scene, gridSettings, showGrid: viewport().showGrid });
+    // Create grid mesh system
     if (!scene || !gridSettings.enabled || !viewport().showGrid) {
-      console.log('🔳 Grid: Skipping grid creation - missing requirements');
       return;
     }
 
@@ -278,43 +277,29 @@ export function useGrid(sceneSignal) {
       gridSettings.position[2]
     );
 
-    console.log('🔳 Grid: Grid created successfully!', { 
-      position: gridContainer.position, 
-      childCount: gridContainer.getChildMeshes().length,
-      infinite: gridSettings.infiniteGrid
-    });
-
+    // Grid created successfully
     return gridContainer;
   };
 
   const updateGrid = () => {
     const scene = sceneSignal();
     if (!scene) {
-      console.log('🔳 Grid: No scene available for updateGrid');
       return;
     }
 
-    console.log('🔳 Grid: updateGrid called', { 
-      hasScene: !!scene, 
-      gridEnabled: settings().grid.enabled, 
-      showGrid: viewport().showGrid,
-      gridSettings: settings().grid
-    });
+    // Update grid based on current settings
 
     if (gridRef) {
-      console.log('🔳 Grid: Disposing existing grid');
+      // Dispose existing grid
       gridRef.dispose();
       gridRef = null;
     }
 
     if (settings().grid.enabled && viewport().showGrid) {
-      console.log('🔳 Grid: Creating new grid...');
+      // Create new grid
       createGrid(scene, settings().grid).then(grid => {
         gridRef = grid;
-        console.log('🔳 Grid: Grid assigned to gridRef', !!grid);
       });
-    } else {
-      console.log('🔳 Grid: Grid creation skipped - disabled or hidden');
     }
   };
 
@@ -324,7 +309,7 @@ export function useGrid(sceneSignal) {
     const gridSettings = settings().grid;
     const showGrid = viewport().showGrid;
     
-    console.log('🔳 Grid: createEffect triggered', { hasScene: !!scene, gridEnabled: gridSettings.enabled, showGrid });
+    // Grid settings or scene changed, update grid
     updateGrid();
   });
 

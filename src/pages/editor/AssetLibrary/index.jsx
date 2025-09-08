@@ -293,23 +293,17 @@ function AssetLibrary({ onContextMenu }) {
 
   const fetchFolderTree = async (currentProject) => {
     try {
-      console.log('🌳 fetchFolderTree called with project:', currentProject);
-      
+      // Fetch project data and build folder tree
       const projects = await getProjects();
-      console.log('🌳 All projects:', projects);
-      
       const currentProjectData = projects.find(p => p.name === currentProject.name);
-      console.log('🌳 Current project data:', currentProjectData);
       
       if (currentProjectData && currentProjectData.files && currentProjectData.files.length > 0) {
         const tree = buildTreeFromAssets(currentProjectData.files, currentProject.name);
-        console.log('🌳 Built tree from assets:', tree);
         return tree;
       }
       
-      console.log('🌳 No files in project data, using listDirectory');
+      // Fallback to direct directory listing
       const projectFiles = await listDirectory(`projects/${currentProject.name}`);
-      console.log('🌳 Project files from listDirectory:', projectFiles);
       
       const buildNestedTree = async (items, parentPath = '') => {
         const tree = [];
@@ -323,7 +317,7 @@ function AssetLibrary({ onContextMenu }) {
             const children = await buildNestedTree(subItems, fullPath);
             const files = subItems.filter(subItem => !subItem.is_directory && !isWindowsReservedName(subItem.name));
             
-            console.log('🔵 Building tree node - name:', item.name, 'path:', fullPath);
+            // Build tree node for folder
             tree.push({
               name: item.name,
               path: fullPath,
@@ -346,11 +340,10 @@ function AssetLibrary({ onContextMenu }) {
       };
       
       const nestedTree = await buildNestedTree(projectFiles);
-      console.log('🌳 Final nested tree:', nestedTree);
       return nestedTree;
       
     } catch (error) {
-      console.error('🌳 Bridge API failed in fetchFolderTree:', error);
+      console.error('Bridge API failed in fetchFolderTree:', error);
       return [];
     }
   };
@@ -578,7 +571,7 @@ function AssetLibrary({ onContextMenu }) {
 
   // Incremental file change handler
   const handleIncrementalFileChanges = async (currentProject, changes) => {
-    console.log('📝 Processing incremental file changes:', changes);
+    // Process incremental file changes without full reload
     
     const currentAssets = [...assets()];
     let updatedAssets = currentAssets;
@@ -598,7 +591,7 @@ function AssetLibrary({ onContextMenu }) {
         
         // Process changes in current directory
         if (parentPath === currentPath()) {
-          console.log(`📝 Processing ${event_type} for ${fileName} in current directory`);
+          // Handle file system events in current directory
           
           if (event_type === 'create') {
             // Check if file already exists in list
@@ -616,13 +609,13 @@ function AssetLibrary({ onContextMenu }) {
                 fileName: fileName
               };
               updatedAssets = [...updatedAssets, newAsset];
-              console.log('📝 Added new asset:', newAsset);
+              // Asset added
             }
             
           } else if (event_type === 'delete' || event_type === 'remove') {
             // Remove the file from the list
             updatedAssets = updatedAssets.filter(a => a.name !== fileName);
-            console.log('📝 Removed asset:', fileName);
+            // Asset removed
             
           } else if (event_type === 'modify') {
             // For modifications, update the size or other metadata if needed
@@ -634,7 +627,7 @@ function AssetLibrary({ onContextMenu }) {
                 { ...updatedAssets[assetIndex] },
                 ...updatedAssets.slice(assetIndex + 1)
               ];
-              console.log('📝 Modified asset:', fileName);
+              // Asset modified
             }
           }
         }
@@ -657,10 +650,10 @@ function AssetLibrary({ onContextMenu }) {
       
       if (currentTree) {
         // Keep existing tree without updating file counts
-        console.log('📊 Keeping existing folder tree');
+        // Keep existing tree without updating file counts
       } else {
         // Fallback to fetching new tree if we don't have one
-        console.log('📊 Fetching new folder tree');
+        // Fallback to fetching new tree if we don't have one
         const newTree = await fetchFolderTree(currentProject);
         
         batch(() => {
@@ -676,12 +669,12 @@ function AssetLibrary({ onContextMenu }) {
 
   // Event handlers
   const handleFileChange = async (changeData) => {
-    console.log('File change detected:', changeData);
+    // Handle file system changes
     
     if (changeData.message) {
       const message = changeData.message.toLowerCase();
       if (message.includes('.tmp.') || message.includes('%') || message.includes('~')) {
-        console.log('Ignoring temporary/system file change');
+        // Ignore temporary/system file changes
         return;
       }
     }
@@ -708,7 +701,7 @@ function AssetLibrary({ onContextMenu }) {
       await handleIncrementalFileChanges(currentProject, changeData.changes);
     } else {
       // Fallback: refresh current directory and update tree
-      console.log('📡 Fallback: Refreshing due to file change without details');
+      // Fallback: refresh current directory and update tree
       assetsActions.invalidateAssetPaths([currentPath()]);
       
       // Refresh assets and tree in parallel
@@ -770,7 +763,7 @@ function AssetLibrary({ onContextMenu }) {
           await writeFile(targetPath, text);
         }
         
-        console.log('Successfully uploaded:', file.name);
+        // File uploaded successfully
       }
       
       await fetchAssetsWithCache(currentProject, currentPath());
@@ -943,7 +936,7 @@ function AssetLibrary({ onContextMenu }) {
         : `projects/${currentProject.name}/scripts/${scriptName}.ren`;
       
       await writeFile(targetPath, scriptTemplate);
-      console.log('Successfully created script:', scriptName);
+      // Script created successfully
       
       await fetchAssetsWithCache(currentProject, currentPath());
       
@@ -954,7 +947,7 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   const handleFolderClick = async (folderPath) => {
-    console.log('🔴 Folder clicked:', folderPath);
+    // Navigate to selected folder
     setCurrentPath(folderPath);
     
     // Immediately fetch assets for the new path without showing loading
@@ -969,7 +962,7 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   const handleBreadcrumbClick = async (path) => {
-    console.log('Breadcrumb clicked:', path);
+    // Navigate via breadcrumb
     setCurrentPath(path);
     
     // Immediately fetch assets for the new path without showing loading
@@ -990,9 +983,7 @@ function AssetLibrary({ onContextMenu }) {
     if (isTextFile) {
       setSelectedFileForEdit(asset);
       setIsCodeEditorOpen(true);
-      console.log('Opening file in code editor:', asset.name);
-    } else {
-      console.log('Double-clicked on:', asset.name, 'Type:', asset.extension);
+      // Open file in code editor
     }
   };
 
@@ -1138,7 +1129,7 @@ function AssetLibrary({ onContextMenu }) {
           // Use the correct path structure - assets are stored directly in the project folder
           const fullAssetPath = `projects/${currentProject.name}/${asset.path}`;
           await deleteFile(fullAssetPath);
-          console.log('Deleted asset:', asset.name);
+          // Asset deleted
           deletedCount++;
         } catch (error) {
           console.error('Failed to delete asset:', asset.name, error);
@@ -1153,7 +1144,7 @@ function AssetLibrary({ onContextMenu }) {
       if (failedCount > 0) {
         setError(`Deleted ${deletedCount} files. Failed to delete ${failedCount} files with special characters: ${failedFiles.join(', ')}`);
       } else if (deletedCount > 0) {
-        console.log(`Successfully deleted ${deletedCount} files`);
+        // Files deleted successfully
       }
     }
   };
@@ -1256,25 +1247,17 @@ function AssetLibrary({ onContextMenu }) {
 
   // Computed values
   const breadcrumbs = createMemo(() => {
-    console.log('🟢 Computing breadcrumbs - viewMode:', viewMode(), 'currentPath:', currentPath());
-    
+    // Build breadcrumb navigation from current path
     if (viewMode() !== 'folder') {
-      console.log('🟢 Not folder view, returning empty');
       return [];
     }
     
-    // Use projectManager directly instead of the local signal
     const project = projectManager.getCurrentProject();
-    console.log('🟢 Project from manager:', project);
-    
     if (!project?.name) {
-      console.log('🟢 No project, returning empty');
       return [];
     }
     
     const parts = currentPath() ? currentPath().split('/') : [];
-    console.log('🟢 Path parts:', parts);
-    
     const crumbs = [{ name: project.name, path: '' }];
     
     let currentBreadcrumbPath = '';
@@ -1283,7 +1266,6 @@ function AssetLibrary({ onContextMenu }) {
       crumbs.push({ name: part, path: currentBreadcrumbPath });
     }
     
-    console.log('🟢 Final breadcrumbs:', crumbs);
     return crumbs;
   });
 
@@ -1390,10 +1372,8 @@ function AssetLibrary({ onContextMenu }) {
 
   // Function to initialize project data
   const initializeProjectData = async (projectData) => {
-    console.log('🟠 Initializing project:', projectData);
-    
+    // Initialize asset library with project data
     if (!projectData?.name) {
-      console.log('🟠 No valid project data to initialize');
       return;
     }
     
@@ -1411,8 +1391,7 @@ function AssetLibrary({ onContextMenu }) {
         fetchAssetCategories(projectData)
       ]);
       
-      console.log('🌲 Folder tree fetched:', tree);
-      console.log('📂 Categories fetched:', categories);
+      // Tree and categories fetched successfully
       
       batch(() => {
         setFolderTree(tree);
@@ -1423,7 +1402,7 @@ function AssetLibrary({ onContextMenu }) {
         }
       });
       
-      console.log('🌲 Folder tree after setting:', folderTree());
+      // Folder tree updated in state
       
       await fetchAssetsWithCache(projectData, '', false, isFirstLoad);
     } catch (error) {
@@ -1445,7 +1424,7 @@ function AssetLibrary({ onContextMenu }) {
 
     // File watching with SSE stream
     if (typeof window !== 'undefined') {
-      console.log('🔄 AssetLibrary: Setting up SSE file watching');
+      // Set up Server-Sent Events for file watching
       
       let eventSource = null;
       let reconnectTimer = null;
@@ -1458,50 +1437,46 @@ function AssetLibrary({ onContextMenu }) {
           eventSource = new EventSource('http://localhost:3001/file-changes/stream');
           
           eventSource.onopen = () => {
-            console.log('📡 AssetLibrary: SSE connection opened');
+            // SSE connection established
             reconnectAttempts = 0;
           };
           
           eventSource.onmessage = (event) => {
             try {
               const data = JSON.parse(event.data);
-              console.log('📡 AssetLibrary: SSE message received:', data);
-              
+              // Handle SSE messages
               if (data.type === 'file-changes') {
-                console.log('📡 AssetLibrary: File changes detected:', data.changes);
                 handleFileChange({ source: 'sse', changes: data.changes });
               } else if (data.type === 'file_change') {
                 // Legacy format support
-                console.log('📡 AssetLibrary: File change detected (legacy):', data.message);
                 handleFileChange({ source: 'sse', message: data.message });
               } else if (data.type === 'file-change') {
                 // Another possible format
-                console.log('📡 AssetLibrary: File change detected (alt format):', data);
                 handleFileChange({ source: 'sse', message: data.message || data.path });
               } else if (data.type === 'connected') {
-                console.log('📡 AssetLibrary: SSE connected successfully');
+                // SSE connected successfully
               } else if (data.type === 'heartbeat') {
                 // Heartbeat received - connection is alive
               }
             } catch (error) {
-              console.error('📡 AssetLibrary: Failed to parse SSE message:', error);
+              console.error('Failed to parse SSE message:', error);
             }
           };
           
           eventSource.onerror = (error) => {
-            console.error('📡 AssetLibrary: SSE connection error:', error);
+            console.error('SSE connection error:', error);
             eventSource.close();
             
             if (reconnectAttempts < maxReconnectAttempts) {
               reconnectAttempts++;
-              console.log(`📡 AssetLibrary: Reconnecting SSE... attempt ${reconnectAttempts}/${maxReconnectAttempts}`);
+              // Attempt to reconnect
               reconnectTimer = setTimeout(connectSSE, reconnectDelay);
             } else {
-              console.error('📡 AssetLibrary: Max reconnection attempts reached, falling back to manual refresh');
+              console.error('Max reconnection attempts reached, falling back to manual refresh');
             }
           };
         } catch (error) {
-          console.error('📡 AssetLibrary: Failed to create SSE connection:', error);
+          console.error('Failed to create SSE connection:', error);
         }
       };
       
@@ -1512,7 +1487,7 @@ function AssetLibrary({ onContextMenu }) {
       const handleKeyPress = (e) => {
         if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
           e.preventDefault();
-          console.log('🔄 AssetLibrary: Manual refresh triggered');
+          // Manual refresh triggered
           handleFileChange({ source: 'manual' });
         }
       };
@@ -1540,7 +1515,7 @@ function AssetLibrary({ onContextMenu }) {
 
     // Listen for project selection events
     const handleProjectSelection = (event) => {
-      console.log('🟠 Project selection event received:', event.detail);
+      // Handle project selection and initialize data
       const projectData = projectManager.getCurrentProject();
       initializeProjectData(projectData);
     };
@@ -1566,12 +1541,9 @@ function AssetLibrary({ onContextMenu }) {
     
     // Check if project is already selected
     const initialProject = projectManager.getCurrentProject();
-    console.log('🟠 Initial project data in onMount:', initialProject);
-    
+    // Check if project is already selected
     if (initialProject?.name) {
       initializeProjectData(initialProject);
-    } else {
-      console.log('🟠 No project on mount, waiting for project selection...');
     }
     
     onCleanup(() => {
@@ -1633,7 +1605,7 @@ function AssetLibrary({ onContextMenu }) {
         onTreeDrop={handleTreeDrop}
         onResizeMouseDown={handleResizeMouseDown}
         onRefresh={() => {
-          console.log('Manual refresh triggered via button');
+          // Manual refresh triggered
           handleFileChange({ source: 'manual-button' });
         }}
       />
@@ -1648,7 +1620,7 @@ function AssetLibrary({ onContextMenu }) {
             <div class="flex items-center gap-2 ml-2">
               <button
                 onClick={() => {
-                  console.log('Manual refresh triggered via button');
+                  // Manual refresh triggered
                   handleFileChange({ source: 'manual-button' });
                 }}
                 class="p-1 text-xs rounded bg-base-300/70 text-base-content/60 hover:text-base-content hover:bg-base-300/90 transition-colors opacity-80"

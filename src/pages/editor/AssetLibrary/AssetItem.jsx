@@ -31,17 +31,43 @@ const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
     try {
       setIsLoading(true);
       
-      const assetPath = asset.name || asset.path;
-      console.log(`🎯 Requesting thumbnail for: assets/${assetPath} (original path: ${asset.path})`);
+      const assetPath = asset.path || asset.name;
+      const fullAssetPath = assetPath.startsWith('assets/') ? assetPath : `assets/${assetPath}`;
+      // Requesting thumbnail generation
       
-      const result = await generateThumbnail(assetPath, 512);
+      // Check if thumbnail file exists first
+      const assetFilename = fullAssetPath.split('/').pop()?.replace('.glb', '') || 'thumbnail';
+      const thumbnailPath = `projects/${currentProject.name}/.cache/thumbnails/${assetFilename}_256.png`;
       
-      if (result.success && result.thumbnail_data) {
-        setThumbnailUrl(result.thumbnail_data);
+      try {
+        // Try to use existing thumbnail file first
+        const fileUrl = getFileUrl(thumbnailPath);
+        
+        // Test if the file exists by trying to load it
+        await new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = fileUrl;
+        });
+        
+        setThumbnailUrl(fileUrl);
         setError(false);
-        console.log(`Thumbnail ${result.cached ? 'loaded from cache' : 'generated'} for ${asset.name}`);
-      } else {
-        throw new Error(result.error || 'Failed to generate thumbnail');
+        // Using cached thumbnail
+      } catch {
+        // Thumbnail file doesn't exist, generate it (fallback)
+        // Generating new thumbnail
+        const result = await generateThumbnail(fullAssetPath, 256);
+        
+        if (result.success && result.thumbnail_file) {
+          // Use the generated thumbnail file
+          const fileUrl = getFileUrl(`projects/${currentProject.name}/${result.thumbnail_file}`);
+          setThumbnailUrl(fileUrl);
+          setError(false);
+          // Successfully generated new thumbnail
+        } else {
+          throw new Error(result.error || 'Failed to generate thumbnail');
+        }
       }
     } catch (err) {
       console.error('Failed to get model thumbnail:', err);
@@ -209,22 +235,22 @@ function AssetItem({
   };
   
   const handleContextMenu = (e) => {
-    console.log('🐛 Context menu triggered for:', asset.name, asset.extension);
+    // Context menu triggered
     e.preventDefault();
     e.stopPropagation();
     
     // Check if it's a script file
     const isScript = isScriptFile(asset.extension);
-    console.log('🐛 Is script file:', isScript);
+    // Check if script file
     
     // Only show context menu for script files
     if (!isScript) {
-      console.log('🐛 Not a script file, skipping context menu');
+      // Not a script file, skipping context menu
       return;
     }
     
     const { clientX: x, clientY: y } = e;
-    console.log('🐛 Setting context menu at position:', { x, y });
+    // Setting context menu position
     setContextMenu({
       position: { x, y },
       asset: asset
@@ -566,7 +592,7 @@ function AssetItem({
       {/* Context Menu */}
       {(() => {
         const menu = contextMenu();
-        console.log('🐛 Context menu render check:', menu);
+        // Context menu rendered
         return menu;
       })()}
       <Show when={contextMenu()}>

@@ -91,7 +91,7 @@ export const renderActions = {
   },
 
   setGizmoDragging(isDragging) {
-    console.log('🎯 setGizmoDragging called:', isDragging);
+    // Track gizmo drag state to prevent camera movement during transformation
     setRenderStore('isGizmoDragging', isDragging);
   },
 
@@ -115,12 +115,12 @@ export const renderActions = {
         posGizmo.onDragEndObservable.clear();
         
         posGizmo.onDragStartObservable.add(() => {
-          console.log('🔧 Position gizmo drag started');
+          // Position gizmo drag started
           this.setGizmoDragging(true);
         });
         
         posGizmo.onDragEndObservable.add(() => {
-          console.log('🔧 Position gizmo drag ended');
+          // Position gizmo drag ended
           this.setGizmoDragging(false);
           
           // Mark transform as manually changed for physics sync
@@ -144,12 +144,12 @@ export const renderActions = {
         rotGizmo.onDragEndObservable.clear();
         
         rotGizmo.onDragStartObservable.add(() => {
-          console.log('🔧 Rotation gizmo drag started');
+          // Rotation gizmo drag started
           this.setGizmoDragging(true);
         });
         
         rotGizmo.onDragEndObservable.add(() => {
-          console.log('🔧 Rotation gizmo drag ended');
+          // Rotation gizmo drag ended
           this.setGizmoDragging(false);
           
           // Mark transform as manually changed for physics sync
@@ -173,12 +173,12 @@ export const renderActions = {
         scaleGizmo.onDragEndObservable.clear();
         
         scaleGizmo.onDragStartObservable.add(() => {
-          console.log('🔧 Scale gizmo drag started');
+          // Scale gizmo drag started
           this.setGizmoDragging(true);
         });
         
         scaleGizmo.onDragEndObservable.add(() => {
-          console.log('🔧 Scale gizmo drag ended');
+          // Scale gizmo drag ended
           this.setGizmoDragging(false);
           
           // Mark scene as modified
@@ -193,21 +193,18 @@ export const renderActions = {
   },
 
   selectObject(object) {
-    console.log('🎯 selectObject called with:', object?.name || 'null');
+    // Update selected object in render store
     setRenderStore('selectedObject', object);
     
     // Also update editor store selection to keep UI in sync
     if (object) {
       const entityId = object.uniqueId || object.name;
-      console.log('🔗 Setting editor entity ID:', entityId);
       // Import editorActions dynamically to avoid circular imports
       import('@/layout/stores/EditorStore').then(({ editorActions }) => {
-        console.log('✅ Calling editorActions.selectEntity with:', entityId);
         editorActions.selectEntity(entityId);
       });
     } else {
-      console.log('🚫 Clearing editor selection');
-      // Import editorActions dynamically to avoid circular imports
+      // Clear editor selection
       import('@/layout/stores/EditorStore').then(({ editorActions }) => {
         editorActions.selectEntity(null);
       });
@@ -316,7 +313,7 @@ export const renderActions = {
     // Update hierarchy directly
     this.addObjectToHierarchy(mesh);
     
-    console.log('➕ Object added to scene:', mesh.name);
+    // Object added to scene
     
     // Mark scene as modified
     import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
@@ -348,7 +345,7 @@ export const renderActions = {
     
     mesh.dispose();
     
-    console.log('➖ Object removed from scene:', mesh.name);
+    // Object removed from scene
     
     // Mark scene as modified
     import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
@@ -389,15 +386,13 @@ export const renderActions = {
 
   // Select object by ID (used by scene tree)
   selectObjectById(objectId) {
-    console.log('🔍 selectObjectById called with:', objectId);
+    // Find and select object by ID from scene hierarchy
     if (!renderStore.scene) return false;
     
     // Find the Babylon object by ID in the hierarchy
     const findObjectById = (hierarchyItems) => {
       for (const item of hierarchyItems) {
-        console.log('🔎 Checking hierarchy item:', item.id, 'against target:', objectId);
         if (item.id === objectId && item.babylonObject) {
-          console.log('✅ Found matching Babylon object:', item.babylonObject.name);
           return item.babylonObject;
         }
         if (item.children) {
@@ -410,12 +405,11 @@ export const renderActions = {
     
     const babylonObject = findObjectById(renderStore.hierarchy);
     if (babylonObject) {
-      console.log('🎯 Found object, calling selectObject');
       this.selectObject(babylonObject);
       return true;
     }
     
-    console.log(`❌ Could not find Babylon object for ID: ${objectId}`);
+    console.warn(`Could not find Babylon object for ID: ${objectId}`);
     return false;
   },
 
@@ -587,7 +581,7 @@ export const renderActions = {
     }];
     
     setRenderStore('hierarchy', hierarchy);
-    console.log('🌳 Scene Tree: Hierarchy initialized with', hierarchyItems.length, 'root objects');
+    // Scene hierarchy initialized
   },
 
   addObjectToHierarchy(babylonObject) {
@@ -629,7 +623,7 @@ export const renderActions = {
       }
     });
 
-    console.log('🌳 Scene Tree: Added object to hierarchy:', newItem.name);
+    // Object added to scene hierarchy
   },
 
   removeObjectFromHierarchy(objectId) {
@@ -643,7 +637,7 @@ export const renderActions = {
       return removeFromNodes(prev);
     });
 
-    console.log('🌳 Scene Tree: Removed object from hierarchy:', objectId);
+    // Object removed from scene hierarchy
   },
 
 

@@ -30,19 +30,17 @@ export function createPlugin(config) {
 
       async onInit() {
         if (initialized) return;
-        console.log(`[Plugin:${id}] Initializing...`);
+        // Initialize plugin
         await onInit(api);
         initialized = true;
-        console.log(`[Plugin:${id}] Initialized`);
       },
 
       async onStart() {
         if (!initialized) throw new Error('Plugin must be initialized before starting');
         if (started) return;
-        console.log(`[Plugin:${id}] Starting...`);
+        // Start plugin
         await onStart(api);
         started = true;
-        console.log(`[Plugin:${id}] Started`);
       },
 
       onUpdate() {
@@ -51,7 +49,7 @@ export function createPlugin(config) {
           try {
             callback();
           } catch (error) {
-            console.error(`[Plugin:${id}] Update callback error:`, error);
+            console.error(`Plugin ${id} update callback error:`, error);
           }
         });
         onUpdate(api);
@@ -59,19 +57,17 @@ export function createPlugin(config) {
 
       async onStop() {
         if (!started) return;
-        console.log(`[Plugin:${id}] Stopping...`);
+        // Stop plugin
         await onStop(api);
         started = false;
-        console.log(`[Plugin:${id}] Stopped`);
       },
 
       async onDispose() {
         if (started) await plugin.onStop();
-        console.log(`[Plugin:${id}] Disposing...`);
+        // Dispose plugin resources
         updateCallbacks.length = 0;
         await onDispose(api);
         initialized = false;
-        console.log(`[Plugin:${id}] Disposed`);
       },
 
       addUpdateCallback: (callback) => updateCallbacks.push(callback),

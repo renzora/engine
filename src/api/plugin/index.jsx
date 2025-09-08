@@ -45,7 +45,7 @@ class PluginLoader {
   }
 
   async discoverPlugins() {
-    console.log('[PluginLoader] Auto-discovering plugins...');
+    // Auto-discovering plugins
     const discovered = new Map();
 
     const autoDiscoveredPlugins = await this.scanForPlugins();
@@ -55,7 +55,7 @@ class PluginLoader {
       this.setPluginState(plugin.id, PLUGIN_STATES.DISCOVERED);
     });
 
-    console.log(`[PluginLoader] Auto-discovered ${discovered.size} plugins`);
+    // Auto-discovery completed
     return discovered;
   }
 
@@ -107,7 +107,7 @@ class PluginLoader {
         };
 
         plugins.push(plugin);
-        console.log(`[PluginLoader] Auto-discovered: ${pluginId} at ${location.path}`);
+        // Auto-discovered plugin: pluginId at location.path
       } catch (error) {
         console.warn(`[PluginLoader] Failed to process plugin at ${location.path}:`, error);
       }
@@ -147,7 +147,7 @@ class PluginLoader {
     
     try {
       this.setPluginState(id, PLUGIN_STATES.LOADING);
-      console.log(`[PluginLoader] Loading plugin: ${id}`);
+      // Loading plugin: id
 
       let pluginModule;
       
@@ -242,7 +242,7 @@ class PluginLoader {
       })));
 
       this.setPluginState(id, PLUGIN_STATES.LOADED);
-      console.log(`[PluginLoader] Plugin loaded: ${id}`);
+      // Plugin loaded successfully
       
       return pluginInstance;
     } catch (error) {
@@ -261,7 +261,7 @@ class PluginLoader {
 
     try {
       this.setPluginState(pluginId, PLUGIN_STATES.INITIALIZING);
-      console.log(`[PluginLoader] Initializing plugin: ${pluginId}`);
+      // Initializing plugin
 
       if (typeof plugin.instance.onInit === 'function') {
         await plugin.instance.onInit();
@@ -276,7 +276,7 @@ class PluginLoader {
       });
 
       this.setPluginState(pluginId, PLUGIN_STATES.INITIALIZED);
-      console.log(`[PluginLoader] Plugin initialized: ${pluginId}`);
+      // Plugin initialized successfully
     } catch (error) {
       console.error(`[PluginLoader] Failed to initialize plugin ${pluginId}:`, error);
       this.setPluginError(pluginId, error);
@@ -293,14 +293,14 @@ class PluginLoader {
 
     try {
       this.setPluginState(pluginId, PLUGIN_STATES.STARTING);
-      console.log(`[PluginLoader] Starting plugin: ${pluginId}`);
+      // Starting plugin
 
       if (typeof plugin.instance.onStart === 'function') {
         await plugin.instance.onStart();
       }
 
       this.setPluginState(pluginId, PLUGIN_STATES.RUNNING);
-      console.log(`[PluginLoader] Plugin started: ${pluginId}`);
+      // Plugin started successfully
     } catch (error) {
       console.error(`[PluginLoader] Failed to start plugin ${pluginId}:`, error);
       this.setPluginError(pluginId, error);
@@ -310,7 +310,7 @@ class PluginLoader {
   }
 
   async loadAllPlugins() {
-    console.log('[PluginLoader] Loading all plugins...');
+    // Loading all plugins
     
     const discovered = await this.discoverPlugins();
     const loadPromises = [];
@@ -354,13 +354,13 @@ class PluginLoader {
 
     await Promise.all(startPromises);
 
-    console.log(`[PluginLoader] Plugin loading complete. Running plugins: ${this.getRunningPlugins().length}`);
+    // Plugin loading completed
   }
 
   startUpdateLoop() {
     if (this.updateInterval) return;
 
-    console.log('[PluginLoader] Starting plugin update loop...');
+    // Starting plugin update loop
     this.updateInterval = setInterval(() => {
       this.updatePlugins();
     }, 1000 / 60);
@@ -370,7 +370,7 @@ class PluginLoader {
     if (this.updateInterval) {
       clearInterval(this.updateInterval);
       this.updateInterval = null;
-      console.log('[PluginLoader] Plugin update loop stopped');
+      // Plugin update loop stopped
     }
   }
 
@@ -452,7 +452,7 @@ export class PluginAPI {
   async initialize() {
     if (this.initialized) return;
     
-    console.log('[PluginAPI] Initializing Plugin API...');
+    // Initializing Plugin API
     
     try {
       await this.pluginLoader.loadAllPlugins();
@@ -473,7 +473,7 @@ export class PluginAPI {
   async dispose() {
     if (!this.initialized) return;
     
-    console.log('[PluginAPI] Disposing Plugin API...');
+    // Disposing Plugin API
     this.pluginLoader.stopUpdateLoop();
     
     const plugins = this.pluginLoader.getAllPlugins();
@@ -488,7 +488,7 @@ export class PluginAPI {
     }
     
     this.initialized = false;
-    console.log('[PluginAPI] Plugin API disposed');
+    // Plugin API disposed
   }
 
   registerTopMenuItem(id, config) {
@@ -503,7 +503,7 @@ export class PluginAPI {
     };
 
     setTopMenuItems(prev => new Map(prev.set(id, menuItem)));
-    console.log(`[PluginAPI] Top menu item registered: ${id}`);
+    // Top menu item registered
     return true;
   }
 
@@ -519,7 +519,7 @@ export class PluginAPI {
     };
 
     setPropertyTabs(prev => new Map(prev.set(id, tab)));
-    console.log(`[PluginAPI] Property tab registered: ${id}`);
+    // Property tab registered
     return true;
   }
 
@@ -535,7 +535,7 @@ export class PluginAPI {
     };
 
     setBottomPanelTabs(prev => new Map(prev.set(id, tab)));
-    console.log(`[PluginAPI] Bottom panel tab registered: ${id}`);
+    // Bottom panel tab registered
     return true;
   }
 
@@ -550,7 +550,7 @@ export class PluginAPI {
     };
 
     setViewportTypes(prev => new Map(prev.set(id, viewportType)));
-    console.log(`[PluginAPI] Viewport type registered: ${id}`);
+    // Viewport type registered
     return true;
   }
 
@@ -571,7 +571,7 @@ export class PluginAPI {
     };
 
     setToolbarButtons(prev => new Map(prev.set(id, button)));
-    console.log(`[PluginAPI] Toolbar button registered: ${id}`);
+    // Toolbar button registered
     return true;
   }
 
@@ -592,7 +592,7 @@ export class PluginAPI {
     };
 
     setToolbarButtons(prev => new Map(prev.set(id, button)));
-    console.log(`[PluginAPI] Helper button registered: ${id}`);
+    // Helper button registered
     return true;
   }
 
@@ -607,14 +607,14 @@ export class PluginAPI {
     };
 
     setFooterButtons(prev => new Map(prev.set(id, button)));
-    console.log(`[PluginAPI] Footer button registered: ${id}`);
+    // Footer button registered
     return true;
   }
 
 
   registerLayoutComponent(region, component) {
     setLayoutComponents(prev => new Map(prev.set(region, component)));
-    console.log(`[PluginAPI] Layout component registered: ${region}`);
+    // Layout component registered
     return true;
   }
 
@@ -624,7 +624,7 @@ export class PluginAPI {
       newMap.delete(region);
       return newMap;
     });
-    console.log(`[PluginAPI] Layout component unregistered: ${region}`);
+    // Layout component unregistered
     return true;
   }
 
@@ -648,7 +648,7 @@ export class PluginAPI {
     };
 
     setRegisteredPlugins(prev => new Map(prev.set(id, pluginConfig)));
-    console.log(`[PluginAPI] Plugin registered: ${id} v${plugin.version}`);
+    // Plugin registered
     return true;
   }
 
@@ -662,7 +662,7 @@ export class PluginAPI {
   open(typeId, options) { return this.createViewportTab(typeId, options); }
 
   createViewportTab(typeId, options = {}) {
-    console.log(`[PluginAPI] createViewportTab called for: ${typeId}`);
+    // Creating viewport tab for typeId
     const viewportType = viewportTypes().get(typeId);
     if (!viewportType) {
       console.error(`[PluginAPI] Viewport type not found: ${typeId}`);
@@ -682,7 +682,7 @@ export class PluginAPI {
           ...options
         };
 
-        console.log(`[PluginAPI] Creating viewport tab: ${newTabId} (${typeId})`);
+        // Creating viewport tab with new ID
         viewportActions.addViewportTab(newTab);
         
         if (options.setActive !== false) {
@@ -711,7 +711,7 @@ export class PluginAPI {
           hasUnsavedChanges: options.hasUnsavedChanges || false
         };
 
-        console.log(`[PluginAPI] Creating 3D scene viewport: ${newTabId}`);
+        // Creating 3D scene viewport with new ID
         viewportActions.addViewportTab(newTab);
         
         if (options.setActive !== false) {
@@ -730,7 +730,7 @@ export class PluginAPI {
 
   setPropertiesPanelVisible(visible) {
     setPropertiesPanelVisible(visible);
-    console.log(`[PluginAPI] Properties panel visibility: ${visible}`);
+    // Properties panel visibility changed
   }
   
   showProps(visible = true) { return this.setPropertiesPanelVisible(visible); }
@@ -738,7 +738,7 @@ export class PluginAPI {
 
   setBottomPanelVisible(visible) {
     setBottomPanelVisible(visible);
-    console.log(`[PluginAPI] Bottom panel visibility: ${visible}`);
+    // Bottom panel visibility changed
   }
   
   showPanel(visible = true) { return this.setBottomPanelVisible(visible); }
@@ -746,7 +746,7 @@ export class PluginAPI {
 
   setHorizontalMenuButtonsEnabled(enabled) {
     setHorizontalMenuButtonsEnabled(enabled);
-    console.log(`[PluginAPI] Horizontal menu buttons enabled: ${enabled}`);
+    // Horizontal menu buttons toggled
   }
   
   showMenu(enabled = true) { return this.setHorizontalMenuButtonsEnabled(enabled); }
@@ -754,7 +754,7 @@ export class PluginAPI {
 
   setFooterVisible(visible) {
     setFooterVisible(visible);
-    console.log(`[PluginAPI] Footer visible: ${visible}`);
+    // Footer visibility changed
   }
   
   showFooter(visible = true) { return this.setFooterVisible(visible); }
@@ -762,7 +762,7 @@ export class PluginAPI {
 
   setViewportTabsVisible(visible) {
     setViewportTabsVisible(visible);
-    console.log(`[PluginAPI] Viewport tabs visible: ${visible}`);
+    // Viewport tabs visibility changed
   }
   
   showTabs(visible = true) { return this.setViewportTabsVisible(visible); }
@@ -770,7 +770,7 @@ export class PluginAPI {
 
   setToolbarVisible(visible) {
     setToolbarVisible(visible);
-    console.log(`[PluginAPI] Toolbar visible: ${visible}`);
+    // Toolbar visibility changed
   }
   
   showToolbar(visible = true) { return this.setToolbarVisible(visible); }
@@ -778,7 +778,7 @@ export class PluginAPI {
 
   setHelperVisible(visible) {
     setHelperVisible(visible);
-    console.log(`[PluginAPI] Helper visible: ${visible}`);
+    // Helper visibility changed
   }
   
   showHelper(visible = true) { return this.setHelperVisible(visible); }
@@ -842,7 +842,7 @@ export class PluginAPI {
   emit(eventType, data) {
     const event = new CustomEvent(`plugin:${eventType}`, { detail: data });
     document.dispatchEvent(event);
-    console.log(`[PluginAPI] Event emitted: ${eventType}`, data);
+    // Event emitted: eventType
   }
 
   on(eventType, callback) {
@@ -883,20 +883,20 @@ export function usePluginAPI() {
 
 export function Engine(props) {
   onMount(async () => {
-    console.log('[Engine] Starting Renzora Engine...');
+    // Starting Renzora Engine
     try {
       await pluginAPI.initialize();
-      console.log('[Engine] Renzora Engine started successfully!');
+      // Renzora Engine started successfully
     } catch (error) {
       console.error('[Engine] Failed to start Renzora Engine:', error);
     }
   });
 
   onCleanup(async () => {
-    console.log('[Engine] Shutting down Renzora Engine...');
+    // Shutting down Renzora Engine
     try {
       await pluginAPI.dispose();
-      console.log('[Engine] Renzora Engine shut down successfully');
+      // Renzora Engine shut down successfully
     } catch (error) {
       console.error('[Engine] Error during shutdown:', error);
     }

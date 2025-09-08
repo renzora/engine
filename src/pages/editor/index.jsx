@@ -17,7 +17,7 @@ import { readFile, writeFile } from '@/api/bridge/files';
 
 export default function EditorPage() {
   onMount(() => {
-    console.log('[EditorPage] Initializing editor components...');
+    // Initializing editor components
     const api = usePluginAPI();
     
 
@@ -66,10 +66,10 @@ export default function EditorPage() {
       }
     });
 
-    console.log('[EditorPage] Editor components registered');
+    // Editor components registered
     
     onCleanup(() => {
-      console.log('[EditorPage] Cleaning up editor components...');
+      // Cleaning up editor components
     });
   });
 

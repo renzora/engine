@@ -64,18 +64,17 @@ const ViewportTabs = () => {
       isPinned: false,
       hasUnsavedChanges: false
     };
-    console.log('🎯 Adding new viewport tab:', newTab);
+    // Create new viewport tab
     viewportActions.addViewportTab(newTab);
     viewportActions.setActiveViewportTab(newTabId);
-    console.log('🎯 Active tab set to:', newTabId);
+    // Set new tab as active
     setIsAddDropdownOpen(false);
   };
 
   const handleTabClick = (tabId) => {
-    console.log('🎯 Tab clicked:', tabId);
-    console.log('🎯 Current active tab before:', viewportStore.activeTabId);
+    // Handle tab selection
+    // Switch active tab
     viewportActions.setActiveViewportTab(tabId);
-    console.log('🎯 Current active tab after:', viewportStore.activeTabId);
   };
 
   const handleTabClose = (e, tabId) => {
@@ -138,7 +137,7 @@ const ViewportTabs = () => {
           icon: (suspendedTabs() || []).includes(tab.id) ? IconPlayerPlay : IconPlayerPause,
           action: () => {
             // TODO: Implement suspend/resume functionality
-            console.log('Suspend/Resume not yet implemented');
+            // TODO: Suspend/Resume functionality
           },
           disabled: tab.id === activeTabId()
         },

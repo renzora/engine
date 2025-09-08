@@ -25,7 +25,7 @@ export class SceneManager {
       }
 
       const sceneNameToSave = sceneName || this.currentSceneName;
-      console.log('💾 SceneManager: Saving scene:', sceneNameToSave);
+      // Saving scene to file
 
       // Create serializable scene data
       const sceneData = {
@@ -58,13 +58,13 @@ export class SceneManager {
         const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
         if (sceneTab && sceneTab.hasUnsavedChanges) {
           viewportActions.setTabUnsavedChanges(sceneTab.id, false);
-          console.log('✅ SceneManager: Cleared unsaved changes indicator');
+          // Cleared unsaved changes indicator
         }
       } catch (err) {
         console.error('❌ SceneManager: Failed to clear unsaved changes indicator:', err);
       }
 
-      console.log('✅ SceneManager: Scene saved successfully:', sceneNameToSave);
+      // Scene saved successfully
       return { success: true };
 
     } catch (error) {
@@ -80,7 +80,7 @@ export class SceneManager {
    */
   async loadScene(sceneName) {
     const startTime = Date.now();
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() STARTED - Scene: "${sceneName}"`);
+    // Starting scene load process
     
     // Dispatch progress events with detailed information
     const dispatchProgress = (stage, currentFile = '', processedCount = 0, totalCount = 0) => {
@@ -91,66 +91,57 @@ export class SceneManager {
     
     try {
       const project = getCurrentProject();
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Project:`, project);
+      // Got current project for scene loading
       
       if (!project) {
-        console.error(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - ERROR: No project selected`);
+        console.error('❌ SceneManager: No project selected');
         return { success: false, error: 'No project selected' };
       }
 
       dispatchProgress('Checking for unsaved changes...');
       // Check for unsaved changes before switching scenes
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Checking unsaved changes...`);
+      // Checking for unsaved changes
       const canContinue = await this.promptUnsavedChanges();
       if (!canContinue) {
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - User cancelled scene loading`);
+        // User cancelled scene loading
         return { success: false, error: 'User cancelled scene loading' };
       }
 
       dispatchProgress('Fetching scene data...');
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Loading scene with bundled assets:`, sceneName);
+      // Loading scene with bundled assets
 
       // Use the new bundled scene endpoint
       const bundleUrl = `http://localhost:3001/scene-bundle/${encodeURIComponent(project.name)}/${encodeURIComponent(sceneName)}`;
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Fetching bundle from:`, bundleUrl);
+      // Fetching scene bundle from server
       
       const response = await fetch(bundleUrl);
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Response status:`, response.status, response.statusText);
+      // Got response from server
       
       if (!response.ok) {
-        console.error(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - ERROR: Failed to load scene bundle:`, response.status, response.statusText);
+        console.error('❌ SceneManager: Failed to load scene bundle:', response.status, response.statusText);
         throw new Error(`Failed to load scene bundle: ${response.status} ${response.statusText}`);
       }
 
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Parsing JSON response...`);
+      // Parsing scene bundle response
       const bundleData = await response.json();
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Bundle received:`, {
-        assetCount: bundleData.assetCount,
-        scriptCount: bundleData.scriptCount || 0,
-        project: bundleData.project,
-        sceneName: bundleData.sceneName,
-        bundledAt: bundleData.bundledAt,
-        sceneHierarchyLength: bundleData.scene?.hierarchy?.length,
-        assetsKeys: Object.keys(bundleData.assets || {}),
-        scriptsKeys: Object.keys(bundleData.scripts || {})
-      });
+      // Scene bundle received with assets and scripts
 
       // Restore scene state from bundled data
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Starting scene restoration...`);
+      // Starting scene restoration
       await this.restoreSceneFromBundledData(bundleData, dispatchProgress);
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Scene restoration completed`);
+      // Scene restoration completed
 
       this.currentSceneName = sceneName;
       this.hasUnsavedChanges = false;
 
       // Update project.json with current scene
       dispatchProgress('Updating project settings...');
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - Updating project currentScene...`);
+      // Updating project current scene
       await updateProjectCurrentScene(sceneName);
 
       dispatchProgress('Scene loading complete!');
       const totalTime = Date.now() - startTime;
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.loadScene() - COMPLETED in ${totalTime}ms - Scene: "${sceneName}"`);
+      // Scene load completed
       return { success: true };
 
     } catch (error) {
@@ -196,7 +187,7 @@ export class SceneManager {
       const result = await this.saveScene(sceneName);
       
       if (result.success) {
-        console.log('✅ SceneManager: New scene created:', sceneName);
+        // New scene created successfully
       }
       
       return result;
@@ -214,7 +205,7 @@ export class SceneManager {
     const scene = renderStore.scene;
     if (!scene) return;
 
-    console.log('🗑️ SceneManager: Clearing scene...');
+    // Clearing current scene
 
     // Remove all user objects (keep system objects)
     const objectsToRemove = [
@@ -360,15 +351,13 @@ export class SceneManager {
         const attachedScripts = this.getAttachedScriptsForObject(babylonObj.uniqueId || babylonObj.name);
         if (attachedScripts.length > 0) {
           serializedData.__attachedScripts = attachedScripts;
-          console.log(`📜 SceneManager: Object ${babylonObj.name} has ${attachedScripts.length} attached scripts`);
+          // Object has attached scripts for serialization
         }
         
-        console.log(`📄 SceneManager: Serialized ${babylonObj.getClassName()} '${babylonObj.name}' with ${Object.keys(serializedData).length} properties`);
+        // Serialized object data
         
         // Log metadata for debugging
-        if (babylonObj.metadata && Object.keys(babylonObj.metadata).length > 0) {
-          console.log(`📄 SceneManager: Object ${babylonObj.name} has metadata:`, Object.keys(babylonObj.metadata));
-        }
+        // Object metadata included in serialization
       }
 
       return serializedData;
@@ -397,7 +386,7 @@ export class SceneManager {
    * @param {Object} sceneData - Saved scene data
    */
   async restoreSceneFromData(sceneData) {
-    console.log('🔄 SceneManager: Restoring scene from data...');
+    // Restoring scene from saved data
 
     // Clear current scene first
     this.clearScene();
@@ -416,7 +405,7 @@ export class SceneManager {
 
     // TODO: Restore scene objects from hierarchy
     // This will require recreating Babylon objects from the serialized data
-    console.log('🏗️ SceneManager: Scene object restoration not yet implemented');
+    // Scene object restoration not yet implemented
     
     // For now, just restore the hierarchy structure without Babylon objects
     if (sceneData.hierarchy) {
@@ -430,62 +419,55 @@ export class SceneManager {
    * @param {Object} bundleData - Bundle containing scene data and assets
    */
   async restoreSceneFromBundledData(bundleData, dispatchProgress = null) {
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() STARTED`);
+    // Starting scene restoration from bundled data
 
     // Clear current scene first
     if (dispatchProgress) dispatchProgress('Clearing current scene...');
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Clearing current scene...`);
+    // Clearing current scene
     this.clearScene();
 
     // Wait for scene to be ready
     if (dispatchProgress) dispatchProgress('Preparing scene...');
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Waiting for scene...`);
+    // Waiting for scene to be ready
     await this.waitForScene();
 
     const sceneData = bundleData.scene;
     const assets = bundleData.assets;
     const scripts = bundleData.scripts || {};
 
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Scene data:`, {
-      hasLighting: !!sceneData.lighting,
-      hasSettings: !!sceneData.settings,
-      hasHierarchy: !!sceneData.hierarchy,
-      hierarchyLength: sceneData.hierarchy?.length,
-      assetsCount: Object.keys(assets).length,
-      scriptsCount: Object.keys(scripts).length
-    });
+    // Analyzing scene bundle data
 
     // Store bundled assets and compiled scripts in memory for later use
     // Create global caches that can be accessed by asset loaders and script runtime
     window._sceneBundledAssets = assets;
     window._sceneBundledScripts = scripts;
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Cached ${Object.keys(assets).length} bundled assets and ${Object.keys(scripts).length} compiled scripts in memory`);
+    // Cached bundled assets and compiled scripts in memory
 
     // Restore settings and lighting
     if (sceneData.lighting) {
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Restoring lighting settings...`);
+      // Restoring lighting settings
       renderActions.updateSettings({ lighting: sceneData.lighting });
     }
     
     if (sceneData.settings) {
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Restoring scene settings...`);
+      // Restoring scene settings
       renderActions.updateSettings(sceneData.settings);
     }
 
     // Restore scene objects from hierarchy with bundled assets
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Starting object restoration...`);
+    // Starting object restoration
     
     if (sceneData.hierarchy) {
       await this.restoreSceneObjects(sceneData.hierarchy, assets, dispatchProgress);
     } else {
-      console.warn(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - WARNING: No hierarchy found in scene data!`);
+      console.warn('⚠️ SceneManager: No hierarchy found in scene data');
     }
 
     // Update scene tree name to reflect loaded scene
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - Updating scene tree name...`);
+    // Updating scene tree name
     this.updateSceneTreeName(bundleData.sceneName);
     
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneFromBundledData() - COMPLETED`);
+    // Scene restoration completed
   }
 
   /**
@@ -494,7 +476,7 @@ export class SceneManager {
    * @param {Object} assets - Bundled assets (base64 encoded)
    */
   async restoreSceneObjects(hierarchy, assets, dispatchProgress = null) {
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneObjects() STARTED - Processing ${hierarchy.length} hierarchy items`);
+    // Starting scene object restoration
     
     // Count total objects for progress tracking
     const totalObjects = this.countTotalObjects(hierarchy);
@@ -505,7 +487,7 @@ export class SceneManager {
       processedObjects++;
       if (dispatchProgress) {
         const currentFile = currentItem?.babylonData?.metadata?.originalAssetData?.path || currentItem?.name || 'Unknown';
-        console.log(`📊 Progress: ${processedObjects}/${totalObjects} - Processing: ${currentFile}`);
+        // Progress tracking for object restoration
         dispatchProgress('Restoring objects...', currentFile, processedObjects, totalObjects);
       }
     };
@@ -513,11 +495,11 @@ export class SceneManager {
     // Process hierarchy items recursively
     for (let i = 0; i < hierarchy.length; i++) {
       const item = hierarchy[i];
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneObjects() - Processing hierarchy item ${i + 1}/${hierarchy.length}: "${item.name}"`);
+      // Processing hierarchy item
       await this.restoreHierarchyItem(item, assets, progressTracker);
     }
     
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreSceneObjects() - COMPLETED processing ${hierarchy.length} hierarchy items`);
+    // Completed scene object restoration
   }
 
   /**
@@ -546,7 +528,7 @@ export class SceneManager {
    * @param {Function} progressTracker - Progress tracking function
    */
   async restoreHierarchyItem(item, assets, progressTracker = null) {
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Item: "${item.name}" Type: "${item.type}" HasBabylonData: ${!!item.babylonData} HasChildren: ${!!item.children}`);
+    // Processing hierarchy item details
 
     // Track progress for this item (every item counts towards progress)
     if (progressTracker) {
@@ -555,12 +537,12 @@ export class SceneManager {
 
     // Skip system objects (scene root) but still process children
     if (item.type === 'scene') {
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Scene root found, processing ${item.children?.length || 0} children...`);
+      // Processing scene root children
       // Process children of scene root
       if (item.children) {
         for (let i = 0; i < item.children.length; i++) {
           const child = item.children[i];
-          console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Processing scene child ${i + 1}/${item.children.length}: "${child.name}"`);
+          // Processing scene child
           await this.restoreHierarchyItem(child, assets, progressTracker);
         }
       }
@@ -569,18 +551,18 @@ export class SceneManager {
 
     // Restore object based on babylon data (cameras, lights, meshes - all get restored)
     if (item.babylonData) {
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Restoring object with babylon data: "${item.name}"`);
+      // Restoring object with babylon data
       await this.restoreObjectFromBabylonData(item, assets);
     } else {
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Skipping item: "${item.name}" (type: ${item.type}, hasBabylonData: ${!!item.babylonData})`);
+      // Skipping item without babylon data
     }
 
     // Process children recursively
     if (item.children) {
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Processing ${item.children.length} children of "${item.name}"`);
+      // Processing item children
       for (let i = 0; i < item.children.length; i++) {
         const child = item.children[i];
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.restoreHierarchyItem() - Processing child ${i + 1}/${item.children.length} of "${item.name}": "${child.name}"`);
+        // Processing child item
         await this.restoreHierarchyItem(child, assets, progressTracker);
       }
     }
@@ -598,14 +580,14 @@ export class SceneManager {
       return;
     }
 
-    console.log(`📦 SceneManager: Restoring object '${item.name}' with babylon data`);
+    // Restoring object from babylon data
 
     try {
       // Check if this object has asset data (3D model)
       const assetPath = item.babylonData?.metadata?.originalAssetData?.path;
       
       if (assetPath && assets[assetPath]) {
-        console.log(`🎯 SceneManager: Restoring 3D model from bundled asset: ${assetPath}`);
+        // Restoring 3D model from bundled asset
         const restoredObject = await this.restore3DModelFromAsset(item, assets[assetPath], scene);
         
         // Reattach scripts after object restoration
@@ -613,7 +595,7 @@ export class SceneManager {
           await this.reattachScriptsToObject(restoredObject, item.babylonData.__attachedScripts, dispatchProgress);
         }
       } else {
-        console.log(`📋 SceneManager: Restoring basic object without asset data`);
+        // Restoring basic object without asset data
         // Handle objects without asset data (cameras, lights, etc.)
         const restoredObject = await this.restoreBasicObject(item, scene);
         
@@ -634,19 +616,19 @@ export class SceneManager {
    * @param {Scene} scene - Babylon scene
    */
   async restore3DModelFromAsset(item, assetData, scene) {
-    console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() STARTED - Item: "${item.name}"`);
+    // Starting 3D model restoration
     
     try {
       const { SceneLoader } = await import('@babylonjs/core/Loading/sceneLoader.js');
       const { TransformNode } = await import('@babylonjs/core/Meshes/transformNode.js');
       
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Babylon modules imported successfully`);
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Asset data size: ${assetData.length} chars (base64)`);
+      // Babylon modules imported
+      // Processing asset data
 
       // Convert base64 to blob URL for SceneLoader
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Converting base64 to binary...`);
+      // Converting asset data to binary
       const binaryData = atob(assetData);
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Binary data size: ${binaryData.length} bytes`);
+      // Binary conversion completed
       
       const bytes = new Uint8Array(binaryData.length);
       for (let i = 0; i < binaryData.length; i++) {
@@ -655,30 +637,25 @@ export class SceneManager {
       
       const blob = new Blob([bytes], { type: 'application/octet-stream' });
       const blobUrl = URL.createObjectURL(blob);
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Created blob URL: ${blobUrl.substring(0, 50)}...`);
+      // Created blob URL for loading
 
       // Load the 3D model with file extension hint
       const assetPath = item.babylonData?.metadata?.originalAssetData?.path;
       const fileExtension = assetPath ? assetPath.split('.').pop().toLowerCase() : 'glb';
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Loading 3D model via SceneLoader.ImportMeshAsync with extension hint: .${fileExtension}`);
+      // Loading 3D model with SceneLoader
       const result = await SceneLoader.ImportMeshAsync("", "", blobUrl, scene, undefined, `.${fileExtension}`);
-      console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - SceneLoader completed:`, {
-        meshesCount: result.meshes?.length,
-        transformNodesCount: result.transformNodes?.length,
-        animationGroupsCount: result.animationGroups?.length,
-        skeletonsCount: result.skeletons?.length
-      });
+      // SceneLoader completed successfully
       
       // Clean up blob URL
       URL.revokeObjectURL(blobUrl);
 
       if (result.meshes && result.meshes.length > 0) {
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Creating container for ${result.meshes.length} meshes`);
+        // Creating container for loaded meshes
         
         // Create container (use the existing name from the saved data)
         const containerName = item.babylonData.__engineName || item.name;
         const container = new TransformNode(containerName, scene);
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Container created: "${containerName}" (ID: ${container.uniqueId})`);
+        // Container created for meshes
         
         // Parent all loaded meshes to the container
         let parentedMeshes = 0;
@@ -686,50 +663,50 @@ export class SceneManager {
           if (mesh.name !== "__root__") {
             mesh.setParent(container);
             parentedMeshes++;
-            console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Parented mesh ${index + 1}: "${mesh.name}"`);
+            // Parented mesh to container
           }
         });
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Parented ${parentedMeshes}/${result.meshes.length} meshes to container`);
+        // All meshes parented to container
 
         // Restore transform and metadata from saved data
         if (item.babylonData.position) {
           container.position.x = item.babylonData.position[0];
           container.position.y = item.babylonData.position[1]; 
           container.position.z = item.babylonData.position[2];
-          console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Restored position: [${item.babylonData.position.join(', ')}]`);
+          // Restored object position
         }
         if (item.babylonData.rotation) {
           container.rotation.x = item.babylonData.rotation[0];
           container.rotation.y = item.babylonData.rotation[1];
           container.rotation.z = item.babylonData.rotation[2];
-          console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Restored rotation: [${item.babylonData.rotation.join(', ')}]`);
+          // Restored object rotation
         }
         if (item.babylonData.scaling) {
           container.scaling.x = item.babylonData.scaling[0];
           container.scaling.y = item.babylonData.scaling[1];
           container.scaling.z = item.babylonData.scaling[2];
-          console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Restored scaling: [${item.babylonData.scaling.join(', ')}]`);
+          // Restored object scaling
         }
 
         // Restore metadata
         if (item.babylonData.metadata) {
           container.metadata = item.babylonData.metadata;
-          console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Restored metadata with ${Object.keys(item.babylonData.metadata).length} properties`);
+          // Restored object metadata
         }
 
         // Add to render store
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Adding container to render store...`);
+        // Adding container to render store
         renderActions.addObject(container);
         
-        console.log(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - COMPLETED SUCCESSFULLY for "${item.name}" - Container ID: ${container.uniqueId}`);
+        // 3D model restoration completed successfully
         return container;
       } else {
-        console.error(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - ERROR: No meshes found in loaded result for "${item.name}"`);
+        console.error('❌ SceneManager: No meshes found in loaded result for', item.name);
         return null;
       }
     } catch (error) {
-      console.error(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - ERROR: Failed to load 3D model for "${item.name}":`, error);
-      console.error(`🔥 [${new Date().toISOString()}] SceneManager.restore3DModelFromAsset() - Error stack:`, error.stack);
+      console.error('❌ SceneManager: Failed to load 3D model for', item.name, error);
+      console.error('❌ SceneManager: Error stack:', error.stack);
       return null;
     }
   }
@@ -741,7 +718,7 @@ export class SceneManager {
    * @returns {Object|null} Restored Babylon object or null
    */
   async restoreBasicObject(item, scene) {
-    console.log(`📋 SceneManager: Restoring basic object '${item.name}' of type '${item.type}'`);
+    // Restoring basic object
     
     try {
       const babylonData = item.babylonData;
@@ -753,7 +730,7 @@ export class SceneManager {
       let restoredObject = null;
 
       if (item.type === 'camera') {
-        console.log(`📷 SceneManager: Restoring camera: ${item.name}`);
+        // Restoring camera object
         
         // Import Babylon camera classes
         const { UniversalCamera } = await import('@babylonjs/core/Cameras/universalCamera.js');
@@ -764,14 +741,14 @@ export class SceneManager {
         
         // Restore camera properties from saved data
         if (babylonData.position) {
-          console.log('📷 SceneManager: Restoring camera position:', babylonData.position);
+          // Restoring camera position
           camera.position.fromArray(babylonData.position);
-          console.log('📷 SceneManager: Camera position set to:', camera.position.x, camera.position.y, camera.position.z);
+          // Camera position restored
         }
         if (babylonData.rotation) {
-          console.log('📷 SceneManager: Restoring camera rotation:', babylonData.rotation);
+          // Restoring camera rotation
           camera.rotation.fromArray(babylonData.rotation);
-          console.log('📷 SceneManager: Camera rotation set to:', camera.rotation.x, camera.rotation.y, camera.rotation.z);
+          // Camera rotation restored
         }
         if (babylonData.fov !== undefined) {
           camera.fov = babylonData.fov;
@@ -788,7 +765,7 @@ export class SceneManager {
           camera.setTarget(new Vector3(babylonData.target[0], babylonData.target[1], babylonData.target[2]));
         } else {
           // For UniversalCamera, we might not need to set target if position and rotation are restored
-          console.log('📷 SceneManager: No saved target for camera, using position and rotation only');
+          // Using camera position and rotation only
         }
         
         // Restore metadata
@@ -805,16 +782,16 @@ export class SceneManager {
         renderActions.addObject(camera);
         
         restoredObject = camera;
-        console.log(`✅ SceneManager: Camera '${item.name}' restored successfully with uniqueId:`, camera.uniqueId);
-        console.log(`📋 SceneManager: Camera scripts to attach:`, item.babylonData?.__attachedScripts?.length || 0);
+        // Camera restored successfully
+        // Camera has scripts to attach
         
       } else if (item.type === 'light') {
-        console.log(`💡 SceneManager: Light restoration not yet implemented for '${item.name}'`);
+        // Light restoration not yet implemented
         // TODO: Implement light restoration when needed
         return null;
         
       } else {
-        console.log(`🤷 SceneManager: Unknown basic object type '${item.type}' for '${item.name}'`);
+        // Unknown basic object type
         return null;
       }
 
@@ -836,7 +813,7 @@ export class SceneManager {
       return;
     }
 
-    console.log(`📜 SceneManager: Reattaching ${attachedScripts.length} scripts to object '${babylonObject.name}'`);
+    // Reattaching scripts to object
 
     try {
       // Get the script runtime
@@ -857,7 +834,7 @@ export class SceneManager {
 
       // Attach each script using existing attachScript method (it will auto-detect bulk mode)
       for (const scriptInfo of attachedScripts) {
-        console.log(`📜 SceneManager: Reattaching script '${scriptInfo.name}' to object '${babylonObject.name}'`);
+        // Reattaching individual script
         
         if (dispatchProgress) {
           dispatchProgress('Attaching scripts...', scriptInfo.name);
@@ -871,7 +848,7 @@ export class SceneManager {
           
           // Restore script properties if they exist
           if (scriptInfo.properties && Object.keys(scriptInfo.properties).length > 0) {
-            console.log(`📜 SceneManager: Restoring ${Object.keys(scriptInfo.properties).length} script properties`);
+            // Restoring script properties
             
             // Update Babylon object metadata
             if (!babylonObject.metadata) babylonObject.metadata = {};
@@ -895,13 +872,13 @@ export class SceneManager {
             properties: scriptInfo.properties || {}
           }]);
 
-          console.log(`✅ SceneManager: Successfully reattached script '${scriptInfo.name}' using pre-compiled code`);
+          // Successfully reattached script
         } else {
           console.error(`❌ SceneManager: Failed to reattach script '${scriptInfo.name}' to object '${babylonObject.name}'`);
         }
       }
 
-      console.log(`✅ SceneManager: Completed reattaching scripts to object '${babylonObject.name}'`);
+      // Completed script reattachment
       
     } catch (error) {
       console.error(`❌ SceneManager: Error reattaching scripts to object '${babylonObject.name}':`, error);
@@ -941,7 +918,7 @@ export class SceneManager {
       const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
       if (sceneTab && !sceneTab.hasUnsavedChanges) {
         viewportActions.setTabUnsavedChanges(sceneTab.id, true);
-        console.log('🔸 SceneManager: Marked scene tab as having unsaved changes');
+        // Marked scene as having unsaved changes
       }
     }).catch(err => {
       console.error('❌ SceneManager: Failed to update tab unsaved changes indicator:', err);
@@ -1030,7 +1007,7 @@ export class SceneManager {
       });
     });
     
-    console.log('🌳 SceneManager: Updated scene tree name to:', sceneName);
+    // Updated scene tree name
   }
 }
 

@@ -245,14 +245,14 @@ export default function BabylonRenderer(props) {
             window._mouseFocusAnimationId = requestAnimationFrame(animate);
           } else {
             window._mouseFocusAnimationId = null;
-            console.log('✅ Camera focused on mouse point');
+            // Camera focused on mouse point
             editorActions.addConsoleMessage('Focused camera on mouse point', 'success');
           }
         };
         
         window._mouseFocusAnimationId = requestAnimationFrame(animate);
       } else {
-        console.log('⚠️ No surface found at mouse position');
+        // No surface found at mouse position
         editorActions.addConsoleMessage('No surface found at mouse position', 'warning');
       }
     },

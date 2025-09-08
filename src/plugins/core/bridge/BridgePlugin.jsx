@@ -25,7 +25,7 @@ export default function BridgePlugin() {
       plugin: 'bridge-plugin'
     });
 
-    console.log('[BridgePlugin] Bridge plugin initialized with Engine API');
+    // Bridge plugin initialized with Engine API
   });
 
   // Return the bridge status component for use in the top bar

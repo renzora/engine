@@ -13,7 +13,7 @@ use base64::{Engine as _, engine::general_purpose};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project, load_scene_with_assets};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
-use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest};
+use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest, batch_generate_thumbnails, generate_model_thumbnail};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
 use crate::system_monitor::get_system_stats;
@@ -202,6 +202,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
+        (&Method::POST, "/thumbnails/batch") => {
+            match &body {
+                Some(body_content) => handle_batch_generate_thumbnails(body_content).await,
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
         (&Method::GET, "/health") => handle_health_check(),
         (&Method::GET, "/startup-time") => handle_get_startup_time(),
         (&Method::GET, "/system/stats") => handle_get_system_stats(),
@@ -376,6 +382,33 @@ fn handle_write_binary_file(file_path: &str, body: &str) -> Response<BoxBody<Byt
 
     match write_binary_file_content(file_path, &write_req) {
         Ok(_) => {
+            // Check if this is a GLB file and generate thumbnail automatically
+            if file_path.to_lowercase().ends_with(".glb") {
+                // Parse project name from file path (format: "project_name/assets/...")
+                let path_parts: Vec<&str> = file_path.split('/').collect();
+                if path_parts.len() >= 2 {
+                    let project_name = path_parts[0];
+                    println!("📸 Auto-generating thumbnail for uploaded GLB: {}", file_path);
+                    
+                    // Generate thumbnails in background (don't block the upload response)
+                    let project_name = project_name.to_string();
+                    let file_path = file_path.to_string();
+                    tokio::spawn(async move {
+                        let sizes = [128, 256, 512];
+                        for &size in &sizes {
+                            match generate_model_thumbnail(&project_name, &file_path, size).await {
+                                Ok(thumbnail_file) => {
+                                    println!("✅ Generated {}px thumbnail: {}", size, thumbnail_file);
+                                }
+                                Err(e) => {
+                                    println!("❌ Failed to generate {}px thumbnail for {}: {}", size, file_path, e);
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+            
             let response = ApiResponse {
                 success: true,
                 content: None,
@@ -490,6 +523,34 @@ async fn handle_generate_thumbnail(body_content: &str) -> Response<BoxBody<Bytes
         Ok(request) => {
             let response = get_or_generate_thumbnail(request).await;
             json_response(&response)
+        }
+        Err(e) => {
+            error_response(StatusCode::BAD_REQUEST, &format!("Invalid request format: {}", e))
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct BatchThumbnailRequest {
+    project_name: String,
+}
+
+async fn handle_batch_generate_thumbnails(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    match serde_json::from_str::<BatchThumbnailRequest>(body_content) {
+        Ok(request) => {
+            match batch_generate_thumbnails(&request.project_name).await {
+                Ok(thumbnails) => {
+                    let response = serde_json::json!({
+                        "success": true,
+                        "generated_count": thumbnails.len(),
+                        "thumbnails": thumbnails
+                    });
+                    json_response(&response)
+                }
+                Err(e) => {
+                    error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Batch generation failed: {}", e))
+                }
+            }
         }
         Err(e) => {
             error_response(StatusCode::BAD_REQUEST, &format!("Invalid request format: {}", e))

@@ -9,8 +9,7 @@ import { Project } from './plugins/splash/ProjectStore'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
 export default function App() {
     onMount(() => {
-    console.log('🎮 Renzora Engine loaded successfully!')
-    console.log('🔌 Plugins loaded with fixed UI layout structure')
+    // Engine loaded successfully
   })
 
   return (

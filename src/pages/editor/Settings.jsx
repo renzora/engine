@@ -14,43 +14,38 @@ function Settings() {
   onMount(async () => {
     const checkWebGPUSupport = async () => {
       if (!navigator.gpu) {
-        console.log('WebGPU check: navigator.gpu not available')
+        // WebGPU not available
         setWebGPUSupported(false);
         return;
       }
       
       try {
-        console.log('WebGPU check: Testing adapter...')
+        // Testing WebGPU adapter
         const adapter = await navigator.gpu.requestAdapter({
           powerPreference: 'high-performance',
           forceFallbackAdapter: false
         });
         
         if (!adapter) {
-          console.log('WebGPU check: No adapter available')
+          // No WebGPU adapter available
           setWebGPUSupported(false);
           return;
         }
         
-        console.log('WebGPU check: Adapter found, testing device...')
+        // WebGPU adapter found, testing device
         const device = await adapter.requestDevice({
           requiredFeatures: [],
           requiredLimits: {}
         });
         
         if (!device) {
-          console.log('WebGPU check: Device creation failed')
+          // WebGPU device creation failed
           setWebGPUSupported(false);
           return;
         }
         
-        console.log('WebGPU check: Device created successfully')
-        console.log('WebGPU adapter info:', {
-          vendor: adapter.info?.vendor || 'Unknown',
-          architecture: adapter.info?.architecture || 'Unknown',
-          device: adapter.info?.device || 'Unknown',
-          description: adapter.info?.description || 'Unknown'
-        })
+        // WebGPU device created successfully
+        // WebGPU adapter info available
         
         setWebGPUSupported(true);
       } catch (error) {
@@ -302,7 +297,7 @@ function Settings() {
                   <button
                     onClick={() => {
                       const newValue = !settings.editor.showStats;
-                      console.log('Settings: Stats toggle clicked, newValue:', newValue);
+                      // Stats toggle clicked
                       
                       editorActions.updateEditorSettings({ showStats: newValue });
                       

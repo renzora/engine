@@ -19,9 +19,9 @@ class ScriptRuntime {
    * @param {Scene} scene - The Babylon.js scene
    */
   initialize(scene) {
-    console.log('🚀 ScriptRuntime: Initialize called');
-    console.log('🚀 ScriptRuntime: Scene provided:', !!scene);
-    console.log('🚀 ScriptRuntime: Already initialized:', this.isInitialized);
+    // Initializing script runtime
+    // Scene provided for initialization
+    // Checking initialization status
     
     if (this.isInitialized) {
       console.warn('🔧 ScriptRuntime: Already initialized');
@@ -30,10 +30,10 @@ class ScriptRuntime {
     
     this.scene = scene;
     
-    console.log('🚀 ScriptRuntime: Creating ScriptManager...');
+    // Creating ScriptManager
     try {
       this.scriptManager = new ScriptManager(scene);
-      console.log('✅ ScriptRuntime: ScriptManager created successfully');
+      // ScriptManager created successfully
     } catch (error) {
       console.error('❌ ScriptRuntime: Failed to create ScriptManager:', error);
       throw error;
@@ -41,14 +41,14 @@ class ScriptRuntime {
     
     this.isInitialized = true;
     
-    console.log('🔧 ScriptRuntime: Initialized with scene');
+    // Runtime initialized with scene
     
     // Set up event listener for live property updates
-    console.log('🚀 ScriptRuntime: Setting up property update listener...');
+    // Setting up property update listener
     this.setupPropertyUpdateListener();
     
     // Start the script manager
-    console.log('🚀 ScriptRuntime: Starting script manager...');
+    // Starting script manager
     this.start();
   }
   
@@ -61,14 +61,14 @@ class ScriptRuntime {
       
       if (!scriptPath || !properties || !propertyChanges) return;
       
-      console.log('🔧 ScriptRuntime: Received property update event for', scriptPath);
+      // Received property update event
       
       // Update script properties using the script manager
       this.scriptManager.updateScriptProperties(scriptPath, properties, propertyChanges);
     };
     
     document.addEventListener('engine:script-properties-updated', this.propertyUpdateListener);
-    console.log('🔧 ScriptRuntime: Property update listener registered');
+    // Property update listener registered
   }
   
   /**
@@ -78,7 +78,7 @@ class ScriptRuntime {
     if (this.propertyUpdateListener) {
       document.removeEventListener('engine:script-properties-updated', this.propertyUpdateListener);
       this.propertyUpdateListener = null;
-      console.log('🔧 ScriptRuntime: Property update listener removed');
+      // Property update listener removed
     }
   }
   
@@ -92,7 +92,7 @@ class ScriptRuntime {
     }
     
     this.scriptManager.start();
-    console.log('🔧 ScriptRuntime: Started');
+    // Script runtime started
     return true;
   }
   
@@ -103,7 +103,7 @@ class ScriptRuntime {
     if (!this.isInitialized) return;
     
     this.scriptManager.pause();
-    console.log('🔧 ScriptRuntime: Paused');
+    // Script runtime paused
   }
   
   /**
@@ -113,7 +113,7 @@ class ScriptRuntime {
     if (!this.isInitialized) return;
     
     this.scriptManager.stop();
-    console.log('🔧 ScriptRuntime: Stopped');
+    // Script runtime stopped
   }
   
   /**
@@ -128,7 +128,7 @@ class ScriptRuntime {
     this.scene = null;
     this.isInitialized = false;
     
-    console.log('🔧 ScriptRuntime: Shutdown complete');
+    // Script runtime shutdown complete
   }
   
   /**
@@ -138,10 +138,10 @@ class ScriptRuntime {
    * @returns {Promise<boolean>} Success status
    */
   async attachScript(objectId, scriptPath) {
-    console.log('🎬 ScriptRuntime: ========== SCRIPT ATTACH PROCESS START ==========');
-    console.log('🎬 ScriptRuntime: Target object ID:', objectId);
-    console.log('🎬 ScriptRuntime: Script path:', scriptPath);
-    console.log('🎬 ScriptRuntime: Runtime initialized:', this.isInitialized);
+    // Starting script attach process
+    // Attaching script to object
+    // Processing script path
+    // Checking runtime initialization
     
     if (!this.isInitialized) {
       console.error('❌ ScriptRuntime: Not initialized');
@@ -149,33 +149,33 @@ class ScriptRuntime {
     }
     
     try {
-      console.log('📋 ScriptRuntime: Step 1 - Loading script class...');
+      // Loading script class
       
       // Load the script if not already loaded
       const ScriptClass = await this.scriptLoader.loadScript(scriptPath);
-      console.log('✅ ScriptRuntime: Script class loaded:', !!ScriptClass);
-      console.log('🔍 ScriptRuntime: Script class type:', typeof ScriptClass);
-      console.log('🔍 ScriptRuntime: Script class name:', ScriptClass?.name || 'unknown');
+      // Script class loaded successfully
+      // Checking script class type
+      // Got script class name
       
-      console.log('📋 ScriptRuntime: Step 2 - Registering with script manager...');
+      // Registering with script manager
       
       // Register with script manager
       const registerSuccess = this.scriptManager.registerScript(scriptPath, ScriptClass);
-      console.log('✅ ScriptRuntime: Script registration result:', registerSuccess);
+      // Script registration completed
       
-      console.log('📋 ScriptRuntime: Step 3 - Attaching to object...');
+      // Attaching script to object
       
       // Attach to object
       const success = this.scriptManager.addScriptToObject(objectId, scriptPath);
-      console.log('✅ ScriptRuntime: Attachment result:', success);
+      // Script attachment completed
       
       if (success) {
-        console.log('🎉 ScriptRuntime: Script attached successfully');
+        // Script attached successfully
       } else {
         console.error('❌ ScriptRuntime: Script attachment failed');
       }
       
-      console.log('🎬 ScriptRuntime: ========== SCRIPT ATTACH PROCESS END ==========');
+      // Script attach process completed
       return success;
       
     } catch (error) {
@@ -201,12 +201,12 @@ class ScriptRuntime {
       return false;
     }
     
-    console.log('🔧 ScriptRuntime: Detaching script', scriptPath, 'from', objectId);
+    // Detaching script from object
     
     const success = this.scriptManager.removeScriptFromObject(objectId, scriptPath);
     
     if (success) {
-      console.log('🔧 ScriptRuntime: Script detached successfully');
+      // Script detached successfully
     }
     
     return success;
@@ -222,7 +222,7 @@ class ScriptRuntime {
       return;
     }
     
-    console.log('🔧 ScriptRuntime: Detaching all scripts from', objectId);
+    // Detaching all scripts from object
     this.scriptManager.removeAllScriptsFromObject(objectId);
   }
   
@@ -238,7 +238,7 @@ class ScriptRuntime {
     }
     
     try {
-      console.log('🔧 ScriptRuntime: Reloading script', scriptPath);
+      // Reloading script
       
       // Find all objects using this script
       const objectsWithScript = [];
@@ -267,7 +267,7 @@ class ScriptRuntime {
         this.scriptManager.addScriptToObject(objectId, scriptPath);
       }
       
-      console.log('🔧 ScriptRuntime: Script reloaded successfully');
+      // Script reloaded successfully
       return true;
       
     } catch (error) {
@@ -288,7 +288,7 @@ class ScriptRuntime {
     }
     
     this.scriptManager.pauseScript(objectId, scriptPath);
-    console.log('🔧 ScriptRuntime: Paused script', scriptPath, 'on object', objectId);
+    // Paused script on object
     return true;
   }
   
@@ -304,7 +304,7 @@ class ScriptRuntime {
     }
     
     this.scriptManager.resumeScript(objectId, scriptPath);
-    console.log('🔧 ScriptRuntime: Resumed script', scriptPath, 'on object', objectId);
+    // Resumed script on object
     return true;
   }
   
@@ -372,7 +372,7 @@ class ScriptRuntime {
    */
   setDebugMode(enabled) {
     // Could be used to enable more verbose logging in the future
-    console.log('🔧 ScriptRuntime: Debug mode', enabled ? 'enabled' : 'disabled');
+    // Debug mode toggle
   }
 }
 

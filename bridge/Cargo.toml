@@ -46,6 +46,9 @@ easy-gltf = "1.1"
 ahash = "0.8"
 draco = "0.1"
 tmf = "0.2"
+wgpu = "0.19"
+pollster = "0.3"
+headless_chrome = "1.0"
 
 [features]
 default = []

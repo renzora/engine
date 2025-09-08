@@ -15,10 +15,10 @@ export class RuntimeAssetLoader {
    */
   async loadProjectAssets(assetsData) {
     try {
-      console.log('🎯 RuntimeAssetLoader: Loading project assets...');
+      // Initialize asset loading process
       
       const assetEntries = Object.entries(assetsData);
-      console.log(`🎯 RuntimeAssetLoader: Found ${assetEntries.length} assets`);
+      // Assets discovered and prioritized
       
       // Load assets in order of priority (models first, then textures, etc.)
       const prioritizedAssets = this.prioritizeAssets(assetEntries);
@@ -32,7 +32,7 @@ export class RuntimeAssetLoader {
       }
       
       this.loadingProgress = 100;
-      console.log('✅ RuntimeAssetLoader: All assets loaded');
+      // Asset loading complete
       
     } catch (error) {
       console.error('❌ RuntimeAssetLoader: Asset loading failed:', error);
@@ -60,7 +60,7 @@ export class RuntimeAssetLoader {
    */
   async loadAsset(path, assetData) {
     try {
-      console.log('🎯 RuntimeAssetLoader: Loading asset:', path, assetData.type);
+      // Load individual asset
       
       switch (assetData.type) {
         case 'model':
@@ -76,7 +76,7 @@ export class RuntimeAssetLoader {
           await this.loadAudio(path, assetData);
           break;
         default:
-          console.log('ℹ️ RuntimeAssetLoader: Skipping asset type:', assetData.type);
+          // Skip unsupported asset type
       }
       
       this.loadedAssets.set(path, assetData);
@@ -102,7 +102,7 @@ export class RuntimeAssetLoader {
       
       const result = await SceneLoader.ImportMeshAsync('', '', modelUrl, this.scene);
       
-      console.log('✅ RuntimeAssetLoader: Model loaded:', assetData.name);
+      // 3D model loaded successfully
       return result;
       
     } catch (error) {
@@ -124,7 +124,7 @@ export class RuntimeAssetLoader {
       const texture = new Texture(textureUrl, this.scene);
       texture.name = assetData.name;
       
-      console.log('✅ RuntimeAssetLoader: Texture loaded:', assetData.name);
+      // Texture loaded successfully
       return texture;
       
     } catch (error) {
@@ -142,7 +142,7 @@ export class RuntimeAssetLoader {
     try {
       // Material files are JSON describing material properties
       // For runtime, we need to create Babylon materials from this data
-      console.log('🎯 RuntimeAssetLoader: Loading material:', assetData.name);
+      // Loading material configuration
       
       // TODO: Implement material loading from JSON data
       // This would involve creating StandardMaterial or PBRMaterial instances
@@ -167,7 +167,7 @@ export class RuntimeAssetLoader {
       const audioUrl = this.resolveAssetUrl(path);
       const sound = new Sound(assetData.name, audioUrl, this.scene);
       
-      console.log('✅ RuntimeAssetLoader: Audio loaded:', assetData.name);
+      // Audio asset loaded successfully
       return sound;
       
     } catch (error) {
@@ -182,12 +182,12 @@ export class RuntimeAssetLoader {
    */
   async loadScene(sceneData) {
     try {
-      console.log('🎭 RuntimeAssetLoader: Loading scene...');
+      // Load scene data and hierarchy
       
       // TODO: Implement scene loading from JSON
       // This involves recreating the scene hierarchy, object positions, etc.
       
-      console.log('✅ RuntimeAssetLoader: Scene loaded');
+      // Scene loading complete
       
     } catch (error) {
       console.error('❌ RuntimeAssetLoader: Scene loading failed:', error);
@@ -225,7 +225,7 @@ export class RuntimeAssetLoader {
    * Dispose of asset loader
    */
   dispose() {
-    console.log('🎯 RuntimeAssetLoader: Disposing...');
+    // Clean up asset loader resources
     this.loadedAssets.clear();
   }
 }

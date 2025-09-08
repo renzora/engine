@@ -167,13 +167,13 @@ export class CameraAPI {
       // Disable UniversalCamera movement system for ArcRotateCamera mode
       if (canvas && canvas._cameraMovementController) {
         canvas._cameraMovementController.disable();
-        console.log('Disabled UniversalCamera movement system for ArcRotateCamera mode');
+        // Disabled UniversalCamera movement system for ArcRotateCamera mode
       }
     } else if (type === 'universal' || type === 'free') {
       // Re-enable UniversalCamera movement system
       if (canvas && canvas._cameraMovementController) {
         canvas._cameraMovementController.enable();
-        console.log('Enabled UniversalCamera movement system');
+        // Enabled UniversalCamera movement system
       }
     } else {
       console.warn('Unknown camera type:', type);

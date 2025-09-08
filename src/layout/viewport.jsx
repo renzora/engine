@@ -204,7 +204,7 @@ const Viewport = () => {
         const viewportWidth = rect.width;
         const dropSide = dropX < viewportWidth / 2 ? 'left' : 'right';
         
-        console.log(`Script dropped on ${dropSide} side of viewport for split view:`, data);
+        // Handle script drop for split view
         
         // Set editor side based on drop position
         setEditorSide(dropSide);
@@ -236,7 +236,7 @@ const Viewport = () => {
   createEffect(() => {
     const handleOpenInViewport = (event) => {
       const { asset, side, script } = event.detail;
-      console.log(`🎯 Context menu: Opening ${asset.name} in viewport (${side} side)`);
+      // Open asset in viewport split view
       
       // Set editor side
       setEditorSide(side);
@@ -269,35 +269,31 @@ const Viewport = () => {
   
   const activeTab = createMemo(() => {
     const tab = viewportStore.tabs.find(tab => tab.id === viewportStore.activeTabId);
-    console.log('🎯 ViewportContainer - Active tab:', tab);
-    console.log('🎯 ViewportContainer - All tabs:', viewportStore.tabs);
-    console.log('🎯 ViewportContainer - Active tab ID:', viewportStore.activeTabId);
+    // Track active viewport tab
     return tab;
   });
   
   
   const isOverlayActive = createMemo(() => {
     const active = activeTab() && activeTab().type !== '3d-viewport';
-    console.log('🎯 ViewportContainer - Overlay active:', active, activeTab()?.type);
+    // Determine if overlay should be shown
     return active;
   });
   
   const renderOverlayPanel = (tab) => {
     if (!tab) return null;
     
-    console.log('🎯 Rendering overlay panel for tab type:', tab.type);
+    // Render overlay panel for current tab
     
     switch (tab.type) {
         
       default:
         // Check if this is a plugin viewport type
-        console.log('🎯 Checking for plugin viewport type:', tab.type);
-        console.log('🎯 Available viewport types:', Array.from(viewportTypes().keys()));
+        // Check for plugin-registered viewport type
         const pluginViewportType = viewportTypes().get(tab.type);
-        console.log('🎯 Found plugin viewport type:', pluginViewportType);
         if (pluginViewportType && pluginViewportType.component) {
           const PluginComponent = pluginViewportType.component;
-          console.log('🎯 Rendering plugin component for:', tab.type);
+          // Render plugin component
           
           // All plugin viewports render without headers
           return (

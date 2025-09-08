@@ -10,11 +10,11 @@ export default createPlugin({
   author: 'Renzora Engine Team',
 
   async onInit(api) {
-    console.log('[ScriptsPlugin] Initializing...');
+    // Initializing scripts plugin
   },
 
   async onStart(api) {
-    console.log('[ScriptsPlugin] Starting...');
+    // Starting scripts plugin
     
     api.tab('scripts', {
       title: 'Scripts',
@@ -23,7 +23,7 @@ export default createPlugin({
       order: 2
     });
     
-    console.log('[ScriptsPlugin] Started');
+    // Scripts plugin started
   },
 
   onUpdate() {
@@ -31,10 +31,10 @@ export default createPlugin({
   },
 
   async onStop() {
-    console.log('[ScriptsPlugin] Stopping...');
+    // Stopping scripts plugin
   },
 
   async onDispose() {
-    console.log('[ScriptsPlugin] Disposing...');
+    // Disposing scripts plugin
   }
 });

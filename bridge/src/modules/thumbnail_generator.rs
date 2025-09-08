@@ -1,8 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use serde::{Deserialize, Serialize};
 use base64::{Engine as _, engine::general_purpose};
+use headless_chrome::{Browser, LaunchOptions};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThumbnailCache {
@@ -13,7 +15,7 @@ pub struct ThumbnailCache {
 pub struct CachedThumbnail {
     pub file_path: String,
     pub file_hash: String,
-    pub thumbnail_data: String, // Base64 encoded image
+    pub thumbnail_file: String, // Path to actual PNG file
     pub generated_at: u64,
     pub file_size: u64,
     pub last_modified: u64,
@@ -29,7 +31,7 @@ pub struct ThumbnailRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThumbnailResponse {
     pub success: bool,
-    pub thumbnail_data: Option<String>, // Base64 encoded PNG
+    pub thumbnail_file: Option<String>, // Path to PNG file
     pub cached: bool,
     pub error: Option<String>,
 }
@@ -117,12 +119,16 @@ pub fn get_cache_path(project_name: &str) -> PathBuf {
     base_path.join(project_name).join(".cache").join("thumbnails.json")
 }
 
+pub fn get_thumbnails_dir(project_name: &str) -> PathBuf {
+    let base_path = crate::get_projects_path();
+    base_path.join(project_name).join(".cache").join("thumbnails")
+}
+
 pub fn generate_cache_key(project_name: &str, asset_path: &str) -> String {
     format!("{}::{}", project_name, asset_path)
 }
 
-// For now, we'll create a placeholder thumbnail generator
-// This would be replaced with actual 3D rendering logic
+// Generate 3D model thumbnail using headless Chrome and model-viewer (like screenshot-glb)
 pub async fn generate_model_thumbnail(
     project_name: &str,
     asset_path: &str,
@@ -136,27 +142,174 @@ pub async fn generate_model_thumbnail(
         return Err("Asset file not found".into());
     }
 
-    // For now, return a placeholder thumbnail
-    // TODO: Implement actual 3D model rendering using wgpu or similar
-    generate_placeholder_thumbnail(size)
+    // Create thumbnails directory if it doesn't exist
+    let thumbnails_dir = get_thumbnails_dir(project_name);
+    fs::create_dir_all(&thumbnails_dir)?;
+
+    // Generate filename for thumbnail
+    let asset_filename = full_asset_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("thumbnail");
+    let thumbnail_filename = format!("{}_{}.png", asset_filename, size);
+    let thumbnail_path = thumbnails_dir.join(&thumbnail_filename);
+
+    // Use headless Chrome with model-viewer for rendering
+    render_glb_with_chrome(&full_asset_path, &thumbnail_path, size).await?;
+    
+    // Return relative path to thumbnail
+    Ok(format!(".cache/thumbnails/{}", thumbnail_filename))
 }
 
-fn generate_placeholder_thumbnail(size: u32) -> Result<String, Box<dyn std::error::Error>> {
-    // Create a simple placeholder SVG image
-    let placeholder_svg = format!(
-        r#"<svg width="{}" height="{}" xmlns="http://www.w3.org/2000/svg">
-            <rect width="100%" height="100%" fill="{}"/>
-            <rect x="20%" y="20%" width="60%" height="60%" fill="{}" rx="10"/>
-            <circle cx="50%" cy="40%" r="8%" fill="{}"/>
-            <rect x="35%" y="55%" width="30%" height="8%" fill="{}" rx="4"/>
-            <text x="50%" y="75%" text-anchor="middle" fill="{}" font-family="Arial" font-size="12">3D Model</text>
-        </svg>"#,
-        size, size, "#4a5568", "#718096", "#e2e8f0", "#e2e8f0", "#e2e8f0"
-    );
+async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: u32) -> Result<(), Box<dyn std::error::Error>> {
+    println!("🎯 Rendering GLB with headless Chrome: {:?}", model_path);
     
-    // Convert SVG to base64 (placeholder)
-    let base64_data = general_purpose::STANDARD.encode(placeholder_svg.as_bytes());
-    Ok(format!("data:image/svg+xml;base64,{}", base64_data))
+    // Launch headless Chrome with proper scaling
+    let browser = Browser::new(LaunchOptions {
+        headless: true,
+        sandbox: false,
+        window_size: Some((size, size)),
+        args: vec![
+            OsStr::new(&format!("--window-size={},{}", size, size)),
+            OsStr::new("--disable-web-security"),
+            OsStr::new("--disable-dev-shm-usage"),
+            OsStr::new("--no-first-run"),
+            OsStr::new("--disable-gpu"),
+            OsStr::new("--hide-scrollbars"),
+            OsStr::new("--force-device-scale-factor=1"),
+        ],
+        ..LaunchOptions::default()
+    })?;
+    
+    let tab = browser.new_tab()?;
+    
+    // Read the GLB file and encode as base64 data URL
+    let glb_data = fs::read(model_path)?;
+    let base64_glb = general_purpose::STANDARD.encode(&glb_data);
+    let model_url = format!("data:model/gltf-binary;base64,{}", base64_glb);
+    
+    // Create HTML page with model-viewer
+    let html_content = format!(r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width={}, height={}, initial-scale=1">
+    <title>GLB Screenshot</title>
+    <script type="module" src="https://unpkg.com/@google/model-viewer@3.3.0/dist/model-viewer.min.js"></script>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        html, body {{
+            width: {}px;
+            height: {}px;
+            overflow: hidden;
+            background: #f5f5f5;
+        }}
+        model-viewer {{
+            width: {}px;
+            height: {}px;
+            background-color: #f5f5f5;
+            display: block;
+        }}
+    </style>
+</head>
+<body>
+    <model-viewer 
+        src="{}" 
+        auto-rotate="false"
+        camera-controls="false"
+        exposure="1" 
+        tone-mapping="neutral"
+        environment-image="neutral"
+        shadow-intensity="1"
+        loading="eager">
+    </model-viewer>
+    <script>
+        window.modelReady = false;
+        const modelViewer = document.querySelector('model-viewer');
+        modelViewer.addEventListener('load', () => {{
+            window.modelReady = true;
+        }});
+        modelViewer.addEventListener('error', (e) => {{
+            console.error('Model loading error:', e);
+            window.modelError = true;
+        }});
+    </script>
+</body>
+</html>
+    "#, size, size, size, size, size, size, model_url);
+    
+    // Navigate to data URL with our HTML
+    let data_url = format!("data:text/html;base64,{}", general_purpose::STANDARD.encode(html_content.as_bytes()));
+    tab.navigate_to(&data_url)?;
+    
+    // Wait for model to load
+    tab.wait_for_element_with_custom_timeout("model-viewer", std::time::Duration::from_secs(30))?;
+    
+    // Wait for model to be ready
+    let mut retries = 0;
+    const MAX_RETRIES: u32 = 50;
+    while retries < MAX_RETRIES {
+        let ready_result = tab.evaluate("window.modelReady", false);
+        let error_result = tab.evaluate("window.modelError", false);
+        
+        if let Ok(error_obj) = error_result {
+            if let Some(error_val) = error_obj.value.as_ref().and_then(|v| v.as_bool()) {
+                if error_val {
+                    return Err("Model loading failed in browser".into());
+                }
+            }
+        }
+        
+        if let Ok(ready_obj) = ready_result {
+            if let Some(ready_val) = ready_obj.value.as_ref().and_then(|v| v.as_bool()) {
+                if ready_val {
+                    break;
+                }
+            }
+        }
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        retries += 1;
+    }
+    
+    if retries >= MAX_RETRIES {
+        return Err("Timeout waiting for model to load".into());
+    }
+    
+    // Additional delay to ensure model is fully rendered
+    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    
+    // Set viewport size precisely
+    tab.set_bounds(headless_chrome::types::Bounds::Normal {
+        left: Some(0),
+        top: Some(0), 
+        width: Some(size as f64),
+        height: Some(size as f64),
+    })?;
+    
+    // Take screenshot with exact dimensions
+    let screenshot_data = tab.capture_screenshot(
+        headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
+        Some(100), // Better quality
+        Some(headless_chrome::protocol::cdp::Page::Viewport {
+            x: 0.0,
+            y: 0.0,
+            width: size as f64,
+            height: size as f64,
+            scale: 1.0,
+        }),
+        true,
+    )?;
+    
+    // Save PNG file to disk
+    fs::write(thumbnail_path, &screenshot_data)?;
+    println!("📸 Saved thumbnail: {:?}", thumbnail_path);
+    
+    Ok(())
 }
 
 pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailResponse {
@@ -178,7 +331,7 @@ pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailRe
         if let Some(cached_thumbnail) = cache.get_thumbnail(&cache_key) {
             return ThumbnailResponse {
                 success: true,
-                thumbnail_data: Some(cached_thumbnail.thumbnail_data.clone()),
+                thumbnail_file: Some(cached_thumbnail.thumbnail_file.clone()),
                 cached: true,
                 error: None,
             };
@@ -187,7 +340,7 @@ pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailRe
     
     // Generate new thumbnail
     match generate_model_thumbnail(&request.project_name, &request.asset_path, size).await {
-        Ok(thumbnail_data) => {
+        Ok(thumbnail_file) => {
             // Cache the generated thumbnail
             if let Ok(metadata) = fs::metadata(&full_asset_path) {
                 let current_time = std::time::SystemTime::now()
@@ -204,7 +357,7 @@ pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailRe
                 let cached_thumbnail = CachedThumbnail {
                     file_path: request.asset_path.clone(),
                     file_hash: format!("{}", current_time), // Simple timestamp as hash placeholder
-                    thumbnail_data: thumbnail_data.clone(),
+                    thumbnail_file: thumbnail_file.clone(),
                     generated_at: current_time,
                     file_size: metadata.len(),
                     last_modified,
@@ -220,16 +373,86 @@ pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailRe
             
             ThumbnailResponse {
                 success: true,
-                thumbnail_data: Some(thumbnail_data),
+                thumbnail_file: Some(thumbnail_file),
                 cached: false,
                 error: None,
             }
         }
         Err(e) => ThumbnailResponse {
             success: false,
-            thumbnail_data: None,
+            thumbnail_file: None,
             cached: false,
             error: Some(e.to_string()),
         }
     }
+}
+
+// Batch generate thumbnails for all GLB models in a project
+pub async fn batch_generate_thumbnails(project_name: &str) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    println!("🔍 Starting batch thumbnail generation for project: {}", project_name);
+    
+    let projects_path = crate::get_projects_path();
+    let project_path = projects_path.join(project_name);
+    let models_path = project_path.join("assets").join("models");
+    
+    if !models_path.exists() {
+        return Ok(vec![]);
+    }
+    
+    let mut generated_thumbnails = Vec::new();
+    let mut glb_files = Vec::new();
+    
+    // Find all GLB files recursively
+    find_glb_files(&models_path, &mut glb_files)?;
+    
+    if glb_files.is_empty() {
+        println!("📭 No GLB files found in {}", models_path.display());
+        return Ok(vec![]);
+    }
+    
+    println!("🎯 Found {} GLB files to process", glb_files.len());
+    
+    // Process all GLB files
+    for glb_file in glb_files {
+        let relative_path = glb_file
+            .strip_prefix(&project_path)?
+            .to_string_lossy()
+            .replace('\\', "/");
+            
+        println!("🔄 Processing: {}", relative_path);
+        
+        // Generate thumbnails in multiple sizes
+        let sizes = [128, 256, 512];
+        for &size in &sizes {
+            match generate_model_thumbnail(project_name, &relative_path, size).await {
+                Ok(thumbnail_file) => {
+                    generated_thumbnails.push(thumbnail_file);
+                    println!("✅ Generated {}px thumbnail for {}", size, relative_path);
+                }
+                Err(e) => {
+                    println!("❌ Failed to generate {}px thumbnail for {}: {}", size, relative_path, e);
+                }
+            }
+        }
+    }
+    
+    println!("🎉 Batch processing complete! Generated {} thumbnails", generated_thumbnails.len());
+    Ok(generated_thumbnails)
+}
+
+fn find_glb_files(dir: &Path, glb_files: &mut Vec<PathBuf>) -> Result<(), Box<dyn std::error::Error>> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                find_glb_files(&path, glb_files)?;
+            } else if let Some(extension) = path.extension() {
+                if extension.to_string_lossy().to_lowercase() == "glb" {
+                    glb_files.push(path);
+                }
+            }
+        }
+    }
+    Ok(())
 }

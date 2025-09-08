@@ -26,7 +26,7 @@ export function Project(props) {
         
         if (response.ok) {
           const result = await response.json();
-          console.log('🔍 File watcher:', result.content);
+          // File watcher updated for project
         }
       } catch (error) {
         console.error('Failed to set current project for file watcher:', error);

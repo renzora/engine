@@ -85,7 +85,7 @@ function BridgeViewport({ tab }) {
         method: 'POST'
       });
       if (response.ok) {
-        console.log('Cache cleared successfully');
+        // Cache cleared successfully
         await loadCacheStats();
       } else {
         console.error('Failed to clear cache');
@@ -104,7 +104,7 @@ function BridgeViewport({ tab }) {
         method: 'POST'
       });
       if (response.ok) {
-        console.log('RenScript cache refreshed successfully');
+        // RenScript cache refreshed successfully
         await loadAllScripts();
       } else {
         console.error('Failed to refresh RenScript cache');
@@ -131,7 +131,7 @@ function BridgeViewport({ tab }) {
       if (response.ok) {
         const results = await response.json();
         setQueryResults(results);
-        console.log('Query executed successfully');
+        // Query executed successfully
       } else {
         const error = await response.text();
         console.error('Query failed:', error);
@@ -502,14 +502,13 @@ export default createPlugin({
   author: 'Renzora Engine Team',
 
   async onInit(api) {
-    console.log('[BridgeManagementPlugin] Initializing...');
+    // Initializing bridge management plugin
   },
 
   async onStart(api) {
-    console.log('[BridgeManagementPlugin] Starting...');
+    // Starting bridge management plugin
     
-    console.log('🌉 BridgeViewport component type:', typeof BridgeViewport);
-    console.log('🌉 BridgeViewport component value:', BridgeViewport);
+    // Bridge viewport component ready
     
     // Register the viewport type for bridge management
     api.viewport('bridge-mgmt', {
@@ -525,7 +524,7 @@ export default createPlugin({
       priority: 100
     });
     
-    console.log('[BridgeManagementPlugin] Started');
+    // Bridge management plugin started
   },
 
   onUpdate() {
@@ -533,10 +532,10 @@ export default createPlugin({
   },
 
   async onStop() {
-    console.log('[BridgeManagementPlugin] Stopping...');
+    // Stopping bridge management plugin
   },
 
   async onDispose() {
-    console.log('[BridgeManagementPlugin] Disposing...');
+    // Disposing bridge management plugin
   }
 });

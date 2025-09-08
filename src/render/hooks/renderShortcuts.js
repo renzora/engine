@@ -88,14 +88,14 @@ export function renderShortcuts(callbacks = {}) {
     const handleMouseDown = (e) => {
       if (e.button === 2) { // Right mouse button
         isRightClickHeld = true;
-        console.log('🖱️ Right click held - camera movement enabled');
+        // Right click held - camera movement enabled
       }
     };
 
     const handleMouseUp = (e) => {
       if (e.button === 2) { // Right mouse button
         isRightClickHeld = false;
-        console.log('🖱️ Right click released - camera movement disabled');
+        // Right click released - camera movement disabled
       }
     };
 
@@ -239,7 +239,7 @@ export function renderShortcuts(callbacks = {}) {
           console.log('✅ Transform confirmed with left click');
           resetTransformState();
         } else if (event.button === 2) { // Right click - cancel
-          console.log('❌ Transform cancelled with right click');
+          // Transform cancelled with right click
           cancelTransform();
         }
       }

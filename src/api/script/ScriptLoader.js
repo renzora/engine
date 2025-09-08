@@ -16,33 +16,33 @@ class ScriptLoader {
    * @returns {Promise<Function>} Promise that resolves to the script class
    */
   async loadScript(scriptPath) {
-    console.log('📂 ScriptLoader: ========== SCRIPT LOAD START ==========');
-    console.log('📂 ScriptLoader: Script path:', scriptPath);
-    console.log('📂 ScriptLoader: Already loading?', this.loadingPromises.has(scriptPath));
-    console.log('📂 ScriptLoader: Already loaded?', this.loadedScripts.has(scriptPath));
+    // Starting script load process
+    // Loading script from path
+    // Checking if script is already loading
+    // Checking if script is already loaded
     
     // Check if already loading
     if (this.loadingPromises.has(scriptPath)) {
-      console.log('⏳ ScriptLoader: Script is already loading, waiting for existing promise...');
+      // Script is already loading, waiting for existing promise
       return this.loadingPromises.get(scriptPath);
     }
     
     // Check if already loaded
     if (this.loadedScripts.has(scriptPath)) {
-      console.log('💾 ScriptLoader: Script already loaded, returning cached version');
+      // Script already loaded, returning cached version
       return this.loadedScripts.get(scriptPath).module;
     }
     
-    console.log('📥 ScriptLoader: Starting fresh script load...');
+    // Starting fresh script load
     
     const loadPromise = this._loadScriptFromServer(scriptPath);
     this.loadingPromises.set(scriptPath, loadPromise);
-    console.log('🔄 ScriptLoader: Added to loading promises map');
+    // Added to loading promises map
     
     try {
-      console.log('⚙️ ScriptLoader: Awaiting script class from server...');
+      // Awaiting script class from server
       const scriptClass = await loadPromise;
-      console.log('✅ ScriptLoader: Script class received:', typeof scriptClass);
+      // Script class received successfully
       
       this.loadedScripts.set(scriptPath, {
         module: scriptClass,
@@ -50,8 +50,8 @@ class ScriptLoader {
       });
       this.loadingPromises.delete(scriptPath);
       
-      console.log('💾 ScriptLoader: Script cached successfully');
-      console.log('📂 ScriptLoader: ========== SCRIPT LOAD SUCCESS ==========');
+      // Script cached successfully
+      // Script load completed successfully
       return scriptClass;
       
     } catch (error) {
@@ -70,13 +70,13 @@ class ScriptLoader {
    * @private
    */
   async _loadScriptFromServer(scriptPath) {
-    console.log('🌐 ScriptLoader: ========== SERVER LOAD START ==========');
-    console.log('🌐 ScriptLoader: Script path:', scriptPath);
+    // Starting server load process
+    // Loading from server path
     
     // Check if we have a pre-compiled script from scene bundle
     const bulkScripts = window._sceneBundledScripts;
     if (bulkScripts && bulkScripts[scriptPath]) {
-      console.log('📦 ScriptLoader: Using pre-compiled script from bundle cache:', scriptPath);
+      // Using pre-compiled script from bundle cache
       
       const compiledScript = bulkScripts[scriptPath];
       
@@ -86,7 +86,7 @@ class ScriptLoader {
         throw new Error(`Script compilation failed: ${compiledScript.error}`);
       }
       
-      console.log('📦 ScriptLoader: Using bulk compiled script (length:', compiledScript.length, ')');
+      // Using bulk compiled script
       
       // For RenScript files, use the pre-compiled JavaScript directly
       if (scriptPath.endsWith('.ren')) {
@@ -97,7 +97,7 @@ class ScriptLoader {
       }
     }
     
-    console.log('🌐 ScriptLoader: No bulk cache found, requesting from server');
+    // No bulk cache found, requesting from server
     
     try {
       let url;
@@ -107,20 +107,20 @@ class ScriptLoader {
         // Extract script name for compilation endpoint
         const scriptName = scriptPath.replace(/.*\/([^\/]+)\.ren$/, '$1');
         url = `http://localhost:3001/script/${scriptName}`;
-        console.log('🔥 ScriptLoader: RenScript detected, using compilation endpoint for:', scriptName);
+        // RenScript detected, using compilation endpoint
       } else {
         // Regular JavaScript file - read directly
-        console.log('📁 ScriptLoader: JavaScript file detected, getting current project...');
+        // JavaScript file detected, getting project
         const { getCurrentProject } = await import('@/api/bridge/projects');
         const projectName = getCurrentProject()?.name || 'demo';
-        console.log('📁 ScriptLoader: Current project:', projectName);
+        // Got current project
         url = `http://localhost:3001/read/projects/${projectName}/${scriptPath}`;
       }
       
-      console.log('🌐 ScriptLoader: Fetching from URL:', url);
+      // Fetching from server URL
       
       const response = await fetch(url);
-      console.log('🌐 ScriptLoader: Response status:', response.status, response.statusText);
+      // Got server response
       
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -131,13 +131,13 @@ class ScriptLoader {
       // Handle compilation endpoint (returns JavaScript directly)
       if (scriptPath.endsWith('.ren')) {
         scriptContent = await response.text();
-        console.log('🔥 ScriptLoader: Received compiled JavaScript from Rust server');
-        console.log('🔥 ScriptLoader: Compiled JS length:', scriptContent?.length || 0);
-        console.log('🔥 ScriptLoader: Compiled JS preview:', scriptContent?.substring(0, 100) + '...');
+        // Received compiled JavaScript from server
+        // Got compiled JavaScript content
+        // Preview of compiled JavaScript
       } else {
         // Handle regular file reading (returns JSON response)
         const responseData = await response.json();
-        console.log('🌐 ScriptLoader: Response success:', responseData.success);
+        // Got response data
         
         if (!responseData.success) {
           throw new Error(`Failed to read script: ${responseData.error || 'Unknown error'}`);
@@ -145,15 +145,15 @@ class ScriptLoader {
         
         scriptContent = responseData.content;
       }
-      console.log('🌐 ScriptLoader: Script content length:', scriptContent?.length || 0);
-      console.log('🌐 ScriptLoader: Script content preview:', scriptContent?.substring(0, 100) + '...');
+      // Got script content
+      // Preview of script content
       
       // Check if it's a RenScript file
       if (scriptPath.endsWith('.ren')) {
-        console.log('🎯 ScriptLoader: RenScript file detected, using pre-compiled JavaScript from server');
+        // RenScript file detected, using pre-compiled JavaScript
         return this._evaluateCompiledRenScript(scriptContent, scriptPath);
       } else {
-        console.log('📜 ScriptLoader: JavaScript file detected, starting evaluation...');
+        // JavaScript file detected, starting evaluation
         return this._evaluateScript(scriptContent, scriptPath);
       }
       
@@ -168,9 +168,9 @@ class ScriptLoader {
    * @private
    */
   async _evaluateCompiledRenScript(compiledJS, scriptPath) {
-    console.log('🎯 ScriptLoader: ========== COMPILED RENSCRIPT EVAL START ==========');
-    console.log('🎯 ScriptLoader: Script path:', scriptPath);
-    console.log('🎯 ScriptLoader: Compiled JS length:', compiledJS?.length || 0);
+    // Starting compiled RenScript evaluation
+    // Evaluating RenScript path
+    // Processing compiled JavaScript
     
     try {
       // Create evaluation context
@@ -186,7 +186,7 @@ class ScriptLoader {
         module.exports = createRenScript;
       `;
       
-      console.log('🏗️ ScriptLoader: Creating script function wrapper...');
+      // Creating script function wrapper
       
       // Execute the script
       const scriptFunction = new Function(
@@ -200,7 +200,7 @@ class ScriptLoader {
         wrappedCode
       );
       
-      console.log('🚀 ScriptLoader: Executing compiled RenScript...');
+      // Executing compiled RenScript
       
       scriptFunction(
         scriptModule.exports,
@@ -213,16 +213,16 @@ class ScriptLoader {
       );
       
       const ScriptClass = scriptModule.exports;
-      console.log('✅ ScriptLoader: Compiled RenScript execution completed');
-      console.log('🔍 ScriptLoader: Exported class type:', typeof ScriptClass);
-      console.log('🔍 ScriptLoader: Exported class name:', ScriptClass?.name || 'unknown');
+      // Compiled RenScript execution completed
+      // Checking exported class type
+      // Got exported class name
       
       if (typeof ScriptClass !== 'function') {
         console.error('❌ ScriptLoader: Invalid script class - expected function, got:', typeof ScriptClass);
         throw new Error('Compiled RenScript did not produce a valid script class');
       }
       
-      console.log('🎯 ScriptLoader: ========== COMPILED RENSCRIPT EVAL SUCCESS ==========');
+      // RenScript evaluation completed successfully
       return ScriptClass;
       
     } catch (error) {
@@ -385,19 +385,8 @@ module.exports = InlineScriptWrapper;`;
         throw new Error('Script must export a class/function or contain onStart/onUpdate methods');
       }
       
-      console.log('🔧 ScriptLoader: Transformed script for', scriptPath);
-      console.log('🔧 ScriptLoader: Detection results:', {
-        classNameMatch: !!classNameMatch,
-        functionMatch: !!functionMatch,
-        hasOnStartUpdate,
-        hasReturnStatement,
-        hasConstObject,
-        hasBareFunction: !!hasBareFunction,
-        hasBareMethod: !!hasBareMethod,
-        constObjectMatch: constObjectMatch ? constObjectMatch[0] : null,
-        bareFunctionMatch: hasBareFunction ? hasBareFunction[0] : null,
-        bareMethodMatch: hasBareMethod ? hasBareMethod[0] : null
-      });
+      // Transformed script for evaluation
+      // Script transformation analysis completed
       
       // Create a safe evaluation context
       const scriptModule = { exports: {} };
@@ -428,7 +417,7 @@ module.exports = InlineScriptWrapper;`;
         throw new Error('Script must export a class or function');
       }
       
-      console.log('🔧 ScriptLoader: Successfully evaluated script for', scriptPath);
+      // Successfully evaluated script
       return ScriptClass;
       
     } catch (error) {
@@ -488,7 +477,7 @@ module.exports = InlineScriptWrapper;`;
    * @returns {Promise<Function>} Promise that resolves to the reloaded script class
    */
   async reloadScript(scriptPath) {
-    console.log('🔧 ScriptLoader: Reloading script', scriptPath);
+    // Reloading script
     
     // Remove from cache
     this.loadedScripts.delete(scriptPath);
@@ -523,7 +512,7 @@ module.exports = InlineScriptWrapper;`;
    * Clear all loaded scripts from cache
    */
   clearCache() {
-    console.log('🔧 ScriptLoader: Clearing script cache');
+    // Clearing script cache
     this.loadedScripts.clear();
     this.loadingPromises.clear();
   }

@@ -22,7 +22,7 @@ export async function generateThumbnail(assetPath, size = 512) {
     },
     body: JSON.stringify({
       project_name: project.name,
-      asset_path: `assets/${assetPath}`,
+      asset_path: assetPath,
       size: size
     })
   });
