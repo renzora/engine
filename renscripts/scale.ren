@@ -1,0 +1,69 @@
+# Scale Animation Example
+# Demonstrates various scaling operations using RenScript
+# This script showcases different scaling patterns and modes
+
+script ScaleExample {
+    time = 0
+    scaleMode = 0
+    pulseSpeed = 2
+    maxScaleMode = 3
+    
+    start {
+        setScale(1, 1, 1)
+        addTag("scale_animated")
+        log("Scale animation script started - cycling through different scale modes")
+    }
+
+    update {
+        time = time + deltaTime()
+        
+        if (scaleMode == 0) {
+            # Uniform pulsing scale animation
+            scaleMultiplier = 1 + sin(time * pulseSpeed) * 0.5
+            setScale(scaleMultiplier, scaleMultiplier, scaleMultiplier)
+            
+        } elif (scaleMode == 1) {
+            # Different scale per axis - breathing effect
+            scaleX = 1 + sin(time * 2) * 0.3
+            scaleY = 1 + cos(time * 1.5) * 0.4
+            scaleZ = 1 + sin(time * 2.5) * 0.2
+            setScale(scaleX, scaleY, scaleZ)
+            
+        } elif (scaleMode == 2) {
+            # Growing and shrinking cycle - heartbeat effect
+            growthCycle = sin(time * 0.5)
+            scale = 0.5 + growthCycle * growthCycle * 2
+            setScale(scale, scale, scale)
+            
+        } elif (scaleMode == 3) {
+            # Elastic bounce effect
+            bounceTime = time % 4  # 4 second cycles
+            if (bounceTime < 2) {
+                # Expand phase
+                elasticScale = 1 + sin(bounceTime * 3.14159) * 0.8
+            } else {
+                # Contract phase  
+                contractTime = bounceTime - 2
+                elasticScale = 1 + cos(contractTime * 3.14159) * 0.3
+            }
+            setScale(elasticScale, elasticScale, elasticScale)
+        }
+        
+        # Switch modes every 6 seconds
+        modeTime = time % 24  # Total cycle: 24 seconds
+        if (modeTime < 6) {
+            scaleMode = 0
+        } elif (modeTime < 12) {
+            scaleMode = 1
+        } elif (modeTime < 18) {
+            scaleMode = 2
+        } else {
+            scaleMode = 3
+        }
+    }
+
+    destroy {
+        log("Scale animation script destroyed")
+        removeTag("scale_animated")
+    }
+}

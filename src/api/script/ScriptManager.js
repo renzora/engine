@@ -20,6 +20,7 @@ import { LightingAPI } from './modules/LightingAPI.js';
 import { EnvironmentAPI } from './modules/EnvironmentAPI.js';
 import { DayNightAPI } from './modules/DayNightAPI.js';
 import { ShadowAPI } from './modules/ShadowAPI.js';
+import { TransformAPI } from './modules/TransformAPI.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 
 /**
@@ -68,7 +69,8 @@ class ScriptManager {
         lighting: new LightingAPI(this.scene, babylonObject),
         environment: new EnvironmentAPI(this.scene, babylonObject),
         daynight: new DayNightAPI(this.scene, babylonObject),
-        shadow: new ShadowAPI(this.scene, babylonObject)
+        shadow: new ShadowAPI(this.scene, babylonObject),
+        transform: new TransformAPI(this.scene, babylonObject)
       };
       
       return apiModules;

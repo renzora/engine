@@ -3,7 +3,7 @@ script SimpleRotator {
     speed: range {
       default: 1.0,
       min: 0.0,
-      max: 5.0,
+      max: 50.0,
       description: "Rotation speed"
     }
   }
@@ -12,7 +12,7 @@ script SimpleRotator {
     log("Starting rotation")
   }
   
-  update() {
+  update {
     rotate(0, time() * speed, 0)
   }
 }

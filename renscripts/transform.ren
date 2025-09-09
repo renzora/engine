@@ -1,0 +1,117 @@
+# Combined Transform Example - Position, Rotation, and Scale
+# Demonstrates complex transform operations using RenScript
+# This script combines position, rotation, and scale animations for complex movement patterns
+
+script TransformExample {
+    time = 0
+    orbitRadius = 5
+    rotationSpeed = 2
+    scaleSpeed = 1
+    heightSpeed = 1.5
+    transformMode = 0
+    
+    start {
+        # Set initial transform state
+        setPosition(0, 0, 0)
+        setRotation(0, 0, 0)
+        setScale(1, 1, 1)
+        addTag("transform_animated")
+        
+        log("Transform script started - combining position, rotation, and scale animations")
+    }
+
+    update {
+        time = time + deltaTime()
+        
+        if (transformMode == 0) {
+            # Orbital motion with rotation and pulsing scale
+            x = cos(time * rotationSpeed) * orbitRadius
+            z = sin(time * rotationSpeed) * orbitRadius
+            y = sin(time * heightSpeed) * 2
+            setPosition(x, y, z)
+            
+            # Smooth rotation on multiple axes
+            rotX = sin(time * 0.8) * 0.2  # Gentle tilt in radians
+            rotY = time * rotationSpeed    # Continuous spin
+            rotZ = cos(time * 1.2) * 0.15  # Gentle roll
+            setRotation(rotX, rotY, rotZ)
+            
+            # Pulsating scale
+            scaleMultiplier = 1 + sin(time * scaleSpeed * 2) * 0.3
+            setScale(scaleMultiplier, scaleMultiplier, scaleMultiplier)
+            
+        } elif (transformMode == 1) {
+            # Figure-8 motion with differential scaling
+            x = sin(time * 1.5) * 6
+            z = sin(time * 3) * 4
+            y = cos(time * 2) * 1.5
+            setPosition(x, y, z)
+            
+            # Tumbling rotation
+            rotX = time * 1.2
+            rotY = time * 0.8
+            rotZ = time * 1.5
+            setRotation(rotX, rotY, rotZ)
+            
+            # Different scale per axis
+            scaleX = 1 + sin(time * 2) * 0.4
+            scaleY = 1 + cos(time * 1.8) * 0.3
+            scaleZ = 1 + sin(time * 2.2) * 0.35
+            setScale(scaleX, scaleY, scaleZ)
+            
+        } elif (transformMode == 2) {
+            # Spiral ascent with complex rotation
+            spiralTime = time * 0.5
+            radius = 3 + spiralTime * 0.2
+            
+            x = cos(spiralTime * 2) * radius
+            z = sin(spiralTime * 2) * radius  
+            y = spiralTime * 2  # Rising spiral
+            setPosition(x, y, z)
+            
+            # Look at center while spinning
+            rotX = sin(time * 3) * 0.5
+            rotY = -spiralTime * 2  # Counter-rotate to face center
+            rotZ = cos(time * 4) * 0.3
+            setRotation(rotX, rotY, rotZ)
+            
+            # Breathing scale effect
+            breathe = 1 + sin(time * 4) * 0.25
+            setScale(breathe, breathe, breathe)
+        }
+        
+        # Adaptive behavior based on conditions
+        currentPos = position()
+        distanceFromOrigin = sqrt(currentPos[0] * currentPos[0] + currentPos[1] * currentPos[1] + currentPos[2] * currentPos[2])
+        
+        if (distanceFromOrigin > 15) {
+            # If too far, slow down and scale down
+            orbitRadius = 3
+            rotationSpeed = 1
+            scaleFactor = 0.5 + cos(time * 3) * 0.2
+            setScale(scaleFactor, scaleFactor, scaleFactor)
+        }
+        
+        # Cycle through transform modes every 10 seconds
+        modeTime = time % 30
+        if (modeTime < 10) {
+            transformMode = 0
+        } elif (modeTime < 20) {
+            transformMode = 1
+        } else {
+            transformMode = 2
+        }
+        
+        # Reset position if it gets too extreme
+        if (distanceFromOrigin > 20) {
+            setPosition(0, 0, 0)
+            time = 0  # Reset timing
+            log("Transform reset - position was too extreme")
+        }
+    }
+
+    destroy {
+        log("Transform script destroyed")
+        removeTag("transform_animated")
+    }
+}

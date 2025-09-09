@@ -1,0 +1,117 @@
+# Position Movement Example
+# Demonstrates various movement patterns using RenScript
+# This script showcases different types of positional animations and movement behaviors
+
+script PositionExample {
+    time = 0
+    movementMode = 0
+    speed = 3
+    baseHeight = 0
+    
+    start {
+        initialPos = position()
+        baseHeight = initialPos[1]  # Remember starting height
+        addTag("position_animated")
+        log("Position movement script started - cycling through different movement patterns")
+    }
+
+    update {
+        time = time + deltaTime()
+        
+        if (movementMode == 0) {
+            # Circular orbit - classic circular motion
+            x = cos(time * speed * 0.5) * 4
+            z = sin(time * speed * 0.5) * 4
+            setPosition(x, baseHeight, z)
+            
+        } elif (movementMode == 1) {
+            # Figure-8 pattern - infinity symbol motion
+            x = sin(time * speed * 0.3) * 5
+            z = sin(time * speed * 0.6) * 3  # Double frequency for figure-8
+            y = baseHeight + sin(time * speed * 0.4) * 0.5  # Slight vertical bob
+            setPosition(x, y, z)
+            
+        } elif (movementMode == 2) {
+            # Wave motion - undulating movement
+            waveTime = time * speed * 0.2
+            x = waveTime % 10 - 5  # Linear back and forth motion
+            y = baseHeight + sin(time * speed * 0.8) * 2  # Vertical wave
+            z = cos(time * speed * 0.3) * 2  # Side-to-side wave
+            setPosition(x, y, z)
+            
+        } elif (movementMode == 3) {
+            # Random walk - organic, unpredictable movement
+            walkSpeed = 0.05
+            currentPos = position()
+            
+            # Generate smooth random movement
+            noiseX = sin(time * 1.7) * cos(time * 2.3) 
+            noiseZ = cos(time * 1.3) * sin(time * 1.9)
+            noiseY = sin(time * 2.1) * 0.5
+            
+            newX = currentPos[0] + noiseX * walkSpeed
+            newZ = currentPos[2] + noiseZ * walkSpeed  
+            newY = baseHeight + noiseY
+            
+            # Keep within bounds
+            if (newX > 8 || newX < -8) {
+                newX = 0
+            }
+            if (newZ > 8 || newZ < -8) {
+                newZ = 0
+            }
+            
+            setPosition(newX, newY, newZ)
+            
+        } elif (movementMode == 4) {
+            # Lissajous curve - complex mathematical pattern
+            a = 3  # X frequency multiplier
+            b = 4  # Z frequency multiplier
+            
+            x = sin(time * speed * 0.3 * a) * 6
+            z = cos(time * speed * 0.3 * b) * 5
+            y = baseHeight + sin(time * speed * 0.5) * 1.5
+            setPosition(x, y, z)
+            
+        } elif (movementMode == 5) {
+            # Spiral motion - expanding and contracting spiral
+            spiralTime = time * speed * 0.2
+            radiusChange = 2 + sin(time * 0.5) * 1.5  # Dynamic radius
+            
+            x = cos(spiralTime) * radiusChange
+            z = sin(spiralTime) * radiusChange
+            y = baseHeight + sin(spiralTime * 0.5) * 3  # Vertical spiral component
+            setPosition(x, y, z)
+        }
+        
+        # Switch movement patterns every 8 seconds
+        modeTime = time % 48  # Total cycle: 48 seconds for 6 modes
+        if (modeTime < 8) {
+            movementMode = 0
+        } elif (modeTime < 16) {
+            movementMode = 1
+        } elif (modeTime < 24) {
+            movementMode = 2
+        } elif (modeTime < 32) {
+            movementMode = 3
+        } elif (modeTime < 40) {
+            movementMode = 4
+        } else {
+            movementMode = 5
+        }
+        
+        # Safety bounds - reset if object goes too far
+        currentPos = position()
+        distance = sqrt(currentPos[0] * currentPos[0] + currentPos[2] * currentPos[2])
+        
+        if (distance > 20) {
+            setPosition(0, baseHeight, 0)
+            log("Position reset - object moved too far from origin")
+        }
+    }
+
+    destroy {
+        log("Position movement script destroyed")
+        removeTag("position_animated")
+    }
+}

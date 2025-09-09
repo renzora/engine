@@ -163,7 +163,7 @@ pub async fn generate_model_thumbnail(
 async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: u32) -> Result<(), Box<dyn std::error::Error>> {
     println!("🎯 Rendering GLB with headless Chrome: {:?}", model_path);
     
-    // Launch headless Chrome with proper scaling
+    // Launch headless Chrome with proper scaling and memory limits
     let browser = Browser::new(LaunchOptions {
         headless: true,
         sandbox: false,
@@ -173,19 +173,31 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
             OsStr::new("--disable-web-security"),
             OsStr::new("--disable-dev-shm-usage"),
             OsStr::new("--no-first-run"),
-            OsStr::new("--disable-gpu"),
             OsStr::new("--hide-scrollbars"),
             OsStr::new("--force-device-scale-factor=1"),
+            OsStr::new("--max-old-space-size=2048"), // Limit Node.js memory to 2GB
+            OsStr::new("--memory-pressure-off"), // Disable memory pressure handling
+            OsStr::new("--disable-gpu-sandbox"),
+            OsStr::new("--disable-software-rasterizer"),
+            OsStr::new("--disable-background-timer-throttling"),
+            OsStr::new("--disable-backgrounding-occluded-windows"),
+            OsStr::new("--disable-renderer-backgrounding"),
+            OsStr::new("--no-sandbox"),
+            OsStr::new("--disable-extensions"),
+            OsStr::new("--disable-plugins"),
+            OsStr::new("--virtual-time-budget=5000"), // 5 second budget for rendering
         ],
         ..LaunchOptions::default()
     })?;
     
     let tab = browser.new_tab()?;
     
-    // Read the GLB file and encode as base64 data URL
-    let glb_data = fs::read(model_path)?;
-    let base64_glb = general_purpose::STANDARD.encode(&glb_data);
-    let model_url = format!("data:model/gltf-binary;base64,{}", base64_glb);
+    // Instead of loading the entire file into memory, use file:// URL
+    let model_url = format!("file:///{}", model_path.to_string_lossy().replace('\\', "/"));
+    
+    // Prepare temp HTML file path
+    let temp_dir = std::env::temp_dir();
+    let temp_html_path = temp_dir.join(format!("glb_viewer_{}.html", std::process::id()));
     
     // Create HTML page with model-viewer
     let html_content = format!(r#"
@@ -206,13 +218,17 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
             width: {}px;
             height: {}px;
             overflow: hidden;
-            background: #f5f5f5;
+            background: transparent;
+            background-color: rgba(240, 240, 240, 1);
         }}
         model-viewer {{
             width: {}px;
             height: {}px;
-            background-color: #f5f5f5;
+            background-color: rgba(240, 240, 240, 1);
             display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
         }}
     </style>
 </head>
@@ -221,30 +237,51 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
         src="{}" 
         auto-rotate="false"
         camera-controls="false"
-        exposure="1" 
+        exposure="1.0" 
         tone-mapping="neutral"
         environment-image="neutral"
-        shadow-intensity="1"
-        loading="eager">
+        shadow-intensity="0.5"
+        loading="eager"
+        camera-orbit="45deg 75deg auto"
+        field-of-view="30deg"
+        min-camera-orbit="auto auto auto"
+        max-camera-orbit="auto auto auto">
     </model-viewer>
     <script>
         window.modelReady = false;
         const modelViewer = document.querySelector('model-viewer');
+        
         modelViewer.addEventListener('load', () => {{
-            window.modelReady = true;
+            console.log('Model loaded successfully');
+            // Auto-frame the model to fit in view
+            modelViewer.cameraOrbit = 'auto auto auto';
+            setTimeout(() => {{
+                window.modelReady = true;
+            }}, 200);
         }});
+        
         modelViewer.addEventListener('error', (e) => {{
             console.error('Model loading error:', e);
             window.modelError = true;
+        }});
+        
+        // Ensure model is properly framed after loading
+        modelViewer.addEventListener('camera-change', () => {{
+            if (window.modelReady) return;
+            // Force reframe on first camera change
+            modelViewer.cameraTarget = 'auto auto auto';
         }});
     </script>
 </body>
 </html>
     "#, size, size, size, size, size, size, model_url);
     
-    // Navigate to data URL with our HTML
-    let data_url = format!("data:text/html;base64,{}", general_purpose::STANDARD.encode(html_content.as_bytes()));
-    tab.navigate_to(&data_url)?;
+    // Create a temporary HTML file instead of using data URL to avoid memory issues
+    fs::write(&temp_html_path, html_content.as_bytes())?;
+    
+    // Navigate to the temporary HTML file
+    let file_url = format!("file:///{}", temp_html_path.to_string_lossy().replace('\\', "/"));
+    tab.navigate_to(&file_url)?;
     
     // Wait for model to load
     tab.wait_for_element_with_custom_timeout("model-viewer", std::time::Duration::from_secs(30))?;
@@ -280,10 +317,10 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
         return Err("Timeout waiting for model to load".into());
     }
     
-    // Additional delay to ensure model is fully rendered
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+    // Additional delay to ensure model is fully rendered and framed
+    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
     
-    // Set viewport size precisely
+    // Set viewport size precisely and ensure proper bounds
     tab.set_bounds(headless_chrome::types::Bounds::Normal {
         left: Some(0),
         top: Some(0), 
@@ -291,10 +328,23 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
         height: Some(size as f64),
     })?;
     
-    // Take screenshot with exact dimensions
+    // Set the viewport size to ensure consistent rendering
+    tab.set_viewport(headless_chrome::protocol::cdp::Page::Viewport {
+        x: 0.0,
+        y: 0.0,
+        width: size as f64,
+        height: size as f64,
+        scale: 1.0,
+    })?;
+    
+    // Force a repaint to ensure everything is rendered
+    tab.evaluate("document.body.style.visibility = 'visible'", false)?;
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+    
+    // Take screenshot with exact dimensions and full page capture
     let screenshot_data = tab.capture_screenshot(
         headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
-        Some(100), // Better quality
+        Some(100), // High quality
         Some(headless_chrome::protocol::cdp::Page::Viewport {
             x: 0.0,
             y: 0.0,
@@ -302,12 +352,17 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
             height: size as f64,
             scale: 1.0,
         }),
-        true,
+        true, // From surface (captures full rendered content)
     )?;
     
     // Save PNG file to disk
     fs::write(thumbnail_path, &screenshot_data)?;
     println!("📸 Saved thumbnail: {:?}", thumbnail_path);
+    
+    // Clean up temporary HTML file
+    if temp_html_path.exists() {
+        let _ = fs::remove_file(&temp_html_path); // Ignore errors on cleanup
+    }
     
     Ok(())
 }
@@ -412,14 +467,14 @@ pub async fn batch_generate_thumbnails(project_name: &str) -> Result<Vec<String>
     
     println!("🎯 Found {} GLB files to process", glb_files.len());
     
-    // Process all GLB files
-    for glb_file in glb_files {
+    // Process GLB files with throttling to prevent memory issues
+    for (index, glb_file) in glb_files.iter().enumerate() {
         let relative_path = glb_file
             .strip_prefix(&project_path)?
             .to_string_lossy()
             .replace('\\', "/");
             
-        println!("🔄 Processing: {}", relative_path);
+        println!("🔄 Processing ({}/{}): {}", index + 1, glb_files.len(), relative_path);
         
         // Generate thumbnails in multiple sizes
         let sizes = [128, 256, 512];
@@ -433,6 +488,14 @@ pub async fn batch_generate_thumbnails(project_name: &str) -> Result<Vec<String>
                     println!("❌ Failed to generate {}px thumbnail for {}: {}", size, relative_path, e);
                 }
             }
+            
+            // Small delay between sizes to prevent memory pressure
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        }
+        
+        // Delay between files to prevent memory buildup
+        if index < glb_files.len() - 1 {
+            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
         }
     }
     
