@@ -232,7 +232,7 @@ export class ModelProcessingAPI {
     }
   }
 
-  async convertToGlbAndExtract(file, settings, projectName, importMode = 'separate', onProgress) {
+  async convertToGlbAndExtract(file, settings, projectName, importMode = 'separate', currentPath = '', onProgress) {
     try {
       onProgress?.({ stage: 'uploading', message: 'Uploading model for conversion...', progress: 5 });
       
@@ -254,7 +254,8 @@ export class ModelProcessingAPI {
         filename: file.name,
         project_name: projectName,
         settings: settings,
-        import_mode: importMode
+        import_mode: importMode,
+        current_path: currentPath
       };
       
       const response = await fetch(`${this.apiPrefix}/convert-to-glb`, {

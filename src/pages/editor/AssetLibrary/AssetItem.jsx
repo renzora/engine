@@ -10,7 +10,10 @@ const is3DModelFile = (extension) => {
 };
 
 const isImageFile = (extension) => {
-  const imageExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.ico', '.svg'];
+  const imageExtensions = [
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.ico', '.svg',
+    '.avif', '.heic', '.heif', '.dds', '.exr', '.hdr', '.psd', '.raw', '.cr2', '.nef'
+  ];
   return imageExtensions.includes(extension?.toLowerCase() || '');
 };
 
@@ -104,25 +107,56 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   const [imageLoaded, setImageLoaded] = createSignal(false);
   const [imageError, setImageError] = createSignal(false);
   
+  // Check if this is a thumbnail cache file to reduce debug noise
+  const isThumbCache = asset?.path?.startsWith('.cache/thumbnails/');
+  
+  // Skip debug logging for thumbnail cache files to reduce noise
+  if (asset && isImageFile(asset.extension) && !isThumbCache) {
+    console.log('Rendering ImageThumbnail for:', asset.name, 'extension:', asset.extension, 'path:', asset.path);
+  }
+  
   const getAssetThumbnailUrl = (asset) => {
     const currentProject = getCurrentProject();
     if (!currentProject?.name) return null;
     
-    const assetPath = asset.name || asset.path;
-    const projectPath = `projects/${currentProject.name}`;
-    const fullPath = assetPath.startsWith('assets/') 
-      ? `${projectPath}/${assetPath}`
-      : `${projectPath}/assets/${assetPath}`;
+    // Use asset.path if available, otherwise construct from asset.name
+    const assetPath = asset.path || asset.name;
+    if (!assetPath) return null;
     
-    return getFileUrl(fullPath);
+    const projectPath = `projects/${currentProject.name}`;
+    
+    // Handle different path formats
+    let fullPath;
+    if (assetPath.startsWith('.cache/')) {
+      // This is a cache file (thumbnails), don't add assets/ prefix
+      fullPath = `${projectPath}/${assetPath}`;
+    } else {
+      // All other paths are relative to project root - use them exactly as provided
+      fullPath = `${projectPath}/${assetPath}`;
+    }
+    
+    const fileUrl = getFileUrl(fullPath);
+    
+    // Only log for non-cache files to reduce noise
+    if (!isThumbCache) {
+      console.log('Generated image URL:', fileUrl, 'for asset:', asset.name, 'fullPath:', fullPath);
+    }
+    
+    return fileUrl;
   };
   
   const thumbnailUrl = getAssetThumbnailUrl(asset);
   
   if (!thumbnailUrl) {
+    if (!isThumbCache) {
+      console.warn('No thumbnail URL generated for image asset:', asset.name, asset.path);
+    }
     return (
       <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-        <IconPhoto class="w-10 h-10 text-success" />
+        <IconPhoto class="w-10 h-10 text-base-content/60" />
+        <div class="absolute bottom-1 right-1 text-xs text-warning bg-warning/10 px-1 rounded">
+          No URL
+        </div>
       </div>
     );
   }
@@ -131,24 +165,40 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
     <div class={`${size} bg-base-300 rounded overflow-hidden relative`}>
       <Show when={!imageError()} fallback={
         <div class="w-full h-full flex items-center justify-center">
-          <IconPhoto class="w-10 h-10 text-success" />
+          <IconPhoto class="w-10 h-10 text-base-content/60" />
+          <div class="absolute bottom-1 right-1 text-xs text-error bg-error/10 px-1 rounded">
+            Error
+          </div>
         </div>
       }>
         <img 
           src={thumbnailUrl}
           alt={asset.name}
-          class={`w-full h-full object-cover transition-opacity duration-200 ${
-            imageLoaded() ? 'opacity-100' : 'opacity-0'
-          }`}
-          onLoad={() => setImageLoaded(true)}
-          onError={() => {
+          class={`w-full h-full object-cover transition-all duration-300 ${
+            imageLoaded() ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
+          } hover:scale-105 cursor-pointer`}
+          style={{
+            "image-rendering": "auto",
+            "background-color": "var(--fallback-bc,oklch(var(--bc)/0.2))"
+          }}
+          onLoad={() => {
+            if (!isThumbCache) {
+              console.log('Successfully loaded image:', asset.name);
+            }
+            setImageLoaded(true);
+            setImageError(false);
+          }}
+          onError={(e) => {
+            if (!isThumbCache) {
+              console.warn('Failed to load image:', thumbnailUrl, 'for asset:', asset.name, 'Error:', e);
+            }
             setImageError(true);
             setImageLoaded(false);
           }}
         />
-        <Show when={!imageLoaded()}>
+        <Show when={!imageLoaded() && !imageError()}>
           <div class="absolute inset-0 bg-base-300 flex items-center justify-center">
-            <div class="w-4 h-4 border-2 border-success border-t-transparent rounded-full animate-spin"></div>
+            <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
           </div>
         </Show>
       </Show>
@@ -576,8 +626,12 @@ function AssetItem({
         <div class={`absolute bottom-0 left-0 right-0 h-0.5 ${
           asset.type === 'folder' 
             ? 'bg-yellow-500' 
+            : isImageFile(asset.extension)
+              ? 'bg-green-500'
             : isScriptFile(asset.extension) 
-              ? 'bg-blue-500' 
+              ? 'bg-blue-500'
+            : is3DModelFile(asset.extension)
+              ? 'bg-purple-500' 
               : 'bg-gray-500'
         }`}></div>
       </div>

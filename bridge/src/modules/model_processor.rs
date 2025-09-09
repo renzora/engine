@@ -614,26 +614,22 @@ pub fn process_model_import(
     let sanitized_base_name = sanitize_file_name(base_name);
     let sanitized_filename = format!("{}.{}", sanitized_base_name, file_extension);
     
-    // Create folder structure based on settings
-    let mut base_path = String::from("assets");
+    // Use hardcoded project root for now - this will be updated to accept current_path parameter
+    let mut base_path = String::new(); // Empty string means project root
     
-    if settings.general.asset_type_sub_folders {
-        match file_extension.as_str() {
-            "fbx" | "obj" | "gltf" | "glb" | "dae" | "3ds" | "blend" | "max" => {
-                base_path.push_str("/models");
-            }
-            "png" | "jpg" | "jpeg" | "tga" | "hdr" | "exr" => {
-                base_path.push_str("/textures");
-            }
-            _ => {}
+    if settings.general.scene_name_sub_folder {
+        if base_path.is_empty() {
+            base_path = sanitized_base_name.clone();
+        } else {
+            base_path.push_str(&format!("/{}", sanitized_base_name));
         }
     }
     
-    if settings.general.scene_name_sub_folder {
-        base_path.push_str(&format!("/{}", sanitized_base_name));
-    }
-    
-    let target_dir = project_path.join(&base_path);
+    let target_dir = if base_path.is_empty() {
+        project_path.clone()
+    } else {
+        project_path.join(&base_path)
+    };
     let target_file_path = target_dir.join(&sanitized_filename);
     
     // Create directories

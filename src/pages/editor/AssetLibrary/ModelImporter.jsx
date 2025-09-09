@@ -4,7 +4,7 @@ import { bridgeService } from '@/plugins/core/bridge';
 import { getCurrentProject } from '@/api/bridge/projects';
 import { modelProcessor } from './ModelProcessor';
 
-function ModelImporter({ isOpen, onClose, onImportComplete }) {
+function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
   const [selectedFiles, setSelectedFiles] = createSignal([]);
   const [isImporting, setIsImporting] = createSignal(false);
   const [importProgress, setImportProgress] = createSignal(0);
@@ -156,12 +156,14 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
         const is3DModel = ['.fbx', '.obj', '.gltf', '.glb', '.dae', '.3ds', '.blend', '.max', '.stl', '.ply', '.x3d', '.md2', '.md3', '.md5', '.lwo', '.ac', '.ms3d', '.cob', '.ifc', '.xgl', '.csm', '.bvh', '.b3d', '.ndo', '.dxf'].includes(ext);
         
         if (is3DModel) {
-          // Use GLB conversion and extraction
+          // Use GLB conversion and extraction with current path context
+          const currentPath = context()?.currentPath || '';
           await modelProcessor.convertToGlbAndExtract(
             file,
             settings,
             currentProject.name,
             settings.general.importMode,
+            currentPath,
             (progress) => {
               const overallProgress = fileProgress + (progress.progress / totalFiles);
               setImportProgress(overallProgress);
@@ -174,14 +176,11 @@ function ModelImporter({ isOpen, onClose, onImportComplete }) {
           const fileName = file.name;
           const fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
           
-          let targetFolder = 'assets';
-          if (settings.general.assetTypeSubFolders) {
-            if (['.png', '.jpg', '.jpeg', '.tga', '.hdr'].includes(ext)) {
-              targetFolder += '/textures';
-            }
-          }
-          
-          const targetPath = `projects/${currentProject.name}/${targetFolder}/${fileName}`;
+          // Use context current path exactly, or project root if not specified
+          const currentPath = context()?.currentPath || '';
+          const targetPath = currentPath 
+            ? `projects/${currentProject.name}/${currentPath}/${fileName}`
+            : `projects/${currentProject.name}/${fileName}`;
           
           const reader = new FileReader();
           const base64 = await new Promise((resolve, reject) => {

@@ -122,6 +122,7 @@ pub fn convert_model_to_glb_and_extract(
     project_name: &str,
     import_mode: Option<ImportMode>,
     compression: Option<CompressionSettings>,
+    current_path: Option<&str>,
 ) -> Result<ConversionResult, String> {
     let start_time = std::time::Instant::now();
     info!("🔄 Converting {} to GLB and extracting assets", original_filename);
@@ -147,12 +148,12 @@ pub fn convert_model_to_glb_and_extract(
     
     // Step 1: Handle different input formats with import mode
     let (glb_data, extracted_assets) = match file_extension.as_str() {
-        "obj" => convert_obj_and_extract(&file_data, original_filename, &project_path, &mode, use_draco, use_tmf)?,
-        "gltf" => convert_gltf_and_extract(&file_data, original_filename, &project_path, &mode)?,
-        "glb" => extract_from_existing_glb(&file_data, original_filename, &project_path, &mode)?,
+        "obj" => convert_obj_and_extract(&file_data, original_filename, &project_path, &mode, use_draco, use_tmf, current_path)?,
+        "gltf" => convert_gltf_and_extract(&file_data, original_filename, &project_path, &mode, current_path)?,
+        "glb" => extract_from_existing_glb(&file_data, original_filename, &project_path, &mode, current_path)?,
         _ => {
             warn!("⚠️ Format {} not supported for conversion, saving as original", file_extension);
-            return save_unsupported_format(file_data, original_filename, project_name, mode);
+            return save_unsupported_format(file_data, original_filename, project_name, mode, current_path);
         }
     };
     
@@ -192,6 +193,7 @@ fn convert_obj_and_extract(
     import_mode: &ImportMode,
     use_draco: bool,
     use_tmf: bool,
+    current_path: Option<&str>,
 ) -> Result<(Vec<u8>, ExtractedAssets), String> {
     info!("🔄 Converting OBJ to GLB and extracting assets");
     
@@ -241,7 +243,15 @@ fn convert_obj_and_extract(
         .unwrap_or("model");
     let sanitized_base_name = sanitize_file_name(base_name);
     
-    let assets_dir = project_path.join("assets").join("models").join(&sanitized_base_name);
+    // Use current_path exactly as provided, empty string means project root
+    let base_path = current_path.unwrap_or("");
+    let assets_dir = if base_path.is_empty() {
+        // Project root
+        project_path.join(&sanitized_base_name)
+    } else {
+        // Specific directory
+        project_path.join(base_path).join(&sanitized_base_name)
+    };
     fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {}", e))?;
     
     let (glb_data, extracted_assets) = match import_mode {
@@ -275,6 +285,7 @@ fn convert_gltf_and_extract(
     filename: &str,
     project_path: &Path,
     import_mode: &ImportMode,
+    current_path: Option<&str>,
 ) -> Result<(Vec<u8>, ExtractedAssets), String> {
     info!("🔄 Converting GLTF to GLB and extracting assets");
     
@@ -295,7 +306,15 @@ fn convert_gltf_and_extract(
         .unwrap_or("model");
     let sanitized_base_name = sanitize_file_name(base_name);
     
-    let assets_dir = project_path.join("assets").join("models").join(&sanitized_base_name);
+    // Use current_path exactly as provided, empty string means project root
+    let base_path = current_path.unwrap_or("");
+    let assets_dir = if base_path.is_empty() {
+        // Project root
+        project_path.join(&sanitized_base_name)
+    } else {
+        // Specific directory
+        project_path.join(base_path).join(&sanitized_base_name)
+    };
     fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {}", e))?;
     
     let glb_path = assets_dir.join(format!("{}.glb", sanitized_base_name));
@@ -311,6 +330,7 @@ fn extract_from_existing_glb(
     filename: &str,
     project_path: &Path,
     import_mode: &ImportMode,
+    current_path: Option<&str>,
 ) -> Result<(Vec<u8>, ExtractedAssets), String> {
     info!("🔄 Extracting assets from existing GLB with mode: {:?}", import_mode);
     
@@ -320,7 +340,15 @@ fn extract_from_existing_glb(
         .unwrap_or("model");
     let sanitized_base_name = sanitize_file_name(base_name);
     
-    let assets_dir = project_path.join("assets").join("models").join(&sanitized_base_name);
+    // Use current_path exactly as provided, empty string means project root
+    let base_path = current_path.unwrap_or("");
+    let assets_dir = if base_path.is_empty() {
+        // Project root
+        project_path.join(&sanitized_base_name)
+    } else {
+        // Specific directory
+        project_path.join(base_path).join(&sanitized_base_name)
+    };
     fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {}", e))?;
     
     let extracted_assets = match import_mode {
@@ -359,6 +387,7 @@ fn save_unsupported_format(
     original_filename: &str,
     project_name: &str,
     import_mode: ImportMode,
+    current_path: Option<&str>,
 ) -> Result<ConversionResult, String> {
     let projects_path = get_projects_path();
     let project_path = projects_path.join(project_name);
@@ -369,7 +398,15 @@ fn save_unsupported_format(
         .unwrap_or("model");
     let sanitized_base_name = sanitize_file_name(base_name);
     
-    let assets_dir = project_path.join("assets").join("models").join(&sanitized_base_name);
+    // Use current_path exactly as provided, empty string means project root
+    let base_path = current_path.unwrap_or("");
+    let assets_dir = if base_path.is_empty() {
+        // Project root
+        project_path.join(&sanitized_base_name)
+    } else {
+        // Specific directory
+        project_path.join(base_path).join(&sanitized_base_name)
+    };
     fs::create_dir_all(&assets_dir).map_err(|e| format!("Failed to create assets directory: {}", e))?;
     
     let file_path = assets_dir.join(original_filename);
@@ -1293,9 +1330,8 @@ fn extract_glb_assets(
 fn extract_textures_from_glb(glb_data: &[u8], assets_dir: &Path, base_name: &str) -> Result<Vec<ExtractedTexture>, String> {
     info!("🔄 Extracting textures from GLB");
     
-    // Create textures directory
-    fs::create_dir_all(assets_dir.join("textures"))
-        .map_err(|e| format!("Failed to create textures directory: {}", e))?;
+    // Create the assets directory (textures will go in the same folder as the model)
+    // No need for separate textures directory
     
     let mut extracted_textures = Vec::new();
     
@@ -1326,7 +1362,7 @@ fn extract_textures_from_glb(glb_data: &[u8], assets_dir: &Path, base_name: &str
                                     // Detect format from magic bytes
                                     let format = detect_image_format(image_data);
                                     let texture_filename = format!("{}_{}.{}", base_name, texture_name, format);
-                                    let texture_path = assets_dir.join("textures").join(&texture_filename);
+                                    let texture_path = assets_dir.join(&texture_filename);
                                     
                                     // Save texture file
                                     fs::write(&texture_path, image_data)
@@ -1337,7 +1373,11 @@ fn extract_textures_from_glb(glb_data: &[u8], assets_dir: &Path, base_name: &str
                                     
                                     extracted_textures.push(ExtractedTexture {
                                         name: texture_name,
-                                        file_path: format!("assets/models/{}/textures/{}", base_name, texture_filename),
+                                        file_path: if base_path.is_empty() {
+                                            format!("{}/{}", base_name, texture_filename)
+                                        } else {
+                                            format!("{}/{}/{}", base_path, base_name, texture_filename)
+                                        },
                                         format: format.to_string(),
                                         width,
                                         height,
@@ -1609,11 +1649,23 @@ fn create_babylonjs_material(gltf_material: &serde_json::Value, material_name: &
         
         // Textures (reference extracted texture files)
         "baseTexture": base_color_texture.map(|path| serde_json::json!({
-            "name": format!("assets/models/{}/textures/", base_name) + &std::path::Path::new(path).file_name().unwrap().to_string_lossy(),
-            "url": format!("/projects/{}/assets/models/{}/textures/{}", 
-                std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
-                base_name,
-                std::path::Path::new(path).file_name().unwrap().to_string_lossy()),
+            "name": if base_path.is_empty() {
+                format!("{}/{}", base_name, std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            } else {
+                format!("{}/{}/{}", base_path, base_name, std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            },
+            "url": if base_path.is_empty() {
+                format!("/projects/{}/{}/{}", 
+                    std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
+                    base_name,
+                    std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            } else {
+                format!("/projects/{}/{}/{}/{}", 
+                    std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
+                    base_path,
+                    base_name,
+                    std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            },
             "level": 1.0,
             "hasAlpha": true,
             "getAlphaFromRGB": false,
@@ -1624,11 +1676,23 @@ fn create_babylonjs_material(gltf_material: &serde_json::Value, material_name: &
         })),
         
         "normalTexture": normal_texture.map(|path| serde_json::json!({
-            "name": format!("assets/models/{}/textures/", base_name) + &std::path::Path::new(path).file_name().unwrap().to_string_lossy(),
-            "url": format!("/projects/{}/assets/models/{}/textures/{}", 
-                std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
-                base_name,
-                std::path::Path::new(path).file_name().unwrap().to_string_lossy()),
+            "name": if base_path.is_empty() {
+                format!("{}/{}", base_name, std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            } else {
+                format!("{}/{}/{}", base_path, base_name, std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            },
+            "url": if base_path.is_empty() {
+                format!("/projects/{}/{}/{}", 
+                    std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
+                    base_name,
+                    std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            } else {
+                format!("/projects/{}/{}/{}/{}", 
+                    std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
+                    base_path,
+                    base_name,
+                    std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            },
             "level": 1.0,
             "coordinatesIndex": 0,
             "wrapU": 1,
@@ -1637,11 +1701,23 @@ fn create_babylonjs_material(gltf_material: &serde_json::Value, material_name: &
         })),
         
         "metallicRoughnessTexture": metallic_roughness_texture.map(|path| serde_json::json!({
-            "name": format!("assets/models/{}/textures/", base_name) + &std::path::Path::new(path).file_name().unwrap().to_string_lossy(),
-            "url": format!("/projects/{}/assets/models/{}/textures/{}", 
-                std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
-                base_name,
-                std::path::Path::new(path).file_name().unwrap().to_string_lossy()),
+            "name": if base_path.is_empty() {
+                format!("{}/{}", base_name, std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            } else {
+                format!("{}/{}/{}", base_path, base_name, std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            },
+            "url": if base_path.is_empty() {
+                format!("/projects/{}/{}/{}", 
+                    std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
+                    base_name,
+                    std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            } else {
+                format!("/projects/{}/{}/{}/{}", 
+                    std::env::var("PROJECT_NAME").unwrap_or_else(|_| "current".to_string()),
+                    base_path,
+                    base_name,
+                    std::path::Path::new(path).file_name().unwrap().to_string_lossy())
+            },
             "level": 1.0,
             "coordinatesIndex": 0,
             "wrapU": 1,

@@ -9,9 +9,11 @@ import { horizontalMenuButtonsEnabled, propertiesPanelVisible, bottomPanelVisibl
 
 const Layout = () => {
   const [showModelImporter, setShowModelImporter] = createSignal(false);
+  const [modelImporterContext, setModelImporterContext] = createSignal(null);
   const [globalTooltip, setGlobalTooltip] = createSignal(null);
 
-  const handleOpenModelImporter = () => {
+  const handleOpenModelImporter = (event) => {
+    setModelImporterContext(event.detail || {});
     setShowModelImporter(true);
   };
 
@@ -78,6 +80,7 @@ const Layout = () => {
         isOpen={showModelImporter}
         onClose={() => setShowModelImporter(false)}
         onImportComplete={handleModelImportComplete}
+        context={modelImporterContext}
       />
     </>
   );

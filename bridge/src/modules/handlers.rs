@@ -1041,6 +1041,7 @@ async fn handle_convert_to_glb(body: &str) -> Response<BoxBody<Bytes, Infallible
         project_name: String,
         settings: Option<serde_json::Value>, // Optional import settings
         import_mode: Option<String>, // "separate" or "combined", defaults to "separate"
+        current_path: Option<String>, // Current directory path, defaults to "assets"
     }
     let request: ConvertToGlbRequest = match serde_json::from_str(body) {
         Ok(req) => req,
@@ -1090,7 +1091,8 @@ async fn handle_convert_to_glb(body: &str) -> Response<BoxBody<Bytes, Infallible
     };
     
     // Convert to GLB and extract assets
-    match convert_model_to_glb_and_extract(file_data, &request.filename, &request.project_name, import_mode, Some(compression)) {
+    let current_path = request.current_path.as_deref();
+    match convert_model_to_glb_and_extract(file_data, &request.filename, &request.project_name, import_mode, Some(compression), current_path) {
         Ok(result) => {
             info!("✅ GLB conversion and extraction completed: {}", request.filename);
             json_response(&result)

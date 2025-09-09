@@ -308,14 +308,26 @@ function AssetLibrary({ onContextMenu }) {
       const buildNestedTree = async (items, parentPath = '') => {
         const tree = [];
         
-        for (const item of items.filter(i => i.is_directory && !isWindowsReservedName(i.name))) {
+        for (const item of items.filter(i => {
+          return i.is_directory && 
+                 !isWindowsReservedName(i.name) && 
+                 !i.name.startsWith('.cache') && 
+                 !i.name.startsWith('.git') && 
+                 !i.name.startsWith('.');
+        })) {
           // Build the correct full path for this folder
           const fullPath = parentPath ? `${parentPath}/${item.name}` : item.name;
           
           try {
             const subItems = await listDirectory(`projects/${currentProject.name}/${fullPath}`);
             const children = await buildNestedTree(subItems, fullPath);
-            const files = subItems.filter(subItem => !subItem.is_directory && !isWindowsReservedName(subItem.name));
+            const files = subItems.filter(subItem => {
+              return !subItem.is_directory && 
+                     !isWindowsReservedName(subItem.name) &&
+                     !subItem.name.startsWith('.cache') &&
+                     !subItem.name.startsWith('.git') &&
+                     !subItem.name.startsWith('.');
+            });
             
             // Build tree node for folder
             tree.push({
@@ -393,6 +405,10 @@ function AssetLibrary({ onContextMenu }) {
       allAssets.forEach(asset => {
         if (asset.is_directory) return;
         
+        // Skip cache files and system files
+        if (asset.name.startsWith('.cache') || asset.name.startsWith('.git') || asset.name.startsWith('.')) return;
+        if (isWindowsReservedName(asset.name)) return;
+        
         const extension = asset.name.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
         let categorized = false;
         
@@ -449,7 +465,14 @@ function AssetLibrary({ onContextMenu }) {
       const rawAssets = await listDirectory(dirPath);
       
       const assets = rawAssets
-        .filter(asset => !isWindowsReservedName(asset.name))
+        .filter(asset => {
+          // Filter out cache directories and system files
+          if (asset.name.startsWith('.cache')) return false;
+          if (asset.name.startsWith('.git')) return false;
+          if (asset.name.startsWith('.')) return false; // Hide all dot files/folders
+          if (isWindowsReservedName(asset.name)) return false;
+          return true;
+        })
         .map(asset => {
           const hasExtension = asset.name.includes('.') && !asset.is_directory;
           return {
@@ -476,9 +499,13 @@ function AssetLibrary({ onContextMenu }) {
       const allAssets = await listDirectory(`projects/${currentProject.name}`);
       const searchLower = query.toLowerCase();
       
-      const results = allAssets.filter(asset => 
-        asset.name.toLowerCase().includes(searchLower) && !isWindowsReservedName(asset.name)
-      );
+      const results = allAssets.filter(asset => {
+        return asset.name.toLowerCase().includes(searchLower) && 
+               !isWindowsReservedName(asset.name) &&
+               !asset.name.startsWith('.cache') &&
+               !asset.name.startsWith('.git') &&
+               !asset.name.startsWith('.');
+      });
       
       return results;
       
@@ -504,8 +531,9 @@ function AssetLibrary({ onContextMenu }) {
 
   const moveAsset = async (currentProject, sourcePath, targetPath) => {
     try {
-      const fullSourcePath = `projects/${currentProject.name}/assets/${sourcePath}`;
-      const fullTargetPath = `projects/${currentProject.name}/assets/${targetPath}`;
+      // Simple path construction - paths are relative to project root
+      const fullSourcePath = `projects/${currentProject.name}/${sourcePath}`;
+      const fullTargetPath = `projects/${currentProject.name}/${targetPath}`;
       
       const sourceFileName = sourcePath.split('/').pop();
       
@@ -526,7 +554,8 @@ function AssetLibrary({ onContextMenu }) {
 
   const deleteAsset = async (currentProject, assetPath) => {
     try {
-      const fullAssetPath = `projects/${currentProject.name}/assets/${assetPath}`;
+      // Simple path construction - assetPath is relative to project root
+      const fullAssetPath = `projects/${currentProject.name}/${assetPath}`;
       await deleteFile(fullAssetPath);
       return { success: true, path: assetPath };
     } catch (error) {
@@ -590,7 +619,7 @@ function AssetLibrary({ onContextMenu }) {
         const parentPath = pathParts.join('/');
         
         // Process changes in current directory
-        if (parentPath === currentPath()) {
+        if (parentPath === currentPath() || (currentPath() === '' && parentPath === 'assets')) {
           // Handle file system events in current directory
           
           if (event_type === 'create') {
@@ -640,27 +669,32 @@ function AssetLibrary({ onContextMenu }) {
     // Update cache with new asset list
     assetsActions.setAssetsForPath(currentPath(), updatedAssets);
     
+    // Check if any directory changes occurred and refresh tree if needed
+    const hasDirectoryChanges = changes.some(change => 
+      change.paths.some(path => {
+        const relativePath = path.replace(`${currentProject.name}/`, '').replace(`${currentProject.name}\\`, '');
+        const fileName = relativePath.split(/[/\\]/).pop();
+        return !fileName.includes('.'); // No extension = likely a directory
+      })
+    );
+    
+    if (hasDirectoryChanges) {
+      // Refresh folder tree to show new/removed directories
+      updateFolderTreeIncrementally(currentProject);
+    }
   };
   
   // Update folder tree without full reload
   const updateFolderTreeIncrementally = async (currentProject, affectedPaths = []) => {
     try {
-      // For immediate UI update, we can update the tree locally
-      const currentTree = folderTree();
+      // Always fetch a fresh tree to ensure new directories are shown
+      // This is needed because directory creation/deletion events need to refresh the tree structure
+      const newTree = await fetchFolderTree(currentProject);
       
-      if (currentTree) {
-        // Keep existing tree without updating file counts
-        // Keep existing tree without updating file counts
-      } else {
-        // Fallback to fetching new tree if we don't have one
-        // Fallback to fetching new tree if we don't have one
-        const newTree = await fetchFolderTree(currentProject);
-        
-        batch(() => {
-          setFolderTree(newTree);
-          assetsActions.setFolderTree(newTree);
-        });
-      }
+      batch(() => {
+        setFolderTree(newTree);
+        assetsActions.setFolderTree(newTree);
+      });
     } catch (error) {
       console.error('Failed to update folder tree:', error);
     }
@@ -743,9 +777,10 @@ function AssetLibrary({ onContextMenu }) {
 
     try {
       for (const file of files) {
+        // Simple path construction - currentPath is relative to project root
         const targetPath = currentPath() 
-          ? `projects/${currentProject.name}/assets/${currentPath()}/${file.name}`
-          : `projects/${currentProject.name}/assets/${file.name}`;
+          ? `projects/${currentProject.name}/${currentPath()}/${file.name}`
+          : `projects/${currentProject.name}/${file.name}`;
         
         if (isBinaryFile(file.name)) {
           const reader = new FileReader();
@@ -998,7 +1033,9 @@ function AssetLibrary({ onContextMenu }) {
   };
 
   const handleImportClick = () => {
-    document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
+    document.dispatchEvent(new CustomEvent('engine:open-model-importer', {
+      detail: { currentPath: currentPath() }
+    }));
   };
 
   // Selection handling

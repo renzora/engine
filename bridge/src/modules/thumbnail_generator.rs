@@ -329,13 +329,14 @@ async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: 
     })?;
     
     // Set the viewport size to ensure consistent rendering
-    tab.set_viewport(headless_chrome::protocol::cdp::Page::Viewport {
-        x: 0.0,
-        y: 0.0,
-        width: size as f64,
-        height: size as f64,
-        scale: 1.0,
-    })?;
+    // Note: set_viewport method may not be available in this version of headless_chrome
+    // tab.set_viewport(headless_chrome::protocol::cdp::Page::Viewport {
+    //     x: 0.0,
+    //     y: 0.0,
+    //     width: size as f64,
+    //     height: size as f64,
+    //     scale: 1.0,
+    // })?;
     
     // Force a repaint to ensure everything is rendered
     tab.evaluate("document.body.style.visibility = 'visible'", false)?;

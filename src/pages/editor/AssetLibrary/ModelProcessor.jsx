@@ -29,12 +29,12 @@ export class ModelProcessor {
     }
   }
 
-  async convertToGlbAndExtract(file, settings, projectName, importMode, onProgress) {
+  async convertToGlbAndExtract(file, settings, projectName, importMode, currentPath, onProgress) {
     try {
       onProgress?.({ stage: 'converting', message: 'Converting to GLB and extracting assets...', progress: 10 });
       
-      // Use the new GLB conversion and extraction API
-      const result = await modelProcessingAPI.convertToGlbAndExtract(file, settings, projectName, importMode, onProgress);
+      // Use the new GLB conversion and extraction API with current path
+      const result = await modelProcessingAPI.convertToGlbAndExtract(file, settings, projectName, importMode, currentPath, onProgress);
       
       return result;
       
@@ -44,7 +44,7 @@ export class ModelProcessor {
     }
   }
 
-  async processModelFile(file, settings, projectName, onProgress) {
+  async processModelFile(file, settings, projectName, currentPath, onProgress) {
     const fileName = file.name;
     const fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
     const ext = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
@@ -78,8 +78,8 @@ export class ModelProcessor {
       // Fallback to client-side processing - just upload and organize the files
       onProgress?.({ stage: 'uploading', message: `Uploading ${fileName}...`, progress: 20 });
       
-      // Create folder structure based on settings
-      const assetStructure = this.createAssetStructure(fileNameWithoutExt, {}, settings);
+      // Create folder structure based on settings with current path
+      const assetStructure = this.createAssetStructure(fileNameWithoutExt, {}, settings, currentPath);
       
       onProgress?.({ stage: 'organizing', message: 'Creating folder structure...', progress: 40 });
       
@@ -188,19 +188,15 @@ export class ModelProcessor {
     return analysis;
   }
 
-  createAssetStructure(baseName, analysis, settings) {
+  createAssetStructure(baseName, analysis, settings, currentPath = '') {
     const structure = {
       basePath: '',
       folders: [],
       assets: []
     };
 
-    // Determine base path
-    let basePath = 'assets';
-    
-    if (settings.general.assetTypeSubFolders) {
-      basePath += '/models';
-    }
+    // Use the current path exactly as provided (empty string means project root)
+    let basePath = currentPath;
     
     if (settings.general.sceneNameSubFolder) {
       basePath += `/${baseName}`;
