@@ -143,8 +143,21 @@ export function useCameraController(camera, canvas, scene) {
         camera().rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera().rotation.x));
       }
     } else if (isMiddleMouseDown) {
-        // Middle-click orbit around target (selected object or scene center)
-        const target = Vector3.Zero(); // TODO: Use selected object position if available
+        // Middle-click orbit around target (selected object or intelligently calculated point)
+        let target;
+        
+        // First try to use selected object position
+        const selectedObject = renderStore.selectedObject;
+        if (selectedObject && selectedObject.position) {
+          target = selectedObject.position;
+        } else {
+          // If no selection, orbit around a point in front of the camera
+          // Use camera's current look direction and find a point at a reasonable distance
+          const cameraForward = camera().getForwardRay().direction.normalize();
+          const orbitDistance = 10; // Default orbit distance
+          target = camera().position.add(cameraForward.scale(orbitDistance));
+        }
+        
         const distance = Vector3.Distance(camera().position, target);
         
         // Convert camera position to spherical coordinates relative to target

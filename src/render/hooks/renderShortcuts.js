@@ -185,6 +185,10 @@ export function renderShortcuts(callbacks = {}) {
       // Grid toggle
       'ctrl+g': () => callbacks.toggleGrid?.(),
       
+      // Panel toggles
+      'space': () => callbacks.toggleBottomPanel?.(),
+      'p': () => callbacks.toggleRightPanel?.(),
+      
       // Selection
       'ctrl+a': () => callbacks.selectAll?.(),
       'alt+a': () => callbacks.deselectAll?.(),

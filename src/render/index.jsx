@@ -391,6 +391,34 @@ export default function BabylonRenderer(props) {
         console.error('❌ Save failed:', error);
         editorActions.addConsoleMessage('Save failed', 'error');
       }
+    },
+    // Toggle bottom panel
+    toggleBottomPanel: () => {
+      const currentVisible = pluginAPI.getBottomPanelVisible();
+      pluginAPI.setBottomPanelVisible(!currentVisible);
+      editorActions.addConsoleMessage(`Bottom panel ${!currentVisible ? 'shown' : 'hidden'}`, 'info');
+      
+      // Recalculate viewport after panel toggle
+      setTimeout(() => {
+        if (renderStore.engine) {
+          renderStore.engine.resize();
+          console.log('🔄 Viewport recalculated for bottom panel toggle');
+        }
+      }, 50);
+    },
+    // Toggle right panel (properties panel)
+    toggleRightPanel: () => {
+      const currentVisible = pluginAPI.getPropertiesPanelVisible();
+      pluginAPI.setPropertiesPanelVisible(!currentVisible);
+      editorActions.addConsoleMessage(`Properties panel ${!currentVisible ? 'shown' : 'hidden'}`, 'info');
+      
+      // Recalculate viewport after panel toggle
+      setTimeout(() => {
+        if (renderStore.engine) {
+          renderStore.engine.resize();
+          console.log('🔄 Viewport recalculated for right panel toggle');
+        }
+      }, 50);
     }
   });
 
