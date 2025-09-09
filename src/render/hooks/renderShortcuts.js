@@ -178,6 +178,10 @@ export function renderShortcuts(callbacks = {}) {
       '3': () => callbacks.topView?.(),
       '7': () => callbacks.perspectiveView?.(),
       
+      // Camera shortcuts
+      'home': () => callbacks.resetCamera?.(),
+      'numpad.': () => callbacks.resetCamera?.(),
+      
       // Grid toggle
       'ctrl+g': () => callbacks.toggleGrid?.(),
       

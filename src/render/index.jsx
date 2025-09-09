@@ -317,6 +317,63 @@ export default function BabylonRenderer(props) {
         editorActions.addConsoleMessage(`Snapped "${selectedObject.name}" to ground plane`, 'info');
       }
     },
+    // Reset camera to default position
+    resetCamera: () => {
+      const camera = renderStore.camera;
+      const currentScene = renderStore.scene;
+      
+      if (!camera || !currentScene) {
+        console.log('⚠️ No camera or scene available for reset');
+        return;
+      }
+      
+      console.log('🏠 Resetting camera to default position');
+      
+      // Cancel any existing camera animation
+      if (window._cameraResetAnimationId) {
+        cancelAnimationFrame(window._cameraResetAnimationId);
+        window._cameraResetAnimationId = null;
+      }
+      
+      // Define default camera position and target
+      const defaultPosition = new Vector3(5, 3, -5);  // Back, up, and to the side
+      const defaultTarget = Vector3.Zero();            // Look at origin
+      
+      // Smooth animation to default position
+      const startPosition = camera.position.clone();
+      const startTarget = camera.getTarget ? camera.getTarget() : Vector3.Zero();
+      const animationDuration = 200; // 0.2 seconds - super fast
+      const startTime = Date.now();
+      
+      const animate = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / animationDuration, 1);
+        
+        // Smooth easing function (ease-in-out)
+        const easedProgress = progress < 0.5 
+          ? 2 * progress * progress 
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        
+        // Interpolate position and target
+        camera.position = Vector3.Lerp(startPosition, defaultPosition, easedProgress);
+        
+        // Set target to origin
+        if (camera.setTarget) {
+          const currentTarget = Vector3.Lerp(startTarget, defaultTarget, easedProgress);
+          camera.setTarget(currentTarget);
+        }
+        
+        if (progress < 1) {
+          window._cameraResetAnimationId = requestAnimationFrame(animate);
+        } else {
+          window._cameraResetAnimationId = null;
+          console.log('✅ Camera reset to default position');
+          editorActions.addConsoleMessage('Camera reset to default position', 'success');
+        }
+      };
+      
+      window._cameraResetAnimationId = requestAnimationFrame(animate);
+    },
     // Save project
     save: () => {
       console.log('💾 Save requested');
