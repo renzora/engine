@@ -63,6 +63,31 @@ export class UtilityAPI {
     return this.lerp(toMin, toMax, t);
   }
 
+  // Basic Math Functions
+  sin(value) {
+    return Math.sin(value);
+  }
+
+  cos(value) {
+    return Math.cos(value);
+  }
+
+  sqrt(value) {
+    return Math.sqrt(value);
+  }
+
+  abs(value) {
+    return Math.abs(value);
+  }
+
+  floor(value) {
+    return Math.floor(value);
+  }
+
+  atan2(y, x) {
+    return Math.atan2(y, x);
+  }
+
   randomRange(min, max) {
     return Math.random() * (max - min) + min;
   }

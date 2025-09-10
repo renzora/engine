@@ -8,6 +8,7 @@ import ScriptCreationDialog from '../ScriptCreationDialog.jsx';
 import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
 import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
+import { ModelProcessingAPI } from '@/api/bridge/modelProcessing';
 
 // Components
 import AssetSidebar from './AssetSidebar';
@@ -529,6 +530,15 @@ function AssetLibrary({ onContextMenu }) {
     return binaryExtensions.includes(extension);
   };
 
+  const is3DModelFile = (fileName) => {
+    const extension = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
+    const modelExtensions = [
+      '.fbx', '.obj', '.gltf', '.glb', '.dae', '.3ds', '.blend', '.max', '.stl', '.ply', '.x3d', 
+      '.md2', '.md3', '.md5', '.lwo', '.ac', '.ms3d', '.cob', '.ifc', '.xgl', '.csm', '.bvh', '.b3d', '.ndo', '.dxf'
+    ];
+    return modelExtensions.includes(extension);
+  };
+
   const moveAsset = async (currentProject, sourcePath, targetPath) => {
     try {
       // Simple path construction - paths are relative to project root
@@ -777,28 +787,67 @@ function AssetLibrary({ onContextMenu }) {
 
     try {
       for (const file of files) {
-        // Simple path construction - currentPath is relative to project root
-        const targetPath = currentPath() 
-          ? `projects/${currentProject.name}/${currentPath()}/${file.name}`
-          : `projects/${currentProject.name}/${file.name}`;
-        
-        if (isBinaryFile(file.name)) {
-          const reader = new FileReader();
-          const base64 = await new Promise((resolve, reject) => {
-            reader.onload = () => {
-              const base64String = reader.result.split(',')[1];
-              resolve(base64String);
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          await writeBinaryFile(targetPath, base64);
+        // Check if this is a 3D model file that needs compression processing
+        if (is3DModelFile(file.name)) {
+          console.log(`🗜️ Processing 3D model with compression: ${file.name}`);
+          
+          // Use ModelProcessingAPI with default compression settings
+          const modelProcessor = new ModelProcessingAPI();
+          const defaultSettings = {
+            general: {
+              importMode: 'separate', // Default to Unreal-style separation
+              separateBy: 'material',
+              createCollisionMeshes: false,
+              enableLODs: false,
+              globalScale: 1.0
+            },
+            materials: {
+              dracoCompression: true, // Enable compression by default
+              tmfEncoding: false,
+              importMaterials: true,
+              createUnlitMaterials: false,
+              importTextures: true,
+              importNormals: true,
+              importColors: true,
+              useMultiMaterials: false,
+              preferCompressedSourceData: true,
+              allowNonPowerOfTwo: true
+            }
+          };
+          
+          await modelProcessor.convertToGlbAndExtract(
+            file,
+            defaultSettings,
+            currentProject.name,
+            defaultSettings.general.importMode,
+            currentPath() || '', // Use current path or empty string
+            (progress) => {
+              console.log(`📊 Model processing progress: ${progress.progress}% - ${progress.message}`);
+            }
+          );
+          
         } else {
-          const text = await file.text();
-          await writeFile(targetPath, text);
+          // Handle non-3D files as before
+          const targetPath = currentPath() 
+            ? `projects/${currentProject.name}/${currentPath()}/${file.name}`
+            : `projects/${currentProject.name}/${file.name}`;
+          
+          if (isBinaryFile(file.name)) {
+            const reader = new FileReader();
+            const base64 = await new Promise((resolve, reject) => {
+              reader.onload = () => {
+                const base64String = reader.result.split(',')[1];
+                resolve(base64String);
+              };
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            });
+            await writeBinaryFile(targetPath, base64);
+          } else {
+            const text = await file.text();
+            await writeFile(targetPath, text);
+          }
         }
-        
-        // File uploaded successfully
       }
       
       await fetchAssetsWithCache(currentProject, currentPath());

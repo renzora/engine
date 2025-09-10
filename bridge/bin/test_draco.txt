@@ -1,0 +1,2 @@
+This is a test file to verify the bin directory exists and is accessible.
+Place draco_encoder.exe here for Draco compression to work.

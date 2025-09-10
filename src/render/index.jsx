@@ -486,6 +486,19 @@ export default function BabylonRenderer(props) {
       const babylonScene = new Scene(babylonEngine);
       babylonScene.clearColor = new Color4(0.1, 0.1, 0.1, 1.0);
 
+      // Initialize Havok Physics v2
+      try {
+        if (window.DEBUG_RENDER) console.log('🌟 Initializing Havok Physics v2...');
+        const havokInstance = await HavokPhysics();
+        const hk = new HavokPlugin(true, havokInstance);
+        const gravity = new Vector3(0, -9.81, 0);
+        babylonScene.enablePhysics(gravity, hk);
+        if (window.DEBUG_RENDER) console.log('✅ Havok Physics v2 initialized successfully');
+      } catch (error) {
+        console.warn('⚠️ Failed to initialize Havok Physics v2:', error);
+        console.warn('Physics features will be disabled');
+      }
+
       // Start render loop  
       let renderLoopRunning = true;
       babylonEngine.runRenderLoop(() => {

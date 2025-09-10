@@ -30,6 +30,7 @@
     "@babylonjs/procedural-textures": "^8.20.0",
     "@babylonjs/serializers": "^8.20.0",
     "@monaco-editor/loader": "^1.5.0",
+    "@shopify/screenshot-glb": "^4.1.0",
     "@tabler/icons": "^3.34.1",
     "@tabler/icons-solidjs": "^3.34.1",
     "daisyui": "^5.0.50",

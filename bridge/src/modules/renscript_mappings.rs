@@ -55,6 +55,7 @@ pub fn get_api_method_mappings() -> Vec<(String, String)> {
         ("button".to_string(), "isGamepadButtonPressed".to_string()),
         ("leftTrigger".to_string(), "getLeftTrigger".to_string()),
         ("rightTrigger".to_string(), "getRightTrigger".to_string()),
+        ("getGamepadTrigger".to_string(), "getGamepadTrigger".to_string()),
         ("isButtonA".to_string(), "isGamepadButtonA".to_string()),
         ("isButtonB".to_string(), "isGamepadButtonB".to_string()),
         ("isButtonX".to_string(), "isGamepadButtonX".to_string()),
@@ -95,6 +96,7 @@ pub fn get_api_method_mappings() -> Vec<(String, String)> {
         ("intersectsMesh".to_string(), "intersectsMesh".to_string()),
         ("intersectsPoint".to_string(), "intersectsPoint".to_string()),
         ("getBoundingInfo".to_string(), "getBoundingInfo".to_string()),
+        ("boundingBoxGizmo".to_string(), "boundingBoxGizmo".to_string()),
 
         // === ANIMATION FUNCTIONS ===
         ("animate".to_string(), "animate".to_string()),
@@ -132,7 +134,6 @@ pub fn get_api_method_mappings() -> Vec<(String, String)> {
         ("abs".to_string(), "abs".to_string()),
         ("floor".to_string(), "floor".to_string()),
         ("atan2".to_string(), "atan2".to_string()),
-        ("floor".to_string(), "floor".to_string()),
 
         // === MATERIAL CREATION ===
         ("waterMaterial".to_string(), "createWaterMaterial".to_string()),

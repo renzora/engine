@@ -317,6 +317,12 @@ export class DebugAPI {
     return gizmoManager.gizmos.boundingBoxGizmo;
   }
 
+  boundingBoxGizmo(mesh = null) {
+    // If no mesh is provided, use the current babylonObject (this context)
+    const targetMesh = mesh || this.babylonObject;
+    return this.showBoundingBoxGizmo(targetMesh);
+  }
+
   hideAllGizmos() {
     if (this.gizmoManager) {
       this.gizmoManager.positionGizmoEnabled = false;

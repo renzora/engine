@@ -1,27 +1,27 @@
 
 script GamepadController {
   
-  last_debug_time = 0.0
-  
-  # Track position and rotation ourselves
+  # Track position manually to work around RenScript limitations
   pos_x = 0.0
-  pos_y = 0.0
+  pos_y = 2.0
   pos_z = 0.0
-  rot_x = 0.0
   rot_y = 0.0
-  rot_z = 0.0
+  
+  # Movement smoothing
+  velocity_x = 0.0
+  velocity_z = 0.0
+  is_moving = 0.0
+  
+  # Jump mechanics
+  grounded = 1.0
+  jump_velocity = 0.0
   
   start {
     addTag("gamepad_controlled")
-    
-    # Get initial position and rotation
-    initial_pos = position()
-    initial_rot = rotation()
-    # We can't use array access, so start from origin
-    pos_x = 0.0
-    pos_y = 2.0  # Start slightly above ground
-    pos_z = 0.0
-    rot_y = 0.0
+    # Initialize position
+    setPosition(pos_x, pos_y, pos_z)
+    setRotation(0.0, rot_y, 0.0)
+    log("360° Gamepad Controller initialized")
   }
   
   update() {
@@ -32,127 +32,154 @@ script GamepadController {
     # Get gamepad input
     gamepad_idx = floor(gamepad_index)
     
-    # Get individual stick axis values (RenScript compatible)
-    left_x = leftX(gamepad_idx) * enabled_num
-    left_y = leftY(gamepad_idx) * enabled_num
-    right_x = rightX(gamepad_idx) * enabled_num
-    right_y = rightY(gamepad_idx) * enabled_num
+    # Get left stick input with deadzone
+    stick_x = leftX(gamepad_idx) * enabled_num
+    stick_y = leftY(gamepad_idx) * enabled_num
     
-    # Movement with left stick (X and Z movement)
-    move_x = left_x * speed * time()
-    move_z = left_y * speed * time() * -1.0  # Invert Y for forward/backward
+    # Apply circular deadzone to prevent drift
+    deadzone = 0.15
+    stick_magnitude = sqrt(stick_x * stick_x + stick_y * stick_y)
     
-    # Update position
-    pos_x = pos_x + move_x
-    pos_z = pos_z + move_z
+    # Calculate movement direction
+    movement_x = 0.0
+    movement_z = 0.0
+    is_moving = 0.0
     
-    # Rotation with right stick
-    rot_y = rot_y + right_x * rotation_speed * time()
+    if (stick_magnitude > deadzone) {
+      # Normalize input and apply scaled magnitude
+      normalized_x = stick_x / stick_magnitude
+      normalized_z = stick_y / stick_magnitude * -1.0  # Invert Y for forward
+      
+      # Scale magnitude beyond deadzone (0 to 1)
+      adjusted_magnitude = (stick_magnitude - deadzone) / (1.0 - deadzone)
+      adjusted_magnitude = clamp(adjusted_magnitude, 0.0, 1.0)
+      
+      movement_x = normalized_x * adjusted_magnitude
+      movement_z = normalized_z * adjusted_magnitude
+      is_moving = 1.0
+    }
     
-    # === GAMEPAD BUTTON ACTIONS ===
-    # Standard gamepad button mapping (Xbox/PlayStation style)
+    # === SMOOTH MOVEMENT ===
+    # Apply velocity smoothing for natural acceleration/deceleration
+    accel = 8.0   # Acceleration rate
+    decel = 10.0  # Deceleration rate
     
-    # Button 0 - A/Cross - Jump
+    if (is_moving > 0.0) {
+      # Accelerate towards target velocity
+      target_vel_x = movement_x * speed
+      target_vel_z = movement_z * speed
+      
+      velocity_x = lerp(velocity_x, target_vel_x, accel * time())
+      velocity_z = lerp(velocity_z, target_vel_z, accel * time())
+    } else {
+      # Decelerate to zero
+      velocity_x = lerp(velocity_x, 0.0, decel * time())
+      velocity_z = lerp(velocity_z, 0.0, decel * time())
+    }
+    
+    # === CHARACTER ROTATION ===
+    # Character faces movement direction when moving
+    if (is_moving > 0.0) {
+      # Calculate target rotation from movement direction
+      target_rotation = atan2(movement_x, movement_z)
+      
+      # Smooth rotation towards target
+      rot_speed = rotation_speed * 4.0  # Responsive rotation
+      
+      # Calculate shortest rotation path
+      angle_diff = target_rotation - rot_y
+      
+      # Normalize angle difference to [-π, π]
+      while (angle_diff > 3.14159) {
+        angle_diff = angle_diff - 6.28318
+      }
+      while (angle_diff < -3.14159) {
+        angle_diff = angle_diff + 6.28318
+      }
+      
+      rot_y = rot_y + angle_diff * rot_speed * time()
+    }
+    
+    # === JUMP MECHANICS ===
+    # A button for jump
     button_a = button(0, gamepad_idx)
-    jump_force = 0.0
-    jump_force = jump_force + 1.0 * button_a
-    pos_y = pos_y + jump_force * 10.0 * time()
+    if (button_a > 0.0 && grounded > 0.0) {
+      jump_velocity = 12.0  # Jump strength
+      grounded = 0.0
+      log("Jump!")
+    }
     
-    # Button 1 - B/Circle - Crouch/Lower
-    button_b = button(1, gamepad_idx)
-    crouch_force = 0.0
-    crouch_force = crouch_force + 1.0 * button_b
-    pos_y = pos_y - crouch_force * 5.0 * time()
+    # Apply gravity
+    gravity = -20.0
+    jump_velocity = jump_velocity + gravity * time()
     
-    # Button 2 - X/Square - Boost speed (temporary)
-    button_x = button(2, gamepad_idx)
-    speed_boost = 1.0
-    speed_boost = speed_boost + button_x * 2.0  # Triple speed when held
-    pos_x = pos_x + (move_x * speed_boost * button_x)
-    pos_z = pos_z + (move_z * speed_boost * button_x)
+    # === SPEED MODIFIERS ===
+    # Right trigger: Sprint (hold for faster movement)
+    right_trigger = rightTrigger(gamepad_idx)
+    sprint_mult = 1.0 + right_trigger * 1.5  # Up to 2.5x speed
     
-    # Button 3 - Y/Triangle - Reset position
+    # Left trigger: Walk (hold for slower, precise movement)
+    left_trigger = leftTrigger(gamepad_idx)
+    walk_mult = 1.0 - left_trigger * 0.6   # Down to 40% speed
+    
+    # Combine speed modifiers
+    final_speed_mult = sprint_mult * walk_mult
+    
+    # Apply movement to position
+    pos_x = pos_x + velocity_x * time() * final_speed_mult
+    pos_z = pos_z + velocity_z * time() * final_speed_mult
+    
+    # Apply jump and gravity
+    pos_y = pos_y + jump_velocity * time()
+    
+    # Ground collision (simple Y = 0 ground)
+    if (pos_y <= 0.0) {
+      pos_y = 0.0
+      jump_velocity = 0.0
+      grounded = 1.0
+    }
+    
+    # === CAMERA/MANUAL ROTATION ===
+    # Right stick for manual rotation (overrides auto-rotation when used)
+    camera_x = rightX(gamepad_idx) * enabled_num
+    camera_magnitude = abs(camera_x)
+    
+    if (camera_magnitude > deadzone) {
+      # Manual rotation with right stick
+      manual_rot = camera_x * rotation_speed * time() * 2.0
+      rot_y = rot_y + manual_rot
+    }
+    
+    # === UTILITY BUTTONS ===
+    # Y button: Reset to origin
     button_y = button(3, gamepad_idx)
-    reset_multiplier = 1.0 - button_y  # Becomes 0 when pressed
-    pos_x = pos_x * reset_multiplier
-    pos_y = pos_y * reset_multiplier + 2.0 * button_y  # Reset to height 2
-    pos_z = pos_z * reset_multiplier
-    rot_y = rot_y * reset_multiplier
+    if (button_y > 0.0) {
+      pos_x = 0.0
+      pos_y = 2.0
+      pos_z = 0.0
+      rot_y = 0.0
+      velocity_x = 0.0
+      velocity_z = 0.0
+      jump_velocity = 0.0
+      grounded = 1.0
+      log("Position reset to origin")
+    }
     
-    # Button 4 - Left Bumper - Strafe left
-    button_lb = button(4, gamepad_idx)
-    strafe_left = 0.0
-    strafe_left = strafe_left - button_lb * speed * time() * 2.0
-    pos_x = pos_x + strafe_left
-    
-    # Button 5 - Right Bumper - Strafe right  
-    button_rb = button(5, gamepad_idx)
-    strafe_right = 0.0
-    strafe_right = strafe_right + button_rb * speed * time() * 2.0
-    pos_x = pos_x + strafe_right
-    
-    # Button 6 - Left Trigger (as button) - Slow motion
-    button_lt = button(6, gamepad_idx)
-    slow_factor = 1.0 - button_lt * 0.7  # Reduce to 30% speed
-    pos_x = pos_x * slow_factor + pos_x * (1.0 - slow_factor)
-    
-    # Button 7 - Right Trigger (as button) - Turbo
-    button_rt = button(7, gamepad_idx)
-    turbo = 1.0 + button_rt * 3.0  # 4x speed
-    
-    # Button 8 - Back/Select - Toggle rotation direction
-    button_back = button(8, gamepad_idx)
-    rot_direction = 1.0 - button_back * 2.0  # Flips between 1 and -1
-    rot_y = rot_y * rot_direction
-    
-    # Button 9 - Start - Pause movement (freeze position)
-    button_start = button(9, gamepad_idx)
-    freeze = 1.0 - button_start  # Becomes 0 when pressed
-    move_x = move_x * freeze
-    move_z = move_z * freeze
-    
-    # Button 10 - Left Stick Click - Random teleport
-    button_ls = button(10, gamepad_idx)
-    teleport_x = random(-10.0, 10.0) * button_ls
-    teleport_z = random(-10.0, 10.0) * button_ls
-    pos_x = pos_x * (1.0 - button_ls) + teleport_x
-    pos_z = pos_z * (1.0 - button_ls) + teleport_z
-    
-    # Button 11 - Right Stick Click - Spin 180 degrees
-    button_rs = button(11, gamepad_idx)
-    spin = button_rs * 3.14159  # Pi radians = 180 degrees
-    rot_y = rot_y + spin
-    
-    # Button 12 - D-Pad Up - Move forward
-    dpad_up = button(12, gamepad_idx)
-    pos_z = pos_z - dpad_up * speed * time() * 2.0
-    
-    # Button 13 - D-Pad Down - Move backward
-    dpad_down = button(13, gamepad_idx)
-    pos_z = pos_z + dpad_down * speed * time() * 2.0
-    
-    # Button 14 - D-Pad Left - Rotate left
-    dpad_left = button(14, gamepad_idx)
-    rot_y = rot_y - dpad_left * rotation_speed * time() * 2.0
-    
-    # Button 15 - D-Pad Right - Rotate right
-    dpad_right = button(15, gamepad_idx)
-    rot_y = rot_y + dpad_right * rotation_speed * time() * 2.0
-    
-    # Get analog trigger values for smooth control
-    left_trigger = get_gamepad_trigger("left", gamepad_idx)
-    right_trigger = get_gamepad_trigger("right", gamepad_idx)
-    
-    # Use triggers for smooth vertical movement
-    pos_y = pos_y + (right_trigger - left_trigger) * speed * time()
+    # B button: Emergency stop
+    button_b = button(1, gamepad_idx)
+    if (button_b > 0.0) {
+      velocity_x = 0.0
+      velocity_z = 0.0
+      jump_velocity = 0.0
+    }
     
     # Apply transforms
     setPosition(pos_x, pos_y, pos_z)
-    setRotation(rot_x, rot_y, rot_z)
+    setRotation(0.0, rot_y, 0.0)
   }
   
   destroy {
-    log("Gamepad controller destroyed")
+    log("360° Gamepad Controller destroyed")
     removeTag("gamepad_controlled")
   }
 }

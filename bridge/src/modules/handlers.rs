@@ -13,7 +13,7 @@ use base64::{Engine as _, engine::general_purpose};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project, load_scene_with_assets};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
-use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest, batch_generate_thumbnails, generate_model_thumbnail};
+use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest, batch_generate_thumbnails, generate_model_thumbnail, generate_material_thumbnail};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
 use crate::system_monitor::get_system_stats;
@@ -205,6 +205,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::POST, "/thumbnails/batch") => {
             match &body {
                 Some(body_content) => handle_batch_generate_thumbnails(body_content).await,
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
+        (&Method::POST, "/material-thumbnail") => {
+            match &body {
+                Some(body_content) => handle_generate_material_thumbnail(body_content).await,
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
@@ -523,6 +529,37 @@ async fn handle_generate_thumbnail(body_content: &str) -> Response<BoxBody<Bytes
         Ok(request) => {
             let response = get_or_generate_thumbnail(request).await;
             json_response(&response)
+        }
+        Err(e) => {
+            error_response(StatusCode::BAD_REQUEST, &format!("Invalid request format: {}", e))
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct MaterialThumbnailRequest {
+    project_name: String,
+    material_path: String,
+    size: Option<u32>,
+}
+
+async fn handle_generate_material_thumbnail(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    match serde_json::from_str::<MaterialThumbnailRequest>(body_content) {
+        Ok(request) => {
+            let size = request.size.unwrap_or(256);
+            match generate_material_thumbnail(&request.project_name, &request.material_path, size).await {
+                Ok(thumbnail_file) => {
+                    let response = serde_json::json!({
+                        "success": true,
+                        "thumbnail_file": thumbnail_file,
+                        "cached": false
+                    });
+                    json_response(&response)
+                }
+                Err(e) => {
+                    error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Material thumbnail generation failed: {}", e))
+                }
+            }
         }
         Err(e) => {
             error_response(StatusCode::BAD_REQUEST, &format!("Invalid request format: {}", e))

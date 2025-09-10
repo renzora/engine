@@ -220,7 +220,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
   return (
     <Show when={isOpen()}>
       <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-base-200 rounded-xl shadow-2xl w-[95vw] h-[90vh] max-w-[1200px] flex flex-col">
+        <div class="bg-base-200 rounded-xl shadow-2xl w-[80vw] h-[90vh] max-w-[900px] flex flex-col">
           {/* Header */}
           <div class="flex items-center justify-between p-4 border-b border-base-300">
             <h2 class="text-lg font-semibold text-base-content">Model Importer</h2>
@@ -238,33 +238,42 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
               <h3 class="text-sm font-medium text-base-content mb-3">Files to Import</h3>
               
               <div
-                class="flex-1 border-2 border-dashed border-base-300 rounded-lg p-4 flex flex-col items-center justify-center text-center hover:border-primary/50 transition-colors cursor-pointer"
+                class="flex-1 border-2 border-dashed border-base-300 rounded-lg p-4 flex flex-col hover:border-primary/50 transition-colors cursor-pointer overflow-hidden"
                 onClick={handleFileSelect}
                 onDrop={handleDrop}
                 onDragOver={handleDragOver}
               >
                 <Show when={selectedFiles().length === 0}>
-                  <IconFolderOpen class="w-12 h-12 text-base-content/40 mb-3" />
-                  <p class="text-sm text-base-content/60 mb-2">
-                    Drop files here or click to browse
-                  </p>
-                  <p class="text-xs text-base-content/40">
-                    Supports: FBX, OBJ, GLTF, GLB, DAE, 3DS, Blend, Max, STL, PLY, X3D, MD2/3/5, LWO, AC, IFC, and more
-                  </p>
+                  <div class="flex-1 flex flex-col items-center justify-center text-center">
+                    <IconFolderOpen class="w-12 h-12 text-base-content/40 mb-3" />
+                    <p class="text-sm text-base-content/60 mb-2">
+                      Drop files here or click to browse
+                    </p>
+                    <p class="text-xs text-base-content/40">
+                      Supports: FBX, OBJ, GLTF, GLB, DAE, 3DS, Blend, Max, STL, PLY, X3D, MD2/3/5, LWO, AC, IFC, and more
+                    </p>
+                  </div>
                 </Show>
                 
                 <Show when={selectedFiles().length > 0}>
-                  <div class="w-full text-left">
-                    <p class="text-sm font-medium text-base-content mb-2">
+                  <div class="flex flex-col h-full text-left">
+                    <p class="text-sm font-medium text-base-content mb-2 flex-shrink-0">
                       {selectedFiles().length} file(s) selected:
                     </p>
-                    <div class="space-y-1 max-h-32 overflow-y-auto">
+                    <div class="flex-1 space-y-1 overflow-y-auto min-h-0">
                       <For each={selectedFiles()}>
                         {(file) => (
                           <div class="flex items-center justify-between text-xs bg-base-100 p-2 rounded">
                             <span class="truncate">{file.name}</span>
                             <span class="text-base-content/50 ml-2">
-                              {(file.size / 1024 / 1024).toFixed(1)}MB
+                              {(() => {
+                                const sizeInMB = file.size / 1024 / 1024;
+                                if (sizeInMB < 1) {
+                                  return `${Math.round(file.size / 1024)}KB`;
+                                } else {
+                                  return `${sizeInMB.toFixed(1)}MB`;
+                                }
+                              })()}
                             </span>
                           </div>
                         )}
@@ -275,7 +284,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
                         e.stopPropagation();
                         setSelectedFiles([]);
                       }}
-                      class="text-xs text-error hover:underline mt-2"
+                      class="text-xs text-error hover:underline mt-2 flex-shrink-0"
                     >
                       Clear selection
                     </button>
@@ -326,8 +335,8 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
                       label="Import Mode"
                       value={importSettings().general.importMode}
                       options={[
-                        { value: 'separate', label: 'Separate Assets (Unreal-style)' },
-                        { value: 'combined', label: 'Combined Object' }
+                        { value: 'separate', label: 'Separate Assets' },
+                        { value: 'combined', label: 'Single Mesh' }
                       ]}
                       onChange={(value) => updateSetting('general', 'importMode', value)}
                     />
@@ -517,12 +526,14 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
 
                     <CheckboxSetting
                       label="Draco compression"
+                      description="Compress 3D mesh geometry for smaller file sizes (recommended for large models)"
                       checked={importSettings().materials.dracoCompression}
                       onChange={(checked) => updateSetting('materials', 'dracoCompression', checked)}
                     />
 
                     <CheckboxSetting
-                      label="TMF encoding (animations)"
+                      label="TMF compression"
+                      description="Apply TMF compression to 3D models for optimized file size and faster loading"
                       checked={importSettings().materials.tmfEncoding}
                       onChange={(checked) => updateSetting('materials', 'tmfEncoding', checked)}
                     />
@@ -613,16 +624,21 @@ function ImportSection({ title, isExpanded, onToggle, children }) {
   );
 }
 
-function CheckboxSetting({ label, checked, onChange }) {
+function CheckboxSetting({ label, description, checked, onChange }) {
   return (
-    <label class="flex items-center gap-2 cursor-pointer">
+    <label class="flex items-start gap-2 cursor-pointer">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        class="checkbox checkbox-primary checkbox-sm"
+        class="checkbox checkbox-primary checkbox-sm mt-0.5"
       />
-      <span class="text-sm text-base-content">{label}</span>
+      <div class="flex flex-col">
+        <span class="text-sm text-base-content">{label}</span>
+        {description && (
+          <span class="text-xs text-base-content/60">{description}</span>
+        )}
+      </div>
     </label>
   );
 }

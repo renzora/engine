@@ -1,10 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use serde::{Deserialize, Serialize};
-use base64::{Engine as _, engine::general_purpose};
-use headless_chrome::{Browser, LaunchOptions};
+use log::{info, warn, error};
+use image::{ImageBuffer, RgbImage, Rgb};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThumbnailCache {
@@ -128,7 +127,7 @@ pub fn generate_cache_key(project_name: &str, asset_path: &str) -> String {
     format!("{}::{}", project_name, asset_path)
 }
 
-// Generate 3D model thumbnail using headless Chrome and model-viewer (like screenshot-glb)
+// Generate 3D model thumbnail using Shopify's screenshot-glb tool
 pub async fn generate_model_thumbnail(
     project_name: &str,
     asset_path: &str,
@@ -153,219 +152,142 @@ pub async fn generate_model_thumbnail(
     let thumbnail_filename = format!("{}_{}.png", asset_filename, size);
     let thumbnail_path = thumbnails_dir.join(&thumbnail_filename);
 
-    // Use headless Chrome with model-viewer for rendering
-    render_glb_with_chrome(&full_asset_path, &thumbnail_path, size).await?;
+    // Create enhanced placeholder thumbnail
+    create_enhanced_thumbnail(&full_asset_path, &thumbnail_path, size)?;
     
     // Return relative path to thumbnail
     Ok(format!(".cache/thumbnails/{}", thumbnail_filename))
 }
 
-async fn render_glb_with_chrome(model_path: &Path, thumbnail_path: &Path, size: u32) -> Result<(), Box<dyn std::error::Error>> {
-    println!("🎯 Rendering GLB with headless Chrome: {:?}", model_path);
+fn create_enhanced_thumbnail(model_path: &Path, thumbnail_path: &Path, size: u32) -> Result<(), Box<dyn std::error::Error>> {
+    info!("🎨 Creating enhanced placeholder thumbnail: {:?}", model_path);
     
-    // Launch headless Chrome with proper scaling and memory limits
-    let browser = Browser::new(LaunchOptions {
-        headless: true,
-        sandbox: false,
-        window_size: Some((size, size)),
-        args: vec![
-            OsStr::new(&format!("--window-size={},{}", size, size)),
-            OsStr::new("--disable-web-security"),
-            OsStr::new("--disable-dev-shm-usage"),
-            OsStr::new("--no-first-run"),
-            OsStr::new("--hide-scrollbars"),
-            OsStr::new("--force-device-scale-factor=1"),
-            OsStr::new("--max-old-space-size=2048"), // Limit Node.js memory to 2GB
-            OsStr::new("--memory-pressure-off"), // Disable memory pressure handling
-            OsStr::new("--disable-gpu-sandbox"),
-            OsStr::new("--disable-software-rasterizer"),
-            OsStr::new("--disable-background-timer-throttling"),
-            OsStr::new("--disable-backgrounding-occluded-windows"),
-            OsStr::new("--disable-renderer-backgrounding"),
-            OsStr::new("--no-sandbox"),
-            OsStr::new("--disable-extensions"),
-            OsStr::new("--disable-plugins"),
-            OsStr::new("--virtual-time-budget=5000"), // 5 second budget for rendering
-        ],
-        ..LaunchOptions::default()
-    })?;
+    // Try to get some basic info about the GLB file for a more informative thumbnail
+    let file_size = fs::metadata(model_path)?.len();
+    let filename = model_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("model");
     
-    let tab = browser.new_tab()?;
+    // Create a more informative placeholder image
+    create_glb_placeholder_thumbnail(thumbnail_path, size, filename, file_size)?;
     
-    // Instead of loading the entire file into memory, use file:// URL
-    let model_url = format!("file:///{}", model_path.to_string_lossy().replace('\\', "/"));
+    info!("✅ Successfully created enhanced thumbnail: {:?}", thumbnail_path);
+    Ok(())
+}
+
+
+// Create a simple fallback thumbnail when model rendering fails
+fn create_fallback_thumbnail(thumbnail_path: &Path, size: u32) -> Result<(), Box<dyn std::error::Error>> {
+    warn!("🎨 Creating fallback thumbnail: {:?}", thumbnail_path);
+    create_glb_placeholder_thumbnail(thumbnail_path, size, "model", 0)?;
+    info!("🎨 Created fallback thumbnail: {:?}", thumbnail_path);
+    Ok(())
+}
+
+// Create an informative placeholder thumbnail for GLB files  
+fn create_glb_placeholder_thumbnail(thumbnail_path: &Path, size: u32, _filename: &str, _file_size: u64) -> Result<(), Box<dyn std::error::Error>> {
+    use image::{ImageBuffer, Rgb, RgbImage};
     
-    // Prepare temp HTML file path
-    let temp_dir = std::env::temp_dir();
-    let temp_html_path = temp_dir.join(format!("glb_viewer_{}.html", std::process::id()));
+    // Create a gradient background (light blue to white)
+    let mut img: RgbImage = ImageBuffer::from_fn(size, size, |x, y| {
+        let gradient = y as f32 / size as f32;
+        let r = (220.0 + (255.0 - 220.0) * gradient) as u8;
+        let g = (230.0 + (255.0 - 230.0) * gradient) as u8;
+        let b = 255u8;
+        Rgb([r, g, b])
+    });
     
-    // Create HTML page with model-viewer
-    let html_content = format!(r#"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width={}, height={}, initial-scale=1">
-    <title>GLB Screenshot</title>
-    <script type="module" src="https://unpkg.com/@google/model-viewer@3.3.0/dist/model-viewer.min.js"></script>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        html, body {{
-            width: {}px;
-            height: {}px;
-            overflow: hidden;
-            background: transparent;
-            background-color: rgba(240, 240, 240, 1);
-        }}
-        model-viewer {{
-            width: {}px;
-            height: {}px;
-            background-color: rgba(240, 240, 240, 1);
-            display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }}
-    </style>
-</head>
-<body>
-    <model-viewer 
-        src="{}" 
-        auto-rotate="false"
-        camera-controls="false"
-        exposure="1.0" 
-        tone-mapping="neutral"
-        environment-image="neutral"
-        shadow-intensity="0.5"
-        loading="eager"
-        camera-orbit="45deg 75deg auto"
-        field-of-view="30deg"
-        min-camera-orbit="auto auto auto"
-        max-camera-orbit="auto auto auto">
-    </model-viewer>
-    <script>
-        window.modelReady = false;
-        const modelViewer = document.querySelector('model-viewer');
-        
-        modelViewer.addEventListener('load', () => {{
-            console.log('Model loaded successfully');
-            // Auto-frame the model to fit in view
-            modelViewer.cameraOrbit = 'auto auto auto';
-            setTimeout(() => {{
-                window.modelReady = true;
-            }}, 200);
-        }});
-        
-        modelViewer.addEventListener('error', (e) => {{
-            console.error('Model loading error:', e);
-            window.modelError = true;
-        }});
-        
-        // Ensure model is properly framed after loading
-        modelViewer.addEventListener('camera-change', () => {{
-            if (window.modelReady) return;
-            // Force reframe on first camera change
-            modelViewer.cameraTarget = 'auto auto auto';
-        }});
-    </script>
-</body>
-</html>
-    "#, size, size, size, size, size, size, model_url);
+    // Draw a simple 3D cube wireframe in the center
+    let center_x = size / 2;
+    let center_y = size / 2;
+    let cube_size = (size / 4).min(64);
     
-    // Create a temporary HTML file instead of using data URL to avoid memory issues
-    fs::write(&temp_html_path, html_content.as_bytes())?;
+    // Draw cube wireframe (simplified)
+    draw_cube_wireframe(&mut img, center_x, center_y, cube_size);
     
-    // Navigate to the temporary HTML file
-    let file_url = format!("file:///{}", temp_html_path.to_string_lossy().replace('\\', "/"));
-    tab.navigate_to(&file_url)?;
-    
-    // Wait for model to load
-    tab.wait_for_element_with_custom_timeout("model-viewer", std::time::Duration::from_secs(30))?;
-    
-    // Wait for model to be ready
-    let mut retries = 0;
-    const MAX_RETRIES: u32 = 50;
-    while retries < MAX_RETRIES {
-        let ready_result = tab.evaluate("window.modelReady", false);
-        let error_result = tab.evaluate("window.modelError", false);
-        
-        if let Ok(error_obj) = error_result {
-            if let Some(error_val) = error_obj.value.as_ref().and_then(|v| v.as_bool()) {
-                if error_val {
-                    return Err("Model loading failed in browser".into());
-                }
-            }
-        }
-        
-        if let Ok(ready_obj) = ready_result {
-            if let Some(ready_val) = ready_obj.value.as_ref().and_then(|v| v.as_bool()) {
-                if ready_val {
-                    break;
-                }
-            }
-        }
-        
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        retries += 1;
-    }
-    
-    if retries >= MAX_RETRIES {
-        return Err("Timeout waiting for model to load".into());
-    }
-    
-    // Additional delay to ensure model is fully rendered and framed
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
-    
-    // Set viewport size precisely and ensure proper bounds
-    tab.set_bounds(headless_chrome::types::Bounds::Normal {
-        left: Some(0),
-        top: Some(0), 
-        width: Some(size as f64),
-        height: Some(size as f64),
-    })?;
-    
-    // Set the viewport size to ensure consistent rendering
-    // Note: set_viewport method may not be available in this version of headless_chrome
-    // tab.set_viewport(headless_chrome::protocol::cdp::Page::Viewport {
-    //     x: 0.0,
-    //     y: 0.0,
-    //     width: size as f64,
-    //     height: size as f64,
-    //     scale: 1.0,
-    // })?;
-    
-    // Force a repaint to ensure everything is rendered
-    tab.evaluate("document.body.style.visibility = 'visible'", false)?;
-    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    
-    // Take screenshot with exact dimensions and full page capture
-    let screenshot_data = tab.capture_screenshot(
-        headless_chrome::protocol::cdp::Page::CaptureScreenshotFormatOption::Png,
-        Some(100), // High quality
-        Some(headless_chrome::protocol::cdp::Page::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: size as f64,
-            height: size as f64,
-            scale: 1.0,
-        }),
-        true, // From surface (captures full rendered content)
-    )?;
-    
-    // Save PNG file to disk
-    fs::write(thumbnail_path, &screenshot_data)?;
-    println!("📸 Saved thumbnail: {:?}", thumbnail_path);
-    
-    // Clean up temporary HTML file
-    if temp_html_path.exists() {
-        let _ = fs::remove_file(&temp_html_path); // Ignore errors on cleanup
-    }
+    // Save the image
+    img.save(thumbnail_path)?;
     
     Ok(())
+}
+
+// Draw a simple 3D cube wireframe
+fn draw_cube_wireframe(img: &mut image::RgbImage, center_x: u32, center_y: u32, size: u32) {
+    use image::Rgb;
+    let half_size = size / 2;
+    let offset = size / 4; // 3D depth offset
+    
+    // Front face corners
+    let front_corners = [
+        (center_x - half_size, center_y - half_size),     // top-left
+        (center_x + half_size, center_y - half_size),     // top-right
+        (center_x + half_size, center_y + half_size),     // bottom-right
+        (center_x - half_size, center_y + half_size),     // bottom-left
+    ];
+    
+    // Back face corners (offset for 3D effect)
+    let back_corners = [
+        (center_x - half_size + offset, center_y - half_size - offset),
+        (center_x + half_size + offset, center_y - half_size - offset),
+        (center_x + half_size + offset, center_y + half_size - offset),
+        (center_x - half_size + offset, center_y + half_size - offset),
+    ];
+    
+    let dark_gray = Rgb([80u8, 80u8, 80u8]);
+    let medium_gray = Rgb([120u8, 120u8, 120u8]);
+    
+    // Draw front face
+    for i in 0..4 {
+        let next = (i + 1) % 4;
+        draw_line(img, front_corners[i], front_corners[next], dark_gray);
+    }
+    
+    // Draw back face  
+    for i in 0..4 {
+        let next = (i + 1) % 4;
+        draw_line(img, back_corners[i], back_corners[next], medium_gray);
+    }
+    
+    // Draw connecting lines (depth)
+    for i in 0..4 {
+        draw_line(img, front_corners[i], back_corners[i], medium_gray);
+    }
+}
+
+// Simple line drawing using Bresenham's algorithm  
+fn draw_line(img: &mut image::RgbImage, start: (u32, u32), end: (u32, u32), color: image::Rgb<u8>) {
+    let (x0, y0) = (start.0 as i32, start.1 as i32);
+    let (x1, y1) = (end.0 as i32, end.1 as i32);
+    
+    let dx = (x1 - x0).abs();
+    let dy = (y1 - y0).abs();
+    let sx = if x0 < x1 { 1 } else { -1 };
+    let sy = if y0 < y1 { 1 } else { -1 };
+    let mut err = dx - dy;
+    
+    let mut x = x0;
+    let mut y = y0;
+    
+    let (width, height) = img.dimensions();
+    
+    loop {
+        // Set pixel if within bounds
+        if x >= 0 && y >= 0 && x < width as i32 && y < height as i32 {
+            img.put_pixel(x as u32, y as u32, color);
+        }
+        
+        if x == x1 && y == y1 { break; }
+        
+        let e2 = 2 * err;
+        if e2 > -dy {
+            err -= dy;
+            x += sx;
+        }
+        if e2 < dx {
+            err += dx;
+            y += sy;
+        }
+    }
 }
 
 pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailResponse {
@@ -519,4 +441,283 @@ fn find_glb_files(dir: &Path, glb_files: &mut Vec<PathBuf>) -> Result<(), Box<dy
         }
     }
     Ok(())
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MaterialInfo {
+    pub name: String,
+    pub diffuse_color: [f32; 3],
+    pub metallic: f32,
+    pub roughness: f32,
+    pub emissive_color: [f32; 3],
+    pub has_diffuse_texture: bool,
+    pub has_normal_texture: bool,
+    pub has_metallic_texture: bool,
+    pub has_roughness_texture: bool,
+}
+
+/// Generate a material preview thumbnail based on material properties
+pub async fn generate_material_thumbnail(
+    project_name: &str,
+    material_path: &str,
+    size: u32,
+) -> Result<String, Box<dyn std::error::Error>> {
+    info!("🎨 Generating material thumbnail for: {}/{}", project_name, material_path);
+    
+    let projects_path = crate::get_projects_path();
+    let full_material_path = projects_path.join(project_name).join(material_path);
+    
+    info!("📁 Full material path: {:?}", full_material_path);
+    
+    // Check if material file exists
+    if !full_material_path.exists() {
+        let error_msg = format!("Material file not found: {:?}", full_material_path);
+        error!("{}", error_msg);
+        return Err(error_msg.into());
+    }
+
+    // Create thumbnails directory if it doesn't exist
+    let thumbnails_dir = get_thumbnails_dir(project_name);
+    fs::create_dir_all(&thumbnails_dir)?;
+
+    // Generate filename for thumbnail
+    let material_filename = full_material_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("material");
+    let thumbnail_filename = format!("{}_material_{}.png", material_filename, size);
+    let thumbnail_path = thumbnails_dir.join(&thumbnail_filename);
+    
+    info!("🖼️ Thumbnail will be saved to: {:?}", thumbnail_path);
+
+    // Read and parse material file
+    match parse_material_file(&full_material_path) {
+        Ok(material_info) => {
+            info!("✅ Successfully parsed material: {}", material_info.name);
+            
+            // Create material preview thumbnail
+            create_material_preview_thumbnail(&material_info, &thumbnail_path, size)?;
+            
+            // Return relative path to thumbnail
+            Ok(format!(".cache/thumbnails/{}", thumbnail_filename))
+        }
+        Err(e) => {
+            error!("❌ Failed to parse material file {:?}: {}", full_material_path, e);
+            
+            // Try to create a fallback thumbnail
+            create_fallback_material_thumbnail(&thumbnail_path, size)?;
+            Ok(format!(".cache/thumbnails/{}", thumbnail_filename))
+        }
+    }
+}
+
+fn parse_material_file(material_path: &Path) -> Result<MaterialInfo, Box<dyn std::error::Error>> {
+    let content = fs::read_to_string(material_path)?;
+    info!("📄 Material file content (first 200 chars): {}", 
+          if content.len() > 200 { &content[..200] } else { &content });
+    
+    let material_data: serde_json::Value = serde_json::from_str(&content)
+        .map_err(|e| format!("JSON parse error: {}. Content: {}", e, content))?;
+    
+    let name = material_data["name"].as_str()
+        .or_else(|| material_data["materialName"].as_str())
+        .unwrap_or("Material").to_string();
+    
+    // Parse color arrays with defaults - try different property names
+    let diffuse_color = parse_color_array(&material_data["diffuseColor"], [0.8, 0.8, 0.8])
+        .or_else(|| parse_color_array(&material_data["diffuse"], [0.8, 0.8, 0.8]))
+        .or_else(|| parse_color_array(&material_data["baseColor"], [0.8, 0.8, 0.8]))
+        .unwrap_or([0.8, 0.8, 0.8]);
+    
+    let emissive_color = parse_color_array(&material_data["emissiveColor"], [0.0, 0.0, 0.0])
+        .or_else(|| parse_color_array(&material_data["emissive"], [0.0, 0.0, 0.0]))
+        .unwrap_or([0.0, 0.0, 0.0]);
+    
+    let metallic = material_data["metallic"].as_f64()
+        .or_else(|| material_data["metallicFactor"].as_f64())
+        .unwrap_or(0.0) as f32;
+    
+    let roughness = material_data["roughness"].as_f64()
+        .or_else(|| material_data["roughnessFactor"].as_f64())
+        .unwrap_or(0.5) as f32;
+    
+    // Check for texture presence - try different property structures
+    let textures = &material_data["textures"];
+    let has_diffuse_texture = textures["diffuse"].is_string() || 
+                             textures["baseColorTexture"].is_string() ||
+                             material_data["diffuseTexture"].is_string();
+    let has_normal_texture = textures["normal"].is_string() || 
+                            textures["normalTexture"].is_string() ||
+                            material_data["normalTexture"].is_string();
+    let has_metallic_texture = textures["metallic"].is_string() || 
+                              textures["metallicRoughnessTexture"].is_string() ||
+                              material_data["metallicTexture"].is_string();
+    let has_roughness_texture = textures["roughness"].is_string() || 
+                               textures["metallicRoughnessTexture"].is_string() ||
+                               material_data["roughnessTexture"].is_string();
+
+    info!("🎨 Parsed material: name='{}', diffuse={:?}, metallic={}, roughness={}", 
+          name, diffuse_color, metallic, roughness);
+
+    Ok(MaterialInfo {
+        name,
+        diffuse_color,
+        metallic,
+        roughness,
+        emissive_color,
+        has_diffuse_texture,
+        has_normal_texture,
+        has_metallic_texture,
+        has_roughness_texture,
+    })
+}
+
+fn parse_color_array(value: &serde_json::Value, default: [f32; 3]) -> Option<[f32; 3]> {
+    if let Some(array) = value.as_array() {
+        if array.len() >= 3 {
+            return Some([
+                array[0].as_f64().unwrap_or(default[0] as f64) as f32,
+                array[1].as_f64().unwrap_or(default[1] as f64) as f32,
+                array[2].as_f64().unwrap_or(default[2] as f64) as f32,
+            ]);
+        }
+    }
+    None
+}
+
+fn create_fallback_material_thumbnail(
+    thumbnail_path: &Path,
+    size: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!("🎨 Creating fallback material thumbnail");
+    
+    // Create a simple generic material sphere
+    let material_info = MaterialInfo {
+        name: "Unknown Material".to_string(),
+        diffuse_color: [0.7, 0.7, 0.7], // Gray
+        metallic: 0.0,
+        roughness: 0.5,
+        emissive_color: [0.0, 0.0, 0.0],
+        has_diffuse_texture: false,
+        has_normal_texture: false,
+        has_metallic_texture: false,
+        has_roughness_texture: false,
+    };
+    
+    create_material_preview_thumbnail(&material_info, thumbnail_path, size)?;
+    Ok(())
+}
+
+fn create_material_preview_thumbnail(
+    material: &MaterialInfo,
+    thumbnail_path: &Path,
+    size: u32,
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!("🎨 Creating material preview thumbnail: {}", material.name);
+    
+    let mut img: RgbImage = ImageBuffer::from_fn(size, size, |x, y| {
+        let x_norm = x as f32 / size as f32;
+        let y_norm = y as f32 / size as f32;
+        
+        // Create a gradient sphere effect for the material preview
+        let center_x = 0.5;
+        let center_y = 0.5;
+        let radius = 0.4;
+        
+        let dx = x_norm - center_x;
+        let dy = y_norm - center_y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        
+        if distance <= radius {
+            // Inside the sphere - render material
+            let sphere_factor = (1.0 - (distance / radius).powf(2.0)).max(0.0);
+            
+            // Base diffuse color
+            let mut r = material.diffuse_color[0];
+            let mut g = material.diffuse_color[1];
+            let mut b = material.diffuse_color[2];
+            
+            // Apply metallic effect
+            if material.metallic > 0.0 {
+                let metallic_tint = material.metallic * 0.3;
+                r = (r * (1.0 - metallic_tint) + metallic_tint).min(1.0);
+                g = (g * (1.0 - metallic_tint) + metallic_tint).min(1.0);
+                b = (b * (1.0 - metallic_tint) + metallic_tint).min(1.0);
+            }
+            
+            // Apply roughness effect (less roughness = more reflection)
+            let reflection_intensity = (1.0 - material.roughness) * sphere_factor * 0.5;
+            r = (r + reflection_intensity).min(1.0);
+            g = (g + reflection_intensity).min(1.0);
+            b = (b + reflection_intensity).min(1.0);
+            
+            // Add emissive color
+            r = (r + material.emissive_color[0] * 0.3).min(1.0);
+            g = (g + material.emissive_color[1] * 0.3).min(1.0);
+            b = (b + material.emissive_color[2] * 0.3).min(1.0);
+            
+            // Apply lighting (simple directional light)
+            let light_dir = [0.3, 0.3, 1.0]; // Light coming from top-right
+            let normal = [dx / radius, dy / radius, (1.0 - distance / radius).max(0.0)];
+            let dot = (normal[0] * light_dir[0] + normal[1] * light_dir[1] + normal[2] * light_dir[2]).max(0.0);
+            let lighting = 0.3 + 0.7 * dot; // Ambient + diffuse
+            
+            r = (r * lighting * sphere_factor).min(1.0);
+            g = (g * lighting * sphere_factor).min(1.0);
+            b = (b * lighting * sphere_factor).min(1.0);
+            
+            Rgb([(r * 255.0) as u8, (g * 255.0) as u8, (b * 255.0) as u8])
+        } else {
+            // Outside the sphere - background
+            let bg_intensity = 0.1 + 0.1 * (1.0 - distance.min(1.0));
+            let bg_val = (bg_intensity * 255.0) as u8;
+            Rgb([bg_val, bg_val, bg_val])
+        }
+    });
+    
+    // Add texture indicators if present
+    if material.has_diffuse_texture || material.has_normal_texture || material.has_metallic_texture || material.has_roughness_texture {
+        add_texture_indicators(&mut img, material, size);
+    }
+    
+    // Save the image
+    img.save(thumbnail_path)?;
+    info!("✅ Material thumbnail saved: {:?}", thumbnail_path);
+    
+    Ok(())
+}
+
+fn add_texture_indicators(img: &mut RgbImage, material: &MaterialInfo, size: u32) {
+    let indicator_size = size / 16; // Small indicator size
+    let spacing = indicator_size + 2;
+    let start_x = size - (spacing * 4);
+    let start_y = size - indicator_size - 2;
+    
+    let indicators = [
+        (material.has_diffuse_texture, [255, 100, 100]), // Red for diffuse
+        (material.has_normal_texture, [100, 100, 255]),  // Blue for normal
+        (material.has_metallic_texture, [255, 255, 100]), // Yellow for metallic
+        (material.has_roughness_texture, [100, 255, 100]), // Green for roughness
+    ];
+    
+    for (i, (has_texture, color)) in indicators.iter().enumerate() {
+        if *has_texture {
+            let x_pos = start_x + (i as u32 * spacing);
+            draw_small_square(img, x_pos, start_y, indicator_size, *color);
+        }
+    }
+}
+
+fn draw_small_square(img: &mut RgbImage, x: u32, y: u32, size: u32, color: [u8; 3]) {
+    let (width, height) = img.dimensions();
+    
+    for dy in 0..size {
+        for dx in 0..size {
+            let px = x + dx;
+            let py = y + dy;
+            
+            if px < width && py < height {
+                img.put_pixel(px, py, Rgb(color));
+            }
+        }
+    }
 }

@@ -1,8 +1,10 @@
 import { Show, createSignal, createEffect } from 'solid-js';
-import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder } from '@tabler/icons-solidjs';
+import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder, IconFileCode, IconCube } from '@tabler/icons-solidjs';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
+import MaterialThumbnail from '@/ui/MaterialThumbnail';
+import { isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
 
 const is3DModelFile = (extension) => {
   const modelExtensions = ['.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d'];
@@ -18,90 +20,15 @@ const isImageFile = (extension) => {
 };
 
 const isScriptFile = (extension) => {
-  const scriptExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.ren'];
+  const scriptExtensions = ['.js', '.jsx', '.ts', '.tsx', '.py', '.json'];
   return scriptExtensions.includes(extension?.toLowerCase() || '');
 };
 
-const ModelThumbnail = ({ asset, size = 'w-full h-full' }) => {
-  const [thumbnailUrl, setThumbnailUrl] = createSignal(null);
-  const [isLoading, setIsLoading] = createSignal(true);
-  const [error, setError] = createSignal(false);
-
-  createEffect(async () => {
-    const currentProject = getCurrentProject();
-    if (!currentProject?.name || !is3DModelFile(asset.extension)) return;
-
-    try {
-      setIsLoading(true);
-      
-      const assetPath = asset.path || asset.name;
-      const fullAssetPath = assetPath.startsWith('assets/') ? assetPath : `assets/${assetPath}`;
-      // Requesting thumbnail generation
-      
-      // Check if thumbnail file exists first
-      const assetFilename = fullAssetPath.split('/').pop()?.replace('.glb', '') || 'thumbnail';
-      const thumbnailPath = `projects/${currentProject.name}/.cache/thumbnails/${assetFilename}_256.png`;
-      
-      try {
-        // Try to use existing thumbnail file first
-        const fileUrl = getFileUrl(thumbnailPath);
-        
-        // Test if the file exists by trying to load it
-        await new Promise((resolve, reject) => {
-          const img = new Image();
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = fileUrl;
-        });
-        
-        setThumbnailUrl(fileUrl);
-        setError(false);
-        // Using cached thumbnail
-      } catch {
-        // Thumbnail file doesn't exist, generate it (fallback)
-        // Generating new thumbnail
-        const result = await generateThumbnail(fullAssetPath, 256);
-        
-        if (result.success && result.thumbnail_file) {
-          // Use the generated thumbnail file
-          const fileUrl = getFileUrl(`projects/${currentProject.name}/${result.thumbnail_file}`);
-          setThumbnailUrl(fileUrl);
-          setError(false);
-          // Successfully generated new thumbnail
-        } else {
-          throw new Error(result.error || 'Failed to generate thumbnail');
-        }
-      }
-    } catch (err) {
-      console.error('Failed to get model thumbnail:', err);
-      setError(true);
-    } finally {
-      setIsLoading(false);
-    }
-  });
-
-  return (
-    <Show when={!isLoading()} fallback={
-      <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-        <div class="w-4 h-4 border-2 border-success border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    }>
-      <Show when={!error() && thumbnailUrl()} fallback={
-        <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-          <IconPhoto class="w-10 h-10 text-base-content/40" />
-        </div>
-      }>
-        <div class={`${size} bg-base-300 rounded overflow-hidden`}>
-          <img 
-            src={thumbnailUrl()}
-            alt={asset.name}
-            class="w-full h-full object-cover"
-          />
-        </div>
-      </Show>
-    </Show>
-  );
+const isCodeFile = (extension) => {
+  const codeExtensions = ['.ren', '.c', '.cpp', '.h', '.hpp', '.cs', '.java', '.go', '.rs', '.php'];
+  return codeExtensions.includes(extension?.toLowerCase() || '');
 };
+
 
 const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   const [imageLoaded, setImageLoaded] = createSignal(false);
@@ -347,7 +274,8 @@ function AssetItem({
     if (['.glb', '.gltf', '.obj', '.fbx'].includes(ext)) return '3d-models';
     if (['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tga'].includes(ext)) return 'textures';
     if (['.mp3', '.wav', '.ogg', '.m4a'].includes(ext)) return 'audio';
-    if (['.js', '.jsx', '.ts', '.tsx', '.py', '.ren'].includes(ext)) return 'scripts';
+    if (['.js', '.jsx', '.ts', '.tsx', '.py', '.json'].includes(ext)) return 'scripts';
+    if (['.ren', '.c', '.cpp', '.h', '.hpp', '.cs', '.java', '.go', '.rs', '.php'].includes(ext)) return 'code';
     return 'misc';
   };
 
@@ -377,7 +305,7 @@ function AssetItem({
         extension: a.extension,
         mimeType: a.mimeType,
         category: getAssetCategory(a.extension),
-        fileType: getAssetCategory(a.extension) === 'scripts' ? 'script' : getAssetCategory(a.extension)
+        fileType: getAssetCategory(a.extension) === 'scripts' ? 'script' : getAssetCategory(a.extension) === 'code' ? 'code' : getAssetCategory(a.extension)
       })),
       ...(selectedAssetObjects.length === 1 ? {
         id: asset.id,
@@ -388,7 +316,7 @@ function AssetItem({
         extension: asset.extension,
         mimeType: asset.mimeType,
         category: getAssetCategory(asset.extension),
-        fileType: getAssetCategory(asset.extension) === 'scripts' ? 'script' : getAssetCategory(asset.extension)
+        fileType: getAssetCategory(asset.extension) === 'scripts' ? 'script' : getAssetCategory(asset.extension) === 'code' ? 'code' : getAssetCategory(asset.extension)
       } : {})
     };
     
@@ -482,26 +410,34 @@ function AssetItem({
         <div class="w-8 h-8 flex items-center justify-center flex-shrink-0 relative">
           <Show when={is3DModelFile(asset.extension)} fallback={
             <Show when={isImageFile(asset.extension)} fallback={
-              <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center ${
-                  loadedAssets().includes(asset.id) 
-                    ? 'opacity-100' 
-                    : failedAssets().includes(asset.id) 
-                      ? 'opacity-40 grayscale' 
-                      : 'opacity-60'
-                }`}>
-                {asset.type === 'folder' ? (
-                  <IconFolder class="w-5 h-5 text-warning" />
-                ) : isScriptFile(asset.extension) ? (
-                  <IconCodeSlash class="w-5 h-5 text-primary" />
-                ) : (
-                  <IconPhoto class="w-5 h-5 text-base-content/60" />
-                )}
-              </div>
+              <Show when={isMaterialFile(asset.extension) || isMaterialPath(asset.path)} fallback={
+                <div class={`w-full h-full bg-base-300 rounded flex items-center justify-center ${
+                    loadedAssets().includes(asset.id) 
+                      ? 'opacity-100' 
+                      : failedAssets().includes(asset.id) 
+                        ? 'opacity-40 grayscale' 
+                        : 'opacity-60'
+                  }`}>
+                  {asset.type === 'folder' ? (
+                    <IconFolder class="w-5 h-5 text-warning" />
+                  ) : isScriptFile(asset.extension) ? (
+                    <IconFileCode class="w-5 h-5 text-primary" />
+                  ) : isCodeFile(asset.extension) ? (
+                    <IconCode class="w-5 h-5 text-success" />
+                  ) : (
+                    <IconPhoto class="w-5 h-5 text-base-content/60" />
+                  )}
+                </div>
+              }>
+                <MaterialThumbnail asset={asset} size="w-full h-full" />
+              </Show>
             }>
               <ImageThumbnail asset={asset} />
             </Show>
           }>
-            <ModelThumbnail asset={asset} />
+            <div class="w-full h-full bg-base-300 rounded flex items-center justify-center">
+              <IconCube class="w-5 h-5 text-purple-500" />
+            </div>
           </Show>
 
           <div class="absolute -bottom-1 -right-1">
@@ -606,20 +542,28 @@ function AssetItem({
       <div class="w-full aspect-square bg-base-300 flex items-center justify-center relative border-t border-l border-r border-base-content/20">
         <Show when={is3DModelFile(asset.extension)} fallback={
           <Show when={isImageFile(asset.extension)} fallback={
-            <div>
-              {asset.type === 'folder' ? (
-                <IconFolder class="w-16 h-16 text-yellow-500" />
-              ) : isScriptFile(asset.extension) ? (
-                <IconCodeSlash class="w-16 h-16 text-blue-500" />
-              ) : (
-                <IconPhoto class="w-16 h-16 text-base-content/60" />
-              )}
-            </div>
+            <Show when={isMaterialFile(asset.extension) || isMaterialPath(asset.path)} fallback={
+              <div>
+                {asset.type === 'folder' ? (
+                  <IconFolder class="w-16 h-16 text-yellow-500" />
+                ) : isScriptFile(asset.extension) ? (
+                  <IconFileCode class="w-16 h-16 text-blue-500" />
+                ) : isCodeFile(asset.extension) ? (
+                  <IconCode class="w-16 h-16 text-green-500" />
+                ) : (
+                  <IconPhoto class="w-16 h-16 text-base-content/60" />
+                )}
+              </div>
+            }>
+              <MaterialThumbnail asset={asset} size="w-full h-full" />
+            </Show>
           }>
             <ImageThumbnail asset={asset} size="w-full h-full" />
           </Show>
         }>
-          <ModelThumbnail asset={asset} size="w-full h-full" />
+          <div class="w-full h-full bg-base-300 flex items-center justify-center">
+            <IconCube class="w-16 h-16 text-purple-500" />
+          </div>
         </Show>
         
         {/* Colored separator between thumbnail and text */}
@@ -630,8 +574,12 @@ function AssetItem({
               ? 'bg-green-500'
             : isScriptFile(asset.extension) 
               ? 'bg-blue-500'
+            : isCodeFile(asset.extension)
+              ? 'bg-green-500'
             : is3DModelFile(asset.extension)
-              ? 'bg-purple-500' 
+              ? 'bg-purple-500'
+            : (isMaterialFile(asset.extension) || isMaterialPath(asset.path))
+              ? 'bg-orange-500'
               : 'bg-gray-500'
         }`}></div>
       </div>

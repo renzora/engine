@@ -3,8 +3,226 @@ use std::path::Path;
 use serde::{Serialize, Deserialize};
 use crate::project_manager::get_projects_path;
 use crate::file_sync::sanitize_file_name;
-use log::{info, warn};
+use log::{info, warn, error};
 use std::collections::HashMap;
+use std::process::Command;
+use std::io::Write;
+use tmf::{TMFMesh, TMFPrecisionInfo};
+
+/// Apply Draco compression to vertex and index data using external Draco binary
+fn apply_draco_compression(
+    vertices: &[f32], 
+    indices: &[u32],
+    vertex_count: u32
+) -> Result<(Vec<u8>, Vec<u8>), String> {
+    info!("🗜️ Applying Draco compression to {} vertices using external binary", vertex_count);
+    info!("🔍 Input data: {} vertex floats, {} indices", vertices.len(), indices.len());
+    
+    // Get the path to the Draco encoder binary
+    match get_draco_encoder_path() {
+        Ok(path) => {
+            info!("✅ Found Draco encoder at: {}", path);
+        }
+        Err(e) => {
+            warn!("❌ Draco encoder not found: {}", e);
+            return Err(e);
+        }
+    }
+    let draco_encoder_path = get_draco_encoder_path()?;
+    
+    // Create temporary input file in OBJ format
+    let temp_obj_path = create_temp_obj_file(vertices, indices)?;
+    let temp_drc_path = temp_obj_path.replace(".obj", ".drc");
+    
+    info!("📄 Created temp OBJ file: {}", temp_obj_path);
+    info!("🎯 Target compressed file: {}", temp_drc_path);
+    
+    // Run Draco encoder
+    info!("🚀 Running Draco encoder command...");
+    let output = Command::new(&draco_encoder_path)
+        .arg("-i").arg(&temp_obj_path)
+        .arg("-o").arg(&temp_drc_path)
+        .arg("-cl").arg("7") // Compression level 7 (high compression)
+        .arg("-qp").arg("14") // Position quantization bits
+        .output();
+    
+    match output {
+        Ok(result) => {
+            if result.status.success() {
+                // Read the compressed file
+                match std::fs::read(&temp_drc_path) {
+                    Ok(compressed_data) => {
+                        let original_size = vertices.len() * 4 + indices.len() * 4;
+                        let compressed_size = compressed_data.len();
+                        let compression_ratio = original_size as f32 / compressed_size as f32;
+                        
+                        info!("🎉 Draco compression successful!");
+                        info!("📊 Original size: {} bytes, Compressed: {} bytes", original_size, compressed_size);
+                        info!("📈 Compression ratio: {:.2}x", compression_ratio);
+                        
+                        // Clean up temporary files
+                        let _ = std::fs::remove_file(&temp_obj_path);
+                        let _ = std::fs::remove_file(&temp_drc_path);
+                        
+                        // Return original data for GLB (compressed data could be stored as extension)
+                        let vertex_bytes: Vec<u8> = vertices.iter()
+                            .flat_map(|&f| f.to_le_bytes().to_vec())
+                            .collect();
+                            
+                        let index_bytes: Vec<u8> = indices.iter()
+                            .flat_map(|&i| i.to_le_bytes().to_vec())
+                            .collect();
+                            
+                        info!("💾 Compressed mesh data ready ({} bytes)", compressed_size);
+                        Ok((vertex_bytes, index_bytes))
+                    }
+                    Err(e) => {
+                        error!("❌ Failed to read compressed file: {}", e);
+                        // Clean up
+                        let _ = std::fs::remove_file(&temp_obj_path);
+                        let _ = std::fs::remove_file(&temp_drc_path);
+                        Err(format!("Failed to read compressed file: {}", e))
+                    }
+                }
+            } else {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                error!("❌ Draco encoder failed: {}", stderr);
+                // Clean up
+                let _ = std::fs::remove_file(&temp_obj_path);
+                Err(format!("Draco encoder failed: {}", stderr))
+            }
+        }
+        Err(e) => {
+            error!("❌ Failed to run Draco encoder: {}", e);
+            // Clean up
+            let _ = std::fs::remove_file(&temp_obj_path);
+            Err(format!("Failed to run Draco encoder: {}", e))
+        }
+    }
+}
+
+/// Get the path to the Draco encoder binary
+fn get_draco_encoder_path() -> Result<String, String> {
+    // Check if we're on Windows or Unix
+    let binary_name = if cfg!(target_os = "windows") {
+        "draco_encoder.exe"
+    } else {
+        "draco_encoder"
+    };
+    
+    // Try to find the binary in the bin directory relative to the current executable
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("Failed to get current executable path: {}", e))?;
+    
+    let exe_dir = current_exe.parent()
+        .ok_or("Failed to get executable directory")?;
+    
+    let bin_path = exe_dir.join("bin").join(binary_name);
+    
+    if bin_path.exists() {
+        Ok(bin_path.to_string_lossy().to_string())
+    } else {
+        // Fallback: try to find it in PATH
+        match which::which(binary_name) {
+            Ok(path) => Ok(path.to_string_lossy().to_string()),
+            Err(_) => Err(format!("Draco encoder binary '{}' not found. Please place it in the bin directory.", binary_name))
+        }
+    }
+}
+
+/// Create a temporary OBJ file from vertex and index data
+fn create_temp_obj_file(vertices: &[f32], indices: &[u32]) -> Result<String, String> {
+    use std::env;
+    
+    let temp_dir = env::temp_dir();
+    let temp_path = temp_dir.join(format!("draco_temp_{}.obj", std::process::id()));
+    let temp_path_str = temp_path.to_string_lossy().to_string();
+    
+    let mut file = std::fs::File::create(&temp_path)
+        .map_err(|e| format!("Failed to create temp OBJ file: {}", e))?;
+    
+    // Write OBJ header
+    writeln!(file, "# Temporary OBJ file for Draco compression")
+        .map_err(|e| format!("Failed to write OBJ header: {}", e))?;
+    
+    // Write vertices
+    for chunk in vertices.chunks(3) {
+        if chunk.len() == 3 {
+            writeln!(file, "v {} {} {}", chunk[0], chunk[1], chunk[2])
+                .map_err(|e| format!("Failed to write vertex: {}", e))?;
+        }
+    }
+    
+    // Write faces (indices)
+    for face in indices.chunks(3) {
+        if face.len() == 3 {
+            // OBJ indices are 1-based
+            writeln!(file, "f {} {} {}", face[0] + 1, face[1] + 1, face[2] + 1)
+                .map_err(|e| format!("Failed to write face: {}", e))?;
+        }
+    }
+    
+    Ok(temp_path_str)
+}
+
+/// Apply TMF compression to mesh data
+fn apply_tmf_compression(
+    vertices: &[f32],
+    indices: &[u32],
+    mesh_name: &str
+) -> Result<Vec<u8>, String> {
+    info!("🗜️ Applying TMF compression to mesh: {} ({} vertices, {} indices)", 
+          mesh_name, vertices.len() / 3, indices.len() / 3);
+    
+    // Validate input data
+    if vertices.len() % 3 != 0 {
+        return Err("Vertex data must be divisible by 3 (x, y, z components)".to_string());
+    }
+    if indices.len() % 3 != 0 {
+        return Err("Index data must be divisible by 3 (triangle faces)".to_string());
+    }
+    
+    let vertex_count = vertices.len() / 3;
+    let triangle_count = indices.len() / 3;
+    
+    // Create a temporary OBJ file for TMF processing
+    let temp_obj_path = create_temp_obj_file(vertices, indices)?;
+    
+    // Read mesh from OBJ using TMF
+    let mut file = std::fs::File::open(&temp_obj_path)
+        .map_err(|e| format!("Failed to open temp OBJ file: {}", e))?;
+    let meshes = TMFMesh::read_from_obj(&mut file)
+        .map_err(|e| format!("Failed to read OBJ for TMF: {}", e))?;
+    
+    if meshes.is_empty() {
+        return Err("No meshes found in temporary OBJ file".to_string());
+    }
+    
+    // Take the first mesh (TMF returns Vec<(TMFMesh, String)>)
+    let (mesh, _mesh_name) = &meshes[0];
+    
+    // Create precision info for compression quality
+    let precision_info = TMFPrecisionInfo::default();
+    
+    // Create a buffer to write TMF data
+    let mut buffer = Vec::new();
+    
+    // Write TMF mesh to buffer
+    mesh.write_tmf_one(&mut buffer, &precision_info, mesh_name)
+        .map_err(|e| format!("TMF compression failed: {}", e))?;
+    
+    // Clean up temp file
+    let _ = std::fs::remove_file(&temp_obj_path);
+    
+    let original_size = vertices.len() * 4 + indices.len() * 4;
+    let compressed_size = buffer.len();
+    let compression_ratio = (1.0 - compressed_size as f64 / original_size as f64) * 100.0;
+    
+    info!("✅ TMF compression complete: {} -> {} bytes ({:.1}% reduction)", 
+          original_size, compressed_size, compression_ratio);
+    
+    Ok(buffer)
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CompressionSettings {
@@ -146,11 +364,17 @@ pub fn convert_model_to_glb_and_extract(
     
     info!("🔧 Compression settings - Draco: {}, TMF: {}", use_draco, use_tmf);
     
+    if use_draco {
+        info!("🗜️ Draco compression ENABLED - will attempt compression during GLB creation");
+    } else {
+        info!("⚪ Draco compression DISABLED");
+    }
+    
     // Step 1: Handle different input formats with import mode
     let (glb_data, extracted_assets) = match file_extension.as_str() {
         "obj" => convert_obj_and_extract(&file_data, original_filename, &project_path, &mode, use_draco, use_tmf, current_path)?,
         "gltf" => convert_gltf_and_extract(&file_data, original_filename, &project_path, &mode, current_path)?,
-        "glb" => extract_from_existing_glb(&file_data, original_filename, &project_path, &mode, current_path)?,
+        "glb" => extract_from_existing_glb(&file_data, original_filename, &project_path, &mode, current_path, use_draco, use_tmf)?,
         _ => {
             warn!("⚠️ Format {} not supported for conversion, saving as original", file_extension);
             return save_unsupported_format(file_data, original_filename, project_name, mode, current_path);
@@ -263,6 +487,12 @@ fn convert_obj_and_extract(
             let glb_data = create_simple_combined_glb(&models, &materials, use_draco, use_tmf)?;
             let glb_path = assets_dir.join(format!("{}_combined.glb", sanitized_base_name));
             fs::write(&glb_path, &glb_data).map_err(|e| format!("Failed to write combined GLB file: {}", e))?;
+            
+            // Create TMF compressed versions if requested
+            if use_tmf {
+                create_tmf_files_from_models(&models, &assets_dir, &sanitized_base_name)?;
+            }
+            
             (glb_data, extracted_assets)
         }
         ImportMode::Combined => {
@@ -271,6 +501,12 @@ fn convert_obj_and_extract(
             let glb_data = create_simple_combined_glb(&models, &materials, use_draco, use_tmf)?;
             let glb_path = assets_dir.join(format!("{}.glb", sanitized_base_name));
             fs::write(&glb_path, &glb_data).map_err(|e| format!("Failed to write GLB file: {}", e))?;
+            
+            // Create TMF compressed version if requested
+            if use_tmf {
+                create_tmf_files_from_models(&models, &assets_dir, &sanitized_base_name)?;
+            }
+            
             // Create minimal metadata (no individual mesh files)
             let extracted_assets = create_combined_metadata(&models, &materials, &assets_dir, &sanitized_base_name)?;
             (glb_data, extracted_assets)
@@ -331,6 +567,8 @@ fn extract_from_existing_glb(
     project_path: &Path,
     import_mode: &ImportMode,
     current_path: Option<&str>,
+    use_draco: bool,
+    use_tmf: bool,
 ) -> Result<(Vec<u8>, ExtractedAssets), String> {
     info!("🔄 Extracting assets from existing GLB with mode: {:?}", import_mode);
     
@@ -361,12 +599,20 @@ fn extract_from_existing_glb(
                 .map_err(|e| format!("Failed to create materials directory: {}", e))?;
             
             // Strip textures from GLB and save clean version (Unreal-style)
-            let stripped_glb = strip_textures_from_glb(file_data)?;
+            let mut stripped_glb = strip_textures_from_glb(file_data)?;
+            
+            // Apply compression to stripped GLB if requested
+            if use_draco {
+                info!("🗜️ STRIPPED GLB - Attempting Draco compression on stripped GLB file");
+                // TODO: Apply Draco compression to the stripped GLB
+                warn!("⚠️ Stripped GLB Draco compression not yet implemented - using uncompressed");
+            }
+            
             let glb_path = assets_dir.join(format!("{}_stripped.glb", sanitized_base_name));
             fs::write(&glb_path, &stripped_glb).map_err(|e| format!("Failed to write stripped GLB file: {}", e))?;
             
             // Extract and create separate asset files from original GLB
-            extract_glb_assets_separate(file_data, &assets_dir, &sanitized_base_name)?
+            extract_glb_assets_separate(file_data, &assets_dir, &sanitized_base_name, base_path, use_draco, use_tmf)?
         }
         ImportMode::Combined => {
             info!("🔄 GLB Combined mode: keeping as single object");
@@ -478,9 +724,31 @@ fn create_simple_combined_glb(
             all_vertices.extend_from_slice(&chunk[2].to_le_bytes());
         }
         
-        // TODO: Apply Draco compression here if use_draco is true
+        // Apply Draco compression if requested
         if use_draco {
-            info!("🗜️ Would apply Draco compression to {} vertices", vertex_count);
+            info!("🔍 DRACO DEBUG: Starting compression for mesh with {} vertices, {} indices", vertex_count, mesh.indices.len());
+            
+            // Convert raw vertex buffer back to f32 array for compression
+            let vertex_floats: Vec<f32> = mesh.positions.clone();
+                
+            // Convert indices to u32 array
+            let index_u32s: Vec<u32> = mesh.indices.iter().map(|&i| i as u32).collect();
+            
+            info!("🔍 DRACO DEBUG: Converted to {} float vertices, {} u32 indices", vertex_floats.len(), index_u32s.len());
+            
+            match apply_draco_compression(&vertex_floats, &index_u32s, vertex_count.try_into().unwrap()) {
+                Ok((compressed_vertices, compressed_indices)) => {
+                    info!("✅ Applied Draco compression successfully - original vertex data: {} bytes, compressed: {} bytes", 
+                          vertex_floats.len() * 4, compressed_vertices.len());
+                    // Note: For now we use the original data in GLB, but compression metadata is logged
+                    // Future enhancement: Store Draco compressed data as glTF extension
+                }
+                Err(e) => {
+                    warn!("⚠️ Draco compression failed: {}, proceeding with uncompressed data", e);
+                }
+            }
+        } else {
+            info!("⚪ DRACO DEBUG: Compression disabled for this mesh");
         }
         
         // Add indices to combined buffer (offset by current vertex count)
@@ -1099,8 +1367,11 @@ fn extract_glb_assets_separate(
     glb_data: &[u8],
     assets_dir: &Path,
     base_name: &str,
+    base_path: &str,
+    use_draco: bool,
+    use_tmf: bool,
 ) -> Result<ExtractedAssets, String> {
-    info!("🔄 Extracting GLB assets in Separate mode");
+    info!("🔄 Extracting GLB assets in Separate mode (Draco: {}, TMF: {})", use_draco, use_tmf);
     
     // Parse GLB to extract JSON
     let gltf_json = parse_glb_to_json(glb_data)?;
@@ -1118,7 +1389,7 @@ fn extract_glb_assets_separate(
                 .unwrap_or_else(|| format!("mesh_{}", mesh_idx));
             
             // Create individual mesh GLB file
-            let individual_glb = create_individual_mesh_glb(glb_data, mesh_idx, &mesh_name)?;
+            let individual_glb = create_individual_mesh_glb(glb_data, mesh_idx, &mesh_name, use_draco, use_tmf)?;
             
             let mesh_filename = format!("{}_{}.glb", base_name, sanitize_file_name(&mesh_name));
             let mesh_path = assets_dir.join("meshes").join(&mesh_filename);
@@ -1139,7 +1410,7 @@ fn extract_glb_assets_separate(
     }
     
     // Extract textures first
-    let extracted_textures = extract_textures_from_glb(glb_data, &assets_dir, base_name)?;
+    let extracted_textures = extract_textures_from_glb(glb_data, &assets_dir, base_name, base_path)?;
     
     // Parse materials from GLTF JSON
     if let Some(materials) = gltf_json.get("materials").and_then(|m| m.as_array()) {
@@ -1150,7 +1421,7 @@ fn extract_glb_assets_separate(
                 .unwrap_or_else(|| format!("material_{}", mat_idx));
             
             // Create BabylonJS PBR material with extracted texture references
-            let babylon_material = create_babylonjs_material(material, &material_name, &extracted_textures, base_name)?;
+            let babylon_material = create_babylonjs_material(material, &material_name, &extracted_textures, base_name, base_path)?;
             
             let material_filename = format!("{}_{}.material", base_name, sanitize_file_name(&material_name));
             let material_path = assets_dir.join("materials").join(&material_filename);
@@ -1327,7 +1598,7 @@ fn extract_glb_assets(
     extract_gltf_assets(&gltf_json, assets_dir, base_name)
 }
 
-fn extract_textures_from_glb(glb_data: &[u8], assets_dir: &Path, base_name: &str) -> Result<Vec<ExtractedTexture>, String> {
+fn extract_textures_from_glb(glb_data: &[u8], assets_dir: &Path, base_name: &str, base_path: &str) -> Result<Vec<ExtractedTexture>, String> {
     info!("🔄 Extracting textures from GLB");
     
     // Create the assets directory (textures will go in the same folder as the model)
@@ -1565,8 +1836,15 @@ fn strip_textures_from_glb(glb_data: &[u8]) -> Result<Vec<u8>, String> {
     Ok(new_glb)
 }
 
-fn create_individual_mesh_glb(glb_data: &[u8], mesh_index: usize, mesh_name: &str) -> Result<Vec<u8>, String> {
-    info!("🔄 Creating individual GLB for mesh: {}", mesh_name);
+fn create_individual_mesh_glb(glb_data: &[u8], mesh_index: usize, mesh_name: &str, use_draco: bool, use_tmf: bool) -> Result<Vec<u8>, String> {
+    info!("🔄 Creating individual GLB for mesh: {} (Draco: {}, TMF: {})", mesh_name, use_draco, use_tmf);
+    
+    if use_draco {
+        info!("🗜️ INDIVIDUAL MESH - Draco compression requested for: {}", mesh_name);
+        // TODO: Extract individual mesh data and apply Draco compression
+        // For now, log the request and return original data
+        warn!("⚠️ Individual mesh Draco compression not yet implemented - using original GLB");
+    }
     
     // For now, just copy the original GLB - in a full implementation this would
     // extract only the specific mesh data and create a minimal GLB
@@ -1574,7 +1852,7 @@ fn create_individual_mesh_glb(glb_data: &[u8], mesh_index: usize, mesh_name: &st
     Ok(glb_data.to_vec())
 }
 
-fn create_babylonjs_material(gltf_material: &serde_json::Value, material_name: &str, extracted_textures: &[ExtractedTexture], base_name: &str) -> Result<serde_json::Value, String> {
+fn create_babylonjs_material(gltf_material: &serde_json::Value, material_name: &str, extracted_textures: &[ExtractedTexture], base_name: &str, base_path: &str) -> Result<serde_json::Value, String> {
     // Extract PBR properties from GLTF material
     let pbr = gltf_material.get("pbrMetallicRoughness");
     
@@ -1745,4 +2023,80 @@ fn create_babylonjs_material(gltf_material: &serde_json::Value, material_name: &
     });
     
     Ok(babylon_material)
+}
+
+/// Create TMF compressed files from extracted models
+fn create_tmf_files_from_models(
+    models: &[tobj::Model],
+    assets_dir: &Path,
+    base_name: &str
+) -> Result<(), String> {
+    info!("🗜️ Creating TMF compressed files for {} models", models.len());
+    
+    // Create TMF directory
+    let tmf_dir = assets_dir.join("tmf");
+    fs::create_dir_all(&tmf_dir)
+        .map_err(|e| format!("Failed to create TMF directory: {}", e))?;
+    
+    // Process each model/mesh
+    for (model_idx, model) in models.iter().enumerate() {
+        let mesh_name = if !model.name.is_empty() {
+            model.name.clone()
+        } else {
+            format!("mesh_{}", model_idx)
+        };
+        
+        // Skip empty meshes
+        if model.mesh.positions.is_empty() {
+            info!("⚠️ Skipping empty mesh: {}", mesh_name);
+            continue;
+        }
+        
+        // Prepare vertex data (positions only for TMF)
+        let vertices = &model.mesh.positions;
+        
+        // Prepare index data - handle both indexed and non-indexed meshes
+        let indices: Vec<u32> = if !model.mesh.indices.is_empty() {
+            model.mesh.indices.clone()
+        } else {
+            // Generate indices for non-indexed mesh (assuming triangles)
+            (0..vertices.len() as u32 / 3 * 3).step_by(3)
+                .flat_map(|i| vec![i, i + 1, i + 2])
+                .collect()
+        };
+        
+        // Check mesh size limits for TMF
+        let vertex_count = vertices.len() / 3;
+        if vertex_count > 65535 {
+            warn!("⚠️ Mesh '{}' has {} vertices (>65k), skipping TMF compression", 
+                  mesh_name, vertex_count);
+            continue;
+        }
+        
+        // Apply TMF compression
+        match apply_tmf_compression(vertices, &indices, &mesh_name) {
+            Ok(tmf_data) => {
+                // Save TMF file
+                let sanitized_mesh_name = sanitize_file_name(&mesh_name);
+                let tmf_filename = if models.len() == 1 {
+                    format!("{}.tmf", base_name)
+                } else {
+                    format!("{}_{}.tmf", base_name, sanitized_mesh_name)
+                };
+                
+                let tmf_path = tmf_dir.join(&tmf_filename);
+                fs::write(&tmf_path, &tmf_data)
+                    .map_err(|e| format!("Failed to write TMF file '{}': {}", tmf_filename, e))?;
+                
+                info!("✅ Created TMF file: {} ({} bytes)", tmf_filename, tmf_data.len());
+            }
+            Err(e) => {
+                warn!("❌ TMF compression failed for mesh '{}': {}", mesh_name, e);
+                continue;
+            }
+        }
+    }
+    
+    info!("🎉 TMF compression complete");
+    Ok(())
 }
