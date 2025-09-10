@@ -1,7 +1,7 @@
 import { createSignal, onCleanup, onMount, For, Show } from 'solid-js';
-import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo } from '@tabler/icons-solidjs';
+import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo, IconBrandGit } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
-import { viewportActions } from '@/layout/stores/ViewportStore';
+import { viewportActions, viewportStore } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { renderStore, renderActions } from '@/render/store';
 
@@ -12,7 +12,8 @@ function Scene(props) {
   const { setScenePropertiesHeight: setBottomPanelHeight } = editorActions;
   const [isResizing, setIsResizing] = createSignal(false);
   const { selectEntity: setSelectedEntity, setTransformMode } = editorActions;
-  const { createNodeTab: createNodeEditorTab } = viewportActions;
+  const { createNodeTab: createNodeEditorTab, addViewportTab, setActiveViewportTab } = viewportActions;
+  const tabs = () => viewportStore.tabs;
   
   // Handle window resize to adjust properties panel height
   onMount(() => {
@@ -213,6 +214,47 @@ function Scene(props) {
     setFolderCounter(prev => prev + 1);
     setSelectedEntity(folderId);
     setTimeout(() => startRename(folderId, folderName), 100);
+  };
+
+  const handleOpenNodeEditor = () => {
+    const newTabId = `node-editor-${Date.now()}`;
+    const newTab = {
+      id: newTabId,
+      type: 'node-editor',
+      name: 'Node Editor',
+      isPinned: false,
+      hasUnsavedChanges: false
+    };
+    
+    // Add viewport tab and set as active
+    addViewportTab(newTab);
+    setActiveViewportTab(newTabId);
+  };
+
+  const openNodeEditorForObject = (objectId, objectName) => {
+    // Check if there's already a node editor tab for this object
+    const existingTab = tabs().find(tab => 
+      tab.type === 'node-editor' && tab.objectId === objectId
+    );
+    
+    if (existingTab) {
+      // Switch to existing tab
+      setActiveViewportTab(existingTab.id);
+    } else {
+      // Create new tab for this object
+      const newTabId = `node-editor-${objectId}-${Date.now()}`;
+      const newTab = {
+        id: newTabId,
+        type: 'node-editor',
+        name: `${objectName} - Nodes`,
+        isPinned: false,
+        hasUnsavedChanges: false,
+        objectId: objectId
+      };
+      
+      addViewportTab(newTab);
+      setActiveViewportTab(newTabId);
+    }
   };
 
   const handleKeyDown = (e, item) => {
@@ -420,10 +462,19 @@ function Scene(props) {
           </Show>
           
           <div class="relative flex items-center">
-            <Icon class="w-4 h-4 mr-0.5 cursor-pointer" style={{ 
-              color: iconColor,
-              fill: item.type === 'folder' && hasChildren && !isExpanded() ? iconColor : 'none'
-            }} />
+            <Icon 
+              class="w-4 h-4 mr-0.5 cursor-pointer hover:opacity-70 transition-opacity" 
+              style={{ 
+                color: iconColor,
+                fill: item.type === 'folder' && hasChildren && !isExpanded() ? iconColor : 'none'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Open node editor for this specific object
+                openNodeEditorForObject(item.id, item.name);
+              }}
+              title={`Open node editor for ${item.name}`}
+            />
           </div>
           
           <button 
@@ -508,10 +559,17 @@ function Scene(props) {
       onContextMenu={(e) => props.onContextMenu(e, null)}
     >
       {/* Scene header - fixed */}
-      <div className="flex-shrink-0 px-3 py-2">
+      <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
         <div className="text-xs text-base-content/60 uppercase tracking-wide">
           Scene
         </div>
+        <button
+          onClick={handleOpenNodeEditor}
+          className="p-1 rounded transition-colors hover:bg-base-300/50 cursor-pointer"
+          title="Open Node Editor"
+        >
+          <IconBrandGit className="w-4 h-4 text-base-content/70 hover:text-base-content" />
+        </button>
       </div>
       
       <div

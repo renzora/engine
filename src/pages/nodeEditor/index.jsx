@@ -2,6 +2,7 @@ import { onMount, onCleanup, createSignal, createMemo } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { IconBrandGit } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
+import { nodeEditorStore, nodeEditorActions, objectPropertiesActions } from '@/layout/stores/ViewportStore';
 import { NodeLibrary } from './NodeLibrary';
 import NodeCanvas from './NodeCanvas';
 import NodeRenderer from './NodeRenderer';
@@ -13,11 +14,13 @@ const getBabylonScene = () => window._cleanBabylonScene;
 const NodeIcon = () => <div>🔗</div>;
 
 const NodeEditor = (props) => {
-  const { nodeEditor } = editorStore;
   const { 
-    getNodeGraph, setNodeGraph, updateNodeGraph, addConnectionAndGenerateProperties, removeConnectionFromGraph,
+    getNodeGraph, setNodeGraph, updateNodeGraph, addConnectionAndGenerateProperties, removeConnectionFromGraph
+  } = nodeEditorActions;
+  
+  const {
     addPropertySection, bindNodeToProperty, initializeObjectProperties 
-  } = editorActions;
+  } = objectPropertiesActions;
   
   let containerRef;
 
@@ -58,7 +61,7 @@ const NodeEditor = (props) => {
   };
 
   const currentGraph = createMemo(() => {
-    return nodeEditor.graphs[props.objectId] || initializeGraph();
+    return nodeEditorStore.graphs[props.objectId] || initializeGraph();
   });
 
   const nodes = createMemo(() => currentGraph().nodes || []);

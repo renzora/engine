@@ -181,6 +181,22 @@ export const nodeEditorActions = {
     if (nodeEditorStore.graphs[objectId]) {
       setNodeEditorStore('graphs', objectId, updates)
     }
+  },
+
+  addConnectionAndGenerateProperties: (objectId, connection) => {
+    const currentGraph = nodeEditorStore.graphs[objectId];
+    if (currentGraph) {
+      const updatedConnections = [...(currentGraph.connections || []), connection];
+      setNodeEditorStore('graphs', objectId, 'connections', updatedConnections);
+    }
+  },
+
+  removeConnectionFromGraph: (objectId, connectionId) => {
+    const currentGraph = nodeEditorStore.graphs[objectId];
+    if (currentGraph && currentGraph.connections) {
+      const updatedConnections = currentGraph.connections.filter(conn => conn.id !== connectionId);
+      setNodeEditorStore('graphs', objectId, 'connections', updatedConnections);
+    }
   }
 }
 

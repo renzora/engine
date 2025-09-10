@@ -1,4 +1,4 @@
-import { Show, createSignal, createEffect } from 'solid-js';
+import { Show, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
 import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder, IconFileCode, IconCube } from '@tabler/icons-solidjs';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
@@ -165,50 +165,68 @@ function AssetItem({
   const [showTooltip, setShowTooltip] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
   
-  let globalMouseX = 0;
-  let globalMouseY = 0;
   let tooltipTimeout;
   
-  const updateGlobalMousePosition = (e) => {
-    globalMouseX = e.clientX;
-    globalMouseY = e.clientY;
-    if (showTooltip() && !isDragging()) {
-      const tooltipHeight = 64;
-      const tooltipWidth = 192;
-      document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
-        detail: {
-          x: Math.max(10, Math.min(globalMouseX - (tooltipWidth / 2) + 50, window.innerWidth - tooltipWidth - 10)),
-          y: Math.max(10, globalMouseY - tooltipHeight - 50),
-          asset: asset
-        }
-      }));
+  // Hide tooltips on global shortcuts
+  const handleGlobalKeydown = (e) => {
+    // Hide tooltip when spacebar (bottom panel toggle) or other shortcuts are pressed
+    if (e.code === 'Space' || e.key === 'p' || e.key === 'Escape') {
+      hideTooltip();
     }
   };
   
+  // Add global keydown listener
+  onMount(() => {
+    document.addEventListener('keydown', handleGlobalKeydown);
+  });
+  
+  onCleanup(() => {
+    document.removeEventListener('keydown', handleGlobalKeydown);
+    clearTimeout(tooltipTimeout);
+  });
+  
   const showTooltipDelayed = () => {
     if (isDragging()) return;
+    
+    // Clear any existing timeout
+    clearTimeout(tooltipTimeout);
+    
     tooltipTimeout = setTimeout(() => {
-      setShowTooltip(true);
-      const rect = document.querySelector(`[data-asset-id="${asset.id}"]`)?.getBoundingClientRect();
-      if (rect) {
-        const tooltipHeight = 64;
-        const tooltipWidth = 192;
-        document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
-          detail: {
-            x: Math.max(10, Math.min(globalMouseX - (tooltipWidth / 2) + 50, window.innerWidth - tooltipWidth - 10)),
-            y: Math.max(10, globalMouseY - tooltipHeight - 50),
-            asset: asset
-          }
-        }));
+      if (hoveredItem() === asset.id) { // Only show if still hovering this item
+        setShowTooltip(true);
+        const rect = document.querySelector(`[data-asset-id="${asset.id}"]`)?.getBoundingClientRect();
+        if (rect) {
+          const tooltipHeight = 64;
+          const tooltipWidth = 192;
+          // Position tooltip near the center of the asset item
+          const centerX = rect.left + (rect.width / 2);
+          const centerY = rect.top;
+          
+          document.dispatchEvent(new CustomEvent('global:tooltip-show', { 
+            detail: {
+              x: Math.max(10, Math.min(centerX - (tooltipWidth / 2), window.innerWidth - tooltipWidth - 10)),
+              y: Math.max(10, centerY - tooltipHeight - 10),
+              asset: asset
+            }
+          }));
+        }
       }
-    }, 500);
+    }, 300); // Reduced delay for more responsive tooltips
   };
   
   const hideTooltip = () => {
     clearTimeout(tooltipTimeout);
     setShowTooltip(false);
+    
+    // Hide tooltip events
     document.dispatchEvent(new CustomEvent('global:tooltip-hide'));
-    document.removeEventListener('mousemove', updateGlobalMousePosition);
+    document.dispatchEvent(new CustomEvent('global:tooltip-force-hide'));
+    
+    // Additional cleanup - remove any lingering tooltip elements
+    setTimeout(() => {
+      const tooltips = document.querySelectorAll('[data-tooltip], .tooltip-container, .asset-tooltip');
+      tooltips.forEach(el => el.remove());
+    }, 10);
   };
   
   const handleContextMenu = (e) => {
@@ -383,8 +401,18 @@ function AssetItem({
         }`}
         data-asset-id={asset.id}
         draggable={true}
-        onMouseEnter={() => setHoveredItem(asset.id)}
-        onMouseLeave={() => setHoveredItem(null)}
+        onMouseEnter={() => {
+          setHoveredItem(asset.id);
+          showTooltipDelayed();
+        }}
+        onMouseLeave={() => {
+          setHoveredItem(null);
+          hideTooltip();
+        }}
+        onMouseDown={() => {
+          // Hide tooltip immediately on mouse down to prevent it from sticking
+          hideTooltip();
+        }}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -494,15 +522,16 @@ function AssetItem({
       }`}
       data-asset-id={asset.id}
       draggable={true}
-      onMouseEnter={(e) => {
+      onMouseEnter={() => {
         setHoveredItem(asset.id);
-        globalMouseX = e.clientX;
-        globalMouseY = e.clientY;
-        document.addEventListener('mousemove', updateGlobalMousePosition);
         showTooltipDelayed();
       }}
       onMouseLeave={() => {
         setHoveredItem(null);
+        hideTooltip();
+      }}
+      onMouseDown={() => {
+        // Hide tooltip immediately on mouse down to prevent it from sticking
         hideTooltip();
       }}
       onClick={(e) => {
