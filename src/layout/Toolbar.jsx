@@ -3,7 +3,7 @@ import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -302,6 +302,14 @@ function Toolbar() {
       }
       deleteSelectedObject();
     }
+    else if (toolId === 'play_pause') {
+      editorActions.toggleScriptExecution();
+      const newState = editorStore.scripts.isPlaying;
+      editorActions.addConsoleMessage(
+        newState ? 'Script execution started' : 'Script execution paused', 
+        'info'
+      );
+    }
     else {
       editorActions.addConsoleMessage(`Tool activated: ${toolId}`, 'info');
     }
@@ -312,6 +320,13 @@ function Toolbar() {
     { id: 'move', icon: IconArrowsMove, tooltip: 'Move' },
     { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
     { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
+    null, // Separator
+    { 
+      id: 'play_pause', 
+      icon: IconPlayerPlay, 
+      tooltip: 'Toggle Script Execution',
+      isDynamic: true
+    },
     null, // Separator
     { id: 'camera', icon: IconVideo, tooltip: 'Add Camera' },
     { id: 'cube', icon: IconBox, tooltip: 'Add Cube' },
@@ -336,14 +351,25 @@ function Toolbar() {
               class={`w-8 h-8 flex items-center justify-center rounded transition-all group ${
                 getSelectedTool() === tool.id
                   ? 'bg-primary text-primary-content'
-                  : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
+                  : tool.id === 'play_pause' && editorStore.scripts.isPlaying
+                    ? 'bg-warning text-warning-content'
+                    : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
               }`} 
               title={tool.tooltip}
             >
-              <tool.icon class="w-4 h-4" />
+              {tool.isDynamic && tool.id === 'play_pause' ? 
+                (editorStore.scripts.isPlaying ? 
+                  <IconPlayerPause class="w-4 h-4" /> : 
+                  <IconPlayerPlay class="w-4 h-4" />
+                ) :
+                <tool.icon class="w-4 h-4" />
+              }
               
               <div class="absolute top-full mt-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                {tool.tooltip}
+                {tool.isDynamic && tool.id === 'play_pause' ? 
+                  (editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts') :
+                  tool.tooltip
+                }
               </div>
             </button>
           )

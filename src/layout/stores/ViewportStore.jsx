@@ -34,9 +34,6 @@ const [viewportStore, setViewportStore] = createStore({
   }
 })
 
-const [nodeEditorStore, setNodeEditorStore] = createStore({
-  graphs: {}
-})
 
 const [objectPropertiesStore, setObjectPropertiesStore] = createStore({
   objects: {}
@@ -87,31 +84,6 @@ export const viewportActions = {
     setViewportStore('tabs', (tabs) => [...tabs, tab])
   },
   
-  createNodeTab: (objectId, objectName) => {
-    const tabId = `node-editor-${objectId}-${Date.now()}`
-    const tab = {
-      id: tabId,
-      type: 'node-editor',
-      name: `${objectName || objectId} Nodes`,
-      objectId: objectId,
-      isPinned: false,
-      isActive: true
-    }
-    
-    const existingTabIndex = viewportStore.tabs.findIndex(
-      t => t.type === 'node-editor' && t.objectId === objectId
-    )
-    
-    if (existingTabIndex !== -1) {
-      setViewportStore('activeTabId', viewportStore.tabs[existingTabIndex].id)
-      return viewportStore.tabs[existingTabIndex]
-    }
-    
-    setViewportStore('tabs', viewportStore.tabs.length, tab)
-    setViewportStore('activeTabId', tabId)
-    
-    return tab
-  },
   
   removeViewportTab: (tabId) => {
     const tabs = viewportStore.tabs;
@@ -168,37 +140,6 @@ export const viewportActions = {
   }
 }
 
-export const nodeEditorActions = {
-  getNodeGraph: (objectId) => {
-    return nodeEditorStore.graphs[objectId] || null
-  },
-
-  setNodeGraph: (objectId, graph) => {
-    setNodeEditorStore('graphs', objectId, graph)
-  },
-
-  updateNodeGraph: (objectId, updates) => {
-    if (nodeEditorStore.graphs[objectId]) {
-      setNodeEditorStore('graphs', objectId, updates)
-    }
-  },
-
-  addConnectionAndGenerateProperties: (objectId, connection) => {
-    const currentGraph = nodeEditorStore.graphs[objectId];
-    if (currentGraph) {
-      const updatedConnections = [...(currentGraph.connections || []), connection];
-      setNodeEditorStore('graphs', objectId, 'connections', updatedConnections);
-    }
-  },
-
-  removeConnectionFromGraph: (objectId, connectionId) => {
-    const currentGraph = nodeEditorStore.graphs[objectId];
-    if (currentGraph && currentGraph.connections) {
-      const updatedConnections = currentGraph.connections.filter(conn => conn.id !== connectionId);
-      setNodeEditorStore('graphs', objectId, 'connections', updatedConnections);
-    }
-  }
-}
 
 export const objectPropertiesActions = {
   ensureDefaultComponents: (objectId) => {
@@ -280,13 +221,11 @@ export const objectPropertiesActions = {
   }
 }
 
-export { viewportStore, nodeEditorStore, objectPropertiesStore }
+export { viewportStore, objectPropertiesStore }
 
 if (typeof window !== 'undefined') {
   window.viewportStore = viewportStore
-  window.nodeEditorStore = nodeEditorStore
   window.objectPropertiesStore = objectPropertiesStore
   window.viewportActions = viewportActions
-  window.nodeEditorActions = nodeEditorActions
   window.objectPropertiesActions = objectPropertiesActions
 }

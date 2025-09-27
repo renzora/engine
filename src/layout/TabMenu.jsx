@@ -11,7 +11,6 @@ const workflowTools = {
   '3d-viewport': [],
   'daw-editor': [],
   'material-editor': [],
-  'node-editor': [],
   'animation-editor': [],
   'text-editor': [],
   'video-editor': [],

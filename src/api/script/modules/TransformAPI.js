@@ -235,6 +235,24 @@ export class TransformAPI {
   // === SCALE METHODS ===
 
   /**
+   * Get current scale values
+   * @returns {Array} [x, y, z] scale values
+   */
+  getScale() {
+    if (!this.babylonObject?.scaling) return [1, 1, 1];
+    const scale = this.babylonObject.scaling;
+    return [scale.x, scale.y, scale.z];
+  }
+
+  /**
+   * Alias for getScale()
+   * @returns {Array} [x, y, z] scale values
+   */
+  scale() {
+    return this.getScale();
+  }
+
+  /**
    * Scale to absolute size
    * @param {number} x - X scale
    * @param {number} y - Y scale (optional, defaults to x)

@@ -59,6 +59,10 @@ const [editorStore, setEditorStore] = createStore({
     messages: []
   },
   
+  scripts: {
+    isPlaying: savedSettings.scripts?.isPlaying !== undefined ? savedSettings.scripts.isPlaying : false
+  },
+
   settings: {
     viewport: {
       backgroundColor: savedSettings.viewport?.backgroundColor || 'theme',
@@ -193,6 +197,29 @@ export const editorActions = {
     // Note: This creates a circular dependency, so we'll implement this differently
     // by calling it from the Scene.jsx component where both stores are already imported
     // Update Babylon object properties
+  },
+
+  toggleScriptExecution: () => {
+    const newState = !editorStore.scripts.isPlaying;
+    setEditorStore('scripts', 'isPlaying', newState);
+    saveSettings(editorStore.settings);
+    
+    // Trigger script manager state change
+    const event = new CustomEvent('engine:script-execution-toggle', {
+      detail: { isPlaying: newState }
+    });
+    document.dispatchEvent(event);
+  },
+
+  setScriptExecution: (isPlaying) => {
+    setEditorStore('scripts', 'isPlaying', isPlaying);
+    saveSettings(editorStore.settings);
+    
+    // Trigger script manager state change
+    const event = new CustomEvent('engine:script-execution-toggle', {
+      detail: { isPlaying }
+    });
+    document.dispatchEvent(event);
   }
 }
 

@@ -24,12 +24,6 @@ const ViewportTabs = () => {
         label: 'New Scene',
         icon: IconChairDirector,
         description: 'Create a new 3D scene viewport'
-      },
-      {
-        id: 'node-editor',
-        label: 'Node Editor',
-        icon: IconSettings,
-        description: 'Create a new node editor for visual scripting'
       }
     ];
     

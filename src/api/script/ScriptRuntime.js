@@ -1,5 +1,6 @@
 import { ScriptManager } from './ScriptManager.js';
 import { getScriptLoader } from './ScriptLoader.js';
+import { editorStore } from '@/layout/stores/EditorStore.jsx';
 
 /**
  * ScriptRuntime - Main runtime system that coordinates script execution
@@ -12,6 +13,7 @@ class ScriptRuntime {
     this.scene = null;
     this.isInitialized = false;
     this.propertyUpdateListener = null;
+    this.executionToggleListener = null;
   }
   
   /**
@@ -47,9 +49,17 @@ class ScriptRuntime {
     // Setting up property update listener
     this.setupPropertyUpdateListener();
     
-    // Start the script manager
-    // Starting script manager
-    this.start();
+    // Set up event listener for script execution toggle
+    this.setupExecutionToggleListener();
+    
+    // Start the script manager based on editor state
+    // Check if scripts should be playing from editor store
+    if (editorStore.scripts.isPlaying) {
+      // Starting script manager
+      this.start();
+    } else {
+      console.log('🔧 ScriptRuntime: Scripts set to paused by default');
+    }
   }
   
   /**
@@ -70,6 +80,26 @@ class ScriptRuntime {
     document.addEventListener('engine:script-properties-updated', this.propertyUpdateListener);
     // Property update listener registered
   }
+
+  /**
+   * Set up event listener for script execution toggle
+   */
+  setupExecutionToggleListener() {
+    this.executionToggleListener = (event) => {
+      const { isPlaying } = event.detail;
+      
+      if (isPlaying) {
+        console.log('🎯 ScriptRuntime: Starting script execution');
+        this.start();
+      } else {
+        console.log('⏸️ ScriptRuntime: Pausing script execution');
+        this.pause();
+      }
+    };
+    
+    document.addEventListener('engine:script-execution-toggle', this.executionToggleListener);
+    // Script execution toggle listener registered
+  }
   
   /**
    * Clean up property update listener
@@ -79,6 +109,17 @@ class ScriptRuntime {
       document.removeEventListener('engine:script-properties-updated', this.propertyUpdateListener);
       this.propertyUpdateListener = null;
       // Property update listener removed
+    }
+  }
+
+  /**
+   * Clean up execution toggle listener
+   */
+  cleanupExecutionToggleListener() {
+    if (this.executionToggleListener) {
+      document.removeEventListener('engine:script-execution-toggle', this.executionToggleListener);
+      this.executionToggleListener = null;
+      // Script execution toggle listener removed
     }
   }
   
@@ -124,6 +165,7 @@ class ScriptRuntime {
     
     this.stop();
     this.cleanupPropertyUpdateListener();
+    this.cleanupExecutionToggleListener();
     this.scriptManager = null;
     this.scene = null;
     this.isInitialized = false;

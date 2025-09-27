@@ -71,16 +71,6 @@ export class CoreAPI {
     return this.getWorldRotationQuaternion();
   }
 
-  getScale() {
-    if (!this.babylonObject?.scaling) return [1, 1, 1];
-    const scale = this.babylonObject.scaling;
-    return [scale.x, scale.y, scale.z];
-  }
-
-  scale() {
-    return this.getScale();
-  }
-
   setScale(x, y, z) {
     if (!this.babylonObject?.scaling) return;
     this.babylonObject.scaling.set(x, y, z);

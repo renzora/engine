@@ -213,7 +213,6 @@ export default createPlugin({
       icon: IconChairDirector,
       order: 4,
       submenu: [
-        { id: 'viewport-node-editor', label: 'Node Editor', icon: IconNetwork },
         { id: 'viewport-bridge', label: 'Bridge', icon: IconLink },
         { id: 'viewport-web-browser', label: 'Web Browser', icon: IconWorld, 
           action: () => {

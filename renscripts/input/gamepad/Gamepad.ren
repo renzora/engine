@@ -1,11 +1,20 @@
 
 script GamepadController {
   
+  # Control settings
+  enabled = 1.0
+  gamepad_index = 0.0
+  speed = 5.0
+  rotation_speed = 2.0
+  
   # Track position manually to work around RenScript limitations
   pos_x = 0.0
   pos_y = 2.0
   pos_z = 0.0
-  rot_y = 0.0
+  
+  # Separate camera and player rotation
+  camera_rot_y = 0.0
+  player_rot_y = 0.0
   
   # Movement smoothing
   velocity_x = 0.0
@@ -17,14 +26,13 @@ script GamepadController {
   jump_velocity = 0.0
   
   start {
-    addTag("gamepad_controlled")
     # Initialize position
     setPosition(pos_x, pos_y, pos_z)
-    setRotation(0.0, rot_y, 0.0)
+    setRotation(0.0, player_rot_y, 0.0)
     log("360° Gamepad Controller initialized")
   }
   
-  update() {
+  update {
     # Only process input if enabled
     enabled_num = 0.0
     enabled_num = enabled_num + 1.0 * enabled
@@ -32,15 +40,30 @@ script GamepadController {
     # Get gamepad input
     gamepad_idx = floor(gamepad_index)
     
+    # === CAMERA ROTATION (RIGHT STICK) ===
+    # Right stick controls camera rotation
+    camera_x = rightX(gamepad_idx) * enabled_num
+    camera_y = rightY(gamepad_idx) * enabled_num
+    
+    deadzone = 0.15
+    
+    # Horizontal camera rotation (Y-axis)
+    if (abs(camera_x) > deadzone) {
+      camera_rot_y = camera_rot_y + camera_x * rotation_speed * 0.016
+    }
+    
+    # === MOVEMENT (LEFT STICK) ===
     # Get left stick input with deadzone
     stick_x = leftX(gamepad_idx) * enabled_num
-    stick_y = leftY(gamepad_idx) * enabled_num
+    stick_y = leftY(gamepad_idx) * enabled_num * -1.0  # Invert Y so up = forward
+    
+    # Debug logging for gamepad axis
+    log("Left stick - X: " + stick_x + " Y: " + stick_y)
     
     # Apply circular deadzone to prevent drift
-    deadzone = 0.15
     stick_magnitude = sqrt(stick_x * stick_x + stick_y * stick_y)
     
-    # Calculate movement direction
+    # Calculate movement direction relative to camera
     movement_x = 0.0
     movement_z = 0.0
     is_moving = 0.0
@@ -48,15 +71,39 @@ script GamepadController {
     if (stick_magnitude > deadzone) {
       # Normalize input and apply scaled magnitude
       normalized_x = stick_x / stick_magnitude
-      normalized_z = stick_y / stick_magnitude * -1.0  # Invert Y for forward
+      normalized_z = stick_y / stick_magnitude
       
       # Scale magnitude beyond deadzone (0 to 1)
       adjusted_magnitude = (stick_magnitude - deadzone) / (1.0 - deadzone)
       adjusted_magnitude = clamp(adjusted_magnitude, 0.0, 1.0)
       
-      movement_x = normalized_x * adjusted_magnitude
-      movement_z = normalized_z * adjusted_magnitude
+      # Calculate movement relative to camera rotation
+      cos_rot = cos(camera_rot_y)
+      sin_rot = sin(camera_rot_y)
+      
+      # Transform stick input to camera-relative movement
+      # Camera forward direction from rotation: forward = (sin, cos), right = (cos, -sin)
+      # Stick forward (normalized_z) moves along camera forward
+      # Stick right (normalized_x) moves along camera right
+      
+      # Camera forward vector
+      camera_forward_x = cos(camera_rot_y)
+      camera_forward_z = sin(camera_rot_y)
+      
+      # Camera right vector (perpendicular to forward)
+      camera_right_x = cos(camera_rot_y)
+      camera_right_z = -sin(camera_rot_y)
+      
+      # Combine stick input with camera directions
+      world_x = normalized_x * camera_right_x + normalized_z * camera_forward_x
+      world_z = normalized_x * camera_right_z + normalized_z * camera_forward_z
+      
+      movement_x = world_x * adjusted_magnitude
+      movement_z = world_z * adjusted_magnitude
       is_moving = 1.0
+      
+      # Debug logging for movement calculation
+      log("Camera Y rot: " + camera_rot_y + " Movement X: " + movement_x + " Z: " + movement_z)
     }
     
     # === SMOOTH MOVEMENT ===
@@ -69,35 +116,37 @@ script GamepadController {
       target_vel_x = movement_x * speed
       target_vel_z = movement_z * speed
       
-      velocity_x = lerp(velocity_x, target_vel_x, accel * time())
-      velocity_z = lerp(velocity_z, target_vel_z, accel * time())
+      velocity_x = lerp(velocity_x, target_vel_x, accel * 0.016)
+      velocity_z = lerp(velocity_z, target_vel_z, accel * 0.016)
     } else {
       # Decelerate to zero
-      velocity_x = lerp(velocity_x, 0.0, decel * time())
-      velocity_z = lerp(velocity_z, 0.0, decel * time())
+      velocity_x = lerp(velocity_x, 0.0, decel * 0.016)
+      velocity_z = lerp(velocity_z, 0.0, decel * 0.016)
     }
     
-    # === CHARACTER ROTATION ===
-    # Character faces movement direction when moving
+    # === PLAYER ROTATION ===
+    # Player faces movement direction when moving (based on stick input, not camera-relative movement)
     if (is_moving > 0.0) {
-      # Calculate target rotation from movement direction
-      target_rotation = atan2(movement_x, movement_z)
+      # Calculate target rotation from raw stick input, not camera-relative movement
+      # This makes the player face the direction they're pushing the stick relative to camera
+      stick_angle = atan2(normalized_x, normalized_z)
+      target_rotation = stick_angle + camera_rot_y
       
       # Smooth rotation towards target
       rot_speed = rotation_speed * 4.0  # Responsive rotation
       
       # Calculate shortest rotation path
-      angle_diff = target_rotation - rot_y
+      angle_diff = target_rotation - player_rot_y
       
       # Normalize angle difference to [-π, π]
-      while (angle_diff > 3.14159) {
+      if (angle_diff > 3.14159) {
         angle_diff = angle_diff - 6.28318
       }
-      while (angle_diff < -3.14159) {
+      if (angle_diff < -3.14159) {
         angle_diff = angle_diff + 6.28318
       }
       
-      rot_y = rot_y + angle_diff * rot_speed * time()
+      player_rot_y = player_rot_y + angle_diff * rot_speed * 0.016
     }
     
     # === JUMP MECHANICS ===
@@ -111,7 +160,7 @@ script GamepadController {
     
     # Apply gravity
     gravity = -20.0
-    jump_velocity = jump_velocity + gravity * time()
+    jump_velocity = jump_velocity + gravity * 0.016
     
     # === SPEED MODIFIERS ===
     # Right trigger: Sprint (hold for faster movement)
@@ -126,11 +175,11 @@ script GamepadController {
     final_speed_mult = sprint_mult * walk_mult
     
     # Apply movement to position
-    pos_x = pos_x + velocity_x * time() * final_speed_mult
-    pos_z = pos_z + velocity_z * time() * final_speed_mult
+    pos_x = pos_x + velocity_x * 0.016 * final_speed_mult
+    pos_z = pos_z + velocity_z * 0.016 * final_speed_mult
     
     # Apply jump and gravity
-    pos_y = pos_y + jump_velocity * time()
+    pos_y = pos_y + jump_velocity * 0.016
     
     # Ground collision (simple Y = 0 ground)
     if (pos_y <= 0.0) {
@@ -139,16 +188,7 @@ script GamepadController {
       grounded = 1.0
     }
     
-    # === CAMERA/MANUAL ROTATION ===
-    # Right stick for manual rotation (overrides auto-rotation when used)
-    camera_x = rightX(gamepad_idx) * enabled_num
-    camera_magnitude = abs(camera_x)
-    
-    if (camera_magnitude > deadzone) {
-      # Manual rotation with right stick
-      manual_rot = camera_x * rotation_speed * time() * 2.0
-      rot_y = rot_y + manual_rot
-    }
+    # Camera rotation is handled above with movement
     
     # === UTILITY BUTTONS ===
     # Y button: Reset to origin
@@ -157,7 +197,8 @@ script GamepadController {
       pos_x = 0.0
       pos_y = 2.0
       pos_z = 0.0
-      rot_y = 0.0
+      camera_rot_y = 0.0
+      player_rot_y = 0.0
       velocity_x = 0.0
       velocity_z = 0.0
       jump_velocity = 0.0
@@ -175,11 +216,16 @@ script GamepadController {
     
     # Apply transforms
     setPosition(pos_x, pos_y, pos_z)
-    setRotation(0.0, rot_y, 0.0)
+    setRotation(0.0, player_rot_y, 0.0)
+    
+    # Camera rotation is stored but will be applied by camera system
+    # Note: Camera API not directly accessible from object scripts
+    
+    # Debug logging for position
+    log("Position - X: " + pos_x + " Y: " + pos_y + " Z: " + pos_z)
   }
   
   destroy {
     log("360° Gamepad Controller destroyed")
-    removeTag("gamepad_controlled")
   }
 }

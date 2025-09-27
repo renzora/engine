@@ -13,6 +13,8 @@ pub fn get_api_method_mappings() -> Vec<(String, String)> {
         ("setPosition".to_string(), "setPosition".to_string()),
         ("rotation".to_string(), "getRotation".to_string()),
         ("setRotation".to_string(), "setRotation".to_string()),
+        ("getScale".to_string(), "getScale".to_string()),
+        ("scale".to_string(), "getScale".to_string()),
         ("setScale".to_string(), "setScale".to_string()),
         ("move".to_string(), "moveBy".to_string()),
         ("rotate".to_string(), "rotateBy".to_string()),

@@ -1,5 +1,5 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match, createComponent } from 'solid-js';
-import { IconCode, IconX, IconRotateClockwise } from '@tabler/icons-solidjs';
+import { IconCode, IconX, IconRotateClockwise, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
 import { renderStore } from '@/render/store';
@@ -19,6 +19,7 @@ export default function ScriptsPanel() {
   // Individual signals for script properties
   const [scriptPropertiesSignal, setScriptPropertiesSignal] = createSignal({});
   const [scriptMetadataVersion, setScriptMetadataVersion] = createSignal(0);
+  const [pausedScripts, setPausedScripts] = createSignal(new Set());
   let previousScriptSections = {};
 
   // Section collapse state
@@ -129,6 +130,23 @@ export default function ScriptsPanel() {
       renderStore.scene.unregisterBeforeRender(renderObserver);
       renderObserver = null;
     }
+    
+    // Reset paused scripts when changing entities and sync with actual state
+    const runtime = getScriptRuntime();
+    const newPausedSet = new Set();
+    
+    if (runtime?.scriptManager && entityId) {
+      const scripts = runtime.scriptManager.getScriptsForObject(entityId) || [];
+      scripts.forEach(script => {
+        const scriptPath = script.path;
+        if (runtime.scriptManager.isScriptPaused(entityId, scriptPath)) {
+          const scriptKey = `${entityId}:${scriptPath}`;
+          newPausedSet.add(scriptKey);
+        }
+      });
+    }
+    
+    setPausedScripts(newPausedSet);
     
     if (!entityId || !renderStore.scene) {
       return;
@@ -259,6 +277,35 @@ export default function ScriptsPanel() {
         delete babylonObject.metadata.scriptProperties[prop.name];
       }
     });
+  };
+
+  // Individual script pause/resume functions
+  const toggleScriptPause = (scriptPath) => {
+    if (!selection.entity) return;
+    
+    const runtime = getScriptRuntime();
+    const scriptKey = `${selection.entity}:${scriptPath}`;
+    const currentPaused = pausedScripts();
+    const newPaused = new Set(currentPaused);
+    
+    if (currentPaused.has(scriptKey)) {
+      // Resume script
+      runtime.resumeScript(selection.entity, scriptPath);
+      newPaused.delete(scriptKey);
+      editorActions.addConsoleMessage(`Resumed script: ${scriptPath.split('/').pop()}`, 'info');
+    } else {
+      // Pause script
+      runtime.pauseScript(selection.entity, scriptPath);
+      newPaused.add(scriptKey);
+      editorActions.addConsoleMessage(`Paused script: ${scriptPath.split('/').pop()}`, 'info');
+    }
+    
+    setPausedScripts(newPaused);
+  };
+
+  const isScriptPaused = (scriptPath) => {
+    const scriptKey = `${selection.entity}:${scriptPath}`;
+    return pausedScripts().has(scriptKey);
   };
 
   // Cleanup on component unmount
@@ -897,9 +944,29 @@ export default function ScriptsPanel() {
                             <For each={Object.entries(propertiesBySection)}>
                               {([sectionName, properties]) => (
                                 <div class="bg-base-100 border-base-300 border rounded-lg">
-                                  <div class="!min-h-0 !py-1 !px-2 flex items-center gap-1.5 font-medium text-xs border-b border-base-300/50 cursor-pointer bg-primary/15 text-white rounded-t-lg">
-                                    <IconCode class="w-3 h-3" />
-                                    {sectionName}
+                                  <div class="!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 bg-primary/15 text-white rounded-t-lg">
+                                    <div class="flex items-center gap-1.5">
+                                      <IconCode class="w-3 h-3" />
+                                      {sectionName}
+                                    </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        toggleScriptPause(scriptInstance._scriptPath);
+                                      }}
+                                      class={`btn btn-xs btn-circle ${
+                                        isScriptPaused(scriptInstance._scriptPath)
+                                          ? 'btn-success hover:btn-success'
+                                          : 'btn-warning hover:btn-warning'
+                                      }`}
+                                      title={`${isScriptPaused(scriptInstance._scriptPath) ? 'Resume' : 'Pause'} script`}
+                                    >
+                                      {isScriptPaused(scriptInstance._scriptPath) ? 
+                                        <IconPlayerPlay class="w-3 h-3" /> : 
+                                        <IconPlayerPause class="w-3 h-3" />
+                                      }
+                                    </button>
                                   </div>
                                   <div class="!p-2">
                                     <div class="space-y-0.5">

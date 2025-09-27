@@ -9,7 +9,6 @@ import CodeEditorPanel from '@/pages/editor/AssetLibrary/CodeEditorPanel.jsx';
 import BabylonRenderer from '@/render/index.jsx';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
-import { NodeEditor } from '@/pages/nodeEditor/index.jsx';
 
 // Babylon.js viewport with new render system
 const BabylonViewport = (props) => {
@@ -287,16 +286,6 @@ const Viewport = () => {
     // Render overlay panel for current tab
     
     switch (tab.type) {
-      case 'node-editor':
-        // Render NodeEditor with object from tab or selected object
-        const objectId = tab.objectId || editorStore.selection?.entity || 'scene-root';
-        
-        return (
-          <div className="absolute inset-0 bg-base-100">
-            <NodeEditor objectId={objectId} tab={tab} />
-          </div>
-        );
-        
       default:
         // Check if this is a plugin viewport type
         // Check for plugin-registered viewport type

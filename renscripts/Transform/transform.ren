@@ -1,0 +1,129 @@
+# Transform Script - Sets basic position, rotation, and scale
+# Simple script for setting transform values with properties
+
+script Transform {
+    # Default transform values (can be overridden by properties)
+    posX = 0
+    posY = 0
+    posZ = 0
+    
+    rotX = 0
+    rotY = 0
+    rotZ = 0
+    
+    scaleX = 1
+    scaleY = 1
+    scaleZ = 1
+    
+    props {
+        posX: float {
+            default: 0.0,
+            description: "X position"
+        }
+        posY: float {
+            default: 0.0,
+            description: "Y position"
+        }
+        posZ: float {
+            default: 0.0,
+            description: "Z position"
+        }
+        rotX: float {
+            default: 0.0,
+            description: "X rotation (radians)"
+        }
+        rotY: float {
+            default: 0.0,
+            description: "Y rotation (radians)"
+        }
+        rotZ: float {
+            default: 0.0,
+            description: "Z rotation (radians)"
+        }
+        scaleX: float {
+            default: 1.0,
+            description: "X scale factor"
+        }
+        scaleY: float {
+            default: 1.0,
+            description: "Y scale factor"
+        }
+        scaleZ: float {
+            default: 1.0,
+            description: "Z scale factor"
+        }
+    }
+    
+    start {
+        # Get current transform values
+        currentPos = position()
+        currentRot = rotation()
+        currentScale = getScale()
+        
+        # Use current values as defaults if properties are at default (0 for pos/rot, 1 for scale)
+        if (posX == 0.0) {
+            finalPosX = currentPos[0]
+        } else {
+            finalPosX = posX
+        }
+        
+        if (posY == 0.0) {
+            finalPosY = currentPos[1]
+        } else {
+            finalPosY = posY
+        }
+        
+        if (posZ == 0.0) {
+            finalPosZ = currentPos[2]
+        } else {
+            finalPosZ = posZ
+        }
+        
+        if (rotX == 0.0) {
+            finalRotX = currentRot[0]
+        } else {
+            finalRotX = rotX
+        }
+        
+        if (rotY == 0.0) {
+            finalRotY = currentRot[1]
+        } else {
+            finalRotY = rotY
+        }
+        
+        if (rotZ == 0.0) {
+            finalRotZ = currentRot[2]
+        } else {
+            finalRotZ = rotZ
+        }
+        
+        if (scaleX == 1.0) {
+            finalScaleX = currentScale[0]
+        } else {
+            finalScaleX = scaleX
+        }
+        
+        if (scaleY == 1.0) {
+            finalScaleY = currentScale[1]
+        } else {
+            finalScaleY = scaleY
+        }
+        
+        if (scaleZ == 1.0) {
+            finalScaleZ = currentScale[2]
+        } else {
+            finalScaleZ = scaleZ
+        }
+        
+        # Apply final transform values
+        setPosition(finalPosX, finalPosY, finalPosZ)
+        setRotation(finalRotX, finalRotY, finalRotZ)
+        setScale(finalScaleX, finalScaleY, finalScaleZ)
+        
+        log("Transform script applied - Position: (" + finalPosX + ", " + finalPosY + ", " + finalPosZ + ")")
+    }
+
+    destroy {
+        log("Transform script destroyed")
+    }
+}
