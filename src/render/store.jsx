@@ -322,6 +322,13 @@ export const renderActions = {
       console.error('❌ Failed to mark scene as modified:', err);
     });
     
+    // Track object addition in unsaved changes
+    import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesActions }) => {
+      unsavedChangesActions.markObjectsModified(`Added object: ${mesh.name}`);
+    }).catch(err => {
+      console.warn('❌ Failed to track object addition:', err);
+    });
+    
     // Dispatch scene change event
     if (typeof window !== 'undefined') {
       const event = new CustomEvent('babylonSceneChanged', {
@@ -335,6 +342,7 @@ export const renderActions = {
     if (!mesh) return;
     
     const objectId = mesh.uniqueId || mesh.name;
+    const objectName = mesh.name;
     
     if (renderStore.selectedObject === mesh) {
       this.selectObject(null);
@@ -352,6 +360,13 @@ export const renderActions = {
       sceneManager.markAsModified();
     }).catch(err => {
       console.error('❌ Failed to mark scene as modified:', err);
+    });
+    
+    // Track object removal in unsaved changes
+    import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesActions }) => {
+      unsavedChangesActions.markObjectsModified(`Removed object: ${objectName}`);
+    }).catch(err => {
+      console.warn('❌ Failed to track object removal:', err);
     });
     
     // Dispatch scene change event

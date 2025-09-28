@@ -10,6 +10,7 @@ export class SceneManager {
   constructor() {
     this.currentSceneName = 'main';
     this.hasUnsavedChanges = false;
+    this.isLoading = false; // Track loading state to prevent false "modified" flags
   }
 
   /**
@@ -45,6 +46,15 @@ export class SceneManager {
 
       this.currentSceneName = sceneNameToSave;
       this.hasUnsavedChanges = false;
+
+      // Clear unsaved changes in global store
+      try {
+        import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesActions }) => {
+          unsavedChangesActions.clearSceneChanges();
+        });
+      } catch (error) {
+        console.warn('Failed to clear unsaved changes store:', error);
+      }
 
       // Update the scene tree name to reflect the saved scene name
       this.updateSceneTreeName(sceneNameToSave);
@@ -82,6 +92,9 @@ export class SceneManager {
     const startTime = Date.now();
     // Starting scene load process
     
+    // Set loading state to prevent false "modified" flags during loading
+    this.isLoading = true;
+    
     // Dispatch progress events with detailed information
     const dispatchProgress = (stage, currentFile = '', processedCount = 0, totalCount = 0) => {
       document.dispatchEvent(new CustomEvent('scene-loading-progress', {
@@ -103,7 +116,8 @@ export class SceneManager {
       // Checking for unsaved changes
       const canContinue = await this.promptUnsavedChanges();
       if (!canContinue) {
-        // User cancelled scene loading
+        // User cancelled scene loading - clear loading state
+        this.isLoading = false;
         return { success: false, error: 'User cancelled scene loading' };
       }
 
@@ -142,10 +156,18 @@ export class SceneManager {
       dispatchProgress('Scene loading complete!');
       const totalTime = Date.now() - startTime;
       // Scene load completed
+      
+      // Clear loading state
+      this.isLoading = false;
+      
       return { success: true };
 
     } catch (error) {
       console.error('❌ SceneManager: Bundled load failed:', error);
+      
+      // Clear loading state even on error
+      this.isLoading = false;
+      
       return { success: false, error: error.message };
     }
   }
@@ -161,10 +183,14 @@ export class SceneManager {
 
       const scenesData = await bridgeService.listDirectory(`projects/${project.name}/scenes`);
       
-      if (!scenesData || !scenesData.files) return [];
+      if (!scenesData) return [];
 
-      return scenesData.files
-        .filter(file => file.type === 'file' && file.name.endsWith('.json'))
+      // Handle both array response (direct) and object response (with files property)
+      const files = Array.isArray(scenesData) ? scenesData : scenesData.files;
+      if (!files) return [];
+
+      return files
+        .filter(file => !file.is_directory && file.name.endsWith('.json'))
         .map(file => file.name.replace('.json', ''));
 
     } catch (error) {
@@ -231,6 +257,11 @@ export class SceneManager {
    */
   isSystemObject(obj) {
     if (!obj.name) return true;
+    
+    // Check if it's a camera (cameras should be preserved across scene loads)
+    if (obj.getClassName && obj.getClassName().includes('Camera')) {
+      return true;
+    }
     
     return obj.name.startsWith('__') ||
            obj.name.includes('gizmo') ||
@@ -911,7 +942,22 @@ export class SceneManager {
    * Mark scene as modified and update UI indicators
    */
   markAsModified() {
+    // Don't mark as modified if we're currently loading a scene
+    if (this.isLoading) {
+      console.log('🔄 Skipping markAsModified during scene loading');
+      return;
+    }
+    
     this.hasUnsavedChanges = true;
+    
+    // Update global unsaved changes store
+    try {
+      import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesActions }) => {
+        unsavedChangesActions.markSceneModified('Scene modifications');
+      });
+    } catch (error) {
+      console.warn('Failed to update unsaved changes store:', error);
+    }
     
     // Update viewport tab to show unsaved changes indicator
     import('@/layout/stores/ViewportStore.jsx').then(({ viewportStore, viewportActions }) => {

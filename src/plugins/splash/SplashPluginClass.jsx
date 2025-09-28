@@ -139,6 +139,17 @@ function SplashViewport({ tab }) {
       
       setLoadingStage('Complete!');
       
+      // Clear unsaved changes after project loading is complete
+      // (project loading processes can trigger markAsModified calls during initialization)
+      setTimeout(() => {
+        import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesActions }) => {
+          unsavedChangesActions.clearChanges();
+          console.log('🧹 Cleared unsaved changes after project load');
+        }).catch(err => {
+          console.warn('Failed to clear unsaved changes after project load:', err);
+        });
+      }, 500);
+      
       // Close splash screen after a brief delay
       setTimeout(() => {
         import('@/layout/stores/ViewportStore.jsx').then(({ viewportActions, viewportStore }) => {

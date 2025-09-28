@@ -8,6 +8,9 @@ import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
 import OpenProjectOverlay from '@/ui/OpenProjectOverlay.jsx';
 import { sceneManager } from '@/api/scene/SceneManager.js';
 import { getCurrentProject, getProjectCurrentScene } from '@/api/bridge/projects.js';
+import UnsavedChangesOverlay from '@/ui/UnsavedChangesOverlay.jsx';
+import SceneSelectionOverlay from '@/ui/SceneSelectionOverlay.jsx';
+import SaveAsOverlay from '@/ui/SaveAsOverlay.jsx';
 
 // About overlay state
 const [showAbout, setShowAbout] = createSignal(false);
@@ -17,63 +20,183 @@ const [showExport, setShowExport] = createSignal(false);
 const [showNewProject, setShowNewProject] = createSignal(false);
 // Open project overlay state
 const [showOpenProject, setShowOpenProject] = createSignal(false);
+// Scene selection overlay state
+const [showSceneSelection, setShowSceneSelection] = createSignal(false);
+// Save As overlay state
+const [showSaveAs, setShowSaveAs] = createSignal(false);
+// Unsaved changes overlay state
+const [showUnsavedChanges, setShowUnsavedChanges] = createSignal(false);
+const [pendingAction, setPendingAction] = createSignal(null);
 
-// Handle new project creation with save prompt
-const handleNewProject = async () => {
-  const currentProject = getCurrentProject();
-  
-  if (currentProject) {
-    // Ask user if they want to save current project
-    const shouldSave = confirm(
-      `You have project "${currentProject.name}" open. Do you want to save your current scene before creating a new project?`
-    );
+// Helper function to check for unsaved changes and handle accordingly
+const checkUnsavedChanges = async (action) => {
+  try {
+    // Import unsaved changes store
+    const { unsavedChangesStore } = await import('@/stores/UnsavedChangesStore.jsx');
     
-    if (shouldSave) {
-      try {
-        const result = await sceneManager.saveScene();
-        if (!result.success) {
-          alert(`Failed to save scene: ${result.error}`);
-          return; // Don't proceed if save failed
-        }
-      } catch (error) {
-        console.error('Failed to save scene:', error);
-        alert('Failed to save scene. Please try again.');
-        return;
-      }
+    if (unsavedChangesStore.hasChanges) {
+      // Show unsaved changes overlay
+      setPendingAction(() => action);
+      setShowUnsavedChanges(true);
+      return false; // Don't proceed with action yet
+    } else {
+      // No unsaved changes, proceed with action
+      action();
+      return true;
     }
+  } catch (error) {
+    console.warn('Failed to check unsaved changes:', error);
+    // If there's an error checking, proceed with action
+    action();
+    return true;
   }
-  
-  // Show the new project overlay
-  setShowNewProject(true);
 };
 
-// Handle open project with save prompt
-const handleOpenProject = async () => {
-  const currentProject = getCurrentProject();
-  
-  if (currentProject) {
-    // Ask user if they want to save current project
-    const shouldSave = confirm(
-      `You have project "${currentProject.name}" open. Do you want to save your current scene before opening another project?`
-    );
-    
-    if (shouldSave) {
-      try {
-        const result = await sceneManager.saveScene();
-        if (!result.success) {
-          alert(`Failed to save scene: ${result.error}`);
-          return; // Don't proceed if save failed
-        }
-      } catch (error) {
-        console.error('Failed to save scene:', error);
-        alert('Failed to save scene. Please try again.');
-        return;
-      }
+// Handle save changes from unsaved changes overlay
+const handleSaveChanges = async () => {
+  try {
+    const result = await sceneManager.saveScene();
+    if (result.success) {
+      console.log('✅ Changes saved successfully');
+      return true;
+    } else {
+      console.error('❌ Failed to save changes:', result.error);
+      throw new Error(result.error);
     }
+  } catch (error) {
+    console.error('❌ Failed to save changes:', error);
+    throw error;
   }
+};
+
+// Handle discard changes from unsaved changes overlay
+const handleDiscardChanges = () => {
+  // Clear the unsaved changes store
+  import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesActions }) => {
+    unsavedChangesActions.clearChanges();
+  });
   
-  // Show the open project overlay
-  setShowOpenProject(true);
+  // Execute the pending action
+  const action = pendingAction();
+  if (action) {
+    action();
+  }
+};
+
+// Handle new project creation with unsaved changes check
+const handleNewProject = async () => {
+  const proceedWithNewProject = () => {
+    setShowNewProject(true);
+  };
+  
+  // Check for unsaved changes before proceeding
+  checkUnsavedChanges(proceedWithNewProject);
+};
+
+// Handle open project with unsaved changes check
+const handleOpenProject = async () => {
+  const proceedWithOpenProject = () => {
+    setShowOpenProject(true);
+  };
+  
+  // Check for unsaved changes before proceeding
+  checkUnsavedChanges(proceedWithOpenProject);
+};
+
+// Handle scene selection
+const handleSceneSelect = async (sceneName) => {
+  try {
+    const result = await sceneManager.loadScene(sceneName);
+    if (result.success) {
+      // Scene loaded successfully
+      
+      // Switch to existing scene tab instead of creating new one
+      const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
+      
+      // Find existing scene tab
+      const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
+      
+      if (sceneTab) {
+        // Switch to existing scene tab
+        viewportActions.setActiveViewportTab(sceneTab.id);
+      } else {
+        // Only create new tab if none exists
+        const api = document.querySelector('[data-plugin-api]')?.__pluginAPI;
+        if (api) {
+          api.createSceneViewport({
+            name: sceneName,
+            setActive: true
+          });
+        }
+      }
+    } else {
+      alert(`Failed to load scene: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('Failed to load scene:', error);
+    alert('Failed to load the selected scene. Please try again.');
+  }
+};
+
+// Handle scene creation
+const handleSceneCreate = async (sceneName) => {
+  try {
+    const result = await sceneManager.createNewScene(sceneName);
+    if (result.success) {
+      // New scene created successfully
+      
+      // Switch to existing scene tab instead of creating new one
+      const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
+      
+      // Find existing scene tab
+      const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
+      
+      if (sceneTab) {
+        // Switch to existing scene tab
+        viewportActions.setActiveViewportTab(sceneTab.id);
+      } else {
+        // Only create new tab if none exists
+        const api = document.querySelector('[data-plugin-api]')?.__pluginAPI;
+        if (api) {
+          api.createSceneViewport({
+            name: sceneName,
+            setActive: true
+          });
+        }
+      }
+    } else {
+      throw new Error(result.error || 'Failed to create scene');
+    }
+  } catch (error) {
+    console.error('Failed to create scene:', error);
+    throw error; // Re-throw to let the overlay handle the error display
+  }
+};
+
+// Handle load scene with unsaved changes check
+const handleLoadScene = async () => {
+  const proceedWithLoadScene = () => {
+    setShowSceneSelection(true);
+  };
+  
+  // Check for unsaved changes before proceeding
+  checkUnsavedChanges(proceedWithLoadScene);
+};
+
+// Handle save as
+const handleSaveAs = async (sceneName) => {
+  try {
+    const result = await sceneManager.saveScene(sceneName);
+    if (result.success) {
+      console.log('✅ Scene saved as:', sceneName);
+      return true;
+    } else {
+      throw new Error(result.error || 'Failed to save scene');
+    }
+  } catch (error) {
+    console.error('❌ Failed to save scene as:', error);
+    throw error;
+  }
 };
 
 // Handle project selection from open project overlay
@@ -139,43 +262,7 @@ export default createPlugin({
           id: 'load-scene', 
           label: 'Load Scene', 
           icon: IconFolder,
-          action: async () => {
-            const scenes = await sceneManager.getAvailableScenes();
-            if (scenes.length === 0) {
-              alert('No scenes found in current project');
-              return;
-            }
-            
-            const sceneList = scenes.join('\n');
-            const sceneName = prompt(`Available scenes:\n${sceneList}\n\nEnter scene name to load:`);
-            if (sceneName && sceneName.trim()) {
-              const result = await sceneManager.loadScene(sceneName.trim());
-              if (result.success) {
-                // Scene loaded successfully
-                
-                // Switch to existing scene tab instead of creating new one
-                const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
-                
-                // Find existing scene tab
-                const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
-                
-                if (sceneTab) {
-                  // Switch to existing scene tab
-                  viewportActions.setActiveViewportTab(sceneTab.id);
-                  // Switched to existing scene tab
-                } else {
-                  // Only create new tab if none exists
-                  // Creating scene viewport
-                  api.createSceneViewport({
-                    name: sceneName.trim(),
-                    setActive: true
-                  });
-                }
-              } else {
-                alert(`Failed to load scene: ${result.error}`);
-              }
-            }
-          }
+          action: handleLoadScene
         },
         { 
           id: 'save', 
@@ -196,17 +283,7 @@ export default createPlugin({
           label: 'Save Scene As...', 
           icon: IconDeviceFloppy, 
           shortcut: 'Ctrl+Shift+S',
-          action: async () => {
-            const sceneName = prompt('Enter scene name:');
-            if (sceneName && sceneName.trim()) {
-              const result = await sceneManager.saveScene(sceneName.trim());
-              if (result.success) {
-                // Scene saved successfully
-              } else {
-                alert(`Failed to save scene: ${result.error}`);
-              }
-            }
-          }
+          action: () => setShowSaveAs(true)
         },
         { divider: true },
         { 
@@ -261,36 +338,7 @@ export default createPlugin({
           id: 'create-scene', 
           label: 'Scene', 
           icon: IconChairDirector,
-          action: async () => {
-            const sceneName = prompt('Enter scene name:');
-            if (sceneName && sceneName.trim()) {
-              const result = await sceneManager.createNewScene(sceneName.trim());
-              if (result.success) {
-                // New scene created
-                
-                // Switch to existing scene tab instead of creating new one
-                const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
-                
-                // Find existing scene tab
-                const sceneTab = viewportStore.tabs.find(tab => tab.type === '3d-viewport');
-                
-                if (sceneTab) {
-                  // Switch to existing scene tab
-                  viewportActions.setActiveViewportTab(sceneTab.id);
-                  // Switched to existing scene tab
-                } else {
-                  // Only create new tab if none exists
-                  // Creating scene viewport
-                  api.createSceneViewport({
-                    name: sceneName.trim(),
-                    setActive: true
-                  });
-                }
-              } else {
-                alert(`Failed to create scene: ${result.error}`);
-              }
-            }
-          }
+          action: handleLoadScene
         },
         { 
           id: 'mesh', 
@@ -378,5 +426,58 @@ export default createPlugin({
         onProjectSelect={handleProjectSelect}
       />
     ));
+    
+    // Register Scene Selection overlay component
+    api.registerLayoutComponent('scene-selection-overlay', () => (
+      <SceneSelectionOverlay 
+        isOpen={showSceneSelection} 
+        onClose={() => setShowSceneSelection(false)}
+        onSceneSelect={handleSceneSelect}
+        onCreateScene={handleSceneCreate}
+      />
+    ));
+    
+    // Register Save As overlay component
+    api.registerLayoutComponent('save-as-overlay', () => (
+      <SaveAsOverlay 
+        isOpen={showSaveAs} 
+        onClose={() => setShowSaveAs(false)}
+        onSave={handleSaveAs}
+        currentSceneName={sceneManager.getCurrentSceneName()}
+      />
+    ));
+    
+    // Register Unsaved Changes overlay component
+    api.registerLayoutComponent('unsaved-changes-overlay', () => {
+      // Get changes from store (will be reactive)
+      let changes = [];
+      try {
+        import('@/stores/UnsavedChangesStore.jsx').then(({ unsavedChangesStore }) => {
+          changes = unsavedChangesStore.changes || [];
+        });
+      } catch {
+        changes = [];
+      }
+      
+      return (
+        <UnsavedChangesOverlay 
+          isOpen={showUnsavedChanges} 
+          onClose={() => {
+            setShowUnsavedChanges(false);
+            setPendingAction(null);
+          }}
+          onSave={async () => {
+            await handleSaveChanges();
+            const action = pendingAction();
+            if (action) {
+              action();
+            }
+          }}
+          onDiscard={handleDiscardChanges}
+          projectName={getCurrentProject()?.name}
+          changes={changes}
+        />
+      );
+    });
   }
 });
