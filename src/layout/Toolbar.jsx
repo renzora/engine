@@ -3,7 +3,7 @@ import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -31,6 +31,25 @@ function Toolbar() {
   const transformMode = () => selection().transformMode;
   
   const { setSelectedTool, setTransformMode, selectEntity } = editorActions;
+  
+  // Camera view dropdown state
+  const [cameraViewDropdownOpen, setCameraViewDropdownOpen] = createSignal(false);
+  const [currentViewName, setCurrentViewName] = createSignal("View");
+  
+  // Get user-friendly view names
+  const getViewDisplayName = (viewType) => {
+    const viewNames = {
+      front: "Front",
+      back: "Back", 
+      right: "Right",
+      left: "Left",
+      top: "Top",
+      bottom: "Bottom",
+      frontLeft: "Front Left",
+      frontRight: "Front Right"
+    };
+    return viewNames[viewType] || "View";
+  };
   
   const getSelectedTool = () => {
     if (['select', 'move', 'rotate', 'scale'].includes(transformMode())) {
@@ -269,6 +288,170 @@ function Toolbar() {
     }
   };
 
+  // Camera view functions
+  const setCameraView = (viewType) => {
+    const scene = getCurrentScene();
+    if (!scene) {
+      editorActions.addConsoleMessage('No active scene available', 'error');
+      console.error('No active scene found');
+      return;
+    }
+
+    // Try to get camera from multiple sources
+    const camera = scene.activeCamera || scene._camera || (scene.cameras && scene.cameras[0]);
+    if (!camera) {
+      editorActions.addConsoleMessage('No active camera available', 'error');
+      console.error('No camera found in scene');
+      return;
+    }
+
+    console.log(`Setting camera view to ${viewType}`, { camera });
+    
+    // Calculate current focus point (where camera is looking) - Blender style
+    let focusPoint = new Vector3(0, 0, 0);
+    let currentDistance = 15; // Default distance
+    
+    if (camera.getTarget && typeof camera.getTarget === 'function') {
+      // Camera has a target (like ArcRotateCamera)
+      focusPoint = camera.getTarget();
+      currentDistance = Vector3.Distance(camera.position, focusPoint);
+    } else {
+      // For Universal/Free cameras, calculate where they're looking
+      const forward = camera.getDirection ? 
+        camera.getDirection(Vector3.Forward()) : 
+        camera.getForwardRay().direction;
+      
+      // Use a reasonable distance based on current position or use selected object
+      const selectedObject = renderStore.selectedObject;
+      if (selectedObject && selectedObject.position) {
+        focusPoint = selectedObject.position.clone();
+        currentDistance = Vector3.Distance(camera.position, focusPoint);
+      } else {
+        // Project forward from camera to find focus point
+        currentDistance = Math.max(10, Vector3.Distance(camera.position, Vector3.Zero()));
+        focusPoint = camera.position.add(forward.normalize().scale(currentDistance));
+      }
+    }
+
+    console.log(`Focus point: ${focusPoint}, Distance: ${currentDistance}`);
+
+    // Define camera positions relative to focus point (Blender-style)
+    // Maintain the current distance from focus point
+    const positions = {
+      // Front view - camera looks down negative Z axis (Blender standard)
+      front: new Vector3(focusPoint.x, focusPoint.y, focusPoint.z + currentDistance),
+      // Back view - camera looks down positive Z axis  
+      back: new Vector3(focusPoint.x, focusPoint.y, focusPoint.z - currentDistance),
+      // Right view - camera looks down negative X axis (from object's right side)
+      right: new Vector3(focusPoint.x + currentDistance, focusPoint.y, focusPoint.z),
+      // Left view - camera looks down positive X axis (from object's left side)
+      left: new Vector3(focusPoint.x - currentDistance, focusPoint.y, focusPoint.z),
+      // Top view - camera looks down negative Y axis (from above)
+      top: new Vector3(focusPoint.x, focusPoint.y + currentDistance, focusPoint.z),
+      // Bottom view - camera looks down positive Y axis (from below)  
+      bottom: new Vector3(focusPoint.x, focusPoint.y - currentDistance, focusPoint.z),
+      // Isometric views (Blender numpad 1+3, 7+1, etc.)
+      frontRight: new Vector3(focusPoint.x + currentDistance * 0.7, focusPoint.y + currentDistance * 0.5, focusPoint.z + currentDistance * 0.7),
+      frontLeft: new Vector3(focusPoint.x - currentDistance * 0.7, focusPoint.y + currentDistance * 0.5, focusPoint.z + currentDistance * 0.7)
+    };
+
+    if (positions[viewType]) {
+      const newPosition = positions[viewType];
+      console.log(`Moving camera from ${camera.position} to ${newPosition}, focus: ${focusPoint}`);
+      
+      // Temporarily disable camera movement controller if available
+      const canvas = scene.getEngine()?.getRenderingCanvas();
+      const cameraController = canvas?._cameraMovementController;
+      if (cameraController) {
+        cameraController.disable();
+      }
+      
+      // Set camera position directly
+      camera.position.copyFrom(newPosition);
+      
+      // Set camera target (look at focus point) 
+      if (camera.setTarget && typeof camera.setTarget === 'function') {
+        camera.setTarget(focusPoint);
+      } else {
+        // For cameras that don't have setTarget, manually calculate rotation
+        const direction = focusPoint.subtract(newPosition).normalize();
+        const yaw = Math.atan2(direction.x, direction.z);
+        const pitch = Math.asin(-direction.y);
+        camera.rotation.copyFrom(new Vector3(pitch, yaw, 0));
+      }
+      
+      // Re-enable camera movement controller after a brief delay
+      if (cameraController) {
+        setTimeout(() => {
+          cameraController.enable();
+        }, 100);
+      }
+      
+      setCameraViewDropdownOpen(false);
+      setCurrentViewName(getViewDisplayName(viewType));
+      editorActions.addConsoleMessage(`Camera view set to ${viewType} (focus: ${focusPoint.x.toFixed(1)}, ${focusPoint.y.toFixed(1)}, ${focusPoint.z.toFixed(1)})`, 'info');
+      console.log(`Camera position set to: ${camera.position}, rotation: ${camera.rotation}`);
+    } else {
+      console.error(`Unknown camera view type: ${viewType}`);
+    }
+  };
+
+  // Keyboard shortcuts for camera views
+  const handleKeyDown = (event) => {
+    // Only handle shortcuts when not in input fields
+    if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+      return;
+    }
+
+    // Numpad shortcuts for camera views (Blender-style)
+    switch (event.code) {
+      case 'Numpad1':
+        event.preventDefault();
+        if (event.ctrlKey) {
+          setCameraView('back');
+        } else {
+          setCameraView('front');
+        }
+        break;
+      case 'Numpad3':
+        event.preventDefault();
+        if (event.ctrlKey) {
+          setCameraView('left');
+        } else {
+          setCameraView('right');
+        }
+        break;
+      case 'Numpad7':
+        event.preventDefault();
+        if (event.ctrlKey) {
+          setCameraView('bottom');
+        } else {
+          setCameraView('top');
+        }
+        break;
+      case 'Numpad8':
+        event.preventDefault();
+        setCameraView('frontLeft');
+        break;
+      case 'Numpad6':
+        event.preventDefault();
+        setCameraView('frontRight');
+        break;
+    }
+  };
+
+  // Add global keyboard listener
+  window.addEventListener('keydown', handleKeyDown);
+
+  // Close dropdown when clicking outside
+  const handleClickOutside = (event) => {
+    if (!event.target.closest('[data-camera-dropdown]')) {
+      setCameraViewDropdownOpen(false);
+    }
+  };
+
+  window.addEventListener('click', handleClickOutside);
+
   const handleToolbarClick = async (toolId) => {
     if (['select', 'move', 'rotate', 'scale'].includes(toolId)) {
       if (toolId !== 'select' && !selectedEntity()) {
@@ -377,6 +560,93 @@ function Toolbar() {
       </For>
       
       <div class="flex-1" />
+      
+      {/* Camera View Dropdown */}
+      <div class="relative" data-camera-dropdown>
+        <button
+          onClick={() => setCameraViewDropdownOpen(!cameraViewDropdownOpen())}
+          class="h-8 px-3 flex items-center gap-1 rounded bg-base-300 hover:bg-base-200 text-base-content text-xs transition-all"
+          title="Camera Views (Numpad shortcuts)"
+        >
+          <IconVideo class="w-3 h-3" />
+          <span>{currentViewName()}</span>
+          <IconChevronDown class="w-3 h-3" />
+        </button>
+        
+        <Show when={cameraViewDropdownOpen()}>
+          <div class="absolute right-0 top-full mt-1 bg-base-200 border border-base-300 rounded shadow-lg z-50 min-w-48">
+            <div class="p-2 space-y-1">
+              <div class="text-xs text-base-content/60 px-2 py-1 font-medium">Camera Views</div>
+              
+              <button
+                onClick={() => setCameraView('front')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Front Orthographic</span>
+                <span class="text-base-content/60">1</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraView('back')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Back</span>
+                <span class="text-base-content/60">Ctrl+1</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraView('right')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Right Orthographic</span>
+                <span class="text-base-content/60">3</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraView('left')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Left</span>
+                <span class="text-base-content/60">Ctrl+3</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraView('top')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Top Orthographic</span>
+                <span class="text-base-content/60">7</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraView('bottom')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Bottom</span>
+                <span class="text-base-content/60">Ctrl+7</span>
+              </button>
+              
+              <div class="w-full h-px bg-base-300 my-1"></div>
+              
+              <button
+                onClick={() => setCameraView('frontLeft')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Front Left</span>
+                <span class="text-base-content/60">8</span>
+              </button>
+              
+              <button
+                onClick={() => setCameraView('frontRight')}
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+              >
+                <span>Front Right</span>
+                <span class="text-base-content/60">6</span>
+              </button>
+            </div>
+          </div>
+        </Show>
+      </div>
       
       <Show when={helperVisible()}>
         <Helper />
