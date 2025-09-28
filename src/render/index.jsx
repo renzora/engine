@@ -47,6 +47,7 @@ const loadDefaultSceneContent = (scene, canvas) => {
 
 export default function BabylonRenderer(props) {
   let canvasRef;
+  let renderLoopRunning = false; // Track render loop state for proper cleanup
   const [engine, setEngine] = createSignal(null);
   const [scene, setScene] = createSignal(null);
   const [stats, setStats] = createSignal(null);
@@ -474,16 +475,53 @@ export default function BabylonRenderer(props) {
       return null;
     }
 
+    // If scene exists, dispose it properly without destroying the engine
     if (scene()) {
       console.warn('⚠️ Scene already exists, disposing first');
-      cleanup();
+      const babylonScene = scene();
+      
+      // Stop render loop
+      renderLoopRunning = false;
+      
+      // Clean up particle systems
+      if (babylonScene) {
+        const particleSystems = babylonScene.particleSystems?.slice() || [];
+        particleSystems.forEach(system => {
+          if (system && typeof system.dispose === 'function') {
+            system.stop();
+            system.dispose();
+          }
+        });
+        
+        // Unregister all before render callbacks
+        babylonScene.unregisterBeforeRender();
+        
+        // Dispose scene but keep engine
+        babylonScene.dispose();
+      }
+      
+      // Clear scene signal
+      setScene(null);
+      
+      // Use render store cleanup (but this might also dispose engine)
+      renderActions.cleanup();
+      
+      // Small delay to ensure cleanup is complete
+      await new Promise(resolve => setTimeout(resolve, 100));
     }
 
     try {
       if (window.DEBUG_RENDER) console.log('🎮 Creating Babylon.js scene...');
 
+      // Ensure engine is still valid after cleanup
+      const currentEngine = engine();
+      if (!currentEngine || currentEngine.isDisposed) {
+        console.error('❌ Engine was disposed during cleanup, cannot create scene');
+        return null;
+      }
+
       // Create scene
-      const babylonScene = new Scene(babylonEngine);
+      const babylonScene = new Scene(currentEngine);
       babylonScene.clearColor = new Color4(0.1, 0.1, 0.1, 1.0);
 
       // Initialize Havok Physics v2
@@ -500,8 +538,8 @@ export default function BabylonRenderer(props) {
       }
 
       // Start render loop  
-      let renderLoopRunning = true;
-      babylonEngine.runRenderLoop(() => {
+      renderLoopRunning = true;
+      currentEngine.runRenderLoop(() => {
         if (renderLoopRunning && babylonScene && !babylonScene.isDisposed && babylonScene.activeCamera) {
           babylonScene.render();
         }

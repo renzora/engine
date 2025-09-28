@@ -220,6 +220,33 @@ export const editorActions = {
       detail: { isPlaying }
     });
     document.dispatchEvent(event);
+  },
+
+  clearProjectData: () => {
+    // Reset all project-specific state while preserving user preferences
+    setEditorStore('selection', 'entity', null);
+    setEditorStore('selection', 'transformMode', 'select');
+    
+    // Clear console messages
+    setEditorStore('console', 'messages', []);
+    setEditorStore('console', 'contextMenuHandler', null);
+    
+    // Reset script execution state
+    setEditorStore('scripts', 'isPlaying', false);
+    
+    // Reset panels to default state
+    setEditorStore('panels', 'isResizingPanels', false);
+    setEditorStore('panels', 'isScenePanelOpen', true);
+    setEditorStore('panels', 'isAssetPanelOpen', true);
+    
+    // Reset UI state to defaults (but keep size preferences)
+    setEditorStore('ui', 'selectedTool', 'scene');
+    setEditorStore('ui', 'selectedBottomTab', 'assets');
+    
+    // Don't reset settings - these are user preferences that should persist
+    // Don't reset panel sizes - these are user preferences that should persist
+    
+    console.log('✅ EditorStore project data cleared');
   }
 }
 

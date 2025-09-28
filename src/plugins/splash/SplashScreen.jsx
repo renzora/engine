@@ -1,35 +1,19 @@
 import { createSignal, createEffect, onMount, Show, For } from 'solid-js';
 import { IconFolder, IconPlus, IconFolderOpen, IconSettings, IconCode, IconRocket, IconBox } from '@tabler/icons-solidjs';
-import { getProjects, createProject } from '@/api/bridge/projects';
+import { getProjects } from '@/api/bridge/projects';
 import { sceneManager } from '@/api/scene/SceneManager.js';
 import AnimatedBackground from './AnimatedBackground';
+import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
 
 export default function SplashScreen({ onProjectSelect }) {
   const [projects, setProjects] = createSignal([]);
   const [loading, setLoading] = createSignal(true);
   const [error, setError] = createSignal(null);
   const [showCreateDialog, setShowCreateDialog] = createSignal(false);
-  const [newProjectName, setNewProjectName] = createSignal('');
-  const [creating, setCreating] = createSignal(false);
-  const [creationProgress, setCreationProgress] = createSignal({ step: 0, message: '', total: 4 });
   const [showSceneDialog, setShowSceneDialog] = createSignal(false);
   const [selectedProject, setSelectedProject] = createSignal(null);
   const [availableScenes, setAvailableScenes] = createSignal([]);
   const [loadingScenes, setLoadingScenes] = createSignal(false);
-  const [projectSettings, setProjectSettings] = createSignal({
-    template: 'basic',
-    folders: {
-      models: true,
-      textures: true,
-      materials: true,
-      scripts: true,
-      audio: true,
-      video: false,
-      images: false
-    },
-    physics: true,
-    resolution: { width: 1920, height: 1080 }
-  });
 
   // Load projects from bridge
   const loadProjects = async () => {
@@ -47,43 +31,6 @@ export default function SplashScreen({ onProjectSelect }) {
     }
   };
 
-  // Create a new project
-  const createNewProject = async () => {
-    const name = newProjectName().trim();
-    if (!name) return;
-
-    try {
-      setCreating(true);
-      
-      // Step 1: Initialize project structure
-      setCreationProgress({ step: 1, message: 'Creating project directory...', total: 4 });
-      await new Promise(resolve => setTimeout(resolve, 300)); // Small delay for UX
-      
-      // Step 2: Create project via bridge API
-      setCreationProgress({ step: 2, message: 'Setting up project files...', total: 4 });
-      await createProject(name, projectSettings().template, projectSettings());
-      
-      // Step 3: Reload project list
-      setCreationProgress({ step: 3, message: 'Refreshing project list...', total: 4 });
-      await loadProjects();
-      
-      // Step 4: Select the new project
-      setCreationProgress({ step: 4, message: 'Opening project...', total: 4 });
-      const newProject = projects().find(p => p.name === name);
-      if (newProject) {
-        onProjectSelect(newProject);
-      }
-      
-      setShowCreateDialog(false);
-      setNewProjectName('');
-    } catch (err) {
-      console.error('Failed to create project:', err);
-      setError('Failed to create project. Please try again.');
-    } finally {
-      setCreating(false);
-      setCreationProgress({ step: 0, message: '', total: 4 });
-    }
-  };
 
   // Load scenes for a project
   const loadScenesForProject = async (project) => {
@@ -338,154 +285,12 @@ export default function SplashScreen({ onProjectSelect }) {
       </div>
 
       {/* Create Project Dialog */}
-      <Show when={showCreateDialog()}>
-        <div class="fixed inset-0 bg-base-100/70 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
-          <div class="bg-base-200 backdrop-blur-xl rounded-2xl border border-base-content/30 p-8 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-300">
-            <div class="flex items-center gap-3 mb-6">
-              <div class="w-10 h-10 bg-gradient-to-br from-primary to-secondary rounded-xl flex items-center justify-center">
-                <IconPlus class="w-6 h-6 text-primary-content" />
-              </div>
-              <h2 class="text-2xl font-bold text-base-content">Create New Project</h2>
-            </div>
-            
-            <div class="mb-6">
-              <label class="block text-sm font-semibold text-base-content/80 mb-3">
-                Project Name
-              </label>
-              <input
-                type="text"
-                value={newProjectName()}
-                onInput={(e) => setNewProjectName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && createNewProject()}
-                placeholder="My Awesome Project"
-                class="input input-bordered w-full text-lg placeholder:text-base-content/50"
-                autofocus
-              />
-              <p class="text-xs text-base-content/50 mt-2">Choose a descriptive name for your project</p>
-            </div>
-
-            {/* Project Settings */}
-            <div class="space-y-4 mb-6">
-              <h3 class="text-sm font-semibold text-base-content/80">Project Settings</h3>
-              
-              {/* Template Selection */}
-              <div>
-                <label class="block text-xs font-medium text-base-content/70 mb-2">Template</label>
-                <select 
-                  class="select select-bordered select-sm w-full"
-                  value={projectSettings().template}
-                  onChange={(e) => setProjectSettings(prev => ({ ...prev, template: e.target.value }))}
-                >
-                  <option value="basic">Basic (Standard folders)</option>
-                  <option value="minimal">Minimal (Essential folders only)</option>
-                  <option value="game">Game (Full folder structure)</option>
-                </select>
-              </div>
-
-              {/* Asset Folders */}
-              <div>
-                <label class="block text-xs font-medium text-base-content/70 mb-2">Asset Folders</label>
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                  {Object.entries(projectSettings().folders).map(([folder, enabled]) => (
-                    <label class="flex items-center gap-2 cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        class="checkbox checkbox-xs" 
-                        checked={enabled}
-                        onChange={(e) => setProjectSettings(prev => ({
-                          ...prev,
-                          folders: { ...prev.folders, [folder]: e.target.checked }
-                        }))}
-                      />
-                      <span class="capitalize">{folder}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Physics Setting */}
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-medium text-base-content/70">Enable Physics</label>
-                <input 
-                  type="checkbox" 
-                  class="checkbox checkbox-sm" 
-                  checked={projectSettings().physics}
-                  onChange={(e) => setProjectSettings(prev => ({ ...prev, physics: e.target.checked }))}
-                />
-              </div>
-
-              {/* Resolution Setting */}
-              <div>
-                <label class="block text-xs font-medium text-base-content/70 mb-2">Default Resolution</label>
-                <div class="flex gap-2">
-                  <input 
-                    type="number" 
-                    class="input input-bordered input-xs flex-1" 
-                    value={projectSettings().resolution.width}
-                    onChange={(e) => setProjectSettings(prev => ({
-                      ...prev,
-                      resolution: { ...prev.resolution, width: parseInt(e.target.value) || 1920 }
-                    }))}
-                  />
-                  <span class="text-xs text-base-content/50 flex items-center">×</span>
-                  <input 
-                    type="number" 
-                    class="input input-bordered input-xs flex-1" 
-                    value={projectSettings().resolution.height}
-                    onChange={(e) => setProjectSettings(prev => ({
-                      ...prev,
-                      resolution: { ...prev.resolution, height: parseInt(e.target.value) || 1080 }
-                    }))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Progress Bar */}
-            <Show when={creating()}>
-              <div class="mb-6">
-                <div class="w-full bg-base-300 rounded-full h-2">
-                  <div 
-                    class="bg-gradient-to-r from-primary to-secondary h-2 rounded-full transition-all duration-500 ease-out"
-                    style={{width: `${(creationProgress().step / creationProgress().total) * 100}%`}}
-                  ></div>
-                </div>
-              </div>
-            </Show>
-
-            <div class="flex justify-end gap-4">
-              <button
-                onClick={() => {
-                  setShowCreateDialog(false);
-                  setNewProjectName('');
-                }}
-                disabled={creating()}
-                class="btn btn-ghost"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={createNewProject}
-                disabled={!newProjectName().trim() || creating()}
-                class="btn btn-primary flex items-center gap-3"
-              >
-                <Show when={creating()}>
-                  <div class="w-5 h-5 border-2 border-primary-content border-t-transparent rounded-full animate-spin"></div>
-                </Show>
-                <Show when={!creating()}>
-                  <IconRocket class="w-5 h-5" />
-                </Show>
-                {creating() ? (
-                  <div class="flex flex-col items-start">
-                    <span class="text-sm font-semibold">{creationProgress().message}</span>
-                    <span class="text-xs opacity-75">Step {creationProgress().step} of {creationProgress().total}</span>
-                  </div>
-                ) : 'Create Project'}
-              </button>
-            </div>
-          </div>
-        </div>
-      </Show>
+      <NewProjectOverlay 
+        isOpen={showCreateDialog}
+        onClose={() => setShowCreateDialog(false)}
+        onProjectSelect={onProjectSelect}
+        reloadProjects={loadProjects}
+      />
 
       {/* Scene Selection Dialog */}
       <Show when={showSceneDialog()}>
