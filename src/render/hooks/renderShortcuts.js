@@ -4,7 +4,7 @@ import { renderStore, renderActions } from '../store.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { Matrix } from '@babylonjs/core/Maths/math.vector.js';
 import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
-import { Color3 } from '@babylonjs/core/Maths/math.color.js';
+import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
 
 // Hook for registering render viewport keyboard shortcuts
 export function renderShortcuts(callbacks = {}) {
@@ -373,19 +373,8 @@ export function renderShortcuts(callbacks = {}) {
       
       // Store current highlights and disable highlighting during transform
       const highlightLayer = renderStore.highlightLayer;
-      transformState.savedHighlightedMeshes = [];
+      transformState.savedHighlightedMeshes = [...renderStore.selectedMeshes];
       if (highlightLayer) {
-        // Store currently highlighted meshes
-        if (selectedObject.getChildMeshes) {
-          const childMeshes = selectedObject.getChildMeshes();
-          childMeshes.forEach(childMesh => {
-            if (childMesh.getClassName() === 'Mesh') {
-              transformState.savedHighlightedMeshes.push(childMesh);
-            }
-          });
-        } else {
-          transformState.savedHighlightedMeshes.push(selectedObject);
-        }
         highlightLayer.removeAllMeshes();
       }
       
@@ -836,12 +825,14 @@ export function renderShortcuts(callbacks = {}) {
     }
     
     
-    // Re-enable highlighting after transform using saved meshes
+    // Re-enable highlights after transform using saved meshes
     const highlightLayer = renderStore.highlightLayer;
-    if (highlightLayer && transformState.savedHighlightedMeshes.length > 0) {
+    if (highlightLayer && transformState.savedHighlightedMeshes && transformState.savedHighlightedMeshes.length > 0) {
       try {
         transformState.savedHighlightedMeshes.forEach(mesh => {
-          highlightLayer.addMesh(mesh, Color3.Yellow());
+          if (mesh) {
+            highlightLayer.addMesh(mesh, Color3.Yellow());
+          }
         });
       } catch (error) {
         console.warn('Could not restore highlight after transform:', error);

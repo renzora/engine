@@ -1,5 +1,6 @@
 import { createStore } from 'solid-js/store';
 import { Color4, Color3 } from '@babylonjs/core/Maths/math.color';
+import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
 import { initializeScriptRuntime } from '@/api/script';
 
 // Render Store for managing Babylon.js state
@@ -10,6 +11,7 @@ export const [renderStore, setRenderStore] = createStore({
   selectedObject: null,
   gizmoManager: null,
   highlightLayer: null,
+  selectedMeshes: [], // Track selected meshes for highlighting
   transformMode: 'select', // 'select', 'move', 'rotate', 'scale'
   isGizmoDragging: false, // Track when gizmo is being dragged
   isInitialized: false,
@@ -22,6 +24,21 @@ export const [renderStore, setRenderStore] = createStore({
   },
   
 });
+
+// Helper function to create or configure highlight layer
+const getOrCreateHighlightLayer = (scene) => {
+  if (!renderStore.highlightLayer && scene) {
+    const highlightLayer = new HighlightLayer("selectionHighlight", scene);
+    // Configure for visible outline effect
+    highlightLayer.blurHorizontalSize = 1.0; // Small blur for visible outline
+    highlightLayer.blurVerticalSize = 1.0;   // Small blur for visible outline
+    highlightLayer.outerGlow = true;         // Enable outer glow for visibility
+    highlightLayer.innerGlow = false;       // Keep inner glow disabled
+    setRenderStore('highlightLayer', highlightLayer);
+    return highlightLayer;
+  }
+  return renderStore.highlightLayer;
+};
 
 // Actions for the render store
 export const renderActions = {
@@ -210,14 +227,20 @@ export const renderActions = {
       });
     }
     
-    // Handle gizmo attachment
+    // Handle gizmo attachment and highlighting
     const gizmoManager = renderStore.gizmoManager;
-    const highlightLayer = renderStore.highlightLayer;
+    const scene = renderStore.scene;
     
-    if (gizmoManager && highlightLayer) {
-      // Clear previous selection
+    // Get or create highlight layer
+    const highlightLayer = getOrCreateHighlightLayer(scene);
+    
+    // Clear previous selection highlights
+    if (highlightLayer) {
       highlightLayer.removeAllMeshes();
-      
+    }
+    setRenderStore('selectedMeshes', []);
+    
+    if (gizmoManager && scene) {
       if (object) {
         // Attach gizmo to selected object
         gizmoManager.attachToMesh(object);
@@ -246,18 +269,29 @@ export const renderActions = {
         // Add drag callbacks to the existing gizmo manager
         this.attachGizmoCallbacks(gizmoManager);
         
-        // Add highlight to selected object
+        // Add yellow highlighting to selected object
+        const meshesToHighlight = [];
         try {
           if (object.getChildMeshes) {
             const childMeshes = object.getChildMeshes();
             childMeshes.forEach(childMesh => {
               if (childMesh.getClassName() === 'Mesh') {
-                highlightLayer.addMesh(childMesh, Color3.Yellow());
+                meshesToHighlight.push(childMesh);
               }
             });
-          } else {
-            highlightLayer.addMesh(object, Color3.Yellow());
+          } else if (object.getClassName() === 'Mesh') {
+            meshesToHighlight.push(object);
           }
+          
+          // Apply yellow highlighting to meshes
+          if (highlightLayer) {
+            meshesToHighlight.forEach(mesh => {
+              highlightLayer.addMesh(mesh, Color3.Yellow());
+            });
+          }
+          
+          // Store selected meshes for cleanup
+          setRenderStore('selectedMeshes', meshesToHighlight);
         } catch (error) {
           console.warn('Could not add highlight to object:', error);
         }
@@ -674,6 +708,12 @@ export const renderActions = {
   },
 
   cleanup() {
+    // Clear selection highlights
+    if (renderStore.highlightLayer) {
+      renderStore.highlightLayer.removeAllMeshes();
+    }
+    setRenderStore('selectedMeshes', []);
+    
     // Dispose of gizmo manager and highlight layer
     if (renderStore.gizmoManager) {
       renderStore.gizmoManager.dispose();

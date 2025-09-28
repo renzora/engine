@@ -12,8 +12,10 @@ import '@babylonjs/core/Cameras/Inputs/arcRotateCameraMouseWheelInput';
 import { GizmoManager } from '@babylonjs/core/Gizmos/gizmoManager';
 import { UtilityLayerRenderer } from '@babylonjs/core/Rendering/utilityLayerRenderer';
 import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
+import '@babylonjs/core/Rendering/edgesRenderer';
 import '@babylonjs/core/Layers/effectLayerSceneComponent';
 import '@babylonjs/core/Materials/standardMaterial';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
@@ -606,6 +608,14 @@ export default function BabylonRenderer(props) {
       // Set scene in store (this initializes hierarchy with the content)
       renderActions.setScene(babylonScene);
       setScene(babylonScene);
+      
+      // Initialize highlight layer for selection
+      const highlightLayer = new HighlightLayer("selectionHighlight", babylonScene);
+      highlightLayer.blurHorizontalSize = 1.0;
+      highlightLayer.blurVerticalSize = 1.0;
+      highlightLayer.outerGlow = true;
+      highlightLayer.innerGlow = false;
+      renderActions.setHighlightLayer(highlightLayer);
 
       if (window.DEBUG_RENDER) console.log('✅ Babylon.js scene created successfully');
       return babylonScene;
