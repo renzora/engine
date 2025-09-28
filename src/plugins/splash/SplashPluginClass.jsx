@@ -46,8 +46,46 @@ function SplashViewport({ tab }) {
     return () => document.removeEventListener('scene-loading-progress', handleProgress);
   });
 
+  // Check for pending project load from menu refresh on startup
+  createEffect(() => {
+    const checkPendingProjectLoad = () => {
+      try {
+        const pendingLoad = localStorage.getItem('pendingProjectLoad');
+        if (pendingLoad) {
+          const { project, timestamp } = JSON.parse(pendingLoad);
+          
+          // Check if the pending load is recent (within 10 seconds)
+          const age = Date.now() - timestamp;
+          if (age < 10000) {
+            console.log('🔄 Detected pending project load from menu refresh:', project.name);
+            localStorage.removeItem('pendingProjectLoad');
+            
+            // Set loading state immediately to skip splash screen
+            setIsLoading(true);
+            setLoadingStage(`Loading ${project.name}...`);
+            
+            // Auto-load the project after a brief delay
+            setTimeout(() => {
+              handleProjectSelect(project);
+            }, 100);
+            return;
+          } else {
+            // Clean up old pending loads
+            localStorage.removeItem('pendingProjectLoad');
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to check pending project load:', error);
+        localStorage.removeItem('pendingProjectLoad');
+      }
+    };
+    
+    // Check on mount
+    checkPendingProjectLoad();
+  });
+
   const handleProjectSelect = async (project) => {
-    // Project selected from splash viewport
+    // Project selected from splash viewport or auto-loaded from menu refresh
     
     setIsLoading(true);
     setLoadingStage('Initializing project...');

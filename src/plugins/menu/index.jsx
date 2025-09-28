@@ -8,7 +8,6 @@ import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
 import OpenProjectOverlay from '@/ui/OpenProjectOverlay.jsx';
 import { sceneManager } from '@/api/scene/SceneManager.js';
 import { getCurrentProject, getProjectCurrentScene } from '@/api/bridge/projects.js';
-import { projectDataAuditor } from '@/api/debug/ProjectDataAuditor.js';
 
 // About overlay state
 const [showAbout, setShowAbout] = createSignal(false);
@@ -79,153 +78,24 @@ const handleOpenProject = async () => {
 
 // Handle project selection from open project overlay
 const handleProjectSelect = async (project) => {
-  // Replicate the EXACT splash screen project switching logic with complete data refresh
   try {
-    console.log('🔄 Starting complete project switch to:', project.name);
+    console.log('🔄 Starting project switch to:', project.name);
     
-    // Take pre-switch snapshot for debugging
-    const currentProject = getCurrentProject();
-    if (currentProject) {
-      projectDataAuditor.takePreSwitchSnapshot(currentProject.name);
-    }
-    
-    // Step 1: Clear all data stores to ensure clean state
-    console.log('🧹 Clearing all data stores...');
-    try {
-      // Clear asset store
-      const { assetsActions } = await import('@/layout/stores/AssetStore.jsx');
-      assetsActions.clearAllAssetCache();
-      
-      // Clear editor store project data
-      const { editorActions } = await import('@/layout/stores/EditorStore.jsx');
-      editorActions.clearProjectData();
-      
-      // Clear render store project data
-      const { renderActions } = await import('@/render/store.jsx');
-      renderActions.clearProjectData();
-      
-      // Clear viewport stores project data
-      const { viewportActions, objectPropertiesActions } = await import('@/layout/stores/ViewportStore.jsx');
-      viewportActions.clearProjectData();
-      objectPropertiesActions.clearProjectData();
-      
-    } catch (storeError) {
-      console.warn('⚠️ Failed to clear some data stores:', storeError);
-    }
-    
-    // Step 2: Set project in ALL relevant contexts (exactly like splash screen)
-    console.log('📝 Setting project in all contexts...');
+    // Set the project in the API first so it persists through the refresh
     const { setCurrentProject: setApiProject } = await import('@/api/bridge/projects.js');
-    
-    // Set in API (this is critical for all bridge operations)
     setApiProject(project);
     
-    // Set in project store context (used by asset library and other components)
-    try {
-      // Try to access project store through splash plugin context
-      const projectStoreSetters = document.querySelectorAll('[data-project-context]');
-      projectStoreSetters.forEach(element => {
-        if (element.__setCurrentProject) {
-          element.__setCurrentProject(project);
-        }
-      });
-      
-      // Also try direct context access
-      const { Project } = await import('@/plugins/splash/ProjectStore.jsx');
-      // This won't work outside context, but it's here for completeness
-    } catch (storeError) {
-      console.warn('Project store context not available, but API setting should be sufficient');
-    }
-
-    // Step 3: Create Babylon scene (this clears the old scene completely)
-    if (window._createBabylonScene) {
-      try {
-        console.log('🎬 Creating fresh Babylon scene (disposing old one)...');
-        const scene = await window._createBabylonScene();
-        
-        if (scene) {
-          console.log('✅ Babylon scene created successfully');
-          
-          // Wait a moment for scene initialization to complete
-          await new Promise(resolve => setTimeout(resolve, 200));
-          
-          // Step 4: Load the project's specific scene (not default content)
-          try {
-            console.log('📂 Loading project-specific scene...');
-            const currentSceneName = await getProjectCurrentScene(project.name);
-            console.log('🎯 Loading scene:', currentSceneName, 'for project:', project.name);
-            
-            const result = await sceneManager.loadScene(currentSceneName);
-            
-            if (result.success) {
-              console.log('✅ Project scene loaded successfully');
-              
-              // Wait for scene loading to complete before proceeding
-              await new Promise(resolve => setTimeout(resolve, 300));
-              
-              // Force hierarchy refresh if needed
-              if (window._cleanBabylonScene) {
-                console.log('🔄 Refreshing scene hierarchy...');
-                const { renderActions } = await import('@/render/store.jsx');
-                renderActions.initializeHierarchy();
-              }
-            } else {
-              console.warn('⚠️ Failed to load project scene:', result.error);
-            }
-          } catch (error) {
-            console.warn('⚠️ Failed to get/load project scene:', error);
-          }
-        } else {
-          console.warn('⚠️ Scene creation returned null/undefined');
-        }
-      } catch (sceneError) {
-        console.error('❌ Failed to create Babylon scene:', sceneError);
-        // Continue - the event dispatch will still trigger asset refreshes
-      }
-    } else {
-      console.warn('⚠️ window._createBabylonScene not available');
-    }
-
-    // Step 5: Set up UI exactly like splash screen
-    const api = document.querySelector('[data-plugin-api]')?.__pluginAPI;
-    if (api) {
-      console.log('🎨 Setting up interface elements...');
-      api.showProps();
-      api.showPanel();
-      api.showMenu();
-      api.showFooter();
-      api.showToolbar();
-      api.showHelper();
-      
-      // Create scene viewport
-      api.createSceneViewport({
-        name: 'Scene 1',
-        setActive: true
-      });
-    }
-    
-    // Step 6: Dispatch the SAME event that triggers all component refreshes
-    console.log('📡 Dispatching project-selected event...');
-    document.dispatchEvent(new CustomEvent('engine:project-selected', { 
-      detail: { project } 
+    // Store the project selection in localStorage to persist through refresh
+    localStorage.setItem('pendingProjectLoad', JSON.stringify({
+      project,
+      timestamp: Date.now()
     }));
     
-    // Step 7: Trigger asset refresh explicitly (this ensures bottom panel updates)
-    setTimeout(() => {
-      console.log('🔄 Triggering asset refresh...');
-      document.dispatchEvent(new CustomEvent('engine:assets-refresh', {
-        detail: { project, forceRefresh: true }
-      }));
-    }, 500); // Small delay to ensure project context is fully set
+    console.log('🔄 Refreshing app for clean project load...');
     
-    // Take post-switch snapshot for debugging
-    setTimeout(() => {
-      if (currentProject) {
-        projectDataAuditor.takePostSwitchSnapshot(project.name, currentProject.name);
-      }
-    }, 1000); // Allow time for all async operations to complete
+    // Refresh the entire page for a completely clean state
+    window.location.reload();
     
-    console.log('✅ Complete project switch successful:', project.name);
   } catch (error) {
     console.error('❌ Failed to switch to project:', error);
     alert('Failed to switch to the selected project. Please try again.');

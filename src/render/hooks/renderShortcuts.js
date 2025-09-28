@@ -111,7 +111,7 @@ export function renderShortcuts(callbacks = {}) {
 
     // Start continuous movement handling
     movementInterval = setInterval(() => {
-      if (keysPressed.size > 0 && !keyboardShortcuts.isDisabled() && isRightClickHeld) {
+      if (keysPressed.size > 0 && !keyboardShortcuts.isDisabled() && !keyboardShortcuts.isInputFocused() && isRightClickHeld) {
         applyMovement();
       }
     }, 16); // 60fps
@@ -259,6 +259,12 @@ export function renderShortcuts(callbacks = {}) {
     // Custom handler that also tracks key presses for movement
     const customHandler = (event) => {
       const key = event.key.toLowerCase();
+      
+      // Skip if any input is focused - this provides an additional safety check
+      if (keyboardShortcuts.isInputFocused()) {
+        console.log('🔇 RenderShortcuts: Skipping - input is focused');
+        return;
+      }
       
       // Debug all key presses
       if (event.ctrlKey && key === 's') {

@@ -137,41 +137,6 @@ export const viewportActions = {
     if (index !== -1) {
       setViewportStore('tabs', index, 'hasUnsavedChanges', hasUnsavedChanges);
     }
-  },
-
-  clearProjectData: () => {
-    // Reset project-specific viewport data while preserving user preferences
-    console.log('🧹 ViewportStore: Clearing project data...');
-    
-    // Clear all tabs (new project will create fresh scene tab)
-    setViewportStore('tabs', []);
-    setViewportStore('activeTabId', null);
-    setViewportStore('suspendedTabs', []);
-    
-    // Reset camera to default position and settings (but keep user preferences like speed)
-    setViewportStore('camera', 'position', [0, 0, 5]);
-    setViewportStore('camera', 'target', [0, 0, 0]);
-    // Keep speed, sensitivity, friction, mode, type - these are user preferences
-    
-    // Reset lighting to defaults
-    setViewportStore('lighting', {
-      sunIntensity: 4.0,
-      skyIntensity: 4.0,
-      rimIntensity: 0.4,
-      bounceIntensity: 0.3,
-      moonIntensity: 15.0,
-      nightTurbidity: 48,
-      baseLuminance: 0.1,
-      sunColor: [1.0, 0.98, 0.9],
-      skyColor: [0.8, 0.9, 1.0],
-      rimColor: [0.9, 0.7, 0.5],
-      bounceColor: [0.4, 0.5, 0.7]
-    });
-    
-    // Keep grid settings - these are user preferences
-    // Keep render mode - this is a user preference
-    
-    console.log('✅ ViewportStore project data cleared');
   }
 }
 
@@ -253,16 +218,6 @@ export const objectPropertiesActions = {
     // Note: This creates a circular dependency, so we'll implement this differently
     // by calling it from the Scene.jsx component where the render store is already imported
     console.log('syncBabylonObjectProperties called for:', objectId);
-  },
-
-  clearProjectData: () => {
-    // Clear all object properties data for project switching
-    console.log('🧹 ObjectPropertiesStore: Clearing project data...');
-    
-    // Clear all object properties
-    setObjectPropertiesStore('objects', {});
-    
-    console.log('✅ ObjectPropertiesStore project data cleared');
   }
 }
 

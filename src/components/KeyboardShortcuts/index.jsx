@@ -5,9 +5,70 @@ let activeHandlers = [];
 
 const KeyboardShortcuts = () => {
   onMount(() => {
+    const isInputFocused = () => {
+      const activeElement = document.activeElement;
+      if (!activeElement) return false;
+      
+      const tagName = activeElement.tagName.toLowerCase();
+      const inputTypes = ['input', 'textarea', 'select'];
+      const contentEditable = activeElement.contentEditable === 'true';
+      
+      // Check if it's an input element or content editable
+      if (inputTypes.includes(tagName) || contentEditable) {
+        return true;
+      }
+      
+      // Check if it's inside a Monaco Editor or any other code editor
+      if (activeElement.closest('.monaco-editor') || 
+          activeElement.closest('[data-mode-id]') ||
+          activeElement.closest('.CodeMirror') ||
+          activeElement.closest('[contenteditable]')) {
+        return true;
+      }
+      
+      // Check if any modal/overlay is open by looking for common modal patterns
+      const modalSelectors = [
+        '[role="dialog"]',
+        '[role="modal"]', 
+        '.modal',
+        '.overlay',
+        '.dialog',
+        '.popup',
+        '.dropdown-content',
+        '.menu',
+        '[data-modal]',
+        '[data-overlay]'
+      ];
+      
+      for (const selector of modalSelectors) {
+        const modal = document.querySelector(selector);
+        if (modal && modal.offsetParent !== null) { // offsetParent is null for hidden elements
+          return true;
+        }
+      }
+      
+      // Check if element is inside a dropdown or overlay container
+      if (activeElement.closest('.dropdown') ||
+          activeElement.closest('.popover') ||
+          activeElement.closest('.tooltip') ||
+          activeElement.closest('[data-dropdown]')) {
+        return true;
+      }
+      
+      return false;
+    };
+
     const handleKeyDown = (event) => {
-      // Skip if shortcuts are disabled (e.g., when Monaco Editor is focused)
+      // Skip if shortcuts are disabled manually (e.g., by Monaco Editor)
       if (isDisabled) return;
+      
+      // Skip if any input is focused globally
+      if (isInputFocused()) {
+        console.log('🔇 Shortcuts disabled - input is focused:', document.activeElement);
+        // When inputs are focused, let the browser handle ALL events naturally
+        // Don't prevent default or run any shortcut handlers
+        return;
+      }
 
       // Run all active keyboard handlers
       activeHandlers.forEach(handler => {
@@ -20,11 +81,11 @@ const KeyboardShortcuts = () => {
     };
 
     document.addEventListener('keydown', handleKeyDown);
-    // Global keyboard shortcut system initialized
+    console.log('🎹 Global keyboard shortcut system initialized with input focus detection');
 
     onCleanup(() => {
       document.removeEventListener('keydown', handleKeyDown);
-      // Global keyboard shortcut system cleaned up
+      console.log('🎹 Global keyboard shortcut system cleaned up');
     });
   });
 
@@ -87,6 +148,60 @@ export const keyboardShortcuts = {
   // Get number of active handlers
   getHandlerCount() {
     return activeHandlers.length;
+  },
+
+  // Check if any input is currently focused or modal is open
+  isInputFocused() {
+    const activeElement = document.activeElement;
+    if (!activeElement) return false;
+    
+    const tagName = activeElement.tagName.toLowerCase();
+    const inputTypes = ['input', 'textarea', 'select'];
+    const contentEditable = activeElement.contentEditable === 'true';
+    
+    // Check if it's an input element or content editable
+    if (inputTypes.includes(tagName) || contentEditable) {
+      return true;
+    }
+    
+    // Check if it's inside a Monaco Editor or any other code editor
+    if (activeElement.closest('.monaco-editor') || 
+        activeElement.closest('[data-mode-id]') ||
+        activeElement.closest('.CodeMirror') ||
+        activeElement.closest('[contenteditable]')) {
+      return true;
+    }
+    
+    // Check if any modal/overlay is open by looking for common modal patterns
+    const modalSelectors = [
+      '[role="dialog"]',
+      '[role="modal"]', 
+      '.modal',
+      '.overlay',
+      '.dialog',
+      '.popup',
+      '.dropdown-content',
+      '.menu',
+      '[data-modal]',
+      '[data-overlay]'
+    ];
+    
+    for (const selector of modalSelectors) {
+      const modal = document.querySelector(selector);
+      if (modal && modal.offsetParent !== null) { // offsetParent is null for hidden elements
+        return true;
+      }
+    }
+    
+    // Check if element is inside a dropdown or overlay container
+    if (activeElement.closest('.dropdown') ||
+        activeElement.closest('.popover') ||
+        activeElement.closest('.tooltip') ||
+        activeElement.closest('[data-dropdown]')) {
+      return true;
+    }
+    
+    return false;
   }
 };
 

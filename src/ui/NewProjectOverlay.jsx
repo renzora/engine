@@ -54,8 +54,8 @@ export default function NewProjectOverlay({ isOpen, onClose, onProjectCreated, o
       
       // Step 4: Select the new project (if onProjectSelect function provided)
       setCreationProgress({ step: 4, message: 'Opening project...', total: 4 });
-      if (onProjectSelect && reloadProjects) {
-        // For splash screen: find and select the new project
+      if (onProjectSelect) {
+        // Find and select the new project
         const projectData = await getProjects();
         const newProject = projectData?.find(p => p.name === name);
         if (newProject) {

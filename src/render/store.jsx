@@ -674,57 +674,5 @@ export const renderActions = {
     setRenderStore('selectedObject', null);
     setRenderStore('transformMode', 'select');
     setRenderStore('hierarchy', []);
-  },
-
-  clearProjectData() {
-    // Complete state reset for project switching - preserves engine but clears all project data
-    console.log('🧹 RenderStore: Clearing all project data...');
-    
-    // Clear selection and transform state
-    setRenderStore('selectedObject', null);
-    setRenderStore('transformMode', 'select');
-    setRenderStore('isGizmoDragging', false);
-    
-    // Clear hierarchy completely
-    setRenderStore('hierarchy', []);
-    
-    // Clear hierarchy cache to prevent stale references
-    this._hierarchyCache.clear();
-    
-    // Don't dispose engine - we want to keep it for new project
-    // Don't dispose scene here - scene disposal is handled by render component
-    
-    // Reset camera reference (new scene will create new camera)
-    setRenderStore('camera', null);
-    
-    // Dispose and clear gizmo manager (will be recreated with new scene)
-    if (renderStore.gizmoManager) {
-      try {
-        renderStore.gizmoManager.dispose();
-      } catch (error) {
-        console.warn('Warning disposing gizmo manager:', error);
-      }
-      setRenderStore('gizmoManager', null);
-    }
-    
-    // Dispose and clear highlight layer (will be recreated with new scene)
-    if (renderStore.highlightLayer) {
-      try {
-        renderStore.highlightLayer.dispose();
-      } catch (error) {
-        console.warn('Warning disposing highlight layer:', error);
-      }
-      setRenderStore('highlightLayer', null);
-    }
-    
-    // Reset settings to defaults (except engine which should persist)
-    setRenderStore('settings', {
-      backgroundColor: '#1a202c',
-      enableGrid: true,
-      gridSize: 10,
-      renderingEngine: renderStore.settings.renderingEngine // Preserve engine choice
-    });
-    
-    console.log('✅ RenderStore project data cleared');
   }
 };
