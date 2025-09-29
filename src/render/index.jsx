@@ -698,14 +698,6 @@ export default function BabylonRenderer(props) {
       <GizmoManagerComponent />
       <LoadingTooltip loadingTooltip={loadingTooltip} />
       <AxisHelper />
-      
-      {/* Time Display */}
-      <div 
-        id="time-display"
-        className="absolute top-4 right-4 bg-black/50 text-white px-3 py-1 rounded-lg font-mono text-sm backdrop-blur-sm"
-      >
-        12:00
-      </div>
     </>
   );
 }

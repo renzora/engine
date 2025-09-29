@@ -4,22 +4,8 @@ import { IconAlertTriangle } from '@tabler/icons-solidjs';
 import { footerButtons } from '@/api/plugin';
 
 const Footer = () => {
-  const [currentTime, setCurrentTime] = createSignal('');
   const [engineInfo, setEngineInfo] = createSignal('Engine Ready');
   const [systemStats, setSystemStats] = createSignal(null);
-  
-  // Update time every second
-  createEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTime(now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    };
-    
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    
-    onCleanup(() => clearInterval(interval));
-  });
   
   // Ultra-fast system stats polling (100ms for near real-time)
   createEffect(() => {
@@ -176,9 +162,6 @@ const Footer = () => {
         {renderSystemStatsInfo()}
         <span class="text-base-content/90">
           {engineInfo()}
-        </span>
-        <span class="text-base-content/90">
-          {currentTime()}
         </span>
         
         {/* Plugin footer buttons */}

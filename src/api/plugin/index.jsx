@@ -69,7 +69,6 @@ class PluginLoader {
       { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/scripts', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/web-browser', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/environment', main: 'index.jsx', priority: 2 },
       { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
       { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 }
     ];
@@ -163,9 +162,6 @@ class PluginLoader {
             break;
           case 'bridge-plugin':
             pluginModule = await import(`@/plugins/bridge/index.jsx`);
-            break;
-          case 'environment-plugin':
-            pluginModule = await import(`@/plugins/environment/index.jsx`);
             break;
           case 'camera-plugin':
             pluginModule = await import(`@/plugins/camera/index.jsx`);
