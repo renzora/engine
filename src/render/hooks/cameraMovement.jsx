@@ -285,13 +285,54 @@ export function useCameraController(camera, canvas, scene) {
     camera().position = camera().position.add(Vector3.Up().scale(-speed));
   };
 
-  // WASD movement state like your old code
-  const keys = {
-    w: false, a: false, s: false, d: false,
-    q: false, e: false
+  // Arrow key movement functions based on camera type
+  const handleArrowKeyMovement = (finalSpeed) => {
+    if (!camera()) return;
+    
+    const cameraType = cameraSettings()?.type || 'universal';
+    const cameraMode = cameraSettings()?.mode || 'orbit';
+    
+    // Get camera directions
+    const forward = camera().getDirection(Vector3.Forward()).normalize();
+    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
+    const up = Vector3.Up();
+    
+    // Apply movement based on camera type and mode
+    if (cameraType === 'top' || cameraMode === 'top') {
+      // Top view: arrows move in world X/Z plane
+      if (keys.arrowUp) velocity = velocity.add(new Vector3(0, 0, finalSpeed));    // Move forward in world Z
+      if (keys.arrowDown) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));  // Move backward in world Z
+      if (keys.arrowLeft) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));  // Move left in world X
+      if (keys.arrowRight) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));  // Move right in world X
+    } else if (cameraType === 'front' || cameraMode === 'front') {
+      // Front view: arrows move in world X/Y plane
+      if (keys.arrowUp) velocity = velocity.add(new Vector3(0, finalSpeed, 0));     // Move up in world Y
+      if (keys.arrowDown) velocity = velocity.add(new Vector3(0, -finalSpeed, 0));  // Move down in world Y
+      if (keys.arrowLeft) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));  // Move left in world X
+      if (keys.arrowRight) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));  // Move right in world X
+    } else if (cameraType === 'side' || cameraMode === 'side') {
+      // Side view: arrows move in world Y/Z plane
+      if (keys.arrowUp) velocity = velocity.add(new Vector3(0, finalSpeed, 0));     // Move up in world Y
+      if (keys.arrowDown) velocity = velocity.add(new Vector3(0, -finalSpeed, 0));  // Move down in world Y
+      if (keys.arrowLeft) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));  // Move left in world Z
+      if (keys.arrowRight) velocity = velocity.add(new Vector3(0, 0, finalSpeed));  // Move right in world Z
+    } else {
+      // Universal/orbit/perspective camera: arrows move relative to camera orientation
+      if (keys.arrowUp) velocity = velocity.add(forward.scale(finalSpeed));         // Move forward
+      if (keys.arrowDown) velocity = velocity.add(forward.scale(-finalSpeed));      // Move backward
+      if (keys.arrowLeft) velocity = velocity.add(right.scale(-finalSpeed));        // Move left
+      if (keys.arrowRight) velocity = velocity.add(right.scale(finalSpeed));        // Move right
+    }
   };
 
-  // Key handling like your old working code
+  // WASD and arrow key movement state
+  const keys = {
+    w: false, a: false, s: false, d: false,
+    q: false, e: false,
+    arrowUp: false, arrowDown: false, arrowLeft: false, arrowRight: false
+  };
+
+  // Key handling for WASD and arrow keys
   const handleKeyDown = (event) => {
     if (isDisabled) return;
     const key = event.key.toLowerCase();
@@ -304,6 +345,10 @@ export function useCameraController(camera, canvas, scene) {
       case 'KeyD': keys.d = true; break;
       case 'KeyQ': keys.q = true; break;
       case 'KeyE': keys.e = true; break;
+      case 'ArrowUp': keys.arrowUp = true; break;
+      case 'ArrowDown': keys.arrowDown = true; break;
+      case 'ArrowLeft': keys.arrowLeft = true; break;
+      case 'ArrowRight': keys.arrowRight = true; break;
     }
   };
 
@@ -318,6 +363,10 @@ export function useCameraController(camera, canvas, scene) {
       case 'KeyD': keys.d = false; break;
       case 'KeyQ': keys.q = false; break;
       case 'KeyE': keys.e = false; break;
+      case 'ArrowUp': keys.arrowUp = false; break;
+      case 'ArrowDown': keys.arrowDown = false; break;
+      case 'ArrowLeft': keys.arrowLeft = false; break;
+      case 'ArrowRight': keys.arrowRight = false; break;
     }
     
     if ((key === 'c' || key === 'z') && !keysPressed.has('c') && !keysPressed.has('z')) {
@@ -377,7 +426,7 @@ export function useCameraController(camera, canvas, scene) {
       const right = Vector3.Cross(Vector3.Up(), forward).normalize();
       const up = Vector3.Up();
       
-      // Add velocity instead of direct movement
+      // Add velocity instead of direct movement for WASD keys
       if (keys.w) velocity = velocity.add(forward.scale(finalSpeed));   // Forward (natural)
       if (keys.s) velocity = velocity.add(forward.scale(-finalSpeed));  // Backward
       if (keys.d) velocity = velocity.add(right.scale(finalSpeed));     // Right
@@ -387,6 +436,13 @@ export function useCameraController(camera, canvas, scene) {
       
       // Apply some friction even when moving to prevent infinite acceleration
       velocity = velocity.scale(0.95);
+    }
+    
+    // Handle arrow keys independently (they work without right-click)
+    if (keys.arrowUp || keys.arrowDown || keys.arrowLeft || keys.arrowRight) {
+      const speedMultiplier = keysPressed.has('shift') ? 2.0 : (keysPressed.has('control') ? 0.2 : 1.0);
+      const finalSpeed = moveSpeed() * speedMultiplier * 0.3;
+      handleArrowKeyMovement(finalSpeed);
     }
     
     // Apply velocity to camera position
