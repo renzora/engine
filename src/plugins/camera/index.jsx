@@ -1,12 +1,12 @@
 import { createPlugin } from '@/api/plugin';
 import { IconVideo } from '@tabler/icons-solidjs';
-import CameraPanel from './CameraPanel.jsx';
+import CameraDropdownContent from '@/ui/display/CameraDropdownContent.jsx';
 
 export default createPlugin({
   id: 'camera-plugin',
-  name: 'Camera Panel Plugin',
+  name: 'Camera Helper Plugin',
   version: '1.0.0',
-  description: 'Camera controls in the right panel',
+  description: 'Camera controls in the toolbar helper',
   author: 'Renzora Engine Team',
 
   async onInit(api) {
@@ -16,11 +16,13 @@ export default createPlugin({
   async onStart(api) {
     console.log('[CameraPlugin] Starting...');
     
-    api.tab('camera', {
-      title: 'Camera',
-      component: CameraPanel,
+    api.helper('camera', {
+      title: 'Camera Settings',
       icon: IconVideo,
-      order: 3
+      order: 3,
+      hasDropdown: true,
+      dropdownComponent: CameraDropdownContent,
+      dropdownWidth: 280
     });
     
     console.log('[CameraPlugin] Started');

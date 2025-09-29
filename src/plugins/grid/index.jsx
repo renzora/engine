@@ -1,12 +1,12 @@
 import { createPlugin } from '@/api/plugin';
 import { IconGridDots } from '@tabler/icons-solidjs';
-import GridPanel from './GridPanel.jsx';
+import GridSettingsDropdown from '@/ui/display/GridSettingsDropdown.jsx';
 
 export default createPlugin({
   id: 'grid-plugin',
-  name: 'Grid Panel Plugin',
+  name: 'Grid & Snapping Plugin',
   version: '1.0.0',
-  description: 'Grid settings and snapping controls in the right panel',
+  description: 'Grid settings, object snapping, and gizmo snapping controls',
   author: 'Renzora Engine Team',
 
   async onInit(api) {
@@ -16,11 +16,13 @@ export default createPlugin({
   async onStart(api) {
     console.log('[GridPlugin] Starting...');
     
-    api.tab('grid', {
-      title: 'Grid',
-      component: GridPanel,
+    api.helper('grid-settings', {
+      title: 'Grid & Snapping Settings',
       icon: IconGridDots,
-      order: 5
+      order: 4,
+      hasDropdown: true,
+      dropdownComponent: GridSettingsDropdown,
+      dropdownWidth: 320
     });
     
     console.log('[GridPlugin] Started');

@@ -1,4 +1,4 @@
-import { createSignal, createEffect } from 'solid-js';
+import { createSignal, createEffect, For } from 'solid-js';
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { IconGrid3x3, IconCube, IconPalette, IconSun, IconPointer, IconCamera, IconRotate360, IconEye, IconMove } from '@tabler/icons-solidjs';
 import { Dynamic } from 'solid-js/web';
@@ -62,10 +62,10 @@ export default function CameraDropdownContent() {
   };
   
   const renderModes = [
-    { id: 'wireframe', label: 'Wireframe', icon: Grid3x3 },
-    { id: 'solid', label: 'Solid', icon: Cube },
-    { id: 'material', label: 'Material', icon: Palette },
-    { id: 'rendered', label: 'Rendered', icon: Sun }
+    { id: 'wireframe', label: 'Wireframe', icon: IconGrid3x3 },
+    { id: 'solid', label: 'Solid', icon: IconCube },
+    { id: 'material', label: 'Material', icon: IconPalette },
+    { id: 'rendered', label: 'Rendered', icon: IconSun }
   ];
   
   const speedPresets = [
@@ -76,8 +76,8 @@ export default function CameraDropdownContent() {
   ];
 
   const cameraTypes = [
-    { id: 'universal', label: 'Fly Camera', icon: Move, description: 'WASD + QE flight controls like Unreal Engine' },
-    { id: 'arcrotate', label: 'Orbit Camera', icon: Eye, description: 'Orbit around a target point' }
+    { id: 'universal', label: 'Fly Camera', icon: IconMove, description: 'WASD + QE flight controls like Unreal Engine' },
+    { id: 'arcrotate', label: 'Orbit Camera', icon: IconEye, description: 'Orbit around a target point' }
   ];
 
   return (
@@ -87,20 +87,22 @@ export default function CameraDropdownContent() {
           Camera Type
         </label>
         <div class="grid grid-cols-1 gap-1">
-          {cameraTypes.map((type) => (
-            <button
-              onClick={() => setCameraType(type.id)}
-              class={`btn btn-sm flex items-center gap-2 justify-start ${
-                cameraType() === type.id
-                  ? 'btn-primary'
-                  : 'btn-ghost'
-              }`}
-              title={type.description}
-            >
-              <type.icon class="w-3 h-3" />
-              <span>{type.label}</span>
-            </button>
-          ))}
+          <For each={cameraTypes}>
+            {(type) => (
+              <button
+                onClick={() => setCameraType(type.id)}
+                class={`btn btn-sm flex items-center gap-2 justify-start ${
+                  cameraType() === type.id
+                    ? 'btn-primary'
+                    : 'btn-ghost'
+                }`}
+                title={type.description}
+              >
+                <Dynamic component={type.icon} class="w-3 h-3" />
+                <span>{type.label}</span>
+              </button>
+            )}
+          </For>
         </div>
       </div>
       
@@ -109,18 +111,20 @@ export default function CameraDropdownContent() {
           Camera Speed: {cameraSpeed()}
         </label>
         <div class="grid grid-cols-2 gap-1 mb-2">
-          {speedPresets.map((preset) => (
-            <button
-              onClick={() => setCameraSpeed(preset.value)}
-              class={`btn btn-xs ${
-                cameraSpeed() === preset.value
-                  ? 'btn-primary'
-                  : 'btn-ghost'
-              }`}
-            >
-              {preset.label}
-            </button>
-          ))}
+          <For each={speedPresets}>
+            {(preset) => (
+              <button
+                onClick={() => setCameraSpeed(preset.value)}
+                class={`btn btn-xs ${
+                  cameraSpeed() === preset.value
+                    ? 'btn-primary'
+                    : 'btn-ghost'
+                }`}
+              >
+                {preset.label}
+              </button>
+            )}
+          </For>
         </div>
         <input
           type="range"
@@ -172,20 +176,22 @@ export default function CameraDropdownContent() {
           Render Mode
         </label>
         <div class="grid grid-cols-2 gap-1">
-          {renderModes.map((mode) => (
-            <button
-              onClick={() => setRenderMode(mode.id)}
-              class={`btn btn-xs flex items-center gap-2 justify-start ${
-                renderMode() === mode.id
-                  ? 'btn-primary'
-                  : 'btn-ghost'
-              }`}
-              title={mode.label}
-            >
-              <mode.icon class="w-3 h-3" />
-              <span>{mode.label}</span>
-            </button>
-          ))}
+          <For each={renderModes}>
+            {(mode) => (
+              <button
+                onClick={() => setRenderMode(mode.id)}
+                class={`btn btn-xs flex items-center gap-2 justify-start ${
+                  renderMode() === mode.id
+                    ? 'btn-primary'
+                    : 'btn-ghost'
+                }`}
+                title={mode.label}
+              >
+                <Dynamic component={mode.icon} class="w-3 h-3" />
+                <span>{mode.label}</span>
+              </button>
+            )}
+          </For>
         </div>
       </div>
       

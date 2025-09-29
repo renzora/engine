@@ -3,7 +3,6 @@ import { usePluginAPI } from '@/api/plugin';
 import { 
   IconCamera, IconGrid3x3, IconSettings as SettingsIcon, IconMaximize, IconVideo, IconFolder, IconGridDots, IconClock, IconSun
 } from '@tabler/icons-solidjs';
-import GizmoDropdownContent from '@/ui/display/GizmoDropdownContent.jsx';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
 import Scene from './Scene.jsx';
@@ -38,17 +37,7 @@ export default function EditorPage() {
     });
 
     
-    api.helper('gizmo-helper', {
-      title: 'Gizmo Options',
-      icon: IconGridDots,
-      order: 5,
-      hasDropdown: true,
-      dropdownComponent: GizmoDropdownContent,
-      dropdownWidth: 224
-    });
-    
-    
-    
+    // Gizmo snapping is now handled by the combined grid plugin
     
     
     api.helper('fullscreen-button', {

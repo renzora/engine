@@ -572,8 +572,14 @@ function Toolbar() {
       {/* Camera View Dropdown */}
       <div class="relative" data-camera-dropdown>
         <button
-          onClick={() => setCameraViewDropdownOpen(!cameraViewDropdownOpen())}
-          class="h-8 px-3 flex items-center gap-1 rounded bg-base-300 hover:bg-base-200 text-base-content text-xs transition-all"
+          onClick={() => {
+            setCameraViewDropdownOpen(!cameraViewDropdownOpen());
+            // Close helper dropdowns when camera dropdown opens
+            if (window._closeHelperDropdowns) {
+              window._closeHelperDropdowns();
+            }
+          }}
+          class="h-8 px-3 flex items-center gap-1 rounded text-base-content/60 hover:text-base-content hover:bg-base-100/50 text-xs transition-all"
           title="Camera Views (Numpad shortcuts)"
         >
           <IconVideo class="w-3 h-3" />
@@ -657,7 +663,7 @@ function Toolbar() {
       </div>
       
       <Show when={helperVisible()}>
-        <Helper />
+        <Helper onHelperClick={() => setCameraViewDropdownOpen(false)} />
       </Show>
     </div>
   );
