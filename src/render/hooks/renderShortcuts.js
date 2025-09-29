@@ -398,12 +398,16 @@ export function renderShortcuts(callbacks = {}) {
         highlightLayer.removeAllMeshes();
       }
       
-      // Store original transform for cancellation
-      transformState.originalTransform = {
-        position: selectedObject.position.clone(),
-        rotation: selectedObject.rotation.clone(),
-        scaling: selectedObject.scaling.clone()
-      };
+      // Store original transforms for all selected objects for cancellation
+      transformState.originalTransforms = [];
+      renderStore.selectedObjects.forEach(obj => {
+        transformState.originalTransforms.push({
+          object: obj,
+          position: obj.position.clone(),
+          rotation: obj.rotation.clone(),
+          scaling: obj.scaling.clone()
+        });
+      });
       
       switch (key) {
         case 'g':
@@ -515,34 +519,37 @@ export function renderShortcuts(callbacks = {}) {
   };
 
   const applyNumericTransform = (value) => {
-    const selectedObject = renderStore.selectedObject;
-    if (!selectedObject || !transformState.mode) return;
+    const selectedObjects = renderStore.selectedObjects;
+    if (!selectedObjects || selectedObjects.length === 0 || !transformState.mode) return;
 
     const axis = transformState.axis;
 
-    switch (transformState.mode) {
-      case 'move':
-        applyMove(selectedObject, axis, value);
-        break;
-      case 'rotate':
-        applyRotate(selectedObject, axis, value);
-        break;
-      case 'scale':
-        applyScale(selectedObject, axis, value);
-        break;
-    }
+    selectedObjects.forEach(obj => {
+      switch (transformState.mode) {
+        case 'move':
+          applyMove(obj, axis, value);
+          break;
+        case 'rotate':
+          applyRotate(obj, axis, value);
+          break;
+        case 'scale':
+          applyScale(obj, axis, value);
+          break;
+      }
+    });
   };
 
   const applyFreeTransform = (deltaX, deltaY) => {
-    const selectedObject = renderStore.selectedObject;
-    if (!selectedObject || !transformState.originalTransform) return;
+    const selectedObjects = renderStore.selectedObjects;
+    const primaryObject = renderStore.selectedObject;
+    if (!primaryObject || !transformState.originalTransforms || transformState.originalTransforms.length === 0) return;
 
     const camera = renderStore.camera;
     
-    // Distance and zoom-based sensitivity for natural movement
+    // Distance and zoom-based sensitivity for natural movement (based on primary object)
     let sensitivity = 0.01;
-    if (camera && selectedObject) {
-      const distance = Vector3.Distance(camera.position, selectedObject.position);
+    if (camera && primaryObject) {
+      const distance = Vector3.Distance(camera.position, primaryObject.position);
       // Scale sensitivity based on distance - farther = faster movement, closer = slower movement
       sensitivity = Math.max(0.001, Math.min(0.1, distance * 0.003));
       
@@ -586,15 +593,17 @@ export function renderShortcuts(callbacks = {}) {
             
             axisMovement = (rightContribution + upContribution) * sensitivity;
             
-            // Apply movement along pure world axis
+            // Apply movement along pure world axis to all selected objects
             const movement = worldAxis.scale(axisMovement);
-            selectedObject.position.copyFrom(transformState.originalTransform.position);
-            selectedObject.position.addInPlace(movement);
-            
-            // Apply grid snapping if snap mode is enabled
-            if (callbacks.checkSnapMode && callbacks.checkSnapMode()) {
-              applyGridSnapping(selectedObject);
-            }
+            transformState.originalTransforms.forEach(objTransform => {
+              objTransform.object.position.copyFrom(objTransform.position);
+              objTransform.object.position.addInPlace(movement);
+              
+              // Apply grid snapping if snap mode is enabled
+              if (callbacks.checkSnapMode && callbacks.checkSnapMode()) {
+                applyGridSnapping(objTransform.object);
+              }
+            });
             
             console.log(`🖱️ MOVE ${transformState.axis.toUpperCase()}: axisMovement=${axisMovement.toFixed(3)}, screenRight=${screenRightComponent.toFixed(3)}, screenUp=${screenUpComponent.toFixed(3)}`);
           }
@@ -608,14 +617,17 @@ export function renderShortcuts(callbacks = {}) {
             const rightMovement = deltaX * sensitivity;
             const upMovement = deltaY * sensitivity; // Remove Y inversion to test
             
-            selectedObject.position.copyFrom(transformState.originalTransform.position);
-            selectedObject.position.addInPlace(cameraRight.scale(rightMovement));
-            selectedObject.position.addInPlace(cameraUp.scale(upMovement));
-            
-            // Apply grid snapping if snap mode is enabled
-            if (callbacks.checkSnapMode && callbacks.checkSnapMode()) {
-              applyGridSnapping(selectedObject);
-            }
+            // Apply free movement to all selected objects
+            transformState.originalTransforms.forEach(objTransform => {
+              objTransform.object.position.copyFrom(objTransform.position);
+              objTransform.object.position.addInPlace(cameraRight.scale(rightMovement));
+              objTransform.object.position.addInPlace(cameraUp.scale(upMovement));
+              
+              // Apply grid snapping if snap mode is enabled
+              if (callbacks.checkSnapMode && callbacks.checkSnapMode()) {
+                applyGridSnapping(objTransform.object);
+              }
+            });
           }
         }
         break;
@@ -629,17 +641,23 @@ export function renderShortcuts(callbacks = {}) {
             case 'x':
               // X-axis rotation: horizontal mouse movement rotates around world X-axis
               rotDelta = deltaX * rotationSensitivity;
-              selectedObject.rotation.x = transformState.originalTransform.rotation.x + rotDelta;
+              transformState.originalTransforms.forEach(objTransform => {
+                objTransform.object.rotation.x = objTransform.rotation.x + rotDelta;
+              });
               break;
             case 'y':
               // Y-axis rotation: horizontal mouse movement rotates around world Y-axis
               rotDelta = deltaX * rotationSensitivity;
-              selectedObject.rotation.y = transformState.originalTransform.rotation.y + rotDelta;
+              transformState.originalTransforms.forEach(objTransform => {
+                objTransform.object.rotation.y = objTransform.rotation.y + rotDelta;
+              });
               break;
             case 'z':
               // Z-axis rotation: horizontal mouse movement rotates around world Z-axis
               rotDelta = deltaX * rotationSensitivity;
-              selectedObject.rotation.z = transformState.originalTransform.rotation.z + rotDelta;
+              transformState.originalTransforms.forEach(objTransform => {
+                objTransform.object.rotation.z = objTransform.rotation.z + rotDelta;
+              });
               break;
           }
         }
@@ -654,36 +672,45 @@ export function renderShortcuts(callbacks = {}) {
             case 'x':
               // X-axis scaling: horizontal mouse movement scales world X-axis
               scaleDelta = 1 + (deltaX * scaleSensitivity);
-              selectedObject.scaling.x = transformState.originalTransform.scaling.x * scaleDelta;
+              transformState.originalTransforms.forEach(objTransform => {
+                objTransform.object.scaling.x = objTransform.scaling.x * scaleDelta;
+              });
               break;
             case 'y':
               // Y-axis scaling: vertical mouse movement scales world Y-axis (inverted)
               scaleDelta = 1 + (-deltaY * scaleSensitivity);
-              selectedObject.scaling.y = transformState.originalTransform.scaling.y * scaleDelta;
+              transformState.originalTransforms.forEach(objTransform => {
+                objTransform.object.scaling.y = objTransform.scaling.y * scaleDelta;
+              });
               break;
             case 'z':
               // Z-axis scaling: vertical mouse movement scales world Z-axis (inverted)
               scaleDelta = 1 + (-deltaY * scaleSensitivity);
-              selectedObject.scaling.z = transformState.originalTransform.scaling.z * scaleDelta;
+              transformState.originalTransforms.forEach(objTransform => {
+                objTransform.object.scaling.z = objTransform.scaling.z * scaleDelta;
+              });
               break;
           }
         } else {
           // Uniform scaling uses horizontal movement
           const scaleDelta = 1 + (deltaX * scaleSensitivity);
-          selectedObject.scaling.copyFrom(transformState.originalTransform.scaling);
-          selectedObject.scaling.scaleInPlace(scaleDelta);
+          transformState.originalTransforms.forEach(objTransform => {
+            objTransform.object.scaling.copyFrom(objTransform.scaling);
+            objTransform.object.scaling.scaleInPlace(scaleDelta);
+          });
         }
         break;
     }
   };
 
   const cancelTransform = () => {
-    const selectedObject = renderStore.selectedObject;
-    if (selectedObject && transformState.originalTransform) {
-      // Restore original transform
-      selectedObject.position.copyFrom(transformState.originalTransform.position);
-      selectedObject.rotation.copyFrom(transformState.originalTransform.rotation);
-      selectedObject.scaling.copyFrom(transformState.originalTransform.scaling);
+    if (transformState.originalTransforms) {
+      // Restore original transforms for all selected objects
+      transformState.originalTransforms.forEach(objTransform => {
+        objTransform.object.position.copyFrom(objTransform.position);
+        objTransform.object.rotation.copyFrom(objTransform.rotation);
+        objTransform.object.scaling.copyFrom(objTransform.scaling);
+      });
     }
     resetTransformState();
   };
@@ -833,15 +860,21 @@ export function renderShortcuts(callbacks = {}) {
       if (pickInfo && pickInfo.pickedPoint) {
         // Use the picked point as the new object position
         selectedObject.position.copyFrom(pickInfo.pickedPoint);
-        // Update original transform for relative movements
-        transformState.originalTransform.position = selectedObject.position.clone();
+        // Update original transforms for relative movements
+        const originalTransformForPrimary = transformState.originalTransforms.find(t => t.object === selectedObject);
+        if (originalTransformForPrimary) {
+          originalTransformForPrimary.position = selectedObject.position.clone();
+        }
       } else {
         // Fallback: project cursor to a plane in front of camera
         const distance = Vector3.Distance(camera.position, selectedObject.position);
         const ray = camera.getForwardRay(distance);
         const newPos = ray.origin.add(ray.direction.scale(distance));
         selectedObject.position.copyFrom(newPos);
-        transformState.originalTransform.position = selectedObject.position.clone();
+        const originalTransformForPrimary = transformState.originalTransforms.find(t => t.object === selectedObject);
+        if (originalTransformForPrimary) {
+          originalTransformForPrimary.position = selectedObject.position.clone();
+        }
       }
       
       console.log(`📍 Snapped object to cursor position`);

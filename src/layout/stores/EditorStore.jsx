@@ -27,6 +27,7 @@ const [editorStore, setEditorStore] = createStore({
   
   selection: {
     entity: null,
+    entities: [], // Array of selected entity IDs for multi-selection
     transformMode: 'select'
   },
   
@@ -101,8 +102,13 @@ export const editorActions = {
     setEditorStore('ui', 'selectedBottomTab', tab)
   },
   
-  selectEntity: (entityId) => {
-    setEditorStore('selection', 'entity', entityId)
+  selectEntity: (entityId, entityIds = null) => {
+    setEditorStore('selection', 'entity', entityId);
+    if (entityIds !== null) {
+      setEditorStore('selection', 'entities', entityIds);
+    } else {
+      setEditorStore('selection', 'entities', entityId ? [entityId] : []);
+    }
   },
   
   setScenePanelOpen: (isOpen) => {

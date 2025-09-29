@@ -288,44 +288,57 @@ export default function BabylonRenderer(props) {
         editorActions.addConsoleMessage('No surface found at mouse position', 'warning');
       }
     },
-    // Delete selected object
+    // Delete selected objects
     deleteObject: () => {
-      const selectedObject = renderStore.selectedObject;
+      const selectedObjects = renderStore.selectedObjects;
       
-      if (!selectedObject) {
-        console.log('⚠️ No object selected to delete');
+      if (!selectedObjects || selectedObjects.length === 0) {
+        console.log('⚠️ No objects selected to delete');
         return;
       }
       
+      console.log(`🗑️ Deleting ${selectedObjects.length} object(s):`, selectedObjects.map(obj => obj.name));
       
-      console.log('🗑️ Deleting object:', selectedObject.name);
+      // Remove all selected objects from render store
+      selectedObjects.forEach(obj => {
+        renderActions.removeObject(obj);
+      });
       
-      // Remove from render store (this also updates the hierarchy)
-      renderActions.removeObject(selectedObject);
-      
-      console.log('✅ Object deleted successfully');
+      console.log('✅ Objects deleted successfully');
     },
-    // Duplicate selected object
+    // Duplicate selected objects
     duplicate: () => {
-      const selectedObject = renderStore.selectedObject;
+      const selectedObjects = renderStore.selectedObjects;
       
-      if (!selectedObject) {
-        console.log('⚠️ No object selected to duplicate');
+      if (!selectedObjects || selectedObjects.length === 0) {
+        console.log('⚠️ No objects selected to duplicate');
         return;
       }
       
-      console.log('📋 Duplicating object:', selectedObject.name);
+      console.log(`📋 Duplicating ${selectedObjects.length} object(s):`, selectedObjects.map(obj => obj.name));
       
       try {
-        let newObject = selectedObject.clone(selectedObject.name + '_duplicate', null, false, true);
+        const duplicatedObjects = [];
         
-        if (newObject) {
-          // Keep the duplicated object at the same position as original initially
-          newObject.position.copyFrom(selectedObject.position);
+        selectedObjects.forEach(selectedObject => {
+          let newObject = selectedObject.clone(selectedObject.name + '_duplicate', null, false, true);
           
-          // Add object to hierarchy first, then select it
-          renderActions.addObject(newObject);
-          renderActions.selectObject(newObject);
+          if (newObject) {
+            // Keep the duplicated object at the same position as original initially
+            newObject.position.copyFrom(selectedObject.position);
+            
+            // Add object to hierarchy
+            renderActions.addObject(newObject);
+            duplicatedObjects.push(newObject);
+          }
+        });
+        
+        if (duplicatedObjects.length > 0) {
+          // Select all duplicated objects
+          renderActions.selectObject(null); // Clear current selection first
+          duplicatedObjects.forEach((obj, index) => {
+            renderActions.selectObject(obj, index > 0); // Multi-select for all but the first
+          });
           
           // Trigger Blender-style grab mode (equivalent to pressing 'G')
           setTimeout(() => {
@@ -335,55 +348,54 @@ export default function BabylonRenderer(props) {
             }
           }, 50); // Small delay to ensure selection is complete
           
-          console.log('✅ Object duplicated successfully and grab mode will be activated');
+          console.log('✅ Objects duplicated successfully and grab mode will be activated');
         }
       } catch (error) {
-        console.error('❌ Failed to duplicate object:', error);
+        console.error('❌ Failed to duplicate objects:', error);
       }
     },
     // Snap to ground
     snapToGround: () => {
-      const selectedObject = renderStore.selectedObject;
+      const selectedObjects = renderStore.selectedObjects;
       const currentScene = renderStore.scene;
       
-      if (!selectedObject || !currentScene) {
-        console.log('⚠️ No object selected or no scene available for snap to ground');
+      if (!selectedObjects || selectedObjects.length === 0 || !currentScene) {
+        console.log('⚠️ No objects selected or no scene available for snap to ground');
         return;
       }
       
-      console.log('📍 Snapping object to ground:', selectedObject.name);
+      console.log(`📍 Snapping ${selectedObjects.length} object(s) to ground:`, selectedObjects.map(obj => obj.name));
       
-      // Cast ray downward from object position to find ground
-      const ray = new Ray(selectedObject.position.add(new Vector3(0, 100, 0)), new Vector3(0, -1, 0));
-      const hit = currentScene.pickWithRay(ray, (mesh) => {
-        // Exclude the selected object itself and any gizmo/helper objects
-        return mesh !== selectedObject && 
-               !mesh.name.includes('gizmo') && 
-               !mesh.name.includes('helper') &&
-               !mesh.name.startsWith('__');
+      selectedObjects.forEach(selectedObject => {
+        // Cast ray downward from object position to find ground
+        const ray = new Ray(selectedObject.position.add(new Vector3(0, 100, 0)), new Vector3(0, -1, 0));
+        const hit = currentScene.pickWithRay(ray, (mesh) => {
+          // Exclude the selected objects and any gizmo/helper objects
+          return !selectedObjects.includes(mesh) && 
+                 !mesh.name.includes('gizmo') && 
+                 !mesh.name.includes('helper') &&
+                 !mesh.name.startsWith('__');
+        });
+        
+        if (hit && hit.hit && hit.pickedPoint) {
+          // Get the bounding box of the selected object to calculate proper offset
+          const boundingInfo = selectedObject.getBoundingInfo();
+          const yOffset = Math.abs(boundingInfo.minimum.y);
+          
+          // Snap to the surface with proper offset so object sits on top
+          selectedObject.position.y = hit.pickedPoint.y + yOffset;
+          console.log('✅ Object snapped to surface at Y:', hit.pickedPoint.y + yOffset);
+        } else {
+          // Fallback: snap to Y=0 (ground plane)
+          const boundingInfo = selectedObject.getBoundingInfo();
+          const yOffset = Math.abs(boundingInfo.minimum.y);
+          selectedObject.position.y = yOffset;
+          console.log('⬇️ No surface found, snapped to ground plane at Y:', yOffset);
+        }
       });
       
-      if (hit && hit.hit && hit.pickedPoint) {
-        // Get the bounding box of the selected object to calculate proper offset
-        const boundingInfo = selectedObject.getBoundingInfo();
-        const yOffset = Math.abs(boundingInfo.minimum.y);
-        
-        // Snap to the surface with proper offset so object sits on top
-        selectedObject.position.y = hit.pickedPoint.y + yOffset;
-        console.log('✅ Object snapped to surface at Y:', hit.pickedPoint.y + yOffset);
-        
-        // Add console message to editor
-        editorActions.addConsoleMessage(`Snapped "${selectedObject.name}" to surface`, 'success');
-      } else {
-        // Fallback: snap to Y=0 (ground plane)
-        const boundingInfo = selectedObject.getBoundingInfo();
-        const yOffset = Math.abs(boundingInfo.minimum.y);
-        selectedObject.position.y = yOffset;
-        console.log('⬇️ No surface found, snapped to ground plane at Y:', yOffset);
-        
-        // Add console message to editor
-        editorActions.addConsoleMessage(`Snapped "${selectedObject.name}" to ground plane`, 'info');
-      }
+      // Add console message to editor
+      editorActions.addConsoleMessage(`Snapped ${selectedObjects.length} object(s) to ground`, 'success');
     },
     // Reset camera to default position
     resetCamera: () => {
@@ -616,9 +628,11 @@ export default function BabylonRenderer(props) {
       babylonScene.onPointerObservable.add((pointerInfo) => {
         // Only process left-click events (button 0) - let right-click pass through to camera controller
         if (pointerInfo.type === 1 && pointerInfo.event && pointerInfo.event.button === 0) { // LEFT CLICK only
+          const isShiftPressed = pointerInfo.event.shiftKey;
+          
           if (pointerInfo.pickInfo?.hit && pointerInfo.pickInfo.pickedMesh) {
             let targetObject = pointerInfo.pickInfo.pickedMesh;
-            console.log('🎯 Clicked on mesh:', targetObject.name, 'class:', targetObject.getClassName());
+            console.log('🎯 Clicked on mesh:', targetObject.name, 'class:', targetObject.getClassName(), 'shift:', isShiftPressed);
             
             // Walk up the hierarchy to find the top-level selectable object
             // Keep walking up until we reach a root object (no parent)
@@ -654,12 +668,14 @@ export default function BabylonRenderer(props) {
             
             console.log('✅ Final selection target:', targetObject.name, '(ID:', targetObject.uniqueId, ') class:', targetObject.getClassName());
             
-            // Use shared selection - this will update both render and editor stores
-            console.log('🔗 Calling renderActions.selectObject with:', targetObject.name, 'ID:', targetObject.uniqueId);
-            renderActions.selectObject(targetObject);
+            // Use shared selection with multi-select parameter
+            console.log('🔗 Calling renderActions.selectObject with:', targetObject.name, 'ID:', targetObject.uniqueId, 'multiSelect:', isShiftPressed);
+            renderActions.selectObject(targetObject, isShiftPressed);
           } else {
-            // Left click but no hit - deselect
-            renderActions.selectObject(null);
+            // Left click but no hit - deselect (only if not shift-clicking)
+            if (!isShiftPressed) {
+              renderActions.selectObject(null);
+            }
           }
         }
       });

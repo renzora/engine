@@ -332,7 +332,10 @@ function Scene(props) {
     
     const currentIndex = globalCounter.value++;
     
-    const isSelected = () => selection.entity === item.id;
+    const isSelected = () => {
+      // Check if this item is in the multi-selection
+      return selection.entities.includes(item.id) || selection.entity === item.id;
+    };
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = () => expandedItems().hasOwnProperty(item.id) ? expandedItems()[item.id] : (item.expanded || false);
     const Icon = getIcon(item.type, item.lightType, hasChildren, isExpanded());

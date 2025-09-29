@@ -9,6 +9,7 @@ export const [renderStore, setRenderStore] = createStore({
   scene: null,
   camera: null,
   selectedObject: null,
+  selectedObjects: [], // Array of currently selected objects for multi-selection
   gizmoManager: null,
   highlightLayer: null,
   selectedMeshes: [], // Track selected meshes for highlighting
@@ -130,20 +131,75 @@ export const renderActions = {
         const posGizmo = gizmoManager.gizmos.positionGizmo;
         posGizmo.onDragStartObservable.clear(); // Clear existing callbacks
         posGizmo.onDragEndObservable.clear();
+        if (posGizmo.onDragObservable) posGizmo.onDragObservable.clear();
         
         posGizmo.onDragStartObservable.add(() => {
           // Position gizmo drag started
           this.setGizmoDragging(true);
+          
+          // Store initial positions for all selected objects
+          renderStore.selectedObjects.forEach(obj => {
+            obj._dragStartPosition = obj.position.clone();
+          });
         });
+        
+        // Add drag observable for real-time updates
+        if (posGizmo.onDragObservable) {
+          posGizmo.onDragObservable.clear();
+          posGizmo.onDragObservable.add(() => {
+            // Apply real-time transform to all selected objects during drag
+            if (renderStore.selectedObject && renderStore.selectedObjects.length > 1) {
+              const primaryObject = renderStore.selectedObject;
+              const otherObjects = renderStore.selectedObjects.filter(obj => obj !== primaryObject);
+              
+              // Get the current transform delta from the primary object
+              if (primaryObject._dragStartPosition) {
+                const deltaPosition = primaryObject.position.subtract(primaryObject._dragStartPosition);
+                
+                // Apply the same delta to all other selected objects in real-time
+                otherObjects.forEach(obj => {
+                  if (obj._dragStartPosition) {
+                    obj.position = obj._dragStartPosition.add(deltaPosition);
+                  }
+                });
+              }
+            }
+          });
+        }
         
         posGizmo.onDragEndObservable.add(() => {
           // Position gizmo drag ended
           this.setGizmoDragging(false);
           
-          // Mark transform as manually changed for physics sync
-          if (renderStore.selectedObject) {
-            renderStore.selectedObject._manualTransformChange = true;
+          // Apply transform to all selected objects
+          if (renderStore.selectedObject && renderStore.selectedObjects.length > 1) {
+            // Multi-selection: apply relative transform to all other selected objects
+            const primaryObject = renderStore.selectedObject;
+            const otherObjects = renderStore.selectedObjects.filter(obj => obj !== primaryObject);
+            
+            // Get the transform delta from the primary object since drag start
+            if (primaryObject._dragStartPosition) {
+              const deltaPosition = primaryObject.position.subtract(primaryObject._dragStartPosition);
+              
+              // Apply the same delta to all other selected objects
+              otherObjects.forEach(obj => {
+                if (obj._dragStartPosition) {
+                  obj.position = obj._dragStartPosition.add(deltaPosition);
+                  obj._manualTransformChange = true;
+                }
+              });
+              
+              // Clean up start positions
+              renderStore.selectedObjects.forEach(obj => {
+                delete obj._dragStartPosition;
+              });
+            }
           }
+          
+          // Mark transform as manually changed for physics sync
+          renderStore.selectedObjects.forEach(obj => {
+            obj._manualTransformChange = true;
+          });
           
           // Mark scene as modified
           import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
@@ -159,20 +215,75 @@ export const renderActions = {
         const rotGizmo = gizmoManager.gizmos.rotationGizmo;
         rotGizmo.onDragStartObservable.clear(); // Clear existing callbacks
         rotGizmo.onDragEndObservable.clear();
+        if (rotGizmo.onDragObservable) rotGizmo.onDragObservable.clear();
         
         rotGizmo.onDragStartObservable.add(() => {
           // Rotation gizmo drag started
           this.setGizmoDragging(true);
+          
+          // Store initial rotations for all selected objects
+          renderStore.selectedObjects.forEach(obj => {
+            obj._dragStartRotation = obj.rotation.clone();
+          });
         });
+        
+        // Add drag observable for real-time updates
+        if (rotGizmo.onDragObservable) {
+          rotGizmo.onDragObservable.clear();
+          rotGizmo.onDragObservable.add(() => {
+            // Apply real-time rotation to all selected objects during drag
+            if (renderStore.selectedObject && renderStore.selectedObjects.length > 1) {
+              const primaryObject = renderStore.selectedObject;
+              const otherObjects = renderStore.selectedObjects.filter(obj => obj !== primaryObject);
+              
+              // Get the current rotation delta from the primary object
+              if (primaryObject._dragStartRotation) {
+                const deltaRotation = primaryObject.rotation.subtract(primaryObject._dragStartRotation);
+                
+                // Apply the same delta to all other selected objects in real-time
+                otherObjects.forEach(obj => {
+                  if (obj._dragStartRotation) {
+                    obj.rotation = obj._dragStartRotation.add(deltaRotation);
+                  }
+                });
+              }
+            }
+          });
+        }
         
         rotGizmo.onDragEndObservable.add(() => {
           // Rotation gizmo drag ended
           this.setGizmoDragging(false);
           
-          // Mark transform as manually changed for physics sync
-          if (renderStore.selectedObject) {
-            renderStore.selectedObject._manualTransformChange = true;
+          // Apply rotation to all selected objects
+          if (renderStore.selectedObject && renderStore.selectedObjects.length > 1) {
+            // Multi-selection: apply relative rotation to all other selected objects
+            const primaryObject = renderStore.selectedObject;
+            const otherObjects = renderStore.selectedObjects.filter(obj => obj !== primaryObject);
+            
+            // Get the rotation delta from the primary object since drag start
+            if (primaryObject._dragStartRotation) {
+              const deltaRotation = primaryObject.rotation.subtract(primaryObject._dragStartRotation);
+              
+              // Apply the same delta to all other selected objects
+              otherObjects.forEach(obj => {
+                if (obj._dragStartRotation) {
+                  obj.rotation = obj._dragStartRotation.add(deltaRotation);
+                  obj._manualTransformChange = true;
+                }
+              });
+              
+              // Clean up start rotations
+              renderStore.selectedObjects.forEach(obj => {
+                delete obj._dragStartRotation;
+              });
+            }
           }
+          
+          // Mark transform as manually changed for physics sync
+          renderStore.selectedObjects.forEach(obj => {
+            obj._manualTransformChange = true;
+          });
           
           // Mark scene as modified
           import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
@@ -188,15 +299,75 @@ export const renderActions = {
         const scaleGizmo = gizmoManager.gizmos.scaleGizmo;
         scaleGizmo.onDragStartObservable.clear(); // Clear existing callbacks
         scaleGizmo.onDragEndObservable.clear();
+        if (scaleGizmo.onDragObservable) scaleGizmo.onDragObservable.clear();
         
         scaleGizmo.onDragStartObservable.add(() => {
           // Scale gizmo drag started
           this.setGizmoDragging(true);
+          
+          // Store initial scales for all selected objects
+          renderStore.selectedObjects.forEach(obj => {
+            obj._dragStartScaling = obj.scaling.clone();
+          });
         });
+        
+        // Add drag observable for real-time updates
+        if (scaleGizmo.onDragObservable) {
+          scaleGizmo.onDragObservable.clear();
+          scaleGizmo.onDragObservable.add(() => {
+            // Apply real-time scaling to all selected objects during drag
+            if (renderStore.selectedObject && renderStore.selectedObjects.length > 1) {
+              const primaryObject = renderStore.selectedObject;
+              const otherObjects = renderStore.selectedObjects.filter(obj => obj !== primaryObject);
+              
+              // Get the current scale factor from the primary object
+              if (primaryObject._dragStartScaling) {
+                const scaleFactor = primaryObject.scaling.divide(primaryObject._dragStartScaling);
+                
+                // Apply the same scale factor to all other selected objects in real-time
+                otherObjects.forEach(obj => {
+                  if (obj._dragStartScaling) {
+                    obj.scaling = obj._dragStartScaling.multiply(scaleFactor);
+                  }
+                });
+              }
+            }
+          });
+        }
         
         scaleGizmo.onDragEndObservable.add(() => {
           // Scale gizmo drag ended
           this.setGizmoDragging(false);
+          
+          // Apply scaling to all selected objects
+          if (renderStore.selectedObject && renderStore.selectedObjects.length > 1) {
+            // Multi-selection: apply relative scale to all other selected objects
+            const primaryObject = renderStore.selectedObject;
+            const otherObjects = renderStore.selectedObjects.filter(obj => obj !== primaryObject);
+            
+            // Get the scale factor from the primary object since drag start
+            if (primaryObject._dragStartScaling) {
+              const scaleFactor = primaryObject.scaling.divide(primaryObject._dragStartScaling);
+              
+              // Apply the same scale factor to all other selected objects
+              otherObjects.forEach(obj => {
+                if (obj._dragStartScaling) {
+                  obj.scaling = obj._dragStartScaling.multiply(scaleFactor);
+                  obj._manualTransformChange = true;
+                }
+              });
+              
+              // Clean up start scales
+              renderStore.selectedObjects.forEach(obj => {
+                delete obj._dragStartScaling;
+              });
+            }
+          }
+          
+          // Mark transform as manually changed for physics sync
+          renderStore.selectedObjects.forEach(obj => {
+            obj._manualTransformChange = true;
+          });
           
           // Mark scene as modified
           import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
@@ -209,22 +380,55 @@ export const renderActions = {
     }
   },
 
-  selectObject(object) {
-    // Update selected object in render store
-    setRenderStore('selectedObject', object);
-    
-    // Also update editor store selection to keep UI in sync
-    if (object) {
-      const entityId = object.uniqueId || object.name;
-      // Import editorActions dynamically to avoid circular imports
-      import('@/layout/stores/EditorStore').then(({ editorActions }) => {
-        editorActions.selectEntity(entityId);
-      });
+  selectObject(object, multiSelect = false) {
+    if (multiSelect && object) {
+      // Multi-selection mode
+      const currentSelectedObjects = [...renderStore.selectedObjects];
+      const objectIndex = currentSelectedObjects.findIndex(obj => obj === object);
+      
+      if (objectIndex !== -1) {
+        // Object is already selected, remove it from selection
+        currentSelectedObjects.splice(objectIndex, 1);
+      } else {
+        // Object is not selected, add it to selection
+        currentSelectedObjects.push(object);
+      }
+      
+      // Update selected objects array
+      setRenderStore('selectedObjects', currentSelectedObjects);
+      
+      // Set primary selected object to the last selected object
+      const primaryObject = currentSelectedObjects.length > 0 ? currentSelectedObjects[currentSelectedObjects.length - 1] : null;
+      setRenderStore('selectedObject', primaryObject);
+      
+      // Update editor store selection for the primary object and all selected objects
+      if (primaryObject) {
+        const entityId = primaryObject.uniqueId || primaryObject.name;
+        const allEntityIds = currentSelectedObjects.map(obj => obj.uniqueId || obj.name);
+        import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+          editorActions.selectEntity(entityId, allEntityIds);
+        });
+      } else {
+        import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+          editorActions.selectEntity(null, []);
+        });
+      }
     } else {
-      // Clear editor selection
-      import('@/layout/stores/EditorStore').then(({ editorActions }) => {
-        editorActions.selectEntity(null);
-      });
+      // Single selection mode (clear multi-selection)
+      setRenderStore('selectedObject', object);
+      setRenderStore('selectedObjects', object ? [object] : []);
+      
+      // Update editor store selection
+      if (object) {
+        const entityId = object.uniqueId || object.name;
+        import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+          editorActions.selectEntity(entityId, [entityId]);
+        });
+      } else {
+        import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+          editorActions.selectEntity(null, []);
+        });
+      }
     }
     
     // Handle gizmo attachment and highlighting
@@ -241,9 +445,10 @@ export const renderActions = {
     setRenderStore('selectedMeshes', []);
     
     if (gizmoManager && scene) {
-      if (object) {
-        // Attach gizmo to selected object
-        gizmoManager.attachToMesh(object);
+      const primaryObject = renderStore.selectedObject;
+      if (primaryObject) {
+        // Attach gizmo to primary selected object
+        gizmoManager.attachToMesh(primaryObject);
         
         // Only show gizmo if not in select mode
         const currentMode = renderStore.transformMode;
@@ -269,32 +474,39 @@ export const renderActions = {
         // Add drag callbacks to the existing gizmo manager
         this.attachGizmoCallbacks(gizmoManager);
         
-        // Add yellow highlighting to selected object
-        const meshesToHighlight = [];
-        try {
-          if (object.getChildMeshes) {
-            const childMeshes = object.getChildMeshes();
-            childMeshes.forEach(childMesh => {
-              if (childMesh.getClassName() === 'Mesh') {
-                meshesToHighlight.push(childMesh);
-              }
-            });
-          } else if (object.getClassName() === 'Mesh') {
-            meshesToHighlight.push(object);
+        // Add highlighting to all selected objects (all same color)
+        const allMeshesToHighlight = [];
+        renderStore.selectedObjects.forEach((selectedObj) => {
+          try {
+            const meshesToHighlight = [];
+            if (selectedObj.getChildMeshes) {
+              const childMeshes = selectedObj.getChildMeshes();
+              childMeshes.forEach(childMesh => {
+                if (childMesh.getClassName() === 'Mesh') {
+                  meshesToHighlight.push(childMesh);
+                }
+              });
+            } else if (selectedObj.getClassName() === 'Mesh') {
+              meshesToHighlight.push(selectedObj);
+            }
+            
+            // All selected objects get yellow highlight
+            const highlightColor = Color3.Yellow();
+            
+            if (highlightLayer) {
+              meshesToHighlight.forEach(mesh => {
+                highlightLayer.addMesh(mesh, highlightColor);
+              });
+            }
+            
+            allMeshesToHighlight.push(...meshesToHighlight);
+          } catch (error) {
+            console.warn('Could not add highlight to object:', error);
           }
-          
-          // Apply yellow highlighting to meshes
-          if (highlightLayer) {
-            meshesToHighlight.forEach(mesh => {
-              highlightLayer.addMesh(mesh, Color3.Yellow());
-            });
-          }
-          
-          // Store selected meshes for cleanup
-          setRenderStore('selectedMeshes', meshesToHighlight);
-        } catch (error) {
-          console.warn('Could not add highlight to object:', error);
-        }
+        });
+        
+        // Store all selected meshes for cleanup
+        setRenderStore('selectedMeshes', allMeshesToHighlight);
       } else {
         // No object selected, detach gizmo and hide all gizmos
         gizmoManager.attachToMesh(null);
@@ -312,7 +524,7 @@ export const renderActions = {
     // Dispatch selection event
     if (typeof window !== 'undefined') {
       const event = new CustomEvent('babylonObjectSelected', {
-        detail: { object, scene: renderStore.scene }
+        detail: { object: renderStore.selectedObject, selectedObjects: renderStore.selectedObjects, scene: renderStore.scene }
       });
       window.dispatchEvent(event);
     }
@@ -744,6 +956,7 @@ export const renderActions = {
 
     // Clear other references
     setRenderStore('selectedObject', null);
+    setRenderStore('selectedObjects', []);
     setRenderStore('transformMode', 'select');
     setRenderStore('hierarchy', []);
   }
