@@ -165,7 +165,7 @@ export function useCameraController(camera, canvas, scene) {
         
         // Apply rotation based on mouse delta - natural feel
         const phi = Math.atan2(offset.x, offset.z) + deltaX * rotationSpeed() * precisionMultiplier;
-        const theta = Math.acos(offset.y / distance) + deltaY * rotationSpeed() * precisionMultiplier;
+        const theta = Math.acos(offset.y / distance) - deltaY * rotationSpeed() * precisionMultiplier;
         
         // Clamp theta to prevent flipping
         const clampedTheta = Math.max(0.1, Math.min(Math.PI - 0.1, theta));
