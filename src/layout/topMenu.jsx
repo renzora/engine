@@ -1,7 +1,7 @@
 import { createSignal, createEffect, onCleanup, createMemo, For, Show } from 'solid-js';
 import { IconArrowDown, IconArrowUp, IconRefresh, IconChevronRight, IconMinus, IconSquare, IconCopy, IconX, IconSettings } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
-import { topMenuItems } from '@/api/plugin';
+import { topMenuItems, horizontalMenuButtonsEnabled } from '@/api/plugin';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
@@ -331,43 +331,45 @@ function TopMenu() {
         class="relative w-full h-8 bg-base-300/60 backdrop-blur-md shadow-sm border-b border-black/30 flex items-center px-2"
         data-tauri-drag-region
       >
-        <div 
-          style={{
-            '-webkit-app-region': 'no-drag'
-          }}
-          class="flex items-center"
-        >
-          <For each={Object.entries(menuStructure())}>
-            {([menuName, items]) => (
-              <div class="relative inline-block">
-                <button
-                  onClick={(e) => handleMenuClick(menuName, e)}
-                  onMouseEnter={(e) => {
-                    console.log('Hovering over menu:', menuName, 'Current active menu:', activeMenu());
-                    if (activeMenu()) {
-                      console.log('Switching from', activeMenu(), 'to', menuName);
-                      
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      const position = calculateDropdownPosition(rect, 224);
-                      setMenuPosition({
-                        left: position.left,
-                        top: rect.bottom + 1
-                      });
-                      setActiveMenu(menuName);
-                    } else {
-                      console.log('No active menu, not switching');
-                    }
-                  }}
-                  class={`menu-button px-3 py-1 text-sm text-base-content hover:bg-base-300 rounded transition-colors cursor-pointer ${
-                    activeMenu() === menuName ? 'bg-base-300' : ''
-                  }`}
-                >
-                  {menuName}
-                </button>
-              </div>
-            )}
-          </For>
-        </div>
+        <Show when={horizontalMenuButtonsEnabled()}>
+          <div 
+            style={{
+              '-webkit-app-region': 'no-drag'
+            }}
+            class="flex items-center"
+          >
+            <For each={Object.entries(menuStructure())}>
+              {([menuName, items]) => (
+                <div class="relative inline-block">
+                  <button
+                    onClick={(e) => handleMenuClick(menuName, e)}
+                    onMouseEnter={(e) => {
+                      console.log('Hovering over menu:', menuName, 'Current active menu:', activeMenu());
+                      if (activeMenu()) {
+                        console.log('Switching from', activeMenu(), 'to', menuName);
+                        
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        const position = calculateDropdownPosition(rect, 224);
+                        setMenuPosition({
+                          left: position.left,
+                          top: rect.bottom + 1
+                        });
+                        setActiveMenu(menuName);
+                      } else {
+                        console.log('No active menu, not switching');
+                      }
+                    }}
+                    class={`menu-button px-3 py-1 text-sm text-base-content hover:bg-base-300 rounded transition-colors cursor-pointer ${
+                      activeMenu() === menuName ? 'bg-base-300' : ''
+                    }`}
+                  >
+                    {menuName}
+                  </button>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
         
         <div class="flex-1" />
         
@@ -419,7 +421,7 @@ function TopMenu() {
         )}
       </div>
       
-      <Show when={activeMenu() && menuPosition()}>
+      <Show when={horizontalMenuButtonsEnabled() && activeMenu() && menuPosition()}>
         <div 
           class="dropdown-content fixed w-56 bg-base-200 backdrop-blur-sm rounded-lg shadow-xl z-[110] border border-base-300"
           style={{

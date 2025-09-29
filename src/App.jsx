@@ -1,16 +1,19 @@
-import { onMount, For } from 'solid-js'
+import { onMount, For, createSignal, Show } from 'solid-js'
 import './base.css'
 import './themes'
 import { Engine, layoutComponents } from '@/api/plugin'
 import Layout from './layout'
 import DevNotice from './components/DevNotice'
+import LoadingScreen from './components/LoadingScreen'
 import EditorPage from './pages/editor'
 import { Project } from './plugins/splash/ProjectStore'
 import KeyboardShortcuts from './components/KeyboardShortcuts'
 import CloseConfirmationOverlay from '@/ui/CloseConfirmationOverlay.jsx'
 import { closeConfirmationStore } from '@/stores/CloseConfirmationStore.jsx'
 export default function App() {
-    onMount(async () => {
+  const [isLoading, setIsLoading] = createSignal(true);
+
+  onMount(async () => {
     // Engine loaded successfully
     
     // Setup window close handling for Tauri (handles Alt+F4, system close, etc.)
@@ -108,31 +111,43 @@ export default function App() {
     }
   };
 
+  const handleLoadComplete = () => {
+    setIsLoading(false);
+  };
+
   return (
-    <Engine>
-      <Project>
-        <KeyboardShortcuts />
-        <div class="w-full h-full">
-          <Layout />
-          <DevNotice />
-          <EditorPage />
-          
-          {/* Render layout components from plugins */}
-          <For each={Array.from(layoutComponents().values())}>
-            {(Component) => <Component />}
-          </For>
-        </div>
-        
-        {/* Close confirmation overlay */}
-        <CloseConfirmationOverlay
-          isOpen={() => closeConfirmationStore.isOpen}
-          onClose={() => closeConfirmationStore.onClose}
-          onSaveAndClose={() => closeConfirmationStore.onSaveAndClose}
-          onCloseWithoutSaving={() => closeConfirmationStore.onCloseWithoutSaving}
-          projectName={() => closeConfirmationStore.projectName}
-          changes={() => closeConfirmationStore.changes}
-        />
-      </Project>
-    </Engine>
+    <>
+      <Show when={isLoading()}>
+        <LoadingScreen onLoadComplete={handleLoadComplete} />
+      </Show>
+      
+      <Show when={!isLoading()}>
+        <Engine>
+          <Project>
+            <KeyboardShortcuts />
+            <div class="w-full h-full">
+              <Layout />
+              <DevNotice />
+              <EditorPage />
+              
+              {/* Render layout components from plugins */}
+              <For each={Array.from(layoutComponents().values())}>
+                {(Component) => <Component />}
+              </For>
+            </div>
+            
+            {/* Close confirmation overlay */}
+            <CloseConfirmationOverlay
+              isOpen={() => closeConfirmationStore.isOpen}
+              onClose={() => closeConfirmationStore.onClose}
+              onSaveAndClose={() => closeConfirmationStore.onSaveAndClose}
+              onCloseWithoutSaving={() => closeConfirmationStore.onCloseWithoutSaving}
+              projectName={() => closeConfirmationStore.projectName}
+              changes={() => closeConfirmationStore.changes}
+            />
+          </Project>
+        </Engine>
+      </Show>
+    </>
   );
 }
