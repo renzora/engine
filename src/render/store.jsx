@@ -707,6 +707,23 @@ export const renderActions = {
     });
   },
 
+  updateObjectName(objectId, newName) {
+    setRenderStore('hierarchy', prev => {
+      const updateNameInNodes = (nodes) => {
+        return nodes.map(node => {
+          if (node.id === objectId) {
+            return { ...node, name: newName };
+          }
+          if (node.children) {
+            return { ...node, children: updateNameInNodes(node.children) };
+          }
+          return node;
+        });
+      };
+      return updateNameInNodes(prev);
+    });
+  },
+
   cleanup() {
     // Clear selection highlights
     if (renderStore.highlightLayer) {

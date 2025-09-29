@@ -176,7 +176,11 @@ function Scene(props) {
         );
         
         if (objectToRename) {
-          objectToRename.name = renameValue().trim();
+          const newName = renameValue().trim();
+          objectToRename.name = newName;
+          
+          // Update only this object's name in the hierarchy (much more efficient)
+          renderActions.updateObjectName(renamingItemId(), newName);
         }
       }
       
@@ -396,11 +400,6 @@ function Scene(props) {
               }
             }
           }}
-          onDoubleClick={() => {
-            if (!renamingItemId()) {
-              startRename(item.id, item.name);
-            }
-          }}
           onContextMenu={(e) => {
             props.onContextMenu(e, item, 'scene');
           }}
@@ -459,7 +458,25 @@ function Scene(props) {
           
           <Show 
             when={renamingItemId() === item.id}
-            fallback={<span className="flex-1 text-base-content/80 truncate text-xs">{item.name}</span>}
+            fallback={
+              <span 
+                className="flex-1 text-base-content/80 truncate text-xs cursor-pointer"
+                onDoubleClick={(e) => {
+                  console.log('Double click triggered on span:', item.name);
+                  e.preventDefault();
+                  e.stopPropagation();
+                  console.log('Current renamingItemId:', renamingItemId());
+                  if (!renamingItemId()) {
+                    console.log('Starting rename for:', item.id, item.name);
+                    startRename(item.id, item.name);
+                  } else {
+                    console.log('Already renaming another item');
+                  }
+                }}
+              >
+                {item.name}
+              </span>
+            }
           >
             <input
               id={`rename-input-${renamingItemId() || 'unknown'}`}
@@ -479,7 +496,9 @@ function Scene(props) {
               }}
               className="flex-1 bg-base-300 text-base-content px-1 rounded text-xs border border-primary focus:outline-none focus:border-primary/80"
               autofocus
-              onFocus={(e) => e.target.select()}
+              onFocus={(e) => {
+                setTimeout(() => e.target.select(), 0);
+              }}
             />
           </Show>
           
