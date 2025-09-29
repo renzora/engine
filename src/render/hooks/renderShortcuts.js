@@ -1,6 +1,7 @@
 import { onMount, onCleanup } from 'solid-js';
 import { keyboardShortcuts } from '@/components/KeyboardShortcuts';
 import { renderStore, renderActions } from '../store.jsx';
+import { editorStore } from '@/layout/stores/EditorStore.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { Matrix } from '@babylonjs/core/Maths/math.vector.js';
 import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
@@ -464,6 +465,20 @@ export function renderShortcuts(callbacks = {}) {
     return false; // Not a transform shortcut
   };
 
+  // Function to apply grid snapping to an object
+  const applyGridSnapping = (object) => {
+    if (!object) return;
+    
+    // Get grid cell size from editor store, fallback to 1.0 if not available
+    const gridSettings = editorStore.settings?.grid;
+    const gridSize = gridSettings?.cellSize || 1.0;
+    
+    // Snap position to grid
+    object.position.x = Math.round(object.position.x / gridSize) * gridSize;
+    object.position.y = Math.round(object.position.y / gridSize) * gridSize;
+    object.position.z = Math.round(object.position.z / gridSize) * gridSize;
+  };
+
   const updateTransformStatus = () => {
     if (!transformState.isActive) {
       statusDiv.style.display = 'none';
@@ -576,6 +591,11 @@ export function renderShortcuts(callbacks = {}) {
             selectedObject.position.copyFrom(transformState.originalTransform.position);
             selectedObject.position.addInPlace(movement);
             
+            // Apply grid snapping if snap mode is enabled
+            if (callbacks.checkSnapMode && callbacks.checkSnapMode()) {
+              applyGridSnapping(selectedObject);
+            }
+            
             console.log(`🖱️ MOVE ${transformState.axis.toUpperCase()}: axisMovement=${axisMovement.toFixed(3)}, screenRight=${screenRightComponent.toFixed(3)}, screenUp=${screenUpComponent.toFixed(3)}`);
           }
         } else {
@@ -591,6 +611,11 @@ export function renderShortcuts(callbacks = {}) {
             selectedObject.position.copyFrom(transformState.originalTransform.position);
             selectedObject.position.addInPlace(cameraRight.scale(rightMovement));
             selectedObject.position.addInPlace(cameraUp.scale(upMovement));
+            
+            // Apply grid snapping if snap mode is enabled
+            if (callbacks.checkSnapMode && callbacks.checkSnapMode()) {
+              applyGridSnapping(selectedObject);
+            }
           }
         }
         break;

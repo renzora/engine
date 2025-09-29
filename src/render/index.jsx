@@ -48,6 +48,31 @@ const loadDefaultSceneContent = (scene, canvas) => {
   if (window.DEBUG_RENDER) console.log('✅ Default scene content loaded - objects will be restored from scene data');
 };
 
+// Function to snap an object to the grid
+const snapObjectToGrid = (object) => {
+  if (!object) return;
+  
+  // Get grid cell size from editor store, fallback to 1.0 if not available
+  const gridSettings = editorStore.settings?.grid;
+  const gridSize = gridSettings?.cellSize || 1.0;
+  
+  // Snap position to grid
+  const snappedX = Math.round(object.position.x / gridSize) * gridSize;
+  const snappedY = Math.round(object.position.y / gridSize) * gridSize;
+  const snappedZ = Math.round(object.position.z / gridSize) * gridSize;
+  
+  object.position.x = snappedX;
+  object.position.y = snappedY;
+  object.position.z = snappedZ;
+  
+  console.log(`📍 Snapped "${object.name}" to grid: (${snappedX}, ${snappedY}, ${snappedZ}) with grid size ${gridSize}`);
+  
+  // Add console message to editor
+  if (editorActions && editorActions.addConsoleMessage) {
+    editorActions.addConsoleMessage(`Snapped "${object.name}" to grid (${gridSize}m)`, 'success');
+  }
+};
+
 export default function BabylonRenderer(props) {
   let canvasRef;
   let renderLoopRunning = false; // Track render loop state for proper cleanup
@@ -83,6 +108,9 @@ export default function BabylonRenderer(props) {
 
   // Initialize global shortcuts (no movement keys)
   renderShortcuts({
+    // Snap mode checking
+    checkSnapMode: () => viewportStore.gridSnapping,
+    
     // Transform gizmos
     positionMode: () => {
       const gizmoManager = renderStore.gizmoManager;
