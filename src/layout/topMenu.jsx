@@ -52,13 +52,92 @@ function TopMenu() {
 
   const handleClose = async () => {
     try {
-      console.log('Attempting to close window...');
-      const window = getCurrentWindow();
-      console.log('Got window instance:', window);
-      await window.close();
-      console.log('Close completed');
+      console.log('Close button clicked - checking for unsaved changes...');
+      
+      // Import scene manager and unsaved changes store
+      const { sceneManager } = await import('@/api/scene/SceneManager.js');
+      const { unsavedChangesStore } = await import('@/stores/UnsavedChangesStore.jsx');
+      
+      // Import close confirmation actions
+      const { closeConfirmationActions } = await import('@/stores/CloseConfirmationStore.jsx');
+      const { getCurrentProject } = await import('@/api/bridge/projects.js');
+      
+      // Helper function to actually close the application
+      const proceedWithClose = async () => {
+        console.log('Proceeding with graceful close...');
+        try {
+          // Emit event to backend to approve the close
+          const { emit } = await import('@tauri-apps/api/event');
+          await emit('proceed-with-close');
+          console.log('Graceful close event emitted');
+        } catch (closeError) {
+          console.error('Failed to emit graceful close event:', closeError);
+          // Fallback to direct window close
+          try {
+            const window = getCurrentWindow();
+            console.log('Trying direct window close as fallback...');
+            await window.close();
+          } catch (windowError) {
+            console.error('All close methods failed:', windowError);
+            alert('Unable to close the application. Please close manually.');
+          }
+        }
+      };
+
+      // Check if there are any unsaved changes
+      if (unsavedChangesStore.hasChanges || sceneManager.hasChanges()) {
+        // Show the overlay instead of using browser confirm
+        closeConfirmationActions.show({
+          projectName: getCurrentProject()?.name || 'Current Project',
+          changes: unsavedChangesStore.changes,
+          onSaveAndClose: async () => {
+            console.log('User chose to save before closing...');
+            try {
+              const saveResult = await sceneManager.saveScene();
+              if (!saveResult.success) {
+                alert(`Failed to save: ${saveResult.error}`);
+                // Ask if they want to close anyway using browser confirm as fallback
+                const closeAnyway = confirm('Save failed. Do you want to close without saving?');
+                if (closeAnyway) {
+                  await proceedWithClose();
+                }
+                closeConfirmationActions.hide();
+                return;
+              }
+              console.log('Save successful, proceeding with close');
+              await proceedWithClose();
+            } catch (error) {
+              console.error('Error during save and close:', error);
+              closeConfirmationActions.hide();
+            }
+          },
+          onCloseWithoutSaving: async () => {
+            console.log('User chose to close without saving');
+            await proceedWithClose();
+          },
+          onClose: () => {
+            console.log('User cancelled close');
+            closeConfirmationActions.hide();
+          }
+        });
+        return; // Don't proceed with close, wait for user choice
+      }
+      
+      // No unsaved changes, close immediately
+      await proceedWithClose();
+      
     } catch (error) {
       console.error('Failed to close window:', error);
+      // If there's an error, ask user if they want to close anyway using browser confirm as fallback
+      const closeAnyway = confirm('An error occurred while checking for unsaved changes. Do you want to close anyway?');
+      if (closeAnyway) {
+        try {
+          const { emit } = await import('@tauri-apps/api/event');
+          await emit('proceed-with-close');
+        } catch (exitError) {
+          console.error('Failed to gracefully close application:', exitError);
+        }
+      }
     }
   };
 
