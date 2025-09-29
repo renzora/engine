@@ -152,6 +152,8 @@ function Toolbar() {
       
       primitive.material = material;
       
+      // Add object to hierarchy first, then select it
+      renderActions.addObject(primitive);
       renderActions.selectObject(primitive);
       editorActions.addConsoleMessage(`Created ${type}`, 'info');
     } catch (error) {
@@ -211,6 +213,8 @@ function Toolbar() {
       lightHelper.material.disableLighting = true;
       lightHelper.parent = mainContainer;
 
+      // Add object to hierarchy first, then select it
+      renderActions.addObject(mainContainer);
       renderActions.selectObject(mainContainer);
       editorActions.addConsoleMessage(`Created ${lightType} light`, 'info');
     } catch (error) {
@@ -234,6 +238,8 @@ function Toolbar() {
       const camera = new UniversalCamera(cameraName, cameraPosition, scene);
       camera.setTarget(Vector3.Zero());
 
+      // Add object to hierarchy first, then select it
+      renderActions.addObject(camera);
       renderActions.selectObject(camera);
       editorActions.addConsoleMessage('Created camera', 'info');
     } catch (error) {
@@ -256,6 +262,8 @@ function Toolbar() {
         newObject.position.x += 1;
         newObject.position.z += 1;
         
+        // Add object to hierarchy first, then select it
+        renderActions.addObject(newObject);
         renderActions.selectObject(newObject);
         editorActions.addConsoleMessage(`Duplicated ${selectedObject.name}`, 'info');
       }
