@@ -1,5 +1,5 @@
 import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match, createComponent } from 'solid-js';
-import { IconCode, IconX, IconRotateClockwise, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
+import { IconCode, IconX, IconRotateClockwise, IconPlayerPlay, IconPlayerPause, IconArrowsMove } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
 import { renderStore } from '@/render/store';
@@ -22,9 +22,15 @@ export default function ScriptsPanel() {
   const [pausedScripts, setPausedScripts] = createSignal(new Set());
   let previousScriptSections = {};
 
+  // Individual signals for transform properties
+  const [positionSignal, setPositionSignal] = createSignal([0, 0, 0]);
+  const [rotationSignal, setRotationSignal] = createSignal([0, 0, 0]);
+  const [scaleSignal, setScaleSignal] = createSignal([1, 1, 1]);
+
   // Section collapse state
   const [sectionsOpen, setSectionsOpen] = createSignal({
-    scripts: true
+    scripts: true,
+    transform: true
   });
   
   const toggleSection = (section) => {
@@ -171,6 +177,23 @@ export default function ScriptsPanel() {
       babylonObject.metadata.originalProperties = {};
     }
     
+    // Capture original transform values when object is first selected
+    if (!babylonObject.metadata.originalProperties.position && babylonObject.position) {
+      babylonObject.metadata.originalProperties.position = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
+    }
+    if (!babylonObject.metadata.originalProperties.rotation && babylonObject.rotation) {
+      babylonObject.metadata.originalProperties.rotation = [babylonObject.rotation.x, babylonObject.rotation.y, babylonObject.rotation.z];
+    }
+    if (!babylonObject.metadata.originalProperties.scale) {
+      if (babylonObject.scaling) {
+        babylonObject.metadata.originalProperties.scale = [babylonObject.scaling.x, babylonObject.scaling.y, babylonObject.scaling.z];
+      } else if (babylonObject.scale) {
+        babylonObject.metadata.originalProperties.scale = [babylonObject.scale.x, babylonObject.scale.y, babylonObject.scale.z];
+      } else {
+        babylonObject.metadata.originalProperties.scale = [1, 1, 1];
+      }
+    }
+    
     // Register render loop observer for live updates
     renderObserver = () => {
       // Skip sync during reset operations
@@ -178,6 +201,37 @@ export default function ScriptsPanel() {
         return;
       }
       
+      // Update transform signals
+      if (babylonObject.position) {
+        const newPosition = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
+        const currentPosition = positionSignal();
+        if (newPosition.some((val, i) => val !== currentPosition[i])) {
+          setPositionSignal(newPosition);
+        }
+      }
+      
+      if (babylonObject.rotation) {
+        const newRotation = [babylonObject.rotation.x, babylonObject.rotation.y, babylonObject.rotation.z];
+        const currentRotation = rotationSignal();
+        if (newRotation.some((val, i) => val !== currentRotation[i])) {
+          setRotationSignal(newRotation);
+        }
+      }
+      
+      if (babylonObject.scaling) {
+        const newScale = [babylonObject.scaling.x, babylonObject.scaling.y, babylonObject.scaling.z];
+        const currentScale = scaleSignal();
+        if (newScale.some((val, i) => val !== currentScale[i])) {
+          setScaleSignal(newScale);
+        }
+      } else if (babylonObject.scale) {
+        const newScale = [babylonObject.scale.x, babylonObject.scale.y, babylonObject.scale.z];
+        const currentScale = scaleSignal();
+        if (newScale.some((val, i) => val !== currentScale[i])) {
+          setScaleSignal(newScale);
+        }
+      }
+
       // Update script properties signal
       const scriptProperties = babylonObject.metadata?.scriptProperties || {};
       const currentScriptProps = scriptPropertiesSignal();
@@ -327,10 +381,25 @@ export default function ScriptsPanel() {
     try {
       const originalProperties = babylonObject.metadata.originalProperties;
       
+      // Reset transform properties
+      if (originalProperties.position && babylonObject.position) {
+        babylonObject.position.set(originalProperties.position[0], originalProperties.position[1], originalProperties.position[2]);
+      }
+      if (originalProperties.rotation && babylonObject.rotation) {
+        babylonObject.rotation.set(originalProperties.rotation[0], originalProperties.rotation[1], originalProperties.rotation[2]);
+      }
+      if (originalProperties.scale) {
+        if (babylonObject.scaling) {
+          babylonObject.scaling.set(originalProperties.scale[0], originalProperties.scale[1], originalProperties.scale[2]);
+        } else if (babylonObject.scale) {
+          babylonObject.scale.set(originalProperties.scale[0], originalProperties.scale[1], originalProperties.scale[2]);
+        }
+      }
+      
       // Reset script properties
       const runtime = getScriptRuntime();
       Object.keys(originalProperties).forEach(propName => {
-        // Skip transform properties (handled in objectProperties)
+        // Skip transform properties (handled above)
         if (['position', 'rotation', 'scale'].includes(propName)) return;
         
         const originalValue = originalProperties[propName];
@@ -356,6 +425,140 @@ export default function ScriptsPanel() {
         setIsResettingProperties(false);
       }, 100);
     }
+  };
+
+  const resetSingleProperty = (propertyPath, defaultValue) => {
+    const babylonObject = getSelectedBabylonObject();
+    if (!babylonObject) return;
+    
+    // Update transform properties directly on Babylon object
+    if (propertyPath.startsWith('transform.')) {
+      const transformType = propertyPath.split('.')[1]; // position, rotation, or scale
+      
+      if (transformType === 'position' && babylonObject.position) {
+        babylonObject.position.set(defaultValue[0], defaultValue[1], defaultValue[2]);
+      } else if (transformType === 'rotation' && babylonObject.rotation) {
+        babylonObject.rotation.set(defaultValue[0], defaultValue[1], defaultValue[2]);
+      } else if (transformType === 'scale' && babylonObject.scaling) {
+        babylonObject.scaling.set(defaultValue[0], defaultValue[1], defaultValue[2]);
+      }
+    }
+  };
+
+  const renderVector3Input = (label, propertyPath) => {
+    const transformType = propertyPath.split('.')[1]; // position, rotation, or scale
+    
+    // Get the appropriate signal based on transform type
+    const getSignalValue = () => {
+      switch (transformType) {
+        case 'position': return positionSignal;
+        case 'rotation': return rotationSignal;
+        case 'scale': return scaleSignal;
+        default: return () => [0, 0, 0];
+      }
+    };
+    
+    const value = getSignalValue();
+    
+    return (
+    <div className="mb-2">
+      <div className="flex items-center justify-between mb-0.5">
+        <label className="block text-xs text-base-content/60">{label}</label>
+        <button
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const babylonObject = getSelectedBabylonObject();
+            if (!babylonObject?.metadata?.originalProperties) return;
+            
+            // Temporarily disable live sync during individual reset
+            setIsResettingProperties(true);
+            
+            const transformType = propertyPath.split('.')[1];
+            const originalValue = babylonObject.metadata.originalProperties[transformType];
+            
+            if (originalValue) {
+              resetSingleProperty(propertyPath, originalValue);
+            }
+            
+            // Re-enable live sync after a short delay
+            setTimeout(() => {
+              setIsResettingProperties(false);
+            }, 50);
+          }}
+          className="p-0.5 rounded hover:bg-base-300/50 text-base-content/40 hover:text-base-content/60 transition-all duration-150"
+          title={`Reset ${label.toLowerCase()}`}
+        >
+          <IconRotateClockwise className="w-3 h-3" />
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-0.5">
+        <For each={['X', 'Y', 'Z']}>
+          {(axis, index) => (
+            <div className="relative">
+              <span className="absolute left-0 top-0 bottom-0 w-6 flex items-center justify-center text-[10px] text-base-content/70 pointer-events-none font-medium border-t border-l border-b border-r border-base-300 bg-base-200 rounded-l">
+                {axis}
+              </span>
+              <input
+                id={`transform-${propertyPath.split('.')[1]}-${axis.toLowerCase()}-${selection.entity || 'unknown'}`}
+                type="number"
+                step="0.1"
+                value={value()[index()] || 0}
+                onFocus={() => {
+                  keyboardShortcuts.disable();
+                }}
+                onBlur={() => {
+                  keyboardShortcuts.enable();
+                }}
+                onMouseDown={() => {}}
+                onChange={(e) => {
+                  const newValue = parseFloat(e.target.value) || 0;
+                  
+                  const babylonObject = getSelectedBabylonObject();
+                  if (!babylonObject) {
+                    console.warn('No babylon object found for transform update');
+                    return;
+                  }
+                  
+                  // Update Babylon object directly
+                  const transformType = propertyPath.split('.')[1];
+                  const axisIndex = index();
+                  
+                  if (transformType === 'position' && babylonObject.position) {
+                    if (axisIndex === 0) babylonObject.position.x = newValue;
+                    else if (axisIndex === 1) babylonObject.position.y = newValue;
+                    else if (axisIndex === 2) babylonObject.position.z = newValue;
+                    
+                    // Update position signal immediately for instant UI response
+                    const newPosition = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
+                    setPositionSignal(newPosition);
+                  } else if (transformType === 'rotation' && babylonObject.rotation) {
+                    if (axisIndex === 0) babylonObject.rotation.x = newValue;
+                    else if (axisIndex === 1) babylonObject.rotation.y = newValue;
+                    else if (axisIndex === 2) babylonObject.rotation.z = newValue;
+                    
+                    // Update rotation signal immediately for instant UI response
+                    const newRotation = [babylonObject.rotation.x, babylonObject.rotation.y, babylonObject.rotation.z];
+                    setRotationSignal(newRotation);
+                  } else if (transformType === 'scale' && babylonObject.scaling) {
+                    if (axisIndex === 0) babylonObject.scaling.x = newValue;
+                    else if (axisIndex === 1) babylonObject.scaling.y = newValue;
+                    else if (axisIndex === 2) babylonObject.scaling.z = newValue;
+                    
+                    // Update scale signal immediately for instant UI response
+                    const newScale = [babylonObject.scaling.x, babylonObject.scaling.y, babylonObject.scaling.z];
+                    setScaleSignal(newScale);
+                  }
+                }}
+                className={`w-full text-xs p-1 pl-6 pr-1 rounded text-center focus:outline-none focus:ring-1 focus:ring-primary border-base-300 bg-secondary/10 text-base-content border`}
+              />
+            </div>
+          )}
+        </For>
+      </div>
+    </div>
+    );
   };
 
   // Extract script property input as a separate component to avoid reactive issues
@@ -702,6 +905,43 @@ export default function ScriptsPanel() {
           
           return (
             <>
+              {/* Transform */}
+              <Show when={positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0}>
+                <div class="bg-base-100 border-base-300 border rounded-lg">
+                  <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().transform ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+                    <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('transform')}>
+                      <IconArrowsMove class="w-3 h-3" />
+                      Transform
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={sectionsOpen().transform}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        toggleSection('transform');
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      class="toggle toggle-primary toggle-xs"
+                    />
+                  </div>
+                  <Show when={sectionsOpen().transform}>
+                    <div class="!p-2">
+                      <div class="space-y-0.5">
+                        <Show when={positionSignal().length > 0}>
+                          {renderVector3Input('Position', 'transform.position')}
+                        </Show>
+                        <Show when={rotationSignal().length > 0}>
+                          {renderVector3Input('Rotation', 'transform.rotation')}
+                        </Show>
+                        <Show when={scaleSignal().length > 0}>
+                          {renderVector3Input('Scale', 'transform.scale')}
+                        </Show>
+                      </div>
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+
               {/* Scripts */}
               <div class="bg-base-100 border-base-300 border rounded-lg">
                 <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().scripts ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
@@ -988,7 +1228,7 @@ export default function ScriptsPanel() {
                 })()}
               </Show>
 
-              {/* Reset All Scripts Button */}
+              {/* Reset All Properties Button */}
               <Show when={selection.entity}>
                 <div class="p-1">
                   <button 
@@ -999,7 +1239,7 @@ export default function ScriptsPanel() {
                     }}
                     class="btn btn-outline btn-error btn-xs w-full"
                   >
-                    Reset All Script Properties
+                    Reset All Properties
                   </button>
                 </div>
               </Show>

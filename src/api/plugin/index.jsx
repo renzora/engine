@@ -71,8 +71,7 @@ class PluginLoader {
       { path: '/src/plugins/web-browser', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/environment', main: 'index.jsx', priority: 2 },
       { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
-      { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
-      { path: '/src/plugins/object-properties', main: 'index.jsx', priority: 5 }
+      { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 }
     ];
 
     for (const location of pluginLocations) {
@@ -173,9 +172,6 @@ class PluginLoader {
             break;
           case 'grid-plugin':
             pluginModule = await import(`@/plugins/grid/index.jsx`);
-            break;
-          case 'object-properties-plugin':
-            pluginModule = await import(`@/plugins/object-properties/index.jsx`);
             break;
           case 'scripts-plugin':
             pluginModule = await import(`@/plugins/scripts/index.jsx`);

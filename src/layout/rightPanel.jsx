@@ -90,8 +90,8 @@ const RightPanel = () => {
     setSelectedEntity(objectId);
     if (objectId) {
       setTransformMode('move');
-      // Switch to object properties tab when an object is selected
-      setSelectedRightTool('object-properties');
+      // Switch to scripts tab when an object is selected
+      setSelectedRightTool('scripts');
     }
   };
 

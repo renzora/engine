@@ -20,7 +20,7 @@ export default createPlugin({
       title: 'Scripts',
       component: ScriptsPanel,
       icon: IconCode,
-      order: 2
+      order: 1
     });
     
     // Scripts plugin started
