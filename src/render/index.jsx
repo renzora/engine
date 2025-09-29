@@ -32,6 +32,7 @@ import { useCameraController } from './hooks/cameraMovement.jsx';
 import { GizmoManagerComponent } from './hooks/gizmo.jsx';
 import { useAssetLoader } from './hooks/assetLoader.jsx';
 import { LoadingTooltip } from './components/LoadingTooltip.jsx';
+import { AxisHelper } from './components/AxisHelper.jsx';
 import Stats from 'stats.js';
 import { pluginAPI } from '@/api/plugin';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
@@ -696,6 +697,7 @@ export default function BabylonRenderer(props) {
       />
       <GizmoManagerComponent />
       <LoadingTooltip loadingTooltip={loadingTooltip} />
+      <AxisHelper />
       
       {/* Time Display */}
       <div 
