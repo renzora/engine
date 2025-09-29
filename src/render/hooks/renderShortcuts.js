@@ -7,6 +7,9 @@ import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
 
 // Hook for registering render viewport keyboard shortcuts
+// Export the transform trigger function for external use
+let triggerTransform = null;
+
 export function renderShortcuts(callbacks = {}) {
   let keysPressed = new Set();
   let movementInterval = null;
@@ -35,6 +38,18 @@ export function renderShortcuts(callbacks = {}) {
   let statusDiv = null;
 
   onMount(() => {
+    // Expose transform trigger function globally
+    window.triggerBlenderTransform = (mode = 'move') => {
+      const fakeEvent = {
+        preventDefault: () => {},
+        stopPropagation: () => {},
+        ctrlKey: false,
+        altKey: false,
+        shiftKey: false
+      };
+      return handleTransformShortcuts(fakeEvent, mode === 'move' ? 'g' : mode === 'rotate' ? 'r' : 's');
+    };
+    
     // Create status div for showing transform mode
     statusDiv = document.createElement('div');
     statusDiv.style.cssText = `
@@ -158,9 +173,10 @@ export function renderShortcuts(callbacks = {}) {
       'r': () => callbacks.rotateMode?.(),    // Rotation gizmo
       's': () => callbacks.scaleMode?.(),     // Scale gizmo
       
-      // Copy/Paste
+      // Copy/Paste/Duplicate
       'ctrl+c': () => callbacks.copy?.(),
       'ctrl+v': () => callbacks.paste?.(),
+      'shift+d': () => callbacks.duplicate?.(),
       
       // Snap to ground
       'end': () => callbacks.snapToGround?.(),
@@ -210,6 +226,9 @@ export function renderShortcuts(callbacks = {}) {
       // Always track mouse position for transform start
       currentMousePos.x = event.clientX;
       currentMousePos.y = event.clientY;
+      
+      // Expose to global scope for duplicate function
+      window.currentMousePos = currentMousePos;
       
       if (transformState.isActive) {
         // No virtual cursor updates needed anymore!
@@ -291,13 +310,13 @@ export function renderShortcuts(callbacks = {}) {
         }
       }
       
-      // Track key presses for movement (only if not a gizmo shortcut)
-      if (['w', 'a', 's', 'd', 'e', 'q', 'shift', 'control'].includes(key)) {
+      // Track key presses for movement (only if not a gizmo shortcut and no modifiers)
+      if (['w', 'a', 's', 'd', 'e', 'q', 'shift', 'control'].includes(key) && !event.shiftKey && !event.ctrlKey && !event.altKey) {
         keysPressed.add(key);
         return; // Don't prevent default for movement keys
       }
       
-      // Handle other shortcuts (non-gizmo) - debug this section
+      // Handle all other shortcuts (including modifier combinations)
       for (const [keyPattern, callback] of Object.entries(gameShortcuts)) {
         if (matchesKey(event, keyPattern)) {
           console.log(`🔍 Shortcut matched: ${keyPattern}`);
@@ -912,6 +931,7 @@ export function getRenderShortcuts() {
       'Ctrl+V': 'Paste',
       'Ctrl+X': 'Cut',
       'Ctrl+D': 'Duplicate',
+      'Shift+D': 'Duplicate Selected Object',
       'Delete': 'Delete Object'
     },
     'Selection': {

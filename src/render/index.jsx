@@ -277,6 +277,42 @@ export default function BabylonRenderer(props) {
       
       console.log('✅ Object deleted successfully');
     },
+    // Duplicate selected object
+    duplicate: () => {
+      const selectedObject = renderStore.selectedObject;
+      
+      if (!selectedObject) {
+        console.log('⚠️ No object selected to duplicate');
+        return;
+      }
+      
+      console.log('📋 Duplicating object:', selectedObject.name);
+      
+      try {
+        let newObject = selectedObject.clone(selectedObject.name + '_duplicate', null, false, true);
+        
+        if (newObject) {
+          // Keep the duplicated object at the same position as original initially
+          newObject.position.copyFrom(selectedObject.position);
+          
+          // Add object to hierarchy first, then select it
+          renderActions.addObject(newObject);
+          renderActions.selectObject(newObject);
+          
+          // Trigger Blender-style grab mode (equivalent to pressing 'G')
+          setTimeout(() => {
+            // Call the transform function directly
+            if (window.triggerBlenderTransform) {
+              window.triggerBlenderTransform('move');
+            }
+          }, 50); // Small delay to ensure selection is complete
+          
+          console.log('✅ Object duplicated successfully and grab mode will be activated');
+        }
+      } catch (error) {
+        console.error('❌ Failed to duplicate object:', error);
+      }
+    },
     // Snap to ground
     snapToGround: () => {
       const selectedObject = renderStore.selectedObject;
