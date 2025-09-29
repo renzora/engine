@@ -16,6 +16,44 @@ function TopMenu() {
   const [menuPosition, setMenuPosition] = createSignal(null);
   const [isMaximized, setIsMaximized] = createSignal(false);
 
+  // Check initial maximize state and listen for window changes
+  createEffect(() => {
+    if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+      const checkMaximizeState = async () => {
+        try {
+          const currentWindow = getCurrentWindow();
+          const maximized = await currentWindow.isMaximized();
+          setIsMaximized(maximized);
+        } catch (error) {
+          console.warn('Failed to check maximize state:', error);
+        }
+      };
+
+      // Check initial state
+      checkMaximizeState();
+
+      // Listen for window resize events to update maximize state
+      const handleResize = () => {
+        checkMaximizeState();
+      };
+
+      window.addEventListener('resize', handleResize);
+      
+      // Also listen for custom engine events
+      const handleProjectSelected = () => {
+        // Delay check to allow window maximize to complete
+        setTimeout(checkMaximizeState, 100);
+      };
+
+      document.addEventListener('engine:project-selected', handleProjectSelected);
+
+      onCleanup(() => {
+        window.removeEventListener('resize', handleResize);
+        document.removeEventListener('engine:project-selected', handleProjectSelected);
+      });
+    }
+  });
+
   // Tauri window control functions
   const handleMinimize = async () => {
     try {

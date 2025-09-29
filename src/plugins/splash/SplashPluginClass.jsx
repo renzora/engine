@@ -123,6 +123,20 @@ function SplashViewport({ tab }) {
 
       setLoadingStage('Setting up interface...');
 
+      // Maximize window when project loads
+      try {
+        if (typeof window !== 'undefined' && window.__TAURI_INTERNALS__) {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window');
+          const currentWindow = getCurrentWindow();
+          const isMaximized = await currentWindow.isMaximized();
+          if (!isMaximized) {
+            await currentWindow.maximize();
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to maximize window:', error);
+      }
+
       // Show UI elements
       pluginAPI.showProps();
       pluginAPI.showPanel();

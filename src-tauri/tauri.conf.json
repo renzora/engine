@@ -17,8 +17,8 @@
         "fullscreen": false,
         "decorations": false,
         "maximized": false,
-        "width": 1440,
-        "height": 810,
+        "width": 1100,
+        "height": 520,
         "center": true,
         "dragDropEnabled": false,
         "devtools": true
