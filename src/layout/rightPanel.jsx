@@ -4,6 +4,7 @@ import Scene from '@/pages/editor/Scene.jsx';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import PanelToggleButton from '@/ui/PanelToggleButton.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
+import { objectPropertiesActions } from '@/layout/stores/ViewportStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
 import { Show, createMemo, createSignal } from 'solid-js';
 import { renderStore } from '@/render/store.jsx';
@@ -89,7 +90,12 @@ const RightPanel = () => {
   const handleObjectSelect = (objectId) => {
     setSelectedEntity(objectId);
     if (objectId) {
-      setTransformMode('move');
+      // Ensure default components are set up for the selected object
+      objectPropertiesActions.ensureDefaultComponents(objectId);
+      
+      if (objectId !== 'scene-root') {
+        setTransformMode('move');
+      }
       // Switch to scripts tab when an object is selected
       setSelectedRightTool('scripts');
     }

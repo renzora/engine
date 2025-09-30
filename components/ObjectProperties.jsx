@@ -157,7 +157,7 @@ const ObjectProperties = (props) => {
       }
     >
       <div className="p-4 space-y-4">
-        <Show when={objectProps().transform}>
+        <Show when={objectProps().transform && props.objectId !== 'scene-root'}>
           <div>
             <h3 className="text-sm font-semibold text-white mb-3 border-b border-gray-600 pb-2">
               Transform

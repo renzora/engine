@@ -110,6 +110,11 @@ export default function ScriptsPanel() {
       return null;
     }
     
+    // Handle scene-root as special case
+    if (selection.entity === 'scene-root') {
+      return renderStore.scene;
+    }
+    
     // Find the Babylon object by ID
     const allObjects = [...renderStore.scene.meshes, ...renderStore.scene.transformNodes, ...renderStore.scene.lights, ...renderStore.scene.cameras];
     const found = allObjects.find(obj => (obj.uniqueId || obj.name) === selection.entity);
@@ -159,8 +164,13 @@ export default function ScriptsPanel() {
     }
     
     // Get babylon object without triggering reactivity
-    const allObjects = [...renderStore.scene.meshes, ...renderStore.scene.transformNodes, ...renderStore.scene.lights, ...renderStore.scene.cameras];
-    const babylonObject = allObjects.find(obj => (obj.uniqueId || obj.name) === entityId);
+    let babylonObject;
+    if (entityId === 'scene-root') {
+      babylonObject = renderStore.scene;
+    } else {
+      const allObjects = [...renderStore.scene.meshes, ...renderStore.scene.transformNodes, ...renderStore.scene.lights, ...renderStore.scene.cameras];
+      babylonObject = allObjects.find(obj => (obj.uniqueId || obj.name) === entityId);
+    }
     
     if (!babylonObject) {
       return;
@@ -177,20 +187,22 @@ export default function ScriptsPanel() {
       babylonObject.metadata.originalProperties = {};
     }
     
-    // Capture original transform values when object is first selected
-    if (!babylonObject.metadata.originalProperties.position && babylonObject.position) {
-      babylonObject.metadata.originalProperties.position = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
-    }
-    if (!babylonObject.metadata.originalProperties.rotation && babylonObject.rotation) {
-      babylonObject.metadata.originalProperties.rotation = [babylonObject.rotation.x, babylonObject.rotation.y, babylonObject.rotation.z];
-    }
-    if (!babylonObject.metadata.originalProperties.scale) {
-      if (babylonObject.scaling) {
-        babylonObject.metadata.originalProperties.scale = [babylonObject.scaling.x, babylonObject.scaling.y, babylonObject.scaling.z];
-      } else if (babylonObject.scale) {
-        babylonObject.metadata.originalProperties.scale = [babylonObject.scale.x, babylonObject.scale.y, babylonObject.scale.z];
-      } else {
-        babylonObject.metadata.originalProperties.scale = [1, 1, 1];
+    // Capture original transform values when object is first selected (skip for scene-root)
+    if (entityId !== 'scene-root') {
+      if (!babylonObject.metadata.originalProperties.position && babylonObject.position) {
+        babylonObject.metadata.originalProperties.position = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
+      }
+      if (!babylonObject.metadata.originalProperties.rotation && babylonObject.rotation) {
+        babylonObject.metadata.originalProperties.rotation = [babylonObject.rotation.x, babylonObject.rotation.y, babylonObject.rotation.z];
+      }
+      if (!babylonObject.metadata.originalProperties.scale) {
+        if (babylonObject.scaling) {
+          babylonObject.metadata.originalProperties.scale = [babylonObject.scaling.x, babylonObject.scaling.y, babylonObject.scaling.z];
+        } else if (babylonObject.scale) {
+          babylonObject.metadata.originalProperties.scale = [babylonObject.scale.x, babylonObject.scale.y, babylonObject.scale.z];
+        } else {
+          babylonObject.metadata.originalProperties.scale = [1, 1, 1];
+        }
       }
     }
     
@@ -201,8 +213,10 @@ export default function ScriptsPanel() {
         return;
       }
       
-      // Update transform signals
-      if (babylonObject.position) {
+      // Skip transform sync for scene-root (scenes don't have position/rotation/scale)
+      if (entityId !== 'scene-root') {
+        // Update transform signals
+        if (babylonObject.position) {
         const newPosition = [babylonObject.position.x, babylonObject.position.y, babylonObject.position.z];
         const currentPosition = positionSignal();
         if (newPosition.some((val, i) => val !== currentPosition[i])) {
@@ -231,6 +245,7 @@ export default function ScriptsPanel() {
           setScaleSignal(newScale);
         }
       }
+      } // End of transform sync for non-scene objects
 
       // Update script properties signal
       const scriptProperties = babylonObject.metadata?.scriptProperties || {};
@@ -905,8 +920,8 @@ export default function ScriptsPanel() {
           
           return (
             <>
-              {/* Transform */}
-              <Show when={positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0}>
+              {/* Transform - Hide for scene-root */}
+              <Show when={(positionSignal().length > 0 || rotationSignal().length > 0 || scaleSignal().length > 0) && selection.entity !== 'scene-root'}>
                 <div class="bg-base-100 border-base-300 border rounded-lg">
                   <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().transform ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
                     <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('transform')}>

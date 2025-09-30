@@ -33,7 +33,12 @@ export function GizmoManagerComponent() {
     const transformMode = renderStore.transformMode;
     
     if (gizmoManager) {
-      gizmoManager.attachToMesh(selectedObject);
+      // Don't attach gizmo to scene objects since they don't support behaviors
+      if (selectedObject && selectedObject.getClassName && selectedObject.getClassName() === 'Scene') {
+        gizmoManager.attachToMesh(null);
+      } else {
+        gizmoManager.attachToMesh(selectedObject);
+      }
       updateGizmoMode(transformMode);
     }
   });

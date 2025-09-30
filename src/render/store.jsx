@@ -453,8 +453,13 @@ export const renderActions = {
     if (gizmoManager && scene) {
       const primaryObject = renderStore.selectedObject;
       if (primaryObject) {
-        // Attach gizmo to primary selected object
-        gizmoManager.attachToMesh(primaryObject);
+        // Don't attach gizmo to scene objects since they don't support behaviors
+        if (primaryObject.getClassName && primaryObject.getClassName() === 'Scene') {
+          gizmoManager.attachToMesh(null);
+        } else {
+          // Attach gizmo to primary selected object
+          gizmoManager.attachToMesh(primaryObject);
+        }
         
         // Only show gizmo if not in select mode
         const currentMode = renderStore.transformMode;
@@ -655,6 +660,20 @@ export const renderActions = {
   selectObjectById(objectId) {
     // Find and select object by ID from scene hierarchy
     if (!renderStore.scene) return false;
+    
+    // Handle scene-root as special case
+    if (objectId === 'scene-root') {
+      // For scene-root, we need to handle it specially since the scene object
+      // doesn't have a uniqueId like other Babylon objects
+      setRenderStore('selectedObject', renderStore.scene);
+      setRenderStore('selectedObjects', [renderStore.scene]);
+      
+      // Update editor store directly with scene-root ID
+      import('@/layout/stores/EditorStore').then(({ editorActions }) => {
+        editorActions.selectEntity('scene-root', ['scene-root']);
+      });
+      return true;
+    }
     
     // Find the Babylon object by ID in the hierarchy
     const findObjectById = (hierarchyItems) => {

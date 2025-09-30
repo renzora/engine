@@ -77,11 +77,21 @@ function Scripts() {
   };
 
   const loadObjectScripts = (objectId) => {
-    const objectProps = objectPropertiesActions.getObjectProperties(objectId);
-    if (objectProps?.components?.scripting?.scriptFiles) {
-      setSelectedObjectScripts(objectProps.components.scripting.scriptFiles);
+    if (objectId === 'scene-root') {
+      // Handle scene-level scripts differently
+      const sceneProps = objectPropertiesActions.getObjectProperties('scene-root');
+      if (sceneProps?.components?.scripting?.scriptFiles) {
+        setSelectedObjectScripts(sceneProps.components.scripting.scriptFiles);
+      } else {
+        setSelectedObjectScripts([]);
+      }
     } else {
-      setSelectedObjectScripts([]);
+      const objectProps = objectPropertiesActions.getObjectProperties(objectId);
+      if (objectProps?.components?.scripting?.scriptFiles) {
+        setSelectedObjectScripts(objectProps.components.scripting.scriptFiles);
+      } else {
+        setSelectedObjectScripts([]);
+      }
     }
   };
 
@@ -268,7 +278,12 @@ export default class ${scriptName} {
         <div className="w-full overflow-y-auto">
           <Show when={selectedEntity()}>
             <div className="p-3 bg-slate-800/50 border-b border-slate-700">
-              <div className="text-xs text-gray-400 mb-2">Scripts attached to selected object:</div>
+              <div className="text-xs text-gray-400 mb-2">
+                {selectedEntity() === 'scene-root' 
+                  ? 'Scripts attached to scene:' 
+                  : 'Scripts attached to selected object:'
+                }
+              </div>
               <Show when={selectedObjectScripts().length === 0}>
                 <div className="text-xs text-gray-500">No scripts attached</div>
               </Show>

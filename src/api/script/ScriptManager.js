@@ -881,6 +881,11 @@ class ScriptManager {
    * Find a Babylon.js object by ID
    */
   findBabylonObject(objectId) {
+    // Handle scene-root as a special case
+    if (objectId === 'scene-root') {
+      return this.scene;
+    }
+    
     // Check meshes
     for (const mesh of this.scene.meshes) {
       if ((mesh.uniqueId || mesh.name) === objectId) {

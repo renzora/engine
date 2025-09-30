@@ -144,20 +144,33 @@ export const viewportActions = {
 export const objectPropertiesActions = {
   ensureDefaultComponents: (objectId) => {
     if (!objectPropertiesStore.objects[objectId]) {
-      setObjectPropertiesStore('objects', objectId, {
-        transform: {
-          position: [0, 0, 0],
-          rotation: [0, 0, 0], 
-          scale: [1, 1, 1]
-        },
-        components: {
-          scripting: {
-            enabled: false,
-            scriptFiles: []
-          }
-        },
-        nodeBindings: {}
-      })
+      if (objectId === 'scene-root') {
+        // Scene-root doesn't need transform, only components
+        setObjectPropertiesStore('objects', objectId, {
+          components: {
+            scripting: {
+              enabled: false,
+              scriptFiles: []
+            }
+          },
+          nodeBindings: {}
+        })
+      } else {
+        setObjectPropertiesStore('objects', objectId, {
+          transform: {
+            position: [0, 0, 0],
+            rotation: [0, 0, 0], 
+            scale: [1, 1, 1]
+          },
+          components: {
+            scripting: {
+              enabled: false,
+              scriptFiles: []
+            }
+          },
+          nodeBindings: {}
+        })
+      }
     }
     
     console.log(`✅ ensureDefaultComponents - Added default components for object: ${objectId}`)

@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, For, Show } from 'solid-js';
-import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo } from '@tabler/icons-solidjs';
+import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo, IconChevronRight, IconChevronDown } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions, viewportStore } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
@@ -397,10 +397,7 @@ function Scene(props) {
               if (props.onObjectSelect) {
                 props.onObjectSelect(item.id);
               }
-              // Toggle folder expansion
-              if (hasChildren) {
-                setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
-              }
+              // Note: Removed automatic toggling - now handled by chevron button
             }
           }}
           onContextMenu={(e) => {
@@ -425,6 +422,24 @@ function Scene(props) {
           </Show>
           
           <div class="relative flex items-center">
+            {/* Chevron for expandable items */}
+            <Show when={hasChildren}>
+              <button
+                className="w-4 h-4 mr-1 flex items-center justify-center hover:bg-base-content/10 rounded transition-colors"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
+                }}
+                title={isExpanded() ? 'Collapse' : 'Expand'}
+              >
+                {isExpanded() ? (
+                  <IconChevronDown class="w-3 h-3 text-base-content/60" />
+                ) : (
+                  <IconChevronRight class="w-3 h-3 text-base-content/60" />
+                )}
+              </button>
+            </Show>
+            
             <Icon 
               class="w-4 h-4 mr-0.5 cursor-pointer hover:opacity-70 transition-opacity" 
               style={{ 
