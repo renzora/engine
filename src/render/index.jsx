@@ -628,6 +628,12 @@ export default function BabylonRenderer(props) {
       babylonScene.onPointerObservable.add((pointerInfo) => {
         // Only process left-click events (button 0) - let right-click pass through to camera controller
         if (pointerInfo.type === 1 && pointerInfo.event && pointerInfo.event.button === 0) { // LEFT CLICK only
+          // Check if we're in transform mode - if so, don't process selection changes
+          if (renderStore.isTransformActive) {
+            console.log('🚫 Skipping selection - transform is active');
+            return;
+          }
+          
           const isShiftPressed = pointerInfo.event.shiftKey;
           
           if (pointerInfo.pickInfo?.hit && pointerInfo.pickInfo.pickedMesh) {

@@ -378,6 +378,9 @@ export function renderShortcuts(callbacks = {}) {
       transformState.axis = null;
       transformState.isFreeTransform = true;
       
+      // Set store flag to prevent selection changes during transform
+      renderActions.setTransformActive(true);
+      
       // Use current tracked mouse position
       transformState.startMousePos = { x: currentMousePos.x, y: currentMousePos.y };
       transformState.accumulatedDelta = { x: 0, y: 0 };
@@ -712,6 +715,9 @@ export function renderShortcuts(callbacks = {}) {
         objTransform.object.scaling.copyFrom(objTransform.scaling);
       });
     }
+    
+    // Clear transform active flag before resetting state
+    renderActions.setTransformActive(false);
     resetTransformState();
   };
 
@@ -891,6 +897,9 @@ export function renderShortcuts(callbacks = {}) {
     transformState.accumulatedDelta = null;
     transformState.smoothMovement.velocity = null; // Reset smooth movement
     statusDiv.style.display = 'none';
+    
+    // Clear store flag to re-enable selection changes
+    renderActions.setTransformActive(false);
     
     // Restore real cursor
     document.body.style.cursor = '';

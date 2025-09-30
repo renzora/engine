@@ -15,6 +15,7 @@ export const [renderStore, setRenderStore] = createStore({
   selectedMeshes: [], // Track selected meshes for highlighting
   transformMode: 'select', // 'select', 'move', 'rotate', 'scale'
   isGizmoDragging: false, // Track when gizmo is being dragged
+  isTransformActive: false, // Track when Blender-style transform is active (g/s/r)
   isInitialized: false,
   hierarchy: [], // Scene hierarchy tree for UI
   settings: {
@@ -111,6 +112,11 @@ export const renderActions = {
   setGizmoDragging(isDragging) {
     // Track gizmo drag state to prevent camera movement during transformation
     setRenderStore('isGizmoDragging', isDragging);
+  },
+
+  setTransformActive(isActive) {
+    // Track Blender-style transform state to prevent selection changes
+    setRenderStore('isTransformActive', isActive);
   },
 
   ensureGizmoThickness() {
