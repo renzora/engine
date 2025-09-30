@@ -3,7 +3,7 @@ import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie, IconMountain } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -69,6 +69,9 @@ function Toolbar() {
   const getSelectedTool = () => {
     if (['select', 'move', 'rotate', 'scale'].includes(transformMode())) {
       return transformMode();
+    }
+    if (['terrain_raise', 'terrain_lower', 'terrain_smooth', 'terrain_flatten'].includes(selectedTool())) {
+      return selectedTool();
     }
     return selectedTool();
   };
@@ -520,27 +523,64 @@ function Toolbar() {
         'info'
       );
     }
+    else if (['terrain_raise', 'terrain_lower', 'terrain_smooth', 'terrain_flatten'].includes(toolId)) {
+      if (!selectedEntity() || !selectedEntity()._terrainData) {
+        editorActions.addConsoleMessage('Please select a terrain object first', 'warning');
+        return;
+      }
+      setSelectedTool(toolId);
+      editorActions.addConsoleMessage(`Terrain tool activated: ${toolId.replace('terrain_', '')}`, 'info');
+    }
     else {
       editorActions.addConsoleMessage(`Tool activated: ${toolId}`, 'info');
     }
   };
 
-  const tools = [
-    { id: 'select', icon: IconPointer, tooltip: 'Select' },
-    { id: 'move', icon: IconArrowsMove, tooltip: 'Move' },
-    { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
-    { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
-    null, // Separator
-    { id: 'camera', icon: IconVideo, tooltip: 'Add Camera' },
-    { id: 'cube', icon: IconBox, tooltip: 'Add Cube' },
-    { id: 'sphere', icon: IconCircle, tooltip: 'Add Sphere' },
-    { id: 'cylinder', icon: IconCylinder, tooltip: 'Add Cylinder' },
-    { id: 'plane', icon: IconSquare, tooltip: 'Add Plane' },
-    { id: 'light', icon: IconSun, tooltip: 'Add Light' },
-    null, // Separator
-    { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },
-    { id: 'delete', icon: IconTrash, tooltip: 'Delete' }
-  ];
+  // Check if terrain object is selected to show terrain-specific tools
+  const isTerrainSelected = () => {
+    const entity = selectedEntity();
+    const babylonObject = renderStore.selectedObject; // Get the actual Babylon.js object
+    return babylonObject && babylonObject._terrainData;
+  };
+
+  // Make tools reactive to selection changes
+  const tools = () => {
+    if (isTerrainSelected()) {
+      // Terrain-specific toolbar
+      return [
+        { id: 'select', icon: IconPointer, tooltip: 'Select' },
+        { id: 'move', icon: IconArrowsMove, tooltip: 'Move' },
+        { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
+        { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
+        null, // Separator
+        { id: 'terrain_raise', icon: IconMountain, tooltip: 'Raise Terrain' },
+        { id: 'terrain_lower', icon: IconSquare, tooltip: 'Lower Terrain' },
+        { id: 'terrain_smooth', icon: IconCircle, tooltip: 'Smooth Terrain' },
+        { id: 'terrain_flatten', icon: IconBrush, tooltip: 'Flatten Terrain' },
+        null, // Separator
+        { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },
+        { id: 'delete', icon: IconTrash, tooltip: 'Delete' }
+      ];
+    } else {
+      // Standard toolbar
+      return [
+        { id: 'select', icon: IconPointer, tooltip: 'Select' },
+        { id: 'move', icon: IconArrowsMove, tooltip: 'Move' },
+        { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
+        { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
+        null, // Separator
+        { id: 'camera', icon: IconVideo, tooltip: 'Add Camera' },
+        { id: 'cube', icon: IconBox, tooltip: 'Add Cube' },
+        { id: 'sphere', icon: IconCircle, tooltip: 'Add Sphere' },
+        { id: 'cylinder', icon: IconCylinder, tooltip: 'Add Cylinder' },
+        { id: 'plane', icon: IconSquare, tooltip: 'Add Plane' },
+        { id: 'light', icon: IconSun, tooltip: 'Add Light' },
+        null, // Separator
+        { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },
+        { id: 'delete', icon: IconTrash, tooltip: 'Delete' }
+      ];
+    }
+  };
 
   const setMode = (mode) => {
     editorActions.setCurrentMode(mode);
@@ -550,7 +590,7 @@ function Toolbar() {
 
   return (
     <div class="w-full h-10 flex items-center bg-base-200 border-b border-base-300 px-2 gap-1">
-      <For each={tools}>
+      <For each={tools()}>
         {(tool) => 
           tool === null ? (
             <div class="w-px h-6 bg-base-content/20 mx-1"></div>

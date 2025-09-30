@@ -2,6 +2,7 @@ import { createSignal, createEffect, createMemo, For } from 'solid-js';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
 import { propertyTabs, toolbarButtons } from '@/api/plugin';
+import { renderStore } from '@/render/store.jsx';
 
 const defaultTools = [];
 
@@ -25,6 +26,8 @@ function TabMenu(props) {
   createEffect(() => {
     propertyTabs();
     toolbarButtons();
+    editorStore.selection.entity; // React to selection changes
+    renderStore.selectedObject; // React to Babylon.js object changes
     const newTools = getOrderedTools();
     setTools(newTools);
   });
@@ -56,7 +59,18 @@ function TabMenu(props) {
   function getOrderedTools() {
     const currentWorkflow = getCurrentWorkflow();
     const allowedToolIds = workflowTools[currentWorkflow] || workflowTools['default'];
+    const selectedEntityId = editorStore.selection.entity;
+    const selectedBabylonObject = renderStore.selectedObject;
+    
     const pluginTabs = Array.from(propertyTabs().values())
+      .filter(tab => {
+        // Check if tab has a condition function
+        if (tab.condition && typeof tab.condition === 'function') {
+          // Pass the actual Babylon.js object to the condition function
+          return tab.condition(selectedBabylonObject);
+        }
+        return true; // Show tab if no condition
+      })
       .sort((a, b) => (a.order || 0) - (b.order || 0))
       .map(tab => ({
         id: tab.id,

@@ -17,7 +17,8 @@ const RightPanel = () => {
   const selection = () => editorStore.selection;
   const ui = () => editorStore.ui;
   const settings = () => editorStore.settings;
-  const selectedObject = () => selection().entity;
+  const selectedObject = () => renderStore.selectedObject; // Get actual Babylon.js object
+  const selectedObjectId = () => selection().entity; // Keep ID for other uses
   const selectedRightTool = () => ui().selectedTool;
   const rightPanelWidth = () => editorStore.ui.rightPanelWidth;
   const bottomPanelHeight = () => editorStore.ui.bottomPanelHeight;
@@ -278,7 +279,7 @@ const RightPanel = () => {
                   <div className="flex-1 flex flex-col">
                     <div className="flex-1 min-h-0 overflow-y-auto" style="scrollbar-width: thin;">
                       <Scene 
-                        selectedObject={selectedObject()}
+                        selectedObject={selectedObjectId()}
                         onObjectSelect={handleObjectSelect}
                         onContextMenu={handleContextMenu}
                         isResizing={isResizingTabs()}

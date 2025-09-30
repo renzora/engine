@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
 import ExportDialog from '@/ui/ExportDialog.jsx';
@@ -173,6 +173,16 @@ const handleSceneCreate = async (sceneName) => {
   }
 };
 
+// Handle terrain creation
+const handleTerrainCreate = async () => {
+  try {
+    // Dispatch terrain creation event that terrain plugin will listen to
+    document.dispatchEvent(new CustomEvent('engine:create-terrain'));
+  } catch (error) {
+    console.error('Failed to create terrain:', error);
+  }
+};
+
 // Handle load scene with unsaved changes check
 const handleLoadScene = async () => {
   const proceedWithLoadScene = () => {
@@ -339,6 +349,12 @@ export default createPlugin({
           label: 'Scene', 
           icon: IconChairDirector,
           action: handleLoadScene
+        },
+        { 
+          id: 'terrain', 
+          label: 'Terrain', 
+          icon: IconMountain,
+          action: handleTerrainCreate
         },
         { 
           id: 'mesh', 
