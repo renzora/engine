@@ -62,7 +62,7 @@ const [editorStore, setEditorStore] = createStore({
   },
   
   scripts: {
-    isPlaying: savedSettings.scripts?.isPlaying !== undefined ? savedSettings.scripts.isPlaying : false
+    isPlaying: savedSettings.scripts?.isPlaying !== undefined ? savedSettings.scripts.isPlaying : true
   },
 
 

@@ -531,13 +531,6 @@ function Toolbar() {
     { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
     { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
     null, // Separator
-    { 
-      id: 'play_pause', 
-      icon: IconPlayerPlay, 
-      tooltip: 'Toggle Script Execution',
-      isDynamic: true
-    },
-    null, // Separator
     { id: 'camera', icon: IconVideo, tooltip: 'Add Camera' },
     { id: 'cube', icon: IconBox, tooltip: 'Add Cube' },
     { id: 'sphere', icon: IconCircle, tooltip: 'Add Sphere' },
@@ -564,28 +557,17 @@ function Toolbar() {
           ) : (
             <button 
               onClick={() => handleToolbarClick(tool.id)}
-              class={`w-8 h-8 flex items-center justify-center rounded transition-all group ${
+              class={`w-8 h-8 flex items-center justify-center rounded transition-all group cursor-pointer ${
                 getSelectedTool() === tool.id
                   ? 'bg-primary text-primary-content'
-                  : tool.id === 'play_pause' && editorStore.scripts.isPlaying
-                    ? 'bg-warning text-warning-content'
-                    : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
+                  : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
               }`} 
               title={tool.tooltip}
             >
-              {tool.isDynamic && tool.id === 'play_pause' ? 
-                (editorStore.scripts.isPlaying ? 
-                  <IconPlayerPause class="w-4 h-4" /> : 
-                  <IconPlayerPlay class="w-4 h-4" />
-                ) :
-                <tool.icon class="w-4 h-4" />
-              }
+              <tool.icon class="w-4 h-4" />
               
               <div class="absolute top-full mt-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                {tool.isDynamic && tool.id === 'play_pause' ? 
-                  (editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts') :
-                  tool.tooltip
-                }
+                {tool.tooltip}
               </div>
             </button>
           )
@@ -593,6 +575,25 @@ function Toolbar() {
       </For>
       
       <div class="flex-1" />
+      
+      {/* Play/Pause Button */}
+      <button 
+        onClick={() => handleToolbarClick('play_pause')}
+        class="h-8 px-3 flex items-center gap-2 rounded transition-all group cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300" 
+        title={editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts'}
+      >
+        {editorStore.scripts.isPlaying ? 
+          <IconPlayerPause class={`w-3 h-3 text-yellow-500`} /> : 
+          <IconPlayerPlay class={`w-3 h-3 text-green-500`} />
+        }
+        <span class="text-xs">
+          {editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts'}
+        </span>
+        
+        <div class="absolute top-full mt-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+          {editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts'}
+        </div>
+      </button>
       
       {/* Mode Dropdown */}
       <div class="relative" data-mode-dropdown>
@@ -602,7 +603,7 @@ function Toolbar() {
             // Close camera dropdown when mode dropdown opens
             setCameraViewDropdownOpen(false);
           }}
-          class="h-8 px-3 flex items-center gap-2 rounded text-base-content/60 hover:text-base-content hover:bg-base-300 text-xs transition-all"
+          class="h-8 px-3 flex items-center gap-2 rounded cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300 text-xs transition-all"
           title={`Current mode: ${getModeDisplayData(currentMode()).description}`}
         >
           {(() => {
@@ -620,7 +621,7 @@ function Toolbar() {
               
               <button
                 onClick={() => setMode('standard')}
-                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left ${
                   currentMode() === 'standard' ? 'bg-base-300 text-base-content' : ''
                 }`}
               >
@@ -633,7 +634,7 @@ function Toolbar() {
               
               <button
                 onClick={() => setMode('levelPrototyping')}
-                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left ${
                   currentMode() === 'levelPrototyping' ? 'bg-base-300 text-base-content' : ''
                 }`}
               >
@@ -646,7 +647,7 @@ function Toolbar() {
               
               <button
                 onClick={() => setMode('sculpting')}
-                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left ${
                   currentMode() === 'sculpting' ? 'bg-base-300 text-base-content' : ''
                 }`}
               >
@@ -659,7 +660,7 @@ function Toolbar() {
               
               <button
                 onClick={() => setMode('animation')}
-                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left ${
                   currentMode() === 'animation' ? 'bg-base-300 text-base-content' : ''
                 }`}
               >
@@ -684,11 +685,11 @@ function Toolbar() {
               window._closeHelperDropdowns();
             }
           }}
-          class="h-8 px-3 flex items-center gap-1 rounded text-base-content/60 hover:text-base-content hover:bg-base-100/50 text-xs transition-all"
+          class="h-8 px-3 flex items-center gap-1 rounded cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-100/50 text-xs transition-all"
           title="Camera Views (Numpad shortcuts)"
         >
           <IconVideo class="w-3 h-3" />
-          <span>{currentViewName()}</span>
+          <span>Camera</span>
           <IconChevronDown class="w-3 h-3" />
         </button>
         
@@ -699,15 +700,15 @@ function Toolbar() {
               
               <button
                 onClick={() => setCameraView('front')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
-                <span>Front Orthographic</span>
+                <span>Front</span>
                 <span class="text-base-content/60">1</span>
               </button>
               
               <button
                 onClick={() => setCameraView('back')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
                 <span>Back</span>
                 <span class="text-base-content/60">Ctrl+1</span>
@@ -715,15 +716,15 @@ function Toolbar() {
               
               <button
                 onClick={() => setCameraView('right')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
-                <span>Right Orthographic</span>
+                <span>Right</span>
                 <span class="text-base-content/60">3</span>
               </button>
               
               <button
                 onClick={() => setCameraView('left')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
                 <span>Left</span>
                 <span class="text-base-content/60">Ctrl+3</span>
@@ -731,15 +732,15 @@ function Toolbar() {
               
               <button
                 onClick={() => setCameraView('top')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
-                <span>Top Orthographic</span>
+                <span>Top</span>
                 <span class="text-base-content/60">7</span>
               </button>
               
               <button
                 onClick={() => setCameraView('bottom')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
                 <span>Bottom</span>
                 <span class="text-base-content/60">Ctrl+7</span>
@@ -749,7 +750,7 @@ function Toolbar() {
               
               <button
                 onClick={() => setCameraView('frontLeft')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
                 <span>Front Left</span>
                 <span class="text-base-content/60">8</span>
@@ -757,7 +758,7 @@ function Toolbar() {
               
               <button
                 onClick={() => setCameraView('frontRight')}
-                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded hover:bg-base-300 text-left"
+                class="w-full flex items-center justify-between px-2 py-1 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
               >
                 <span>Front Right</span>
                 <span class="text-base-content/60">6</span>
