@@ -582,6 +582,9 @@ export default function ScriptsPanel() {
     
     // Use a simple function instead of createMemo to avoid circular dependencies
     const getCurrentValue = () => {
+      // Force reactivity by accessing the signal
+      const currentProps = scriptPropertiesSignal();
+      
       if (!babylonObject?.metadata?.scriptProperties) {
         return property.defaultValue !== undefined ? property.defaultValue : getDefaultValueForType(property.type);
       }
@@ -626,6 +629,9 @@ export default function ScriptsPanel() {
         if (!babylonObject.metadata.scriptProperties) babylonObject.metadata.scriptProperties = {};
         
         babylonObject.metadata.scriptProperties[propertyName] = newValue;
+        
+        // Trigger signal update for reactivity
+        setScriptPropertiesSignal({ ...babylonObject.metadata.scriptProperties });
         
         // Also update through ScriptAPI for script instance synchronization
         const runtime = getScriptRuntime();
@@ -791,7 +797,7 @@ export default function ScriptsPanel() {
                 }
               }}
             >
-              <Show when={getCurrentValue() && getCurrentValue().trim() !== ''} fallback={
+              <Show when={getCurrentValue() && String(getCurrentValue()).trim() !== ''} fallback={
                 <input
                   id={`script-${property.name}-text-${selection.entity || 'unknown'}`}
                   type="text"
@@ -1204,24 +1210,73 @@ export default function ScriptsPanel() {
                                       <IconCode class="w-3 h-3" />
                                       {sectionName}
                                     </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.preventDefault();
-                                        e.stopPropagation();
-                                        toggleScriptPause(scriptInstance._scriptPath);
-                                      }}
-                                      class={`btn btn-xs btn-circle ${
-                                        isScriptPaused(scriptInstance._scriptPath)
-                                          ? 'btn-success hover:btn-success'
-                                          : 'btn-warning hover:btn-warning'
-                                      }`}
-                                      title={`${isScriptPaused(scriptInstance._scriptPath) ? 'Resume' : 'Pause'} script`}
-                                    >
-                                      {isScriptPaused(scriptInstance._scriptPath) ? 
-                                        <IconPlayerPlay class="w-3 h-3" /> : 
-                                        <IconPlayerPause class="w-3 h-3" />
-                                      }
-                                    </button>
+                                    <div class="flex items-center gap-1">
+                                      <button
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          toggleScriptPause(scriptInstance._scriptPath);
+                                        }}
+                                        class={`btn btn-xs btn-circle ${
+                                          isScriptPaused(scriptInstance._scriptPath)
+                                            ? 'btn-success hover:btn-success'
+                                            : 'btn-warning hover:btn-warning'
+                                        }`}
+                                        title={`${isScriptPaused(scriptInstance._scriptPath) ? 'Resume' : 'Pause'} script`}
+                                      >
+                                        {isScriptPaused(scriptInstance._scriptPath) ? 
+                                          <IconPlayerPlay class="w-3 h-3" /> : 
+                                          <IconPlayerPause class="w-3 h-3" />
+                                        }
+                                      </button>
+                                      <button
+                                        onClick={async (e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          
+                                          if (!selection.entity) return;
+                                          
+                                          const scriptPath = scriptInstance._scriptPath;
+                                          const scriptName = scriptPath.split('/').pop();
+                                          
+                                          // Detach script from runtime
+                                          const runtime = getScriptRuntime();
+                                          const success = await runtime.detachScript(selection.entity, scriptPath);
+                                          
+                                          if (success) {
+                                            // Remove script properties from babylon object
+                                            const babylonObject = getSelectedBabylonObject();
+                                            if (babylonObject && scriptInstance) {
+                                              removeScriptProperties(babylonObject, scriptInstance);
+                                            }
+                                            
+                                            // Update object properties to remove script from UI
+                                            const currentScripts = objectProps.scripts || [];
+                                            const newScripts = currentScripts.filter(s => s.path !== scriptPath);
+                                            updateObjectProperty(selection.entity, 'scripts', newScripts);
+                                            
+                                            // Clear the paused state for this script
+                                            const scriptKey = `${selection.entity}:${scriptPath}`;
+                                            const newPaused = new Set(pausedScripts());
+                                            newPaused.delete(scriptKey);
+                                            setPausedScripts(newPaused);
+                                            
+                                            // Update script properties signal
+                                            if (babylonObject?.metadata?.scriptProperties) {
+                                              setScriptPropertiesSignal({ ...babylonObject.metadata.scriptProperties });
+                                            }
+                                            
+                                            editorActions.addConsoleMessage(`Script "${scriptName}" detached`, 'info');
+                                          } else {
+                                            editorActions.addConsoleMessage(`Failed to detach script "${scriptName}"`, 'error');
+                                          }
+                                        }}
+                                        class="btn btn-xs btn-circle btn-error hover:btn-error"
+                                        title="Detach script"
+                                      >
+                                        <IconX class="w-3 h-3" />
+                                      </button>
+                                    </div>
                                   </div>
                                   <div class="!p-2">
                                     <div class="space-y-0.5">

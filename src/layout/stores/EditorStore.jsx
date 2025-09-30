@@ -38,6 +38,7 @@ const [editorStore, setEditorStore] = createStore({
     assetsLibraryWidth: 200,
     selectedTool: 'scene',
     selectedBottomTab: 'assets',
+    currentMode: savedSettings.ui?.currentMode || 'standard',
     toolbarTabOrder: [
       'scripts', 'camera', 'grid', 'settings'
     ],
@@ -63,6 +64,7 @@ const [editorStore, setEditorStore] = createStore({
   scripts: {
     isPlaying: savedSettings.scripts?.isPlaying !== undefined ? savedSettings.scripts.isPlaying : false
   },
+
 
   settings: {
     viewport: {
@@ -224,6 +226,17 @@ export const editorActions = {
     // Trigger script manager state change
     const event = new CustomEvent('engine:script-execution-toggle', {
       detail: { isPlaying }
+    });
+    document.dispatchEvent(event);
+  },
+
+  setCurrentMode: (mode) => {
+    setEditorStore('ui', 'currentMode', mode);
+    saveSettings(editorStore.settings);
+    
+    // Trigger mode change event
+    const event = new CustomEvent('engine:mode-change', {
+      detail: { mode, previousMode: editorStore.ui.currentMode }
     });
     document.dispatchEvent(event);
   }

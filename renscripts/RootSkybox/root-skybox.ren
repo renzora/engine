@@ -1,0 +1,177 @@
+script RootSkybox {
+
+  start {
+    log("🌌 Root Scene Skybox Script Initialized")
+    
+    // Initialize skybox variables
+    currentSkybox = null
+    currentEnvironmentTexture = null
+    currentHDRIPath = ""
+    
+    // Create a default procedural skybox if no HDRI is provided
+    if (hdriPath == "" || hdriPath == null) {
+      log("🌈 Creating default procedural skybox")
+      createDefaultSkybox()
+    } else {
+      log("🌅 HDRI path provided: " + hdriPath)
+      loadHDRISkybox()
+    }
+    
+    log("✅ Root skybox system ready")
+  }
+
+  update() {
+    // Check if HDRI path has changed
+    if (hdriPath != currentHDRIPath) {
+      log("🔄 Skybox source changed: " + hdriPath)
+      currentHDRIPath = hdriPath
+      
+      // Clean up existing skybox
+      cleanupSkybox()
+      
+      if (hdriPath != "" && hdriPath != null) {
+        loadHDRISkybox()
+      } else {
+        createDefaultSkybox()
+      }
+    }
+    
+    // Update skybox rotation
+    if (currentSkybox) {
+      setRotation(0, skyboxRotation, 0)
+    }
+    
+    // Update environment intensity
+    setEnvironmentIntensity(environmentIntensity)
+    
+    // Update sky parameters for procedural skybox
+    if (useProceduralSky && currentSkybox) {
+      updateProceduralSky()
+    }
+  }
+
+  createDefaultSkybox() {
+    log("🎨 Creating procedural skybox")
+    
+    // Create standard environment with procedural sky
+    environment = createStandardEnvironment({
+      skyboxSize: skyboxSize,
+      turbidity: turbidity,
+      luminance: luminance,
+      inclination: sunInclination,
+      azimuth: sunAzimuth,
+      cloudsEnabled: cloudsEnabled,
+      cloudSize: cloudSize,
+      cloudDensity: cloudDensity,
+      clearColor: [clearColorR, clearColorG, clearColorB, 1],
+      environmentIntensity: environmentIntensity,
+      fogEnabled: fogEnabled,
+      fogMode: 2,
+      fogDensity: fogDensity,
+      fogColor: [fogColorR, fogColorG, fogColorB],
+      toneMappingEnabled: true,
+      toneMappingType: toneMappingType,
+      exposure: exposure,
+      contrast: contrast,
+      vignetteEnabled: vignetteEnabled,
+      vignetteWeight: vignetteWeight,
+      vignetteStretch: 0.15,
+      vignetteCameraFov: 0.8,
+      fxaaEnabled: true
+    })
+    
+    if (environment && environment.skybox) {
+      currentSkybox = environment.skybox
+      log("✅ Procedural skybox created successfully")
+    } else {
+      log("❌ Failed to create procedural skybox")
+    }
+  }
+
+  loadHDRISkybox() {
+    // Validate HDRI file extension
+    if (!ext(hdriPath, ".hdr") && !ext(hdriPath, ".exr")) {
+      log("❌ Invalid HDRI file type. Use .hdr or .exr files")
+      log("  Received: " + hdriPath)
+      createDefaultSkybox()
+      return
+    }
+    
+    log("🌆 Loading HDRI skybox: " + hdriPath)
+    
+    try {
+      // Create HDRI environment
+      setEnvironmentTexture(hdriPath)
+      setEnvironmentIntensity(environmentIntensity)
+      
+      log("✅ HDRI skybox loaded successfully")
+    } catch (error) {
+      log("❌ Failed to load HDRI: " + error)
+      log("🔄 Falling back to procedural skybox")
+      createDefaultSkybox()
+    }
+  }
+
+  updateProceduralSky() {
+    if (environment && environment.skyMaterial) {
+      setSkyTurbidity(environment.skyMaterial, turbidity)
+      setSkyLuminance(environment.skyMaterial, luminance)
+      setSkyInclination(environment.skyMaterial, sunInclination)
+      setSkyAzimuth(environment.skyMaterial, sunAzimuth)
+      
+      if (cloudsEnabled) {
+        enableSkyClouds(environment.skyMaterial, true)
+        setSkyCloudSize(environment.skyMaterial, cloudSize)
+        setSkyCloudDensity(environment.skyMaterial, cloudDensity)
+      } else {
+        enableSkyClouds(environment.skyMaterial, false)
+      }
+    }
+    
+    // Update fog settings
+    if (fogEnabled) {
+      enableFog(true)
+      setFogDensity(fogDensity)
+      setFogColor(fogColorR, fogColorG, fogColorB)
+    } else {
+      enableFog(false)
+    }
+    
+    // Update post-processing
+    setExposure(exposure)
+    setContrast(contrast)
+    
+    if (vignetteEnabled) {
+      setVignetteWeight(vignetteWeight)
+    }
+  }
+
+  cleanupSkybox() {
+    log("🧹 Cleaning up existing skybox")
+    
+    if (currentSkybox) {
+      currentSkybox.dispose()
+      currentSkybox = null
+    }
+    
+    if (currentEnvironmentTexture) {
+      currentEnvironmentTexture.dispose()
+      currentEnvironmentTexture = null
+    }
+    
+    if (environment) {
+      if (environment.skybox) {
+        environment.skybox.dispose()
+      }
+      if (environment.skyMaterial) {
+        environment.skyMaterial.dispose()
+      }
+    }
+  }
+
+  destroy {
+    log("🧹 Destroying root skybox system")
+    cleanupSkybox()
+    log("✅ Root skybox cleanup completed")
+  }
+}

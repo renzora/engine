@@ -12,7 +12,7 @@ script Skybox {
     log("✅ HDRI Skybox ready for files")
   }
   
-  update() {
+  update {
     // Check if HDRI path changed (drag-drop updates this property)
     if (hdriPath != currentHDRIPath) {
       log("🔄 New file detected: " + hdriPath)
@@ -38,8 +38,16 @@ script Skybox {
           
           // Create HDRI skybox
           log("Creating HDRI skybox...")
+          
+          // Actually load the HDRI texture
+          currentEnvironmentTexture = createHDRCubeTexture(hdriPath, 512)
           setEnvironmentIntensity(environmentIntensity)
-          log("🎉 HDRI skybox loaded!")
+          
+          if (currentEnvironmentTexture) {
+            log("🎉 HDRI skybox loaded successfully!")
+          } else {
+            log("❌ Failed to load HDRI texture")
+          }
         } else {
           log("❌ Invalid file type. Please use .hdr or .exr files")
           log("  Received: " + hdriPath)

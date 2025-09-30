@@ -3,7 +3,7 @@ import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -36,6 +36,10 @@ function Toolbar() {
   const [cameraViewDropdownOpen, setCameraViewDropdownOpen] = createSignal(false);
   const [currentViewName, setCurrentViewName] = createSignal("View");
   
+  // Mode dropdown state
+  const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
+  const currentMode = () => editorStore.ui.currentMode;
+  
   // Get user-friendly view names
   const getViewDisplayName = (viewType) => {
     const viewNames = {
@@ -49,6 +53,17 @@ function Toolbar() {
       frontRight: "Front Right"
     };
     return viewNames[viewType] || "View";
+  };
+
+  // Get user-friendly mode names and icons
+  const getModeDisplayData = (mode) => {
+    const modeData = {
+      standard: { name: "Standard", icon: IconCube, description: "General scene editing" },
+      levelPrototyping: { name: "Level Editor", icon: IconDeviceGamepad2, description: "Quick level prototyping with snapping" },
+      sculpting: { name: "Sculpting", icon: IconBrush, description: "Terrain and mesh sculpting" },
+      animation: { name: "Animation", icon: IconMovie, description: "Timeline and keyframe editing" }
+    };
+    return modeData[mode] || { name: "Unknown", icon: IconCube, description: "" };
   };
   
   const getSelectedTool = () => {
@@ -115,6 +130,7 @@ function Toolbar() {
     }
 
     const position = new Vector3(0, 0.5, 0);
+    
     const objectName = getObjectName(type);
 
     try {
@@ -456,6 +472,9 @@ function Toolbar() {
     if (!event.target.closest('[data-camera-dropdown]')) {
       setCameraViewDropdownOpen(false);
     }
+    if (!event.target.closest('[data-mode-dropdown]')) {
+      setModeDropdownOpen(false);
+    }
   };
 
   window.addEventListener('click', handleClickOutside);
@@ -530,6 +549,12 @@ function Toolbar() {
     { id: 'delete', icon: IconTrash, tooltip: 'Delete' }
   ];
 
+  const setMode = (mode) => {
+    editorActions.setCurrentMode(mode);
+    setModeDropdownOpen(false);
+    editorActions.addConsoleMessage(`Switched to ${getModeDisplayData(mode).name} mode`, 'info');
+  };
+
   return (
     <div class="w-full h-10 flex items-center bg-base-200 border-b border-base-300 px-2 gap-1">
       <For each={tools}>
@@ -568,6 +593,86 @@ function Toolbar() {
       </For>
       
       <div class="flex-1" />
+      
+      {/* Mode Dropdown */}
+      <div class="relative" data-mode-dropdown>
+        <button
+          onClick={() => {
+            setModeDropdownOpen(!modeDropdownOpen());
+            // Close camera dropdown when mode dropdown opens
+            setCameraViewDropdownOpen(false);
+          }}
+          class="h-8 px-3 flex items-center gap-2 rounded text-base-content/60 hover:text-base-content hover:bg-base-300 text-xs transition-all"
+          title={`Current mode: ${getModeDisplayData(currentMode()).description}`}
+        >
+          {(() => {
+            const ModeIcon = getModeDisplayData(currentMode()).icon;
+            return <ModeIcon class="w-3 h-3" />;
+          })()}
+          <span>{getModeDisplayData(currentMode()).name}</span>
+          <IconChevronDown class="w-3 h-3" />
+        </button>
+        
+        <Show when={modeDropdownOpen()}>
+          <div class="absolute right-0 top-full mt-1 bg-base-200 border border-base-300 rounded shadow-lg z-50 min-w-64">
+            <div class="p-2 space-y-1">
+              <div class="text-xs text-base-content/60 px-2 py-1 font-medium">Editor Modes</div>
+              
+              <button
+                onClick={() => setMode('standard')}
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                  currentMode() === 'standard' ? 'bg-base-300 text-base-content' : ''
+                }`}
+              >
+                <IconCube class="w-4 h-4" />
+                <div class="flex-1">
+                  <div class="font-medium">Standard</div>
+                  <div class="text-xs text-base-content/60">General scene editing</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setMode('levelPrototyping')}
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                  currentMode() === 'levelPrototyping' ? 'bg-base-300 text-base-content' : ''
+                }`}
+              >
+                <IconDeviceGamepad2 class="w-4 h-4" />
+                <div class="flex-1">
+                  <div class="font-medium">Level Editor</div>
+                  <div class="text-xs text-base-content/60">Quick level prototyping with snapping</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setMode('sculpting')}
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                  currentMode() === 'sculpting' ? 'bg-base-300 text-base-content' : ''
+                }`}
+              >
+                <IconBrush class="w-4 h-4" />
+                <div class="flex-1">
+                  <div class="font-medium">Sculpting</div>
+                  <div class="text-xs text-base-content/60">Terrain and mesh sculpting</div>
+                </div>
+              </button>
+              
+              <button
+                onClick={() => setMode('animation')}
+                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded hover:bg-base-300 text-left ${
+                  currentMode() === 'animation' ? 'bg-base-300 text-base-content' : ''
+                }`}
+              >
+                <IconMovie class="w-4 h-4" />
+                <div class="flex-1">
+                  <div class="font-medium">Animation</div>
+                  <div class="text-xs text-base-content/60">Timeline and keyframe editing</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </Show>
+      </div>
       
       {/* Camera View Dropdown */}
       <div class="relative" data-camera-dropdown>
