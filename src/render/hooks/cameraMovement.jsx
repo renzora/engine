@@ -110,6 +110,49 @@ export function useCameraController(camera, canvas, scene) {
 
   };
 
+  // Helper function to detect if camera is in an orthographic view position
+  const isOrthographicView = () => {
+    if (!camera()) return false;
+    
+    const position = camera().position;
+    const rotation = camera().rotation;
+    
+    // Check if camera is aligned with world axes (within tolerance)
+    const tolerance = 0.1; // radians
+    
+    // Top view: looking down (pitch ~-90°, any yaw)
+    if (Math.abs(rotation.x - (-Math.PI / 2)) < tolerance) {
+      return { type: 'top', axis: 'y', direction: -1 };
+    }
+    
+    // Bottom view: looking up (pitch ~90°, any yaw)
+    if (Math.abs(rotation.x - (Math.PI / 2)) < tolerance) {
+      return { type: 'bottom', axis: 'y', direction: 1 };
+    }
+    
+    // Front view: looking along -Z axis (pitch ~0°, yaw ~0°)
+    if (Math.abs(rotation.x) < tolerance && Math.abs(rotation.y) < tolerance) {
+      return { type: 'front', axis: 'z', direction: -1 };
+    }
+    
+    // Back view: looking along +Z axis (pitch ~0°, yaw ~180°)
+    if (Math.abs(rotation.x) < tolerance && Math.abs(Math.abs(rotation.y) - Math.PI) < tolerance) {
+      return { type: 'back', axis: 'z', direction: 1 };
+    }
+    
+    // Right view: looking along -X axis (pitch ~0°, yaw ~90°)
+    if (Math.abs(rotation.x) < tolerance && Math.abs(rotation.y - (Math.PI / 2)) < tolerance) {
+      return { type: 'right', axis: 'x', direction: -1 };
+    }
+    
+    // Left view: looking along +X axis (pitch ~0°, yaw ~-90°)
+    if (Math.abs(rotation.x) < tolerance && Math.abs(rotation.y - (-Math.PI / 2)) < tolerance) {
+      return { type: 'left', axis: 'x', direction: 1 };
+    }
+    
+    return false;
+  };
+
   const handleMouseMove = (event) => {
     if (!camera() || isDisabled) return;
     
@@ -129,74 +172,119 @@ export function useCameraController(camera, canvas, scene) {
     }
 
     const precisionMultiplier = keysPressed.has('control') ? 0.2 : 1.0;
+    const speedMultiplier = cameraSpeed() / 5;
+    const orthographicView = isOrthographicView();
 
     if (isLeftMouseDown) {
-      // Vertical drag = forward/backward movement (existing behavior)
-      const forward = camera().getForwardRay().direction;
-      const horizontalForward = new Vector3(forward.x, 0, forward.z).normalize();
-      const fovSpeedMultiplier = camera().fov / (Math.PI / 4);
-      const speedMultiplier = cameraSpeed() / 5; // Use camera speed setting
-      const moveDirection = horizontalForward.scale(-deltaY * 0.025 * fovSpeedMultiplier * speedMultiplier * precisionMultiplier);
-      camera().position = camera().position.add(moveDirection);
-      
-      // Horizontal drag = turn/rotate camera (added) - natural feel
-      camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier;
+      if (orthographicView) {
+        // Orthographic view panning - move in world space
+        let panVector = new Vector3(0, 0, 0);
+        const panAmount = 0.025 * speedMultiplier * precisionMultiplier;
+        
+        switch (orthographicView.type) {
+          case 'top':
+            // Top view: X/Z plane movement
+            panVector = new Vector3(deltaX * panAmount, 0, deltaY * panAmount);
+            break;
+          case 'bottom':
+            // Bottom view: X/Z plane movement 
+            panVector = new Vector3(deltaX * panAmount, 0, -deltaY * panAmount);
+            break;
+          case 'front':
+          case 'back':
+            // Front/back view: X/Y plane movement
+            panVector = new Vector3(-deltaX * panAmount, deltaY * panAmount, 0);
+            break;
+          case 'right':
+          case 'left':
+            // Right/left view: Z/Y plane movement  
+            panVector = new Vector3(0, deltaY * panAmount, -deltaX * panAmount);
+            break;
+        }
+        
+        camera().position = camera().position.add(panVector);
+      } else {
+        // Perspective view - original behavior
+        const forward = camera().getForwardRay().direction;
+        const horizontalForward = new Vector3(forward.x, 0, forward.z).normalize();
+        const fovSpeedMultiplier = camera().fov / (Math.PI / 4);
+        const moveDirection = horizontalForward.scale(-deltaY * 0.025 * fovSpeedMultiplier * speedMultiplier * precisionMultiplier);
+        camera().position = camera().position.add(moveDirection);
+        
+        // Horizontal drag = turn/rotate camera (added) - natural feel
+        camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier;
+      }
     } else if (isRightMouseDown) {
       if (keysPressed.has('shift')) {
         // Shift + Right-click = Pan/strafe movement
-        const forward = camera().getForwardRay().direction.normalize();
-        const right = Vector3.Cross(Vector3.Up(), forward).normalize();
-        const up = Vector3.Cross(right, forward).normalize();
-        const speedMultiplier = cameraSpeed() / 5;
-        const panVector = right.scale(-deltaX * panSpeed * speedMultiplier * precisionMultiplier)
-          .add(up.scale(deltaY * panSpeed * speedMultiplier * precisionMultiplier));
-        camera().position = camera().position.add(panVector);
-        // Shift + Right-click panning
+        if (orthographicView) {
+          // Orthographic view panning - same as left-click for consistency
+          let panVector = new Vector3(0, 0, 0);
+          const panAmount = panSpeed * speedMultiplier * precisionMultiplier;
+          
+          switch (orthographicView.type) {
+            case 'top':
+              panVector = new Vector3(deltaX * panAmount, 0, deltaY * panAmount);
+              break;
+            case 'bottom':
+              panVector = new Vector3(deltaX * panAmount, 0, -deltaY * panAmount);
+              break;
+            case 'front':
+            case 'back':
+              panVector = new Vector3(-deltaX * panAmount, deltaY * panAmount, 0);
+              break;
+            case 'right':
+            case 'left':
+              panVector = new Vector3(0, deltaY * panAmount, -deltaX * panAmount);
+              break;
+          }
+          
+          camera().position = camera().position.add(panVector);
+        } else {
+          // Perspective view - camera-relative panning
+          const forward = camera().getForwardRay().direction.normalize();
+          const right = Vector3.Cross(Vector3.Up(), forward).normalize();
+          const up = Vector3.Cross(right, forward).normalize();
+          const panVector = right.scale(-deltaX * panSpeed * speedMultiplier * precisionMultiplier)
+            .add(up.scale(deltaY * panSpeed * speedMultiplier * precisionMultiplier));
+          camera().position = camera().position.add(panVector);
+        }
       } else {
-        // Regular right-click = Free-look
-        camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier; // Natural horizontal rotation
-        camera().rotation.x += deltaY * rotationSpeed() * precisionMultiplier; // Natural vertical rotation
-        camera().rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera().rotation.x));
+        // Regular right-click = Free-look (disabled only for top/bottom views)
+        if (!orthographicView || (orthographicView.type !== 'top' && orthographicView.type !== 'bottom')) {
+          camera().rotation.y += deltaX * rotationSpeed() * precisionMultiplier;
+          camera().rotation.x += deltaY * rotationSpeed() * precisionMultiplier;
+          camera().rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera().rotation.x));
+        }
       }
     } else if (isMiddleMouseDown) {
-        // Middle-click orbit around target (selected object or intelligently calculated point)
-        let target;
-        
-        // First try to use selected object position
-        const selectedObject = renderStore.selectedObject;
-        if (selectedObject && selectedObject.position) {
-          target = selectedObject.position;
-        } else {
-          // If no selection, orbit around a point in front of the camera
-          // Use camera's current look direction and find a point at a reasonable distance
-          const cameraForward = camera().getForwardRay().direction.normalize();
-          const orbitDistance = 10; // Default orbit distance
-          target = camera().position.add(cameraForward.scale(orbitDistance));
-        }
-        
-        const distance = Vector3.Distance(camera().position, target);
-        
-        // Convert camera position to spherical coordinates relative to target
-        const offset = camera().position.subtract(target);
-        
-        // Apply rotation based on mouse delta - natural feel
-        const phi = Math.atan2(offset.x, offset.z) + deltaX * rotationSpeed() * precisionMultiplier;
-        const theta = Math.acos(offset.y / distance) - deltaY * rotationSpeed() * precisionMultiplier;
-        
-        // Clamp theta to prevent flipping
-        const clampedTheta = Math.max(0.1, Math.min(Math.PI - 0.1, theta));
-        
-        // Convert back to cartesian and set new position
-        const newPosition = new Vector3(
-          target.x + distance * Math.sin(clampedTheta) * Math.sin(phi),
-          target.y + distance * Math.cos(clampedTheta),
-          target.z + distance * Math.sin(clampedTheta) * Math.cos(phi)
-        );
-        
-        camera().position = newPosition;
-        camera().setTarget(target);
-        
-        // Middle-click orbiting around target
+      // Middle-click orbit around target (for all camera views)
+      let target;
+      
+      const selectedObject = renderStore.selectedObject;
+      if (selectedObject && selectedObject.position) {
+        target = selectedObject.position;
+      } else {
+        const cameraForward = camera().getForwardRay().direction.normalize();
+        const orbitDistance = 10;
+        target = camera().position.add(cameraForward.scale(orbitDistance));
+      }
+      
+      const distance = Vector3.Distance(camera().position, target);
+      const offset = camera().position.subtract(target);
+      
+      const phi = Math.atan2(offset.x, offset.z) + deltaX * rotationSpeed() * precisionMultiplier;
+      const theta = Math.acos(offset.y / distance) - deltaY * rotationSpeed() * precisionMultiplier;
+      const clampedTheta = Math.max(0.1, Math.min(Math.PI - 0.1, theta));
+      
+      const newPosition = new Vector3(
+        target.x + distance * Math.sin(clampedTheta) * Math.sin(phi),
+        target.y + distance * Math.cos(clampedTheta),
+        target.z + distance * Math.sin(clampedTheta) * Math.cos(phi)
+      );
+      
+      camera().position = newPosition;
+      camera().setTarget(target);
     }
 
     lastMouseX = event.clientX;
@@ -222,9 +310,8 @@ export function useCameraController(camera, canvas, scene) {
 
     event.preventDefault();
     const delta = event.deltaY * -0.01;
-    const forward = camera().getForwardRay().direction.normalize();
-    const fovSpeedMultiplier = camera().fov / (Math.PI / 4);
     const precisionMultiplier = keysPressed.has('control') ? 0.2 : 1.0;
+    const orthographicView = isOrthographicView();
     
     let wheelSpeedMultiplier = 1.0;
     if (delta > 0) {
@@ -233,7 +320,39 @@ export function useCameraController(camera, canvas, scene) {
       wheelSpeedMultiplier = 1.5;
     }
     
-    camera().position = camera().position.add(forward.scale(delta * zoomSpeed * fovSpeedMultiplier * wheelSpeedMultiplier * precisionMultiplier));
+    if (orthographicView) {
+      // Orthographic view: zoom by moving along the view direction
+      let zoomVector = new Vector3(0, 0, 0);
+      const zoomAmount = delta * zoomSpeed * wheelSpeedMultiplier * precisionMultiplier;
+      
+      switch (orthographicView.type) {
+        case 'top':
+          zoomVector = new Vector3(0, zoomAmount, 0);
+          break;
+        case 'bottom':
+          zoomVector = new Vector3(0, -zoomAmount, 0);
+          break;
+        case 'front':
+          zoomVector = new Vector3(0, 0, zoomAmount);
+          break;
+        case 'back':
+          zoomVector = new Vector3(0, 0, -zoomAmount);
+          break;
+        case 'right':
+          zoomVector = new Vector3(zoomAmount, 0, 0);
+          break;
+        case 'left':
+          zoomVector = new Vector3(-zoomAmount, 0, 0);
+          break;
+      }
+      
+      camera().position = camera().position.add(zoomVector);
+    } else {
+      // Perspective view: zoom along camera forward direction
+      const forward = camera().getForwardRay().direction.normalize();
+      const fovSpeedMultiplier = camera().fov / (Math.PI / 4);
+      camera().position = camera().position.add(forward.scale(delta * zoomSpeed * fovSpeedMultiplier * wheelSpeedMultiplier * precisionMultiplier));
+    }
   };
 
 
@@ -306,43 +425,55 @@ export function useCameraController(camera, canvas, scene) {
     camera().position = camera().position.add(Vector3.Up().scale(-speed));
   };
 
-  // Arrow key movement functions based on camera type
+  // Arrow key movement functions based on camera view
   const handleArrowKeyMovement = (finalSpeed) => {
     if (!camera()) return;
     
-    const cameraType = cameraSettings()?.type || 'universal';
-    const cameraMode = cameraSettings()?.mode || 'orbit';
+    const orthographicView = isOrthographicView();
     
-    // Get camera directions
-    const forward = camera().getDirection(Vector3.Forward()).normalize();
-    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
-    const up = Vector3.Up();
-    
-    // Apply movement based on camera type and mode
-    if (cameraType === 'top' || cameraMode === 'top') {
-      // Top view: arrows move in world X/Z plane
-      if (keys.arrowUp) velocity = velocity.add(new Vector3(0, 0, finalSpeed));    // Move forward in world Z
-      if (keys.arrowDown) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));  // Move backward in world Z
-      if (keys.arrowLeft) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));  // Move left in world X
-      if (keys.arrowRight) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));  // Move right in world X
-    } else if (cameraType === 'front' || cameraMode === 'front') {
-      // Front view: arrows move in world X/Y plane
-      if (keys.arrowUp) velocity = velocity.add(new Vector3(0, finalSpeed, 0));     // Move up in world Y
-      if (keys.arrowDown) velocity = velocity.add(new Vector3(0, -finalSpeed, 0));  // Move down in world Y
-      if (keys.arrowLeft) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));  // Move left in world X
-      if (keys.arrowRight) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));  // Move right in world X
-    } else if (cameraType === 'side' || cameraMode === 'side') {
-      // Side view: arrows move in world Y/Z plane
-      if (keys.arrowUp) velocity = velocity.add(new Vector3(0, finalSpeed, 0));     // Move up in world Y
-      if (keys.arrowDown) velocity = velocity.add(new Vector3(0, -finalSpeed, 0));  // Move down in world Y
-      if (keys.arrowLeft) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));  // Move left in world Z
-      if (keys.arrowRight) velocity = velocity.add(new Vector3(0, 0, finalSpeed));  // Move right in world Z
+    if (orthographicView) {
+      // Orthographic view: arrows move in world space
+      switch (orthographicView.type) {
+        case 'top':
+          // Top view: arrows move in world X/Z plane
+          if (keys.arrowUp) velocity = velocity.add(new Vector3(0, 0, finalSpeed));
+          if (keys.arrowDown) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));
+          if (keys.arrowLeft) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));
+          if (keys.arrowRight) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));
+          break;
+        case 'bottom':
+          // Bottom view: arrows move in world X/Z plane
+          if (keys.arrowUp) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));
+          if (keys.arrowDown) velocity = velocity.add(new Vector3(0, 0, finalSpeed));
+          if (keys.arrowLeft) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));
+          if (keys.arrowRight) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));
+          break;
+        case 'front':
+        case 'back':
+          // Front/back view: arrows move in world X/Y plane
+          if (keys.arrowUp) velocity = velocity.add(new Vector3(0, finalSpeed, 0));
+          if (keys.arrowDown) velocity = velocity.add(new Vector3(0, -finalSpeed, 0));
+          if (keys.arrowLeft) velocity = velocity.add(new Vector3(-finalSpeed, 0, 0));
+          if (keys.arrowRight) velocity = velocity.add(new Vector3(finalSpeed, 0, 0));
+          break;
+        case 'right':
+        case 'left':
+          // Right/left view: arrows move in world Y/Z plane
+          if (keys.arrowUp) velocity = velocity.add(new Vector3(0, finalSpeed, 0));
+          if (keys.arrowDown) velocity = velocity.add(new Vector3(0, -finalSpeed, 0));
+          if (keys.arrowLeft) velocity = velocity.add(new Vector3(0, 0, -finalSpeed));
+          if (keys.arrowRight) velocity = velocity.add(new Vector3(0, 0, finalSpeed));
+          break;
+      }
     } else {
-      // Universal/orbit/perspective camera: arrows move relative to camera orientation
-      if (keys.arrowUp) velocity = velocity.add(forward.scale(finalSpeed));         // Move forward
-      if (keys.arrowDown) velocity = velocity.add(forward.scale(-finalSpeed));      // Move backward
-      if (keys.arrowLeft) velocity = velocity.add(right.scale(-finalSpeed));        // Move left
-      if (keys.arrowRight) velocity = velocity.add(right.scale(finalSpeed));        // Move right
+      // Perspective camera: arrows move relative to camera orientation
+      const forward = camera().getDirection(Vector3.Forward()).normalize();
+      const right = Vector3.Cross(Vector3.Up(), forward).normalize();
+      
+      if (keys.arrowUp) velocity = velocity.add(forward.scale(finalSpeed));
+      if (keys.arrowDown) velocity = velocity.add(forward.scale(-finalSpeed));
+      if (keys.arrowLeft) velocity = velocity.add(right.scale(-finalSpeed));
+      if (keys.arrowRight) velocity = velocity.add(right.scale(finalSpeed));
     }
   };
 
