@@ -920,7 +920,8 @@ export {
   isTerrainEditMode,
   currentTool,
   updateTerrainHeightmap,
-  updateTerrainMeshGeometry
+  updateTerrainMeshGeometry,
+  createTerrainMesh
 };
 
 export default createPlugin({

@@ -385,6 +385,29 @@ export class SceneManager {
           // Object has attached scripts for serialization
         }
         
+        // Preserve terrain data for terrain objects
+        if (babylonObj._terrainData) {
+          serializedData.__terrainData = {
+            size: babylonObj._terrainData.size,
+            subdivisions: babylonObj._terrainData.subdivisions,
+            heightmapData: babylonObj._terrainData.heightmapData,
+            brushSize: babylonObj._terrainData.brushSize,
+            brushStrength: babylonObj._terrainData.brushStrength,
+            brushFalloff: babylonObj._terrainData.brushFalloff,
+            isInfiniteTerrain: babylonObj._terrainData.isInfiniteTerrain,
+            chunkX: babylonObj._terrainData.chunkX,
+            chunkZ: babylonObj._terrainData.chunkZ,
+            isTerrainChunk: babylonObj._terrainData.isTerrainChunk
+          };
+          console.log('💾 Preserved terrain data for object:', babylonObj.name);
+        }
+        
+        // Preserve terrain system data for terrain system objects
+        if (babylonObj._isTerrainSystem) {
+          serializedData.__isTerrainSystem = true;
+          console.log('💾 Preserved terrain system marker for object:', babylonObj.name);
+        }
+        
         // Serialized object data
         
         // Log metadata for debugging
@@ -760,7 +783,84 @@ export class SceneManager {
 
       let restoredObject = null;
 
-      if (item.type === 'camera') {
+      // Handle terrain objects specially
+      if (babylonData.__terrainData || babylonData.__isTerrainSystem) {
+        // Restoring terrain object
+        console.log('🏔️ Restoring terrain object:', item.name);
+        
+        // Import terrain creation function
+        const { createTerrainMesh } = await import('@/plugins/terrain/index.jsx');
+        const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
+        const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
+        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
+        
+        if (babylonData.__isTerrainSystem) {
+          // Restore terrain system manager
+          const { MeshBuilder } = await import('@babylonjs/core/Meshes/meshBuilder.js');
+          const terrainManager = MeshBuilder.CreateBox(babylonData.name, { size: 0.1 }, scene);
+          terrainManager.visibility = 0;
+          terrainManager.isPickable = false;
+          terrainManager._isTerrainSystem = true;
+          terrainManager._terrainData = babylonData.__terrainData;
+          
+          // Restore position
+          if (babylonData.position) {
+            terrainManager.position.fromArray(babylonData.position);
+          }
+          
+          restoredObject = terrainManager;
+        } else if (babylonData.__terrainData) {
+          // Restore terrain mesh
+          const terrainData = babylonData.__terrainData;
+          const terrainMesh = createTerrainMesh(
+            babylonData.name,
+            terrainData.size,
+            terrainData.subdivisions,
+            terrainData.heightmapData,
+            scene
+          );
+          
+          // Restore material
+          const material = new StandardMaterial(`${babylonData.name}_material`, scene);
+          material.diffuseColor = new Color3(0.2, 0.8, 0.2);
+          material.backFaceCulling = false;
+          terrainMesh.material = material;
+          
+          // Restore position, rotation, scaling
+          if (babylonData.position) {
+            terrainMesh.position.fromArray(babylonData.position);
+          }
+          if (babylonData.rotation) {
+            terrainMesh.rotation.fromArray(babylonData.rotation);
+          }
+          if (babylonData.scaling) {
+            terrainMesh.scaling.fromArray(babylonData.scaling);
+          }
+          
+          // Restore terrain data
+          terrainMesh._terrainData = terrainData;
+          
+          // Make visible if it was modified
+          const hasModifiedTerrain = terrainData.heightmapData && 
+            terrainData.heightmapData.some(height => Math.abs(height) > 0.001);
+          if (hasModifiedTerrain) {
+            terrainMesh.visibility = 1;
+            material.alpha = 1;
+          } else {
+            terrainMesh.visibility = 0.001;
+            material.alpha = 0;
+          }
+          
+          restoredObject = terrainMesh;
+        }
+        
+        console.log('🏔️ Terrain object restored successfully:', restoredObject?.name);
+        
+        // Add terrain object to render store if successfully restored
+        if (restoredObject) {
+          renderActions.addObject(restoredObject);
+        }
+      } else if (item.type === 'camera') {
         // Restoring camera object
         
         // Import Babylon camera classes
