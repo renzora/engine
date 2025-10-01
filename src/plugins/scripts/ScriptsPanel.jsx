@@ -110,8 +110,9 @@ export default function ScriptsPanel() {
       return null;
     }
     
-    // Handle scene-root as special case
-    if (selection.entity === 'scene-root') {
+    // Handle scene object - check both legacy 'scene-root' and scene's unique ID
+    const sceneId = renderStore.scene.uniqueId || 'scene-root';
+    if (selection.entity === 'scene-root' || selection.entity === sceneId) {
       return renderStore.scene;
     }
     
@@ -165,7 +166,8 @@ export default function ScriptsPanel() {
     
     // Get babylon object without triggering reactivity
     let babylonObject;
-    if (entityId === 'scene-root') {
+    const sceneId = renderStore.scene.uniqueId || 'scene-root';
+    if (entityId === 'scene-root' || entityId === sceneId) {
       babylonObject = renderStore.scene;
     } else {
       const allObjects = [...renderStore.scene.meshes, ...renderStore.scene.transformNodes, ...renderStore.scene.lights, ...renderStore.scene.cameras];

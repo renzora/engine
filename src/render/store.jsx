@@ -661,16 +661,15 @@ export const renderActions = {
     // Find and select object by ID from scene hierarchy
     if (!renderStore.scene) return false;
     
-    // Handle scene-root as special case
-    if (objectId === 'scene-root') {
-      // For scene-root, we need to handle it specially since the scene object
-      // doesn't have a uniqueId like other Babylon objects
+    // Handle scene object - check both legacy 'scene-root' and scene's unique ID
+    const sceneId = renderStore.scene.uniqueId || 'scene-root';
+    if (objectId === 'scene-root' || objectId === sceneId) {
       setRenderStore('selectedObject', renderStore.scene);
       setRenderStore('selectedObjects', [renderStore.scene]);
       
-      // Update editor store directly with scene-root ID
+      // Update editor store with the actual object ID from hierarchy
       import('@/layout/stores/EditorStore').then(({ editorActions }) => {
-        editorActions.selectEntity('scene-root', ['scene-root']);
+        editorActions.selectEntity(objectId, [objectId]);
       });
       return true;
     }
@@ -859,10 +858,11 @@ export const renderActions = {
     }
     
     const hierarchy = [{
-      id: 'scene-root',
+      id: scene.uniqueId || 'scene-root',
       name: 'New Scene',
       type: 'scene',
       expanded: true,
+      babylonObject: scene,
       children: hierarchyItems
     }];
     
@@ -898,7 +898,7 @@ export const renderActions = {
       } else {
         // Add to scene root
         return prev.map(node => {
-          if (node.id === 'scene-root') {
+          if (node.type === 'scene') {
             return {
               ...node,
               children: [...(node.children || []), newItem]

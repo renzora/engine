@@ -881,8 +881,9 @@ class ScriptManager {
    * Find a Babylon.js object by ID
    */
   findBabylonObject(objectId) {
-    // Handle scene-root as a special case
-    if (objectId === 'scene-root') {
+    // Handle scene object - check both legacy 'scene-root' and scene's unique ID
+    const sceneId = this.scene.uniqueId || 'scene-root';
+    if (objectId === 'scene-root' || objectId === sceneId) {
       return this.scene;
     }
     

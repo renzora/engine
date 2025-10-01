@@ -353,6 +353,14 @@ export class SceneManager {
       } else if (babylonObj.getClassName() === 'UniversalCamera') {
         // For cameras, use camera serializer
         serializedData = babylonObj.serialize();
+      } else if (babylonObj.getClassName() === 'Scene') {
+        // For Scene objects, we only need basic metadata (scripts are handled separately)
+        serializedData = {
+          name: babylonObj.name || 'Scene',
+          className: babylonObj.getClassName(),
+          id: babylonObj.uniqueId,
+          metadata: babylonObj.metadata
+        };
       } else {
         // For other objects, try generic serialization
         if (typeof babylonObj.serialize === 'function') {
@@ -589,14 +597,17 @@ export class SceneManager {
       progressTracker(item);
     }
 
-    // Skip system objects (scene root) but still process children
+    // Handle scene root - process children but don't create a new Babylon object
     if (item.type === 'scene') {
-      // Processing scene root children
+      // For scene objects, restore scripts through normal babylon data processing
+      if (item.babylonData) {
+        await this.restoreObjectFromBabylonData(item, assets);
+      }
+      
       // Process children of scene root
       if (item.children) {
         for (let i = 0; i < item.children.length; i++) {
           const child = item.children[i];
-          // Processing scene child
           await this.restoreHierarchyItem(child, assets, progressTracker);
         }
       }
@@ -921,6 +932,11 @@ export class SceneManager {
         // TODO: Implement light restoration when needed
         return null;
         
+      } else if (item.type === 'scene') {
+        // Scene objects reference the existing scene - no new object creation needed
+        // Just return the scene object so scripts can be reattached
+        restoredObject = scene;
+        
       } else {
         // Unknown basic object type
         return null;
@@ -1143,7 +1159,7 @@ export class SceneManager {
   updateSceneTreeName(sceneName) {
     setRenderStore('hierarchy', prev => {
       return prev.map(item => {
-        if (item.id === 'scene-root') {
+        if (item.type === 'scene') {
           return {
             ...item,
             name: sceneName
