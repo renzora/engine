@@ -478,7 +478,15 @@ function Scene(props) {
             when={renamingItemId() === item.id}
             fallback={
               <span 
-                className="flex-1 text-base-content/80 truncate text-xs cursor-pointer"
+                className="flex-1 text-base-content/80 text-xs cursor-pointer block"
+                style={{
+                  "white-space": "nowrap",
+                  "overflow": "hidden",
+                  "text-overflow": "ellipsis",
+                  "min-width": "0",
+                  "max-width": "160px"
+                }}
+                title={item.name}
                 onDoubleClick={(e) => {
                   console.log('Double click triggered on span:', item.name);
                   e.preventDefault();
@@ -521,7 +529,7 @@ function Scene(props) {
           </Show>
           
           <button 
-            className="ml-1 p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100 cursor-pointer"
+            className="ml-auto p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100 cursor-pointer flex-shrink-0"
             onClick={(e) => handleDeleteObject(item, e)}
             title="Delete object"
           >
