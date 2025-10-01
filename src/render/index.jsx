@@ -136,7 +136,7 @@ export default function BabylonRenderer(props) {
         gizmoManager.rotationGizmoEnabled = false;
       }
     },
-    // Focus on selected object
+    // Focus on selected object based on current camera view
     focusObject: () => {
       const selectedObject = renderStore.selectedObject;
       const camera = renderStore.camera;
@@ -180,9 +180,13 @@ export default function BabylonRenderer(props) {
       
       console.log(`Object size: ${maxDimension.toFixed(2)}, FOV: ${(cameraFov * 180/Math.PI).toFixed(1)}°, focus distance: ${focusDistance.toFixed(2)}`);
       
-      // Position camera at a safe angle (45 degrees up and back) to avoid going through object
-      const backDirection = new Vector3(1, 1, 1).normalize(); // Back, up, and to the side
-      const newCameraPosition = center.add(backDirection.scale(focusDistance));
+      // Calculate the current camera direction to maintain the viewing angle
+      const cameraDirection = camera.getDirection ? 
+        camera.getDirection(Vector3.Forward()).normalize() : 
+        camera.getForwardRay().direction.normalize();
+      
+      // Position camera at the calculated distance in the current viewing direction
+      const newCameraPosition = center.subtract(cameraDirection.scale(focusDistance));
       
       // Smooth animation to new position
       const startPosition = camera.position.clone();
@@ -208,7 +212,7 @@ export default function BabylonRenderer(props) {
           window._focusAnimationId = requestAnimationFrame(animate);
         } else {
           window._focusAnimationId = null;
-          console.log('✅ Camera focused on object');
+          console.log('✅ Camera focused on object while maintaining current view direction');
           editorActions.addConsoleMessage(`Focused camera on "${selectedObject.name}"`, 'success');
         }
       };
