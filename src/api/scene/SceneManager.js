@@ -979,6 +979,27 @@ export class SceneManager {
       // Ensure object properties exist
       objectPropertiesActions.ensureDefaultComponents(objectId);
 
+      // Set up properties in objectPropertiesStore BEFORE attaching scripts
+      // This ensures properties are available when scripts start
+      for (const scriptInfo of attachedScripts) {
+        objectPropertiesActions.addPropertySection(objectId, 'scripts', [{
+          path: scriptInfo.path,
+          name: scriptInfo.name,
+          enabled: true,
+          properties: scriptInfo.properties || {}
+        }]);
+        
+        // Update Babylon object metadata with saved properties
+        if (scriptInfo.properties && Object.keys(scriptInfo.properties).length > 0) {
+          if (!babylonObject.metadata) babylonObject.metadata = {};
+          if (!babylonObject.metadata.scriptProperties) babylonObject.metadata.scriptProperties = {};
+          
+          Object.entries(scriptInfo.properties).forEach(([propName, propValue]) => {
+            babylonObject.metadata.scriptProperties[propName] = propValue;
+          });
+        }
+      }
+
       // Attach each script using existing attachScript method (it will auto-detect bulk mode)
       for (const scriptInfo of attachedScripts) {
         // Reattaching individual script
@@ -987,37 +1008,26 @@ export class SceneManager {
           dispatchProgress('Attaching scripts...', scriptInfo.name);
         }
         
-        // Use the existing attachScript method (it will check bundle cache automatically)
-        const success = await runtime.attachScript(objectId, scriptInfo.path);
+        // Use deferred start to prevent onStart() from running before properties are restored
+        const success = await runtime.attachScript(objectId, scriptInfo.path, true);
         
         if (success) {
           const scriptInstance = runtime.getScriptInstance(objectId, scriptInfo.path);
           
-          // Restore script properties if they exist
-          if (scriptInfo.properties && Object.keys(scriptInfo.properties).length > 0) {
-            // Restoring script properties
-            
-            // Update Babylon object metadata
-            if (!babylonObject.metadata) babylonObject.metadata = {};
-            if (!babylonObject.metadata.scriptProperties) babylonObject.metadata.scriptProperties = {};
-            
+          // Apply saved properties to the script instance BEFORE starting
+          if (scriptInfo.properties && Object.keys(scriptInfo.properties).length > 0 && scriptInstance) {
             Object.entries(scriptInfo.properties).forEach(([propName, propValue]) => {
-              babylonObject.metadata.scriptProperties[propName] = propValue;
-              
-              // Also update script instance if available
+              // Update script instance if available
               if (scriptInstance?._scriptAPI?.setScriptProperty) {
                 scriptInstance._scriptAPI.setScriptProperty(propName, propValue);
               }
             });
           }
 
-          // Update objectPropertiesStore UI state
-          objectPropertiesActions.addPropertySection(objectId, 'scripts', [{
-            path: scriptInfo.path,
-            name: scriptInfo.name,
-            enabled: true,
-            properties: scriptInfo.properties || {}
-          }]);
+          // Now start the script with the correct properties
+          if (scriptInstance) {
+            runtime.startScriptInstance(scriptInstance);
+          }
 
           // Successfully reattached script
         } else {

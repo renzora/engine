@@ -177,9 +177,10 @@ class ScriptRuntime {
    * Attach a script to an object
    * @param {string} objectId - ID of the object
    * @param {string} scriptPath - Path to the script file
+   * @param {boolean} deferStart - If true, don't call onStart() immediately (for property restoration)
    * @returns {Promise<boolean>} Success status
    */
-  async attachScript(objectId, scriptPath) {
+  async attachScript(objectId, scriptPath, deferStart = false) {
     // Starting script attach process
     // Attaching script to object
     // Processing script path
@@ -208,7 +209,7 @@ class ScriptRuntime {
       // Attaching script to object
       
       // Attach to object
-      const success = this.scriptManager.addScriptToObject(objectId, scriptPath);
+      const success = this.scriptManager.addScriptToObject(objectId, scriptPath, deferStart);
       // Script attachment completed
       
       if (success) {
@@ -406,6 +407,19 @@ class ScriptRuntime {
     }
     
     return this.scriptManager.getScriptInstance(objectId, scriptPath);
+  }
+
+  /**
+   * Start a script instance (call onStart if available)
+   * @param {Object} scriptInstance - Script instance to start
+   */
+  startScriptInstance(scriptInstance) {
+    if (!this.isInitialized) {
+      console.error('🔧 ScriptRuntime: Not initialized');
+      return;
+    }
+    
+    this.scriptManager.startScriptInstance(scriptInstance);
   }
   
   /**

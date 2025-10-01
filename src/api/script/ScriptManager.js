@@ -182,6 +182,11 @@ class ScriptManager {
         // Property found in script definition
         scriptInstance[propertyName] = value;
         
+        // Also update objectPropertiesStore to keep it in sync
+        if (scriptInstance._objectId && scriptInstance._scriptPath) {
+          this.updateObjectPropertiesStore(scriptInstance._objectId, scriptInstance._scriptPath, propertyName, value);
+        }
+        
         // Check if this property has triggerOnce and trigger onOnce if it does
         if (Array.isArray(scriptInstance._scriptProperties)) {
           const property = scriptInstance._scriptProperties.find(prop => prop.name === propertyName);
@@ -518,8 +523,11 @@ class ScriptManager {
   
   /**
    * Add a script to an object
+   * @param {string} objectId - ID of the object
+   * @param {string} scriptPath - Path to the script file
+   * @param {boolean} deferStart - If true, don't call onStart() immediately (for property restoration)
    */
-  addScriptToObject(objectId, scriptPath) {
+  addScriptToObject(objectId, scriptPath, deferStart = false) {
     const babylonObject = this.findBabylonObject(objectId);
     if (!babylonObject) {
       console.error('🔧 ScriptManager: Object not found', objectId);
@@ -648,8 +656,8 @@ class ScriptManager {
       // Add to active scripts
       this.activeScripts.get(objectId).add(scriptInstance);
       
-      // Call onStart if available
-      if (typeof scriptInstance.onStart === 'function') {
+      // Call onStart if available and not deferred
+      if (!deferStart && typeof scriptInstance.onStart === 'function') {
         scriptInstance.onStart();
       }
       
@@ -973,6 +981,43 @@ class ScriptManager {
     }
     
     return null;
+  }
+
+  /**
+   * Start a script instance (call onStart if available)
+   * @param {Object} scriptInstance - Script instance to start
+   */
+  startScriptInstance(scriptInstance) {
+    if (scriptInstance && typeof scriptInstance.onStart === 'function') {
+      scriptInstance.onStart();
+    }
+  }
+
+  /**
+   * Update objectPropertiesStore when script property changes
+   * @param {string} objectId - Object ID
+   * @param {string} scriptPath - Script path
+   * @param {string} propertyName - Property name
+   * @param {*} value - New value
+   */
+  async updateObjectPropertiesStore(objectId, scriptPath, propertyName, value) {
+    try {
+      // Import objectPropertiesStore dynamically to avoid circular imports
+      const { objectPropertiesStore, objectPropertiesActions } = await import('@/layout/stores/ViewportStore.jsx');
+      
+      // Find the script in objectPropertiesStore
+      const objectProps = objectPropertiesStore.objects[objectId];
+      if (objectProps && objectProps.scripts) {
+        const scriptIndex = objectProps.scripts.findIndex(script => script.path === scriptPath);
+        if (scriptIndex >= 0) {
+          // Update the property in objectPropertiesStore
+          const propertyPath = `scripts.${scriptIndex}.properties.${propertyName}`;
+          objectPropertiesActions.updateObjectProperty(objectId, propertyPath, value);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ ScriptManager: Could not update objectPropertiesStore:', error);
+    }
   }
   
   /**
