@@ -663,6 +663,19 @@ export function renderShortcuts(callbacks = {}) {
               });
               break;
           }
+        } else {
+          // Free rotation - rotate around screen space (like trackball)
+          // Horizontal movement rotates around Y (yaw), vertical movement rotates around X (pitch)
+          const yawDelta = deltaX * rotationSensitivity;   // Horizontal -> Y rotation
+          const pitchDelta = -deltaY * rotationSensitivity; // Vertical -> X rotation (inverted)
+          
+          transformState.originalTransforms.forEach(objTransform => {
+            // Apply rotation deltas to original rotation
+            objTransform.object.rotation.x = objTransform.rotation.x + pitchDelta;
+            objTransform.object.rotation.y = objTransform.rotation.y + yawDelta;
+            // Keep Z rotation unchanged in free mode for more predictable behavior
+            objTransform.object.rotation.z = objTransform.rotation.z;
+          });
         }
         break;
         
