@@ -1,20 +1,21 @@
-import { createSignal, Show, onMount } from 'solid-js';
-import { IconMountain, IconBrush, IconCircle, IconSquare } from '@tabler/icons-solidjs';
+import { createSignal, Show, onMount, onCleanup } from 'solid-js';
+import { IconMountain, IconBrush, IconCircle, IconSquare, IconPlayerPlay, IconPlayerStop, IconSun, IconBulb } from '@tabler/icons-solidjs';
 import { renderActions } from '@/render/store.jsx';
-import { editorActions } from '@/layout/stores/EditorStore.jsx';
+import { editorStore, editorActions } from '@/layout/stores/EditorStore.jsx';
+import { currentTool } from './index.jsx';
 
 const TerrainPropertiesPanel = (props) => {
   const [terrainData, setTerrainData] = createSignal(null);
-  const [brushSize, setBrushSize] = createSignal(5);
-  const [brushStrength, setBrushStrength] = createSignal(0.1);
+  const [brushSize, setBrushSize] = createSignal(8);
+  const [brushStrength, setBrushStrength] = createSignal(0.2);
   const [selectedTool, setSelectedTool] = createSignal('raise');
 
   onMount(() => {
     if (props.selectedObject && props.selectedObject._terrainData) {
       const data = props.selectedObject._terrainData;
       setTerrainData(data);
-      setBrushSize(data.brushSize || 5);
-      setBrushStrength(data.brushStrength || 0.1);
+      setBrushSize(data.brushSize || 8);
+      setBrushStrength(data.brushStrength || 0.2);
     }
   });
 
@@ -37,11 +38,21 @@ const TerrainPropertiesPanel = (props) => {
     updateTerrainData({ brushStrength: value });
   };
 
+  // Check if we're in sculpting mode
+  const isTerrainEditMode = () => editorStore.ui.currentMode === 'sculpting';
+
   const handleToolSelect = (tool) => {
     setSelectedTool(tool);
-    // Update toolbar to show terrain tools
-    editorActions.setCurrentMode('sculpting');
-    editorActions.addConsoleMessage(`Selected terrain tool: ${tool}`, 'info');
+    
+    // Switch to the new tool
+    switchTerrainTool(tool);
+  };
+  
+  const switchTerrainTool = (tool) => {
+    const event = new CustomEvent('engine:switch-terrain-tool', { 
+      detail: { tool } 
+    });
+    document.dispatchEvent(event);
   };
 
   const resetTerrain = () => {
@@ -94,6 +105,25 @@ const TerrainPropertiesPanel = (props) => {
           </div>
         </div>
 
+        {/* Sculpting Mode Info */}
+        <div class="bg-base-100 rounded-lg p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex items-center gap-2">
+              <IconBrush class="w-4 h-4 text-primary" />
+              <h3 class="text-sm font-medium">Sculpting Mode</h3>
+            </div>
+            <div class={`badge badge-sm ${isTerrainEditMode() ? 'badge-success' : 'badge-outline'}`}>
+              {isTerrainEditMode() ? 'Active' : 'Inactive'}
+            </div>
+          </div>
+          
+          {!isTerrainEditMode() && (
+            <div class="text-xs text-base-content/60 p-3 bg-base-200 rounded">
+              Switch to <strong>Sculpting</strong> mode from the toolbar dropdown to start terrain editing
+            </div>
+          )}
+        </div>
+
         {/* Sculpting Tools */}
         <div class="bg-base-100 rounded-lg p-4">
           <div class="flex items-center gap-2 mb-3">
@@ -101,11 +131,11 @@ const TerrainPropertiesPanel = (props) => {
             <h3 class="text-sm font-medium">Sculpting Tools</h3>
           </div>
           
-          <div class="grid grid-cols-2 gap-2 mb-4">
+          <div class="grid grid-cols-3 gap-2 mb-4">
             <button
               onClick={() => handleToolSelect('raise')}
               class={`p-3 rounded-lg border transition-all ${
-                selectedTool() === 'raise' 
+                (selectedTool() === 'raise' || currentTool() === 'raise') 
                   ? 'bg-primary text-primary-content border-primary' 
                   : 'bg-base-200 border-base-300 hover:bg-base-300'
               }`}
@@ -119,7 +149,7 @@ const TerrainPropertiesPanel = (props) => {
             <button
               onClick={() => handleToolSelect('lower')}
               class={`p-3 rounded-lg border transition-all ${
-                selectedTool() === 'lower' 
+                (selectedTool() === 'lower' || currentTool() === 'lower') 
                   ? 'bg-primary text-primary-content border-primary' 
                   : 'bg-base-200 border-base-300 hover:bg-base-300'
               }`}
@@ -133,7 +163,7 @@ const TerrainPropertiesPanel = (props) => {
             <button
               onClick={() => handleToolSelect('smooth')}
               class={`p-3 rounded-lg border transition-all ${
-                selectedTool() === 'smooth' 
+                (selectedTool() === 'smooth' || currentTool() === 'smooth') 
                   ? 'bg-primary text-primary-content border-primary' 
                   : 'bg-base-200 border-base-300 hover:bg-base-300'
               }`}
@@ -147,14 +177,42 @@ const TerrainPropertiesPanel = (props) => {
             <button
               onClick={() => handleToolSelect('flatten')}
               class={`p-3 rounded-lg border transition-all ${
-                selectedTool() === 'flatten' 
+                (selectedTool() === 'flatten' || currentTool() === 'flatten') 
                   ? 'bg-primary text-primary-content border-primary' 
                   : 'bg-base-200 border-base-300 hover:bg-base-300'
               }`}
             >
               <div class="flex flex-col items-center gap-1">
-                <IconSquare class="w-4 h-4" />
+                <IconBrush class="w-4 h-4" />
                 <span class="text-xs">Flatten</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleToolSelect('paint')}
+              class={`p-3 rounded-lg border transition-all ${
+                (selectedTool() === 'paint' || currentTool() === 'paint') 
+                  ? 'bg-primary text-primary-content border-primary' 
+                  : 'bg-base-200 border-base-300 hover:bg-base-300'
+              }`}
+            >
+              <div class="flex flex-col items-center gap-1">
+                <IconSun class="w-4 h-4" />
+                <span class="text-xs">Paint</span>
+              </div>
+            </button>
+            
+            <button
+              onClick={() => handleToolSelect('noise')}
+              class={`p-3 rounded-lg border transition-all ${
+                (selectedTool() === 'noise' || currentTool() === 'noise') 
+                  ? 'bg-primary text-primary-content border-primary' 
+                  : 'bg-base-200 border-base-300 hover:bg-base-300'
+              }`}
+            >
+              <div class="flex flex-col items-center gap-1">
+                <IconBulb class="w-4 h-4" />
+                <span class="text-xs">Noise</span>
               </div>
             </button>
           </div>
@@ -162,7 +220,10 @@ const TerrainPropertiesPanel = (props) => {
 
         {/* Brush Settings */}
         <div class="bg-base-100 rounded-lg p-4">
-          <h3 class="text-sm font-medium mb-3">Brush Settings</h3>
+          <div class="flex items-center justify-between mb-3">
+            <h3 class="text-sm font-medium">Brush Settings</h3>
+            <div class="text-xs text-base-content/60">Ctrl+Scroll to resize</div>
+          </div>
           
           <div class="space-y-4">
             <div>
@@ -173,7 +234,7 @@ const TerrainPropertiesPanel = (props) => {
               <input
                 type="range"
                 min="1"
-                max="20"
+                max="32"
                 step="0.5"
                 value={brushSize()}
                 onInput={handleBrushSizeChange}

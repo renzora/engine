@@ -2,6 +2,7 @@ import { onMount, onCleanup, createEffect } from 'solid-js';
 import { GizmoManager } from '@babylonjs/core/Gizmos/gizmoManager';
 import { UtilityLayerRenderer } from '@babylonjs/core/Rendering/utilityLayerRenderer';
 import { renderStore, renderActions } from '../store.jsx';
+import { editorActions } from '@/layout/stores/EditorStore.jsx';
 
 // Standard Babylon.js Gizmo Component
 export function GizmoManagerComponent() {
@@ -33,6 +34,12 @@ export function GizmoManagerComponent() {
     const transformMode = renderStore.transformMode;
     
     if (gizmoManager) {
+      // Check if gizmos are enabled through centralized controls
+      if (!editorActions.canShowGizmos()) {
+        gizmoManager.attachToMesh(null);
+        return;
+      }
+      
       // Don't attach gizmo to scene objects since they don't support behaviors
       if (selectedObject && selectedObject.getClassName && selectedObject.getClassName() === 'Scene') {
         gizmoManager.attachToMesh(null);
@@ -78,50 +85,56 @@ export function GizmoManagerComponent() {
     gizmoManager.scaleGizmoEnabled = false;
     gizmoManager.boundingBoxGizmoEnabled = false;
     
-    // Enable appropriate gizmo based on mode - smaller size
+    // Enable appropriate gizmo based on mode and centralized controls
     switch (mode) {
       case 'move':
-        gizmoManager.positionGizmoEnabled = true;
-        // Set scale ratio after enabling (bit longer)
-        if (gizmoManager.gizmos.positionGizmo) {
-          gizmoManager.gizmos.positionGizmo.scaleRatio = 1.8; // Bit longer than 1.5
+        if (editorActions.canTransform('position')) {
+          gizmoManager.positionGizmoEnabled = true;
+          // Set scale ratio after enabling (bit longer)
+          if (gizmoManager.gizmos.positionGizmo) {
+            gizmoManager.gizmos.positionGizmo.scaleRatio = 1.8; // Bit longer than 1.5
+          }
         }
         break;
       case 'rotate':
-        gizmoManager.rotationGizmoEnabled = true;
-        // Set scale ratio after enabling
-        if (gizmoManager.gizmos.rotationGizmo) {
-          gizmoManager.gizmos.rotationGizmo.scaleRatio = 1.8;
+        if (editorActions.canTransform('rotation')) {
+          gizmoManager.rotationGizmoEnabled = true;
+          // Set scale ratio after enabling
+          if (gizmoManager.gizmos.rotationGizmo) {
+            gizmoManager.gizmos.rotationGizmo.scaleRatio = 1.8;
+          }
         }
         break;
       case 'scale':
-        gizmoManager.scaleGizmoEnabled = true;
-        // Set scale ratio after enabling
-        if (gizmoManager.gizmos.scaleGizmo) {
-          gizmoManager.gizmos.scaleGizmo.scaleRatio = 1.8;
+        if (editorActions.canTransform('scale')) {
+          gizmoManager.scaleGizmoEnabled = true;
+          // Set scale ratio after enabling
+          if (gizmoManager.gizmos.scaleGizmo) {
+            gizmoManager.gizmos.scaleGizmo.scaleRatio = 1.8;
           
-          // For plane objects, constrain Y-axis scaling by monitoring the gizmo
-          const selectedObject = renderStore.selectedObject;
-          if (selectedObject && selectedObject.name && selectedObject.name.toLowerCase().includes('plane')) {
-            console.log('🎯 Plane detected - setting up Y-axis scaling constraint');
-            
-            // Monitor scaling changes and override Y-axis
-            const scaleGizmo = gizmoManager.gizmos.scaleGizmo;
-            if (scaleGizmo && !scaleGizmo._planeConstraintAdded) {
-              const originalOnDragObservable = scaleGizmo.onDragStartObservable.clone();
-              let initialScale = null;
+            // For plane objects, constrain Y-axis scaling by monitoring the gizmo
+            const selectedObject = renderStore.selectedObject;
+            if (selectedObject && selectedObject.name && selectedObject.name.toLowerCase().includes('plane')) {
+              console.log('🎯 Plane detected - setting up Y-axis scaling constraint');
               
-              scaleGizmo.onDragStartObservable.add(() => {
-                initialScale = selectedObject.scaling.clone();
-              });
-              
-              scaleGizmo.onDragObservable.add(() => {
-                if (initialScale && selectedObject.scaling.y !== initialScale.y) {
-                  selectedObject.scaling.y = initialScale.y;
-                }
-              });
-              
-              scaleGizmo._planeConstraintAdded = true;
+              // Monitor scaling changes and override Y-axis
+              const scaleGizmo = gizmoManager.gizmos.scaleGizmo;
+              if (scaleGizmo && !scaleGizmo._planeConstraintAdded) {
+                const originalOnDragObservable = scaleGizmo.onDragStartObservable.clone();
+                let initialScale = null;
+                
+                scaleGizmo.onDragStartObservable.add(() => {
+                  initialScale = selectedObject.scaling.clone();
+                });
+                
+                scaleGizmo.onDragObservable.add(() => {
+                  if (initialScale && selectedObject.scaling.y !== initialScale.y) {
+                    selectedObject.scaling.y = initialScale.y;
+                  }
+                });
+                
+                scaleGizmo._planeConstraintAdded = true;
+              }
             }
           }
         }

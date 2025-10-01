@@ -3,7 +3,7 @@ import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie, IconMountain } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie, IconMountain, IconWaveSine, IconBrush2, IconPaintBucket, IconTriangle } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -40,6 +40,39 @@ function Toolbar() {
   const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
   const currentMode = () => editorStore.ui.currentMode;
   
+  // Brush settings for sculpting mode
+  const getBrushSize = () => {
+    const selectedObject = renderStore.selectedObject;
+    if (selectedObject && selectedObject._terrainData) {
+      return selectedObject._terrainData.brushSize || 8;
+    }
+    return 8; // Default brush size
+  };
+  
+  const setBrushSize = (size) => {
+    const selectedObject = renderStore.selectedObject;
+    if (selectedObject && selectedObject._terrainData) {
+      selectedObject._terrainData.brushSize = size;
+      editorActions.addConsoleMessage(`Brush size: ${size.toFixed(1)}`, 'info');
+    }
+  };
+  
+  const getBrushStrength = () => {
+    const selectedObject = renderStore.selectedObject;
+    if (selectedObject && selectedObject._terrainData) {
+      return selectedObject._terrainData.brushStrength || 0.2;
+    }
+    return 0.2; // Default brush strength
+  };
+  
+  const setBrushStrength = (strength) => {
+    const selectedObject = renderStore.selectedObject;
+    if (selectedObject && selectedObject._terrainData) {
+      selectedObject._terrainData.brushStrength = strength;
+      editorActions.addConsoleMessage(`Brush strength: ${(strength * 100).toFixed(0)}%`, 'info');
+    }
+  };
+  
   // Get user-friendly view names
   const getViewDisplayName = (viewType) => {
     const viewNames = {
@@ -70,7 +103,7 @@ function Toolbar() {
     if (['select', 'move', 'rotate', 'scale'].includes(transformMode())) {
       return transformMode();
     }
-    if (['terrain_raise', 'terrain_lower', 'terrain_smooth', 'terrain_flatten'].includes(selectedTool())) {
+    if (['terrain_raise', 'terrain_lower', 'terrain_smooth', 'terrain_flatten', 'terrain_paint', 'terrain_noise'].includes(selectedTool())) {
       return selectedTool();
     }
     return selectedTool();
@@ -523,13 +556,20 @@ function Toolbar() {
         'info'
       );
     }
-    else if (['terrain_raise', 'terrain_lower', 'terrain_smooth', 'terrain_flatten'].includes(toolId)) {
+    else if (['terrain_raise', 'terrain_lower', 'terrain_smooth', 'terrain_flatten', 'terrain_paint', 'terrain_noise'].includes(toolId)) {
       if (!selectedEntity() || !selectedEntity()._terrainData) {
         editorActions.addConsoleMessage('Please select a terrain object first', 'warning');
         return;
       }
       setSelectedTool(toolId);
-      editorActions.addConsoleMessage(`Terrain tool activated: ${toolId.replace('terrain_', '')}`, 'info');
+      
+      // Start terrain editing mode with the selected tool
+      const toolName = toolId.replace('terrain_', '');
+      document.dispatchEvent(new CustomEvent('engine:start-terrain-edit', { 
+        detail: { tool: toolName } 
+      }));
+      
+      editorActions.addConsoleMessage(`Terrain tool activated: ${toolName}`, 'info');
     }
     else {
       editorActions.addConsoleMessage(`Tool activated: ${toolId}`, 'info');
@@ -553,10 +593,12 @@ function Toolbar() {
         { id: 'rotate', icon: IconRefresh, tooltip: 'Rotate' },
         { id: 'scale', icon: IconMaximize, tooltip: 'Scale' },
         null, // Separator
-        { id: 'terrain_raise', icon: IconMountain, tooltip: 'Raise Terrain' },
-        { id: 'terrain_lower', icon: IconSquare, tooltip: 'Lower Terrain' },
-        { id: 'terrain_smooth', icon: IconCircle, tooltip: 'Smooth Terrain' },
-        { id: 'terrain_flatten', icon: IconBrush, tooltip: 'Flatten Terrain' },
+        { id: 'terrain_raise', icon: IconMountain, tooltip: 'Raise Terrain (Ctrl+Scroll to resize brush)' },
+        { id: 'terrain_lower', icon: IconSquare, tooltip: 'Lower Terrain (Ctrl+Scroll to resize brush)' },
+        { id: 'terrain_smooth', icon: IconCircle, tooltip: 'Smooth Terrain (Ctrl+Scroll to resize brush)' },
+        { id: 'terrain_flatten', icon: IconBrush, tooltip: 'Flatten Terrain (Ctrl+Scroll to resize brush)' },
+        { id: 'terrain_paint', icon: IconSun, tooltip: 'Paint Texture (Ctrl+Scroll to resize brush)' },
+        { id: 'terrain_noise', icon: IconBulb, tooltip: 'Add Noise (Ctrl+Scroll to resize brush)' },
         null, // Separator
         { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },
         { id: 'delete', icon: IconTrash, tooltip: 'Delete' }
@@ -613,6 +655,45 @@ function Toolbar() {
           )
         }
       </For>
+      
+      {/* Sculpting Mode Controls */}
+      {currentMode() === 'sculpting' && (
+        <>
+          <div class="w-px h-6 bg-base-content/20 mx-1"></div>
+          
+          {/* Brush Size Control */}
+          <div class="flex items-center gap-2 px-2">
+            <label class="text-xs text-base-content/60 whitespace-nowrap">Size:</label>
+            <input
+              type="range"
+              min="1"
+              max="32"
+              step="0.5"
+              value={getBrushSize()}
+              onInput={(e) => setBrushSize(parseFloat(e.target.value))}
+              class="range range-primary range-xs w-16"
+              title={`Brush Size: ${getBrushSize()}`}
+            />
+            <span class="text-xs text-base-content/60 min-w-[2rem] text-center">{getBrushSize()}</span>
+          </div>
+          
+          {/* Brush Strength Control */}
+          <div class="flex items-center gap-2 px-2">
+            <label class="text-xs text-base-content/60 whitespace-nowrap">Strength:</label>
+            <input
+              type="range"
+              min="0.01"
+              max="1.0"
+              step="0.01"
+              value={getBrushStrength()}
+              onInput={(e) => setBrushStrength(parseFloat(e.target.value))}
+              class="range range-primary range-xs w-16"
+              title={`Brush Strength: ${(getBrushStrength() * 100).toFixed(0)}%`}
+            />
+            <span class="text-xs text-base-content/60 min-w-[2rem] text-center">{(getBrushStrength() * 100).toFixed(0)}%</span>
+          </div>
+        </>
+      )}
       
       <div class="flex-1" />
       

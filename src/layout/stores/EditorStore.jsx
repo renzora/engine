@@ -49,6 +49,82 @@ const [editorStore, setEditorStore] = createStore({
       'assets'
     ]
   },
+
+  // Centralized editor behavior controls
+  controls: {
+    // Selection system
+    selection: {
+      enabled: true,
+      allowDeselection: true,
+      multiSelectEnabled: true,
+      highlightEnabled: true
+    },
+    
+    // Camera system
+    camera: {
+      leftClickPanEnabled: true,
+      rightClickPanEnabled: true,
+      middleClickOrbitEnabled: true,
+      rightClickOrbitEnabled: true,
+      zoomEnabled: true,
+      keyboardNavigationEnabled: true,
+      focusEnabled: true,
+      resetEnabled: true
+    },
+    
+    // Transform system
+    transform: {
+      gizmosEnabled: true,
+      positionEnabled: true,
+      rotationEnabled: true,
+      scaleEnabled: true,
+      gridSnappingEnabled: false,
+      constraintsEnabled: true
+    },
+    
+    // Interaction system
+    interaction: {
+      objectPickingEnabled: true,
+      groundPickingEnabled: true,
+      dragDropEnabled: true,
+      contextMenuEnabled: true,
+      keyboardShortcutsEnabled: true,
+      mouseWheelEnabled: true
+    },
+    
+    // Viewport system
+    viewport: {
+      renderingEnabled: true,
+      animationsEnabled: true,
+      physicsEnabled: true,
+      postProcessingEnabled: true,
+      wireframeOverride: false,
+      debugVisualizationEnabled: false
+    },
+    
+    // Mode-specific overrides
+    overrides: {
+      // When in sculpting mode, certain controls are disabled
+      sculpting: {
+        selection: { allowDeselection: false },
+        camera: { leftClickPanEnabled: false }, // Only disable left-click panning
+        interaction: { objectPickingEnabled: false },
+        transform: { gizmosEnabled: false }
+      },
+      
+      // When in animation mode, certain features are enhanced
+      animation: {
+        viewport: { animationsEnabled: true },
+        transform: { constraintsEnabled: false }
+      },
+      
+      // When in level editor mode, snapping is enabled
+      levelPrototyping: {
+        transform: { gridSnappingEnabled: true },
+        interaction: { groundPickingEnabled: true }
+      }
+    }
+  },
   
   panels: {
     isResizingPanels: false,
@@ -239,6 +315,85 @@ export const editorActions = {
       detail: { mode, previousMode: editorStore.ui.currentMode }
     });
     document.dispatchEvent(event);
+  },
+
+  // Control system actions
+  setControlEnabled: (category, control, enabled) => {
+    setEditorStore('controls', category, control, enabled);
+  },
+
+  setControlsEnabled: (category, controls) => {
+    Object.entries(controls).forEach(([control, enabled]) => {
+      setEditorStore('controls', category, control, enabled);
+    });
+  },
+
+  // Utility to get effective control state (base + mode overrides)
+  getEffectiveControls: () => {
+    const currentMode = editorStore.ui.currentMode;
+    const baseControls = editorStore.controls;
+    const modeOverrides = baseControls.overrides[currentMode] || {};
+    
+    // Deep merge base controls with mode-specific overrides
+    const effectiveControls = JSON.parse(JSON.stringify(baseControls));
+    
+    Object.entries(modeOverrides).forEach(([category, overrides]) => {
+      if (effectiveControls[category]) {
+        Object.assign(effectiveControls[category], overrides);
+      }
+    });
+    
+    return effectiveControls;
+  },
+
+  // Convenient getters for specific control states
+  canDeselect: () => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.selection.enabled && controls.selection.allowDeselection;
+  },
+
+  canPanCamera: (button = 0) => {
+    const controls = editorActions.getEffectiveControls();
+    if (button === 0) return controls.camera.leftClickPanEnabled;
+    if (button === 2) return controls.camera.rightClickPanEnabled;
+    return controls.camera.leftClickPanEnabled || controls.camera.rightClickPanEnabled;
+  },
+
+  canOrbitCamera: (button = 1) => {
+    const controls = editorActions.getEffectiveControls();
+    if (button === 1) return controls.camera.middleClickOrbitEnabled;
+    if (button === 2) return controls.camera.rightClickOrbitEnabled;
+    return controls.camera.middleClickOrbitEnabled || controls.camera.rightClickOrbitEnabled;
+  },
+
+  canZoomCamera: () => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.camera.zoomEnabled;
+  },
+
+  canPickObjects: () => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.interaction.objectPickingEnabled;
+  },
+
+  canUseKeyboardShortcuts: () => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.interaction.keyboardShortcutsEnabled;
+  },
+
+  canUseMouseWheel: () => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.interaction.mouseWheelEnabled;
+  },
+
+  canShowGizmos: () => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.transform.gizmosEnabled;
+  },
+
+  canTransform: (type = 'position') => {
+    const controls = editorActions.getEffectiveControls();
+    return controls.transform.gizmosEnabled && controls.transform[`${type}Enabled`];
   }
 }
 

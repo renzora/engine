@@ -678,8 +678,8 @@ export default function BabylonRenderer(props) {
             console.log('🔗 Calling renderActions.selectObject with:', targetObject.name, 'ID:', targetObject.uniqueId, 'multiSelect:', isShiftPressed);
             renderActions.selectObject(targetObject, isShiftPressed);
           } else {
-            // Left click but no hit - deselect (only if not shift-clicking)
-            if (!isShiftPressed) {
+            // Left click but no hit - deselect (only if deselection is allowed)
+            if (!isShiftPressed && editorActions.canDeselect()) {
               renderActions.selectObject(null);
             }
           }

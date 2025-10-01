@@ -2,6 +2,7 @@ import { createEffect, onCleanup } from 'solid-js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { viewportStore } from '@/layout/stores/ViewportStore';
 import { renderStore } from '../store.jsx';
+import { editorActions } from '@/layout/stores/EditorStore.jsx';
 
 export function useCameraController(camera, canvas, scene) {
   const cameraSettings = () => viewportStore.camera;
@@ -36,6 +37,21 @@ export function useCameraController(camera, canvas, scene) {
   const cameraFriction = () => cameraSettings()?.friction || 0.93;
 
   const shouldAllowCameraMovement = (event) => {
+    // Check centralized camera controls first - pass the button number
+    if (event && event.button === 0 && !editorActions.canPanCamera(0)) {
+      return false; // Left-click panning disabled
+    }
+    if (event && event.button === 1 && !editorActions.canOrbitCamera(1)) {
+      return false; // Middle-click orbit disabled
+    }
+    if (event && event.button === 2) {
+      // Right-click can be either pan or orbit depending on modifier keys
+      // For now, allow right-click if either panning or orbiting is enabled
+      if (!editorActions.canPanCamera(2) && !editorActions.canOrbitCamera(2)) {
+        return false;
+      }
+    }
+    
     // If gizmo is being dragged, block all camera movement
     if (renderStore.isGizmoDragging) {
       return false;
@@ -198,6 +214,11 @@ export function useCameraController(camera, canvas, scene) {
 
   const handleWheel = (event) => {
     if (!camera()) return;
+    
+    // Check if zoom is enabled through centralized controls
+    if (!editorActions.canZoomCamera()) {
+      return;
+    }
 
     event.preventDefault();
     const delta = event.deltaY * -0.01;
