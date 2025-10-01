@@ -1241,17 +1241,19 @@ export default function ScriptsPanel() {
                                           const scriptPath = scriptInstance._scriptPath;
                                           const scriptName = scriptPath.split('/').pop();
                                           
+                                          // Get babylon object before detachment
+                                          const babylonObject = getSelectedBabylonObject();
+                                          
+                                          // Remove script properties from babylon object first
+                                          if (babylonObject && scriptInstance) {
+                                            removeScriptProperties(babylonObject, scriptInstance);
+                                          }
+                                          
                                           // Detach script from runtime
                                           const runtime = getScriptRuntime();
                                           const success = await runtime.detachScript(selection.entity, scriptPath);
                                           
                                           if (success) {
-                                            // Remove script properties from babylon object
-                                            const babylonObject = getSelectedBabylonObject();
-                                            if (babylonObject && scriptInstance) {
-                                              removeScriptProperties(babylonObject, scriptInstance);
-                                            }
-                                            
                                             // Update object properties to remove script from UI
                                             const currentScripts = objectProps.scripts || [];
                                             const newScripts = currentScripts.filter(s => s.path !== scriptPath);
@@ -1263,10 +1265,13 @@ export default function ScriptsPanel() {
                                             newPaused.delete(scriptKey);
                                             setPausedScripts(newPaused);
                                             
-                                            // Update script properties signal
-                                            if (babylonObject?.metadata?.scriptProperties) {
-                                              setScriptPropertiesSignal({ ...babylonObject.metadata.scriptProperties });
-                                            }
+                                            // Force update script properties signal by creating new object
+                                            const updatedScriptProperties = babylonObject?.metadata?.scriptProperties ? 
+                                              { ...babylonObject.metadata.scriptProperties } : {};
+                                            setScriptPropertiesSignal(updatedScriptProperties);
+                                            
+                                            // Force metadata version update to trigger UI refresh
+                                            setScriptMetadataVersion(prev => prev + 1);
                                             
                                             editorActions.addConsoleMessage(`Script "${scriptName}" detached`, 'info');
                                           } else {
