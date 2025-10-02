@@ -3,7 +3,7 @@ import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie, IconMountain, IconWaveSine, IconBrush2, IconPaintBucket, IconTriangle } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie, IconMountain, IconWaveSine, IconBrush2, IconPaintBucket, IconTriangle, IconRectangle } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -17,6 +17,7 @@ import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { SpotLight } from '@babylonjs/core/Lights/spotLight';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { RectAreaLight } from '@babylonjs/core/Lights/rectAreaLight';
 import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
 import '@babylonjs/core/Meshes/Builders/boxBuilder';
 import '@babylonjs/core/Meshes/Builders/sphereBuilder';
@@ -42,6 +43,18 @@ function Toolbar() {
   // Mode dropdown state
   const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
   const currentMode = () => editorStore.ui.currentMode;
+  
+  // Light dropdown state
+  const [lightDropdownOpen, setLightDropdownOpen] = createSignal(false);
+  
+  // Light type definitions
+  const lightTypes = [
+    { id: 'directional', name: 'Directional Light', icon: IconSun, description: 'Uniform lighting from a direction (like sunlight)' },
+    { id: 'point', name: 'Point Light', icon: IconBulb, description: 'Light radiating from a single point' },
+    { id: 'spot', name: 'Spot Light', icon: IconTriangle, description: 'Cone-shaped directional light' },
+    { id: 'hemispheric', name: 'Hemispheric Light', icon: IconCircle, description: 'Ambient hemisphere lighting' },
+    { id: 'rectArea', name: 'Rectangular Area Light', icon: IconRectangle, description: 'Light emitted from a rectangular surface' }
+  ];
   
   // Brush settings for sculpting mode
   const getBrushSize = () => {
@@ -227,7 +240,7 @@ function Toolbar() {
     }
 
     try {
-      const lightName = getObjectName('light');
+      const lightName = getObjectName(lightType + '_light');
       const lightPosition = await getViewportCenterPosition(scene, 4);
       lightPosition.y += 3;
       
@@ -254,11 +267,19 @@ function Toolbar() {
           light.specular = new Color3(1, 1, 1);
           light.intensity = 15;
           break;
-        case 'hemisphere':
+        case 'hemispheric':
           light = new HemisphericLight(`${lightName}_light`, new Vector3(0, 1, 0), scene);
           light.diffuse = new Color3(1, 0.95, 0.8);
           light.groundColor = new Color3(0.3, 0.3, 0.3);
           light.intensity = 0.7;
+          break;
+        case 'rectArea':
+          light = new RectAreaLight(`${lightName}_light`, Vector3.Zero(), scene);
+          light.diffuse = new Color3(1, 0.95, 0.8);
+          light.specular = new Color3(1, 1, 1);
+          light.intensity = 5;
+          light.width = 2; // Default width
+          light.height = 2; // Default height
           break;
         default:
           light = new DirectionalLight(`${lightName}_light`, new Vector3(-1, -1, -1), scene);
@@ -545,7 +566,12 @@ function Toolbar() {
       await createBabylonPrimitive(toolId);
     }
     else if (toolId === 'light') {
-      await createBabylonLight();
+      // Toggle light dropdown instead of creating light directly
+      setLightDropdownOpen(!lightDropdownOpen());
+      // Close other dropdowns
+      setCameraViewDropdownOpen(false);
+      setModeDropdownOpen(false);
+      return; // Don't deselect current tool
     }
     else if (toolId === 'camera') {
       await createBabylonCamera();
@@ -646,12 +672,61 @@ function Toolbar() {
     editorActions.addConsoleMessage(`Switched to ${getModeDisplayData(mode).name} mode`, 'info');
   };
 
+  const createLightOfType = async (lightType) => {
+    await createBabylonLight(lightType);
+    setLightDropdownOpen(false);
+  };
+
   return (
     <div class="w-full h-10 flex items-center bg-base-200 border-b border-base-300 px-2 gap-1">
       <For each={tools()}>
         {(tool) => 
           tool === null ? (
             <div class="w-px h-6 bg-base-content/20 mx-1"></div>
+          ) : tool.id === 'light' ? (
+            // Special handling for light dropdown button
+            <div class="relative">
+              <button 
+                onClick={() => handleToolbarClick(tool.id)}
+                class={`h-8 px-2 flex items-center justify-center gap-1 rounded transition-all group cursor-pointer ${
+                  lightDropdownOpen()
+                    ? 'bg-primary text-primary-content'
+                    : 'text-base-content/60 hover:text-base-content hover:bg-base-300'
+                }`} 
+                title={tool.tooltip}
+              >
+                <tool.icon class="w-4 h-4" />
+                <IconChevronDown class="w-2 h-2" />
+                
+                <div class="absolute top-full mt-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                  {tool.tooltip}
+                </div>
+              </button>
+              
+              {/* Light Type Dropdown */}
+              <Show when={lightDropdownOpen()}>
+                <div class="absolute left-0 top-full mt-1 bg-base-200 border border-base-300 rounded shadow-lg z-50 min-w-64">
+                  <div class="p-2 space-y-1">
+                    <div class="text-xs text-base-content/60 px-2 py-1 font-medium">Light Types</div>
+                    
+                    <For each={lightTypes}>
+                      {(lightType) => (
+                        <button
+                          onClick={() => createLightOfType(lightType.id)}
+                          class="w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left"
+                        >
+                          <lightType.icon class="w-4 h-4" />
+                          <div class="flex-1">
+                            <div class="font-medium">{lightType.name}</div>
+                            <div class="text-xs text-base-content/60">{lightType.description}</div>
+                          </div>
+                        </button>
+                      )}
+                    </For>
+                  </div>
+                </div>
+              </Show>
+            </div>
           ) : (
             <button 
               onClick={() => handleToolbarClick(tool.id)}
@@ -734,8 +809,9 @@ function Toolbar() {
         <button
           onClick={() => {
             setModeDropdownOpen(!modeDropdownOpen());
-            // Close camera dropdown when mode dropdown opens
+            // Close other dropdowns when mode dropdown opens
             setCameraViewDropdownOpen(false);
+            setLightDropdownOpen(false);
           }}
           class="h-8 px-3 flex items-center gap-2 rounded cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300 text-xs transition-all"
           title={`Current mode: ${getModeDisplayData(currentMode()).description}`}
@@ -789,7 +865,9 @@ function Toolbar() {
         <button
           onClick={() => {
             setCameraViewDropdownOpen(!cameraViewDropdownOpen());
-            // Close helper dropdowns when camera dropdown opens
+            // Close other dropdowns when camera dropdown opens
+            setModeDropdownOpen(false);
+            setLightDropdownOpen(false);
             if (window._closeHelperDropdowns) {
               window._closeHelperDropdowns();
             }
