@@ -46,13 +46,16 @@ const Layout = () => {
           <TopMenu />
         </div>
       
+        <Show when={bottomPanelVisible()}>
+          <div class="flex-shrink-0 pointer-events-auto">
+            <BottomPanel />
+          </div>
+        </Show>
+        
         <div class="flex-1 relative overflow-hidden pointer-events-auto">
           <Viewport />
           <Show when={propertiesPanelVisible()}>
             <RightPanel />
-          </Show>
-          <Show when={bottomPanelVisible()}>
-            <BottomPanel />
           </Show>
         </div>
         

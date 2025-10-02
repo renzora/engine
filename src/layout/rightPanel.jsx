@@ -40,7 +40,7 @@ const RightPanel = () => {
   const [isResizingRight, setIsResizingRight] = createSignal(false);
   const [rightDragOffset, setRightDragOffset] = createSignal(0);
   const [isResizingTabs, setIsResizingTabs] = createSignal(false);
-  const [tabContainerHeight, setTabContainerHeight] = createSignal(480);
+  const [tabContainerHeight, setTabContainerHeight] = createSignal(680);
   
   const handleRightResizeStart = (e) => {
     setIsResizingRight(true);
