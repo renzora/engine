@@ -94,10 +94,8 @@ function Toolbar() {
   // Get user-friendly mode names and icons
   const getModeDisplayData = (mode) => {
     const modeData = {
-      standard: { name: "Standard", icon: IconCube, description: "General scene editing" },
-      levelPrototyping: { name: "Level Editor", icon: IconDeviceGamepad2, description: "Quick level prototyping with snapping" },
-      sculpting: { name: "Sculpting", icon: IconBrush, description: "Terrain and mesh sculpting" },
-      animation: { name: "Animation", icon: IconMovie, description: "Timeline and keyframe editing" }
+      standard: { name: "Scene Editor", icon: IconCube, description: "Design scenes, add models, and transform objects" },
+      sculpting: { name: "Sculpting", icon: IconBrush, description: "Terrain and mesh sculpting" }
     };
     return modeData[mode] || { name: "Unknown", icon: IconCube, description: "" };
   };
@@ -718,16 +716,13 @@ function Toolbar() {
       {/* Play/Pause Button */}
       <button 
         onClick={() => handleToolbarClick('play_pause')}
-        class="h-8 px-3 flex items-center gap-2 rounded transition-all group cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300" 
+        class="h-8 w-8 flex items-center justify-center rounded transition-all group cursor-pointer text-base-content/60 hover:text-base-content hover:bg-base-300" 
         title={editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts'}
       >
         {editorStore.scripts.isPlaying ? 
-          <IconPlayerPause class={`w-3 h-3 text-yellow-500`} /> : 
-          <IconPlayerPlay class={`w-3 h-3 text-green-500`} />
+          <IconPlayerPause class={`w-4 h-4 text-yellow-500`} /> : 
+          <IconPlayerPlay class={`w-4 h-4 text-green-500`} />
         }
-        <span class="text-xs">
-          {editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts'}
-        </span>
         
         <div class="absolute top-full mt-2 bg-base-200 text-base-content text-xs px-2 py-1 rounded whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
           {editorStore.scripts.isPlaying ? 'Pause Scripts' : 'Play Scripts'}
@@ -766,21 +761,8 @@ function Toolbar() {
               >
                 <IconCube class="w-4 h-4" />
                 <div class="flex-1">
-                  <div class="font-medium">Standard</div>
-                  <div class="text-xs text-base-content/60">General scene editing</div>
-                </div>
-              </button>
-              
-              <button
-                onClick={() => setMode('levelPrototyping')}
-                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left ${
-                  currentMode() === 'levelPrototyping' ? 'bg-base-300 text-base-content' : ''
-                }`}
-              >
-                <IconDeviceGamepad2 class="w-4 h-4" />
-                <div class="flex-1">
-                  <div class="font-medium">Level Editor</div>
-                  <div class="text-xs text-base-content/60">Quick level prototyping with snapping</div>
+                  <div class="font-medium">Scene Editor</div>
+                  <div class="text-xs text-base-content/60">Design scenes, add models, and transform objects</div>
                 </div>
               </button>
               
@@ -797,18 +779,6 @@ function Toolbar() {
                 </div>
               </button>
               
-              <button
-                onClick={() => setMode('animation')}
-                class={`w-full flex items-center gap-3 px-3 py-2 text-xs rounded cursor-pointer hover:bg-base-300 text-left ${
-                  currentMode() === 'animation' ? 'bg-base-300 text-base-content' : ''
-                }`}
-              >
-                <IconMovie class="w-4 h-4" />
-                <div class="flex-1">
-                  <div class="font-medium">Animation</div>
-                  <div class="text-xs text-base-content/60">Timeline and keyframe editing</div>
-                </div>
-              </button>
             </div>
           </div>
         </Show>
