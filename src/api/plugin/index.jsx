@@ -68,6 +68,8 @@ class PluginLoader {
       { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
       { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/scripts', main: 'index.jsx', priority: 1 },
+      { path: '/src/plugins/render', main: 'index.jsx', priority: 1 },
+      { path: '/src/plugins/material', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/web-browser', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
       { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
@@ -172,6 +174,12 @@ class PluginLoader {
             break;
           case 'scripts-plugin':
             pluginModule = await import(`@/plugins/scripts/index.jsx`);
+            break;
+          case 'render-plugin':
+            pluginModule = await import(`@/plugins/render/index.jsx`);
+            break;
+          case 'material-plugin':
+            pluginModule = await import(`@/plugins/material/index.jsx`);
             break;
           case 'web-browser-plugin':
             pluginModule = await import(`@/plugins/web-browser/index.jsx`);

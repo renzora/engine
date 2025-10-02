@@ -36,6 +36,9 @@ function Toolbar() {
   const [cameraViewDropdownOpen, setCameraViewDropdownOpen] = createSignal(false);
   const [currentViewName, setCurrentViewName] = createSignal("View");
   
+  // Initialize global camera view name
+  window._currentCameraViewName = "Camera";
+  
   // Mode dropdown state
   const [modeDropdownOpen, setModeDropdownOpen] = createSignal(false);
   const currentMode = () => editorStore.ui.currentMode;
@@ -191,16 +194,20 @@ function Toolbar() {
 
       primitive.position = position;
       
-      let material;
-      if (type === 'plane') {
-        material = new StandardMaterial(`${objectName}_material`, scene);
-        material.diffuseColor = new Color3(0.8, 0.8, 0.8);
-      } else {
-        material = new PBRMaterial(`${objectName}_material`, scene);
-        material.baseColor = new Color3(0.8, 0.8, 0.8);
-        material.metallicFactor = 0.1;
-        material.roughnessFactor = 0.8;
-      }
+      // Define default colors for each primitive type
+      const defaultColors = {
+        cube: new Color3(0.2, 0.6, 1.0),     // Light blue
+        sphere: new Color3(1.0, 0.4, 0.2),   // Orange-red
+        cylinder: new Color3(0.2, 0.8, 0.4), // Green
+        plane: new Color3(0.6, 0.6, 0.6)     // Light gray
+      };
+      
+      // Create material - use StandardMaterial for all primitives for consistent color display
+      const material = new StandardMaterial(`${objectName}_material`, scene);
+      material.diffuseColor = defaultColors[type];
+      
+      // Add slight emissive color to ensure visibility even in low light
+      material.emissiveColor = defaultColors[type].scale(0.1);
       
       primitive.material = material;
       
@@ -228,6 +235,12 @@ function Toolbar() {
       
       const mainContainer = new TransformNode(lightName, scene);
       mainContainer.position = lightPosition;
+      
+      // Mark container as a light object for hierarchy detection
+      mainContainer.metadata = { 
+        isLightContainer: true, 
+        lightType: lightType 
+      };
       
       let light;
       switch (lightType) {
@@ -448,7 +461,12 @@ function Toolbar() {
       }
       
       setCameraViewDropdownOpen(false);
-      setCurrentViewName(getViewDisplayName(viewType));
+      const viewName = getViewDisplayName(viewType);
+      setCurrentViewName(viewName);
+      
+      // Expose current view name globally for camera helper
+      window._currentCameraViewName = viewName;
+      
       editorActions.addConsoleMessage(`Camera view set to ${viewType} (focus: ${focusPoint.x.toFixed(1)}, ${focusPoint.y.toFixed(1)}, ${focusPoint.z.toFixed(1)})`, 'info');
       console.log(`Camera position set to: ${camera.position}, rotation: ${camera.rotation}`);
     } else {
@@ -616,7 +634,7 @@ function Toolbar() {
         { id: 'sphere', icon: IconCircle, tooltip: 'Add Sphere' },
         { id: 'cylinder', icon: IconCylinder, tooltip: 'Add Cylinder' },
         { id: 'plane', icon: IconSquare, tooltip: 'Add Plane' },
-        { id: 'light', icon: IconSun, tooltip: 'Add Light' },
+        { id: 'light', icon: IconBulb, tooltip: 'Add Light' },
         null, // Separator
         { id: 'duplicate', icon: IconCopy, tooltip: 'Duplicate' },
         { id: 'delete', icon: IconTrash, tooltip: 'Delete' }

@@ -5,6 +5,22 @@ import { toolbarButtons } from '@/api/plugin';
 function Helper(props) {
   const [activePluginDropdown, setActivePluginDropdown] = createSignal(null);
   const [pluginDropdownPosition, setPluginDropdownPosition] = createSignal(null);
+  const [currentCameraView, setCurrentCameraView] = createSignal("Camera");
+
+  // Watch for changes to global camera view name
+  createEffect(() => {
+    const checkCameraView = () => {
+      if (window._currentCameraViewName && window._currentCameraViewName !== currentCameraView()) {
+        setCurrentCameraView(window._currentCameraViewName);
+      }
+    };
+    
+    // Check immediately and then periodically
+    checkCameraView();
+    const interval = setInterval(checkCameraView, 100);
+    
+    onCleanup(() => clearInterval(interval));
+  });
   
   // Expose close function globally so camera dropdown can call it
   window._closeHelperDropdowns = () => {
@@ -111,6 +127,11 @@ function Helper(props) {
               >
                 <Show when={button.icon}>
                   <button.icon class="w-4 h-4" />
+                </Show>
+                <Show when={button.id === 'camera' && button.dynamicLabel}>
+                  <span class="text-xs ml-1">
+                    {currentCameraView()}
+                  </span>
                 </Show>
               </button>
           );

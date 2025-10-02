@@ -80,8 +80,115 @@ export default function CameraDropdownContent() {
     { id: 'arcrotate', label: 'Orbit Camera', icon: IconEye, description: 'Orbit around a target point' }
   ];
 
+  const cameraViews = [
+    { id: 'front', label: 'Front', shortcut: '1' },
+    { id: 'back', label: 'Back', shortcut: 'Ctrl+1' },
+    { id: 'right', label: 'Right', shortcut: '3' },
+    { id: 'left', label: 'Left', shortcut: 'Ctrl+3' },
+    { id: 'top', label: 'Top', shortcut: '7' },
+    { id: 'bottom', label: 'Bottom', shortcut: 'Ctrl+7' },
+    { id: 'frontLeft', label: 'Front Left', shortcut: '8' },
+    { id: 'frontRight', label: 'Front Right', shortcut: '6' }
+  ];
+
+  // Camera view functions (copied from Toolbar.jsx)
+  const setCameraView = (viewType) => {
+    // Import necessary functions
+    const getCurrentScene = () => window._cleanBabylonScene;
+    const { Vector3 } = window.BABYLON || {};
+    
+    if (!Vector3) {
+      console.error('Babylon.js Vector3 not available');
+      return;
+    }
+
+    const scene = getCurrentScene();
+    if (!scene) {
+      console.error('No active scene available');
+      return;
+    }
+
+    const camera = scene.activeCamera || scene._camera || (scene.cameras && scene.cameras[0]);
+    if (!camera) {
+      console.error('No active camera available');
+      return;
+    }
+
+    // Calculate current focus point
+    let focusPoint = new Vector3(0, 0, 0);
+    let currentDistance = 15;
+    
+    if (camera.getTarget && typeof camera.getTarget === 'function') {
+      focusPoint = camera.getTarget();
+      currentDistance = Vector3.Distance(camera.position, focusPoint);
+    } else {
+      const cameraDirection = camera.getDirection ? camera.getDirection(Vector3.Forward()) : new Vector3(0, 0, 1);
+      currentDistance = Vector3.Distance(camera.position, focusPoint);
+      focusPoint = camera.position.add(cameraDirection.scale(currentDistance));
+    }
+
+    // Define camera positions for each view
+    const positions = {
+      front: new Vector3(focusPoint.x, focusPoint.y, focusPoint.z + currentDistance),
+      back: new Vector3(focusPoint.x, focusPoint.y, focusPoint.z - currentDistance),
+      right: new Vector3(focusPoint.x + currentDistance, focusPoint.y, focusPoint.z),
+      left: new Vector3(focusPoint.x - currentDistance, focusPoint.y, focusPoint.z),
+      top: new Vector3(focusPoint.x, focusPoint.y + currentDistance, focusPoint.z),
+      bottom: new Vector3(focusPoint.x, focusPoint.y - currentDistance, focusPoint.z),
+      frontRight: new Vector3(focusPoint.x + currentDistance * 0.7, focusPoint.y + currentDistance * 0.5, focusPoint.z + currentDistance * 0.7),
+      frontLeft: new Vector3(focusPoint.x - currentDistance * 0.7, focusPoint.y + currentDistance * 0.5, focusPoint.z + currentDistance * 0.7)
+    };
+
+    if (positions[viewType]) {
+      const newPosition = positions[viewType];
+      camera.position = newPosition;
+      
+      if (camera.setTarget && typeof camera.setTarget === 'function') {
+        camera.setTarget(focusPoint);
+      } else if (camera.rotation) {
+        const direction = focusPoint.subtract(newPosition).normalize();
+        camera.rotation.x = Math.asin(-direction.y);
+        camera.rotation.y = Math.atan2(direction.x, direction.z);
+        camera.rotation.z = 0;
+      }
+
+      // Update global state for helper button
+      const viewNames = {
+        front: "Front", back: "Back", right: "Right", left: "Left",
+        top: "Top", bottom: "Bottom", frontLeft: "Front Left", frontRight: "Front Right"
+      };
+      const viewName = viewNames[viewType] || "Camera";
+      window._currentCameraViewName = viewName;
+
+      // Close dropdown by calling global close function
+      if (window._closeHelperDropdowns) {
+        window._closeHelperDropdowns();
+      }
+    }
+  };
+
   return (
     <div class="w-64 space-y-4 p-4 bg-base-200 text-base-content max-h-96 overflow-y-auto">
+      <div>
+        <label class="block font-medium text-base-content mb-2">
+          Camera Views
+        </label>
+        <div class="grid grid-cols-2 gap-1 mb-4">
+          <For each={cameraViews}>
+            {(view) => (
+              <button
+                onClick={() => setCameraView(view.id)}
+                class="btn btn-xs btn-ghost flex items-center justify-between text-left"
+                title={`${view.label} (${view.shortcut})`}
+              >
+                <span>{view.label}</span>
+                <span class="text-xs text-base-content/60">{view.shortcut}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </div>
+      
       <div>
         <label class="block font-medium text-base-content mb-2">
           Camera Type

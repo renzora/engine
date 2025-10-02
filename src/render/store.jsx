@@ -485,20 +485,44 @@ export const renderActions = {
         // Add drag callbacks to the existing gizmo manager
         this.attachGizmoCallbacks(gizmoManager);
         
-        // Add highlighting to all selected objects (all same color)
+        // Add highlighting to selected objects with improved logic for complex models
         const allMeshesToHighlight = [];
         renderStore.selectedObjects.forEach((selectedObj) => {
           try {
             const meshesToHighlight = [];
-            if (selectedObj.getChildMeshes) {
-              const childMeshes = selectedObj.getChildMeshes();
-              childMeshes.forEach(childMesh => {
-                if (childMesh.getClassName() === 'Mesh') {
-                  meshesToHighlight.push(childMesh);
-                }
-              });
-            } else if (selectedObj.getClassName() === 'Mesh') {
+            
+            if (selectedObj.getClassName() === 'Mesh') {
+              // Direct mesh selection - highlight the mesh itself
               meshesToHighlight.push(selectedObj);
+            } else if (selectedObj.getChildMeshes) {
+              // Container/TransformNode selection - be selective about highlighting
+              const childMeshes = selectedObj.getChildMeshes();
+              
+              // For GLB models and complex hierarchies, only highlight main/visible meshes
+              // to avoid over-highlighting every sub-component
+              const visibleMeshes = childMeshes.filter(childMesh => {
+                if (childMesh.getClassName() !== 'Mesh') return false;
+                if (!childMesh.isVisible) return false;
+                
+                // Skip very small meshes (likely helper/detail geometry)
+                if (childMesh.getBoundingInfo) {
+                  const size = childMesh.getBoundingInfo().boundingBox.extendSize;
+                  const maxSize = Math.max(size.x, size.y, size.z);
+                  if (maxSize < 0.1) return false; // Skip meshes smaller than 0.1 units
+                }
+                
+                // Skip meshes with names indicating they're internal/helper geometry
+                const name = childMesh.name.toLowerCase();
+                if (name.includes('_helper') || name.includes('_internal') || 
+                    name.includes('_collision') || name.includes('_lod')) {
+                  return false;
+                }
+                
+                return true;
+              });
+              
+              // Limit to max 5 meshes to avoid over-highlighting complex models
+              meshesToHighlight.push(...visibleMeshes.slice(0, 5));
             }
             
             // All selected objects get yellow highlight
@@ -723,15 +747,39 @@ export const renderActions = {
     } else if (className.includes('Camera')) {
       type = 'camera';
     } else if (className === 'TransformNode') {
-      // Check if this is an imported asset container (has mesh children)
-      const hasMeshChildren = babylonObject.getChildren && 
-        babylonObject.getChildren().some(child => 
-          child.getClassName && (
-            child.getClassName().includes('Mesh') || 
-            child.getClassName().includes('InstancedMesh')
-          )
-        );
-      type = hasMeshChildren ? 'mesh' : 'folder';
+      // Check if this is a light container first
+      if (babylonObject.metadata?.isLightContainer) {
+        type = 'light';
+        lightType = babylonObject.metadata.lightType || 'directional';
+      } else {
+        // Check if this is an imported asset container (has mesh children)
+        const hasMeshChildren = babylonObject.getChildren && 
+          babylonObject.getChildren().some(child => 
+            child.getClassName && (
+              child.getClassName().includes('Mesh') || 
+              child.getClassName().includes('InstancedMesh')
+            )
+          );
+        
+        // Also check for light children to catch lights without proper metadata
+        const hasLightChildren = babylonObject.getChildren && 
+          babylonObject.getChildren().some(child => 
+            child.getClassName && child.getClassName().includes('Light')
+          );
+        
+        if (hasLightChildren) {
+          type = 'light';
+          // Try to determine light type from child
+          const lightChild = babylonObject.getChildren().find(child => 
+            child.getClassName && child.getClassName().includes('Light')
+          );
+          if (lightChild) {
+            lightType = lightChild.getClassName().toLowerCase().replace('light', '');
+          }
+        } else {
+          type = hasMeshChildren ? 'mesh' : 'folder';
+        }
+      }
     }
     
     const children = [];

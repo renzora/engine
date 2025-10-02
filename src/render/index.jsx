@@ -42,6 +42,32 @@ import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 const loadDefaultSceneContent = (scene, canvas) => {
   if (window.DEBUG_RENDER) console.log('🌟 Loading default scene content');
   
+  // Add default lighting if no lights exist
+  if (scene.lights.length === 0) {
+    // Import lighting classes
+    import('@babylonjs/core/Lights/hemisphericLight').then(({ HemisphericLight }) => {
+      import('@babylonjs/core/Lights/directionalLight').then(({ DirectionalLight }) => {
+        import('@babylonjs/core/Maths/math.vector').then(({ Vector3 }) => {
+          import('@babylonjs/core/Maths/math.color').then(({ Color3 }) => {
+            // Add ambient hemispheric light for general illumination
+            const hemisphericLight = new HemisphericLight('defaultAmbient', new Vector3(0, 1, 0), scene);
+            hemisphericLight.intensity = 0.6;
+            hemisphericLight.diffuse = new Color3(1, 1, 1);
+            hemisphericLight.groundColor = new Color3(0.3, 0.3, 0.3);
+            
+            // Add directional light for proper shading
+            const directionalLight = new DirectionalLight('defaultDirectional', new Vector3(-0.5, -1, -0.5), scene);
+            directionalLight.intensity = 0.8;
+            directionalLight.diffuse = new Color3(1, 0.95, 0.9);
+            directionalLight.specular = new Color3(1, 1, 1);
+            
+            if (window.DEBUG_RENDER) console.log('✅ Default lighting added to scene');
+          });
+        });
+      });
+    });
+  }
+  
   // Camera will be created during scene loading from saved data
   // No default objects created here - everything comes from scene data
   

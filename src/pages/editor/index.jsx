@@ -6,7 +6,7 @@ import {
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
 import Scene from './Scene.jsx';
-import SettingsComponent from './Settings.jsx';
+import SettingsDropdownContent from '@/ui/display/SettingsDropdownContent.jsx';
 import AssetLibrary from './AssetLibrary';
 
 import { scriptEditorStore, scriptEditorActions } from '../../layout/stores/ScriptEditorStore.js';
@@ -20,12 +20,7 @@ export default function EditorPage() {
     const api = usePluginAPI();
     
 
-    api.tab('settings', {
-      title: 'Settings',
-      component: SettingsComponent,
-      icon: SettingsIcon,
-      order: 999
-    });
+    // Settings moved to toolbar helper instead of tab
 
 
     api.panel('assets', {
@@ -36,10 +31,16 @@ export default function EditorPage() {
       defaultHeight: 300
     });
 
-    
-    // Gizmo snapping is now handled by the combined grid plugin
-    
-    
+    // Settings helper with dropdown
+    api.helper('settings-button', {
+      title: 'Settings',
+      icon: SettingsIcon,
+      order: 30,
+      hasDropdown: true,
+      dropdownComponent: SettingsDropdownContent,
+      dropdownWidth: 320
+    });
+
     api.helper('fullscreen-button', {
       title: 'Toggle Fullscreen',
       icon: IconMaximize,

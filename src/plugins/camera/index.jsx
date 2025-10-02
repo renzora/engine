@@ -16,13 +16,15 @@ export default createPlugin({
   async onStart(api) {
     console.log('[CameraPlugin] Starting...');
     
+    // Camera settings dropdown
     api.helper('camera', {
       title: 'Camera Settings',
       icon: IconVideo,
       order: 3,
       hasDropdown: true,
       dropdownComponent: CameraDropdownContent,
-      dropdownWidth: 280
+      dropdownWidth: 280,
+      dynamicLabel: true // Enable dynamic label updates
     });
     
     console.log('[CameraPlugin] Started');

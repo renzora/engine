@@ -357,16 +357,47 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
           console.log(`Final position: ${finalMesh.position.x}, ${finalMesh.position.y}, ${finalMesh.position.z}`)
           
           
-          // Add shadow casting and receiving to all child meshes
+          // Add shadow casting and receiving to child meshes with improved logic
           if (scene.shadowGenerator) {
             const allChildren = finalMesh.getChildMeshes();
+            const shadowCasters = [];
+            
             allChildren.forEach(childMesh => {
               if (childMesh.getClassName && childMesh.getClassName() === 'Mesh') {
-                scene.shadowGenerator.addShadowCaster(childMesh);
+                // Only add significant meshes to shadow casting to avoid shadow overlap artifacts
+                let shouldCastShadow = true;
+                
+                // Skip very small meshes that likely won't contribute meaningful shadows
+                if (childMesh.getBoundingInfo) {
+                  const size = childMesh.getBoundingInfo().boundingBox.extendSize;
+                  const maxSize = Math.max(size.x, size.y, size.z);
+                  if (maxSize < 0.05) { // Skip meshes smaller than 0.05 units
+                    shouldCastShadow = false;
+                  }
+                }
+                
+                // Skip meshes with transparent or very low alpha materials
+                if (childMesh.material && childMesh.material.alpha < 0.1) {
+                  shouldCastShadow = false;
+                }
+                
+                // Skip meshes with names indicating they shouldn't cast shadows
+                const name = childMesh.name.toLowerCase();
+                if (name.includes('_noshadow') || name.includes('_transparent') || 
+                    name.includes('_glass') || name.includes('_overlay')) {
+                  shouldCastShadow = false;
+                }
+                
+                if (shouldCastShadow) {
+                  scene.shadowGenerator.addShadowCaster(childMesh);
+                  shadowCasters.push(childMesh);
+                }
+                
+                // All meshes can receive shadows regardless of whether they cast them
                 childMesh.receiveShadows = true;
               }
             });
-            console.log(`🌑 Added ${allChildren.filter(m => m.getClassName && m.getClassName() === 'Mesh').length} child meshes to shadow casting and receiving`);
+            console.log(`🌑 Added ${shadowCasters.length}/${allChildren.filter(m => m.getClassName && m.getClassName() === 'Mesh').length} child meshes to shadow casting, all receive shadows`);
           }
           
           // Add to render store hierarchy and select it
@@ -544,14 +575,25 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
             }
           })
           
-          // Make preview semi-transparent and add shadow casting
+          // Make preview semi-transparent and add selective shadow casting
           result.meshes.forEach(mesh => {
             if (mesh.material) {
               mesh.material.alpha = 0.7
             }
-            // Add shadow casting to preview meshes
+            // Add selective shadow casting to preview meshes to avoid artifacts
             if (scene.shadowGenerator && mesh.getClassName && mesh.getClassName() === 'Mesh') {
-              scene.shadowGenerator.addShadowCaster(mesh);
+              let shouldCastShadow = true;
+              
+              // Apply same filtering logic as for final meshes
+              if (mesh.getBoundingInfo) {
+                const size = mesh.getBoundingInfo().boundingBox.extendSize;
+                const maxSize = Math.max(size.x, size.y, size.z);
+                if (maxSize < 0.05) shouldCastShadow = false;
+              }
+              
+              if (shouldCastShadow) {
+                scene.shadowGenerator.addShadowCaster(mesh);
+              }
               mesh.receiveShadows = true;
             }
           })

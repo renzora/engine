@@ -645,7 +645,8 @@ export class SceneManager {
       return;
     }
 
-    // Restoring object from babylon data
+    // Log detailed restoration attempt
+    console.log(`🔄 SceneManager: Restoring object '${item.name}' of type '${item.type}' with babylonType '${item.babylonData?.type || 'unknown'}'`);
 
     try {
       // Check if this object has asset data (3D model)
@@ -927,9 +928,296 @@ export class SceneManager {
         // Camera restored successfully
         // Camera has scripts to attach
         
-      } else if (item.type === 'light') {
-        // Light restoration not yet implemented
-        // TODO: Implement light restoration when needed
+      } else if (item.type === 'mesh' && babylonData.type === 'Mesh') {
+        // Restoring primitive mesh object
+        console.log('🔲 Restoring mesh object:', item.name);
+        
+        // Import required Babylon classes
+        const { MeshBuilder } = await import('@babylonjs/core/Meshes/meshBuilder.js');
+        const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
+        const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
+        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
+        
+        // Import specific builders based on mesh type (required for side effects)
+        await import('@babylonjs/core/Meshes/Builders/boxBuilder.js');
+        await import('@babylonjs/core/Meshes/Builders/sphereBuilder.js');
+        await import('@babylonjs/core/Meshes/Builders/cylinderBuilder.js');
+        await import('@babylonjs/core/Meshes/Builders/planeBuilder.js');
+        
+        let mesh = null;
+        
+        // Determine mesh type based on geometry or name
+        const meshName = babylonData.name.toLowerCase();
+        if (meshName.includes('cube') || meshName.includes('box')) {
+          mesh = MeshBuilder.CreateBox(babylonData.name, { size: 1 }, scene);
+        } else if (meshName.includes('sphere')) {
+          mesh = MeshBuilder.CreateSphere(babylonData.name, { diameter: 1 }, scene);
+        } else if (meshName.includes('cylinder')) {
+          mesh = MeshBuilder.CreateCylinder(babylonData.name, { height: 1, diameter: 1 }, scene);
+        } else if (meshName.includes('plane') || meshName.includes('ground')) {
+          mesh = MeshBuilder.CreateGround(babylonData.name, { width: 1, height: 1 }, scene);
+        } else {
+          // Default to box for unknown mesh types
+          mesh = MeshBuilder.CreateBox(babylonData.name, { size: 1 }, scene);
+        }
+        
+        if (mesh) {
+          // Restore material if material data exists
+          if (babylonData.materialId) {
+            // Create and restore material
+            const material = new StandardMaterial(babylonData.materialId, scene);
+            
+            // Apply default colors based on mesh type
+            const defaultColors = {
+              cube: new Color3(0.2, 0.6, 1.0),     // Light blue
+              sphere: new Color3(1.0, 0.4, 0.2),   // Orange-red
+              cylinder: new Color3(0.2, 0.8, 0.4), // Green
+              plane: new Color3(0.6, 0.6, 0.6)     // Light gray
+            };
+            
+            let colorKey = 'cube'; // default
+            if (meshName.includes('sphere')) colorKey = 'sphere';
+            else if (meshName.includes('cylinder')) colorKey = 'cylinder';
+            else if (meshName.includes('plane') || meshName.includes('ground')) colorKey = 'plane';
+            
+            material.diffuseColor = defaultColors[colorKey];
+            material.emissiveColor = defaultColors[colorKey].scale(0.1);
+            mesh.material = material;
+            
+            // Set material unique ID to match saved data
+            material.uniqueId = babylonData.materialUniqueId;
+          }
+          
+          // Restore transform properties
+          if (babylonData.position) {
+            mesh.position.fromArray(babylonData.position);
+          }
+          if (babylonData.rotation) {
+            mesh.rotation.fromArray(babylonData.rotation);
+          }
+          if (babylonData.scaling) {
+            mesh.scaling.fromArray(babylonData.scaling);
+          }
+          
+          // Restore other mesh properties
+          if (babylonData.isVisible !== undefined) {
+            mesh.isVisible = babylonData.isVisible;
+          }
+          if (babylonData.visibility !== undefined) {
+            mesh.visibility = babylonData.visibility;
+          }
+          if (babylonData.receiveShadows !== undefined) {
+            mesh.receiveShadows = babylonData.receiveShadows;
+          }
+          if (babylonData.checkCollisions !== undefined) {
+            mesh.checkCollisions = babylonData.checkCollisions;
+          }
+          
+          // Restore metadata
+          if (babylonData.metadata) {
+            mesh.metadata = babylonData.metadata;
+          }
+          
+          // Set unique ID to match saved data
+          mesh.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
+          
+          // Add shadow casting if there's a shadow generator
+          if (scene.shadowGenerator && mesh.receiveShadows) {
+            scene.shadowGenerator.addShadowCaster(mesh);
+          }
+          
+          // Add to render store
+          renderActions.addObject(mesh);
+          
+          restoredObject = mesh;
+          console.log('🔲 Mesh object restored successfully:', mesh.name);
+        }
+        
+      } else if (item.type === 'light' || (babylonData.lightType || babylonData.type?.includes('Light'))) {
+        // Restoring light object
+        console.log('💡 Restoring light object:', item.name);
+        
+        // Import required Babylon light classes
+        const { PointLight } = await import('@babylonjs/core/Lights/pointLight.js');
+        const { DirectionalLight } = await import('@babylonjs/core/Lights/directionalLight.js');
+        const { HemisphericLight } = await import('@babylonjs/core/Lights/hemisphericLight.js');
+        const { SpotLight } = await import('@babylonjs/core/Lights/spotLight.js');
+        const { TransformNode } = await import('@babylonjs/core/Meshes/transformNode.js');
+        const { MeshBuilder } = await import('@babylonjs/core/Meshes/meshBuilder.js');
+        const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
+        const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
+        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
+        
+        // Create main container for the light (lights are wrapped in containers)
+        const containerName = babylonData.name || item.name;
+        const mainContainer = new TransformNode(containerName, scene);
+        
+        // Restore container transform
+        if (babylonData.position) {
+          mainContainer.position.fromArray(babylonData.position);
+        }
+        if (babylonData.rotation) {
+          mainContainer.rotation.fromArray(babylonData.rotation);
+        }
+        if (babylonData.scaling) {
+          mainContainer.scaling.fromArray(babylonData.scaling);
+        }
+        
+        // Determine light type from the light type property or name
+        let lightType = babylonData.lightType || 'directional';
+        if (!lightType) {
+          // Try to infer from name or other properties
+          const lightName = babylonData.name.toLowerCase();
+          if (lightName.includes('point')) lightType = 'point';
+          else if (lightName.includes('spot')) lightType = 'spot';
+          else if (lightName.includes('hemisphere') || lightName.includes('ambient')) lightType = 'hemisphere';
+          else lightType = 'directional';
+        }
+        
+        let light = null;
+        const lightName = `${containerName}_light`;
+        
+        // Create the appropriate light type
+        switch (lightType) {
+          case 'point':
+            light = new PointLight(lightName, Vector3.Zero(), scene);
+            light.diffuse = new Color3(1, 0.95, 0.8);
+            light.specular = new Color3(1, 1, 1);
+            light.intensity = 10;
+            break;
+            
+          case 'spot':
+            light = new SpotLight(lightName, Vector3.Zero(), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
+            light.diffuse = new Color3(1, 0.95, 0.8);
+            light.specular = new Color3(1, 1, 1);
+            light.intensity = 15;
+            break;
+            
+          case 'hemisphere':
+            light = new HemisphericLight(lightName, new Vector3(0, 1, 0), scene);
+            light.diffuse = new Color3(1, 0.95, 0.8);
+            light.groundColor = new Color3(0.3, 0.3, 0.3);
+            light.intensity = 0.7;
+            break;
+            
+          default: // directional
+            light = new DirectionalLight(lightName, new Vector3(-1, -1, -1), scene);
+            light.diffuse = new Color3(1, 0.95, 0.8);
+            light.specular = new Color3(1, 1, 1);
+            light.intensity = 1;
+            break;
+        }
+        
+        if (light) {
+          // Restore light-specific properties from saved data
+          if (babylonData.diffuse) {
+            light.diffuse = new Color3(babylonData.diffuse[0], babylonData.diffuse[1], babylonData.diffuse[2]);
+          }
+          if (babylonData.specular) {
+            light.specular = new Color3(babylonData.specular[0], babylonData.specular[1], babylonData.specular[2]);
+          }
+          if (babylonData.intensity !== undefined) {
+            light.intensity = babylonData.intensity;
+          }
+          if (babylonData.direction && (lightType === 'directional' || lightType === 'spot')) {
+            light.direction = new Vector3(babylonData.direction[0], babylonData.direction[1], babylonData.direction[2]);
+          }
+          if (babylonData.groundColor && lightType === 'hemisphere') {
+            light.groundColor = new Color3(babylonData.groundColor[0], babylonData.groundColor[1], babylonData.groundColor[2]);
+          }
+          if (babylonData.angle !== undefined && lightType === 'spot') {
+            light.angle = babylonData.angle;
+          }
+          if (babylonData.exponent !== undefined && lightType === 'spot') {
+            light.exponent = babylonData.exponent;
+          }
+          
+          // Parent light to container
+          light.position = Vector3.Zero();
+          light.parent = mainContainer;
+          
+          // Create helper sphere for visualization
+          const lightHelper = MeshBuilder.CreateSphere(`${containerName}_helper`, { diameter: 0.5 }, scene);
+          const helperMaterial = new StandardMaterial(`${containerName}_helper_material`, scene);
+          helperMaterial.emissiveColor = new Color3(1, 1, 0);
+          helperMaterial.disableLighting = true;
+          lightHelper.material = helperMaterial;
+          lightHelper.parent = mainContainer;
+          
+          // Restore metadata
+          if (babylonData.metadata) {
+            mainContainer.metadata = babylonData.metadata;
+          }
+          
+          // Set unique ID to match saved data
+          mainContainer.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
+          
+          // Add to render store
+          renderActions.addObject(mainContainer);
+          
+          restoredObject = mainContainer;
+          console.log('💡 Light object restored successfully:', mainContainer.name, 'type:', lightType);
+        }
+        
+      } else if (item.type === 'transformNode' || item.type === 'folder' || (babylonData.type === 'TransformNode')) {
+        // Restoring TransformNode container
+        console.log('📦 Restoring TransformNode container:', item.name);
+        
+        const { TransformNode } = await import('@babylonjs/core/Meshes/transformNode.js');
+        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
+        
+        // Create TransformNode
+        const transformNode = new TransformNode(babylonData.name || item.name, scene);
+        
+        // Restore transform properties
+        if (babylonData.position) {
+          transformNode.position.fromArray(babylonData.position);
+        }
+        if (babylonData.rotation) {
+          transformNode.rotation.fromArray(babylonData.rotation);
+        }
+        if (babylonData.scaling) {
+          transformNode.scaling.fromArray(babylonData.scaling);
+        }
+        
+        // Restore other properties
+        if (babylonData.isEnabled !== undefined) {
+          transformNode.isEnabled = babylonData.isEnabled;
+        }
+        if (babylonData.isVisible !== undefined) {
+          transformNode.isVisible = babylonData.isVisible;
+        }
+        
+        // Restore metadata
+        if (babylonData.metadata) {
+          transformNode.metadata = babylonData.metadata;
+        }
+        
+        // Set unique ID to match saved data
+        transformNode.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
+        
+        // Add to render store
+        renderActions.addObject(transformNode);
+        
+        restoredObject = transformNode;
+        console.log('📦 TransformNode restored successfully:', transformNode.name);
+        
+      } else if (item.type === 'instancedMesh' || (babylonData.type === 'InstancedMesh')) {
+        // Restoring InstancedMesh
+        console.log('🔢 Restoring InstancedMesh:', item.name);
+        
+        // InstancedMesh restoration requires the source mesh to exist
+        // For now, we'll log and skip, but this could be implemented if needed
+        console.warn('⚠️ InstancedMesh restoration not yet implemented:', item.name);
+        return null;
+        
+      } else if (item.type === 'bone' || (babylonData.type === 'Bone')) {
+        // Restoring Bone (part of skeleton system)
+        console.log('🦴 Restoring Bone:', item.name);
+        
+        // Bone restoration is complex and typically handled by model loading
+        // For now, we'll log and skip
+        console.warn('⚠️ Bone restoration handled by skeleton system during model loading:', item.name);
         return null;
         
       } else if (item.type === 'scene') {
@@ -938,14 +1226,62 @@ export class SceneManager {
         restoredObject = scene;
         
       } else {
-        // Unknown basic object type
-        return null;
+        // Handle any other object types that might exist
+        console.warn(`⚠️ SceneManager: Unknown object type '${item.type}' for item '${item.name}'`);
+        
+        // Try to handle as generic Node if it has babylon data
+        if (babylonData && babylonData.type) {
+          console.log(`🔧 Attempting generic restoration for type '${babylonData.type}':`, item.name);
+          
+          try {
+            // For unknown types, try to create a basic TransformNode as fallback
+            const { TransformNode } = await import('@babylonjs/core/Meshes/transformNode.js');
+            
+            const genericNode = new TransformNode(babylonData.name || item.name, scene);
+            
+            // Restore basic transform properties
+            if (babylonData.position) {
+              genericNode.position.fromArray(babylonData.position);
+            }
+            if (babylonData.rotation) {
+              genericNode.rotation.fromArray(babylonData.rotation);
+            }
+            if (babylonData.scaling) {
+              genericNode.scaling.fromArray(babylonData.scaling);
+            }
+            
+            // Restore metadata
+            if (babylonData.metadata) {
+              genericNode.metadata = babylonData.metadata;
+            }
+            
+            // Set unique ID
+            genericNode.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
+            
+            // Add to render store
+            renderActions.addObject(genericNode);
+            
+            restoredObject = genericNode;
+            console.log(`🔧 Generic restoration completed for:`, genericNode.name);
+            
+          } catch (error) {
+            console.error(`❌ Failed generic restoration for '${item.name}':`, error);
+            return null;
+          }
+        } else {
+          return null;
+        }
       }
 
+      // Log successful restoration
+      if (restoredObject) {
+        console.log(`✅ SceneManager: Successfully restored object '${item.name}' (type: ${item.type}, babylonType: ${item.babylonData?.type || 'unknown'})`);
+      }
+      
       return restoredObject;
       
     } catch (error) {
-      console.error(`❌ SceneManager: Failed to restore basic object '${item.name}':`, error);
+      console.error(`❌ SceneManager: Failed to restore basic object '${item.name}' (type: ${item.type}):`, error);
       return null;
     }
   }
