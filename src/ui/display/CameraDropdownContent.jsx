@@ -1,6 +1,6 @@
 import { createSignal, createEffect, For } from 'solid-js';
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconGrid3x3, IconCube, IconPalette, IconSun, IconPointer, IconCamera, IconRotate360, IconEye, IconMove } from '@tabler/icons-solidjs';
+import { IconGrid3x3, IconCube, IconPalette, IconSun, IconPointer, IconCamera, IconRotate360, IconEye, IconArrowsMove } from '@tabler/icons-solidjs';
 import { Dynamic } from 'solid-js/web';
 
 export default function CameraDropdownContent() {
@@ -76,7 +76,7 @@ export default function CameraDropdownContent() {
   ];
 
   const cameraTypes = [
-    { id: 'universal', label: 'Fly Camera', icon: IconMove, description: 'WASD + QE flight controls like Unreal Engine' },
+    { id: 'universal', label: 'Fly Camera', icon: IconArrowsMove, description: 'WASD + QE flight controls like Unreal Engine' },
     { id: 'arcrotate', label: 'Orbit Camera', icon: IconEye, description: 'Orbit around a target point' }
   ];
 

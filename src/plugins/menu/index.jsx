@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain, IconSun
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
 import ExportDialog from '@/ui/ExportDialog.jsx';
@@ -183,6 +183,18 @@ const handleTerrainCreate = async () => {
   }
 };
 
+// Handle skybox creation
+const handleSkyboxCreate = async () => {
+  try {
+    console.log('🌍 Skybox creation requested...');
+    // Dispatch skybox creation event that environment plugin will listen to
+    document.dispatchEvent(new CustomEvent('engine:create-skybox'));
+    console.log('🌍 Event dispatched: engine:create-skybox');
+  } catch (error) {
+    console.error('Failed to create skybox:', error);
+  }
+};
+
 // Handle load scene with unsaved changes check
 const handleLoadScene = async () => {
   const proceedWithLoadScene = () => {
@@ -355,6 +367,12 @@ export default createPlugin({
           label: 'Terrain', 
           icon: IconMountain,
           action: handleTerrainCreate
+        },
+        { 
+          id: 'skybox', 
+          label: 'Skybox', 
+          icon: IconSun,
+          action: handleSkyboxCreate
         },
         { 
           id: 'mesh', 

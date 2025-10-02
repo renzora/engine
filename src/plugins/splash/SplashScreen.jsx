@@ -166,7 +166,7 @@ export default function SplashScreen({ onProjectSelect }) {
             <IconRocket class="w-10 h-10 text-primary-content" />
           </div>
           <h1 class="text-4xl font-bold text-base-content mb-3 tracking-tight">
-            Renzora <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Engine</span> <span class="text-accent">r3</span>
+            Renzora <span class="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">Engine</span> <span class="text-accent">r4-dev</span>
           </h1>
           <p class="text-lg text-base-content/70 max-w-md mx-auto leading-relaxed mb-8">
             Open sourced and royalty free game engine to build console quality games for the web

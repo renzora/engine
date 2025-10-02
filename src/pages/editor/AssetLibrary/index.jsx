@@ -520,6 +520,7 @@ function AssetLibrary({ onContextMenu }) {
     const extension = fileName.toLowerCase().match(/\.[^.]+$/)?.[0] || '';
     const binaryExtensions = [
       '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tga', '.tiff', '.ico', '.svg',
+      '.hdr', '.exr', // HDR environment textures
       '.mp3', '.wav', '.ogg', '.m4a', '.aac', '.flac',
       '.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv',
       '.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d',

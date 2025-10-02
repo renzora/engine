@@ -33,9 +33,13 @@ const isCodeFile = (extension) => {
 const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   const [imageLoaded, setImageLoaded] = createSignal(false);
   const [imageError, setImageError] = createSignal(false);
+  const [thumbnailUrl, setThumbnailUrl] = createSignal(null);
   
   // Check if this is a thumbnail cache file to reduce debug noise
   const isThumbCache = asset?.path?.startsWith('.cache/thumbnails/');
+  
+  // Check if this is an HDR/EXR file that needs thumbnail generation
+  const isHdrExr = asset?.extension && ['.hdr', '.exr'].includes(asset.extension.toLowerCase());
   
   // Skip debug logging for thumbnail cache files to reduce noise
   if (asset && isImageFile(asset.extension) && !isThumbCache) {
@@ -72,18 +76,69 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
     return fileUrl;
   };
   
-  const thumbnailUrl = getAssetThumbnailUrl(asset);
+  // Handle HDR/EXR files by generating thumbnails
+  const [thumbnailGenerating, setThumbnailGenerating] = createSignal(false);
   
-  if (!thumbnailUrl) {
-    if (!isThumbCache) {
+  createEffect(() => {
+    if (isHdrExr && asset) {
+      // Only generate if we don't already have a thumbnail URL and aren't already generating
+      if (!thumbnailUrl() && !thumbnailGenerating() && !imageError()) {
+        const currentProject = getCurrentProject();
+        if (currentProject?.name) {
+          setThumbnailGenerating(true);
+          
+          // Run thumbnail generation asynchronously
+          (async () => {
+            try {
+              console.log('Generating thumbnail for HDR/EXR file:', asset.name);
+              const thumbnailResponse = await generateThumbnail(asset.path || asset.name, 256);
+              
+              if (thumbnailResponse.success && thumbnailResponse.thumbnail_file) {
+                const thumbnailPath = `projects/${currentProject.name}/${thumbnailResponse.thumbnail_file}`;
+                const thumbnailFileUrl = getFileUrl(thumbnailPath);
+                setThumbnailUrl(thumbnailFileUrl);
+                console.log('HDR/EXR thumbnail generated:', thumbnailFileUrl);
+              } else {
+                console.warn('Failed to generate HDR/EXR thumbnail:', thumbnailResponse.error);
+                setImageError(true);
+              }
+            } catch (error) {
+              console.error('Error generating HDR/EXR thumbnail:', error);
+              setImageError(true);
+            } finally {
+              setThumbnailGenerating(false);
+            }
+          })();
+        }
+      }
+    } else {
+      // For regular images, use direct URL
+      if (!thumbnailUrl()) {
+        setThumbnailUrl(getAssetThumbnailUrl(asset));
+      }
+    }
+  });
+  
+  if (!thumbnailUrl()) {
+    if (!isThumbCache && !isHdrExr) {
       console.warn('No thumbnail URL generated for image asset:', asset.name, asset.path);
     }
     return (
       <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-        <IconPhoto class="w-10 h-10 text-base-content/60" />
-        <div class="absolute bottom-1 right-1 text-xs text-warning bg-warning/10 px-1 rounded">
-          No URL
-        </div>
+        <Show when={isHdrExr} fallback={
+          <>
+            <IconPhoto class="w-10 h-10 text-base-content/60" />
+            <div class="absolute bottom-1 right-1 text-xs text-warning bg-warning/10 px-1 rounded">
+              No URL
+            </div>
+          </>
+        }>
+          <div class="flex flex-col items-center justify-center">
+            <IconPhoto class="w-10 h-10 text-orange-500" />
+            <div class="text-xs text-orange-500 mt-1">HDR/EXR</div>
+            <div class="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mt-2"></div>
+          </div>
+        </Show>
       </div>
     );
   }
@@ -99,7 +154,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
         </div>
       }>
         <img 
-          src={thumbnailUrl}
+          src={thumbnailUrl()}
           alt={asset.name}
           class={`w-full h-full object-cover transition-all duration-300 ${
             imageLoaded() ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
@@ -117,7 +172,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
           }}
           onError={(e) => {
             if (!isThumbCache) {
-              console.warn('Failed to load image:', thumbnailUrl, 'for asset:', asset.name, 'Error:', e);
+              console.warn('Failed to load image:', thumbnailUrl(), 'for asset:', asset.name, 'Error:', e);
             }
             setImageError(true);
             setImageLoaded(false);

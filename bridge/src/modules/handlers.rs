@@ -388,12 +388,15 @@ fn handle_write_binary_file(file_path: &str, body: &str) -> Response<BoxBody<Byt
 
     match write_binary_file_content(file_path, &write_req) {
         Ok(_) => {
-            // Check if this is a GLB file and generate thumbnail automatically
-            if file_path.to_lowercase().ends_with(".glb") {
-                // Parse project name from file path (format: "project_name/assets/...")
-                let path_parts: Vec<&str> = file_path.split('/').collect();
-                if path_parts.len() >= 2 {
-                    let project_name = path_parts[0];
+            // Auto-process files based on type
+            let file_path_lower = file_path.to_lowercase();
+            let path_parts: Vec<&str> = file_path.split('/').collect();
+            
+            if path_parts.len() >= 2 {
+                let project_name = path_parts[0];
+                
+                // Auto-generate thumbnails for GLB files
+                if file_path_lower.ends_with(".glb") {
                     println!("📸 Auto-generating thumbnail for uploaded GLB: {}", file_path);
                     
                     // Generate thumbnails in background (don't block the upload response)
@@ -412,6 +415,10 @@ fn handle_write_binary_file(file_path: &str, body: &str) -> Response<BoxBody<Byt
                             }
                         }
                     });
+                }
+                // HDR/EXR files are now handled directly by BabylonJS - no processing needed
+                else if file_path_lower.ends_with(".hdr") || file_path_lower.ends_with(".exr") {
+                    println!("🌍 HDR/EXR file uploaded: {} (will be handled by native BabylonJS support)", file_path);
                 }
             }
             
@@ -543,6 +550,7 @@ struct MaterialThumbnailRequest {
     size: Option<u32>,
 }
 
+
 async fn handle_generate_material_thumbnail(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match serde_json::from_str::<MaterialThumbnailRequest>(body_content) {
         Ok(request) => {
@@ -594,6 +602,7 @@ async fn handle_batch_generate_thumbnails(body_content: &str) -> Response<BoxBod
         }
     }
 }
+
 
 fn handle_create_project(body_content: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match serde_json::from_str::<CreateProjectRequest>(body_content) {

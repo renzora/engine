@@ -1,6 +1,6 @@
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions, objectPropertiesActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
+import { IconSettings, IconX, IconPointer, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
 import ViewportTabs from './ViewportTabs.jsx';
 import Toolbar from './Toolbar.jsx';
 import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, toolbarVisible, helperVisible, pluginAPI } from "@/api/plugin";

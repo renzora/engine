@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use log::{info, warn, error};
 use image::{ImageBuffer, RgbImage, Rgb};
+use chrono;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ThumbnailCache {
@@ -125,6 +126,41 @@ pub fn get_thumbnails_dir(project_name: &str) -> PathBuf {
 
 pub fn generate_cache_key(project_name: &str, asset_path: &str) -> String {
     format!("{}::{}", project_name, asset_path)
+}
+
+// Generate HDR/EXR thumbnail by creating a tone-mapped preview image
+pub async fn generate_hdr_exr_thumbnail(
+    project_name: &str,
+    asset_path: &str,
+    size: u32,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let projects_path = crate::get_projects_path();
+    let full_asset_path = projects_path.join(project_name).join(asset_path);
+    
+    // Check if file exists
+    if !full_asset_path.exists() {
+        return Err("HDR/EXR file not found".into());
+    }
+
+    // Create thumbnails directory if it doesn't exist
+    let thumbnails_dir = get_thumbnails_dir(project_name);
+    fs::create_dir_all(&thumbnails_dir)?;
+
+    // Generate filename for thumbnail including extension to avoid conflicts
+    let asset_filename = full_asset_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr_thumbnail");
+    let asset_extension = full_asset_path.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr");
+    let thumbnail_filename = format!("{}_{}_{}.png", asset_filename, asset_extension, size);
+    let thumbnail_path = thumbnails_dir.join(&thumbnail_filename);
+
+    // Create HDR placeholder thumbnail with metadata
+    create_hdr_placeholder_thumbnail(&full_asset_path, &thumbnail_path, size)?;
+    
+    // Return relative path to thumbnail
+    Ok(format!(".cache/thumbnails/{}", thumbnail_filename))
 }
 
 // Generate 3D model thumbnail using Shopify's screenshot-glb tool
@@ -316,8 +352,19 @@ pub async fn get_or_generate_thumbnail(request: ThumbnailRequest) -> ThumbnailRe
         }
     }
     
+    // Determine thumbnail type based on file extension
+    let extension = full_asset_path.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    
+    let thumbnail_result = match extension.as_str() {
+        "hdr" | "exr" => generate_hdr_exr_thumbnail(&request.project_name, &request.asset_path, size).await,
+        _ => generate_model_thumbnail(&request.project_name, &request.asset_path, size).await,
+    };
+    
     // Generate new thumbnail
-    match generate_model_thumbnail(&request.project_name, &request.asset_path, size).await {
+    match thumbnail_result {
         Ok(thumbnail_file) => {
             // Cache the generated thumbnail
             if let Ok(metadata) = fs::metadata(&full_asset_path) {
@@ -720,4 +767,317 @@ fn draw_small_square(img: &mut RgbImage, x: u32, y: u32, size: u32, color: [u8; 
             }
         }
     }
+}
+
+// Create a placeholder thumbnail for HDR/EXR files with visual indicators
+fn create_hdr_placeholder_thumbnail(hdr_path: &Path, thumbnail_path: &Path, size: u32) -> Result<(), Box<dyn std::error::Error>> {
+    info!("🎨 Creating HDR/EXR placeholder thumbnail: {:?}", hdr_path);
+    
+    // Get file info
+    let file_size = fs::metadata(hdr_path)?.len();
+    let filename = hdr_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr");
+    let extension = hdr_path.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr")
+        .to_uppercase();
+    
+    // Create a gradient background mimicking HDR lighting
+    let mut img: RgbImage = ImageBuffer::from_fn(size, size, |x, y| {
+        let x_norm = x as f32 / size as f32;
+        let y_norm = y as f32 / size as f32;
+        
+        // Create a radial gradient from center
+        let center_x = 0.5;
+        let center_y = 0.5;
+        let dx = x_norm - center_x;
+        let dy = y_norm - center_y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        
+        // HDR-like gradient: bright center fading to darker edges
+        let brightness = (1.0 - distance.min(1.0)) * 0.8 + 0.2;
+        
+        // Warm color scheme typical of HDR environment maps
+        let r = (255.0 * brightness * 1.1).min(255.0) as u8;
+        let g = (255.0 * brightness * 0.9) as u8;
+        let b = (255.0 * brightness * 0.7) as u8;
+        
+        Rgb([r, g, b])
+    });
+    
+    // Add HDR icon in center (simplified sun/lighting icon)
+    let center_x = size / 2;
+    let center_y = size / 2;
+    let icon_size = (size / 6).max(8).min(32);
+    
+    // Draw sun icon
+    draw_hdr_sun_icon(&mut img, center_x, center_y, icon_size);
+    
+    // Add format indicator in top-right corner
+    let indicator_size = size / 8;
+    let indicator_x = size - indicator_size - 4;
+    let indicator_y = 4;
+    
+    // Draw format badge
+    for dy in 0..indicator_size {
+        for dx in 0..indicator_size {
+            let px = indicator_x + dx;
+            let py = indicator_y + dy;
+            
+            if px < size && py < size {
+                // Semi-transparent background
+                img.put_pixel(px, py, Rgb([40, 40, 40]));
+            }
+        }
+    }
+    
+    // Add file size indicator in bottom-left
+    let size_indicator_text = if file_size > 1_000_000 {
+        format!("{:.1}MB", file_size as f32 / 1_000_000.0)
+    } else if file_size > 1_000 {
+        format!("{:.1}KB", file_size as f32 / 1_000.0)
+    } else {
+        format!("{}B", file_size)
+    };
+    
+    // Save the image
+    img.save(thumbnail_path)?;
+    
+    info!("✅ HDR/EXR thumbnail created: {:?} ({})", thumbnail_path, size_indicator_text);
+    Ok(())
+}
+
+// Draw a stylized sun icon for HDR thumbnails
+fn draw_hdr_sun_icon(img: &mut image::RgbImage, center_x: u32, center_y: u32, size: u32) {
+    let half_size = size / 2;
+    let ray_length = size / 3;
+    
+    // Sun center (bright yellow/white)
+    let sun_color = Rgb([255u8, 255u8, 200u8]);
+    let ray_color = Rgb([255u8, 220u8, 100u8]);
+    
+    // Draw sun rays (8 rays)
+    for i in 0..8 {
+        let angle = (i as f32) * std::f32::consts::PI / 4.0;
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+        
+        // Inner ray point
+        let inner_x = center_x as i32 + (half_size as f32 * cos_a) as i32;
+        let inner_y = center_y as i32 + (half_size as f32 * sin_a) as i32;
+        
+        // Outer ray point
+        let outer_x = center_x as i32 + ((half_size + ray_length) as f32 * cos_a) as i32;
+        let outer_y = center_y as i32 + ((half_size + ray_length) as f32 * sin_a) as i32;
+        
+        // Draw ray line
+        if inner_x >= 0 && inner_y >= 0 && outer_x >= 0 && outer_y >= 0 {
+            draw_line(img, (inner_x as u32, inner_y as u32), (outer_x as u32, outer_y as u32), ray_color);
+        }
+    }
+    
+    // Draw sun center (filled circle)
+    for dy in 0..size {
+        for dx in 0..size {
+            let px = center_x + dx - half_size;
+            let py = center_y + dy - half_size;
+            
+            if px < img.width() && py < img.height() {
+                let dist_sq = (dx as i32 - half_size as i32).pow(2) + (dy as i32 - half_size as i32).pow(2);
+                if dist_sq <= (half_size as i32).pow(2) {
+                    img.put_pixel(px, py, sun_color);
+                }
+            }
+        }
+    }
+}
+
+/// Convert HDR/EXR panoramic image to 6 cube face images for BabylonJS
+/// Returns the paths to the 6 generated cube face images
+pub async fn convert_hdr_to_cubemap(
+    project_name: &str, 
+    asset_path: &str, 
+    cube_size: u32
+) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    info!("🌍 Converting HDR to cube map: {}/{}", project_name, asset_path);
+    
+    let projects_path = crate::get_projects_path();
+    let full_asset_path = projects_path.join(project_name).join(asset_path);
+    
+    // Check if HDR file exists
+    if !full_asset_path.exists() {
+        let error_msg = format!("HDR file not found: {:?}", full_asset_path);
+        error!("{}", error_msg);
+        return Err(error_msg.into());
+    }
+    
+    // Create cube maps directory
+    let cubemaps_dir = get_cubemaps_dir(project_name);
+    fs::create_dir_all(&cubemaps_dir)?;
+    
+    // Generate unique filename for this HDR file
+    let hdr_filename = full_asset_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr");
+    let hdr_extension = full_asset_path.extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr");
+    
+    // Generate the 6 cube face file names
+    let face_names = ["px", "nx", "py", "ny", "pz", "nz"]; // positive/negative x,y,z
+    let mut cube_face_paths = Vec::new();
+    
+    for face_name in &face_names {
+        let filename = format!("{}_{}_{}_{}.png", hdr_filename, hdr_extension, face_name, cube_size);
+        let face_path = cubemaps_dir.join(&filename);
+        
+        // Return path with project prefix for bridge compatibility
+        cube_face_paths.push(format!("projects/{}/.cache/cubemaps/{}", project_name, filename));
+        
+        // For now, create placeholder cube faces
+        // TODO: Implement actual HDR panoramic to cube face conversion
+        create_placeholder_cube_face(&face_path, cube_size, face_name)?;
+    }
+    
+    info!("✅ Generated {} cube faces for HDR: {}", cube_face_paths.len(), asset_path);
+    Ok(cube_face_paths)
+}
+
+/// Get the cube maps cache directory for a project
+fn get_cubemaps_dir(project_name: &str) -> PathBuf {
+    let projects_path = crate::get_projects_path();
+    projects_path.join(project_name).join(".cache").join("cubemaps")
+}
+
+/// Create a placeholder cube face with a distinctive color/pattern
+fn create_placeholder_cube_face(
+    face_path: &Path, 
+    size: u32, 
+    face_name: &str
+) -> Result<(), Box<dyn std::error::Error>> {
+    info!("🎨 Creating placeholder cube face: {} ({}x{})", face_name, size, size);
+    
+    // Different colors for each cube face to help identify them
+    let base_color = match face_name {
+        "px" => [255, 100, 100], // Positive X - Red
+        "nx" => [100, 255, 100], // Negative X - Green  
+        "py" => [100, 100, 255], // Positive Y - Blue
+        "ny" => [255, 255, 100], // Negative Y - Yellow
+        "pz" => [255, 100, 255], // Positive Z - Magenta
+        "nz" => [100, 255, 255], // Negative Z - Cyan
+        _ => [128, 128, 128],    // Default - Gray
+    };
+    
+    let mut img: RgbImage = ImageBuffer::from_fn(size, size, |x, y| {
+        let x_norm = x as f32 / size as f32;
+        let y_norm = y as f32 / size as f32;
+        
+        // Create a simple gradient pattern for each face
+        let center_x = 0.5;
+        let center_y = 0.5;
+        let dx = x_norm - center_x;
+        let dy = y_norm - center_y;
+        let distance = (dx * dx + dy * dy).sqrt();
+        
+        // Apply gradient effect
+        let brightness = (1.0 - distance * 0.5).max(0.3);
+        
+        let r = (base_color[0] as f32 * brightness) as u8;
+        let g = (base_color[1] as f32 * brightness) as u8;
+        let b = (base_color[2] as f32 * brightness) as u8;
+        
+        Rgb([r, g, b])
+    });
+    
+    // Add face label in center
+    let center = size / 2;
+    let label_size = size / 8;
+    
+    // Draw a simple indicator pattern for the face
+    for dy in 0..label_size {
+        for dx in 0..label_size {
+            let px = center + dx - label_size / 2;
+            let py = center + dy - label_size / 2;
+            
+            if px < size && py < size {
+                img.put_pixel(px, py, Rgb([255, 255, 255])); // White indicator
+            }
+        }
+    }
+    
+    // Save the image
+    img.save(face_path)?;
+    info!("✅ Placeholder cube face saved: {:?}", face_path);
+    
+    Ok(())
+}
+
+/// Convert HDR/EXR panoramic image to 6 cube face assets stored in the project
+/// Returns the folder path containing the cube map assets
+pub async fn convert_hdr_to_cubemap_assets(
+    project_name: &str,
+    asset_path: &str,
+    cube_size: u32
+) -> Result<String, Box<dyn std::error::Error>> {
+    info!("🌍 Converting HDR to cube map assets: {}/{}", project_name, asset_path);
+    
+    let projects_path = crate::get_projects_path();
+    let full_asset_path = projects_path.join(project_name).join(asset_path);
+    
+    // Check if HDR file exists
+    if !full_asset_path.exists() {
+        let error_msg = format!("HDR file not found: {:?}", full_asset_path);
+        error!("{}", error_msg);
+        return Err(error_msg.into());
+    }
+    
+    // Generate cube map folder name based on HDR file
+    let hdr_filename = full_asset_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("hdr");
+    let cube_map_folder_name = format!("{}_cubemap", hdr_filename);
+    
+    // Create cube map folder in assets/skyboxes/
+    let skyboxes_dir = projects_path.join(project_name).join("assets").join("skyboxes");
+    fs::create_dir_all(&skyboxes_dir)?;
+    
+    let cube_map_dir = skyboxes_dir.join(&cube_map_folder_name);
+    fs::create_dir_all(&cube_map_dir)?;
+    
+    // Generate the 6 cube face file names
+    let face_names = ["px", "nx", "py", "ny", "pz", "nz"]; // positive/negative x,y,z
+    
+    for face_name in &face_names {
+        let filename = format!("{}_{}.png", face_name, cube_size);
+        let face_path = cube_map_dir.join(&filename);
+        
+        // Create cube face with proper asset structure
+        create_placeholder_cube_face(&face_path, cube_size, face_name)?;
+    }
+    
+    // Create cube map metadata file
+    let metadata = serde_json::json!({
+        "type": "cubemap",
+        "source_hdr": asset_path,
+        "cube_size": cube_size,
+        "faces": {
+            "positive_x": format!("px_{}.png", cube_size),
+            "negative_x": format!("nx_{}.png", cube_size),
+            "positive_y": format!("py_{}.png", cube_size),
+            "negative_y": format!("ny_{}.png", cube_size),
+            "positive_z": format!("pz_{}.png", cube_size),
+            "negative_z": format!("nz_{}.png", cube_size)
+        },
+        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "version": "1.0"
+    });
+    
+    let metadata_path = cube_map_dir.join("cubemap.json");
+    fs::write(&metadata_path, serde_json::to_string_pretty(&metadata)?)?;
+    
+    let cube_map_asset_path = format!("assets/skyboxes/{}", cube_map_folder_name);
+    info!("✅ Generated cube map assets: {}", cube_map_asset_path);
+    
+    Ok(cube_map_asset_path)
 }

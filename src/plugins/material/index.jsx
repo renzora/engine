@@ -20,7 +20,11 @@ export default createPlugin({
       title: 'Material',
       component: MaterialPanel,
       icon: IconPalette,
-      order: 3
+      order: 3,
+      condition: (selectedObject) => {
+        // Hide material tab for environment objects (skybox)
+        return selectedObject && !selectedObject.metadata?.isEnvironmentObject;
+      }
     });
     
     // Material plugin started

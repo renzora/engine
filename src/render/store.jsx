@@ -453,8 +453,11 @@ export const renderActions = {
     if (gizmoManager && scene) {
       const primaryObject = renderStore.selectedObject;
       if (primaryObject) {
-        // Don't attach gizmo to scene objects since they don't support behaviors
+        // Don't attach gizmo to scene objects or environment objects (skyboxes)
         if (primaryObject.getClassName && primaryObject.getClassName() === 'Scene') {
+          gizmoManager.attachToMesh(null);
+        } else if (primaryObject.metadata?.isEnvironmentObject) {
+          // Don't attach gizmo to environment objects like skyboxes
           gizmoManager.attachToMesh(null);
         } else {
           // Attach gizmo to primary selected object
@@ -488,6 +491,11 @@ export const renderActions = {
         // Add highlighting to selected objects with improved logic for complex models
         const allMeshesToHighlight = [];
         renderStore.selectedObjects.forEach((selectedObj) => {
+          // Skip highlighting for environment objects (skyboxes)
+          if (selectedObj.metadata?.isEnvironmentObject) {
+            return;
+          }
+          
           try {
             const meshesToHighlight = [];
             

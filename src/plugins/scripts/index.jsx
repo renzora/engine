@@ -20,7 +20,11 @@ export default createPlugin({
       title: 'Scripts',
       component: ScriptsPanel,
       icon: IconCode,
-      order: 1
+      order: 1,
+      condition: (selectedObject) => {
+        // Hide scripts tab for environment objects (skybox) since they don't need transforms
+        return selectedObject && !selectedObject.metadata?.isEnvironmentObject;
+      }
     });
     
     // Scripts plugin started
