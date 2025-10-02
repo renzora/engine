@@ -20,7 +20,17 @@ export default createPlugin({
       title: 'Render',
       component: RenderPanel,
       icon: IconAdjustments,
-      order: 2
+      order: 2,
+      condition: (selectedObject) => {
+        // Hide render tab (shadows/collision) for cameras since they don't render
+        const isCamera = selectedObject && selectedObject.getClassName && (
+          selectedObject.getClassName().includes('Camera') || 
+          selectedObject.getClassName() === 'UniversalCamera' ||
+          selectedObject.getClassName() === 'ArcRotateCamera' ||
+          selectedObject.getClassName() === 'FreeCamera'
+        );
+        return selectedObject && !isCamera;
+      }
     });
     
     // Render plugin started

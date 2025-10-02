@@ -22,8 +22,15 @@ export default createPlugin({
       icon: IconPalette,
       order: 3,
       condition: (selectedObject) => {
-        // Hide material tab for environment objects (skybox)
-        return selectedObject && !selectedObject.metadata?.isEnvironmentObject;
+        // Hide material tab for environment objects (skybox) and cameras
+        const isEnvironmentObject = selectedObject?.metadata?.isEnvironmentObject;
+        const isCamera = selectedObject && selectedObject.getClassName && (
+          selectedObject.getClassName().includes('Camera') || 
+          selectedObject.getClassName() === 'UniversalCamera' ||
+          selectedObject.getClassName() === 'ArcRotateCamera' ||
+          selectedObject.getClassName() === 'FreeCamera'
+        );
+        return selectedObject && !isEnvironmentObject && !isCamera;
       }
     });
     
