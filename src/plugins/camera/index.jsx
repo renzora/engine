@@ -17,6 +17,14 @@ export default createPlugin({
   async onStart(api) {
     console.log('[CameraPlugin] Starting...');
     
+    // Initialize camera store to start global vignette effects
+    try {
+      await import('./cameraStore.jsx');
+      console.log('[CameraPlugin] Camera store initialized');
+    } catch (error) {
+      console.warn('[CameraPlugin] Failed to initialize camera store:', error);
+    }
+    
     // Camera settings dropdown
     api.helper('camera', {
       title: 'Camera Settings',
@@ -53,9 +61,26 @@ export default createPlugin({
 
   async onStop() {
     console.log('[CameraPlugin] Stopping...');
+    
+    // Clean up vignette post-processes
+    try {
+      const { cleanupVignette } = await import('./cameraStore.jsx');
+      cleanupVignette();
+      console.log('[CameraPlugin] Cleaned up vignette post-processes');
+    } catch (error) {
+      console.warn('[CameraPlugin] Failed to cleanup vignette:', error);
+    }
   },
 
   async onDispose() {
     console.log('[CameraPlugin] Disposing...');
+    
+    // Clean up vignette post-processes
+    try {
+      const { cleanupVignette } = await import('./cameraStore.jsx');
+      cleanupVignette();
+    } catch (error) {
+      console.warn('[CameraPlugin] Failed to cleanup vignette:', error);
+    }
   }
 });

@@ -32,7 +32,7 @@ export default function CameraPropertiesTab(props) {
   
   // Use reactive camera settings from store
   const settings = () => cameraSettings();
-  const { setFOV, setVignetteEnabled, setVignetteAmount, setVignetteColor, setNightColor, resetToDefaults } = cameraActions;
+  const { setFOV, setVignetteEnabled, setVignetteAmount, setVignetteColor, resetToDefaults } = cameraActions;
   
   // Initialize values from camera
   createEffect(() => {
@@ -45,23 +45,14 @@ export default function CameraPropertiesTab(props) {
     }
   });
   
-  // Apply changes to camera and vignette system
+  // Initialize camera settings when a camera is selected
   createEffect(() => {
     const camera = selectedObject();
-    const currentSettings = settings();
-    
-    if (!isCamera() || !camera) return;
-    
-    // Update FOV
-    camera.fov = (currentSettings.fov * Math.PI) / 180;
-    
-    // Update built-in vignette system if it exists
-    if (window.updateVignetteSettings) {
-      window._cameraSettings = {
-        nightColor: currentSettings.nightColor,
-        vignette: currentSettings.vignette
-      };
-      window.updateVignetteSettings();
+    if (isCamera() && camera) {
+      // Get FOV from camera (convert from radians to degrees)
+      if (camera.fov !== undefined) {
+        setFOV(Math.round((camera.fov * 180) / Math.PI));
+      }
     }
   });
   
@@ -228,11 +219,6 @@ export default function CameraPropertiesTab(props) {
                 </div>
               </Show>
               
-              <ColorControl 
-                label="Night Color Tint" 
-                value={settings().nightColor} 
-                onChange={(v) => setNightColor(v)}
-              />
             </div>
           </Show>
         </div>

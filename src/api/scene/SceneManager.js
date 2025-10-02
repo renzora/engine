@@ -28,11 +28,21 @@ export class SceneManager {
       const sceneNameToSave = sceneName || this.currentSceneName;
       // Saving scene to file
 
+      // Get camera settings from camera store
+      let cameraSettings = null;
+      try {
+        const { cameraSettings: getCameraSettings } = await import('@/plugins/camera/cameraStore.jsx');
+        cameraSettings = getCameraSettings();
+      } catch (error) {
+        console.warn('Failed to get camera settings:', error);
+      }
+
       // Create serializable scene data
       const sceneData = {
         hierarchy: this.serializeHierarchy(renderStore.hierarchy),
         lighting: renderStore.lighting,
         settings: renderStore.settings,
+        cameraSettings: cameraSettings,
         metadata: {
           name: sceneNameToSave,
           saved: new Date().toISOString(),
@@ -523,6 +533,26 @@ export class SceneManager {
       await this.restoreSceneObjects(sceneData.hierarchy, assets, dispatchProgress);
     } else {
       console.warn('⚠️ SceneManager: No hierarchy found in scene data');
+    }
+
+    // Restore camera settings if available
+    if (sceneData.cameraSettings) {
+      try {
+        const { cameraActions } = await import('@/plugins/camera/cameraStore.jsx');
+        // Restore FOV setting
+        if (sceneData.cameraSettings.fov !== undefined) {
+          cameraActions.setFOV(sceneData.cameraSettings.fov);
+        }
+        // Restore vignette settings
+        if (sceneData.cameraSettings.vignette) {
+          cameraActions.setVignetteEnabled(sceneData.cameraSettings.vignette.enabled || false);
+          cameraActions.setVignetteAmount(sceneData.cameraSettings.vignette.amount || 0.5);
+          cameraActions.setVignetteColor(sceneData.cameraSettings.vignette.color || [0, 0, 0]);
+        }
+        console.log('✅ Restored camera settings from scene data');
+      } catch (error) {
+        console.warn('Failed to restore camera settings:', error);
+      }
     }
 
     // Update scene tree name to reflect loaded scene
