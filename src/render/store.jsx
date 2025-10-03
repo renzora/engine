@@ -2,6 +2,7 @@ import { createStore } from 'solid-js/store';
 import { Color4, Color3 } from '@babylonjs/core/Maths/math.color';
 import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
 import { initializeScriptRuntime } from '@/api/script';
+import { editorStore } from '@/layout/stores/EditorStore.jsx';
 
 // Render Store for managing Babylon.js state
 export const [renderStore, setRenderStore] = createStore({
@@ -498,16 +499,8 @@ export const renderActions = {
           
           // Skip highlighting for terrain objects when in sculpting mode
           // The terrain plugin handles its own visual feedback with brush cursor
-          if (selectedObj._terrainData) {
-            try {
-              const { editorStore } = require('@/layout/stores/EditorStore.jsx');
-              if (editorStore.ui.currentMode === 'sculpting') {
-                return; // Skip highlighting terrain in sculpting mode
-              }
-            } catch (error) {
-              // If can't check mode, skip highlighting terrain objects to be safe
-              return;
-            }
+          if (selectedObj._terrainData && editorStore.ui.currentMode === 'sculpting') {
+            return; // Skip highlighting terrain in sculpting mode
           }
           
           try {
