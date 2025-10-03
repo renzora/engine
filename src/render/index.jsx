@@ -446,7 +446,7 @@ export default function BabylonRenderer(props) {
       }
       
       // Define default camera position and target
-      const defaultPosition = new Vector3(5, 3, -5);  // Back, up, and to the side
+      const defaultPosition = new Vector3(7, 5, -7);  // Angled view like Blender default
       const defaultTarget = Vector3.Zero();            // Look at origin
       
       // Smooth animation to default position

@@ -245,7 +245,7 @@ pub fn create_project(name: &str, template: &str, settings: Option<&serde_json::
                     "id": "camera",
                     "uniqueId": 1,
                     "type": "UniversalCamera",
-                    "position": [7, 5, 7],
+                    "position": [7, 5, -7],
                     "rotation": [0, 0, 0],
                     "fov": 0.8,
                     "minZ": 1,
@@ -253,7 +253,7 @@ pub fn create_project(name: &str, template: &str, settings: Option<&serde_json::
                     "metadata": {
                         "properties": {},
                         "originalProperties": {
-                            "position": [7, 5, 7],
+                            "position": [7, 5, -7],
                             "rotation": [0, 0, 0],
                             "scale": [1, 1, 1]
                         }

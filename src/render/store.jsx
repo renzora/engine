@@ -496,6 +496,20 @@ export const renderActions = {
             return;
           }
           
+          // Skip highlighting for terrain objects when in sculpting mode
+          // The terrain plugin handles its own visual feedback with brush cursor
+          if (selectedObj._terrainData) {
+            try {
+              const { editorStore } = require('@/layout/stores/EditorStore.jsx');
+              if (editorStore.ui.currentMode === 'sculpting') {
+                return; // Skip highlighting terrain in sculpting mode
+              }
+            } catch (error) {
+              // If can't check mode, skip highlighting terrain objects to be safe
+              return;
+            }
+          }
+          
           try {
             const meshesToHighlight = [];
             
