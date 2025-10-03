@@ -586,14 +586,12 @@ export const renderActions = {
     // Apply settings to scene if available
     if (renderStore.scene && newSettings.backgroundColor) {
       const color = newSettings.backgroundColor;
-      if (color !== 'theme') {
-        const hex = color.replace('#', '');
-        const r = parseInt(hex.substr(0, 2), 16) / 255;
-        const g = parseInt(hex.substr(2, 2), 16) / 255;
-        const b = parseInt(hex.substr(4, 2), 16) / 255;
-        
-        renderStore.scene.clearColor = new Color4(r, g, b, 1);
-      }
+      const hex = color.replace('#', '');
+      const r = parseInt(hex.substr(0, 2), 16) / 255;
+      const g = parseInt(hex.substr(2, 2), 16) / 255;
+      const b = parseInt(hex.substr(4, 2), 16) / 255;
+      
+      renderStore.scene.clearColor = new Color4(r, g, b, 1);
     }
   },
 

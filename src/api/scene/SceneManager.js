@@ -37,12 +37,29 @@ export class SceneManager {
         console.warn('Failed to get camera settings:', error);
       }
 
+      // Get editor settings from editor store
+      let editorSettings = null;
+      try {
+        const { editorStore } = await import('@/layout/stores/EditorStore.jsx');
+        editorSettings = {
+          settings: editorStore.settings,
+          theme: editorStore.theme,
+          ui: {
+            currentMode: editorStore.ui.currentMode
+          },
+          scripts: editorStore.scripts
+        };
+      } catch (error) {
+        console.warn('Failed to get editor settings:', error);
+      }
+
       // Create serializable scene data
       const sceneData = {
         hierarchy: this.serializeHierarchy(renderStore.hierarchy),
         lighting: renderStore.lighting,
         settings: renderStore.settings,
         cameraSettings: cameraSettings,
+        editorSettings: editorSettings,
         metadata: {
           name: sceneNameToSave,
           saved: new Date().toISOString(),
@@ -475,6 +492,17 @@ export class SceneManager {
       renderActions.updateSettings(sceneData.settings);
     }
 
+    // Restore editor settings if available
+    if (sceneData.editorSettings) {
+      try {
+        const { editorActions } = await import('@/layout/stores/EditorStore.jsx');
+        editorActions.loadFromProject(sceneData.editorSettings);
+        console.log('✅ Restored editor settings from scene data');
+      } catch (error) {
+        console.warn('Failed to restore editor settings:', error);
+      }
+    }
+
     // TODO: Restore scene objects from hierarchy
     // This will require recreating Babylon objects from the serialized data
     // Scene object restoration not yet implemented
@@ -552,6 +580,17 @@ export class SceneManager {
         console.log('✅ Restored camera settings from scene data');
       } catch (error) {
         console.warn('Failed to restore camera settings:', error);
+      }
+    }
+
+    // Restore editor settings if available
+    if (sceneData.editorSettings) {
+      try {
+        const { editorActions } = await import('@/layout/stores/EditorStore.jsx');
+        editorActions.loadFromProject(sceneData.editorSettings);
+        console.log('✅ Restored editor settings from scene data');
+      } catch (error) {
+        console.warn('Failed to restore editor settings:', error);
       }
     }
 

@@ -109,14 +109,14 @@ function SettingsDropdownContent() {
               <div class="flex items-center gap-2">
                 <input 
                   type="color" 
-                  value={viewportSettings.backgroundColor === 'theme' ? '#1a202c' : viewportSettings.backgroundColor} 
-                  onChange={(e) => updateViewportSettings({ backgroundColor: e.target.value })}
+                  value={viewportSettings.backgroundColor} 
+                  onInput={(e) => updateViewportSettings({ backgroundColor: e.target.value })}
                   class="w-8 h-8 rounded border border-base-300 bg-base-200 cursor-pointer" 
-                  disabled={viewportSettings.backgroundColor === 'theme'}
+                  disabled={false}
                 />
                 <div class="flex-1 bg-base-200/80 border border-base-300 rounded px-2 py-1">
                   <div class="text-xs text-base-content/80">
-                    {viewportSettings.backgroundColor === 'theme' ? 'Theme' : viewportSettings.backgroundColor.toUpperCase()}
+                    {viewportSettings.backgroundColor.toUpperCase()}
                   </div>
                 </div>
               </div>
@@ -126,12 +126,11 @@ function SettingsDropdownContent() {
               <label class="text-xs font-medium text-base-content/80">Quick Presets</label>
               <div class="grid grid-cols-4 gap-1">
                 <button
-                  onClick={() => updateViewportSettings({ backgroundColor: 'theme' })}
-                  class="h-6 rounded border-2 border-dashed border-primary text-xs text-primary transition-all hover:scale-105 hover:bg-primary/10 flex items-center justify-center font-medium"
-                  title="Use Current Theme"
-                >
-                  🎨
-                </button>
+                  onClick={() => updateViewportSettings({ backgroundColor: '#1a202c' })}
+                  class="h-6 rounded border border-base-300 transition-all hover:scale-105 hover:border-primary"
+                  style={{ 'background-color': '#1a202c' }}
+                  title="Dark Gray"
+                />
                 <button
                   onClick={() => updateViewportSettings({ backgroundColor: '#000000' })}
                   class="h-6 rounded border border-base-300 transition-all hover:scale-105 hover:border-primary"

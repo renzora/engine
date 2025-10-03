@@ -21,6 +21,15 @@ export default function GridSettingsDropdown() {
     infiniteGrid: false,
     gridSnapping: false
   };
+
+  // Unit-specific default cell sizes
+  const unitDefaults = {
+    'meters': 1,
+    'centimeters': 100,
+    'millimeters': 1000,
+    'feet': 3,
+    'inches': 12
+  };
   
   // Section collapse state
   const [sectionsOpen, setSectionsOpen] = createSignal({
@@ -43,6 +52,16 @@ export default function GridSettingsDropdown() {
   
   const gridSnapping = () => viewportStore.gridSnapping || false;
   const gridSettings = () => store.settings?.grid || defaults;
+
+  // Handle unit change with appropriate cell size default
+  const handleUnitChange = (newUnit) => {
+    const defaultCellSize = unitDefaults[newUnit] || 1;
+    updateGridSettings({ 
+      unit: newUnit,
+      cellSize: defaultCellSize
+    });
+    console.log(`📏 Grid unit changed to ${newUnit} with default cell size ${defaultCellSize}`);
+  };
 
   // Gizmo snap presets
   const snapPresets = [
@@ -231,14 +250,14 @@ export default function GridSettingsDropdown() {
                   <label class="text-xs text-base-content/80 mb-1 block">Units</label>
                   <select
                     value={gridSettings().unit || 'meters'}
-                    onChange={(e) => updateGridSettings({ unit: e.target.value })}
+                    onChange={(e) => handleUnitChange(e.target.value)}
                     class="select select-xs w-full border border-base-300"
                   >
-                    <option value="meters">Meters (m)</option>
-                    <option value="centimeters">Centimeters (cm)</option>
-                    <option value="millimeters">Millimeters (mm)</option>
-                    <option value="feet">Feet (ft)</option>
-                    <option value="inches">Inches (in)</option>
+                    <option value="meters">Meters (m) - Default: 1</option>
+                    <option value="centimeters">Centimeters (cm) - Default: 100</option>
+                    <option value="millimeters">Millimeters (mm) - Default: 1000</option>
+                    <option value="feet">Feet (ft) - Default: 3</option>
+                    <option value="inches">Inches (in) - Default: 12</option>
                   </select>
                 </div>
                 
@@ -255,16 +274,59 @@ export default function GridSettingsDropdown() {
                   />
                 )}
                 
-                <SliderControl 
-                  label="Cell Size" 
-                  getValue={() => gridSettings().cellSize} 
-                  min={0.1} 
-                  max={10} 
-                  step={0.1} 
-                  onChange={(v) => updateGridSettings({ cellSize: v })}
-                  unit={` ${gridSettings().unit || 'm'}`}
-                  resetKey="cellSize"
-                />
+                {/* Cell Size with Slider and Manual Input */}
+                <div>
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs text-base-content/80">
+                      Cell Size: {gridSettings().cellSize}{` ${gridSettings().unit || 'm'}`}
+                    </label>
+                    <button
+                      onClick={() => {
+                        const currentUnit = gridSettings().unit || 'meters';
+                        const defaultCellSize = unitDefaults[currentUnit] || 1;
+                        updateGridSettings({ cellSize: defaultCellSize });
+                      }}
+                      class="btn btn-xs btn-ghost opacity-60 hover:opacity-100 min-h-0 h-5 w-5 p-0"
+                      title={`Reset Cell Size to ${unitDefaults[gridSettings().unit || 'meters'] || 1}`}
+                    >
+                      ↺
+                    </button>
+                  </div>
+                  
+                  <div class="space-y-2">
+                    {/* Slider */}
+                    <input
+                      type="range"
+                      min={0.01}
+                      max={100}
+                      step={0.01}
+                      value={gridSettings().cellSize}
+                      onInput={(e) => updateGridSettings({ cellSize: parseFloat(e.target.value) })}
+                      class="range range-primary w-full range-xs"
+                    />
+                    
+                    {/* Manual Input */}
+                    <div class="flex items-center gap-2">
+                      <label class="text-xs text-base-content/70 whitespace-nowrap">Manual:</label>
+                      <input
+                        type="number"
+                        min="0.001"
+                        max="1000"
+                        step="0.001"
+                        value={gridSettings().cellSize}
+                        onInput={(e) => {
+                          const value = parseFloat(e.target.value);
+                          if (!isNaN(value) && value > 0) {
+                            updateGridSettings({ cellSize: value });
+                          }
+                        }}
+                        class="input input-xs flex-1 text-center border border-base-300"
+                        placeholder="Enter value"
+                      />
+                      <span class="text-xs text-base-content/70">{gridSettings().unit || 'm'}</span>
+                    </div>
+                  </div>
+                </div>
                 
                 {/* Position Controls */}
                 <div>

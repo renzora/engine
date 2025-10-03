@@ -1,27 +1,5 @@
 import { createStore } from 'solid-js/store';
 
-// Load settings from localStorage
-const loadSettings = () => {
-  try {
-    const saved = localStorage.getItem('editor-settings');
-    return saved ? JSON.parse(saved) : {};
-  } catch (e) {
-    console.warn('Failed to load settings from localStorage:', e);
-    return {};
-  }
-};
-
-// Save settings to localStorage
-const saveSettings = (settings) => {
-  try {
-    localStorage.setItem('editor-settings', JSON.stringify(settings));
-  } catch (e) {
-    console.warn('Failed to save settings to localStorage:', e);
-  }
-};
-
-const savedSettings = loadSettings();
-
 const [editorStore, setEditorStore] = createStore({
   isOpen: false,
   
@@ -38,7 +16,7 @@ const [editorStore, setEditorStore] = createStore({
     assetsLibraryWidth: 200,
     selectedTool: 'scene',
     selectedBottomTab: 'assets',
-    currentMode: savedSettings.ui?.currentMode || 'standard',
+    currentMode: 'standard',
     toolbarTabOrder: [
       'scripts', 'camera', 'grid', 'settings'
     ],
@@ -138,31 +116,32 @@ const [editorStore, setEditorStore] = createStore({
   },
   
   scripts: {
-    isPlaying: savedSettings.scripts?.isPlaying !== undefined ? savedSettings.scripts.isPlaying : true
+    isPlaying: true
   },
 
+  theme: 'dark',
 
   settings: {
     viewport: {
-      backgroundColor: savedSettings.viewport?.backgroundColor || 'theme',
-      renderingEngine: savedSettings.viewport?.renderingEngine || 'webgl'
+      backgroundColor: '#1a202c',
+      renderingEngine: 'webgl'
     },
     editor: {
-      showStats: savedSettings.editor?.showStats !== undefined ? savedSettings.editor.showStats : true,
-      panelPosition: savedSettings.editor?.panelPosition || 'right',
-      scriptReloadDebounceMs: savedSettings.editor?.scriptReloadDebounceMs || 500,
-      renderPaused: savedSettings.editor?.renderPaused || false
+      showStats: true,
+      panelPosition: 'right',
+      scriptReloadDebounceMs: 500,
+      renderPaused: false
     },
     grid: {
-      enabled: savedSettings.grid?.enabled !== undefined ? savedSettings.grid.enabled : true,
-      unit: savedSettings.grid?.unit || 'centimeters',
-      size: savedSettings.grid?.size || 20,
-      cellSize: savedSettings.grid?.cellSize || 1,
-      sectionSize: savedSettings.grid?.sectionSize || 10,
-      infiniteGrid: savedSettings.grid?.infiniteGrid !== undefined ? savedSettings.grid.infiniteGrid : true,
-      position: savedSettings.grid?.position || [0, 0, 0],
-      cellColor: savedSettings.grid?.cellColor || '#334155',
-      sectionColor: savedSettings.grid?.sectionColor || '#475569'
+      enabled: true,
+      unit: 'centimeters',
+      size: 20,
+      cellSize: 100,
+      sectionSize: 10,
+      infiniteGrid: true,
+      position: [0, 0, 0],
+      cellColor: '#334155',
+      sectionColor: '#475569'
     }
   }
 })
@@ -243,7 +222,7 @@ export const editorActions = {
   
   updateViewportSettings: (settings) => {
     setEditorStore('settings', 'viewport', settings);
-    saveSettings(editorStore.settings);
+    editorActions.saveToProject();
   },
   
   toggleStats: () => {
@@ -252,12 +231,12 @@ export const editorActions = {
   
   updateEditorSettings: (settings) => {
     setEditorStore('settings', 'editor', settings);
-    saveSettings(editorStore.settings);
+    editorActions.saveToProject();
   },
   
   updateGridSettings: (settings) => {
     setEditorStore('settings', 'grid', settings);
-    saveSettings(editorStore.settings);
+    editorActions.saveToProject();
   },
   
   setToolbarTabOrder: (order) => {
@@ -286,7 +265,7 @@ export const editorActions = {
   toggleScriptExecution: () => {
     const newState = !editorStore.scripts.isPlaying;
     setEditorStore('scripts', 'isPlaying', newState);
-    saveSettings(editorStore.settings);
+    editorActions.saveToProject();
     
     // Trigger script manager state change
     const event = new CustomEvent('engine:script-execution-toggle', {
@@ -297,7 +276,7 @@ export const editorActions = {
 
   setScriptExecution: (isPlaying) => {
     setEditorStore('scripts', 'isPlaying', isPlaying);
-    saveSettings(editorStore.settings);
+    editorActions.saveToProject();
     
     // Trigger script manager state change
     const event = new CustomEvent('engine:script-execution-toggle', {
@@ -308,13 +287,55 @@ export const editorActions = {
 
   setCurrentMode: (mode) => {
     setEditorStore('ui', 'currentMode', mode);
-    saveSettings(editorStore.settings);
+    editorActions.saveToProject();
     
     // Trigger mode change event
     const event = new CustomEvent('engine:mode-change', {
       detail: { mode, previousMode: editorStore.ui.currentMode }
     });
     document.dispatchEvent(event);
+  },
+
+  setTheme: (theme) => {
+    setEditorStore('theme', theme);
+    editorActions.saveToProject();
+    
+    // Apply theme to DOM
+    document.documentElement.setAttribute('data-theme', theme);
+  },
+
+  // Save settings to project file instead of localStorage
+  saveToProject: () => {
+    // Import SceneManager dynamically to avoid circular dependencies
+    import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
+      sceneManager.markAsModified();
+    }).catch(err => {
+      console.warn('Failed to mark project as modified:', err);
+    });
+  },
+
+  // Load settings from project data
+  loadFromProject: (projectSettings) => {
+    if (!projectSettings) return;
+    
+    // Load all settings from project
+    if (projectSettings.settings) {
+      setEditorStore('settings', projectSettings.settings);
+    }
+    
+    if (projectSettings.ui) {
+      setEditorStore('ui', 'currentMode', projectSettings.ui.currentMode || 'standard');
+    }
+    
+    if (projectSettings.scripts) {
+      setEditorStore('scripts', projectSettings.scripts);
+    }
+    
+    if (projectSettings.theme) {
+      setEditorStore('theme', projectSettings.theme);
+      // Apply theme to DOM
+      document.documentElement.setAttribute('data-theme', projectSettings.theme);
+    }
   },
 
   // Control system actions
