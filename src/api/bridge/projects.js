@@ -45,6 +45,16 @@ export async function createProject(name, template = 'basic', settings = null) {
 }
 
 /**
+ * Delete a project
+ */
+export async function deleteProject(name) {
+  const response = await bridgeFetch(`/projects/${encodeURIComponent(name)}`, {
+    method: 'DELETE'
+  });
+  return parseJsonResponse(response);
+}
+
+/**
  * Construct project-relative path
  */
 export function getProjectPath(filePath = '', projectName = null) {

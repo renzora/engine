@@ -11,7 +11,7 @@ use log::{info, warn, error, debug};
 use percent_encoding::percent_decode_str;
 use base64::{Engine as _, engine::general_purpose};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
-use crate::project_manager::{list_projects, list_directory_contents, create_project, load_scene_with_assets};
+use crate::project_manager::{list_projects, list_directory_contents, create_project, load_scene_with_assets, delete_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
 use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest, batch_generate_thumbnails, generate_model_thumbnail, generate_material_thumbnail};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
@@ -101,6 +101,14 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 Some(body_content) => handle_create_project(body_content),
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
+        }
+        (&Method::DELETE, path) if path.starts_with("/projects/") => {
+            let project_name = &path[10..];
+            let decoded_name = match decode_url_path(project_name) {
+                Ok(name) => name,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
+            handle_delete_project(&decoded_name)
         }
         (&Method::GET, path) if path.starts_with("/list/") => {
             let dir_path = &path[6..];
@@ -615,6 +623,20 @@ fn handle_create_project(body_content: &str) -> Response<BoxBody<Bytes, Infallib
         Err(e) => {
             error_response(StatusCode::BAD_REQUEST, &format!("Invalid request format: {}", e))
         }
+    }
+}
+
+fn handle_delete_project(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    match delete_project(project_name) {
+        Ok(_) => {
+            let response = ApiResponse {
+                success: true,
+                content: Some(format!("Project '{}' deleted successfully", project_name)),
+                error: None,
+            };
+            json_response(&response)
+        }
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
     }
 }
 

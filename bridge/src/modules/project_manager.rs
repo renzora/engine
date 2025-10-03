@@ -298,6 +298,29 @@ pub fn create_project(name: &str, template: &str, settings: Option<&serde_json::
     })
 }
 
+pub fn delete_project(project_name: &str) -> Result<(), String> {
+    let projects_path = get_projects_path();
+    let project_path = projects_path.join(project_name);
+    
+    // Check if project exists
+    if !project_path.exists() {
+        return Err(format!("Project '{}' does not exist", project_name));
+    }
+    
+    // Validate project name to prevent directory traversal
+    if project_name.is_empty() || project_name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|', '.']) {
+        return Err("Invalid project name".to_string());
+    }
+    
+    // Remove the entire project directory
+    if let Err(e) = fs::remove_dir_all(&project_path) {
+        return Err(format!("Failed to delete project directory: {}", e));
+    }
+    
+    info!("✅ Successfully deleted project: {}", project_name);
+    Ok(())
+}
+
 pub fn load_scene_with_assets(project_name: &str, scene_name: &str) -> Result<serde_json::Value, String> {
     let projects_path = get_projects_path();
     let project_path = projects_path.join(project_name);

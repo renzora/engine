@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onMount, Show, For } from 'solid-js';
-import { IconFolder, IconPlus, IconFolderOpen, IconSettings, IconCode, IconRocket, IconBox } from '@tabler/icons-solidjs';
-import { getProjects } from '@/api/bridge/projects';
+import { IconFolder, IconPlus, IconFolderOpen, IconSettings, IconCode, IconRocket, IconBox, IconTrash } from '@tabler/icons-solidjs';
+import { getProjects, deleteProject } from '@/api/bridge/projects';
 import { sceneManager } from '@/api/scene/SceneManager.js';
 import AnimatedBackground from './AnimatedBackground';
 import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
@@ -14,6 +14,9 @@ export default function SplashScreen({ onProjectSelect }) {
   const [selectedProject, setSelectedProject] = createSignal(null);
   const [availableScenes, setAvailableScenes] = createSignal([]);
   const [loadingScenes, setLoadingScenes] = createSignal(false);
+  const [showDeleteDialog, setShowDeleteDialog] = createSignal(false);
+  const [projectToDelete, setProjectToDelete] = createSignal(null);
+  const [deletingProject, setDeletingProject] = createSignal(false);
 
   // Load projects from bridge
   const loadProjects = async () => {
@@ -76,6 +79,37 @@ export default function SplashScreen({ onProjectSelect }) {
     } catch (err) {
       console.error('Failed to load scene:', err);
       alert('Failed to load scene');
+    }
+  };
+
+  // Show delete confirmation dialog
+  const showDeleteConfirmation = (project) => {
+    setProjectToDelete(project);
+    setShowDeleteDialog(true);
+  };
+
+  // Delete project
+  const handleDeleteProject = async () => {
+    const project = projectToDelete();
+    if (!project) return;
+
+    try {
+      setDeletingProject(true);
+      setError(null);
+      
+      await deleteProject(project.name);
+      
+      // Reload projects list
+      await loadProjects();
+      
+      // Close dialog
+      setShowDeleteDialog(false);
+      setProjectToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+      setError(`Failed to delete project: ${err.message || err}`);
+    } finally {
+      setDeletingProject(false);
     }
   };
 
@@ -252,10 +286,21 @@ export default function SplashScreen({ onProjectSelect }) {
                               e.stopPropagation();
                               loadScenesForProject(project);
                             }}
-                            class="absolute top-2 right-2 p-1 bg-base-300 hover:bg-primary/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
+                            class="absolute top-2 right-8 p-1 bg-base-300 hover:bg-primary/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
                             title="Load Scene"
                           >
                             <IconCode class="w-4 h-4 text-base-content/70 hover:text-primary" />
+                          </button>
+                          {/* Delete Project Button */}
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              showDeleteConfirmation(project);
+                            }}
+                            class="absolute top-2 right-2 p-1 bg-base-300 hover:bg-error/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all duration-200"
+                            title="Delete Project"
+                          >
+                            <IconTrash class="w-4 h-4 text-base-content/70 hover:text-error" />
                           </button>
                         </div>
                       )}
@@ -383,6 +428,63 @@ export default function SplashScreen({ onProjectSelect }) {
                 </div>
               </Show>
             </Show>
+          </div>
+        </div>
+      </Show>
+
+      {/* Delete Project Confirmation Dialog */}
+      <Show when={showDeleteDialog()}>
+        <div class="fixed inset-0 bg-base-100/70 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
+          <div class="bg-base-200 backdrop-blur-xl rounded-2xl border border-base-content/30 p-8 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-300">
+            <div class="flex items-center gap-3 mb-6">
+              <div class="w-10 h-10 bg-gradient-to-br from-error to-error/80 rounded-xl flex items-center justify-center">
+                <IconTrash class="w-6 h-6 text-error-content" />
+              </div>
+              <div>
+                <h2 class="text-xl font-bold text-base-content">Delete Project</h2>
+                <p class="text-sm text-base-content/60">This action cannot be undone</p>
+              </div>
+            </div>
+            
+            <div class="mb-6">
+              <p class="text-base-content mb-4">
+                Are you sure you want to delete the project 
+                <span class="font-semibold text-primary">"{projectToDelete()?.name}"</span>?
+              </p>
+              <p class="text-sm text-base-content/60">
+                This will permanently delete all project files, assets, and scenes.
+              </p>
+            </div>
+
+            <Show when={error()}>
+              <div class="mb-4 p-3 bg-error/20 border border-error/30 rounded-lg">
+                <p class="text-error text-sm">{error()}</p>
+              </div>
+            </Show>
+
+            <div class="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setProjectToDelete(null);
+                  setError(null);
+                }}
+                class="btn btn-ghost"
+                disabled={deletingProject()}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteProject}
+                class="btn btn-error"
+                disabled={deletingProject()}
+              >
+                <Show when={deletingProject()}>
+                  <div class="w-4 h-4 border-2 border-error-content border-t-transparent rounded-full animate-spin mr-2"></div>
+                </Show>
+                Delete Project
+              </button>
+            </div>
           </div>
         </div>
       </Show>
