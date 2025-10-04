@@ -1029,6 +1029,28 @@ export const renderActions = {
     });
   },
 
+  removeVirtualFolder(folderId) {
+    setRenderStore('hierarchy', prev => {
+      const removeFromHierarchy = (nodes) => {
+        return nodes.map(node => {
+          if (node.children) {
+            return {
+              ...node,
+              children: removeFromHierarchy(node.children.filter(child => child.id !== folderId))
+            };
+          }
+          return node;
+        }).filter(node => node.id !== folderId);
+      };
+      return removeFromHierarchy(prev);
+    });
+    
+    // Mark scene as modified
+    import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
+      sceneManager.markAsModified();
+    });
+  },
+
   reorderObjectInHierarchy(draggedId, targetId, position) {
     setRenderStore('hierarchy', prev => {
       const reorderInNodes = (nodes, parentLevel = true) => {

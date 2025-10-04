@@ -184,16 +184,27 @@ export const createContextMenuActions = (editorActions) => {
   const handleDelete = (itemId) => {
     console.log('Delete', itemId);
     
-    // Find the object in the render store
-    const scene = renderStore.scene;
-    if (scene) {
-      const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
-      const objectToDelete = allObjects.find(obj => 
-        (obj.uniqueId || obj.name) === itemId
-      );
-      
-      if (objectToDelete) {
-        renderActions.removeObject(objectToDelete);
+    // Check if this is a virtual folder
+    const isVirtualFolder = typeof itemId === 'string' && itemId.startsWith('virtual-folder-');
+    
+    if (isVirtualFolder) {
+      // Dispatch event to Scene component to handle virtual folder deletion
+      const event = new CustomEvent('contextMenuDeleteVirtualFolder', { 
+        detail: { itemId } 
+      });
+      document.dispatchEvent(event);
+    } else {
+      // Find the object in the render store
+      const scene = renderStore.scene;
+      if (scene) {
+        const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
+        const objectToDelete = allObjects.find(obj => 
+          (obj.uniqueId || obj.name) === itemId
+        );
+        
+        if (objectToDelete) {
+          renderActions.removeObject(objectToDelete);
+        }
       }
     }
   };

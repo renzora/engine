@@ -94,12 +94,34 @@ function Scene(props) {
         console.log('🔄 Scene: No color codes to restore or empty object');
       }
     };
+
+    const handleContextMenuDeleteVirtualFolder = (e) => {
+      const { itemId } = e.detail;
+      // Find the virtual folder in hierarchy
+      const hierarchy = hierarchyData();
+      const findVirtualFolderInHierarchy = (items, id) => {
+        for (const item of items) {
+          if (item.id === id) return item;
+          if (item.children) {
+            const found = findVirtualFolderInHierarchy(item.children, id);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      
+      const folderToDelete = findVirtualFolderInHierarchy(hierarchy, itemId);
+      if (folderToDelete) {
+        handleDeleteVirtualFolder(folderToDelete);
+      }
+    };
     
     window.addEventListener('resize', handleWindowResize);
     document.addEventListener('contextMenuCreateFolder', handleContextMenuCreateFolder);
     document.addEventListener('contextMenuRename', handleContextMenuRename);
     document.addEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
     document.addEventListener('contextMenuColorCode', handleContextMenuColorCode);
+    document.addEventListener('contextMenuDeleteVirtualFolder', handleContextMenuDeleteVirtualFolder);
     document.addEventListener('getSceneColorCodes', handleGetSceneColorCodes);
     document.addEventListener('restoreSceneColorCodes', handleRestoreSceneColorCodes);
     
@@ -143,6 +165,7 @@ function Scene(props) {
       document.removeEventListener('contextMenuRename', handleContextMenuRename);
       document.removeEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
       document.removeEventListener('contextMenuColorCode', handleContextMenuColorCode);
+      document.removeEventListener('contextMenuDeleteVirtualFolder', handleContextMenuDeleteVirtualFolder);
       document.removeEventListener('getSceneColorCodes', handleGetSceneColorCodes);
       document.removeEventListener('restoreSceneColorCodes', handleRestoreSceneColorCodes);
       document.removeEventListener('keydown', handleGlobalKeyDown);
@@ -745,7 +768,16 @@ function Scene(props) {
   const handleDeleteObject = (item, e) => {
     e.stopPropagation();
     
-    if (item.babylonObject && item.babylonObject.dispose) {
+    const isVirtualFolder = (item) => {
+      return item.isVirtual ||
+             (item.type === 'folder' && !item.babylonObject) ||
+             (typeof item.id === 'string' && item.id.startsWith('virtual-folder-'));
+    };
+    
+    if (isVirtualFolder(item)) {
+      // Handle virtual folder deletion
+      handleDeleteVirtualFolder(item);
+    } else if (item.babylonObject && item.babylonObject.dispose) {
       const scene = renderStore.scene;
       const isCamera = item.babylonObject.getClassName && item.babylonObject.getClassName().includes('Camera');
       
@@ -754,6 +786,9 @@ function Scene(props) {
         editorActions.addConsoleMessage('Cannot delete the last camera! At least one camera is required for rendering.', 'error');
         return;
       }
+      
+      // Detach scripts before deleting the object
+      handleDetachAllScripts(item.babylonObject);
       
       // Use render actions to remove the object
       renderActions.removeObject(item.babylonObject);
@@ -773,6 +808,102 @@ function Scene(props) {
       if (selection.entity === item.id) {
         setSelectedEntity(null);
       }
+    }
+  };
+
+  const handleDeleteVirtualFolder = (folderItem) => {
+    console.log('🗑️ Deleting virtual folder:', folderItem.name);
+    
+    // First, collect all objects inside this virtual folder recursively
+    const collectAllObjectsInFolder = (folder, allObjects = []) => {
+      if (folder.children) {
+        folder.children.forEach(child => {
+          if (child.isVirtual || (child.type === 'folder' && !child.babylonObject)) {
+            // Recursively collect from nested virtual folders
+            collectAllObjectsInFolder(child, allObjects);
+          } else if (child.babylonObject) {
+            // This is a real Babylon object
+            allObjects.push(child);
+          }
+        });
+      }
+      return allObjects;
+    };
+    
+    const objectsToDelete = collectAllObjectsInFolder(folderItem);
+    console.log('🗑️ Found objects to delete in folder:', objectsToDelete.map(obj => obj.name));
+    
+    // Check if any cameras would be deleted
+    const scene = renderStore.scene;
+    if (scene) {
+      const camerasToDelete = objectsToDelete.filter(obj => 
+        obj.babylonObject?.getClassName?.()?.includes('Camera')
+      );
+      
+      // Prevent deleting all cameras
+      if (camerasToDelete.length > 0 && scene.cameras.length <= camerasToDelete.length) {
+        editorActions.addConsoleMessage('Cannot delete virtual folder! It contains all remaining cameras. At least one camera is required for rendering.', 'error');
+        return;
+      }
+    }
+    
+    // Delete all objects in the folder (with script cleanup)
+    objectsToDelete.forEach(obj => {
+      if (obj.babylonObject) {
+        console.log('🗑️ Deleting object from folder:', obj.name);
+        
+        // Detach scripts before deleting
+        handleDetachAllScripts(obj.babylonObject);
+        
+        // Remove the Babylon object
+        renderActions.removeObject(obj.babylonObject);
+      }
+    });
+    
+    // Remove the virtual folder from hierarchy
+    renderActions.removeVirtualFolder(folderItem.id);
+    
+    // Clear selection if this folder was selected
+    if (selection.entity === folderItem.id) {
+      setSelectedEntity(null);
+    }
+    
+    // Ensure there's still an active camera if cameras were deleted
+    if (scene && objectsToDelete.some(obj => obj.babylonObject?.getClassName?.()?.includes('Camera'))) {
+      setTimeout(() => {
+        if (scene.cameras.length > 0 && !scene.activeCamera) {
+          scene.activeCamera = scene.cameras[0];
+          scene._camera = scene.cameras[0];
+          scene.cameras[0].attachControl(scene.getEngine().getRenderingCanvas(), true);
+          editorActions.addConsoleMessage(`Switched to camera: ${scene.cameras[0].name}`, 'info');
+        }
+      }, 100);
+    }
+    
+    editorActions.addConsoleMessage(`Deleted virtual folder "${folderItem.name}" and ${objectsToDelete.length} objects`, 'info');
+  };
+
+  const handleDetachAllScripts = async (babylonObject) => {
+    try {
+      const objectId = babylonObject.uniqueId || babylonObject.name;
+      
+      // Get script runtime to detach scripts
+      const { getScriptRuntime } = await import('@/api/script');
+      const runtime = getScriptRuntime();
+      
+      if (runtime && runtime.detachAllScriptsFromObject) {
+        await runtime.detachAllScriptsFromObject(objectId);
+        console.log('🗑️ Detached all scripts from object:', babylonObject.name);
+      }
+      
+      // Also clean up objectProperties store
+      const { objectPropertiesActions } = await import('@/layout/stores/ViewportStore.jsx');
+      if (objectPropertiesActions.removeObject) {
+        objectPropertiesActions.removeObject(objectId);
+        console.log('🗑️ Cleaned up object properties for:', babylonObject.name);
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to detach scripts from object:', babylonObject.name, error);
     }
   };
 
