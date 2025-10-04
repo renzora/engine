@@ -67,12 +67,47 @@ function Scene(props) {
     document.addEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
     document.addEventListener('contextMenuColorCode', handleContextMenuColorCode);
     
+    // Global keyboard shortcuts
+    const handleGlobalKeyDown = (e) => {
+      // Only handle if focus is in the scene panel or no input is focused
+      const focusedElement = document.activeElement;
+      const isInputFocused = focusedElement && (
+        focusedElement.tagName === 'INPUT' || 
+        focusedElement.tagName === 'TEXTAREA' ||
+        focusedElement.contentEditable === 'true'
+      );
+      
+      if (!isInputFocused) {
+        if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
+          e.preventDefault();
+          handleSelectAll();
+        } else if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          handleDeleteSelected();
+        }
+      }
+    };
+    
+    document.addEventListener('keydown', handleGlobalKeyDown);
+    
+    // Debug: Watch for any other selection changes
+    const handleSelectionChange = () => {
+      console.log('Selection changed externally:', {
+        entity: selection.entity,
+        entities: selection.entities
+      });
+    };
+    
+    // This won't work as editorStore isn't directly observable
+    // but let's see if we can detect changes another way
+    
     onCleanup(() => {
       window.removeEventListener('resize', handleWindowResize);
       document.removeEventListener('contextMenuCreateFolder', handleContextMenuCreateFolder);
       document.removeEventListener('contextMenuRename', handleContextMenuRename);
       document.removeEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
       document.removeEventListener('contextMenuColorCode', handleContextMenuColorCode);
+      document.removeEventListener('keydown', handleGlobalKeyDown);
     });
     
     // Select scene root by default on load
@@ -363,6 +398,74 @@ function Scene(props) {
     return null;
   };
 
+  // Helper function to get all items in hierarchy in display order (only visible/expanded items)
+  const getAllItemsInOrder = (hierarchy) => {
+    const items = [];
+    
+    const traverse = (nodes, depth = 0) => {
+      for (const node of nodes) {
+        items.push(node.id);
+        if (node.children && node.children.length > 0 && expandedItems()[node.id]) {
+          traverse(node.children, depth + 1);
+        }
+      }
+    };
+    
+    traverse(hierarchy);
+    return items;
+  };
+
+  // Helper function to get ALL items in hierarchy regardless of expansion state (for range selection)
+  const getAllItemsFlat = (hierarchy) => {
+    const items = [];
+    
+    const traverse = (nodes) => {
+      for (const node of nodes) {
+        items.push(node.id);
+        if (node.children && node.children.length > 0) {
+          traverse(node.children);
+        }
+      }
+    };
+    
+    traverse(hierarchy);
+    console.log('getAllItemsFlat result:', items);
+    return items;
+  };
+
+  // Helper function to get selection range between two items
+  const getSelectionRange = (hierarchy, fromId, toId) => {
+    const allItems = getAllItemsFlat(hierarchy);
+    const fromIndex = allItems.indexOf(fromId);
+    const toIndex = allItems.indexOf(toId);
+    
+    console.log('getSelectionRange DEBUG:', {
+      fromId,
+      toId,
+      allItems,
+      allItemsLength: allItems.length,
+      fromIndex,
+      toIndex
+    });
+    
+    if (fromIndex === -1 || toIndex === -1) {
+      console.log('Range selection fallback: item not found in hierarchy');
+      return [toId]; // Fallback to just the clicked item
+    }
+    
+    const startIndex = Math.min(fromIndex, toIndex);
+    const endIndex = Math.max(fromIndex, toIndex);
+    const rangeResult = allItems.slice(startIndex, endIndex + 1);
+    
+    console.log('Range selection result:', {
+      startIndex,
+      endIndex,
+      rangeResult
+    });
+    
+    return rangeResult;
+  };
+
   const handleCreateFolder = () => {
     const scene = renderStore.scene;
     if (!scene) return;
@@ -400,6 +503,64 @@ function Scene(props) {
     } else if (e.key === 'Enter' && renamingItemId()) {
       e.preventDefault();
       confirmRename();
+    } else if (e.key === 'a' && (e.ctrlKey || e.metaKey) && !renamingItemId()) {
+      e.preventDefault();
+      handleSelectAll();
+    } else if (e.key === 'Delete' && !renamingItemId()) {
+      e.preventDefault();
+      handleDeleteSelected();
+    }
+  };
+
+  const handleSelectAll = () => {
+    const allItems = getAllItemsInOrder(hierarchyData());
+    if (allItems.length > 0) {
+      setSelectedEntity(allItems[allItems.length - 1], allItems);
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    const selectedItems = selection.entities || [];
+    if (selectedItems.length === 0) return;
+
+    const scene = renderStore.scene;
+    if (!scene) return;
+
+    const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
+    
+    // Check if any cameras would be deleted
+    const camerasToDelete = selectedItems.filter(id => {
+      const obj = allObjects.find(o => (o.uniqueId || o.name) === id);
+      return obj && obj.getClassName && obj.getClassName().includes('Camera');
+    });
+
+    // Prevent deleting all cameras
+    if (camerasToDelete.length > 0 && scene.cameras.length <= camerasToDelete.length) {
+      editorActions.addConsoleMessage('Cannot delete all cameras! At least one camera is required for rendering.', 'error');
+      return;
+    }
+
+    // Delete all selected objects
+    selectedItems.forEach(id => {
+      const objectToDelete = allObjects.find(obj => (obj.uniqueId || obj.name) === id);
+      if (objectToDelete) {
+        renderActions.removeObject(objectToDelete);
+      }
+    });
+
+    // Clear selection
+    setSelectedEntity(null, []);
+    
+    // Ensure there's still an active camera if cameras were deleted
+    if (camerasToDelete.length > 0 && scene) {
+      setTimeout(() => {
+        if (scene.cameras.length > 0 && !scene.activeCamera) {
+          scene.activeCamera = scene.cameras[0];
+          scene._camera = scene.cameras[0];
+          scene.cameras[0].attachControl(scene.getEngine().getRenderingCanvas(), true);
+          editorActions.addConsoleMessage(`Switched to camera: ${scene.cameras[0].name}`, 'info');
+        }
+      }, 100);
     }
   };
 
@@ -502,7 +663,13 @@ function Scene(props) {
     
     const isSelected = () => {
       // Check if this item is in the multi-selection
-      return selection.entities.includes(item.id) || selection.entity === item.id;
+      const entities = selection.entities || [];
+      return entities.includes(item.id) || selection.entity === item.id;
+    };
+    
+    const isPrimarySelection = () => {
+      // Check if this is the primary selected item (last clicked)
+      return selection.entity === item.id;
     };
     
     // Check if this item is a child of the selected folder
@@ -555,9 +722,11 @@ function Scene(props) {
         </Show>
         <div 
           className={`group flex items-center py-0.5 pr-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${
-            isSelected() 
+            isPrimarySelection() 
               ? 'bg-primary/80 text-primary-content' 
-              : 'text-base-content/70 hover:bg-primary/20 hover:text-base-content'
+              : isSelected()
+                ? 'bg-primary/50 text-primary-content'
+                : 'text-base-content/70 hover:bg-primary/20 hover:text-base-content'
           } ${
             draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
@@ -580,16 +749,103 @@ function Scene(props) {
           onDragEnd={handleDragEnd}
           tabIndex={0}
           onKeyDown={(e) => handleKeyDown(e, item)}
-          onClick={() => {
+          onClick={(e) => {
             if (renamingItemId() !== item.id) {
-              // Use shared selection by ID for all object types
-              const success = renderActions.selectObjectById(item.id);
-              if (!success) {
-                // Fallback for non-Babylon objects (like folders)
-                setSelectedEntity(item.id);
+              // Handle multi-selection with Ctrl+click and Shift+click
+              const isCtrlClick = e.ctrlKey || e.metaKey; // Support both Ctrl and Cmd (Mac)
+              const isShiftClick = e.shiftKey;
+              
+              console.log('CLICK EVENT:', {
+                itemId: item.id,
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey,
+                shiftKey: e.shiftKey,
+                isCtrlClick,
+                isShiftClick
+              });
+              
+              if (isCtrlClick) {
+                // Ctrl+click: Toggle selection of this item
+                const currentSelection = selection.entities || [];
+                const isAlreadySelected = currentSelection.includes(item.id);
+                
+                console.log('CTRL+CLICK DEBUG:', {
+                  itemId: item.id,
+                  currentSelection,
+                  currentSelectionLength: currentSelection.length,
+                  currentSelectionItems: [...currentSelection],
+                  isAlreadySelected,
+                  selectionEntity: selection.entity,
+                  selectionEntities: selection.entities,
+                  selectionEntitiesLength: (selection.entities || []).length
+                });
+                
+                if (isAlreadySelected) {
+                  // Remove from selection
+                  const newSelection = currentSelection.filter(id => id !== item.id);
+                  const newPrimary = newSelection.length > 0 ? newSelection[newSelection.length - 1] : null;
+                  console.log('REMOVING from selection:', { newSelection, newPrimary });
+                  setSelectedEntity(newPrimary, newSelection);
+                } else {
+                  // Add to selection
+                  const newSelection = [...currentSelection, item.id];
+                  console.log('ADDING to selection:', { newSelection, newPrimary: item.id });
+                  setSelectedEntity(item.id, newSelection);
+                  
+                  // Check if the state actually changed
+                  setTimeout(() => {
+                    console.log('After setSelectedEntity:', {
+                      entities: selection.entities,
+                      entity: selection.entity
+                    });
+                  }, 10);
+                }
+                
+                // For multi-selection, don't call renderActions.selectObjectById as it overrides our selection
+                
+              } else if (isShiftClick) {
+                // Shift+click: Select range from last selected to this item
+                const currentSelection = selection.entities || [];
+                const hierarchy = hierarchyData();
+                
+                console.log('SHIFT+CLICK DEBUG:', {
+                  itemId: item.id,
+                  currentSelection,
+                  currentSelectionLength: currentSelection.length,
+                  currentSelectionItems: [...currentSelection],
+                  selectionEntity: selection.entity
+                });
+                
+                if (currentSelection.length > 0) {
+                  const lastSelected = selection.entity || currentSelection[currentSelection.length - 1];
+                  const rangeSelection = getSelectionRange(hierarchy, lastSelected, item.id);
+                  console.log('SHIFT RANGE SELECTION:', { 
+                    from: lastSelected, 
+                    to: item.id, 
+                    rangeSelection 
+                  });
+                  setSelectedEntity(item.id, rangeSelection);
+                } else {
+                  // No previous selection, just select this item
+                  console.log('SHIFT FALLBACK: No previous selection');
+                  setSelectedEntity(item.id, [item.id]);
+                }
+                
+                // For range selection, don't call renderActions.selectObjectById as it overrides our selection
+                
+              } else {
+                // Normal click: Single selection
+                setSelectedEntity(item.id, [item.id]);
+                
+                // Only call renderActions.selectObjectById for single selections
+                const success = renderActions.selectObjectById(item.id);
+                if (!success) {
+                  // Fallback for non-Babylon objects like folders
+                }
               }
-              // Always call onObjectSelect - the reactive system will handle tab visibility
-              if (props.onObjectSelect) {
+              
+              // Only call onObjectSelect for single selections to avoid triggering render store override
+              if (props.onObjectSelect && !isCtrlClick && !isShiftClick) {
                 props.onObjectSelect(item.id);
               }
               // Note: Removed automatic toggling - now handled by chevron button
@@ -599,8 +855,12 @@ function Scene(props) {
             props.onContextMenu(e, item, 'scene');
           }}
         >
-          <Show when={isSelected()}>
+          <Show when={isPrimarySelection()}>
             <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary pointer-events-none" />
+          </Show>
+          
+          <Show when={isSelected() && !isPrimarySelection()}>
+            <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-primary/60 pointer-events-none" />
           </Show>
           
           <Show when={depth > 0}>
@@ -765,6 +1025,9 @@ function Scene(props) {
       <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
         <div className="text-xs text-base-content/60 uppercase tracking-wide">
           Scene
+        </div>
+        <div className="text-xs text-base-content/40">
+          Selected: {(selection.entities || []).length}
         </div>
       </div>
       
