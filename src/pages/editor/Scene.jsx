@@ -1322,7 +1322,7 @@ function Scene(props) {
       {/* Scene header - fixed */}
       <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
         <div className="text-xs text-base-content/60 uppercase tracking-wide">
-          Scene
+          Scene Panel
         </div>
       </div>
       
