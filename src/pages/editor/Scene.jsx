@@ -1154,13 +1154,15 @@ function Scene(props) {
             />
           </Show>
           
-          <button 
-            className="ml-auto p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100 cursor-pointer flex-shrink-0"
-            onClick={(e) => handleDeleteObject(item, e)}
-            title="Delete object"
-          >
-            <IconTrash className="w-4 h-4 text-base-content/70 hover:text-error" />
-          </button>
+          <Show when={item.type !== 'scene'}>
+            <button 
+              className="ml-auto p-0.5 rounded transition-colors opacity-0 group-hover:opacity-70 hover:opacity-100 cursor-pointer flex-shrink-0"
+              onClick={(e) => handleDeleteObject(item, e)}
+              title="Delete object"
+            >
+              <IconTrash className="w-4 h-4 text-base-content/70 hover:text-error" />
+            </button>
+          </Show>
         </div>
         
         <Show when={hasChildren && isExpanded()}>
@@ -1188,9 +1190,6 @@ function Scene(props) {
       <div className="flex-shrink-0 px-3 py-2 flex items-center justify-between">
         <div className="text-xs text-base-content/60 uppercase tracking-wide">
           Scene
-        </div>
-        <div className="text-xs text-base-content/40">
-          Selected: {(selection.entities || []).length}
         </div>
       </div>
       

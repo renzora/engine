@@ -24,7 +24,11 @@ export const createContextMenuActions = (editorActions) => {
 
   const getContextMenuItems = (item, context, currentPath = '') => {
     if (item) {
-      const baseItems = [
+      // Different base items depending on whether this is the scene root
+      const baseItems = item.type === 'scene' ? [
+        { label: 'Rename', action: () => handleRename(item.id), icon: <IconEdit class="w-4 h-4" /> },
+        { separator: true },
+      ] : [
         { label: 'Rename', action: () => handleRename(item.id), icon: <IconEdit class="w-4 h-4" /> },
         { separator: true },
         { label: 'Copy', action: () => handleCopy(item.id), icon: <IconCopy class="w-4 h-4" /> },

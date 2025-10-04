@@ -175,6 +175,9 @@ const RightPanel = () => {
     // Hide tabs if no selection
     if (!objectId) return false;
     
+    // Hide tabs if scene root is selected (scene root should not show properties)
+    if (objectId === 'scene-root') return false;
+    
     // Hide tabs if multiple items are selected
     if (selectedEntities.length > 1) return false;
     
