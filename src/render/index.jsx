@@ -805,7 +805,6 @@ export default function BabylonRenderer(props) {
         ref={canvasRef}
         className="w-full h-full outline-none"
         style={{ 'touch-action': 'none' }}
-        onContextMenu={props.onContextMenu}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}

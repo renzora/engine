@@ -85,13 +85,10 @@ export function useCameraController(camera, canvas, scene) {
   const handlePointerDown = (event) => {
     if (!camera() || !canvas()) return;
     
-    // Handle pointer down for camera movement
-    
     if (!shouldAllowCameraMovement(event)) {
       return;
     }
 
-    // Only prevent default and handle the event if we should allow camera movement
     event.preventDefault();
     lastMouseX = event.clientX;
     lastMouseY = event.clientY;
@@ -623,11 +620,10 @@ export function useCameraController(camera, canvas, scene) {
     const handleContextMenu = (e) => {
       e.preventDefault();
     };
-    
     canvas().addEventListener('contextmenu', handleContextMenu);
-    canvas().addEventListener('pointerdown', handlePointerDown, { capture: true }); // Use pointer events instead
-    canvas().addEventListener('pointermove', handleMouseMove, { capture: true }); // Rename later
-    canvas().addEventListener('pointerup', handleMouseUp, { capture: true }); // Rename later  
+    canvas().addEventListener('pointerdown', handlePointerDown, { capture: true });
+    canvas().addEventListener('pointermove', handleMouseMove, { capture: true });
+    canvas().addEventListener('pointerup', handleMouseUp, { capture: true });
     canvas().addEventListener('wheel', handleWheel, { passive: false, capture: true });
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);

@@ -28,8 +28,37 @@ function Scene(props) {
       }
     };
     
+    // Context menu event listeners
+    const handleContextMenuCreateFolder = () => {
+      handleCreateFolder();
+    };
+    
+    const handleContextMenuRename = (e) => {
+      const { itemId } = e.detail;
+      const hierarchyItem = findItemInHierarchy(itemId, hierarchyData());
+      if (hierarchyItem) {
+        startRename(itemId, hierarchyItem.name);
+      }
+    };
+    
+    const handleContextMenuAddToNewFolder = (e) => {
+      const { itemId } = e.detail;
+      // Create a new folder and move the item to it
+      handleCreateFolder();
+      // Note: This would need additional logic to move the item after folder creation
+    };
+    
     window.addEventListener('resize', handleWindowResize);
-    onCleanup(() => window.removeEventListener('resize', handleWindowResize));
+    document.addEventListener('contextMenuCreateFolder', handleContextMenuCreateFolder);
+    document.addEventListener('contextMenuRename', handleContextMenuRename);
+    document.addEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
+    
+    onCleanup(() => {
+      window.removeEventListener('resize', handleWindowResize);
+      document.removeEventListener('contextMenuCreateFolder', handleContextMenuCreateFolder);
+      document.removeEventListener('contextMenuRename', handleContextMenuRename);
+      document.removeEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
+    });
     
     // Select scene root by default on load
     if (!selection.entity && props.onObjectSelect) {
@@ -194,6 +223,19 @@ function Scene(props) {
     setRenameValue('');
   };
   
+  const findItemInHierarchy = (itemId, hierarchy) => {
+    for (const item of hierarchy) {
+      if (item.id === itemId) {
+        return item;
+      }
+      if (item.children) {
+        const found = findItemInHierarchy(itemId, item.children);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   const handleCreateFolder = () => {
     const scene = renderStore.scene;
     if (!scene) return;

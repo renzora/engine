@@ -15,10 +15,9 @@ const BabylonViewport = (props) => {
   return (
     <div 
       className="w-full h-full bg-base-300"
-      onContextMenu={props.onContextMenu}
       style={props.style}
     >
-      <BabylonRenderer onContextMenu={props.onContextMenu} />
+      <BabylonRenderer />
     </div>
   );
 };
@@ -26,19 +25,32 @@ const BabylonViewport = (props) => {
 const PersistentRenderViewport = (props) => {
   return (
     <BabylonViewport
-      onContextMenu={props.contextMenuHandler} 
       style={{ width: '100%', height: '100%' }}
     />
   );
 };
 
 const Viewport = () => {
-  const [contextMenu, setContextMenu] = createSignal(null);
   const [splitViewMode, setSplitViewMode] = createSignal(false);
   const [selectedScript, setSelectedScript] = createSignal(null);
   const [editorSide, setEditorSide] = createSignal('left'); // 'left' or 'right'
   const [scriptRuntimePlaying, setScriptRuntimePlaying] = createSignal(true);
   const [showLightDropdown, setShowLightDropdown] = createSignal(false);
+  
+  // Track mouse button states for drag detection and cancellation
+  const [rightMouseState, setRightMouseState] = createSignal({ 
+    isDown: false, 
+    startX: 0, 
+    startY: 0, 
+    hasMoved: false 
+  });
+  
+  const [leftMouseState, setLeftMouseState] = createSignal({
+    isDown: false,
+    startX: 0,
+    startY: 0,
+    hasMoved: false
+  });
   
   // Get reactive store values
   const ui = () => editorStore.ui;
@@ -57,21 +69,65 @@ const Viewport = () => {
   const panelPosition = () => settings().editor.panelPosition || 'right';
   const isLeftPanel = () => panelPosition() === 'left';
 
-  const handleContextMenu = (e, item, context = 'scene') => {
-    if (!e) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-
-    const { clientX: x, clientY: y } = e;
-    setContextMenu({
-      position: { x, y },
-      items: [
-        { label: 'Create Object', action: () => console.log('Create object') },
-        { label: 'Delete', action: () => console.log('Delete') }
-      ],
-    });
+  const handleMouseDown = (e) => {
+    if (e.button === 0) { // Left click
+      // Track left mouse down
+      setLeftMouseState({
+        isDown: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        hasMoved: false
+      });
+    } else if (e.button === 2) { // Right click
+      // Track right mouse down for drag detection
+      setRightMouseState({
+        isDown: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        hasMoved: false
+      });
+    }
   };
+
+  const handleMouseMove = (e) => {
+    const rightState = rightMouseState();
+    const leftState = leftMouseState();
+    
+    // Track right mouse movement for drag detection
+    if (rightState.isDown) {
+      const deltaX = Math.abs(e.clientX - rightState.startX);
+      const deltaY = Math.abs(e.clientY - rightState.startY);
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      
+      // Consider it a drag if moved more than 5 pixels
+      if (distance > 5) {
+        setRightMouseState(prev => ({ ...prev, hasMoved: true }));
+      }
+    }
+    
+    // Track left mouse movement 
+    if (leftState.isDown) {
+      const deltaX = Math.abs(e.clientX - leftState.startX);
+      const deltaY = Math.abs(e.clientY - leftState.startY);
+      const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+      
+      // Consider it a drag if moved more than 5 pixels
+      if (distance > 5) {
+        setLeftMouseState(prev => ({ ...prev, hasMoved: true }));
+      }
+    }
+  };
+
+  const handleMouseUp = (e) => {
+    if (e.button === 0) { // Left click release
+      // Reset left mouse state
+      setLeftMouseState({ isDown: false, startX: 0, startY: 0, hasMoved: false });
+    } else if (e.button === 2) { // Right click release
+      // Reset right mouse state
+      setRightMouseState({ isDown: false, startX: 0, startY: 0, hasMoved: false });
+    }
+  };
+
 
   const handleDragOver = (e) => {
     // Exclude specific elements that should handle their own drops
@@ -232,7 +288,7 @@ const Viewport = () => {
     setEditorSide(current => current === 'left' ? 'right' : 'left');
   };
 
-  // Listen for context menu "Open in Viewport" events
+  // Listen for context menu "Open in Viewport" events and global mouse events
   createEffect(() => {
     const handleOpenInViewport = (event) => {
       const { asset, side, script } = event.detail;
@@ -246,10 +302,29 @@ const Viewport = () => {
       setSplitViewMode(true);
     };
 
+    // Global mouse handlers to track drag state even when mouse leaves viewport
+    const handleGlobalMouseMove = (e) => {
+      handleMouseMove(e);
+    };
+
+    const handleGlobalMouseUp = (e) => {
+      handleMouseUp(e);
+    };
+
+    const handleGlobalMouseDown = (e) => {
+      handleMouseDown(e);
+    };
+
     document.addEventListener('asset:open-in-viewport', handleOpenInViewport);
+    document.addEventListener('mousedown', handleGlobalMouseDown);
+    document.addEventListener('mousemove', handleGlobalMouseMove);
+    document.addEventListener('mouseup', handleGlobalMouseUp);
     
     onCleanup(() => {
       document.removeEventListener('asset:open-in-viewport', handleOpenInViewport);
+      document.removeEventListener('mousedown', handleGlobalMouseDown);
+      document.removeEventListener('mousemove', handleGlobalMouseMove);
+      document.removeEventListener('mouseup', handleGlobalMouseUp);
     });
   });
   
@@ -327,12 +402,9 @@ const Viewport = () => {
         </Show>
         <div 
           className="flex-1 relative overflow-hidden"
-          onContextMenu={(e) => {
-            // Only prevent default if the target doesn't have its own context menu
-            if (!e.target.closest('.asset-context-menu') && e.target === e.currentTarget) {
-              e.preventDefault();
-            }
-          }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
           // Only attach drag handlers when NOT in split view mode to avoid interfering with scene properties
           {...(!splitViewMode() && {
             onDragOver: handleDragOver,
@@ -356,7 +428,6 @@ const Viewport = () => {
           >
             <div class="relative w-full h-full">
               <PersistentRenderViewport
-                contextMenuHandler={() => handleContextMenu}
                 showGrid={true}
               />
             </div>

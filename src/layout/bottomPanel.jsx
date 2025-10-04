@@ -4,9 +4,11 @@ import AssetLibrary from '@/pages/editor/AssetLibrary';
 import PanelResizer from '@/ui/PanelResizer.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { bottomPanelTabs, bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
+import { useViewportContextMenu } from '@/ui/ViewportContextMenu.jsx';
 import { renderStore } from '@/render/store.jsx';
 
 const BottomPanel = () => {
+  const { showContextMenu } = useViewportContextMenu();
   const [contextMenu, setContextMenu] = createSignal(null);
   
   // Handle window resize to ensure panel height stays within bounds
@@ -94,20 +96,8 @@ const BottomPanel = () => {
     }
   };
 
-  const handleContextMenu = (e, item, context = 'scene') => {
-    if (!e) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-
-    const { clientX: x, clientY: y } = e;
-    setContextMenu({
-      position: { x, y },
-      items: [
-        { label: 'Create Object', action: () => console.log('Create object') },
-        { label: 'Delete', action: () => console.log('Delete') }
-      ],
-    });
+  const handleContextMenu = (e, item, context = 'bottom-panel', currentPath = '') => {
+    showContextMenu(e, item, context, currentPath);
   };
   
   const currentActiveTab = () => activeTab();

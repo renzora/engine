@@ -905,32 +905,34 @@ function AssetLibrary({ onContextMenu }) {
     e.preventDefault();
     e.stopPropagation();
     
-    const contextMenuItems = [
-      {
-        label: 'Create Object',
-        action: () => {},
-        icon: <IconPlus class="w-4 h-4" />,
-        submenu: [
-          { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconCube class="w-4 h-4" /> },
-          { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
-          { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
-          { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
-          { separator: true },
-          { label: 'Light', action: () => handleCreateObject('light'), icon: <IconBulb class="w-4 h-4" /> },
-          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
-        ]
-      },
-      { separator: true },
-      {
-        label: 'Create Script',
-        action: () => setShowScriptDialog(true),
-        icon: <IconCode class="w-4 h-4" />
-      }
-    ];
-    
     if (onContextMenu) {
-      onContextMenu(e, contextMenuItems);
+      // Use the new reactive context menu system
+      onContextMenu(e, null, 'bottom-panel', currentPath());
     } else {
+      // Fallback to old system
+      const contextMenuItems = [
+        {
+          label: 'Create Object',
+          action: () => {},
+          icon: <IconPlus class="w-4 h-4" />,
+          submenu: [
+            { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconCube class="w-4 h-4" /> },
+            { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
+            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
+            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
+            { separator: true },
+            { label: 'Light', action: () => handleCreateObject('light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
+          ]
+        },
+        { separator: true },
+        {
+          label: 'Create Script',
+          action: () => setShowScriptDialog(true),
+          icon: <IconCode class="w-4 h-4" />
+        }
+      ];
+      
       setContextMenu({
         items: contextMenuItems,
         position: { x: e.clientX, y: e.clientY }
@@ -1508,6 +1510,62 @@ function AssetLibrary({ onContextMenu }) {
     document.addEventListener('mouseup', handleGlobalMouseUp);
     document.addEventListener('mousemove', handleResizeMouseMove);
     document.addEventListener('mouseup', handleResizeMouseUp);
+    
+    // Context menu event listeners for bottom panel actions
+    const handleContextMenuCreateAssetFolder = async (e) => {
+      const { currentPath: folderPath } = e.detail;
+      const currentProject = projectManager.getCurrentProject();
+      if (!currentProject?.name) return;
+      
+      const folderName = 'New Folder';
+      const targetPath = folderPath 
+        ? `projects/${currentProject.name}/${folderPath}/${folderName}`
+        : `projects/${currentProject.name}/${folderName}`;
+      
+      try {
+        // Create folder by writing a placeholder file and then deleting it
+        await writeFile(`${targetPath}/.keep`, '');
+        await deleteFile(`${targetPath}/.keep`);
+        await fetchAssetsWithCache(currentProject, currentPath(), true, false);
+      } catch (error) {
+        console.error('Error creating folder:', error);
+      }
+    };
+    
+    const handleContextMenuCreateRenScript = async (e) => {
+      const { currentPath: scriptPath } = e.detail;
+      const currentProject = projectManager.getCurrentProject();
+      if (!currentProject?.name) return;
+      
+      const scriptName = 'NewScript';
+      const scriptTemplate = `// New RenScript file
+// Add your script logic here
+
+function main() {
+    // Your code here
+}
+
+main();`;
+      
+      const targetPath = scriptPath 
+        ? `projects/${currentProject.name}/${scriptPath}/${scriptName}.ren`
+        : `projects/${currentProject.name}/${scriptName}.ren`;
+      
+      try {
+        await writeFile(targetPath, scriptTemplate);
+        await fetchAssetsWithCache(currentProject, currentPath(), true, false);
+      } catch (error) {
+        console.error('Error creating RenScript file:', error);
+      }
+    };
+    
+    const handleContextMenuRefreshAssets = () => {
+      handleFileChange({ source: 'manual-button' });
+    };
+    
+    document.addEventListener('contextMenuCreateAssetFolder', handleContextMenuCreateAssetFolder);
+    document.addEventListener('contextMenuCreateRenScript', handleContextMenuCreateRenScript);
+    document.addEventListener('contextMenuRefreshAssets', handleContextMenuRefreshAssets);
 
     // File watching with SSE stream
     if (typeof window !== 'undefined') {
@@ -1636,6 +1694,9 @@ function AssetLibrary({ onContextMenu }) {
     onCleanup(() => {
       document.removeEventListener('engine:project-selected', handleProjectSelection);
       document.removeEventListener('engine:assets-refresh', handleAssetsRefresh);
+      document.removeEventListener('contextMenuCreateAssetFolder', handleContextMenuCreateAssetFolder);
+      document.removeEventListener('contextMenuCreateRenScript', handleContextMenuCreateRenScript);
+      document.removeEventListener('contextMenuRefreshAssets', handleContextMenuRefreshAssets);
     });
 
   });

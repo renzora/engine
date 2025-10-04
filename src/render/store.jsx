@@ -820,7 +820,7 @@ export const renderActions = {
       type: type,
       lightType: lightType,
       visible: babylonObject.isVisible !== undefined ? babylonObject.isVisible : 
-               (babylonObject.isEnabled ? babylonObject.isEnabled() : true),
+               (babylonObject.isEnabled && typeof babylonObject.isEnabled === 'function' ? babylonObject.isEnabled() : true),
       children: children.length > 0 ? children : undefined,
       expanded: depth < 2,
       babylonObject: babylonObject

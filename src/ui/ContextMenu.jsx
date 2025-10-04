@@ -1,43 +1,28 @@
-import { createSignal, createEffect, onCleanup } from 'solid-js';
+import { createSignal, createEffect, onCleanup, For, Show } from 'solid-js';
 import { IconChevronRight } from '@tabler/icons-solidjs';
 
-const ContextMenu = ({ items, position, onClose }) => {
+// Recursive submenu component for unlimited nesting
+const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirection = null }) => {
   let menuRef;
-  let submenuRef;
-  const [menuPosition, setMenuPosition] = createSignal({ top: 0, left: 0 });
+  const [menuPosition, setMenuPosition] = createSignal(position || { top: 0, left: 0 });
   const [hoveredItem, setHoveredItem] = createSignal(null);
-  const [submenuPosition, setSubmenuPosition] = createSignal(null);
-  const [submenuItems, setSubmenuItems] = createSignal(null);
+  const [activeSubmenu, setActiveSubmenu] = createSignal(null);
+  const [submenuDirection, setSubmenuDirection] = createSignal(preferredDirection);
   let hideSubmenuTimeout = null;
 
+  // Position the menu within viewport bounds
   createEffect(() => {
-    const handleClickOutside = (event) => {
-      const isInsideMenu = menuRef && menuRef.contains(event.target);
-      const isInsideSubmenu = submenuRef && submenuRef.contains(event.target);
-      
-      if (!isInsideMenu && !isInsideSubmenu) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    onCleanup(() => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    });
-  });
-
-  createEffect(() => {
-    if (menuRef) {
+    if (menuRef && position) {
       const { innerWidth, innerHeight } = window;
       const { offsetWidth, offsetHeight } = menuRef;
       let { x, y } = position;
 
       if (x + offsetWidth > innerWidth) {
-        x = innerWidth - offsetWidth;
+        x = innerWidth - offsetWidth - 10;
       }
 
       if (y + offsetHeight > innerHeight) {
-        y = innerHeight - offsetHeight;
+        y = innerHeight - offsetHeight - 10;
       }
 
       setMenuPosition({ top: y, left: x });
@@ -55,158 +40,192 @@ const ContextMenu = ({ items, position, onClose }) => {
     if (item.submenu && item.submenu.length > 0) {
       const rect = e.currentTarget.getBoundingClientRect();
       const { innerWidth, innerHeight } = window;
-      let submenuX = rect.right + 2;
-      let submenuY = rect.top;
       const estimatedSubmenuWidth = 180;
-      if (submenuX + estimatedSubmenuWidth > innerWidth) {
-        submenuX = rect.left - estimatedSubmenuWidth - 2;
+      let submenuX, submenuY = rect.top;
+      let currentDirection = submenuDirection();
+      
+      // Determine positioning direction
+      if (currentDirection === null) {
+        // First level - check boundary and set direction preference
+        const rightSpace = innerWidth - rect.right;
+        const leftSpace = rect.left;
+        
+        if (rightSpace >= estimatedSubmenuWidth) {
+          // Enough space on right, go right
+          submenuX = rect.right + 2;
+          currentDirection = 'right';
+        } else if (leftSpace >= estimatedSubmenuWidth) {
+          // Not enough space on right, go left
+          submenuX = rect.left - estimatedSubmenuWidth - 2;
+          currentDirection = 'left';
+        } else {
+          // Very limited space, default to right with viewport clipping
+          submenuX = rect.right + 2;
+          currentDirection = 'right';
+        }
+        
+        // Set direction for all subsequent levels
+        setSubmenuDirection(currentDirection);
+      } else {
+        // Subsequent levels - follow the established direction
+        if (currentDirection === 'right') {
+          submenuX = rect.right + 2;
+          // Ensure we don't go off screen
+          if (submenuX + estimatedSubmenuWidth > innerWidth) {
+            submenuX = innerWidth - estimatedSubmenuWidth - 10;
+          }
+        } else {
+          submenuX = rect.left - estimatedSubmenuWidth - 2;
+          // Ensure we don't go off screen
+          if (submenuX < 0) {
+            submenuX = 10;
+          }
+        }
       }
       
+      // Vertical positioning
       const estimatedSubmenuHeight = item.submenu.length * 32;
       if (submenuY + estimatedSubmenuHeight > innerHeight) {
         submenuY = innerHeight - estimatedSubmenuHeight - 10;
       }
       
-      setSubmenuPosition({ top: submenuY, left: submenuX });
-      setSubmenuItems(item.submenu);
-      
+      setActiveSubmenu({
+        items: item.submenu,
+        position: { x: submenuX, y: submenuY },
+        level: level + 1,
+        direction: currentDirection
+      });
     } else {
-      setSubmenuPosition(null);
-      setSubmenuItems(null);
+      setActiveSubmenu(null);
     }
-  };
-
-  const hideSubmenu = () => {
-    hideSubmenuTimeout = setTimeout(() => {
-      setSubmenuPosition(null);
-      setSubmenuItems(null);
-    }, 300);
   };
 
   const handleItemMouseLeave = () => {
-
+    hideSubmenuTimeout = setTimeout(() => {
+      setActiveSubmenu(null);
+    }, 100);
   };
 
-  onCleanup(() => {
+  const handleSubmenuMouseEnter = () => {
     if (hideSubmenuTimeout) {
       clearTimeout(hideSubmenuTimeout);
+      hideSubmenuTimeout = null;
     }
-  });
+  };
 
-  if (!items || items.length === 0) {
-    return null;
-  }
+  const handleSubmenuMouseLeave = () => {
+    hideSubmenuTimeout = setTimeout(() => {
+      setActiveSubmenu(null);
+    }, 100);
+  };
 
   return (
     <>
       <div
         ref={menuRef}
-        class="bg-base-200/95 backdrop-blur-md border border-base-300 rounded-md shadow-xl py-1 pointer-events-auto"
+        data-context-menu
+        class="bg-base-200/95 backdrop-blur-md border border-base-300 rounded-md shadow-xl py-1 pointer-events-auto min-w-[180px]"
         style={{ 
           position: 'fixed',
           top: `${menuPosition().top}px`, 
           left: `${menuPosition().left}px`,
-          'z-index': '999998'
+          'z-index': `${999998 + level}`
         }}
         onMouseLeave={() => {
           setHoveredItem(null);
-          hideSubmenu();
+          handleItemMouseLeave();
         }}
       >
         <ul>
-          {items.map((item, index) => (
-            <li>
-              {item.separator ? (
-                <div class="border-t border-base-300 my-1" />
-              ) : (
-                <button
-                  onMouseEnter={(e) => handleItemMouseEnter(index, item, e)}
-                  onMouseLeave={() => handleItemMouseLeave()}
-                  onClick={() => {
-                    if (!item.submenu) {
-                      item.action();
-                      onClose();
-                    }
-                  }}
-                  class={`flex items-center w-full px-3 py-1.5 text-xs text-left transition-all duration-200 ${
-                    hoveredItem() === index 
-                      ? 'bg-primary text-primary-content' 
-                      : 'text-base-content/70 hover:bg-primary/70 hover:text-primary-content'
-                  }`}
-                >
-                  {item.color && (
-                    <div 
-                      class="w-3 h-3 rounded-full mr-2 border border-base-300" 
-                      style={{ 'background-color': item.color }}
-                    />
-                  )}
-                  {item.icon && <span class="mr-2">{item.icon}</span>}
-                  <span class="flex-1">{item.label}</span>
-                  {item.submenu && <IconChevronRight class="w-3 h-3 ml-1" />}
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        
-      </div>
-      
-      {submenuItems() && submenuPosition() && (
-        <div
-          ref={submenuRef}
-          class="bg-base-200/95 backdrop-blur-md border border-base-300 rounded-md shadow-xl py-1 pointer-events-auto min-w-[180px]"
-          style={{ 
-            position: 'fixed',
-            top: `${submenuPosition().top}px`, 
-            left: `${submenuPosition().left}px`,
-            'z-index': '999999'
-          }}
-          onMouseEnter={() => {
-            if (hideSubmenuTimeout) {
-              clearTimeout(hideSubmenuTimeout);
-              hideSubmenuTimeout = null;
-            }
-          }}
-          onMouseLeave={() => {
-            hideSubmenu();
-          }}
-        >
-          <ul>
-            {submenuItems().map((subItem, subIndex) => (
+          <For each={items}>
+            {(item, index) => (
               <li>
-                {subItem.separator ? (
-                  <div class="border-t border-base-300 my-1" />
-                ) : (
+                <Show when={item.separator} fallback={
                   <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      try {
-                        subItem.action();
-                        onClose();
-                      } catch (error) {
-                        console.error('Error executing submenu action:', error);
-                        onClose();
+                    onMouseEnter={(e) => handleItemMouseEnter(index(), item, e)}
+                    onClick={() => {
+                      if (!item.submenu) {
+                        try {
+                          item.action?.();
+                          onClose();
+                        } catch (error) {
+                          console.error('Error executing menu action:', error);
+                          onClose();
+                        }
                       }
                     }}
-                    class="flex items-center w-full px-3 py-1.5 text-xs text-left text-base-content/70 transition-all duration-200 hover:bg-primary/70 hover:text-primary-content"
+                    class={`flex items-center w-full px-3 py-1.5 text-xs text-left transition-all duration-200 ${
+                      hoveredItem() === index() 
+                        ? 'bg-primary text-primary-content' 
+                        : 'text-base-content/70 hover:bg-primary/70 hover:text-primary-content'
+                    }`}
                   >
-                    {subItem.color && (
+                    <Show when={item.color}>
                       <div 
                         class="w-3 h-3 rounded-full mr-2 border border-base-300" 
-                        style={{ 'background-color': subItem.color }}
+                        style={{ 'background-color': item.color }}
                       />
-                    )}
-                    {subItem.icon && <span class="mr-2">{subItem.icon}</span>}
-                    <span class="flex-1">{subItem.label}</span>
+                    </Show>
+                    <Show when={item.icon}>
+                      <span class="mr-2">{item.icon}</span>
+                    </Show>
+                    <span class="flex-1">{item.label}</span>
+                    <Show when={item.submenu}>
+                      <IconChevronRight class="w-3 h-3 ml-1" />
+                    </Show>
                   </button>
-                )}
+                }>
+                  <div class="border-t border-base-300 my-1" />
+                </Show>
               </li>
-            ))}
-          </ul>
+            )}
+          </For>
+        </ul>
+      </div>
+      
+      <Show when={activeSubmenu()}>
+        <div
+          onMouseEnter={handleSubmenuMouseEnter}
+          onMouseLeave={handleSubmenuMouseLeave}
+        >
+          <SubmenuRenderer
+            items={activeSubmenu().items}
+            level={activeSubmenu().level}
+            position={activeSubmenu().position}
+            preferredDirection={activeSubmenu().direction}
+            onClose={onClose}
+          />
         </div>
-      )}
+      </Show>
     </>
+  );
+};
+
+const ContextMenu = ({ items, position, onClose }) => {
+  createEffect(() => {
+    const handleClickOutside = (event) => {
+      // Check if click is inside any context menu at any level
+      const contextMenus = document.querySelectorAll('[data-context-menu]');
+      const isInsideAnyMenu = Array.from(contextMenus).some(menu => menu.contains(event.target));
+      
+      if (!isInsideAnyMenu) {
+        onClose();
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    onCleanup(() => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    });
+  });
+
+  return (
+    <SubmenuRenderer 
+      items={items} 
+      level={0} 
+      position={position} 
+      onClose={onClose} 
+    />
   );
 };
 

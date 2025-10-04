@@ -5,6 +5,9 @@ import RightPanel from './rightPanel.jsx';
 import BottomPanel from './bottomPanel.jsx';
 import Footer from './Footer.jsx';
 import ModelImporter from '@/pages/editor/AssetLibrary/ModelImporter';
+import { ViewportContextMenuProvider } from '@/ui/ViewportContextMenu.jsx';
+import KeyboardShortcuts from './KeyboardShortcuts.jsx';
+import { editorActions } from './stores/EditorStore.jsx';
 import { horizontalMenuButtonsEnabled, propertiesPanelVisible, bottomPanelVisible, footerVisible } from '@/api/plugin';
 
 const Layout = () => {
@@ -40,7 +43,8 @@ const Layout = () => {
   });
 
   return (
-    <>
+    <ViewportContextMenuProvider editorActions={editorActions}>
+      <KeyboardShortcuts />
       <div class="fixed inset-0 flex flex-col pointer-events-none z-10" onContextMenu={(e) => e.preventDefault()}>
         <div class="flex-shrink-0 pointer-events-auto z-50">
           <TopMenu />
@@ -85,7 +89,7 @@ const Layout = () => {
         onImportComplete={handleModelImportComplete}
         context={modelImporterContext}
       />
-    </>
+    </ViewportContextMenuProvider>
   );
 };
 

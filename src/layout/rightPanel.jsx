@@ -6,11 +6,13 @@ import PanelToggleButton from '@/ui/PanelToggleButton.jsx';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions } from '@/layout/stores/ViewportStore';
 import { propertyTabs, propertiesPanelVisible } from '@/api/plugin';
+import { useViewportContextMenu } from '@/ui/ViewportContextMenu.jsx';
 import { Show, createMemo, createSignal } from 'solid-js';
 import { renderStore } from '@/render/store.jsx';
 import { IconBox } from '@tabler/icons-solidjs';
 
 const RightPanel = () => {
+  const { showContextMenu } = useViewportContextMenu();
   const [contextMenu, setContextMenu] = createSignal(null);
   
   // Get reactive store values
@@ -152,14 +154,8 @@ const RightPanel = () => {
     e.preventDefault();
     e.stopPropagation();
 
-    const { clientX: x, clientY: y } = e;
-    setContextMenu({
-      position: { x, y },
-      items: [
-        { label: 'Create Object', action: () => console.log('Create object') },
-        { label: 'Delete', action: () => console.log('Delete') }
-      ],
-    });
+    // Use the reactive context menu system
+    showContextMenu(e, item, context);
   };
 
   const handleRightPanelToggle = () => {
