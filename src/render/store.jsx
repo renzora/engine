@@ -845,6 +845,35 @@ export const renderActions = {
       return;
     }
     
+    // Preserve existing virtual folders and their contents
+    const preserveVirtualFolders = (nodes) => {
+      const virtualFolders = [];
+      const objectsInVirtualFolders = new Set();
+      
+      const findVirtualFolders = (items) => {
+        items.forEach(item => {
+          if (item.isVirtual || (typeof item.id === 'string' && item.id.startsWith('virtual-folder-'))) {
+            virtualFolders.push(item);
+            // Track which objects are in virtual folders
+            if (item.children) {
+              item.children.forEach(child => {
+                if (child.babylonObject) {
+                  objectsInVirtualFolders.add(child.babylonObject);
+                }
+              });
+            }
+          } else if (item.children) {
+            findVirtualFolders(item.children);
+          }
+        });
+      };
+      
+      findVirtualFolders(nodes);
+      return { virtualFolders, objectsInVirtualFolders };
+    };
+    
+    const { virtualFolders, objectsInVirtualFolders } = preserveVirtualFolders(renderStore.hierarchy);
+    
     const allObjects = [
       ...(scene.meshes || []),
       ...(scene.transformNodes || []),
@@ -852,7 +881,8 @@ export const renderActions = {
       ...(scene.cameras || [])
     ];
     
-    const rootObjects = allObjects.filter(obj => {
+    // Filter out objects that are in virtual folders and system objects
+    const availableObjects = allObjects.filter(obj => {
       const isSystemObject = obj.name && (
         obj.name.startsWith('__') ||
         obj.name.includes('gizmo') ||
@@ -860,63 +890,18 @@ export const renderActions = {
         obj.name.includes('_internal_')
       );
       
-      return !isSystemObject && !obj.parent;
+      const isInVirtualFolder = objectsInVirtualFolders.has(obj);
+      
+      return !isSystemObject && !obj.parent && !isInVirtualFolder;
     });
-    
-    // Separate lights, cameras, environment objects, and other objects for organization
-    const lights = rootObjects.filter(obj => obj.getClassName && obj.getClassName().includes('Light'));
-    const cameras = rootObjects.filter(obj => obj.getClassName && obj.getClassName().includes('Camera'));
-    const environmentObjects = rootObjects.filter(obj => 
-      obj.name && (obj.name.toLowerCase().includes('skybox') || 
-      (obj.name.toLowerCase().includes('moon') && (!obj.getClassName || !obj.getClassName().includes('Light'))))
-    );
-    const otherObjects = rootObjects.filter(obj => 
-      (!obj.getClassName || (!obj.getClassName().includes('Light') && !obj.getClassName().includes('Camera'))) &&
-      (!obj.name || (!obj.name.toLowerCase().includes('skybox') && 
-      !(obj.name.toLowerCase().includes('moon') && (!obj.getClassName || !obj.getClassName().includes('Light')))))
-    );
     
     const hierarchyItems = [];
     
-    // Add cameras first
-    hierarchyItems.push(...cameras.map(obj => this.buildHierarchyFromBabylon(obj)));
+    // Add available Babylon objects (not in virtual folders)
+    hierarchyItems.push(...availableObjects.map(obj => this.buildHierarchyFromBabylon(obj)));
     
-    // Add other objects
-    hierarchyItems.push(...otherObjects.map(obj => this.buildHierarchyFromBabylon(obj)));
-    
-    // Create virtual Environment folder if there are environment objects
-    if (environmentObjects.length > 0) {
-      // Check if folder already exists to prevent duplicates
-      const existingEnvFolder = hierarchyItems.find(item => item.id === 'environment-folder');
-      if (!existingEnvFolder) {
-        const environmentFolder = {
-          id: 'environment-folder',
-          name: 'Environment',
-          type: 'folder',
-          visible: true,
-          expanded: true,
-          children: environmentObjects.map(obj => this.buildHierarchyFromBabylon(obj))
-        };
-        hierarchyItems.push(environmentFolder);
-      }
-    }
-    
-    // Create virtual Lighting folder if there are lights (add at end)
-    if (lights.length > 0) {
-      // Check if folder already exists to prevent duplicates
-      const existingLightFolder = hierarchyItems.find(item => item.id === 'lighting-folder');
-      if (!existingLightFolder) {
-        const lightingFolder = {
-          id: 'lighting-folder',
-          name: 'Lighting',
-          type: 'folder',
-          visible: true,
-          expanded: true,
-          children: lights.map(light => this.buildHierarchyFromBabylon(light))
-        };
-        hierarchyItems.push(lightingFolder);
-      }
-    }
+    // Add preserved virtual folders
+    hierarchyItems.push(...virtualFolders);
     
     const hierarchy = [{
       id: scene.uniqueId || 'scene-root',
@@ -928,7 +913,7 @@ export const renderActions = {
     }];
     
     setRenderStore('hierarchy', hierarchy);
-    // Scene hierarchy initialized
+    // Scene hierarchy initialized with preserved virtual folders
   },
 
   addObjectToHierarchy(babylonObject) {
@@ -1019,6 +1004,106 @@ export const renderActions = {
         });
       };
       return updateNameInNodes(prev);
+    });
+  },
+
+  addVirtualFolder(virtualFolder) {
+    setRenderStore('hierarchy', prev => {
+      const addToSceneRoot = (nodes) => {
+        return nodes.map(node => {
+          if (node.type === 'scene') {
+            return {
+              ...node,
+              children: [...(node.children || []), virtualFolder]
+            };
+          }
+          return node;
+        });
+      };
+      return addToSceneRoot(prev);
+    });
+  },
+
+  reorderObjectInHierarchy(draggedId, targetId, position) {
+    setRenderStore('hierarchy', prev => {
+      const reorderInNodes = (nodes, parentLevel = true) => {
+        // First, find and remove the dragged item from its current position
+        let draggedItem = null;
+        const removeDraggedItem = (items) => {
+          return items.filter(item => {
+            if (item.id === draggedId) {
+              draggedItem = item;
+              return false;
+            }
+            if (item.children) {
+              item.children = removeDraggedItem(item.children);
+            }
+            return true;
+          });
+        };
+        
+        let modifiedNodes = removeDraggedItem([...nodes]);
+        
+        if (!draggedItem) return nodes;
+        
+        // Check if target is a virtual folder
+        const isVirtualFolder = (item) => {
+          return item.isVirtual ||
+                 (item.type === 'folder' && !item.babylonObject) ||
+                 (typeof item.id === 'string' && item.id.startsWith('virtual-folder-'));
+        };
+        
+        // Now insert the dragged item at the correct position
+        const insertDraggedItem = (items) => {
+          const result = [];
+          
+          for (let i = 0; i < items.length; i++) {
+            const item = items[i];
+            
+            if (item.id === targetId) {
+              if (position === 'above') {
+                result.push(draggedItem);
+                result.push(item);
+              } else if (position === 'below') {
+                result.push(item);
+                result.push(draggedItem);
+              } else if (position === 'inside') {
+                // For virtual folders, add to children but don't change Babylon parent
+                if (isVirtualFolder(item)) {
+                  // Virtual folder - organize in UI hierarchy only
+                  result.push({
+                    ...item,
+                    children: [...(item.children || []), { ...draggedItem, virtualParent: item.id }]
+                  });
+                } else {
+                  // Real folder - add to children normally
+                  result.push({
+                    ...item,
+                    children: [...(item.children || []), draggedItem]
+                  });
+                }
+              } else {
+                result.push(item);
+              }
+            } else {
+              if (item.children) {
+                result.push({
+                  ...item,
+                  children: insertDraggedItem(item.children)
+                });
+              } else {
+                result.push(item);
+              }
+            }
+          }
+          
+          return result;
+        };
+        
+        return insertDraggedItem(modifiedNodes);
+      };
+      
+      return reorderInNodes(prev);
     });
   },
 

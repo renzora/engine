@@ -113,6 +113,11 @@ function Scene(props) {
       position = 'below';
     }
 
+    // Only allow "inside" drop for folders, force "below" for non-folders
+    if (position === 'inside' && item.type !== 'folder') {
+      position = 'below';
+    }
+
     setDragOverItem(item);
     setDropPosition(position);
   };
@@ -128,27 +133,126 @@ function Scene(props) {
     const scene = renderStore.scene;
     if (!scene) return;
 
-    // Find the dragged object in Babylon scene
+    // Handle virtual folders separately from Babylon objects
+    const isVirtualFolder = (item) => {
+      return item.isVirtual ||
+             (item.type === 'folder' && !item.babylonObject) ||
+             (typeof item.id === 'string' && item.id.startsWith('virtual-folder-'));
+    };
+
+    // Check if we're dragging a virtual folder
+    const isDraggingVirtualFolder = isVirtualFolder(draggedData);
+
+    // Find the dragged object in Babylon scene (if it's not a virtual folder)
     const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
-    const draggedBabylonObject = allObjects.find(obj => 
+    const draggedBabylonObject = isDraggingVirtualFolder ? null : allObjects.find(obj => 
       (obj.uniqueId || obj.name) === draggedData.id
     );
     const targetBabylonObject = allObjects.find(obj => 
       (obj.uniqueId || obj.name) === targetItem.id
     );
 
-    if (!draggedBabylonObject) return;
+    // Exit early only if we're not dragging a virtual folder and can't find the Babylon object
+    if (!isDraggingVirtualFolder && !draggedBabylonObject) return;
 
     const position = dropPosition();
     
-    if (position === 'inside' && targetItem.type === 'folder') {
-      // Parent to target folder
-      draggedBabylonObject.parent = targetBabylonObject;
-    } else if (position === 'above' || position === 'below') {
-      // Parent to same parent as target
-      draggedBabylonObject.parent = targetBabylonObject?.parent || null;
+    // Only allow dropping inside folders
+    if (position === 'inside' && targetItem.type !== 'folder') {
+      console.warn('Cannot drop inside non-folder objects');
+      return;
     }
 
+    // Only update Babylon parent relationships for actual Babylon objects (not virtual folders)
+    if (!isDraggingVirtualFolder && position === 'inside' && targetItem.type === 'folder') {
+      if (isVirtualFolder(targetItem)) {
+        // For virtual folders, just clear the parent (move to scene root)
+        draggedBabylonObject.parent = null;
+      } else if (targetBabylonObject) {
+        // For user-created folders (TransformNodes), we need to ensure proper parenting
+        try {
+          // Ensure both target and dragged objects have proper isEnabled method if they're TransformNodes
+          if (targetBabylonObject.getClassName && targetBabylonObject.getClassName() === 'TransformNode') {
+            // Make sure the TransformNode has the isEnabled method
+            if (typeof targetBabylonObject.isEnabled !== 'function') {
+              targetBabylonObject.isEnabled = () => true;
+            }
+          }
+          
+          if (draggedBabylonObject.getClassName && draggedBabylonObject.getClassName() === 'TransformNode') {
+            // Make sure the dragged TransformNode also has the isEnabled method
+            if (typeof draggedBabylonObject.isEnabled !== 'function') {
+              draggedBabylonObject.isEnabled = () => true;
+            }
+          }
+          
+          if (targetBabylonObject.getClassName && 
+              (targetBabylonObject.getClassName() === 'TransformNode' || 
+               targetBabylonObject.getClassName() === 'Mesh')) {
+            draggedBabylonObject.parent = targetBabylonObject;
+          }
+        } catch (error) {
+          console.warn('Failed to set parent:', error);
+          // As a fallback, try to set parent to null and update hierarchy only
+          try {
+            draggedBabylonObject.parent = null;
+          } catch (e) {
+            console.warn('Could not even clear parent:', e);
+          }
+        }
+      }
+    } else if (!isDraggingVirtualFolder && (position === 'above' || position === 'below')) {
+      // Parent to same parent as target, but validate the parent first
+      let newParent = null;
+      
+      if (isVirtualFolder(targetItem)) {
+        // If target is a virtual folder, parent to scene root
+        newParent = null;
+      } else if (targetBabylonObject) {
+        newParent = targetBabylonObject.parent || null;
+      }
+      
+      // Only set parent if it's safe to do so
+      try {
+        // Ensure parent has proper isEnabled method if it's a TransformNode
+        if (newParent && newParent.getClassName && newParent.getClassName() === 'TransformNode') {
+          if (typeof newParent.isEnabled !== 'function') {
+            newParent.isEnabled = () => true;
+          }
+        }
+        
+        // Ensure dragged object has proper isEnabled method if it's a TransformNode
+        if (draggedBabylonObject.getClassName && draggedBabylonObject.getClassName() === 'TransformNode') {
+          if (typeof draggedBabylonObject.isEnabled !== 'function') {
+            draggedBabylonObject.isEnabled = () => true;
+          }
+        }
+        
+        if (newParent === null || 
+            (newParent && newParent.getClassName && 
+             (newParent.getClassName() === 'TransformNode' || 
+              newParent.getClassName() === 'Mesh'))) {
+          draggedBabylonObject.parent = newParent;
+        }
+      } catch (error) {
+        console.warn('Failed to set parent:', error);
+        // As a fallback, try to set parent to null
+        try {
+          draggedBabylonObject.parent = null;
+        } catch (e) {
+          console.warn('Could not even clear parent:', e);
+        }
+      }
+    }
+
+    // Handle UI hierarchy updates for all cases
+    renderActions.reorderObjectInHierarchy(draggedData.id, targetItem.id, position);
+    
+    // If we dropped into a folder, make sure it's expanded to show the new child
+    if (position === 'inside' && targetItem.type === 'folder') {
+      setExpandedItems(prev => ({ ...prev, [targetItem.id]: true }));
+    }
+    
     // Hierarchy will update automatically since we're changing Babylon parent relationships
   };
 
@@ -197,19 +301,26 @@ function Scene(props) {
   
   const confirmRename = () => {
     if (renamingItemId() && renameValue().trim()) {
-      const scene = renderStore.scene;
-      if (scene) {
-        const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
-        const objectToRename = allObjects.find(obj => 
-          (obj.uniqueId || obj.name) === renamingItemId()
-        );
-        
-        if (objectToRename) {
-          const newName = renameValue().trim();
-          objectToRename.name = newName;
+      const newName = renameValue().trim();
+      
+      // Check if this is a virtual folder
+      if (typeof renamingItemId() === 'string' && renamingItemId().startsWith('virtual-folder-')) {
+        // For virtual folders, just update the hierarchy
+        renderActions.updateObjectName(renamingItemId(), newName);
+      } else {
+        // For Babylon objects, update both the object and hierarchy
+        const scene = renderStore.scene;
+        if (scene) {
+          const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
+          const objectToRename = allObjects.find(obj => 
+            (obj.uniqueId || obj.name) === renamingItemId()
+          );
           
-          // Update only this object's name in the hierarchy (much more efficient)
-          renderActions.updateObjectName(renamingItemId(), newName);
+          if (objectToRename) {
+            objectToRename.name = newName;
+            // Update only this object's name in the hierarchy (much more efficient)
+            renderActions.updateObjectName(renamingItemId(), newName);
+          }
         }
       }
       
@@ -241,25 +352,24 @@ function Scene(props) {
     if (!scene) return;
     
     const folderName = `New Folder ${folderCounter()}`;
-    const folder = new TransformNode(folderName, scene);
     
-    if (selection.entity && selection.entity !== 'scene-root') {
-      const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
-      const parentObject = allObjects.find(obj => 
-        (obj.uniqueId || obj.name) === selection.entity
-      );
-      if (parentObject) {
-        folder.parent = parentObject;
-      }
-    }
+    // All user-created folders are virtual organizational folders
+    const virtualFolder = {
+      id: `virtual-folder-${Date.now()}`,
+      name: folderName,
+      type: 'folder',
+      visible: true,
+      expanded: true,
+      children: [],
+      isVirtual: true
+    };
     
-    // Use render actions to add the folder to hierarchy
-    renderActions.addObject(folder);
+    // Add virtual folder directly to hierarchy
+    renderActions.addVirtualFolder(virtualFolder);
     
-    const folderId = folder.uniqueId || folder.name;
     setFolderCounter(prev => prev + 1);
-    setSelectedEntity(folderId);
-    setTimeout(() => startRename(folderId, folderName), 100);
+    setSelectedEntity(virtualFolder.id);
+    setTimeout(() => startRename(virtualFolder.id, folderName), 100);
   };
 
 
@@ -378,6 +488,28 @@ function Scene(props) {
       // Check if this item is in the multi-selection
       return selection.entities.includes(item.id) || selection.entity === item.id;
     };
+    
+    // Check if this item is a child of the selected folder
+    const isChildOfSelectedFolder = () => {
+      if (!parent || !selection.entity) return false;
+      return parent.id === selection.entity;
+    };
+
+    // Check if this item will be a sibling when drag completes
+    const isInTargetFolder = () => {
+      const dragOver = dragOverItem();
+      const dropPos = dropPosition();
+      
+      if (!dragOver || !dropPos || !parent) return false;
+      
+      // If dropping inside a folder, highlight all current children of that folder
+      if (dropPos === 'inside' && dragOver.type === 'folder') {
+        return parent.id === dragOver.id;
+      }
+      
+      return false;
+    };
+    
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = () => expandedItems().hasOwnProperty(item.id) ? expandedItems()[item.id] : (item.expanded || false);
     const Icon = getIcon(item.type, item.lightType, hasChildren, isExpanded());
@@ -389,6 +521,7 @@ function Scene(props) {
     
     const isDraggedOver = () => dragOverItem()?.id === item.id;
     const isFolderDrop = () => isDraggedOver() && dropPosition() === 'inside' && item.type === 'folder';
+    const isInvalidDrop = () => isDraggedOver() && dropPosition() === 'inside' && item.type !== 'folder';
 
     const showTopDivider = () => isDraggedOver() && dropPosition() === 'above';
     const showBottomDivider = () => isDraggedOver() && dropPosition() === 'below';
@@ -412,12 +545,16 @@ function Scene(props) {
           } ${
             draggedItem()?.id === item.id ? 'opacity-30' : ''
           } ${
-            isFolderDrop() ? 'border-2 border-primary' : ''
+            isFolderDrop() ? 'bg-primary/20' : ''
+          } ${
+            isInvalidDrop() ? 'border-2 border-error bg-error/10' : ''
+          } ${
+            isInTargetFolder() ? 'bg-yellow-200/30' : ''
           } ${
             droppedItemId() === item.id ? 'bg-success/50' : ''
           }`}
           style={{ 
-            'padding-left': `${6 + depth * 16}px`,
+            'padding-left': `${6 + depth * 24}px`,
             cursor: 'pointer'
           }}
           draggable={!props.isResizing}
@@ -453,12 +590,12 @@ function Scene(props) {
           <Show when={depth > 0}>
             <div className="absolute left-0 top-0 bottom-0 pointer-events-none">
               <div
-                className="absolute top-0 bottom-0 w-px bg-base-content/30"
-                style={{ left: `${6 + (depth - 1) * 16 + 8}px` }}
+                className={`absolute top-0 bottom-0 w-px ${isChildOfSelectedFolder() ? 'bg-yellow-400/70' : 'bg-base-content/30'}`}
+                style={{ left: `${6 + (depth - 1) * 24 + 8}px` }}
               />
               <div
-                className="absolute top-1/2 w-2 h-px bg-base-content/30"
-                style={{ left: `${6 + (depth - 1) * 16 + 8}px` }}
+                className={`absolute top-1/2 w-2 h-px ${isChildOfSelectedFolder() ? 'bg-yellow-400/70' : 'bg-base-content/30'}`}
+                style={{ left: `${6 + (depth - 1) * 24 + 8}px` }}
               />
             </div>
           </Show>
@@ -467,7 +604,7 @@ function Scene(props) {
             {/* Chevron for expandable items */}
             <Show when={hasChildren}>
               <button
-                className="w-4 h-4 mr-1 flex items-center justify-center hover:bg-base-content/10 rounded transition-colors"
+                className="w-4 h-4 mr-0.5 flex items-center justify-center hover:bg-base-content/10 rounded transition-colors"
                 onClick={(e) => {
                   e.stopPropagation();
                   setExpandedItems(prev => ({ ...prev, [item.id]: !isExpanded() }));
@@ -483,7 +620,7 @@ function Scene(props) {
             </Show>
             
             <Icon 
-              class="w-4 h-4 mr-0.5 cursor-pointer hover:opacity-70 transition-opacity" 
+              class="w-4 h-4 mr-1 cursor-pointer hover:opacity-70 transition-opacity" 
               style={{ 
                 color: iconColor,
                 fill: item.type === 'folder' && hasChildren && !isExpanded() ? iconColor : 'none'
