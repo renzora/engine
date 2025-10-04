@@ -100,30 +100,28 @@ export function renderShortcuts(callbacks = {}) {
     document.body.appendChild(virtualCursor);
     transformState.virtualCursor = virtualCursor;
     
-    // Track right mouse button state
-    const handleMouseDown = (e) => {
+    // Track right mouse button state using pointer events on canvas (same as camera movement)
+    const canvas = document.querySelector('canvas');
+    
+    const handlePointerDown = (e) => {
       if (e.button === 2) { // Right mouse button
         isRightClickHeld = true;
-        // Right click held - camera movement enabled
+        console.log('🖱️ Right click DOWN - camera movement enabled');
       }
     };
 
-    const handleMouseUp = (e) => {
+    const handlePointerUp = (e) => {
       if (e.button === 2) { // Right mouse button
         isRightClickHeld = false;
-        // Right click released - camera movement disabled
+        console.log('🖱️ Right click UP - camera movement disabled');
       }
     };
 
-    // Prevent context menu when right-clicking
-    const handleContextMenu = (e) => {
-      e.preventDefault();
-    };
-
-    // Add mouse event listeners
-    document.addEventListener('mousedown', handleMouseDown);
-    document.addEventListener('mouseup', handleMouseUp);
-    document.addEventListener('contextmenu', handleContextMenu);
+    // Add pointer event listeners to canvas (same as camera movement system)
+    if (canvas) {
+      canvas.addEventListener('pointerdown', handlePointerDown);
+      canvas.addEventListener('pointerup', handlePointerUp);
+    }
 
     // Start continuous movement handling
     movementInterval = setInterval(() => {
@@ -297,8 +295,9 @@ export function renderShortcuts(callbacks = {}) {
       }
       
       // First check if this is a gizmo shortcut without modifiers (these take priority)
+      // But only if right-click is NOT held (prioritize camera movement when right-click is held)
       const gizmoKeys = ['g', 'r', 's'];
-      if (gizmoKeys.includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+      if (gizmoKeys.includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey && !isRightClickHeld) {
         // Handle gizmo shortcuts first
         for (const [keyPattern, callback] of Object.entries(gameShortcuts)) {
           if (matchesKey(event, keyPattern)) {
@@ -312,9 +311,13 @@ export function renderShortcuts(callbacks = {}) {
       }
       
       // Track key presses for movement (only if not a gizmo shortcut and no modifiers)
+      // Also prioritize camera movement when right-click is held
       if (['w', 'a', 's', 'd', 'e', 'q', 'shift', 'control'].includes(key) && !event.shiftKey && !event.ctrlKey && !event.altKey) {
         keysPressed.add(key);
-        return; // Don't prevent default for movement keys
+        // If right-click is held, prioritize camera movement over gizmo shortcuts
+        if (isRightClickHeld) {
+          return; // Don't prevent default, let camera movement handle it
+        }
       }
       
       // Handle all other shortcuts (including modifier combinations)
@@ -346,11 +349,14 @@ export function renderShortcuts(callbacks = {}) {
         clearInterval(movementInterval);
       }
       document.removeEventListener('keyup', handleKeyUp);
-      document.removeEventListener('mousedown', handleMouseDown);
-      document.removeEventListener('mouseup', handleMouseUp);
-      document.removeEventListener('contextmenu', handleContextMenu);
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('click', handleMouseClick);
+      
+      // Remove pointer event listeners from canvas
+      if (canvas) {
+        canvas.removeEventListener('pointerdown', handlePointerDown);
+        canvas.removeEventListener('pointerup', handlePointerUp);
+      }
       unregister();
       
       // Clean up status div and virtual cursor
@@ -366,6 +372,9 @@ export function renderShortcuts(callbacks = {}) {
   // Blender-style transform functions
   const handleTransformShortcuts = (event, key) => {
     // Start transform modes - but not when right mouse button is held for camera movement
+    if (['g', 'r', 's'].includes(key)) {
+      console.log(`🔍 Transform key ${key} pressed - isRightClickHeld: ${isRightClickHeld}, transformActive: ${transformState.isActive}`);
+    }
     if (!transformState.isActive && ['g', 'r', 's'].includes(key) && !event.ctrlKey && !event.altKey && !event.shiftKey && !isRightClickHeld) {
       const selectedObject = renderStore.selectedObject;
       if (!selectedObject) return false;
