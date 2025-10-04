@@ -1,5 +1,17 @@
-import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconRectangle, IconGrid3x3, IconBulb, IconVideo, IconClipboard, IconArrowBackUp, IconArrowForwardUp, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus, IconSun } from '@tabler/icons-solidjs';
+import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconRectangle, IconGrid3x3, IconBulb, IconVideo, IconClipboard, IconArrowBackUp, IconArrowForwardUp, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus, IconSun, IconSphere, IconPlane } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store';
+import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
+import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
+import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
+import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { PointLight } from '@babylonjs/core/Lights/pointLight';
+import { SpotLight } from '@babylonjs/core/Lights/spotLight';
+import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
+import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
 
 export const createContextMenuActions = (editorActions) => {
   // Provide fallback functions if editorActions is undefined
@@ -72,31 +84,18 @@ export const createContextMenuActions = (editorActions) => {
             { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
             { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
             { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
-            { separator: true },
-            { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
-              { label: 'Basic Lights', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
-                { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
-                { label: 'Spot Light', action: () => handleCreateObject('spot-light'), icon: <IconBulb class="w-4 h-4" /> },
-              ]},
-              { label: 'Ambient Lights', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                { label: 'Hemispheric Light', action: () => handleCreateObject('hemispheric-light'), icon: <IconSun class="w-4 h-4" /> },
-                { label: 'Directional Light', action: () => handleCreateObject('directional-light'), icon: <IconSun class="w-4 h-4" /> },
-                { label: 'Advanced', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                  { label: 'Custom Intensity', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                    { label: 'Low (0.3)', action: () => console.log('Low intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'Medium (0.7)', action: () => console.log('Medium intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'High (1.0)', action: () => console.log('High intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'Ultra High (2.0)', action: () => console.log('Ultra high intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                  ]},
-                  { label: 'Color Temperature', action: () => {}, icon: <IconPalette class="w-4 h-4" />, submenu: [
-                    { label: 'Warm (3000K)', action: () => console.log('Warm light'), icon: <IconPalette class="w-4 h-4" /> },
-                    { label: 'Neutral (4000K)', action: () => console.log('Neutral light'), icon: <IconPalette class="w-4 h-4" /> },
-                    { label: 'Cool (6500K)', action: () => console.log('Cool light'), icon: <IconPalette class="w-4 h-4" /> },
-                  ]},
-                ]},
-              ]},
-            ]},
-            { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
+          ]},
+          { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
+            { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Spot Light', action: () => handleCreateObject('spot-light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Hemispheric Light', action: () => handleCreateObject('hemispheric-light'), icon: <IconSun class="w-4 h-4" /> },
+            { label: 'Directional Light', action: () => handleCreateObject('directional-light'), icon: <IconSun class="w-4 h-4" /> },
+          ]},
+          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
+          { separator: true },
+          { label: 'Environment', action: () => {}, icon: <IconSphere class="w-4 h-4" />, submenu: [
+            { label: 'Skybox', action: () => handleCreateObject('skybox'), icon: <IconSphere class="w-4 h-4" /> },
+            { label: 'Terrain', action: () => handleCreateObject('terrain'), icon: <IconMountain class="w-4 h-4" /> },
           ]},
           { separator: true },
           { label: 'Paste', action: () => handlePaste(), icon: <IconClipboard class="w-4 h-4" /> },
@@ -121,32 +120,14 @@ export const createContextMenuActions = (editorActions) => {
             { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
             { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
             { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
-            { separator: true },
-            { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
-              { label: 'Basic Lights', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
-                { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
-                { label: 'Spot Light', action: () => handleCreateObject('spot-light'), icon: <IconBulb class="w-4 h-4" /> },
-              ]},
-              { label: 'Ambient Lights', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                { label: 'Hemispheric Light', action: () => handleCreateObject('hemispheric-light'), icon: <IconSun class="w-4 h-4" /> },
-                { label: 'Directional Light', action: () => handleCreateObject('directional-light'), icon: <IconSun class="w-4 h-4" /> },
-                { label: 'Advanced', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                  { label: 'Custom Intensity', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                    { label: 'Low (0.3)', action: () => console.log('Low intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'Medium (0.7)', action: () => console.log('Medium intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'High (1.0)', action: () => console.log('High intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'Ultra High (2.0)', action: () => console.log('Ultra high intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                  ]},
-                  { label: 'Color Temperature', action: () => {}, icon: <IconPalette class="w-4 h-4" />, submenu: [
-                    { label: 'Warm (3000K)', action: () => console.log('Warm light'), icon: <IconPalette class="w-4 h-4" /> },
-                    { label: 'Neutral (4000K)', action: () => console.log('Neutral light'), icon: <IconPalette class="w-4 h-4" /> },
-                    { label: 'Cool (6500K)', action: () => console.log('Cool light'), icon: <IconPalette class="w-4 h-4" /> },
-                  ]},
-                ]},
-              ]},
-            ]},
-            { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
           ]},
+          { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
+            { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Spot Light', action: () => handleCreateObject('spot-light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Hemispheric Light', action: () => handleCreateObject('hemispheric-light'), icon: <IconSun class="w-4 h-4" /> },
+            { label: 'Directional Light', action: () => handleCreateObject('directional-light'), icon: <IconSun class="w-4 h-4" /> },
+          ]},
+          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
           { separator: true },
           { label: 'Paste', action: () => handlePaste(), icon: <IconClipboard class="w-4 h-4" /> },
           { separator: true },
@@ -166,32 +147,14 @@ export const createContextMenuActions = (editorActions) => {
             { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
             { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
             { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
-            { separator: true },
-            { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
-              { label: 'Basic Lights', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
-                { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
-                { label: 'Spot Light', action: () => handleCreateObject('spot-light'), icon: <IconBulb class="w-4 h-4" /> },
-              ]},
-              { label: 'Ambient Lights', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                { label: 'Hemispheric Light', action: () => handleCreateObject('hemispheric-light'), icon: <IconSun class="w-4 h-4" /> },
-                { label: 'Directional Light', action: () => handleCreateObject('directional-light'), icon: <IconSun class="w-4 h-4" /> },
-                { label: 'Advanced', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                  { label: 'Custom Intensity', action: () => {}, icon: <IconSun class="w-4 h-4" />, submenu: [
-                    { label: 'Low (0.3)', action: () => console.log('Low intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'Medium (0.7)', action: () => console.log('Medium intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'High (1.0)', action: () => console.log('High intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                    { label: 'Ultra High (2.0)', action: () => console.log('Ultra high intensity light'), icon: <IconSun class="w-4 h-4" /> },
-                  ]},
-                  { label: 'Color Temperature', action: () => {}, icon: <IconPalette class="w-4 h-4" />, submenu: [
-                    { label: 'Warm (3000K)', action: () => console.log('Warm light'), icon: <IconPalette class="w-4 h-4" /> },
-                    { label: 'Neutral (4000K)', action: () => console.log('Neutral light'), icon: <IconPalette class="w-4 h-4" /> },
-                    { label: 'Cool (6500K)', action: () => console.log('Cool light'), icon: <IconPalette class="w-4 h-4" /> },
-                  ]},
-                ]},
-              ]},
-            ]},
-            { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
           ]},
+          { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
+            { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Spot Light', action: () => handleCreateObject('spot-light'), icon: <IconBulb class="w-4 h-4" /> },
+            { label: 'Hemispheric Light', action: () => handleCreateObject('hemispheric-light'), icon: <IconSun class="w-4 h-4" /> },
+            { label: 'Directional Light', action: () => handleCreateObject('directional-light'), icon: <IconSun class="w-4 h-4" /> },
+          ]},
+          { label: 'Camera', action: () => handleCreateObject('camera'), icon: <IconVideo class="w-4 h-4" /> },
           { separator: true },
           { label: 'Paste', action: () => handlePaste(), icon: <IconClipboard class="w-4 h-4" /> },
           { separator: true },
@@ -255,7 +218,7 @@ export const createContextMenuActions = (editorActions) => {
     console.log('Color Code', itemId, color);
   };
 
-  const handleCreateObject = async (type) => {
+  const handleCreateObject = (type) => {
     const scene = renderStore.scene;
     if (!scene) return;
     
@@ -272,67 +235,65 @@ export const createContextMenuActions = (editorActions) => {
           case 'point-light': return 'Point Light';
           case 'spot-light': return 'Spot Light';
           case 'camera': return 'Camera';
+          case 'skybox': return 'Skybox';
+          case 'terrain': return 'Terrain';
           default: return type.charAt(0).toUpperCase() + type.slice(1);
         }
       })();
       
       switch (type) {
         case 'cube': {
-          const { CreateBox } = await import('@babylonjs/core/Meshes/Builders/boxBuilder');
           newObject = CreateBox(objectName, { size: 2 }, scene);
           break;
         }
         case 'sphere': {
-          const { CreateSphere } = await import('@babylonjs/core/Meshes/Builders/sphereBuilder');
           newObject = CreateSphere(objectName, { diameter: 2 }, scene);
           break;
         }
         case 'cylinder': {
-          const { CreateCylinder } = await import('@babylonjs/core/Meshes/Builders/cylinderBuilder');
           newObject = CreateCylinder(objectName, { height: 3, diameter: 2 }, scene);
           break;
         }
         case 'plane': {
-          const { CreateGround } = await import('@babylonjs/core/Meshes/Builders/groundBuilder');
           newObject = CreateGround(objectName, { width: 6, height: 6 }, scene);
           break;
         }
         case 'hemispheric-light': {
-          const { HemisphericLight } = await import('@babylonjs/core/Lights/hemisphericLight');
-          const { Vector3 } = await import('@babylonjs/core/Maths/math.vector');
           newObject = new HemisphericLight(objectName, new Vector3(0, 1, 0), scene);
           newObject.intensity = 0.7;
           break;
         }
         case 'directional-light': {
-          const { DirectionalLight } = await import('@babylonjs/core/Lights/directionalLight');
-          const { Vector3 } = await import('@babylonjs/core/Maths/math.vector');
           newObject = new DirectionalLight(objectName, new Vector3(-1, -1, -1), scene);
           newObject.intensity = 1.0;
           break;
         }
         case 'point-light': {
-          const { PointLight } = await import('@babylonjs/core/Lights/pointLight');
-          const { Vector3 } = await import('@babylonjs/core/Maths/math.vector');
           newObject = new PointLight(objectName, new Vector3(0, 5, 0), scene);
           newObject.intensity = 1.0;
           newObject.range = 100;
           break;
         }
         case 'spot-light': {
-          const { SpotLight } = await import('@babylonjs/core/Lights/spotLight');
-          const { Vector3 } = await import('@babylonjs/core/Maths/math.vector');
           newObject = new SpotLight(objectName, new Vector3(0, 5, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
           newObject.intensity = 1.0;
           newObject.range = 100;
           break;
         }
         case 'camera': {
-          const { UniversalCamera } = await import('@babylonjs/core/Cameras/universalCamera');
-          const { Vector3 } = await import('@babylonjs/core/Maths/math.vector');
           newObject = new UniversalCamera(objectName, new Vector3(0, 5, -10), scene);
           newObject.lookAt(Vector3.Zero());
           break;
+        }
+        case 'skybox': {
+          // Reuse existing skybox creation from menu plugin
+          document.dispatchEvent(new CustomEvent('engine:create-skybox'));
+          return; // Exit early since event-based creation doesn't return an object
+        }
+        case 'terrain': {
+          // Reuse existing terrain creation from menu plugin
+          document.dispatchEvent(new CustomEvent('engine:create-terrain'));
+          return; // Exit early since event-based creation doesn't return an object
         }
       }
       
@@ -359,8 +320,6 @@ export const createContextMenuActions = (editorActions) => {
         
         // Add material for meshes
         if (newObject.material !== undefined && !type.includes('light') && type !== 'camera') {
-          const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial');
-          const { Color3 } = await import('@babylonjs/core/Maths/math.color');
           const material = new StandardMaterial(objectName + "_material", scene);
           material.diffuseColor = new Color3(
             Math.random(),

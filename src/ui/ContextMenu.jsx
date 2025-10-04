@@ -32,9 +32,16 @@ const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirecti
   const handleItemMouseEnter = (index, item, e) => {
     setHoveredItem(index);
     
+    // Clear any pending hide timeout
     if (hideSubmenuTimeout) {
       clearTimeout(hideSubmenuTimeout);
       hideSubmenuTimeout = null;
+    }
+    
+    // If this item doesn't have a submenu, immediately hide any active submenu
+    if (!item.submenu || item.submenu.length === 0) {
+      setActiveSubmenu(null);
+      return;
     }
     
     if (item.submenu && item.submenu.length > 0) {
@@ -44,9 +51,9 @@ const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirecti
       let submenuX, submenuY = rect.top;
       let currentDirection = submenuDirection();
       
-      // Determine positioning direction
-      if (currentDirection === null) {
-        // First level - check boundary and set direction preference
+      // Determine positioning direction - always recalculate for level 0
+      if (level === 0 || currentDirection === null) {
+        // First level or no direction set - check boundary for each submenu independently
         const rightSpace = innerWidth - rect.right;
         const leftSpace = rect.left;
         
@@ -64,8 +71,10 @@ const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirecti
           currentDirection = 'right';
         }
         
-        // Set direction for all subsequent levels
-        setSubmenuDirection(currentDirection);
+        // Only set direction for deeper levels, not for level 0
+        if (level > 0) {
+          setSubmenuDirection(currentDirection);
+        }
       } else {
         // Subsequent levels - follow the established direction
         if (currentDirection === 'right') {
@@ -89,24 +98,32 @@ const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirecti
         submenuY = innerHeight - estimatedSubmenuHeight - 10;
       }
       
-      setActiveSubmenu({
-        items: item.submenu,
-        position: { x: submenuX, y: submenuY },
-        level: level + 1,
-        direction: currentDirection
-      });
+      // Force submenu to update by setting to null first, then setting new submenu
+      setActiveSubmenu(null);
+      // Use setTimeout with 0 delay to ensure the null state is processed
+      setTimeout(() => {
+        setActiveSubmenu({
+          items: item.submenu,
+          position: { x: submenuX, y: submenuY },
+          level: level + 1,
+          direction: currentDirection
+        });
+      }, 0);
     } else {
       setActiveSubmenu(null);
     }
   };
 
   const handleItemMouseLeave = () => {
+    // Add timeout to give user time to move to submenu
     hideSubmenuTimeout = setTimeout(() => {
       setActiveSubmenu(null);
-    }, 100);
+      setHoveredItem(null);
+    }, 500);
   };
 
   const handleSubmenuMouseEnter = () => {
+    // Clear timeout when entering submenu
     if (hideSubmenuTimeout) {
       clearTimeout(hideSubmenuTimeout);
       hideSubmenuTimeout = null;
@@ -114,9 +131,10 @@ const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirecti
   };
 
   const handleSubmenuMouseLeave = () => {
+    // Add timeout when leaving submenu
     hideSubmenuTimeout = setTimeout(() => {
       setActiveSubmenu(null);
-    }, 100);
+    }, 500);
   };
 
   return (
@@ -132,7 +150,7 @@ const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirecti
           'z-index': `${999998 + level}`
         }}
         onMouseLeave={() => {
-          setHoveredItem(null);
+          // Immediate hide when leaving menu area
           handleItemMouseLeave();
         }}
       >
