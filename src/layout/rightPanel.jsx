@@ -167,6 +167,30 @@ const RightPanel = () => {
     }
   };
   
+  // Reactive computed to determine if tabs should be visible based on selection type
+  const shouldShowTabs = createMemo(() => {
+    const objectId = selectedObjectId();
+    if (!objectId) return false;
+    
+    // Check if the selected object is a folder by finding it in the hierarchy
+    const hierarchy = renderStore.hierarchy;
+    const findObjectInHierarchy = (items, id) => {
+      for (const item of items) {
+        if (item.id === id) return item;
+        if (item.children) {
+          const found = findObjectInHierarchy(item.children, id);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    
+    const selectedItem = findObjectInHierarchy(hierarchy, objectId);
+    
+    // Hide tabs for folders, show for everything else
+    return selectedItem ? selectedItem.type !== 'folder' : true;
+  });
+
   const getTabTitle = createMemo(() => {
     const pluginTab = propertyTabs().get(selectedRightTool());
     if (pluginTab) {
@@ -282,35 +306,39 @@ const RightPanel = () => {
                       />
                     </div>
                     
-                    {/* Resize bar for tab container */}
-                    <div
-                      className={`h-2 cursor-row-resize transition-colors border-b-base-300 border-base-content/20 ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-content/15 hover:bg-primary/75'}`}
-                      onMouseDown={handleTabResizeStart}
-                    />
+                    {/* Resize bar for tab container - only show when tabs are visible */}
+                    <Show when={shouldShowTabs()}>
+                      <div
+                        className={`h-2 cursor-row-resize transition-colors border-b-base-300 border-base-content/20 ${isResizingTabs() ? 'bg-primary/75' : 'bg-base-content/15 hover:bg-primary/75'}`}
+                        onMouseDown={handleTabResizeStart}
+                      />
+                    </Show>
                     
-                    {/* Tab system for properties */}
-                    <div className="flex bg-base-200" style={{ height: `${tabContainerHeight()}px` }}>
-                      {/* Vertical toolbar inside right panel */}
-                      <div className="w-auto flex-shrink-0 h-full">
-                        <TabMenu 
-                          selectedTool={selectedRightTool()}
-                          onToolSelect={setSelectedRightTool}
-                          scenePanelOpen={isScenePanelOpen()}
-                          onScenePanelToggle={handleRightPanelToggle}
-                          isLeftPanel={isLeftPanel()}
-                          panelResize={{
-                            handleRightResizeStart,
-                            handleRightResizeMove,
-                            handleRightResizeEnd
-                          }}
-                        />
+                    {/* Tab system for properties - only show for non-folder selections */}
+                    <Show when={shouldShowTabs()}>
+                      <div className="flex bg-base-200" style={{ height: `${tabContainerHeight()}px` }}>
+                        {/* Vertical toolbar inside right panel */}
+                        <div className="w-auto flex-shrink-0 h-full">
+                          <TabMenu 
+                            selectedTool={selectedRightTool()}
+                            onToolSelect={setSelectedRightTool}
+                            scenePanelOpen={isScenePanelOpen()}
+                            onScenePanelToggle={handleRightPanelToggle}
+                            isLeftPanel={isLeftPanel()}
+                            panelResize={{
+                              handleRightResizeStart,
+                              handleRightResizeMove,
+                              handleRightResizeEnd
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Tab content */}
+                        <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin">
+                          {renderTabContent()}
+                        </div>
                       </div>
-                      
-                      {/* Tab content */}
-                      <div className="flex-1 min-w-0 overflow-y-auto scrollbar-thin">
-                        {renderTabContent()}
-                      </div>
-                    </div>
+                    </Show>
                   </div>
                 </div>
               </div>

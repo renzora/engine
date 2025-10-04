@@ -429,13 +429,13 @@ function Scene(props) {
           onKeyDown={(e) => handleKeyDown(e, item)}
           onClick={() => {
             if (renamingItemId() !== item.id) {
-              // Use shared selection by ID
+              // Use shared selection by ID for all object types
               const success = renderActions.selectObjectById(item.id);
               if (!success) {
                 // Fallback for non-Babylon objects (like folders)
                 setSelectedEntity(item.id);
               }
-              // Call the parent's onObjectSelect to switch to object properties tab
+              // Always call onObjectSelect - the reactive system will handle tab visibility
               if (props.onObjectSelect) {
                 props.onObjectSelect(item.id);
               }
