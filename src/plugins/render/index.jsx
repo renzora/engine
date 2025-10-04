@@ -22,14 +22,21 @@ export default createPlugin({
       icon: IconAdjustments,
       order: 2,
       condition: (selectedObject) => {
-        // Hide render tab (shadows/collision) for cameras since they don't render
+        // Hide render tab (shadows/collision) for cameras, lights, and scene root since they don't cast shadows
         const isCamera = selectedObject && selectedObject.getClassName && (
           selectedObject.getClassName().includes('Camera') || 
           selectedObject.getClassName() === 'UniversalCamera' ||
           selectedObject.getClassName() === 'ArcRotateCamera' ||
           selectedObject.getClassName() === 'FreeCamera'
         );
-        return selectedObject && !isCamera;
+        const isLight = selectedObject && selectedObject.getClassName && (
+          selectedObject.getClassName().includes('Light') ||
+          selectedObject.metadata?.isLightContainer
+        );
+        const isSceneRoot = selectedObject && selectedObject.getClassName && 
+          selectedObject.getClassName() === 'Scene';
+          
+        return selectedObject && !isCamera && !isLight && !isSceneRoot;
       }
     });
     

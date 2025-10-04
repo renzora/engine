@@ -2,7 +2,8 @@ import { createPlugin } from '@/api/plugin';
 import { IconMountain, IconBrush } from '@tabler/icons-solidjs';
 import TerrainPropertiesPanel from './TerrainPropertiesPanel.jsx';
 import { renderStore, renderActions } from '@/render/store.jsx';
-import { editorActions } from '@/layout/stores/EditorStore.jsx';
+import { editorActions, editorStore } from '@/layout/stores/EditorStore.jsx';
+import { addObjectToHierarchy } from '@/api/creation/ObjectCreationUtils.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
@@ -832,7 +833,6 @@ const handleCreateTerrain = async () => {
     
     
     // Use unified folder-aware creation system
-    const { addObjectToHierarchy } = await import('@/api/creation/ObjectCreationUtils.jsx');
     const objectId = addObjectToHierarchy(terrainMesh, 'Terrain', true);
     editorActions.addConsoleMessage('Created terrain. Switch to Sculpting mode from the toolbar dropdown to start editing.', 'info');
     
@@ -960,7 +960,6 @@ export default createPlugin({
     document.addEventListener('engine:mode-change', handleModeChange);
     
     // Check initial mode state
-    const { editorStore } = await import('@/layout/stores/EditorStore.jsx');
     if (editorStore.ui.currentMode === 'sculpting') {
       currentSculptMode = true;
       startTerrainEditMode();

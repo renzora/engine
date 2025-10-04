@@ -8,6 +8,9 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture';
+import { addObjectToHierarchy } from '@/api/creation/ObjectCreationUtils.jsx';
+import { sceneManager } from '@/api/scene/SceneManager.js';
+import { editorActions } from '@/layout/stores/EditorStore';
 
 // Handle skybox creation
 const handleCreateSkybox = async () => {
@@ -110,29 +113,21 @@ const handleCreateSkybox = async () => {
     });
 
     // Use unified folder-aware creation system
-    const { addObjectToHierarchy } = await import('@/api/creation/ObjectCreationUtils.jsx');
     const objectId = addObjectToHierarchy(skybox, 'Skybox', true);
     
     // Mark scene as modified
-    const { sceneManager } = await import('@/api/scene/SceneManager.js');
     sceneManager.markAsModified();
 
     console.log('✅ Skybox created successfully');
     
     // Show success message
-    const { editorActions } = await import('@/layout/stores/EditorStore');
     editorActions.addConsoleMessage('Skybox created successfully', 'success');
 
   } catch (error) {
     console.error('❌ Failed to create skybox:', error);
     
     // Show error message
-    try {
-      const { editorActions } = await import('@/layout/stores/EditorStore');
-      editorActions.addConsoleMessage('Failed to create skybox', 'error');
-    } catch (e) {
-      // Ignore if editor store is not available
-    }
+    editorActions.addConsoleMessage('Failed to create skybox', 'error');
   }
 };
 

@@ -139,23 +139,27 @@ export const createBabylonObject = (objectType, scene) => {
     case 'hemispheric-light': {
       newObject = new HemisphericLight(objectName, new Vector3(0, 1, 0), scene);
       newObject.intensity = 0.7;
+      newObject.metadata = { isLightContainer: true };
       break;
     }
     case 'directional-light': {
       newObject = new DirectionalLight(objectName, new Vector3(-1, -1, -1), scene);
       newObject.intensity = 1.0;
+      newObject.metadata = { isLightContainer: true };
       break;
     }
     case 'point-light': {
       newObject = new PointLight(objectName, new Vector3(0, 5, 0), scene);
       newObject.intensity = 1.0;
       newObject.range = 100;
+      newObject.metadata = { isLightContainer: true };
       break;
     }
     case 'spot-light': {
       newObject = new SpotLight(objectName, new Vector3(0, 5, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
       newObject.intensity = 1.0;
       newObject.range = 100;
+      newObject.metadata = { isLightContainer: true };
       break;
     }
     case 'camera': {

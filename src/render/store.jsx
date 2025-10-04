@@ -744,9 +744,15 @@ export const renderActions = {
     
     const objectId = babylonObject.uniqueId || babylonObject.name || `${babylonObject.getClassName()}-${Math.random()}`;
     
+    // Skip cache for terrain and skybox objects to ensure fresh type detection
+    const skipCache = babylonObject._terrainData || 
+                     babylonObject.metadata?.isEnvironmentObject || 
+                     babylonObject.name?.toLowerCase().includes('skybox') ||
+                     babylonObject.name?.toLowerCase().includes('terrain');
+    
     // Check cache first to avoid rebuilding unchanged objects
     const cacheKey = `${objectId}-${depth}-${babylonObject.isVisible}-${babylonObject.getChildren?.()?.length || 0}`;
-    if (this._hierarchyCache.has(cacheKey)) {
+    if (!skipCache && this._hierarchyCache.has(cacheKey)) {
       return this._hierarchyCache.get(cacheKey);
     }
     
@@ -754,7 +760,20 @@ export const renderActions = {
     let lightType = null;
     
     const className = babylonObject.getClassName();
-    if (className.includes('Light')) {
+    
+    // Check for special object types first
+    if (babylonObject._terrainData) {
+      type = 'terrain';
+    } else if (babylonObject.metadata?.isEnvironmentObject || 
+               babylonObject.name?.toLowerCase().includes('skybox') ||
+               babylonObject.name?.toLowerCase() === 'skybox' ||
+               (babylonObject.infiniteDistance === true && babylonObject.renderingGroupId === 0)) {
+      type = 'skybox';
+    } else if (babylonObject.name?.toLowerCase().includes('terrain') || 
+               (babylonObject.material && babylonObject.getVerticesData && 
+                babylonObject.getIndices && babylonObject.name?.toLowerCase() === 'terrain')) {
+      type = 'terrain';
+    } else if (className.includes('Light')) {
       type = 'light';
       lightType = className.toLowerCase().replace('light', '');
     } else if (className.includes('Camera')) {
@@ -826,8 +845,10 @@ export const renderActions = {
       babylonObject: babylonObject
     };
     
-    // Cache the result
-    this._hierarchyCache.set(cacheKey, result);
+    // Cache the result (except for terrain/skybox to ensure fresh detection)
+    if (!skipCache) {
+      this._hierarchyCache.set(cacheKey, result);
+    }
     
     // Limit cache size to prevent memory leaks
     if (this._hierarchyCache.size > 100) {

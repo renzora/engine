@@ -492,7 +492,19 @@ export class SceneManager {
     let type = 'mesh';
     let lightType = null;
     
-    if (className.includes('Light')) {
+    // Check for special object types first (same logic as render store)
+    if (babylonObject._terrainData) {
+      type = 'terrain';
+    } else if (babylonObject.metadata?.isEnvironmentObject || 
+               babylonObject.name?.toLowerCase().includes('skybox') ||
+               babylonObject.name?.toLowerCase() === 'skybox' ||
+               (babylonObject.infiniteDistance === true && babylonObject.renderingGroupId === 0)) {
+      type = 'skybox';
+    } else if (babylonObject.name?.toLowerCase().includes('terrain') || 
+               (babylonObject.material && babylonObject.getVerticesData && 
+                babylonObject.getIndices && babylonObject.name?.toLowerCase() === 'terrain')) {
+      type = 'terrain';
+    } else if (className.includes('Light')) {
       type = 'light';
       lightType = className.toLowerCase().replace('light', '');
     } else if (className.includes('Camera')) {
@@ -1688,6 +1700,77 @@ export class SceneManager {
         // Scene objects reference the existing scene - no new object creation needed
         // Just return the scene object so scripts can be reattached
         restoredObject = scene;
+        
+      } else if (item.type === 'skybox') {
+        // Restoring skybox object
+        console.log('🌐 Restoring skybox object:', item.name);
+        
+        const { CreateSphere } = await import('@babylonjs/core/Meshes/Builders/sphereBuilder.js');
+        const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
+        const { DynamicTexture } = await import('@babylonjs/core/Materials/Textures/dynamicTexture.js');
+        const { Texture } = await import('@babylonjs/core/Materials/Textures/texture.js');
+        const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
+        
+        // Recreate skybox sphere
+        const skybox = CreateSphere(babylonData.name || item.name, { diameter: 1000 }, scene);
+        skybox.infiniteDistance = true;
+        skybox.renderingGroupId = 0;
+        skybox.receiveShadows = false;
+        skybox.isVisible = true;
+        skybox.setEnabled(true);
+        
+        // Restore position and other transform properties
+        if (babylonData.position) {
+          skybox.position.fromArray(babylonData.position);
+        }
+        if (babylonData.rotation) {
+          skybox.rotation.fromArray(babylonData.rotation);
+        }
+        if (babylonData.scaling) {
+          skybox.scaling.fromArray(babylonData.scaling);
+        }
+        
+        // Restore metadata
+        skybox.metadata = {
+          isEnvironmentObject: true,
+          skyboxSettings: babylonData.metadata?.skyboxSettings || {
+            turbidity: 10,
+            luminance: 1.0,
+            inclination: 0.5,
+            azimuth: 0.25,
+            cloudsEnabled: true,
+            cloudSize: 25,
+            cloudDensity: 0.6,
+            cloudOpacity: 0.8,
+            color: '#87CEEB'
+          }
+        };
+        
+        // Recreate skybox material
+        const skyboxMaterial = new StandardMaterial(item.name + 'Material', scene);
+        skyboxMaterial.backFaceCulling = false;
+        skyboxMaterial.disableLighting = true;
+        
+        // Create texture
+        const skyTexture = new DynamicTexture('skyboxTexture', { width: 512, height: 512 }, scene);
+        const textureContext = skyTexture.getContext();
+        const skyColor = skybox.metadata.skyboxSettings.color || '#7fccff';
+        textureContext.fillStyle = skyColor;
+        textureContext.fillRect(0, 0, 512, 512);
+        skyTexture.update();
+        
+        skyboxMaterial.reflectionTexture = skyTexture;
+        skyboxMaterial.reflectionTexture.coordinatesMode = Texture.SKYBOX_MODE;
+        skyboxMaterial.diffuseColor = new Color3(0, 0, 0);
+        skyboxMaterial.specularColor = new Color3(0, 0, 0);
+        skybox.material = skyboxMaterial;
+        
+        // Set scene environment
+        scene.environmentTexture = skyTexture;
+        scene.environmentIntensity = 1.0;
+        
+        restoredObject = skybox;
+        console.log('🌐 Skybox object restored successfully:', skybox.name);
         
       } else {
         // Handle any other object types that might exist

@@ -1,5 +1,5 @@
 import { createSignal, onCleanup, onMount, For, Show } from 'solid-js';
-import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo, IconChevronRight, IconChevronDown } from '@tabler/icons-solidjs';
+import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo, IconChevronRight, IconChevronDown, IconMountain, IconSphere } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions, viewportStore } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
@@ -1107,6 +1107,8 @@ function Scene(props) {
       case 'camera': return IconVideo;
       case 'folder': return (hasChildren && isExpanded) ? IconFolderOpen : IconFolder;
       case 'scene': return IconChairDirector;
+      case 'terrain': return IconMountain;
+      case 'skybox': return IconSphere;
       default: return IconCircle;
     }
   };
@@ -1123,6 +1125,8 @@ function Scene(props) {
         }
       case 'camera': return '#a78bfa'; // purple-400
       case 'folder': return '#eab308'; // yellow-500
+      case 'terrain': return '#84cc16'; // lime-500 (earthy green)
+      case 'skybox': return '#38bdf8'; // sky-400 (sky blue)
       default: return '#9ca3af'; // gray-400
     }
   };
