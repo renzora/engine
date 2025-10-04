@@ -3,7 +3,8 @@ import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconC
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions, viewportStore } from '@/layout/stores/ViewportStore';
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { renderStore, renderActions } from '@/render/store';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { renderStore, renderActions, setRenderStore } from '@/render/store';
 
 
 function Scene(props) {
@@ -15,6 +16,116 @@ function Scene(props) {
   const { addViewportTab, setActiveViewportTab } = viewportActions;
   const tabs = () => viewportStore.tabs;
   
+  // Helper function to update render store with multi-selection
+  const updateRenderStoreSelection = (primaryEntityId, selectedEntityIds) => {
+    const scene = renderStore.scene;
+    if (!scene) return;
+
+    // Convert entity IDs to Babylon objects
+    const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
+    const selectedObjects = [];
+    let primaryObject = null;
+
+    // Handle scene root selection
+    if (primaryEntityId === 'scene-root' || primaryEntityId === scene.uniqueId) {
+      primaryObject = scene;
+      selectedObjects.push(scene);
+    } else {
+      // Find primary object
+      primaryObject = allObjects.find(obj => 
+        (obj.uniqueId || obj.name) === primaryEntityId
+      );
+      
+      // Find all selected objects
+      for (const entityId of selectedEntityIds) {
+        if (entityId === 'scene-root' || entityId === scene.uniqueId) {
+          selectedObjects.push(scene);
+        } else {
+          const babylonObject = allObjects.find(obj => 
+            (obj.uniqueId || obj.name) === entityId
+          );
+          if (babylonObject) {
+            selectedObjects.push(babylonObject);
+          }
+        }
+      }
+    }
+
+    // Update render store with multi-selection
+    if (primaryObject && selectedObjects.length > 0) {
+      console.log('🎯 Updating render store with multi-selection:', {
+        primaryObject: primaryObject.name,
+        selectedCount: selectedObjects.length,
+        selectedNames: selectedObjects.map(obj => obj.name)
+      });
+      
+      // Set both selectedObject and selectedObjects manually
+      setRenderStore('selectedObject', primaryObject);
+      setRenderStore('selectedObjects', selectedObjects);
+      
+      // Apply highlighting using a persistent function that can be re-called
+      applyPersistentHighlighting(selectedObjects, primaryObject);
+    }
+  };
+  
+  // Set up persistent highlighting monitoring
+  onMount(() => {
+    let highlightingTimer;
+    
+    // Monitor for highlighting being cleared and re-apply if needed
+    const monitorHighlighting = () => {
+      const persistentState = renderStore._persistentHighlighting;
+      const highlightLayer = renderStore.highlightLayer;
+      const currentSelection = selection;
+      
+      if (persistentState && highlightLayer) {
+        // Check if the current selection has changed from the persistent state
+        const currentSelectedIds = currentSelection.entities || [];
+        const persistentIds = persistentState.selectedObjects.map(obj => obj.uniqueId || obj.name);
+        
+        // Compare current selection with persistent selection
+        const selectionChanged = 
+          currentSelectedIds.length !== persistentIds.length ||
+          !currentSelectedIds.every(id => persistentIds.includes(id)) ||
+          currentSelection.entity !== (persistentState.primaryObject?.uniqueId || persistentState.primaryObject?.name);
+        
+        if (selectionChanged) {
+          console.log('🧹 Clearing persistent highlighting - selection changed:', {
+            currentIds: currentSelectedIds,
+            persistentIds: persistentIds,
+            currentPrimary: currentSelection.entity,
+            persistentPrimary: persistentState.primaryObject?.uniqueId || persistentState.primaryObject?.name
+          });
+          
+          // Clear persistent state and let normal selection handling take over
+          setRenderStore('_persistentHighlighting', null);
+          return;
+        }
+        
+        // Only re-apply highlighting if selection hasn't changed and we have multi-selection
+        if (persistentState.selectedObjects.length > 1) {
+          // Check if highlighting has been cleared (no meshes in highlight layer)
+          const hasHighlights = highlightLayer._meshes && highlightLayer._meshes.size > 0;
+          
+          if (!hasHighlights) {
+            console.log('🔄 Re-applying cleared highlighting for folder selection');
+            // Re-apply the highlighting
+            applyPersistentHighlighting(persistentState.selectedObjects, persistentState.primaryObject);
+          }
+        }
+      }
+    };
+    
+    // Check every 100ms for cleared highlighting
+    highlightingTimer = setInterval(monitorHighlighting, 100);
+    
+    onCleanup(() => {
+      if (highlightingTimer) {
+        clearInterval(highlightingTimer);
+      }
+    });
+  });
+
   // Handle window resize to adjust properties panel height
   onMount(() => {
     const handleWindowResize = () => {
@@ -76,6 +187,7 @@ function Scene(props) {
       });
       document.dispatchEvent(response);
     };
+
 
     const handleRestoreSceneColorCodes = (e) => {
       const { colorCodes } = e.detail;
@@ -642,6 +754,81 @@ function Scene(props) {
     return allItems.slice(startIndex, endIndex + 1);
   };
 
+  // Helper function to get all object IDs within a folder (recursively)
+  const getAllObjectsInFolder = (folderItem, hierarchy) => {
+    const objectIds = [];
+    
+    const collectObjects = (items) => {
+      for (const item of items) {
+        if (item.type === 'folder') {
+          // Recursively collect from subfolders
+          if (item.children) {
+            collectObjects(item.children);
+          }
+        } else {
+          // Add non-folder items (meshes, lights, cameras, etc.)
+          objectIds.push(item.id);
+        }
+      }
+    };
+    
+    // Start collecting from the folder's children
+    if (folderItem.children) {
+      collectObjects(folderItem.children);
+    }
+    
+    return objectIds;
+  };
+
+  // Persistent highlighting function that can be re-called during transforms
+  const applyPersistentHighlighting = (selectedObjects, primaryObject) => {
+    const scene = renderStore.scene;
+    const gizmoManager = renderStore.gizmoManager;
+    const highlightLayer = renderStore.highlightLayer;
+    
+    console.log('🎯 Applying persistent highlighting:', {
+      selectedCount: selectedObjects.length,
+      primaryObject: primaryObject?.name
+    });
+    
+    // Clear previous highlights
+    if (highlightLayer) {
+      highlightLayer.removeAllMeshes();
+    }
+    
+    // Highlight all selected objects
+    if (highlightLayer && selectedObjects.length > 0) {
+      selectedObjects.forEach((selectedObj) => {
+        try {
+          if (selectedObj.getClassName && selectedObj.getClassName() === 'Mesh') {
+            highlightLayer.addMesh(selectedObj, new Color3(0.3, 0.6, 1.0));
+          } else if (selectedObj.getChildMeshes) {
+            const childMeshes = selectedObj.getChildMeshes();
+            childMeshes.forEach(mesh => {
+              if (mesh.getClassName() === 'Mesh' && mesh.isVisible) {
+                highlightLayer.addMesh(mesh, new Color3(0.3, 0.6, 1.0));
+              }
+            });
+          }
+        } catch (error) {
+          console.warn('Failed to highlight object:', selectedObj.name, error);
+        }
+      });
+    }
+    
+    // Attach gizmo to primary object
+    if (gizmoManager && primaryObject) {
+      gizmoManager.attachToMesh(primaryObject);
+    }
+    
+    // Store highlighting state for re-application
+    setRenderStore('_persistentHighlighting', {
+      selectedObjects,
+      primaryObject,
+      timestamp: Date.now()
+    });
+  };
+
   const handleCreateFolder = () => {
     const scene = renderStore.scene;
     if (!scene) return;
@@ -1071,11 +1258,20 @@ function Scene(props) {
                   const newPrimary = newSelection.length > 0 ? newSelection[newSelection.length - 1] : null;
                   console.log('REMOVING from selection:', { newSelection, newPrimary });
                   setSelectedEntity(newPrimary, newSelection);
+                  
+                  // Update render store with multi-selection
+                  updateRenderStoreSelection(newPrimary, newSelection);
                 } else {
                   // Add to selection
                   const newSelection = [...currentSelection, item.id];
                   console.log('ADDING to selection:', { newSelection, newPrimary: item.id });
                   setSelectedEntity(item.id, newSelection);
+                  
+                  // Update render store with multi-selection
+                  updateRenderStoreSelection(item.id, newSelection);
+                  
+                  // Clear persistent highlighting state for manual multi-selection
+                  setRenderStore('_persistentHighlighting', null);
                   
                   // Check if the state actually changed
                   setTimeout(() => {
@@ -1085,8 +1281,6 @@ function Scene(props) {
                     });
                   }, 10);
                 }
-                
-                // For multi-selection, don't call renderActions.selectObjectById as it overrides our selection
                 
               } else if (isShiftClick) {
                 // Shift+click: Select range from last selected to this item
@@ -1110,22 +1304,56 @@ function Scene(props) {
                     rangeSelection 
                   });
                   setSelectedEntity(item.id, rangeSelection);
+                  
+                  // Update render store with multi-selection
+                  updateRenderStoreSelection(item.id, rangeSelection);
+                  
+                  // Clear persistent highlighting state for manual range selection
+                  setRenderStore('_persistentHighlighting', null);
                 } else {
                   // No previous selection, just select this item
                   console.log('SHIFT FALLBACK: No previous selection');
                   setSelectedEntity(item.id, [item.id]);
+                  
+                  // Update render store with single selection
+                  updateRenderStoreSelection(item.id, [item.id]);
                 }
                 
-                // For range selection, don't call renderActions.selectObjectById as it overrides our selection
-                
               } else {
-                // Normal click: Single selection
-                setSelectedEntity(item.id, [item.id]);
-                
-                // Only call renderActions.selectObjectById for single selections
-                const success = renderActions.selectObjectById(item.id);
-                if (!success) {
-                  // Fallback for non-Babylon objects like folders
+                // Normal click: Check if it's a folder
+                if (item.type === 'folder') {
+                  // Folder click: Select all objects within the folder
+                  const hierarchy = hierarchyData();
+                  const objectsInFolder = getAllObjectsInFolder(item, hierarchy);
+                  
+                  console.log('FOLDER CLICK:', {
+                    folderName: item.name,
+                    objectsInFolder: objectsInFolder
+                  });
+                  
+                  if (objectsInFolder.length > 0) {
+                    // Select the first object as primary, all as multi-selection
+                    const primaryObjectId = objectsInFolder[0];
+                    setSelectedEntity(primaryObjectId, objectsInFolder);
+                    
+                    // Update render store with folder's contents
+                    updateRenderStoreSelection(primaryObjectId, objectsInFolder);
+                  } else {
+                    // Empty folder - just select the folder itself
+                    setSelectedEntity(item.id, [item.id]);
+                  }
+                } else {
+                  // Normal object click: Single selection
+                  setSelectedEntity(item.id, [item.id]);
+                  
+                  // Clear persistent highlighting state for single selections
+                  setRenderStore('_persistentHighlighting', null);
+                  
+                  // Only call renderActions.selectObjectById for single selections
+                  const success = renderActions.selectObjectById(item.id);
+                  if (!success) {
+                    // Fallback for non-Babylon objects like folders
+                  }
                 }
               }
               
