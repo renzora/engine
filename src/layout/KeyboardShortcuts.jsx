@@ -3,7 +3,7 @@ import { useViewportContextMenu } from '@/ui/ViewportContextMenu.jsx';
 
 // Component to handle global keyboard shortcuts for context menus
 const KeyboardShortcuts = () => {
-  const { showContextMenu } = useViewportContextMenu();
+  const { showContextMenu, hideContextMenu, contextMenuState } = useViewportContextMenu();
   const [mousePosition, setMousePosition] = createSignal({ x: 0, y: 0 });
 
   createEffect(() => {
@@ -14,11 +14,15 @@ const KeyboardShortcuts = () => {
     const handleKeyDown = (e) => {
       // Handle Shift+A for context menu in panels (not render viewport)
       if (e.shiftKey && e.key.toLowerCase() === 'a') {
+        // Immediately prevent default to stop camera movement handler
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        
         const mousePos = mousePosition();
         
         // Get the element at the current mouse position
         const elementAtMouse = document.elementFromPoint(mousePos.x, mousePos.y);
-        
         
         // Check if mouse is over any panel by traversing up the DOM
         let currentElement = elementAtMouse;
@@ -64,29 +68,39 @@ const KeyboardShortcuts = () => {
         
         // Only show context menu if we found a valid panel context
         if (context) {
-          e.preventDefault();
-          e.stopPropagation();
-          
-          // Create a synthetic mouse event at the current mouse position
-          const syntheticEvent = {
-            clientX: mousePos.x,
-            clientY: mousePos.y,
-            preventDefault: () => {},
-            stopPropagation: () => {}
-          };
-          
-          // Show context menu at mouse position
-          showContextMenu(syntheticEvent, null, context);
+          // Check if a context menu is already open and hide it first (destroy and recreate approach)
+          if (contextMenuState()) {
+            hideContextMenu();
+            // Use setTimeout to ensure the menu is fully destroyed before recreating
+            setTimeout(() => {
+              const syntheticEvent = {
+                clientX: mousePos.x,
+                clientY: mousePos.y,
+                preventDefault: () => {},
+                stopPropagation: () => {}
+              };
+              showContextMenu(syntheticEvent, null, context);
+            }, 0);
+          } else {
+            // Create a synthetic mouse event at the current mouse position
+            const syntheticEvent = {
+              clientX: mousePos.x,
+              clientY: mousePos.y,
+              preventDefault: () => {},
+              stopPropagation: () => {}
+            };
+            showContextMenu(syntheticEvent, null, context);
+          }
         }
       }
     };
 
     document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
     
     onCleanup(() => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
     });
   });
 

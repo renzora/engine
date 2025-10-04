@@ -45,7 +45,7 @@ export function ViewportContextMenuProvider(props) {
   const contextValue = {
     showContextMenu,
     hideContextMenu,
-    contextMenuState: contextMenuState()
+    contextMenuState
   };
 
   return (
