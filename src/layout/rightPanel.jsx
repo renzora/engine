@@ -170,7 +170,13 @@ const RightPanel = () => {
   // Reactive computed to determine if tabs should be visible based on selection type
   const shouldShowTabs = createMemo(() => {
     const objectId = selectedObjectId();
+    const selectedEntities = selection().entities || [];
+    
+    // Hide tabs if no selection
     if (!objectId) return false;
+    
+    // Hide tabs if multiple items are selected
+    if (selectedEntities.length > 1) return false;
     
     // Check if the selected object is a folder by finding it in the hierarchy
     const hierarchy = renderStore.hierarchy;
@@ -187,7 +193,7 @@ const RightPanel = () => {
     
     const selectedItem = findObjectInHierarchy(hierarchy, objectId);
     
-    // Hide tabs for folders, show for everything else
+    // Hide tabs for folders, show only for single non-folder selections
     return selectedItem ? selectedItem.type !== 'folder' : true;
   });
 

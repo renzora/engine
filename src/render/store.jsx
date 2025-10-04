@@ -1022,6 +1022,11 @@ export const renderActions = {
       };
       return addToSceneRoot(prev);
     });
+    
+    // Mark scene as modified
+    import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
+      sceneManager.markAsModified();
+    });
   },
 
   reorderObjectInHierarchy(draggedId, targetId, position) {
@@ -1104,6 +1109,11 @@ export const renderActions = {
       };
       
       return reorderInNodes(prev);
+    });
+    
+    // Mark scene as modified
+    import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
+      sceneManager.markAsModified();
     });
   },
 

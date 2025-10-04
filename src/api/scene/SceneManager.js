@@ -53,6 +53,45 @@ export class SceneManager {
         console.warn('Failed to get editor settings:', error);
       }
 
+      // Get UI state including color codes from Scene component
+      let uiState = null;
+      try {
+        // Try to get color codes from the Scene component using a synchronous approach
+        let colorCodes = {};
+        
+        // Create a promise-based approach for better synchronization
+        const getColorCodes = () => {
+          return new Promise((resolve) => {
+            const colorCodesHandler = (e) => {
+              document.removeEventListener('sceneColorCodesResponse', colorCodesHandler);
+              resolve(e.detail.colorCodes || {});
+            };
+            
+            document.addEventListener('sceneColorCodesResponse', colorCodesHandler);
+            
+            // Request color codes
+            const sceneColorCodesEvent = new CustomEvent('getSceneColorCodes');
+            document.dispatchEvent(sceneColorCodesEvent);
+            
+            // Fallback timeout
+            setTimeout(() => {
+              document.removeEventListener('sceneColorCodesResponse', colorCodesHandler);
+              resolve({});
+            }, 100);
+          });
+        };
+        
+        colorCodes = await getColorCodes();
+        console.log('💾 Retrieved color codes for saving:', colorCodes);
+        
+        uiState = {
+          colorCodes: colorCodes
+        };
+      } catch (error) {
+        console.warn('Failed to get UI state for scene saving:', error);
+        uiState = { colorCodes: {} };
+      }
+
       // Create serializable scene data
       const sceneData = {
         hierarchy: this.serializeHierarchy(renderStore.hierarchy),
@@ -60,6 +99,7 @@ export class SceneManager {
         settings: renderStore.settings,
         cameraSettings: cameraSettings,
         editorSettings: editorSettings,
+        uiState: uiState,
         metadata: {
           name: sceneNameToSave,
           saved: new Date().toISOString(),
@@ -278,6 +318,225 @@ export class SceneManager {
   }
 
   /**
+   * Clear the current scene without resetting hierarchy (for restoration)
+   */
+  clearSceneWithoutHierarchyReset() {
+    const scene = renderStore.scene;
+    if (!scene) return;
+
+    // Clearing current scene without hierarchy reset
+
+    // Remove all user objects (keep system objects)
+    const objectsToRemove = [
+      ...scene.meshes.filter(m => !this.isSystemObject(m)),
+      ...scene.transformNodes.filter(n => !this.isSystemObject(n)),
+      ...scene.lights.filter(l => !this.isSystemObject(l))
+    ];
+
+    objectsToRemove.forEach(obj => {
+      renderActions.removeObject(obj);
+    });
+
+    // Don't call initializeHierarchy() - hierarchy will be restored separately
+    this.markAsModified();
+  }
+
+  /**
+   * Restore complete hierarchy structure including virtual folders and their relationships
+   * @param {Array} savedHierarchy - The saved hierarchy from scene data
+   * @param {Object} assets - Bundled assets
+   * @param {Function} dispatchProgress - Progress callback
+   */
+  async restoreCompleteHierarchy(savedHierarchy, assets, dispatchProgress = null) {
+    // First pass: Create all Babylon objects without hierarchy relationships
+    const objectMap = new Map(); // Map saved ID to restored Babylon object
+    
+    // Create all objects first
+    await this.createAllBabylonObjects(savedHierarchy, assets, objectMap, dispatchProgress);
+    
+    // Second pass: Restore complete hierarchy structure with proper relationships
+    const restoredHierarchy = await this.buildRestoredHierarchy(savedHierarchy, objectMap);
+    
+    // Set the complete hierarchy in one operation  
+    const { setRenderStore } = await import('@/render/store.jsx');
+    setRenderStore('hierarchy', restoredHierarchy);
+    
+    console.log('✅ Complete hierarchy structure restored with virtual folders');
+  }
+
+  /**
+   * First pass: Create all Babylon objects from saved data
+   * @param {Array} hierarchy - Hierarchy items to process
+   * @param {Object} assets - Bundled assets
+   * @param {Map} objectMap - Map to store created objects
+   * @param {Function} dispatchProgress - Progress callback
+   */
+  async createAllBabylonObjects(hierarchy, assets, objectMap, dispatchProgress = null) {
+    for (const item of hierarchy) {
+      // Skip scene root and virtual folders - they don't create Babylon objects
+      if (item.type !== 'scene' && !item.isVirtual && item.babylonData) {
+        const babylonObject = await this.createBabylonObjectFromData(item, assets, dispatchProgress);
+        if (babylonObject) {
+          objectMap.set(item.id, babylonObject);
+        }
+      }
+      
+      // Process children recursively
+      if (item.children) {
+        await this.createAllBabylonObjects(item.children, assets, objectMap, dispatchProgress);
+      }
+    }
+  }
+
+  /**
+   * Create a single Babylon object from saved data (without adding to hierarchy)
+   * @param {Object} item - Hierarchy item
+   * @param {Object} assets - Bundled assets
+   * @param {Function} dispatchProgress - Progress callback
+   * @returns {Object|null} Created Babylon object
+   */
+  async createBabylonObjectFromData(item, assets, dispatchProgress = null) {
+    const scene = renderStore.scene;
+    if (!scene) return null;
+
+    try {
+      // Check if this object has asset data (3D model)
+      const assetPath = item.babylonData?.metadata?.originalAssetData?.path;
+      
+      if (assetPath && assets[assetPath]) {
+        // Create 3D model from bundled asset
+        return await this.restore3DModelFromAsset(item, assets[assetPath], scene, false); // false = don't add to render store yet
+      } else {
+        // Create basic object without asset data
+        return await this.restoreBasicObject(item, scene, false); // false = don't add to render store yet
+      }
+    } catch (error) {
+      console.error(`❌ SceneManager: Failed to create object '${item.name}':`, error);
+      return null;
+    }
+  }
+
+  /**
+   * Second pass: Build restored hierarchy with proper structure and relationships
+   * @param {Array} savedHierarchy - Original saved hierarchy
+   * @param {Map} objectMap - Map of created Babylon objects
+   * @returns {Array} Complete restored hierarchy
+   */
+  async buildRestoredHierarchy(savedHierarchy, objectMap) {
+    const scene = renderStore.scene;
+    
+    const restoreHierarchyItems = (items) => {
+      return items.map(item => {
+        if (item.type === 'scene') {
+          // Scene root
+          return {
+            id: scene.uniqueId || 'scene-root',
+            name: item.name || 'Scene',
+            type: 'scene',
+            expanded: item.expanded !== undefined ? item.expanded : true,
+            babylonObject: scene,
+            children: item.children ? restoreHierarchyItems(item.children) : []
+          };
+        } else if (item.isVirtual && item.type === 'folder') {
+          // Virtual folder
+          return {
+            id: item.id,
+            name: item.name,
+            type: item.type,
+            visible: item.visible !== undefined ? item.visible : true,
+            expanded: item.expanded !== undefined ? item.expanded : false,
+            children: item.children ? restoreHierarchyItems(item.children) : [],
+            isVirtual: true
+          };
+        } else {
+          // Regular Babylon object
+          const babylonObject = objectMap.get(item.id);
+          if (babylonObject) {
+            // Add to render store now that we have the complete hierarchy
+            renderActions.addObject(babylonObject);
+            
+            // Get type and light type from the Babylon object
+            const { type, lightType } = this.getBabylonObjectTypeAndLightType(babylonObject);
+            
+            return {
+              id: babylonObject.uniqueId || babylonObject.name,
+              name: babylonObject.name,
+              type: type,
+              lightType: lightType,
+              visible: babylonObject.isVisible !== false,
+              expanded: item.expanded !== undefined ? item.expanded : false,
+              babylonObject: babylonObject,
+              children: item.children ? restoreHierarchyItems(item.children) : []
+            };
+          } else {
+            // Object creation failed, skip it
+            console.warn(`⚠️ SceneManager: Skipping failed object restoration: ${item.name}`);
+            return null;
+          }
+        }
+      }).filter(item => item !== null);
+    };
+
+    return restoreHierarchyItems(savedHierarchy);
+  }
+
+  /**
+   * Get Babylon object type and light type for hierarchy display
+   * @param {Object} babylonObject - Babylon.js object
+   * @returns {Object} {type: string, lightType: string|null}
+   */
+  getBabylonObjectTypeAndLightType(babylonObject) {
+    if (!babylonObject) return { type: 'unknown', lightType: null };
+    
+    const className = babylonObject.getClassName?.() || 'Unknown';
+    let type = 'mesh';
+    let lightType = null;
+    
+    if (className.includes('Light')) {
+      type = 'light';
+      lightType = className.toLowerCase().replace('light', '');
+    } else if (className.includes('Camera')) {
+      type = 'camera';
+    } else if (className === 'TransformNode') {
+      // Check if this is a light container first
+      if (babylonObject.metadata?.isLightContainer) {
+        type = 'light';
+        lightType = babylonObject.metadata.lightType || 'directional';
+      } else {
+        // Check if this has light children (light containers created by restoration)
+        const hasLightChildren = babylonObject.getChildren && 
+                                babylonObject.getChildren().some(child => 
+                                  child.getClassName && child.getClassName().includes('Light')
+                                );
+        
+        if (hasLightChildren) {
+          type = 'light';
+          // Try to determine light type from child
+          const lightChild = babylonObject.getChildren().find(child => 
+            child.getClassName && child.getClassName().includes('Light')
+          );
+          if (lightChild) {
+            lightType = lightChild.getClassName().toLowerCase().replace('light', '');
+          }
+        } else {
+          // Check if this is an imported asset container (has mesh children)
+          const hasMeshChildren = babylonObject.getChildren && 
+                                babylonObject.getChildren().some(child => 
+                                  child.getClassName && child.getClassName().includes('Mesh')
+                                );
+          type = hasMeshChildren ? 'mesh' : 'transformNode';
+        }
+      }
+    } else if (className.includes('Mesh')) {
+      type = 'mesh';
+    } else if (className === 'Scene') {
+      type = 'scene';
+    }
+    
+    return { type, lightType };
+  }
+
+  /**
    * Check if an object is a system object (shouldn't be saved/removed)
    * @param {Object} obj - Babylon.js object
    * @returns {boolean}
@@ -348,6 +607,11 @@ export class SceneManager {
       expanded: item.expanded
     };
 
+    // Save virtual folder flag if present
+    if (item.isVirtual) {
+      serialized.isVirtual = item.isVirtual;
+    }
+
     // Serialize Babylon.js object data if present
     if (item.babylonObject) {
       serialized.babylonData = this.serializeBabylonObject(item.babylonObject);
@@ -377,6 +641,49 @@ export class SceneManager {
       } else if (babylonObj.getClassName() === 'TransformNode') {
         // For transform nodes (containers), serialize as transform node
         serializedData = babylonObj.serialize();
+        
+        // Special handling for light containers - capture child light properties
+        if (babylonObj.metadata?.isLightContainer) {
+          const lightChild = babylonObj.getChildren().find(child => 
+            child.getClassName && child.getClassName().includes('Light')
+          );
+          
+          if (lightChild) {
+            // Add light-specific properties to serialized data
+            serializedData.lightType = babylonObj.metadata.lightType;
+            
+            // Serialize light color properties
+            if (lightChild.diffuse) {
+              serializedData.diffuse = [lightChild.diffuse.r, lightChild.diffuse.g, lightChild.diffuse.b];
+            }
+            if (lightChild.specular) {
+              serializedData.specular = [lightChild.specular.r, lightChild.specular.g, lightChild.specular.b];
+            }
+            if (lightChild.intensity !== undefined) {
+              serializedData.intensity = lightChild.intensity;
+            }
+            
+            // Type-specific properties
+            if (lightChild.direction && (babylonObj.metadata.lightType === 'directional' || babylonObj.metadata.lightType === 'spot')) {
+              serializedData.direction = [lightChild.direction.x, lightChild.direction.y, lightChild.direction.z];
+            }
+            if (lightChild.groundColor && babylonObj.metadata.lightType === 'hemisphere') {
+              serializedData.groundColor = [lightChild.groundColor.r, lightChild.groundColor.g, lightChild.groundColor.b];
+            }
+            if (lightChild.angle !== undefined && babylonObj.metadata.lightType === 'spot') {
+              serializedData.angle = lightChild.angle;
+            }
+            if (lightChild.exponent !== undefined && babylonObj.metadata.lightType === 'spot') {
+              serializedData.exponent = lightChild.exponent;
+            }
+            
+            console.log(`💾 Saved light properties for ${babylonObj.name}:`, {
+              diffuse: serializedData.diffuse,
+              specular: serializedData.specular,
+              intensity: serializedData.intensity
+            });
+          }
+        }
       } else if (babylonObj.getClassName() === 'UniversalCamera') {
         // For cameras, use camera serializer
         serializedData = babylonObj.serialize();
@@ -521,10 +828,10 @@ export class SceneManager {
   async restoreSceneFromBundledData(bundleData, dispatchProgress = null) {
     // Starting scene restoration from bundled data
 
-    // Clear current scene first
+    // Clear current scene first (but don't call initializeHierarchy yet)
     if (dispatchProgress) dispatchProgress('Clearing current scene...');
     // Clearing current scene
-    this.clearScene();
+    this.clearSceneWithoutHierarchyReset();
 
     // Wait for scene to be ready
     if (dispatchProgress) dispatchProgress('Preparing scene...');
@@ -554,13 +861,14 @@ export class SceneManager {
       renderActions.updateSettings(sceneData.settings);
     }
 
-    // Restore scene objects from hierarchy with bundled assets
-    // Starting object restoration
-    
+    // Restore the complete hierarchy structure first (including virtual folders)
     if (sceneData.hierarchy) {
-      await this.restoreSceneObjects(sceneData.hierarchy, assets, dispatchProgress);
+      if (dispatchProgress) dispatchProgress('Restoring hierarchy structure...');
+      await this.restoreCompleteHierarchy(sceneData.hierarchy, assets, dispatchProgress);
     } else {
       console.warn('⚠️ SceneManager: No hierarchy found in scene data');
+      // Initialize empty hierarchy if no saved hierarchy exists
+      renderActions.initializeHierarchy();
     }
 
     // Restore camera settings if available
@@ -592,6 +900,37 @@ export class SceneManager {
       } catch (error) {
         console.warn('Failed to restore editor settings:', error);
       }
+    }
+
+    // Restore UI state (color codes) if available - with delay to ensure Scene component is ready
+    if (sceneData.uiState) {
+      try {
+        console.log('🔄 SceneManager: Restoring UI state:', sceneData.uiState);
+        
+        // Try multiple times with increasing delays to ensure Scene component is ready
+        const colorCodes = sceneData.uiState.colorCodes || {};
+        const attemptRestore = (attempt = 1) => {
+          const restoreColorCodesEvent = new CustomEvent('restoreSceneColorCodes', {
+            detail: { colorCodes }
+          });
+          document.dispatchEvent(restoreColorCodesEvent);
+          console.log(`✅ Attempt ${attempt}: Dispatched color codes restoration event with data:`, colorCodes);
+          
+          // Try again with longer delay if this is the first few attempts
+          if (attempt < 3) {
+            setTimeout(() => attemptRestore(attempt + 1), attempt * 500);
+          }
+        };
+        
+        // Start first attempt immediately
+        attemptRestore(1);
+        
+        console.log('✅ Scheduled UI state restoration');
+      } catch (error) {
+        console.warn('Failed to restore UI state:', error);
+      }
+    } else {
+      console.log('🔄 SceneManager: No UI state found in scene data');
     }
 
     // Update scene tree name to reflect loaded scene
@@ -687,6 +1026,21 @@ export class SceneManager {
     if (item.babylonData) {
       // Restoring object with babylon data
       await this.restoreObjectFromBabylonData(item, assets);
+    } else if (item.isVirtual && item.type === 'folder') {
+      // Restore virtual folder to render store hierarchy
+      console.log(`🔄 SceneManager: Restoring virtual folder '${item.name}'`);
+      const virtualFolder = {
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        visible: item.visible !== undefined ? item.visible : true,
+        expanded: item.expanded !== undefined ? item.expanded : false,
+        children: [],
+        isVirtual: true
+      };
+      
+      // Add virtual folder to render store
+      renderActions.addVirtualFolder(virtualFolder);
     } else {
       // Skipping item without babylon data
     }
@@ -749,8 +1103,9 @@ export class SceneManager {
    * @param {Object} item - Hierarchy item
    * @param {string} assetData - Base64 encoded asset data  
    * @param {Scene} scene - Babylon scene
+   * @param {boolean} addToRenderStore - Whether to add to render store immediately (default: true)
    */
-  async restore3DModelFromAsset(item, assetData, scene) {
+  async restore3DModelFromAsset(item, assetData, scene, addToRenderStore = true) {
     // Starting 3D model restoration
     
     try {
@@ -829,9 +1184,11 @@ export class SceneManager {
           // Restored object metadata
         }
 
-        // Add to render store
-        // Adding container to render store
-        renderActions.addObject(container);
+        // Add to render store if requested
+        if (addToRenderStore) {
+          // Adding container to render store
+          renderActions.addObject(container);
+        }
         
         // 3D model restoration completed successfully
         return container;
@@ -850,9 +1207,10 @@ export class SceneManager {
    * Restore a basic object (camera, light, etc.) without asset data
    * @param {Object} item - Hierarchy item
    * @param {Scene} scene - Babylon scene
+   * @param {boolean} addToRenderStore - Whether to add to render store immediately (default: true)
    * @returns {Object|null} Restored Babylon object or null
    */
-  async restoreBasicObject(item, scene) {
+  async restoreBasicObject(item, scene, addToRenderStore = true) {
     // Restoring basic object
     
     try {
@@ -889,6 +1247,14 @@ export class SceneManager {
             terrainManager.position.fromArray(babylonData.position);
           }
           
+          // Set unique ID to match saved data for color code restoration
+          terrainManager.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
+          
+          // Restore metadata
+          if (babylonData.metadata) {
+            terrainManager.metadata = babylonData.metadata;
+          }
+          
           restoredObject = terrainManager;
         } else if (babylonData.__terrainData) {
           // Restore terrain mesh
@@ -921,6 +1287,14 @@ export class SceneManager {
           // Restore terrain data
           terrainMesh._terrainData = terrainData;
           
+          // Set unique ID to match saved data for color code restoration
+          terrainMesh.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
+          
+          // Restore metadata
+          if (babylonData.metadata) {
+            terrainMesh.metadata = babylonData.metadata;
+          }
+          
           // Make visible if it was modified
           const hasModifiedTerrain = terrainData.heightmapData && 
             terrainData.heightmapData.some(height => Math.abs(height) > 0.001);
@@ -935,10 +1309,10 @@ export class SceneManager {
           restoredObject = terrainMesh;
         }
         
-        console.log('🏔️ Terrain object restored successfully:', restoredObject?.name);
+        console.log('🏔️ Terrain object restored successfully:', restoredObject?.name, 'with uniqueId:', restoredObject?.uniqueId);
         
-        // Add terrain object to render store if successfully restored
-        if (restoredObject) {
+        // Add terrain object to render store if successfully restored and requested
+        if (restoredObject && addToRenderStore) {
           renderActions.addObject(restoredObject);
         }
       } else if (item.type === 'camera') {
@@ -991,7 +1365,9 @@ export class SceneManager {
         // Set as active camera in both scene and render store
         scene.activeCamera = camera;
         renderActions.setCamera(camera);
-        renderActions.addObject(camera);
+        if (addToRenderStore) {
+          renderActions.addObject(camera);
+        }
         
         restoredObject = camera;
         // Camera restored successfully
@@ -1095,8 +1471,10 @@ export class SceneManager {
             scene.shadowGenerator.addShadowCaster(mesh);
           }
           
-          // Add to render store
-          renderActions.addObject(mesh);
+          // Add to render store if requested
+          if (addToRenderStore) {
+            renderActions.addObject(mesh);
+          }
           
           restoredObject = mesh;
           console.log('🔲 Mesh object restored successfully:', mesh.name);
@@ -1188,6 +1566,13 @@ export class SceneManager {
           if (babylonData.intensity !== undefined) {
             light.intensity = babylonData.intensity;
           }
+          
+          console.log(`🔄 Restored light properties for ${containerName}:`, {
+            diffuse: babylonData.diffuse,
+            specular: babylonData.specular,
+            intensity: babylonData.intensity,
+            lightType: lightType
+          });
           if (babylonData.direction && (lightType === 'directional' || lightType === 'spot')) {
             light.direction = new Vector3(babylonData.direction[0], babylonData.direction[1], babylonData.direction[2]);
           }
@@ -1213,16 +1598,24 @@ export class SceneManager {
           lightHelper.material = helperMaterial;
           lightHelper.parent = mainContainer;
           
-          // Restore metadata
+          // Restore metadata and ensure light container metadata is set
           if (babylonData.metadata) {
             mainContainer.metadata = babylonData.metadata;
+          } else {
+            mainContainer.metadata = {};
           }
+          
+          // Ensure light container metadata is properly set
+          mainContainer.metadata.isLightContainer = true;
+          mainContainer.metadata.lightType = lightType;
           
           // Set unique ID to match saved data
           mainContainer.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
           
-          // Add to render store
-          renderActions.addObject(mainContainer);
+          // Add to render store if requested
+          if (addToRenderStore) {
+            renderActions.addObject(mainContainer);
+          }
           
           restoredObject = mainContainer;
           console.log('💡 Light object restored successfully:', mainContainer.name, 'type:', lightType);
@@ -1265,8 +1658,10 @@ export class SceneManager {
         // Set unique ID to match saved data
         transformNode.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
         
-        // Add to render store
-        renderActions.addObject(transformNode);
+        // Add to render store if requested
+        if (addToRenderStore) {
+          renderActions.addObject(transformNode);
+        }
         
         restoredObject = transformNode;
         console.log('📦 TransformNode restored successfully:', transformNode.name);
@@ -1327,8 +1722,10 @@ export class SceneManager {
             // Set unique ID
             genericNode.uniqueId = babylonData.uniqueId || babylonData.__engineObjectId;
             
-            // Add to render store
-            renderActions.addObject(genericNode);
+            // Add to render store if requested
+            if (addToRenderStore) {
+              renderActions.addObject(genericNode);
+            }
             
             restoredObject = genericNode;
             console.log(`🔧 Generic restoration completed for:`, genericNode.name);

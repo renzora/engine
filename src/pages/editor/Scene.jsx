@@ -50,6 +50,7 @@ function Scene(props) {
     
     const handleContextMenuColorCode = (e) => {
       const { itemId, color } = e.detail;
+      console.log('🎨 Scene: Setting color code for item:', itemId, 'color:', color);
       setItemColors(prev => {
         const updated = { ...prev };
         if (color === null) {
@@ -57,8 +58,41 @@ function Scene(props) {
         } else {
           updated[itemId] = color;
         }
+        console.log('🎨 Scene: Updated itemColors:', updated);
         return updated;
       });
+      
+      // Mark scene as modified
+      import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
+        sceneManager.markAsModified();
+      });
+    };
+
+    const handleGetSceneColorCodes = (e) => {
+      console.log('🔄 Scene: Received request for color codes, current itemColors:', itemColors());
+      // Respond with current color codes
+      const response = new CustomEvent('sceneColorCodesResponse', {
+        detail: { colorCodes: itemColors() }
+      });
+      document.dispatchEvent(response);
+    };
+
+    const handleRestoreSceneColorCodes = (e) => {
+      const { colorCodes } = e.detail;
+      console.log('🔄 Scene: Restoring color codes:', colorCodes);
+      console.log('🔄 Scene: Current itemColors before restore:', itemColors());
+      
+      if (colorCodes && Object.keys(colorCodes).length > 0) {
+        setItemColors(colorCodes);
+        console.log('🔄 Scene: itemColors after restore:', itemColors());
+        
+        // Force a re-render by updating the signal
+        setTimeout(() => {
+          console.log('🔄 Scene: Final itemColors state:', itemColors());
+        }, 100);
+      } else {
+        console.log('🔄 Scene: No color codes to restore or empty object');
+      }
     };
     
     window.addEventListener('resize', handleWindowResize);
@@ -66,6 +100,8 @@ function Scene(props) {
     document.addEventListener('contextMenuRename', handleContextMenuRename);
     document.addEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
     document.addEventListener('contextMenuColorCode', handleContextMenuColorCode);
+    document.addEventListener('getSceneColorCodes', handleGetSceneColorCodes);
+    document.addEventListener('restoreSceneColorCodes', handleRestoreSceneColorCodes);
     
     // Global keyboard shortcuts
     const handleGlobalKeyDown = (e) => {
@@ -107,6 +143,8 @@ function Scene(props) {
       document.removeEventListener('contextMenuRename', handleContextMenuRename);
       document.removeEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
       document.removeEventListener('contextMenuColorCode', handleContextMenuColorCode);
+      document.removeEventListener('getSceneColorCodes', handleGetSceneColorCodes);
+      document.removeEventListener('restoreSceneColorCodes', handleRestoreSceneColorCodes);
       document.removeEventListener('keydown', handleGlobalKeyDown);
     });
     
@@ -136,17 +174,52 @@ function Scene(props) {
   const [dropPosition, setDropPosition] = createSignal(null);
 
   const handleDragStart = (e, item) => {
-    setDraggedItem(item);
+    // Check if this item is part of a multi-selection
+    const selectedItems = selection.entities || [];
+    const isMultiSelection = selectedItems.length > 1 && selectedItems.includes(item.id);
+    
+    if (isMultiSelection) {
+      // Dragging multiple items
+      setDraggedItem({ 
+        ...item, 
+        isMultiDrag: true, 
+        draggedIds: selectedItems 
+      });
+      
+      // Create safe items for all selected items
+      const hierarchy = hierarchyData();
+      const safeItems = selectedItems.map(id => {
+        const foundItem = findItemInHierarchy(id, hierarchy);
+        return foundItem ? {
+          id: foundItem.id,
+          name: foundItem.name,
+          type: foundItem.type,
+          lightType: foundItem.lightType,
+          visible: foundItem.visible
+        } : null;
+      }).filter(Boolean);
+      
+      e.dataTransfer.setData('text/plain', JSON.stringify({ 
+        type: 'scene-items-multi', 
+        items: safeItems,
+        count: safeItems.length
+      }));
+      
+      console.log(`Multi-drag started: ${safeItems.length} items`);
+    } else {
+      // Single item drag (existing logic)
+      setDraggedItem(item);
+      const safeItem = {
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        lightType: item.lightType,
+        visible: item.visible
+      };
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene-item', item: safeItem }));
+    }
+    
     e.dataTransfer.effectAllowed = 'move';
-    // Only serialize safe properties to avoid circular references
-    const safeItem = {
-      id: item.id,
-      name: item.name,
-      type: item.type,
-      lightType: item.lightType,
-      visible: item.visible
-    };
-    e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'scene-item', item: safeItem }));
   };
 
   const handleDragOver = (e, item) => {
@@ -177,7 +250,29 @@ function Scene(props) {
     e.preventDefault();
     const draggedData = draggedItem();
     
-    if (!draggedData || draggedData.id === targetItem.id) {
+    if (!draggedData) {
+      return;
+    }
+    
+    // Handle multi-item drag
+    if (draggedData.isMultiDrag && draggedData.draggedIds) {
+      console.log('Multi-drop detected:', { 
+        draggedIds: draggedData.draggedIds, 
+        targetItem: targetItem.id 
+      });
+      
+      // Don't allow dropping if target is one of the dragged items
+      if (draggedData.draggedIds.includes(targetItem.id)) {
+        console.log('Cannot drop items onto themselves');
+        return;
+      }
+      
+      handleMultiItemDrop(draggedData.draggedIds, targetItem);
+      return;
+    }
+    
+    // Single item drop (existing logic)
+    if (draggedData.id === targetItem.id) {
       return;
     }
 
@@ -307,6 +402,83 @@ function Scene(props) {
     // Hierarchy will update automatically since we're changing Babylon parent relationships
   };
 
+  const handleMultiItemDrop = (draggedIds, targetItem) => {
+    const scene = renderStore.scene;
+    if (!scene) return;
+    
+    const position = dropPosition();
+    
+    // Only allow dropping inside folders for multi-item drops
+    if (position !== 'inside' || targetItem.type !== 'folder') {
+      console.warn('Multi-item drop only allowed inside folders');
+      return;
+    }
+    
+    console.log('Processing multi-item drop:', { 
+      count: draggedIds.length, 
+      targetFolder: targetItem.id 
+    });
+    
+    // Check if we're dropping into a virtual folder or real folder
+    const isVirtualFolder = (item) => {
+      return item.isVirtual ||
+             (item.type === 'folder' && !item.babylonObject) ||
+             (typeof item.id === 'string' && item.id.startsWith('virtual-folder-'));
+    };
+    
+    const allObjects = [...scene.meshes, ...scene.transformNodes, ...scene.lights, ...scene.cameras];
+    
+    // Process each dragged item
+    draggedIds.forEach(draggedId => {
+      const draggedBabylonObject = allObjects.find(obj => 
+        (obj.uniqueId || obj.name) === draggedId
+      );
+      
+      if (draggedBabylonObject) {
+        if (isVirtualFolder(targetItem)) {
+          // For virtual folders, just clear the parent (move to scene root)
+          draggedBabylonObject.parent = null;
+        } else {
+          // For real folders, set the parent
+          const targetBabylonObject = allObjects.find(obj => 
+            (obj.uniqueId || obj.name) === targetItem.id
+          );
+          
+          if (targetBabylonObject) {
+            try {
+              // Ensure target has proper isEnabled method
+              if (targetBabylonObject.getClassName && targetBabylonObject.getClassName() === 'TransformNode') {
+                if (typeof targetBabylonObject.isEnabled !== 'function') {
+                  targetBabylonObject.isEnabled = () => true;
+                }
+              }
+              
+              // Ensure dragged object has proper isEnabled method
+              if (draggedBabylonObject.getClassName && draggedBabylonObject.getClassName() === 'TransformNode') {
+                if (typeof draggedBabylonObject.isEnabled !== 'function') {
+                  draggedBabylonObject.isEnabled = () => true;
+                }
+              }
+              
+              draggedBabylonObject.parent = targetBabylonObject;
+            } catch (error) {
+              console.warn('Failed to set parent for multi-item:', error);
+              draggedBabylonObject.parent = null;
+            }
+          }
+        }
+      }
+      
+      // Update UI hierarchy for each item
+      renderActions.reorderObjectInHierarchy(draggedId, targetItem.id, position);
+    });
+    
+    // Expand the target folder to show the new children
+    setExpandedItems(prev => ({ ...prev, [targetItem.id]: true }));
+    
+    console.log(`Successfully moved ${draggedIds.length} items to ${targetItem.name}`);
+  };
+
   const handleDragEnd = (e) => {
     setDraggedItem(null);
     setDragOverItem(null);
@@ -429,7 +601,6 @@ function Scene(props) {
     };
     
     traverse(hierarchy);
-    console.log('getAllItemsFlat result:', items);
     return items;
   };
 
@@ -439,31 +610,13 @@ function Scene(props) {
     const fromIndex = allItems.indexOf(fromId);
     const toIndex = allItems.indexOf(toId);
     
-    console.log('getSelectionRange DEBUG:', {
-      fromId,
-      toId,
-      allItems,
-      allItemsLength: allItems.length,
-      fromIndex,
-      toIndex
-    });
-    
     if (fromIndex === -1 || toIndex === -1) {
-      console.log('Range selection fallback: item not found in hierarchy');
       return [toId]; // Fallback to just the clicked item
     }
     
     const startIndex = Math.min(fromIndex, toIndex);
     const endIndex = Math.max(fromIndex, toIndex);
-    const rangeResult = allItems.slice(startIndex, endIndex + 1);
-    
-    console.log('Range selection result:', {
-      startIndex,
-      endIndex,
-      rangeResult
-    });
-    
-    return rangeResult;
+    return allItems.slice(startIndex, endIndex + 1);
   };
 
   const handleCreateFolder = () => {
@@ -721,14 +874,15 @@ function Scene(props) {
           <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary z-10 pointer-events-none" />
         </Show>
         <div 
-          className={`group flex items-center py-0.5 pr-2 text-xs cursor-pointer transition-colors relative overflow-hidden ${
+          className={`group flex items-center py-0.5 pr-2 text-xs cursor-pointer transition-colors relative overflow-hidden focus:outline-none ${
             isPrimarySelection() 
               ? 'bg-primary/80 text-primary-content' 
               : isSelected()
                 ? 'bg-primary/50 text-primary-content'
                 : 'text-base-content/70 hover:bg-primary/20 hover:text-base-content'
           } ${
-            draggedItem()?.id === item.id ? 'opacity-30' : ''
+            draggedItem()?.id === item.id ? 'opacity-30' : 
+            (draggedItem()?.isMultiDrag && draggedItem()?.draggedIds?.includes(item.id)) ? 'opacity-30' : ''
           } ${
             isFolderDrop() ? 'bg-primary/20' : ''
           } ${
@@ -909,6 +1063,15 @@ function Scene(props) {
                 style={{ 'background-color': itemColors()[item.id] }}
                 title={`Color: ${itemColors()[item.id]}`}
               />
+            </Show>
+            
+            <Show when={draggedItem()?.isMultiDrag && draggedItem()?.id === item.id}>
+              <div 
+                class="w-4 h-4 rounded-full bg-primary text-primary-content text-xs font-bold flex items-center justify-center mr-1 flex-shrink-0" 
+                title={`Dragging ${draggedItem()?.draggedIds?.length || 0} items`}
+              >
+                {draggedItem()?.draggedIds?.length || 0}
+              </div>
             </Show>
           </div>
           
