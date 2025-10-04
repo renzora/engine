@@ -13,6 +13,7 @@ import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { createAndAddObject } from '@/api/creation/ObjectCreationUtils.jsx';
 import { PointLight } from '@babylonjs/core/Lights/pointLight';
 import { SpotLight } from '@babylonjs/core/Lights/spotLight';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
@@ -170,6 +171,8 @@ function Toolbar() {
     }
   };
 
+  // Using unified object creation utilities
+
   const createBabylonPrimitive = async (type) => {
     console.log('Creating primitive:', type);
     
@@ -179,52 +182,9 @@ function Toolbar() {
       return;
     }
 
-    const position = new Vector3(0, 0.5, 0);
-    
-    const objectName = getObjectName(type);
-
     try {
-      let primitive;
-
-      switch (type) {
-        case 'cube':
-          primitive = MeshBuilder.CreateBox(objectName, { size: 1 }, scene);
-          break;
-        case 'sphere':
-          primitive = MeshBuilder.CreateSphere(objectName, { diameter: 1 }, scene);
-          break;
-        case 'cylinder':
-          primitive = MeshBuilder.CreateCylinder(objectName, { height: 1, diameter: 1 }, scene);
-          break;
-        case 'plane':
-          primitive = MeshBuilder.CreateGround(objectName, { width: 1, height: 1 }, scene);
-          break;
-        default:
-          throw new Error(`Unknown primitive type: ${type}`);
-      }
-
-      primitive.position = position;
-      
-      // Define default colors for each primitive type
-      const defaultColors = {
-        cube: new Color3(0.2, 0.6, 1.0),     // Light blue
-        sphere: new Color3(1.0, 0.4, 0.2),   // Orange-red
-        cylinder: new Color3(0.2, 0.8, 0.4), // Green
-        plane: new Color3(0.6, 0.6, 0.6)     // Light gray
-      };
-      
-      // Create material - use StandardMaterial for all primitives for consistent color display
-      const material = new StandardMaterial(`${objectName}_material`, scene);
-      material.diffuseColor = defaultColors[type];
-      
-      // Add slight emissive color to ensure visibility even in low light
-      material.emissiveColor = defaultColors[type].scale(0.1);
-      
-      primitive.material = material;
-      
-      // Add object to hierarchy first, then select it
-      renderActions.addObject(primitive);
-      renderActions.selectObject(primitive);
+      // Use unified creation system for consistent sizes and colors
+      const objectId = await createAndAddObject(type, scene);
       editorActions.addConsoleMessage(`Created ${type}`, 'info');
     } catch (error) {
       console.error('Failed to create primitive:', error);
@@ -240,66 +200,8 @@ function Toolbar() {
     }
 
     try {
-      const lightName = getObjectName(lightType + '_light');
-      const lightPosition = await getViewportCenterPosition(scene, 4);
-      lightPosition.y += 3;
-      
-      const mainContainer = new TransformNode(lightName, scene);
-      mainContainer.position = lightPosition;
-      
-      // Mark container as a light object for hierarchy detection
-      mainContainer.metadata = { 
-        isLightContainer: true, 
-        lightType: lightType 
-      };
-      
-      let light;
-      switch (lightType) {
-        case 'point':
-          light = new PointLight(`${lightName}_light`, Vector3.Zero(), scene);
-          light.diffuse = new Color3(1, 0.95, 0.8);
-          light.specular = new Color3(1, 1, 1);
-          light.intensity = 10;
-          break;
-        case 'spot':
-          light = new SpotLight(`${lightName}_light`, Vector3.Zero(), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
-          light.diffuse = new Color3(1, 0.95, 0.8);
-          light.specular = new Color3(1, 1, 1);
-          light.intensity = 15;
-          break;
-        case 'hemispheric':
-          light = new HemisphericLight(`${lightName}_light`, new Vector3(0, 1, 0), scene);
-          light.diffuse = new Color3(1, 0.95, 0.8);
-          light.groundColor = new Color3(0.3, 0.3, 0.3);
-          light.intensity = 0.7;
-          break;
-        case 'rectArea':
-          light = new RectAreaLight(`${lightName}_light`, Vector3.Zero(), scene);
-          light.diffuse = new Color3(1, 0.95, 0.8);
-          light.specular = new Color3(1, 1, 1);
-          light.intensity = 5;
-          light.width = 2; // Default width
-          light.height = 2; // Default height
-          break;
-        default:
-          light = new DirectionalLight(`${lightName}_light`, new Vector3(-1, -1, -1), scene);
-          light.diffuse = new Color3(1, 0.95, 0.8);
-          light.specular = new Color3(1, 1, 1);
-          light.intensity = 1;
-          break;
-      }
-      
-      light.position = Vector3.Zero();
-      light.parent = mainContainer;
-      const lightHelper = MeshBuilder.CreateSphere(`${lightName}_helper`, { diameter: 0.5 }, scene);
-      lightHelper.material = new StandardMaterial(`${lightName}_helper_material`, scene);
-      lightHelper.material.emissiveColor = new Color3(1, 1, 0);
-      lightHelper.material.disableLighting = true;
-      lightHelper.parent = mainContainer;
-
-      // Add object to hierarchy first, then select it
-      renderActions.addObject(mainContainer);
-      renderActions.selectObject(mainContainer);
+      // Use unified creation system for consistent behavior
+      const objectId = await createAndAddObject(`${lightType}-light`, scene);
       editorActions.addConsoleMessage(`Created ${lightType} light`, 'info');
     } catch (error) {
       console.error('Failed to create light:', error);
@@ -315,16 +217,8 @@ function Toolbar() {
     }
 
     try {
-      const cameraName = getObjectName('camera');
-      const cameraPosition = await getViewportCenterPosition(scene, 6);
-      cameraPosition.y += 2;
-
-      const camera = new UniversalCamera(cameraName, cameraPosition, scene);
-      camera.setTarget(Vector3.Zero());
-
-      // Add object to hierarchy first, then select it
-      renderActions.addObject(camera);
-      renderActions.selectObject(camera);
+      // Use unified creation system for consistent behavior
+      const objectId = await createAndAddObject('camera', scene);
       editorActions.addConsoleMessage('Created camera', 'info');
     } catch (error) {
       console.error('Failed to create camera:', error);
@@ -346,8 +240,8 @@ function Toolbar() {
         newObject.position.x += 1;
         newObject.position.z += 1;
         
-        // Add object to hierarchy first, then select it
-        renderActions.addObject(newObject);
+        // Add object to hierarchy (with folder awareness) first, then select it
+        const objectId = addObjectToHierarchy(newObject, `${selectedObject.name}_duplicate`);
         renderActions.selectObject(newObject);
         editorActions.addConsoleMessage(`Duplicated ${selectedObject.name}`, 'info');
       }

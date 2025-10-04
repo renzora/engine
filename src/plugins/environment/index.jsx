@@ -109,9 +109,9 @@ const handleCreateSkybox = async () => {
       diffuseColor: skyboxMaterial.diffuseColor
     });
 
-    // Add to scene hierarchy and select it
-    renderActions.addObject(skybox);
-    renderActions.selectObject(skybox);
+    // Use unified folder-aware creation system
+    const { addObjectToHierarchy } = await import('@/api/creation/ObjectCreationUtils.jsx');
+    const objectId = addObjectToHierarchy(skybox, 'Skybox', true);
     
     // Mark scene as modified
     const { sceneManager } = await import('@/api/scene/SceneManager.js');

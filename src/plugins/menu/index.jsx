@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain, IconSun
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
 import ExportDialog from '@/ui/ExportDialog.jsx';
@@ -195,6 +195,63 @@ const handleSkyboxCreate = async () => {
   }
 };
 
+// Handle object creation using unified system
+const handleObjectCreate = async (type) => {
+  try {
+    const { renderStore } = await import('@/render/store');
+    const { createAndAddObject } = await import('@/api/creation/ObjectCreationUtils.jsx');
+    
+    const scene = renderStore.scene;
+    if (!scene) {
+      console.error('No active scene');
+      return;
+    }
+
+    // Use unified creation system for consistent sizes and colors
+    await createAndAddObject(type, scene);
+  } catch (error) {
+    console.error('Failed to create object:', error);
+  }
+};
+
+// Handle light creation using unified system  
+const handleLightCreate = async (type) => {
+  try {
+    const { renderStore } = await import('@/render/store');
+    const { createAndAddObject } = await import('@/api/creation/ObjectCreationUtils.jsx');
+    
+    const scene = renderStore.scene;
+    if (!scene) {
+      console.error('No active scene');
+      return;
+    }
+
+    // Use unified creation system for consistent behavior
+    await createAndAddObject(`${type}-light`, scene);
+  } catch (error) {
+    console.error('Failed to create light:', error);
+  }
+};
+
+// Handle camera creation using unified system
+const handleCameraCreate = async () => {
+  try {
+    const { renderStore } = await import('@/render/store');
+    const { createAndAddObject } = await import('@/api/creation/ObjectCreationUtils.jsx');
+    
+    const scene = renderStore.scene;
+    if (!scene) {
+      console.error('No active scene');
+      return;
+    }
+
+    // Use unified creation system for consistent behavior
+    await createAndAddObject('camera', scene);
+  } catch (error) {
+    console.error('Failed to create camera:', error);
+  }
+};
+
 // Handle load scene with unsaved changes check
 const handleLoadScene = async () => {
   const proceedWithLoadScene = () => {
@@ -363,27 +420,50 @@ export default createPlugin({
           action: handleLoadScene
         },
         { 
-          id: 'terrain', 
-          label: 'Terrain', 
-          icon: IconMountain,
-          action: handleTerrainCreate
-        },
-        { 
-          id: 'skybox', 
-          label: 'Skybox', 
-          icon: IconSun,
-          action: handleSkyboxCreate
-        },
-        { 
-          id: 'mesh', 
-          label: 'Mesh', 
+          id: 'object', 
+          label: 'Object', 
           icon: IconCube,
           submenu: [
-            { id: 'add-cube', label: 'Cube', icon: IconBox },
-            { id: 'add-plane', label: 'Plane', icon: IconSquare },
-            { id: 'add-cylinder', label: 'Cylinder', icon: IconCylinder },
-            { id: 'add-sphere', label: 'Sphere', icon: IconCircle },
-            { id: 'add-torus', label: 'Torus', icon: IconChartDonutFilled }
+            { id: 'add-cube', label: 'Cube', icon: IconBox, action: () => handleObjectCreate('cube') },
+            { id: 'add-sphere', label: 'Sphere', icon: IconCircle, action: () => handleObjectCreate('sphere') },
+            { id: 'add-cylinder', label: 'Cylinder', icon: IconCylinder, action: () => handleObjectCreate('cylinder') },
+            { id: 'add-plane', label: 'Plane', icon: IconSquare, action: () => handleObjectCreate('plane') }
+          ]
+        },
+        { 
+          id: 'light', 
+          label: 'Light', 
+          icon: IconBulb,
+          submenu: [
+            { id: 'add-point-light', label: 'Point Light', icon: IconBulb, action: () => handleLightCreate('point') },
+            { id: 'add-spot-light', label: 'Spot Light', icon: IconBulb, action: () => handleLightCreate('spot') },
+            { id: 'add-hemispheric-light', label: 'Hemispheric Light', icon: IconSun, action: () => handleLightCreate('hemispheric') },
+            { id: 'add-directional-light', label: 'Directional Light', icon: IconSun, action: () => handleLightCreate('directional') }
+          ]
+        },
+        { 
+          id: 'camera', 
+          label: 'Camera', 
+          icon: IconVideo,
+          action: handleCameraCreate
+        },
+        { 
+          id: 'environment', 
+          label: 'Environment', 
+          icon: IconSphere,
+          submenu: [
+            { 
+              id: 'skybox', 
+              label: 'Skybox', 
+              icon: IconSun,
+              action: handleSkyboxCreate
+            },
+            { 
+              id: 'terrain', 
+              label: 'Terrain', 
+              icon: IconMountain,
+              action: handleTerrainCreate
+            }
           ]
         }
       ]

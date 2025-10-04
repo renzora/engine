@@ -831,9 +831,9 @@ const handleCreateTerrain = async () => {
     };
     
     
-    // Add to scene hierarchy and select
-    renderActions.addObject(terrainMesh);
-    renderActions.selectObject(terrainMesh);
+    // Use unified folder-aware creation system
+    const { addObjectToHierarchy } = await import('@/api/creation/ObjectCreationUtils.jsx');
+    const objectId = addObjectToHierarchy(terrainMesh, 'Terrain', true);
     editorActions.addConsoleMessage('Created terrain. Switch to Sculpting mode from the toolbar dropdown to start editing.', 'info');
     
   } catch (error) {

@@ -1,5 +1,6 @@
-import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconRectangle, IconGrid3x3, IconBulb, IconVideo, IconClipboard, IconArrowBackUp, IconArrowForwardUp, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus, IconSun, IconSphere, IconPlane } from '@tabler/icons-solidjs';
+import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconCylinder, IconSquare, IconBulb, IconVideo, IconClipboard, IconArrowBackUp, IconArrowForwardUp, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus, IconSun, IconSphere, IconPlane } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store';
+import { editorStore } from '@/layout/stores/EditorStore';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
@@ -12,6 +13,7 @@ import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { createAndAddObject } from '@/api/creation/ObjectCreationUtils.jsx';
 
 export const createContextMenuActions = (editorActions) => {
   // Provide fallback functions if editorActions is undefined
@@ -83,11 +85,11 @@ export const createContextMenuActions = (editorActions) => {
         return [
           { label: 'Create Folder', action: () => handleCreateFolder(), icon: <IconFolder class="w-4 h-4" /> },
           { separator: true },
-          { label: 'Create Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
+          { label: 'Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
             { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconBox class="w-4 h-4" /> },
             { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
-            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
-            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
+            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconCylinder class="w-4 h-4" /> },
+            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconSquare class="w-4 h-4" /> },
           ]},
           { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
             { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
@@ -119,11 +121,11 @@ export const createContextMenuActions = (editorActions) => {
         ];
       } else if (context === 'viewport') {
         return [
-          { label: 'Create Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
+          { label: 'Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
             { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconBox class="w-4 h-4" /> },
             { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
-            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
-            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
+            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconCylinder class="w-4 h-4" /> },
+            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconSquare class="w-4 h-4" /> },
           ]},
           { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
             { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
@@ -146,11 +148,11 @@ export const createContextMenuActions = (editorActions) => {
       } else {
         // Default fallback for other contexts
         return [
-          { label: 'Create Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
+          { label: 'Object', action: () => {}, icon: <IconCirclePlus class="w-4 h-4" />, submenu: [
             { label: 'Cube', action: () => handleCreateObject('cube'), icon: <IconBox class="w-4 h-4" /> },
             { label: 'Sphere', action: () => handleCreateObject('sphere'), icon: <IconCircle class="w-4 h-4" /> },
-            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconRectangle class="w-4 h-4" /> },
-            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconGrid3x3 class="w-4 h-4" /> },
+            { label: 'Cylinder', action: () => handleCreateObject('cylinder'), icon: <IconCylinder class="w-4 h-4" /> },
+            { label: 'Plane', action: () => handleCreateObject('plane'), icon: <IconSquare class="w-4 h-4" /> },
           ]},
           { label: 'Light', action: () => {}, icon: <IconBulb class="w-4 h-4" />, submenu: [
             { label: 'Point Light', action: () => handleCreateObject('point-light'), icon: <IconBulb class="w-4 h-4" /> },
@@ -237,130 +239,25 @@ export const createContextMenuActions = (editorActions) => {
     document.dispatchEvent(event);
   };
 
-  const handleCreateObject = (type) => {
+  const handleCreateObject = async (type) => {
     const scene = renderStore.scene;
     if (!scene) return;
     
     try {
-      let newObject;
-      const objectName = (() => {
-        switch (type) {
-          case 'cube': return 'Cube';
-          case 'sphere': return 'Sphere';
-          case 'cylinder': return 'Cylinder';
-          case 'plane': return 'Plane';
-          case 'hemispheric-light': return 'Hemispheric Light';
-          case 'directional-light': return 'Directional Light';
-          case 'point-light': return 'Point Light';
-          case 'spot-light': return 'Spot Light';
-          case 'camera': return 'Camera';
-          case 'skybox': return 'Skybox';
-          case 'terrain': return 'Terrain';
-          default: return type.charAt(0).toUpperCase() + type.slice(1);
-        }
-      })();
-      
-      switch (type) {
-        case 'cube': {
-          newObject = CreateBox(objectName, { size: 2 }, scene);
-          break;
-        }
-        case 'sphere': {
-          newObject = CreateSphere(objectName, { diameter: 2 }, scene);
-          break;
-        }
-        case 'cylinder': {
-          newObject = CreateCylinder(objectName, { height: 3, diameter: 2 }, scene);
-          break;
-        }
-        case 'plane': {
-          newObject = CreateGround(objectName, { width: 6, height: 6 }, scene);
-          break;
-        }
-        case 'hemispheric-light': {
-          newObject = new HemisphericLight(objectName, new Vector3(0, 1, 0), scene);
-          newObject.intensity = 0.7;
-          break;
-        }
-        case 'directional-light': {
-          newObject = new DirectionalLight(objectName, new Vector3(-1, -1, -1), scene);
-          newObject.intensity = 1.0;
-          break;
-        }
-        case 'point-light': {
-          newObject = new PointLight(objectName, new Vector3(0, 5, 0), scene);
-          newObject.intensity = 1.0;
-          newObject.range = 100;
-          break;
-        }
-        case 'spot-light': {
-          newObject = new SpotLight(objectName, new Vector3(0, 5, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
-          newObject.intensity = 1.0;
-          newObject.range = 100;
-          break;
-        }
-        case 'camera': {
-          newObject = new UniversalCamera(objectName, new Vector3(0, 5, -10), scene);
-          newObject.lookAt(Vector3.Zero());
-          break;
-        }
-        case 'skybox': {
-          // Reuse existing skybox creation from menu plugin
-          document.dispatchEvent(new CustomEvent('engine:create-skybox'));
-          return; // Exit early since event-based creation doesn't return an object
-        }
-        case 'terrain': {
-          // Reuse existing terrain creation from menu plugin
-          document.dispatchEvent(new CustomEvent('engine:create-terrain'));
-          return; // Exit early since event-based creation doesn't return an object
-        }
+      // Handle special cases that use events
+      if (type === 'skybox') {
+        document.dispatchEvent(new CustomEvent('engine:create-skybox'));
+        return;
+      }
+      if (type === 'terrain') {
+        document.dispatchEvent(new CustomEvent('engine:create-terrain'));
+        return;
       }
       
-      if (newObject) {
-        // Position objects appropriately
-        if (newObject.position) {
-          // Different positioning for different object types
-          if (type.includes('light')) {
-            // Position lights higher up
-            newObject.position.x = Math.random() * 6 - 3;
-            newObject.position.y = 3 + Math.random() * 3; // 3-6 units high
-            newObject.position.z = Math.random() * 6 - 3;
-          } else if (type === 'camera') {
-            // Position cameras at a good viewing angle
-            newObject.position.x = Math.random() * 8 - 4;
-            newObject.position.y = 2 + Math.random() * 3; // 2-5 units high
-            newObject.position.z = Math.random() * 8 - 4;
-          } else {
-            // Position meshes on the ground
-            newObject.position.x = Math.random() * 4 - 2;
-            newObject.position.z = Math.random() * 4 - 2;
-          }
-        }
-        
-        // Add material for meshes
-        if (newObject.material !== undefined && !type.includes('light') && type !== 'camera') {
-          const material = new StandardMaterial(objectName + "_material", scene);
-          material.diffuseColor = new Color3(
-            Math.random(),
-            Math.random(),
-            Math.random()
-          );
-          newObject.material = material;
-        }
-        
-        // Add to hierarchy and select
-        renderActions.addObject(newObject);
-        const objectId = newObject.uniqueId || newObject.name;
-        setSelectedEntity(objectId);
-        setTransformMode('move');
-        
-        setTimeout(() => {
-          const canvas = document.querySelector('canvas');
-          if (canvas) {
-            canvas.focus();
-          }
-        }, 100);
-      }
+      // Use unified creation system for consistent sizes and colors
+      const objectId = await createAndAddObject(type, scene);
+      setSelectedEntity(objectId);
+      setTransformMode('move');
     } catch (error) {
       console.error('Error creating object:', error);
     }
