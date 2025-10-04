@@ -208,7 +208,7 @@ const handleObjectCreate = async (type) => {
     }
 
     // Use unified creation system for consistent sizes and colors
-    await createAndAddObject(type, scene);
+    createAndAddObject(type, scene);
   } catch (error) {
     console.error('Failed to create object:', error);
   }
@@ -227,7 +227,7 @@ const handleLightCreate = async (type) => {
     }
 
     // Use unified creation system for consistent behavior
-    await createAndAddObject(`${type}-light`, scene);
+    createAndAddObject(`${type}-light`, scene);
   } catch (error) {
     console.error('Failed to create light:', error);
   }
@@ -246,7 +246,7 @@ const handleCameraCreate = async () => {
     }
 
     // Use unified creation system for consistent behavior
-    await createAndAddObject('camera', scene);
+    createAndAddObject('camera', scene);
   } catch (error) {
     console.error('Failed to create camera:', error);
   }

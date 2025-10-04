@@ -3,6 +3,16 @@ import { renderStore, renderActions } from '@/render/store';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
+import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
+import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
+import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
+import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
+import { PointLight } from '@babylonjs/core/Lights/pointLight';
+import { SpotLight } from '@babylonjs/core/Lights/spotLight';
+import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 
 /**
  * Helper function to find items in hierarchy
@@ -66,11 +76,13 @@ export const addObjectToHierarchy = (babylonObject, objectName, selectAfterCreat
   
   // Select the object if requested
   if (selectAfterCreation) {
+    // Update both editor store and render store for proper synchronization
     if (typeof editorActions.selectEntity === 'function') {
       editorActions.selectEntity(objectId);
-    } else {
-      renderActions.selectObject(babylonObject);
     }
+    
+    // Also update render store to ensure 3D highlighting and property tabs work
+    renderActions.selectObject(babylonObject);
     
     // Set transform mode for non-scene objects
     if (objectId !== 'scene-root' && typeof editorActions.setTransformMode === 'function') {
@@ -88,17 +100,7 @@ export const addObjectToHierarchy = (babylonObject, objectName, selectAfterCreat
  * @param {Object} scene - Babylon.js scene
  * @returns {Object} The created Babylon.js object
  */
-export const createBabylonObject = async (objectType, scene) => {
-  const { CreateBox } = await import('@babylonjs/core/Meshes/Builders/boxBuilder');
-  const { CreateSphere } = await import('@babylonjs/core/Meshes/Builders/sphereBuilder');
-  const { CreateCylinder } = await import('@babylonjs/core/Meshes/Builders/cylinderBuilder');
-  const { CreateGround } = await import('@babylonjs/core/Meshes/Builders/groundBuilder');
-  const { HemisphericLight } = await import('@babylonjs/core/Lights/hemisphericLight');
-  const { DirectionalLight } = await import('@babylonjs/core/Lights/directionalLight');
-  const { PointLight } = await import('@babylonjs/core/Lights/pointLight');
-  const { SpotLight } = await import('@babylonjs/core/Lights/spotLight');
-  const { UniversalCamera } = await import('@babylonjs/core/Cameras/universalCamera');
-  const { Vector3 } = await import('@babylonjs/core/Maths/math.vector');
+export const createBabylonObject = (objectType, scene) => {
 
   const objectName = (() => {
     switch (objectType) {
@@ -176,8 +178,8 @@ export const createBabylonObject = async (objectType, scene) => {
  * @param {Object} scene - Babylon.js scene
  * @returns {string} The object ID
  */
-export const createAndAddObject = async (objectType, scene) => {
-  const { object: babylonObject, name: objectName } = await createBabylonObject(objectType, scene);
+export const createAndAddObject = (objectType, scene) => {
+  const { object: babylonObject, name: objectName } = createBabylonObject(objectType, scene);
   
   // Position objects appropriately based on type
   if (babylonObject.position) {

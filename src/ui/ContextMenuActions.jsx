@@ -255,7 +255,7 @@ export const createContextMenuActions = (editorActions) => {
       }
       
       // Use unified creation system for consistent sizes and colors
-      const objectId = await createAndAddObject(type, scene);
+      const objectId = createAndAddObject(type, scene);
       setSelectedEntity(objectId);
       setTransformMode('move');
     } catch (error) {

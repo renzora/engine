@@ -184,7 +184,7 @@ function Toolbar() {
 
     try {
       // Use unified creation system for consistent sizes and colors
-      const objectId = await createAndAddObject(type, scene);
+      const objectId = createAndAddObject(type, scene);
       editorActions.addConsoleMessage(`Created ${type}`, 'info');
     } catch (error) {
       console.error('Failed to create primitive:', error);
@@ -201,7 +201,7 @@ function Toolbar() {
 
     try {
       // Use unified creation system for consistent behavior
-      const objectId = await createAndAddObject(`${lightType}-light`, scene);
+      const objectId = createAndAddObject(`${lightType}-light`, scene);
       editorActions.addConsoleMessage(`Created ${lightType} light`, 'info');
     } catch (error) {
       console.error('Failed to create light:', error);
@@ -218,7 +218,7 @@ function Toolbar() {
 
     try {
       // Use unified creation system for consistent behavior
-      const objectId = await createAndAddObject('camera', scene);
+      const objectId = createAndAddObject('camera', scene);
       editorActions.addConsoleMessage('Created camera', 'info');
     } catch (error) {
       console.error('Failed to create camera:', error);
