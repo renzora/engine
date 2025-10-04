@@ -48,16 +48,31 @@ function Scene(props) {
       // Note: This would need additional logic to move the item after folder creation
     };
     
+    const handleContextMenuColorCode = (e) => {
+      const { itemId, color } = e.detail;
+      setItemColors(prev => {
+        const updated = { ...prev };
+        if (color === null) {
+          delete updated[itemId];
+        } else {
+          updated[itemId] = color;
+        }
+        return updated;
+      });
+    };
+    
     window.addEventListener('resize', handleWindowResize);
     document.addEventListener('contextMenuCreateFolder', handleContextMenuCreateFolder);
     document.addEventListener('contextMenuRename', handleContextMenuRename);
     document.addEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
+    document.addEventListener('contextMenuColorCode', handleContextMenuColorCode);
     
     onCleanup(() => {
       window.removeEventListener('resize', handleWindowResize);
       document.removeEventListener('contextMenuCreateFolder', handleContextMenuCreateFolder);
       document.removeEventListener('contextMenuRename', handleContextMenuRename);
       document.removeEventListener('contextMenuAddToNewFolder', handleContextMenuAddToNewFolder);
+      document.removeEventListener('contextMenuColorCode', handleContextMenuColorCode);
     });
     
     // Select scene root by default on load
@@ -71,6 +86,7 @@ function Scene(props) {
   const [renamingItemId, setRenamingItemId] = createSignal(null);
   const [renameValue, setRenameValue] = createSignal('');
   const [folderCounter, setFolderCounter] = createSignal(1);
+  const [itemColors, setItemColors] = createSignal({});
   
   // Global counter for alternating backgrounds
   let globalRowCounter = { value: 0 };
@@ -626,6 +642,14 @@ function Scene(props) {
                 fill: item.type === 'folder' && hasChildren && !isExpanded() ? iconColor : 'none'
               }}
             />
+            
+            <Show when={itemColors()[item.id]}>
+              <div 
+                class="w-3 h-3 rounded-full mr-1 border border-base-300/50 flex-shrink-0" 
+                style={{ 'background-color': itemColors()[item.id] }}
+                title={`Color: ${itemColors()[item.id]}`}
+              />
+            </Show>
           </div>
           
           <button 

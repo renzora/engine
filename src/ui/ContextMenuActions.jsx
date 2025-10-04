@@ -216,6 +216,10 @@ export const createContextMenuActions = (editorActions) => {
 
   const handleColorCode = (itemId, color) => {
     console.log('Color Code', itemId, color);
+    const event = new CustomEvent('contextMenuColorCode', { 
+      detail: { itemId, color } 
+    });
+    document.dispatchEvent(event);
   };
 
   const handleCreateObject = (type) => {
