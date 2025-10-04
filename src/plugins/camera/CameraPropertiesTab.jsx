@@ -157,68 +157,108 @@ export default function CameraPropertiesTab(props) {
         
         {/* Basic Camera Settings */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div 
-            class={`!min-h-0 !py-2 !px-3 flex items-center gap-2 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${
-              sectionsOpen().basic ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'
-            }`} 
-            onClick={() => toggleSection('basic')}
-          >
-            <IconSettings class="w-3 h-3" />
-            Basic Settings
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().basic ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('basic')}>
+              <IconSettings class="w-3 h-3" />
+              Basic Settings
+            </div>
+            <input
+              type="checkbox"
+              checked={sectionsOpen().basic}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleSection('basic');
+              }}
+              onClick={(e) => e.stopPropagation()}
+              class="toggle toggle-primary toggle-xs"
+            />
           </div>
           <Show when={sectionsOpen().basic}>
-            <div class="p-3 space-y-3">
-              <SliderControl 
-                label="Field of View" 
-                getValue={() => settings().fov} 
-                min={30} 
-                max={120} 
-                step={1} 
-                onChange={(v) => setFOV(v)}
-                unit="°"
-              />
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="form-control">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="text-xs font-medium text-base-content">Field of View</label>
+                    <span class="text-xs text-base-content/60">{settings().fov}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={30}
+                    max={120}
+                    step={1}
+                    value={settings().fov}
+                    onInput={(e) => setFOV(parseFloat(e.target.value))}
+                    class="range range-primary range-xs"
+                  />
+                </div>
+              </div>
             </div>
           </Show>
         </div>
         
         {/* Visual Effects */}
         <div class="bg-base-100 border-base-300 border rounded-lg">
-          <div 
-            class={`!min-h-0 !py-2 !px-3 flex items-center gap-2 font-medium text-xs border-b border-base-300/50 cursor-pointer transition-colors ${
-              sectionsOpen().effects ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg'
-            }`} 
-            onClick={() => toggleSection('effects')}
-          >
-            <IconEye class="w-3 h-3" />
-            Visual Effects
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().effects ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('effects')}>
+              <IconEye class="w-3 h-3" />
+              Visual Effects
+            </div>
+            <input
+              type="checkbox"
+              checked={sectionsOpen().effects}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleSection('effects');
+              }}
+              onClick={(e) => e.stopPropagation()}
+              class="toggle toggle-primary toggle-xs"
+            />
           </div>
           <Show when={sectionsOpen().effects}>
-            <div class="p-3 space-y-3">
-              <ToggleControl 
-                label="Vignette" 
-                value={settings().vignette.enabled} 
-                onChange={(v) => setVignetteEnabled(v)}
-              />
-              
-              <Show when={settings().vignette.enabled}>
-                <div class="space-y-3 pl-4 border-l-2 border-base-300">
-                  <SliderControl 
-                    label="Vignette Amount" 
-                    getValue={() => settings().vignette.amount} 
-                    min={0} 
-                    max={1} 
-                    step={0.01} 
-                    onChange={(v) => setVignetteAmount(v)}
-                  />
-                  
-                  <ColorControl 
-                    label="Vignette Color" 
-                    value={settings().vignette.color} 
-                    onChange={(v) => setVignetteColor(v)}
-                  />
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="form-control">
+                  <div class="flex items-center justify-between">
+                    <label class="text-xs font-medium text-base-content">Vignette</label>
+                    <input
+                      type="checkbox"
+                      checked={settings().vignette.enabled}
+                      onChange={(e) => setVignetteEnabled(e.target.checked)}
+                      class="toggle toggle-primary toggle-sm"
+                    />
+                  </div>
                 </div>
-              </Show>
-              
+                
+                <Show when={settings().vignette.enabled}>
+                  <div class="space-y-0.5 pl-4 border-l-2 border-base-300">
+                    <div class="form-control">
+                      <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-medium text-base-content">Vignette Amount</label>
+                        <span class="text-xs text-base-content/60">{settings().vignette.amount.toFixed(2)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={settings().vignette.amount}
+                        onInput={(e) => setVignetteAmount(parseFloat(e.target.value))}
+                        class="range range-primary range-xs"
+                      />
+                    </div>
+                    
+                    <div class="form-control">
+                      <label class="text-xs font-medium text-base-content mb-1">Vignette Color</label>
+                      <input
+                        type="color"
+                        value={rgbToHex(settings().vignette.color)}
+                        onInput={(e) => setVignetteColor(hexToRgb(e.target.value))}
+                        class="w-full h-6 rounded border border-base-300"
+                      />
+                    </div>
+                  </div>
+                </Show>
+              </div>
             </div>
           </Show>
         </div>

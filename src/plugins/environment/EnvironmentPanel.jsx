@@ -1,6 +1,6 @@
-import { createSignal, createEffect } from 'solid-js';
+import { createSignal, createEffect, Show } from 'solid-js';
 import { renderStore } from '@/render/store';
-import { IconSun } from '@tabler/icons-solidjs';
+import { IconSun, IconCloudRain, IconEye } from '@tabler/icons-solidjs';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture';
@@ -18,12 +18,27 @@ function EnvironmentPanel(props) {
   // Environment controls
   const [environmentIntensity, setEnvironmentIntensity] = createSignal(1.0);
   
-  // Fog controls
-  const [fogEnabled, setFogEnabled] = createSignal(false);
-  const [fogColor, setFogColor] = createSignal('#CCCCCC');
-  const [fogDensity, setFogDensity] = createSignal(0.01);
-  const [fogStart, setFogStart] = createSignal(10);
-  const [fogEnd, setFogEnd] = createSignal(100);
+  // Sky enhancement controls
+  const [skyRotation, setSkyRotation] = createSignal(0);
+  const [sunElevation, setSunElevation] = createSignal(45);
+  const [sunAzimuth, setSunAzimuth] = createSignal(180);
+  const [atmosphereIntensity, setAtmosphereIntensity] = createSignal(1.0);
+  const [skyTurbidity, setSkyTurbidity] = createSignal(10);
+
+  // Section collapse state
+  const [sectionsOpen, setSectionsOpen] = createSignal({
+    skybox: true,
+    sun: true,
+    environment: true
+  });
+  
+  const toggleSection = (section) => {
+    setSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
 
   // Get selected object
   const selectedObject = () => props.selectedObject || renderStore.selectedObject;
@@ -199,6 +214,11 @@ function EnvironmentPanel(props) {
     if (obj.metadata?.skyboxSettings) {
       const settings = obj.metadata.skyboxSettings;
       setSkyboxBrightness(settings.brightness || 1.0);
+      setSkyRotation(settings.rotation || 0);
+      setSunElevation(settings.sunElevation || 45);
+      setSunAzimuth(settings.sunAzimuth || 180);
+      setAtmosphereIntensity(settings.atmosphereIntensity || 1.0);
+      setSkyTurbidity(settings.turbidity || 10);
       
       // Load skybox color from stored metadata since we use texture now
       if (settings.color) {
@@ -206,26 +226,6 @@ function EnvironmentPanel(props) {
       }
     }
     
-    // Load fog settings from scene
-    if (scene.fogEnabled !== undefined) {
-      setFogEnabled(scene.fogEnabled);
-    }
-    if (scene.fogColor) {
-      const color = scene.fogColor;
-      const r = Math.round(color.r * 255).toString(16).padStart(2, '0');
-      const g = Math.round(color.g * 255).toString(16).padStart(2, '0');
-      const b = Math.round(color.b * 255).toString(16).padStart(2, '0');
-      setFogColor(`#${r}${g}${b}`);
-    }
-    if (scene.fogDensity !== undefined) {
-      setFogDensity(scene.fogDensity);
-    }
-    if (scene.fogStart !== undefined) {
-      setFogStart(scene.fogStart);
-    }
-    if (scene.fogEnd !== undefined) {
-      setFogEnd(scene.fogEnd);
-    }
   });
 
   // Reactive effect for skybox color changes
@@ -589,280 +589,380 @@ function EnvironmentPanel(props) {
     }
   });
 
-  // Reactive effects for fog controls
+  // Reactive effect for sky rotation
   createEffect(() => {
-    const scene = renderStore.scene;
-    if (!scene) return;
+    const obj = selectedObject();
+    if (!obj || !obj.metadata?.isEnvironmentObject) return;
     
-    scene.fogEnabled = fogEnabled();
-    console.log('🌫️ Fog enabled:', fogEnabled());
+    const rotation = skyRotation();
+    obj.rotation.y = (rotation * Math.PI) / 180; // Convert degrees to radians
+    
+    // Update metadata
+    if (!obj.metadata.skyboxSettings) {
+      obj.metadata.skyboxSettings = {};
+    }
+    obj.metadata.skyboxSettings.rotation = rotation;
+    
+    console.log('🌀 Sky rotation updated:', rotation, 'degrees');
   });
 
+  // Reactive effect for sun elevation
   createEffect(() => {
-    const scene = renderStore.scene;
-    if (!scene) return;
+    const obj = selectedObject();
+    if (!obj || !obj.metadata?.isEnvironmentObject) return;
     
-    const color = fogColor();
-    const r = parseInt(color.slice(1, 3), 16) / 255;
-    const g = parseInt(color.slice(3, 5), 16) / 255;
-    const b = parseInt(color.slice(5, 7), 16) / 255;
+    const elevation = sunElevation();
     
-    scene.fogColor = new Color3(r, g, b);
-    console.log('🌫️ Fog color:', scene.fogColor);
+    // Update metadata
+    if (!obj.metadata.skyboxSettings) {
+      obj.metadata.skyboxSettings = {};
+    }
+    obj.metadata.skyboxSettings.sunElevation = elevation;
+    
+    console.log('☀️ Sun elevation updated:', elevation, 'degrees');
   });
 
+  // Reactive effect for sun azimuth
   createEffect(() => {
-    const scene = renderStore.scene;
-    if (!scene) return;
+    const obj = selectedObject();
+    if (!obj || !obj.metadata?.isEnvironmentObject) return;
     
-    scene.fogDensity = fogDensity();
-    console.log('🌫️ Fog density:', fogDensity());
+    const azimuth = sunAzimuth();
+    
+    // Update metadata
+    if (!obj.metadata.skyboxSettings) {
+      obj.metadata.skyboxSettings = {};
+    }
+    obj.metadata.skyboxSettings.sunAzimuth = azimuth;
+    
+    console.log('🧭 Sun azimuth updated:', azimuth, 'degrees');
   });
 
+  // Reactive effect for atmosphere intensity
   createEffect(() => {
+    const obj = selectedObject();
     const scene = renderStore.scene;
-    if (!scene) return;
+    if (!obj || !obj.metadata?.isEnvironmentObject || !scene) return;
     
-    scene.fogStart = fogStart();
-    scene.fogEnd = fogEnd();
-    console.log('🌫️ Fog range:', fogStart(), 'to', fogEnd());
+    const intensity = atmosphereIntensity();
+    
+    // Apply atmosphere effect by modifying ambient lighting
+    scene.ambientColor = scene.ambientColor || new Color3(0.2, 0.2, 0.2);
+    const baseAmbient = 0.2;
+    const atmosphereFactor = intensity * 0.5;
+    scene.ambientColor.r = Math.min(1.0, baseAmbient + atmosphereFactor);
+    scene.ambientColor.g = Math.min(1.0, baseAmbient + atmosphereFactor * 0.9); // Slightly blue tint
+    scene.ambientColor.b = Math.min(1.0, baseAmbient + atmosphereFactor * 0.8);
+    
+    // Update metadata
+    if (!obj.metadata.skyboxSettings) {
+      obj.metadata.skyboxSettings = {};
+    }
+    obj.metadata.skyboxSettings.atmosphereIntensity = intensity;
+    
+    console.log('🌅 Atmosphere intensity updated:', intensity);
+  });
+
+  // Reactive effect for sky turbidity
+  createEffect(() => {
+    const obj = selectedObject();
+    if (!obj || !obj.metadata?.isEnvironmentObject) return;
+    
+    const turbidity = skyTurbidity();
+    
+    // Update metadata
+    if (!obj.metadata.skyboxSettings) {
+      obj.metadata.skyboxSettings = {};
+    }
+    obj.metadata.skyboxSettings.turbidity = turbidity;
+    
+    console.log('🌪️ Sky turbidity updated:', turbidity);
   });
 
   return (
-    <div class="h-full overflow-y-auto p-4 space-y-4 bg-base-100">
-      {/* Header */}
-      <div class="flex items-center space-x-2 pb-2 border-b border-base-300">
-        <IconSun class="w-4 h-4 text-primary" />
-        <h3 class="text-sm font-medium text-base-content">Environment Settings</h3>
-      </div>
-      
-      {/* Skybox Settings Section */}
-      <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-4">
-          <h4 class="card-title text-sm">Skybox Settings</h4>
-          
-          <div class="space-y-3">
-            <div class="form-control">
-              <div class="flex items-center justify-between">
-                <label class="label-text text-xs">Visible</label>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-primary toggle-sm"
-                  checked={skyboxVisible()}
-                  onChange={(e) => setSkyboxVisible(e.target.checked)}
-                />
-              </div>
+    <div class="h-full flex flex-col">
+      <div class="flex-1 p-2 space-y-2">
+        {/* Skybox Settings Section */}
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().skybox ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('skybox')}>
+              <IconSun class="w-3 h-3" />
+              Skybox Settings
             </div>
-
-            <div class="form-control">
-              <label class="label-text text-xs mb-1">Color</label>
-              <div class="flex items-center space-x-2">
-                <input 
-                  type="color" 
-                  class="w-10 h-8 rounded border border-base-300 cursor-pointer"
-                  value={skyboxColor()}
-                  onInput={(e) => setSkyboxColor(e.target.value)}
-                  disabled={skyboxImage() !== null}
-                />
-                <input 
-                  type="text" 
-                  class="input input-xs input-bordered flex-1 font-mono"
-                  value={skyboxColor()}
-                  onInput={(e) => setSkyboxColor(e.target.value)}
-                  placeholder="#87CEEB"
-                  disabled={skyboxImage() !== null}
-                />
-              </div>
-              {skyboxImage() && (
-                <div class="text-xs text-base-content/50 mt-1">Color disabled when using image</div>
-              )}
-            </div>
-            
-            <div class="form-control">
-              <label class="label-text text-xs mb-1">Skybox Image</label>
-              <div 
-                class={`border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer ${
-                  isDragging() 
-                    ? 'border-primary bg-primary/10' 
-                    : skyboxImage() 
-                      ? 'border-success bg-success/10' 
-                      : 'border-base-300 hover:border-base-400'
-                }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                onClick={() => document.getElementById('skybox-file-input').click()}
-              >
-                {skyboxImage() ? (
-                  <div class="space-y-2">
-                    <div class="text-xs text-success font-medium">Image Loaded ✓</div>
-                    <img 
-                      src={skyboxImage()} 
-                      alt="Skybox preview" 
-                      class="w-16 h-16 object-cover rounded mx-auto"
+            <input
+              type="checkbox"
+              checked={sectionsOpen().skybox}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleSection('skybox');
+              }}
+              onClick={(e) => e.stopPropagation()}
+              class="toggle toggle-primary toggle-xs"
+            />
+          </div>
+          <Show when={sectionsOpen().skybox}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="form-control">
+                  <div class="flex items-center justify-between">
+                    <label class="label-text text-xs">Visible</label>
+                    <input
+                      type="checkbox"
+                      class="toggle toggle-primary toggle-sm"
+                      checked={skyboxVisible()}
+                      onChange={(e) => setSkyboxVisible(e.target.checked)}
                     />
-                    <button 
-                      class="btn btn-xs btn-outline btn-error"
-                      onClick={(e) => { e.stopPropagation(); clearSkyboxImage(); }}
-                    >
-                      Remove
-                    </button>
                   </div>
-                ) : (
-                  <div class="space-y-1">
-                    <div class="text-xs text-base-content/60">
-                      {isDragging() ? 'Drop image here' : 'Drag & drop skybox image'}
-                    </div>
-                    <div class="text-xs text-base-content/40">
-                      or click to browse
-                    </div>
-                    <div class="text-xs text-base-content/30">
-                      JPG, PNG, WebP, HDR, EXR supported
-                    </div>
+                </div>
+
+                <div class="form-control">
+                  <label class="label-text text-xs mb-1">Color</label>
+                  <div class="flex items-center space-x-2">
+                    <input 
+                      type="color" 
+                      class="w-10 h-8 rounded border border-base-300 cursor-pointer"
+                      value={skyboxColor()}
+                      onInput={(e) => setSkyboxColor(e.target.value)}
+                      disabled={skyboxImage() !== null}
+                    />
+                    <input 
+                      type="text" 
+                      class="input input-xs input-bordered flex-1 font-mono"
+                      value={skyboxColor()}
+                      onInput={(e) => setSkyboxColor(e.target.value)}
+                      placeholder="#87CEEB"
+                      disabled={skyboxImage() !== null}
+                    />
                   </div>
-                )}
-              </div>
-              <input
-                id="skybox-file-input"
-                type="file"
-                accept="image/*,.hdr,.exr"
-                class="hidden"
-                onChange={handleFileChange}
-              />
-            </div>
-
-            <div class="form-control">
-              <div class="flex items-center justify-between mb-1">
-                <label class="label-text text-xs">Brightness</label>
-                <span class="text-xs text-base-content/60">{skyboxBrightness().toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="3"
-                step="0.01"
-                value={skyboxBrightness()}
-                onInput={(e) => setSkyboxBrightness(parseFloat(e.target.value))}
-                class="range range-primary range-xs"
-                disabled={skyboxImage() !== null}
-              />
-              {skyboxImage() && (
-                <div class="text-xs text-base-content/50 mt-1">Brightness disabled when using image</div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Environment Lighting Section */}
-      <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-4">
-          <h4 class="card-title text-sm">Environment Lighting</h4>
-          
-          <div class="space-y-3">
-            <div class="form-control">
-              <div class="flex items-center justify-between mb-1">
-                <label class="label-text text-xs">IBL Intensity</label>
-                <span class="text-xs text-base-content/60">{environmentIntensity().toFixed(2)}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="3"
-                step="0.01"
-                value={environmentIntensity()}
-                onInput={(e) => setEnvironmentIntensity(parseFloat(e.target.value))}
-                class="range range-primary range-xs"
-              />
-              <div class="text-xs text-base-content/50 mt-1">Controls PBR reflections and ambient lighting</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Fog Settings Section */}
-      <div class="card bg-base-200 shadow-sm">
-        <div class="card-body p-4">
-          <h4 class="card-title text-sm">Fog Settings</h4>
-          
-          <div class="space-y-3">
-            <div class="form-control">
-              <div class="flex items-center justify-between">
-                <label class="label-text text-xs">Enable Fog</label>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-primary toggle-sm"
-                  checked={fogEnabled()}
-                  onChange={(e) => setFogEnabled(e.target.checked)}
-                />
-              </div>
-            </div>
-
-            <div class="form-control">
-              <label class="label-text text-xs mb-1">Fog Color</label>
-              <div class="flex items-center space-x-2">
-                <input 
-                  type="color" 
-                  class="w-10 h-8 rounded border border-base-300 cursor-pointer"
-                  value={fogColor()}
-                  onInput={(e) => setFogColor(e.target.value)}
-                  disabled={!fogEnabled()}
-                />
-                <input 
-                  type="text" 
-                  class="input input-xs input-bordered flex-1 font-mono"
-                  value={fogColor()}
-                  onInput={(e) => setFogColor(e.target.value)}
-                  placeholder="#CCCCCC"
-                  disabled={!fogEnabled()}
-                />
-              </div>
-            </div>
+                  {skyboxImage() && (
+                    <div class="text-xs text-base-content/50 mt-1">Color disabled when using image</div>
+                  )}
+                </div>
             
-            <div class="form-control">
-              <div class="flex items-center justify-between mb-1">
-                <label class="label-text text-xs">Density</label>
-                <span class="text-xs text-base-content/60">{fogDensity().toFixed(3)}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="0.1"
-                step="0.001"
-                value={fogDensity()}
-                onInput={(e) => setFogDensity(parseFloat(e.target.value))}
-                class="range range-primary range-xs"
-                disabled={!fogEnabled()}
-              />
-            </div>
+                <div class="form-control">
+                  <label class="label-text text-xs mb-1">Skybox Image</label>
+                  <div 
+                    class={`border-2 border-dashed rounded-lg p-4 text-center transition-colors cursor-pointer ${
+                      isDragging() 
+                        ? 'border-primary bg-primary/10' 
+                        : skyboxImage() 
+                          ? 'border-success bg-success/10' 
+                          : 'border-base-300 hover:border-base-400'
+                    }`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => document.getElementById('skybox-file-input').click()}
+                  >
+                    {skyboxImage() ? (
+                      <div class="space-y-2">
+                        <div class="text-xs text-success font-medium">Image Loaded ✓</div>
+                        <img 
+                          src={skyboxImage()} 
+                          alt="Skybox preview" 
+                          class="w-16 h-16 object-cover rounded mx-auto"
+                        />
+                        <button 
+                          class="btn btn-xs btn-outline btn-error"
+                          onClick={(e) => { e.stopPropagation(); clearSkyboxImage(); }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <div class="space-y-1">
+                        <div class="text-xs text-base-content/60">
+                          {isDragging() ? 'Drop image here' : 'Drag & drop skybox image'}
+                        </div>
+                        <div class="text-xs text-base-content/40">
+                          or click to browse
+                        </div>
+                        <div class="text-xs text-base-content/30">
+                          JPG, PNG, WebP, HDR, EXR supported
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <input
+                    id="skybox-file-input"
+                    type="file"
+                    accept="image/*,.hdr,.exr"
+                    class="hidden"
+                    onChange={handleFileChange}
+                  />
+                </div>
 
-            <div class="grid grid-cols-2 gap-2">
-              <div class="form-control">
-                <label class="label-text text-xs mb-1">Start Distance</label>
-                <input
-                  type="number"
-                  class="input input-xs input-bordered"
-                  value={fogStart()}
-                  onInput={(e) => setFogStart(parseFloat(e.target.value))}
-                  min="0"
-                  step="1"
-                  disabled={!fogEnabled()}
-                />
-              </div>
-              <div class="form-control">
-                <label class="label-text text-xs mb-1">End Distance</label>
-                <input
-                  type="number"
-                  class="input input-xs input-bordered"
-                  value={fogEnd()}
-                  onInput={(e) => setFogEnd(parseFloat(e.target.value))}
-                  min="1"
-                  step="1"
-                  disabled={!fogEnabled()}
-                />
+                <div class="form-control">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="label-text text-xs">Brightness</label>
+                    <span class="text-xs text-base-content/60">{skyboxBrightness().toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="3"
+                    step="0.01"
+                    value={skyboxBrightness()}
+                    onInput={(e) => setSkyboxBrightness(parseFloat(e.target.value))}
+                    class="range range-primary range-xs"
+                    disabled={skyboxImage() !== null}
+                  />
+                  {skyboxImage() && (
+                    <div class="text-xs text-base-content/50 mt-1">Brightness disabled when using image</div>
+                  )}
+                </div>
+
+                <div class="form-control">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="label-text text-xs">Sky Rotation</label>
+                    <span class="text-xs text-base-content/60">{skyRotation().toFixed(0)}°</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="360"
+                    step="1"
+                    value={skyRotation()}
+                    onInput={(e) => setSkyRotation(parseFloat(e.target.value))}
+                    class="range range-primary range-xs"
+                  />
+                </div>
               </div>
             </div>
+          </Show>
+        </div>
+
+        {/* Sun & Atmosphere Section */}
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().sun ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('sun')}>
+              <IconCloudRain class="w-3 h-3" />
+              Sun & Atmosphere
+            </div>
+            <input
+              type="checkbox"
+              checked={sectionsOpen().sun}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleSection('sun');
+              }}
+              onClick={(e) => e.stopPropagation()}
+              class="toggle toggle-primary toggle-xs"
+            />
           </div>
+          <Show when={sectionsOpen().sun}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="form-control">
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="label-text text-xs">Sun Elevation</label>
+                      <span class="text-xs text-base-content/60">{sunElevation().toFixed(0)}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="90"
+                      step="1"
+                      value={sunElevation()}
+                      onInput={(e) => setSunElevation(parseFloat(e.target.value))}
+                      class="range range-primary range-xs"
+                    />
+                  </div>
+                  <div class="form-control">
+                    <div class="flex items-center justify-between mb-1">
+                      <label class="label-text text-xs">Sun Azimuth</label>
+                      <span class="text-xs text-base-content/60">{sunAzimuth().toFixed(0)}°</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="360"
+                      step="1"
+                      value={sunAzimuth()}
+                      onInput={(e) => setSunAzimuth(parseFloat(e.target.value))}
+                      class="range range-primary range-xs"
+                    />
+                  </div>
+                </div>
+
+                <div class="form-control">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="label-text text-xs">Atmosphere Intensity</label>
+                    <span class="text-xs text-base-content/60">{atmosphereIntensity().toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.01"
+                    value={atmosphereIntensity()}
+                    onInput={(e) => setAtmosphereIntensity(parseFloat(e.target.value))}
+                    class="range range-primary range-xs"
+                  />
+                </div>
+
+                <div class="form-control">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="label-text text-xs">Sky Turbidity</label>
+                    <span class="text-xs text-base-content/60">{skyTurbidity().toFixed(1)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="1"
+                    max="50"
+                    step="0.1"
+                    value={skyTurbidity()}
+                    onInput={(e) => setSkyTurbidity(parseFloat(e.target.value))}
+                    class="range range-primary range-xs"
+                  />
+                  <div class="text-xs text-base-content/50 mt-1">Controls sky haziness and color saturation</div>
+                </div>
+              </div>
+            </div>
+          </Show>
+        </div>
+
+        {/* Environment Lighting Section */}
+        <div class="bg-base-100 border-base-300 border rounded-lg">
+          <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().environment ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+            <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('environment')}>
+              <IconEye class="w-3 h-3" />
+              Environment Lighting
+            </div>
+            <input
+              type="checkbox"
+              checked={sectionsOpen().environment}
+              onChange={(e) => {
+                e.stopPropagation();
+                toggleSection('environment');
+              }}
+              onClick={(e) => e.stopPropagation()}
+              class="toggle toggle-primary toggle-xs"
+            />
+          </div>
+          <Show when={sectionsOpen().environment}>
+            <div class="!p-2">
+              <div class="space-y-0.5">
+                <div class="form-control">
+                  <div class="flex items-center justify-between mb-1">
+                    <label class="label-text text-xs">IBL Intensity</label>
+                    <span class="text-xs text-base-content/60">{environmentIntensity().toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="3"
+                    step="0.01"
+                    value={environmentIntensity()}
+                    onInput={(e) => setEnvironmentIntensity(parseFloat(e.target.value))}
+                    class="range range-primary range-xs"
+                  />
+                  <div class="text-xs text-base-content/50 mt-1">Controls PBR reflections and ambient lighting</div>
+                </div>
+              </div>
+            </div>
+          </Show>
         </div>
       </div>
     </div>

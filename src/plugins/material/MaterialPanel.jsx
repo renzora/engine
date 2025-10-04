@@ -14,6 +14,20 @@ function MaterialPanel(props) {
     metallic: 0.0
   });
   
+  // Section collapse state
+  const [sectionsOpen, setSectionsOpen] = createSignal({
+    colors: true,
+    surface: true,
+    presets: false
+  });
+  
+  const toggleSection = (section) => {
+    setSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
   const selectedObject = () => props.selectedObject;
   
   // Convert Color3 to hex string
@@ -172,179 +186,230 @@ function MaterialPanel(props) {
   };
   
   return (
-    <div class="h-full overflow-y-auto p-4 space-y-6 bg-base-100">
-      <Show 
-        when={selectedObject()}
-        fallback={
-          <div class="flex flex-col items-center justify-center h-full text-base-content/60 text-center">
-            <IconPalette class="w-8 h-8 mb-2 opacity-40" />
-            <p class="text-sm">Select an object to edit material properties</p>
-          </div>
-        }
-      >
-        {/* Material Info */}
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <h3 class="text-sm font-medium text-base-content">Material</h3>
-            <Show 
-              when={selectedObject()?.material}
-              fallback={
-                <button 
-                  class="btn btn-primary btn-xs"
-                  onClick={createNewMaterial}
-                >
-                  Create Material
-                </button>
-              }
-            >
-              <span class="text-xs text-base-content/60">
-                {selectedObject()?.material?.name || 'Unnamed Material'}
-              </span>
-            </Show>
-          </div>
-        </div>
-        
-        <Show when={selectedObject()?.material || true}>
-          {/* Diffuse Color */}
-          <div class="space-y-4">
-            <div class="flex items-center space-x-2 pb-2 border-b border-base-300">
-              <IconPalette class="w-4 h-4 text-primary" />
-              <h3 class="text-sm font-medium text-base-content">Color Properties</h3>
+    <div class="h-full flex flex-col">
+      <div class="flex-1 p-2 space-y-2">
+        <Show 
+          when={selectedObject()}
+          fallback={
+            <div class="flex flex-col items-center justify-center h-full text-base-content/60 text-center">
+              <IconPalette class="w-8 h-8 mb-2 opacity-40" />
+              <p class="text-sm">Select an object to edit material properties</p>
             </div>
-            
-            {/* Main Color (Diffuse) */}
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content">Main Color</label>
-              <div class="flex items-center space-x-3">
-                <input 
-                  type="color" 
-                  class="w-12 h-8 rounded border border-base-300 cursor-pointer"
-                  value={materialSettings().diffuseColor}
-                  onChange={(e) => handleDiffuseColorChange(e.target.value)}
-                />
-                <input 
-                  type="text" 
-                  class="input input-sm input-bordered flex-1 font-mono text-xs"
-                  value={materialSettings().diffuseColor}
-                  onChange={(e) => handleDiffuseColorChange(e.target.value)}
-                  placeholder="#ffffff"
-                />
-              </div>
-            </div>
-            
-            {/* Emissive Color */}
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content flex items-center space-x-1">
-                <IconSun class="w-3 h-3" />
-                <span>Emissive Color</span>
-              </label>
-              <div class="flex items-center space-x-3">
-                <input 
-                  type="color" 
-                  class="w-12 h-8 rounded border border-base-300 cursor-pointer"
-                  value={materialSettings().emissiveColor}
-                  onChange={(e) => handleEmissiveColorChange(e.target.value)}
-                />
-                <input 
-                  type="text" 
-                  class="input input-sm input-bordered flex-1 font-mono text-xs"
-                  value={materialSettings().emissiveColor}
-                  onChange={(e) => handleEmissiveColorChange(e.target.value)}
-                  placeholder="#000000"
-                />
-              </div>
-              <p class="text-xs text-base-content/60">Glow effect - intensity automatically reduced to preserve shape definition</p>
-            </div>
-            
-            {/* Specular Color */}
-            <div class="space-y-2">
-              <label class="text-xs font-medium text-base-content flex items-center space-x-1">
-                <IconDroplet class="w-3 h-3" />
-                <span>Specular Color</span>
-              </label>
-              <div class="flex items-center space-x-3">
-                <input 
-                  type="color" 
-                  class="w-12 h-8 rounded border border-base-300 cursor-pointer"
-                  value={materialSettings().specularColor}
-                  onChange={(e) => handleSpecularColorChange(e.target.value)}
-                />
-                <input 
-                  type="text" 
-                  class="input input-sm input-bordered flex-1 font-mono text-xs"
-                  value={materialSettings().specularColor}
-                  onChange={(e) => handleSpecularColorChange(e.target.value)}
-                  placeholder="#ffffff"
-                />
-              </div>
-              <p class="text-xs text-base-content/60">Color of highlights and reflections</p>
+          }
+        >
+          {/* Material Info */}
+          <div class="bg-base-100 border-base-300 border rounded-lg p-3">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-medium text-base-content">Material</h3>
+              <Show 
+                when={selectedObject()?.material}
+                fallback={
+                  <button 
+                    class="btn btn-primary btn-xs"
+                    onClick={createNewMaterial}
+                  >
+                    Create Material
+                  </button>
+                }
+              >
+                <span class="text-xs text-base-content/60">
+                  {selectedObject()?.material?.name || 'Unnamed Material'}
+                </span>
+              </Show>
             </div>
           </div>
           
-          {/* Material Properties */}
-          <div class="space-y-4">
-            <div class="flex items-center space-x-2 pb-2 border-b border-base-300">
-              <IconEye class="w-4 h-4 text-primary" />
-              <h3 class="text-sm font-medium text-base-content">Surface Properties</h3>
-            </div>
-            
-            {/* Alpha/Transparency */}
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-medium text-base-content">Opacity</label>
-                <span class="text-xs text-base-content/60">{Math.round(materialSettings().alpha * 100)}%</span>
-              </div>
-              <input 
-                type="range" 
-                class="range range-primary range-sm"
-                min="0" 
-                max="1" 
-                step="0.01"
-                value={materialSettings().alpha}
-                onChange={(e) => handleAlphaChange(parseFloat(e.target.value))}
-              />
-            </div>
-            
-            {/* Roughness */}
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <label class="text-xs font-medium text-base-content">Roughness</label>
-                <span class="text-xs text-base-content/60">{Math.round(materialSettings().roughness * 100)}%</span>
-              </div>
-              <input 
-                type="range" 
-                class="range range-primary range-sm"
-                min="0" 
-                max="1" 
-                step="0.01"
-                value={materialSettings().roughness}
-                onChange={(e) => handleRoughnessChange(parseFloat(e.target.value))}
-              />
-              <p class="text-xs text-base-content/60">Controls surface smoothness and reflections</p>
-            </div>
-          </div>
-          
-          {/* Quick Color Presets */}
-          <div class="space-y-4">
-            <div class="flex items-center space-x-2 pb-2 border-b border-base-300">
-              <IconPalette class="w-4 h-4 text-primary" />
-              <h3 class="text-sm font-medium text-base-content">Quick Colors</h3>
-            </div>
-            
-            <div class="grid grid-cols-6 gap-2">
-              {['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', 
-                '#ffffff', '#808080', '#000000', '#ffa500', '#800080', '#008000'].map(color => (
-                <button
-                  class="w-8 h-8 rounded border-2 border-base-300 hover:border-primary transition-colors cursor-pointer"
-                  style={{ 'background-color': color }}
-                  onClick={() => handleDiffuseColorChange(color)}
-                  title={color}
+          <Show when={selectedObject()?.material || true}>
+            {/* Color Properties */}
+            <div class="bg-base-100 border-base-300 border rounded-lg">
+              <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().colors ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+                <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('colors')}>
+                  <IconPalette class="w-3 h-3" />
+                  Color Properties
+                </div>
+                <input
+                  type="checkbox"
+                  checked={sectionsOpen().colors}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleSection('colors');
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  class="toggle toggle-primary toggle-xs"
                 />
-              ))}
+              </div>
+              <Show when={sectionsOpen().colors}>
+                <div class="!p-2">
+                  <div class="space-y-0.5">
+                    {/* Main Color (Diffuse) */}
+                    <div class="form-control">
+                      <label class="text-xs font-medium text-base-content mb-1">Main Color</label>
+                      <div class="flex items-center space-x-2">
+                        <input 
+                          type="color" 
+                          class="w-10 h-8 rounded border border-base-300 cursor-pointer"
+                          value={materialSettings().diffuseColor}
+                          onChange={(e) => handleDiffuseColorChange(e.target.value)}
+                        />
+                        <input 
+                          type="text" 
+                          class="input input-xs input-bordered flex-1 font-mono"
+                          value={materialSettings().diffuseColor}
+                          onChange={(e) => handleDiffuseColorChange(e.target.value)}
+                          placeholder="#ffffff"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Emissive Color */}
+                    <div class="form-control">
+                      <label class="text-xs font-medium text-base-content mb-1 flex items-center space-x-1">
+                        <IconSun class="w-3 h-3" />
+                        <span>Emissive Color</span>
+                      </label>
+                      <div class="flex items-center space-x-2">
+                        <input 
+                          type="color" 
+                          class="w-10 h-8 rounded border border-base-300 cursor-pointer"
+                          value={materialSettings().emissiveColor}
+                          onChange={(e) => handleEmissiveColorChange(e.target.value)}
+                        />
+                        <input 
+                          type="text" 
+                          class="input input-xs input-bordered flex-1 font-mono"
+                          value={materialSettings().emissiveColor}
+                          onChange={(e) => handleEmissiveColorChange(e.target.value)}
+                          placeholder="#000000"
+                        />
+                      </div>
+                      <p class="text-xs text-base-content/50 mt-1">Glow effect - intensity automatically reduced</p>
+                    </div>
+                    
+                    {/* Specular Color */}
+                    <div class="form-control">
+                      <label class="text-xs font-medium text-base-content mb-1 flex items-center space-x-1">
+                        <IconDroplet class="w-3 h-3" />
+                        <span>Specular Color</span>
+                      </label>
+                      <div class="flex items-center space-x-2">
+                        <input 
+                          type="color" 
+                          class="w-10 h-8 rounded border border-base-300 cursor-pointer"
+                          value={materialSettings().specularColor}
+                          onChange={(e) => handleSpecularColorChange(e.target.value)}
+                        />
+                        <input 
+                          type="text" 
+                          class="input input-xs input-bordered flex-1 font-mono"
+                          value={materialSettings().specularColor}
+                          onChange={(e) => handleSpecularColorChange(e.target.value)}
+                          placeholder="#ffffff"
+                        />
+                      </div>
+                      <p class="text-xs text-base-content/50 mt-1">Color of highlights and reflections</p>
+                    </div>
+                  </div>
+                </div>
+              </Show>
             </div>
-          </div>
+            
+            {/* Surface Properties */}
+            <div class="bg-base-100 border-base-300 border rounded-lg">
+              <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().surface ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+                <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('surface')}>
+                  <IconEye class="w-3 h-3" />
+                  Surface Properties
+                </div>
+                <input
+                  type="checkbox"
+                  checked={sectionsOpen().surface}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleSection('surface');
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  class="toggle toggle-primary toggle-xs"
+                />
+              </div>
+              <Show when={sectionsOpen().surface}>
+                <div class="!p-2">
+                  <div class="space-y-0.5">
+                    {/* Alpha/Transparency */}
+                    <div class="form-control">
+                      <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-medium text-base-content">Opacity</label>
+                        <span class="text-xs text-base-content/60">{Math.round(materialSettings().alpha * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        class="range range-primary range-xs"
+                        min="0" 
+                        max="1" 
+                        step="0.01"
+                        value={materialSettings().alpha}
+                        onChange={(e) => handleAlphaChange(parseFloat(e.target.value))}
+                      />
+                    </div>
+                    
+                    {/* Roughness */}
+                    <div class="form-control">
+                      <div class="flex items-center justify-between mb-1">
+                        <label class="text-xs font-medium text-base-content">Roughness</label>
+                        <span class="text-xs text-base-content/60">{Math.round(materialSettings().roughness * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        class="range range-primary range-xs"
+                        min="0" 
+                        max="1" 
+                        step="0.01"
+                        value={materialSettings().roughness}
+                        onChange={(e) => handleRoughnessChange(parseFloat(e.target.value))}
+                      />
+                      <p class="text-xs text-base-content/50 mt-1">Controls surface smoothness and reflections</p>
+                    </div>
+                  </div>
+                </div>
+              </Show>
+            </div>
+            
+            {/* Quick Color Presets */}
+            <div class="bg-base-100 border-base-300 border rounded-lg">
+              <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().presets ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+                <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('presets')}>
+                  <IconPalette class="w-3 h-3" />
+                  Quick Colors
+                </div>
+                <input
+                  type="checkbox"
+                  checked={sectionsOpen().presets}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    toggleSection('presets');
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                  class="toggle toggle-primary toggle-xs"
+                />
+              </div>
+              <Show when={sectionsOpen().presets}>
+                <div class="!p-2">
+                  <div class="grid grid-cols-6 gap-2">
+                    {['#ff0000', '#00ff00', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', 
+                      '#ffffff', '#808080', '#000000', '#ffa500', '#800080', '#008000'].map(color => (
+                      <button
+                        class="w-8 h-8 rounded border-2 border-base-300 hover:border-primary transition-colors cursor-pointer"
+                        style={{ 'background-color': color }}
+                        onClick={() => handleDiffuseColorChange(color)}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </Show>
+            </div>
+          </Show>
         </Show>
-      </Show>
+      </div>
     </div>
   );
 }

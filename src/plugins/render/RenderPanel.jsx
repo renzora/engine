@@ -9,6 +9,19 @@ function RenderPanel(props) {
   });
   const [collisionEnabled, setCollisionEnabled] = createSignal(false);
   
+  // Section collapse state
+  const [sectionsOpen, setSectionsOpen] = createSignal({
+    shadows: true,
+    collision: true
+  });
+  
+  const toggleSection = (section) => {
+    setSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+  
   const selectedObject = () => props.selectedObject;
   
   // Update settings when selected object changes
@@ -133,86 +146,116 @@ function RenderPanel(props) {
   };
   
   return (
-    <div class="h-full overflow-y-auto p-4 space-y-6 bg-base-100">
-      <Show 
-        when={selectedObject()}
-        fallback={
-          <div class="flex flex-col items-center justify-center h-full text-base-content/60 text-center">
-            <IconEye class="w-8 h-8 mb-2 opacity-40" />
-            <p class="text-sm">Select an object to configure render settings</p>
-          </div>
-        }
-      >
-        {/* Shadow Settings Section */}
-        <div class="space-y-4">
-          <div class="flex items-center space-x-2 pb-2 border-b border-base-300">
-            <IconShadow class="w-4 h-4 text-primary" />
-            <h3 class="text-sm font-medium text-base-content">Shadow Settings</h3>
+    <div class="h-full flex flex-col">
+      <div class="flex-1 p-2 space-y-2">
+        <Show 
+          when={selectedObject()}
+          fallback={
+            <div class="flex flex-col items-center justify-center h-full text-base-content/60 text-center">
+              <IconEye class="w-8 h-8 mb-2 opacity-40" />
+              <p class="text-sm">Select an object to configure render settings</p>
+            </div>
+          }
+        >
+          {/* Shadow Settings Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().shadows ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('shadows')}>
+                <IconShadow class="w-3 h-3" />
+                Shadow Settings
+              </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().shadows}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('shadows');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="toggle toggle-primary toggle-xs"
+              />
+            </div>
+            <Show when={sectionsOpen().shadows}>
+              <div class="!p-2">
+                <div class="space-y-0.5">
+                  {/* Cast Shadows */}
+                  <div class="form-control">
+                    <div class="flex items-center justify-between">
+                      <div class="flex flex-col">
+                        <label class="text-xs font-medium text-base-content">Cast Shadows</label>
+                        <span class="text-xs text-base-content/60">Object will cast shadows onto other surfaces</span>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        class="toggle toggle-primary toggle-sm" 
+                        checked={shadowSettings().castShadows}
+                        onChange={(e) => handleCastShadowsChange(e.target.checked)}
+                      />
+                    </div>
+                  </div>
+                  
+                  {/* Receive Shadows */}
+                  <div class="form-control">
+                    <div class="flex items-center justify-between">
+                      <div class="flex flex-col">
+                        <label class="text-xs font-medium text-base-content">Receive Shadows</label>
+                        <span class="text-xs text-base-content/60">Object will receive shadows from other objects</span>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        class="toggle toggle-primary toggle-sm" 
+                        checked={shadowSettings().receiveShadows}
+                        onChange={(e) => handleReceiveShadowsChange(e.target.checked)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Show>
           </div>
           
-          {/* Cast Shadows */}
-          <div class="flex items-center justify-between">
-            <div class="flex flex-col">
-              <label class="text-xs font-medium text-base-content">Cast Shadows</label>
-              <span class="text-xs text-base-content/60">Object will cast shadows onto other surfaces</span>
+          {/* Collision Settings Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().collision ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('collision')}>
+                <IconShield class="w-3 h-3" />
+                Collision Settings
+              </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().collision}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('collision');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="toggle toggle-primary toggle-xs"
+              />
             </div>
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <input 
-                  type="checkbox" 
-                  class="toggle toggle-primary toggle-sm" 
-                  checked={shadowSettings().castShadows}
-                  onChange={(e) => handleCastShadowsChange(e.target.checked)}
-                />
-              </label>
-            </div>
+            <Show when={sectionsOpen().collision}>
+              <div class="!p-2">
+                <div class="space-y-0.5">
+                  {/* Object Collision */}
+                  <div class="form-control">
+                    <div class="flex items-center justify-between">
+                      <div class="flex flex-col">
+                        <label class="text-xs font-medium text-base-content">Object Collision</label>
+                        <span class="text-xs text-base-content/60">Enable collision detection for this object</span>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        class="toggle toggle-primary toggle-sm" 
+                        checked={collisionEnabled()}
+                        onChange={(e) => handleCollisionChange(e.target.checked)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </Show>
           </div>
-          
-          {/* Receive Shadows */}
-          <div class="flex items-center justify-between">
-            <div class="flex flex-col">
-              <label class="text-xs font-medium text-base-content">Receive Shadows</label>
-              <span class="text-xs text-base-content/60">Object will receive shadows from other objects</span>
-            </div>
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <input 
-                  type="checkbox" 
-                  class="toggle toggle-primary toggle-sm" 
-                  checked={shadowSettings().receiveShadows}
-                  onChange={(e) => handleReceiveShadowsChange(e.target.checked)}
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-        
-        {/* Collision Settings Section */}
-        <div class="space-y-4">
-          <div class="flex items-center space-x-2 pb-2 border-b border-base-300">
-            <IconShield class="w-4 h-4 text-primary" />
-            <h3 class="text-sm font-medium text-base-content">Collision Settings</h3>
-          </div>
-          
-          {/* Object Collision */}
-          <div class="flex items-center justify-between">
-            <div class="flex flex-col">
-              <label class="text-xs font-medium text-base-content">Object Collision</label>
-              <span class="text-xs text-base-content/60">Enable collision detection for this object</span>
-            </div>
-            <div class="form-control">
-              <label class="cursor-pointer label">
-                <input 
-                  type="checkbox" 
-                  class="toggle toggle-primary toggle-sm" 
-                  checked={collisionEnabled()}
-                  onChange={(e) => handleCollisionChange(e.target.checked)}
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-      </Show>
+        </Show>
+      </div>
     </div>
   );
 }

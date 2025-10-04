@@ -132,22 +132,22 @@ const handleCreateSkybox = async () => {
 };
 
 export default createPlugin({
-  id: 'environment',
-  name: 'Environment Plugin',
+  id: 'sky',
+  name: 'Sky Plugin',
   version: '1.0.0',
-  description: 'Environment controls for skybox, fog, and scene atmosphere',
+  description: 'Sky controls for skybox, sun position, atmosphere, and environment lighting',
   author: 'Renzora Engine Team',
 
   async onInit() {
-    console.log('🌍 Environment plugin initializing...');
+    console.log('☀️ Sky plugin initializing...');
   },
 
   async onStart(api) {
-    console.log('🌍 Environment plugin starting...');
+    console.log('☀️ Sky plugin starting...');
     
-    // Register the environment panel as a tab
-    api.tab('environment', {
-      title: 'Environment',
+    // Register the sky panel as a tab
+    api.tab('sky', {
+      title: 'Sky',
       component: EnvironmentPanel,
       icon: IconSun,
       order: 5,
@@ -159,7 +159,7 @@ export default createPlugin({
     // Listen for skybox creation events from the menu
     document.addEventListener('engine:create-skybox', handleCreateSkybox);
 
-    console.log('🌍 Environment plugin started successfully');
+    console.log('☀️ Sky plugin started successfully');
   },
 
   onUpdate() {
@@ -169,10 +169,10 @@ export default createPlugin({
   async onStop() {
     // Remove event listeners
     document.removeEventListener('engine:create-skybox', handleCreateSkybox);
-    console.log('🗑️ Environment plugin stopped');
+    console.log('🗑️ Sky plugin stopped');
   },
 
   async onDispose() {
-    console.log('🗑️ Environment plugin disposed');
+    console.log('🗑️ Sky plugin disposed');
   }
 });
