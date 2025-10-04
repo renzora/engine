@@ -1206,30 +1206,32 @@ function Scene(props) {
             </Show>
           </div>
           
-          <button 
-            className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50 cursor-pointer"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isSceneRoot) {
-                // Scene root visibility toggle - could control overall scene visibility
-                const newVisibility = !itemVisible;
-                renderActions.updateObjectVisibility(item.id, newVisibility);
-              } else if (item.babylonObject) {
-                const newVisibility = !item.babylonObject.isVisible;
-                item.babylonObject.isVisible = newVisibility;
-                
-                // Update the hierarchy item's visibility directly to trigger reactive update
-                renderActions.updateObjectVisibility(item.id, newVisibility);
-              }
-            }}
-          >
-            <Show 
-              when={itemVisible}
-              fallback={<IconEyeOff class="w-4 h-4 cursor-pointer" style={{ color: '#ef4444' }} />}
+          <Show when={item.type !== 'scene'}>
+            <button 
+              className="mr-1 p-0.5 rounded transition-all duration-200 hover:bg-base-200/50 cursor-pointer"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isSceneRoot) {
+                  // Scene root visibility toggle - could control overall scene visibility
+                  const newVisibility = !itemVisible;
+                  renderActions.updateObjectVisibility(item.id, newVisibility);
+                } else if (item.babylonObject) {
+                  const newVisibility = !item.babylonObject.isVisible;
+                  item.babylonObject.isVisible = newVisibility;
+                  
+                  // Update the hierarchy item's visibility directly to trigger reactive update
+                  renderActions.updateObjectVisibility(item.id, newVisibility);
+                }
+              }}
             >
-              <IconEye class="w-4 h-4 cursor-pointer" style={{ color: '#9ca3af' }} />
-            </Show>
-          </button>
+              <Show 
+                when={itemVisible}
+                fallback={<IconEyeOff class="w-4 h-4 cursor-pointer" style={{ color: '#ef4444' }} />}
+              >
+                <IconEye class="w-4 h-4 cursor-pointer" style={{ color: '#9ca3af' }} />
+              </Show>
+            </button>
+          </Show>
           
           <Show 
             when={renamingItemId() === item.id}
