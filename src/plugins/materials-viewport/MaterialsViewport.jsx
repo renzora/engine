@@ -109,9 +109,11 @@ function ConnectionLine(props) {
         stroke-width="12"
         fill="none"
         class="cursor-pointer"
+        style={{'pointer-events': 'all'}}
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
+          console.log('Connection clicked, removing:', props.connection.id);
           props.onRemove?.(props.connection.id);
         }}
       />
@@ -723,7 +725,12 @@ export default function MaterialsViewport() {
   };
 
   const removeConnection = (connectionId) => {
-    setConnections(prev => prev.filter(conn => conn.id !== connectionId));
+    console.log('removeConnection called with id:', connectionId);
+    setConnections(prev => {
+      const newConnections = prev.filter(conn => conn.id !== connectionId);
+      console.log('Connections before removal:', prev.length, 'after:', newConnections.length);
+      return newConnections;
+    });
     createMaterialFromNodes();
   };
 
@@ -1571,9 +1578,10 @@ export default function MaterialsViewport() {
 
           {/* Connection Lines SVG */}
           <svg 
-            class="absolute inset-0 pointer-events-none w-full h-full"
+            class="absolute inset-0 w-full h-full"
             style={{
-              overflow: 'visible'
+              overflow: 'visible',
+              'pointer-events': 'none'
             }}
           >
             {/* Existing Connections */}
