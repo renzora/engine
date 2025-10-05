@@ -1,5 +1,6 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For, createMemo } from 'solid-js';
 import { renderStore } from '@/render/store';
+import ContextMenu from '@/ui/ContextMenu.jsx';
 import { 
   IconPalette, 
   IconSphere,
@@ -10,7 +11,17 @@ import {
   IconCircleDot,
   IconMinus,
   IconPlus,
-  IconX
+  IconX,
+  IconClock,
+  IconHash,
+  IconWave,
+  IconMath,
+  IconMathFunction,
+  IconVector,
+  IconColorFilter,
+  IconAdjustments,
+  IconGradient,
+  IconTexture
 } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
@@ -145,9 +156,10 @@ export default function MaterialsViewport() {
   const [draggingConnection, setDraggingConnection] = createSignal(null);
   const [dragConnectionEnd, setDragConnectionEnd] = createSignal({ x: 0, y: 0 });
   const [hoveredSocket, setHoveredSocket] = createSignal(null);
-  const [showAddNodeMenu, setShowAddNodeMenu] = createSignal(false);
   const [isDraggingAllNodes, setIsDraggingAllNodes] = createSignal(false);
   const [allNodesDragStart, setAllNodesDragStart] = createSignal({ x: 0, y: 0 });
+  const [contextMenu, setContextMenu] = createSignal(null);
+  const [contextMenuPosition, setContextMenuPosition] = createSignal(null);
   
   // Throttle mouse move updates for better performance
   let lastMoveTime = 0;
@@ -170,11 +182,29 @@ export default function MaterialsViewport() {
     CONSTANT: 'Constant',
     MULTIPLY: 'Multiply',
     ADD: 'Add',
+    SUBTRACT: 'Subtract',
+    DIVIDE: 'Divide',
     LERP: 'Lerp',
     FRESNEL: 'Fresnel',
     CLAMP: 'Clamp',
     POWER: 'Power',
-    COLOR: 'Color'
+    COLOR: 'Color',
+    TIME: 'Time',
+    UV_COORDINATES: 'UVCoordinates',
+    NORMAL_MAP: 'NormalMap',
+    DOT_PRODUCT: 'DotProduct',
+    CROSS_PRODUCT: 'CrossProduct',
+    NOISE: 'Noise',
+    GRADIENT: 'Gradient',
+    MASK: 'Mask',
+    MIX: 'Mix',
+    SATURATE: 'Saturate',
+    ABS: 'Abs',
+    FLOOR: 'Floor',
+    CEIL: 'Ceil',
+    FRACT: 'Fract',
+    SIN: 'Sin',
+    COS: 'Cos'
   };
 
   // Initialize preview scene
@@ -612,6 +642,167 @@ export default function MaterialsViewport() {
           inputs: [
             { id: 'value', name: 'Value', type: 'float', value: 0.5 },
             { id: 'power', name: 'Power', type: 'float', value: 2.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.SUBTRACT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Subtract',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.DIVIDE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Divide',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.TIME:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Time',
+          inputs: [],
+          outputs: [
+            { id: 'time', name: 'Time', type: 'float' },
+            { id: 'sine', name: 'Sine Time', type: 'float' },
+            { id: 'cosine', name: 'Cosine Time', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.UV_COORDINATES:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'UV Coordinates',
+          inputs: [],
+          outputs: [
+            { id: 'uv', name: 'UV', type: 'vector2' },
+            { id: 'u', name: 'U', type: 'float' },
+            { id: 'v', name: 'V', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.NORMAL_MAP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Normal Map',
+          inputs: [
+            { id: 'normalTexture', name: 'Normal Texture', type: 'texture', value: null },
+            { id: 'strength', name: 'Strength', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'normal', name: 'Normal', type: 'vector' }
+          ]
+        };
+        break;
+      case NODE_TYPES.DOT_PRODUCT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Dot Product',
+          inputs: [
+            { id: 'vectorA', name: 'Vector A', type: 'vector', value: null },
+            { id: 'vectorB', name: 'Vector B', type: 'vector', value: null }
+          ],
+          outputs: [
+            { id: 'result', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.NOISE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Noise',
+          inputs: [
+            { id: 'coordinates', name: 'Coordinates', type: 'vector2', value: null },
+            { id: 'scale', name: 'Scale', type: 'float', value: 1.0 },
+            { id: 'detail', name: 'Detail', type: 'float', value: 2.0 }
+          ],
+          outputs: [
+            { id: 'noise', name: 'Noise', type: 'float' },
+            { id: 'color', name: 'Color', type: 'color' }
+          ]
+        };
+        break;
+      case NODE_TYPES.SATURATE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Saturate',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.5 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.ABS:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Absolute',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.SIN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Sine',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.COS:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Cosine',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.0 }
           ],
           outputs: [
             { id: 'output', name: 'Result', type: 'float' }
@@ -1124,6 +1315,157 @@ export default function MaterialsViewport() {
     e.dataTransfer.dropEffect = 'copy';
   };
 
+  // Handle context menu
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // First close any existing context menu
+    setContextMenu(null);
+    
+    // Set position immediately
+    const position = { x: e.clientX, y: e.clientY };
+    console.log('Context menu position:', position);
+    setContextMenuPosition(position);
+    
+    const contextMenuItems = [
+      {
+        label: 'Inputs',
+        submenu: [
+          {
+            label: 'Texture Sample',
+            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+          },
+          {
+            label: 'Constant',
+            action: () => addNode(NODE_TYPES.CONSTANT, getCenterPosition())
+          },
+          {
+            label: 'Color',
+            action: () => addNode(NODE_TYPES.COLOR, getCenterPosition())
+          },
+          {
+            label: 'Time',
+            action: () => addNode(NODE_TYPES.TIME, getCenterPosition())
+          },
+          {
+            label: 'UV Coordinates',
+            action: () => addNode(NODE_TYPES.UV_COORDINATES, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Math',
+        submenu: [
+          {
+            label: 'Basic',
+            submenu: [
+              {
+                label: 'Add',
+                action: () => addNode(NODE_TYPES.ADD, getCenterPosition())
+              },
+              {
+                label: 'Subtract',
+                action: () => addNode(NODE_TYPES.SUBTRACT, getCenterPosition())
+              },
+              {
+                label: 'Multiply',
+                action: () => addNode(NODE_TYPES.MULTIPLY, getCenterPosition())
+              },
+              {
+                label: 'Divide',
+                action: () => addNode(NODE_TYPES.DIVIDE, getCenterPosition())
+              }
+            ]
+          },
+          {
+            label: 'Functions',
+            submenu: [
+              {
+                label: 'Power',
+                action: () => addNode(NODE_TYPES.POWER, getCenterPosition())
+              },
+              {
+                label: 'Absolute',
+                action: () => addNode(NODE_TYPES.ABS, getCenterPosition())
+              },
+              {
+                label: 'Sine',
+                action: () => addNode(NODE_TYPES.SIN, getCenterPosition())
+              },
+              {
+                label: 'Cosine',
+                action: () => addNode(NODE_TYPES.COS, getCenterPosition())
+              }
+            ]
+          },
+          {
+            label: 'Utility',
+            submenu: [
+              {
+                label: 'Clamp',
+                action: () => addNode(NODE_TYPES.CLAMP, getCenterPosition())
+              },
+              {
+                label: 'Saturate',
+                action: () => addNode(NODE_TYPES.SATURATE, getCenterPosition())
+              },
+              {
+                label: 'Lerp',
+                action: () => addNode(NODE_TYPES.LERP, getCenterPosition())
+              }
+            ]
+          }
+        ]
+      },
+      {
+        label: 'Vector',
+        submenu: [
+          {
+            label: 'Dot Product',
+            action: () => addNode(NODE_TYPES.DOT_PRODUCT, getCenterPosition())
+          },
+          {
+            label: 'Normal Map',
+            action: () => addNode(NODE_TYPES.NORMAL_MAP, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Procedural',
+        submenu: [
+          {
+            label: 'Noise',
+            action: () => addNode(NODE_TYPES.NOISE, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Advanced',
+        submenu: [
+          {
+            label: 'Fresnel',
+            action: () => addNode(NODE_TYPES.FRESNEL, getCenterPosition())
+          }
+        ]
+      },
+      { separator: true },
+      {
+        label: 'Reset View',
+        action: resetView
+      },
+      {
+        label: 'Zoom to Fit',
+        action: zoomToFit
+      }
+    ];
+
+    // Use setTimeout to ensure position is set before showing menu
+    setTimeout(() => {
+      setContextMenu(contextMenuItems);
+    }, 0);
+  };
+
   // Effects
   createEffect(() => {
     updatePreviewMesh();
@@ -1289,107 +1631,6 @@ export default function MaterialsViewport() {
                 </button>
               </div>
               
-              <div class="relative">
-                <button 
-                  class="btn btn-sm btn-primary"
-                  onClick={() => setShowAddNodeMenu(!showAddNodeMenu())}
-                >
-                  <IconPlus class="w-4 h-4" />
-                  Add Node
-                </button>
-                
-                <Show when={showAddNodeMenu()}>
-                  <div class="absolute top-full right-0 mt-1 w-52 bg-base-100 border border-base-300 rounded-lg shadow-lg z-50">
-                    <div class="p-2">
-                      <div class="text-xs font-semibold text-base-content/60 mb-2">Inputs</div>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconPhoto class="w-4 h-4" />
-                        Texture Sample
-                      </button>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.CONSTANT, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconCircleDot class="w-4 h-4" />
-                        Constant
-                      </button>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.COLOR, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconPalette class="w-4 h-4" />
-                        Color
-                      </button>
-                      
-                      <div class="text-xs font-semibold text-base-content/60 mb-2 mt-3">Math</div>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.MULTIPLY, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconSettings class="w-4 h-4" />
-                        Multiply
-                      </button>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.ADD, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconPlus class="w-4 h-4" />
-                        Add
-                      </button>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.LERP, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconSettings class="w-4 h-4" />
-                        Lerp
-                      </button>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.CLAMP, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconSettings class="w-4 h-4" />
-                        Clamp
-                      </button>
-                      
-                      <div class="text-xs font-semibold text-base-content/60 mb-2 mt-3">Advanced</div>
-                      <button 
-                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
-                        onClick={() => {
-                          addNode(NODE_TYPES.FRESNEL, getCenterPosition());
-                          setShowAddNodeMenu(false);
-                        }}
-                      >
-                        <IconSphere class="w-4 h-4" />
-                        Fresnel
-                      </button>
-                    </div>
-                  </div>
-                </Show>
-              </div>
             </div>
           </div>
         </div>
@@ -1411,16 +1652,8 @@ export default function MaterialsViewport() {
           onDragOver={handleDragOver}
           onWheel={handleWheel}
           onMouseDown={handlePanStart}
-          onContextMenu={(e) => e.preventDefault()}
+          onContextMenu={handleContextMenu}
         >
-          {/* Drop Zone Indicator */}
-          <div class="absolute inset-4 border-2 border-dashed border-base-300 rounded-lg flex items-center justify-center pointer-events-none">
-            <div class="text-center text-base-content/40">
-              <IconPhoto class="w-12 h-12 mx-auto mb-2" />
-              <p class="text-lg font-medium mb-1">Drag textures from Asset Library</p>
-              <p class="text-sm">Or use the Add Node menu to create material nodes</p>
-            </div>
-          </div>
           
           {/* Nodes Container */}
           <div 
@@ -1699,6 +1932,18 @@ export default function MaterialsViewport() {
               }}
             </Show>
           </svg>
+          
+          {/* Context Menu */}
+          <Show when={contextMenu() && contextMenuPosition()}>
+            <ContextMenu
+              items={contextMenu()}
+              position={contextMenuPosition()}
+              onClose={() => {
+                setContextMenu(null);
+                setContextMenuPosition(null);
+              }}
+            />
+          </Show>
         </div>
       </div>
     </div>
