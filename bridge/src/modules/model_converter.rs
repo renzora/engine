@@ -182,8 +182,8 @@ fn apply_tmf_compression(
         return Err("Index data must be divisible by 3 (triangle faces)".to_string());
     }
     
-    let vertex_count = vertices.len() / 3;
-    let triangle_count = indices.len() / 3;
+    let _vertex_count = vertices.len() / 3;
+    let _triangle_count = indices.len() / 3;
     
     // Create a temporary OBJ file for TMF processing
     let temp_obj_path = create_temp_obj_file(vertices, indices)?;
@@ -520,7 +520,7 @@ fn convert_gltf_and_extract(
     file_data: &[u8],
     filename: &str,
     project_path: &Path,
-    import_mode: &ImportMode,
+    _import_mode: &ImportMode,
     current_path: Option<&str>,
 ) -> Result<(Vec<u8>, ExtractedAssets), String> {
     info!("🔄 Converting GLTF to GLB and extracting assets");
@@ -599,7 +599,7 @@ fn extract_from_existing_glb(
                 .map_err(|e| format!("Failed to create materials directory: {}", e))?;
             
             // Strip textures from GLB and save clean version (Unreal-style)
-            let mut stripped_glb = strip_textures_from_glb(file_data)?;
+            let stripped_glb = strip_textures_from_glb(file_data)?;
             
             // Apply compression to stripped GLB if requested
             if use_draco {
@@ -737,7 +737,7 @@ fn create_simple_combined_glb(
             info!("🔍 DRACO DEBUG: Converted to {} float vertices, {} u32 indices", vertex_floats.len(), index_u32s.len());
             
             match apply_draco_compression(&vertex_floats, &index_u32s, vertex_count.try_into().unwrap()) {
-                Ok((compressed_vertices, compressed_indices)) => {
+                Ok((compressed_vertices, _compressed_indices)) => {
                     info!("✅ Applied Draco compression successfully - original vertex data: {} bytes, compressed: {} bytes", 
                           vertex_floats.len() * 4, compressed_vertices.len());
                     // Note: For now we use the original data in GLB, but compression metadata is logged
@@ -811,7 +811,7 @@ fn create_simple_combined_glb(
     let mut accessors_json = Vec::new();
     let mut buffer_views_json = Vec::new();
     let mut current_vertex_offset = 0;
-    let mut current_index_offset = 0;
+    let _current_index_offset = 0;
     
     // Create position accessors and buffer views
     for (model_idx, model) in models.iter().enumerate() {
@@ -846,7 +846,7 @@ fn create_simple_combined_glb(
     
     // Create index accessors and buffer views
     let mut current_index_byte_offset = indices_start_offset;
-    for (model_idx, model) in models.iter().enumerate() {
+    for (_model_idx, model) in models.iter().enumerate() {
         let mesh = &model.mesh;
         let vertex_count = mesh.positions.len() / 3;
         
@@ -1090,7 +1090,7 @@ fn extract_obj_assets_separate(
 fn create_combined_metadata(
     models: &[tobj::Model],
     materials: &[tobj::Material],
-    assets_dir: &Path,
+    _assets_dir: &Path,
     base_name: &str,
 ) -> Result<ExtractedAssets, String> {
     info!("🔄 Creating minimal metadata for Combined mode");
@@ -1168,6 +1168,7 @@ fn create_combined_metadata(
     })
 }
 
+#[allow(dead_code)]
 fn extract_obj_assets_combined(
     models: &[tobj::Model],
     materials: &[tobj::Material],
@@ -1561,6 +1562,7 @@ fn parse_glb_to_json(glb_data: &[u8]) -> Result<serde_json::Value, String> {
     Ok(gltf_json)
 }
 
+#[allow(dead_code)]
 fn extract_glb_assets(
     glb_data: &[u8],
     assets_dir: &Path,
@@ -1836,7 +1838,7 @@ fn strip_textures_from_glb(glb_data: &[u8]) -> Result<Vec<u8>, String> {
     Ok(new_glb)
 }
 
-fn create_individual_mesh_glb(glb_data: &[u8], mesh_index: usize, mesh_name: &str, use_draco: bool, use_tmf: bool) -> Result<Vec<u8>, String> {
+fn create_individual_mesh_glb(glb_data: &[u8], _mesh_index: usize, mesh_name: &str, use_draco: bool, use_tmf: bool) -> Result<Vec<u8>, String> {
     info!("🔄 Creating individual GLB for mesh: {} (Draco: {}, TMF: {})", mesh_name, use_draco, use_tmf);
     
     if use_draco {

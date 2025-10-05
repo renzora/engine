@@ -54,16 +54,18 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
     const assetPath = asset.path || asset.name;
     if (!assetPath) return null;
     
-    const projectPath = `projects/${currentProject.name}`;
-    
-    // Handle different path formats
     let fullPath;
-    if (assetPath.startsWith('.cache/')) {
-      // This is a cache file (thumbnails), don't add assets/ prefix
-      fullPath = `${projectPath}/${assetPath}`;
+    
+    // Check if the path already includes the project prefix
+    if (assetPath.startsWith(`projects/${currentProject.name}/`)) {
+      // Path already includes full project path, use as-is
+      fullPath = assetPath;
+    } else if (assetPath.startsWith('.cache/')) {
+      // This is a cache file (thumbnails), add project prefix
+      fullPath = `projects/${currentProject.name}/${assetPath}`;
     } else {
-      // All other paths are relative to project root - use them exactly as provided
-      fullPath = `${projectPath}/${assetPath}`;
+      // For relative paths, add the full project path
+      fullPath = `projects/${currentProject.name}/${assetPath}`;
     }
     
     const fileUrl = getFileUrl(fullPath);
