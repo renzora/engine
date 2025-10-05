@@ -352,17 +352,26 @@ function AssetItem({
     const dragData = {
       type: selectedAssetObjects.length > 1 ? 'multiple-assets' : 'asset',
       assetType: 'file',
-      assets: selectedAssetObjects.map(a => ({
-        id: a.id,
-        name: a.name,
-        path: a.path,
-        assetType: a.type,
-        fileName: a.fileName,
-        extension: a.extension,
-        mimeType: a.mimeType,
-        category: getAssetCategory(a.extension),
-        fileType: getAssetCategory(a.extension) === 'scripts' ? 'script' : getAssetCategory(a.extension) === 'code' ? 'code' : getAssetCategory(a.extension)
-      })),
+      assets: selectedAssetObjects.map(a => {
+        // Try to get thumbnail URL from the asset object or construct it
+        let thumbnailUrl = a.thumbnailUrl;
+        if (!thumbnailUrl && a.id) {
+          thumbnailUrl = `/api/assets/thumbnail/${a.id}`;
+        }
+        
+        return {
+          id: a.id,
+          name: a.name,
+          path: a.path,
+          assetType: a.type,
+          fileName: a.fileName,
+          extension: a.extension,
+          mimeType: a.mimeType,
+          category: getAssetCategory(a.extension),
+          fileType: getAssetCategory(a.extension) === 'scripts' ? 'script' : getAssetCategory(a.extension) === 'code' ? 'code' : getAssetCategory(a.extension),
+          thumbnailUrl: thumbnailUrl
+        };
+      }),
       ...(selectedAssetObjects.length === 1 ? {
         id: asset.id,
         name: asset.name,
@@ -372,7 +381,8 @@ function AssetItem({
         extension: asset.extension,
         mimeType: asset.mimeType,
         category: getAssetCategory(asset.extension),
-        fileType: getAssetCategory(asset.extension) === 'scripts' ? 'script' : getAssetCategory(asset.extension) === 'code' ? 'code' : getAssetCategory(asset.extension)
+        fileType: getAssetCategory(asset.extension) === 'scripts' ? 'script' : getAssetCategory(asset.extension) === 'code' ? 'code' : getAssetCategory(asset.extension),
+        thumbnailUrl: asset.thumbnailUrl || (asset.id ? `/api/assets/thumbnail/${asset.id}` : null)
       } : {})
     };
     

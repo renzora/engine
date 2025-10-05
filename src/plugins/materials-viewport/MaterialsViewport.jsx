@@ -13,13 +13,27 @@ import {
 } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
+import { NodeMaterial } from '@babylonjs/core/Materials/Node/nodeMaterial.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
+
+// Node Material Blocks
+import { InputBlock } from '@babylonjs/core/Materials/Node/Blocks/Input/inputBlock.js';
+import { FragmentOutputBlock } from '@babylonjs/core/Materials/Node/Blocks/Fragment/fragmentOutputBlock.js';
+import { TextureBlock } from '@babylonjs/core/Materials/Node/Blocks/Dual/textureBlock.js';
+import { MultiplyBlock } from '@babylonjs/core/Materials/Node/Blocks/multiplyBlock.js';
+import { AddBlock } from '@babylonjs/core/Materials/Node/Blocks/addBlock.js';
+import { LerpBlock } from '@babylonjs/core/Materials/Node/Blocks/lerpBlock.js';
+import { FresnelBlock } from '@babylonjs/core/Materials/Node/Blocks/fresnelBlock.js';
+import { ClampBlock } from '@babylonjs/core/Materials/Node/Blocks/clampBlock.js';
+// Removing PowBlock for now - will implement later
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera.js';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js';
+import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js';
+import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js';
 import { Scene } from '@babylonjs/core/scene.js';
 import { Engine } from '@babylonjs/core/Engines/engine.js';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js';
@@ -112,6 +126,7 @@ export default function MaterialsViewport() {
   const [draggingConnection, setDraggingConnection] = createSignal(null);
   const [dragConnectionEnd, setDragConnectionEnd] = createSignal({ x: 0, y: 0 });
   const [hoveredSocket, setHoveredSocket] = createSignal(null);
+  const [showAddNodeMenu, setShowAddNodeMenu] = createSignal(false);
   
   // Throttle mouse move updates for better performance
   let lastMoveTime = 0;
@@ -122,6 +137,9 @@ export default function MaterialsViewport() {
   let previewScene;
   let previewEngine;
   let previewMesh;
+  let groundMesh;
+  let backdropMesh;
+  let shadowGenerator;
   let nodeGraphRef;
   
   // Node types
@@ -131,25 +149,52 @@ export default function MaterialsViewport() {
     CONSTANT: 'Constant',
     MULTIPLY: 'Multiply',
     ADD: 'Add',
-    LERP: 'Lerp'
+    LERP: 'Lerp',
+    FRESNEL: 'Fresnel',
+    CLAMP: 'Clamp',
+    POWER: 'Power',
+    COLOR: 'Color'
   };
 
   // Initialize preview scene
   const initPreviewScene = () => {
-    if (!previewCanvasRef) return;
+    if (!previewCanvasRef) {
+      console.error('No preview canvas ref found!');
+      return;
+    }
+    
+    console.log('Initializing preview scene...');
     
     previewEngine = new Engine(previewCanvasRef, true);
     previewScene = new Scene(previewEngine);
     previewScene.clearColor = new Color3(0.15, 0.15, 0.15);
     
-    // Setup camera
-    const camera = new FreeCamera('previewCamera', new Vector3(0, 0, -4), previewScene);
-    camera.setTarget(Vector3.Zero());
+    // Setup camera with side angle view
+    const camera = new FreeCamera('previewCamera', new Vector3(3, 2, -3), previewScene);
+    camera.setTarget(new Vector3(0, -0.5, 0)); // Look at the object position
     camera.attachControl(previewCanvasRef, true);
     
-    // Setup lighting
-    const light = new HemisphericLight('previewLight', new Vector3(0, 1, 0), previewScene);
-    light.intensity = 0.8;
+    // Setup lighting with shadows
+    // Ambient lighting
+    const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), previewScene);
+    ambientLight.intensity = 0.4;
+    ambientLight.diffuse = new Color3(1, 1, 1);
+    
+    // Directional light for shadows
+    const directionalLight = new DirectionalLight('dirLight', new Vector3(-1, -1, -1), previewScene);
+    directionalLight.position = new Vector3(3, 5, 3);
+    directionalLight.intensity = 0.8;
+    directionalLight.diffuse = new Color3(1, 1, 1);
+    
+    // Shadow generator
+    shadowGenerator = new ShadowGenerator(1024, directionalLight);
+    shadowGenerator.useBlurExponentialShadowMap = true;
+    shadowGenerator.blurKernel = 32;
+    
+    console.log('Scene created, camera and light set up');
+    
+    // Create backdrop and ground
+    createBackdrop();
     
     // Create initial preview mesh
     updatePreviewMesh();
@@ -163,35 +208,116 @@ export default function MaterialsViewport() {
     window.addEventListener('resize', () => {
       previewEngine.resize();
     });
+    
+    console.log('Preview scene initialization complete');
+  };
+
+  // Create backdrop and ground for better material preview
+  const createBackdrop = () => {
+    if (!previewScene) return;
+    
+    // Create ground plane with grid
+    groundMesh = CreateGround('ground', { width: 10, height: 10 }, previewScene);
+    groundMesh.position.y = -1.5;
+    
+    // Create grid material
+    const gridMaterial = new StandardMaterial('gridMaterial', previewScene);
+    gridMaterial.diffuseColor = new Color3(0.8, 0.8, 0.8);
+    gridMaterial.specularColor = new Color3(0.1, 0.1, 0.1);
+    
+    // Create checkered grid pattern
+    const checkerTexture = new Texture('data:image/svg+xml;base64,' + btoa(`
+      <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <pattern id="checker" width="20" height="20" patternUnits="userSpaceOnUse">
+            <rect x="0" y="0" width="10" height="10" fill="#f0f0f0"/>
+            <rect x="10" y="10" width="10" height="10" fill="#f0f0f0"/>
+            <rect x="10" y="0" width="10" height="10" fill="#ffffff"/>
+            <rect x="0" y="10" width="10" height="10" fill="#ffffff"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#checker)"/>
+        <!-- Grid lines overlay -->
+        <defs>
+          <pattern id="gridlines" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#d0d0d0" stroke-width="0.5"/>
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#gridlines)"/>
+      </svg>
+    `), previewScene);
+    
+    checkerTexture.uScale = 15;
+    checkerTexture.vScale = 15;
+    gridMaterial.diffuseTexture = checkerTexture;
+    groundMesh.material = gridMaterial;
+    
+    // Enable shadow receiving on ground
+    groundMesh.receiveShadows = true;
+    
+    // Create backdrop sphere/dome for environment
+    backdropMesh = CreateSphere('backdrop', { diameter: 20 }, previewScene);
+    backdropMesh.position.y = 0;
+    
+    // Create backdrop material with gradient
+    const backdropMaterial = new StandardMaterial('backdropMaterial', previewScene);
+    backdropMaterial.diffuseColor = new Color3(0.95, 0.95, 1.0); // Slight blue tint
+    backdropMaterial.specularColor = new Color3(0, 0, 0); // No specular
+    backdropMaterial.backFaceCulling = false; // Render inside faces
+    backdropMaterial.alpha = 0.3; // Semi-transparent
+    backdropMesh.material = backdropMaterial;
+    
+    console.log('Created backdrop and grid');
   };
 
   // Update preview mesh based on selected shape
   const updatePreviewMesh = () => {
-    if (!previewScene) return;
+    if (!previewScene) {
+      console.error('No preview scene for mesh creation!');
+      return;
+    }
+    
+    console.log('Creating preview mesh...');
     
     // Dispose existing mesh
     if (previewMesh) {
       previewMesh.dispose();
+      console.log('Disposed existing mesh');
     }
     
-    // Create new mesh based on shape
+    // Create new mesh based on shape and position it to rest on the ground plane
+    // Ground plane is at Y = -1.5
     switch (previewShape()) {
       case 'sphere':
         previewMesh = CreateSphere('previewSphere', { diameter: 2 }, previewScene);
+        previewMesh.position.y = -0.5; // Ground(-1.5) + radius(1) = -0.5
         break;
       case 'cube':
         previewMesh = CreateBox('previewCube', { size: 2 }, previewScene);
-        break;
-      case 'plane':
-        previewMesh = CreateGround('previewPlane', { width: 2, height: 2 }, previewScene);
+        previewMesh.position.y = -0.5; // Ground(-1.5) + half-height(1) = -0.5
         break;
       default:
         previewMesh = CreateSphere('previewSphere', { diameter: 2 }, previewScene);
+        previewMesh.position.y = -0.5;
+    }
+    
+    console.log('Created mesh:', previewMesh);
+    
+    // Enable shadow casting on preview mesh
+    if (shadowGenerator && previewMesh) {
+      shadowGenerator.addShadowCaster(previewMesh);
     }
     
     // Apply current material if available
     if (currentMaterial()) {
       previewMesh.material = currentMaterial();
+      console.log('Applied existing material to new mesh');
+    } else {
+      // Create a test material to ensure mesh is visible
+      const testMaterial = new StandardMaterial('testMaterial', previewScene);
+      testMaterial.diffuseColor = new Color3(0, 1, 0); // Bright green
+      previewMesh.material = testMaterial;
+      console.log('Applied test green material to mesh');
     }
   };
 
@@ -207,11 +333,11 @@ export default function MaterialsViewport() {
       position: { x: centerX, y: centerY },
       title: 'Material Output',
       inputs: [
-        { id: 'baseColor', name: 'Base Color', type: 'color', value: new Color3(0.8, 0.8, 0.8) },
-        { id: 'roughness', name: 'Roughness', type: 'float', value: 0.5 },
-        { id: 'metallic', name: 'Metallic', type: 'float', value: 0.0 },
+        { id: 'baseColor', name: 'Base Color', type: 'color', value: null },
+        { id: 'roughness', name: 'Roughness', type: 'float', value: null },
+        { id: 'metallic', name: 'Metallic', type: 'float', value: null },
         { id: 'normal', name: 'Normal', type: 'vector', value: null },
-        { id: 'emissive', name: 'Emissive', type: 'color', value: new Color3(0, 0, 0) }
+        { id: 'emissive', name: 'Emissive', type: 'color', value: null }
       ],
       outputs: []
     };
@@ -220,42 +346,85 @@ export default function MaterialsViewport() {
     createMaterialFromNodes();
   };
 
-  // Create material from node graph
+  // Create material from node graph - proper NodeMaterial implementation
   const createMaterialFromNodes = () => {
     const scene = previewScene;
     if (!scene) return;
     
-    // Find material output node
-    const outputNode = nodes().find(n => n.type === NODE_TYPES.MATERIAL_OUTPUT);
-    if (!outputNode) return;
+    // Use StandardMaterial for simpler, more predictable results
+    const material = new StandardMaterial('NodeBasedMaterial', scene);
     
-    // Create PBR material
-    const material = new PBRMaterial('NodeMaterial', scene);
+    // Set some defaults that will be visible
+    material.diffuseColor = new Color3(1.0, 0.0, 1.0); // Bright magenta default
+    material.specularColor = new Color3(0.2, 0.2, 0.2); // Low specular
     
-    // Apply values from output node
-    const baseColorInput = outputNode.inputs.find(i => i.id === 'baseColor');
-    const roughnessInput = outputNode.inputs.find(i => i.id === 'roughness');
-    const metallicInput = outputNode.inputs.find(i => i.id === 'metallic');
-    const emissiveInput = outputNode.inputs.find(i => i.id === 'emissive');
+    console.log('Default material created with gray color');
     
-    if (baseColorInput?.value) {
-      material.baseColor = baseColorInput.value;
-    }
-    if (roughnessInput?.value !== undefined) {
-      material.roughness = roughnessInput.value;
-    }
-    if (metallicInput?.value !== undefined) {
-      material.metallic = metallicInput.value;
-    }
-    if (emissiveInput?.value) {
-      material.emissiveColor = emissiveInput.value;
-    }
+    // Handle all material property connections
+    connections().forEach(connection => {
+      if (connection.to.nodeId !== 'material-output') return;
+      
+      const sourceNode = nodes().find(n => n.id === connection.from.nodeId);
+      if (!sourceNode) return;
+      
+      switch (connection.to.socketId) {
+        case 'baseColor':
+          if (sourceNode.type === NODE_TYPES.COLOR) {
+            const colorInput = sourceNode.inputs.find(i => i.id === 'color');
+            if (colorInput?.value && colorInput.value instanceof Color3) {
+              material.diffuseColor = colorInput.value;
+              console.log('Applied base color:', colorInput.value);
+            }
+          }
+          break;
+          
+        case 'roughness':
+          if (sourceNode.type === NODE_TYPES.CONSTANT) {
+            const valueInput = sourceNode.inputs.find(i => i.id === 'value');
+            if (valueInput?.value !== undefined) {
+              // For StandardMaterial, we use specularPower (inverse relationship)
+              material.specularPower = Math.max(1, (1 - valueInput.value) * 128);
+              console.log('Applied roughness (specularPower):', material.specularPower);
+            }
+          }
+          break;
+          
+        case 'metallic':
+          // StandardMaterial doesn't have metallic, but we can simulate with specular
+          if (sourceNode.type === NODE_TYPES.CONSTANT) {
+            const valueInput = sourceNode.inputs.find(i => i.id === 'value');
+            if (valueInput?.value !== undefined) {
+              const metallic = valueInput.value;
+              material.specularColor = new Color3(metallic, metallic, metallic);
+              console.log('Applied metallic (specular):', metallic);
+            }
+          }
+          break;
+          
+        case 'emissive':
+          if (sourceNode.type === NODE_TYPES.COLOR) {
+            const colorInput = sourceNode.inputs.find(i => i.id === 'color');
+            if (colorInput?.value && colorInput.value instanceof Color3) {
+              material.emissiveColor = colorInput.value;
+              console.log('Applied emissive color:', colorInput.value);
+            }
+          }
+          break;
+      }
+    });
     
     setCurrentMaterial(material);
     
     // Apply to preview mesh
     if (previewMesh) {
       previewMesh.material = material;
+      console.log('Material applied to mesh - color should be visible now');
+      console.log('Mesh material:', previewMesh.material);
+      console.log('Material baseColor:', material.baseColor);
+      console.log('Scene:', previewScene);
+      console.log('Mesh:', previewMesh);
+    } else {
+      console.error('No preview mesh found!');
     }
   };
 
@@ -299,6 +468,23 @@ export default function MaterialsViewport() {
           ]
         };
         break;
+      case NODE_TYPES.COLOR:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Color',
+          inputs: [
+            { id: 'color', name: 'Color', type: 'color', value: new Color3(1.0, 1.0, 1.0) }
+          ],
+          outputs: [
+            { id: 'rgb', name: 'RGB', type: 'color' },
+            { id: 'r', name: 'R', type: 'float' },
+            { id: 'g', name: 'G', type: 'float' },
+            { id: 'b', name: 'B', type: 'float' }
+          ]
+        };
+        break;
       case NODE_TYPES.MULTIPLY:
         newNode = {
           id: nodeId,
@@ -306,8 +492,86 @@ export default function MaterialsViewport() {
           position,
           title: 'Multiply',
           inputs: [
-            { id: 'a', name: 'A', type: 'float', value: 1.0 },
-            { id: 'b', name: 'B', type: 'float', value: 1.0 }
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.ADD:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Add',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 0.0 },
+            { id: 'right', name: 'B', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.LERP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Lerp',
+          inputs: [
+            { id: 'left', name: 'A', type: 'color', value: new Color3(0.0, 0.0, 0.0) },
+            { id: 'right', name: 'B', type: 'color', value: new Color3(1.0, 1.0, 1.0) },
+            { id: 'gradient', name: 'Factor', type: 'float', value: 0.5 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'color' }
+          ]
+        };
+        break;
+      case NODE_TYPES.FRESNEL:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Fresnel',
+          inputs: [
+            { id: 'bias', name: 'Bias', type: 'float', value: 0.0 },
+            { id: 'scale', name: 'Scale', type: 'float', value: 1.0 },
+            { id: 'power', name: 'Power', type: 'float', value: 5.0 }
+          ],
+          outputs: [
+            { id: 'fresnel', name: 'Fresnel', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.CLAMP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Clamp',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.5 },
+            { id: 'min', name: 'Min', type: 'float', value: 0.0 },
+            { id: 'max', name: 'Max', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+      case NODE_TYPES.POWER:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Power',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.5 },
+            { id: 'power', name: 'Power', type: 'float', value: 2.0 }
           ],
           outputs: [
             { id: 'output', name: 'Result', type: 'float' }
@@ -393,7 +657,7 @@ export default function MaterialsViewport() {
     }
   };
 
-  // Connection management
+  // Connection management with type checking
   const canConnect = (from, to) => {
     // Can't connect to same node
     if (from.nodeId === to.nodeId) return false;
@@ -402,9 +666,32 @@ export default function MaterialsViewport() {
     if (from.type !== 'output' || to.type !== 'input') return false;
     
     // Check if connection already exists
-    return !connections().some(conn => 
+    const existingConnection = connections().some(conn => 
       conn.from.nodeId === from.nodeId && conn.from.socketId === from.socketId &&
       conn.to.nodeId === to.nodeId && conn.to.socketId === to.socketId
+    );
+    if (existingConnection) return false;
+    
+    // Type checking
+    const fromNode = nodes().find(n => n.id === from.nodeId);
+    const toNode = nodes().find(n => n.id === to.nodeId);
+    if (!fromNode || !toNode) return false;
+    
+    const fromSocket = fromNode.outputs?.find(s => s.id === from.socketId);
+    const toSocket = toNode.inputs?.find(s => s.id === to.socketId);
+    if (!fromSocket || !toSocket) return false;
+    
+    // Compatible types: exact match, or float can connect to any numeric input
+    const compatibleTypes = [
+      [fromSocket.type, toSocket.type], // exact match
+      ['float', 'color'], // float can connect to color components
+      ['color', 'float'], // color can connect to float (uses magnitude)
+      ['vector', 'float'], // vector can connect to float
+      ['texture', 'color'] // texture can provide color
+    ];
+    
+    return compatibleTypes.some(([from, to]) => 
+      fromSocket.type === from && toSocket.type === to
     );
   };
 
@@ -562,11 +849,16 @@ export default function MaterialsViewport() {
 
   const handleSocketMouseEnter = (nodeId, socket, socketType) => {
     if (draggingConnection()) {
-      setHoveredSocket({
+      const targetSocket = {
         nodeId,
         socketId: socket.id,
         type: socketType
-      });
+      };
+      
+      // Only set as hovered if connection is valid
+      if (canConnect(draggingConnection(), targetSocket)) {
+        setHoveredSocket(targetSocket);
+      }
     }
   };
 
@@ -725,6 +1017,14 @@ export default function MaterialsViewport() {
     createMaterialFromNodes();
   });
 
+  // Update mesh when preview shape changes
+  createEffect(() => {
+    previewShape(); // Access the signal to make this reactive
+    if (previewScene) {
+      updatePreviewMesh();
+    }
+  });
+
   // Clear socket cache when zoom or pan changes
   createEffect(() => {
     zoom(); // Access zoom signal to make this reactive
@@ -749,6 +1049,17 @@ export default function MaterialsViewport() {
     
     if (previewEngine) {
       previewEngine.dispose();
+    }
+    
+    // Clean up backdrop meshes and shadows
+    if (groundMesh) {
+      groundMesh.dispose();
+    }
+    if (backdropMesh) {
+      backdropMesh.dispose();
+    }
+    if (shadowGenerator) {
+      shadowGenerator.dispose();
     }
   });
 
@@ -776,13 +1087,6 @@ export default function MaterialsViewport() {
             >
               <IconCube class="w-4 h-4" />
             </button>
-            <button
-              class={`btn btn-sm ${previewShape() === 'plane' ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setPreviewShape('plane')}
-              title="Plane"
-            >
-              <IconBox class="w-4 h-4" />
-            </button>
           </div>
         </div>
         
@@ -802,8 +1106,17 @@ export default function MaterialsViewport() {
               <IconPalette class="w-4 h-4" />
               <span class="font-medium">Node Material</span>
             </div>
-            <div class="text-xs">
-              Nodes: {nodes().length} | Connections: {connections().length}
+            <div class="text-xs space-y-1">
+              <div>Nodes: {nodes().length} | Connections: {connections().length}</div>
+              <div class={`flex items-center gap-1 ${currentMaterial() ? 'text-success' : 'text-warning'}`}>
+                <div class={`w-2 h-2 rounded-full ${currentMaterial() ? 'bg-success' : 'bg-warning'}`}></div>
+                {currentMaterial() ? 'Material Built' : 'Building...'}
+              </div>
+              <Show when={currentMaterial()?.name}>
+                <div class="text-xs text-base-content/40">
+                  {currentMaterial().name}
+                </div>
+              </Show>
             </div>
           </div>
         </div>
@@ -850,31 +1163,106 @@ export default function MaterialsViewport() {
                 </button>
               </div>
               
-              <div class="dropdown dropdown-end">
-                <button class="btn btn-sm btn-primary">
+              <div class="relative">
+                <button 
+                  class="btn btn-sm btn-primary"
+                  onClick={() => setShowAddNodeMenu(!showAddNodeMenu())}
+                >
                   <IconPlus class="w-4 h-4" />
                   Add Node
                 </button>
-                <ul class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-52 border border-base-300">
-                  <li>
-                    <a onClick={() => addNode(NODE_TYPES.TEXTURE_SAMPLE, { x: 400, y: 200 })}>
-                      <IconPhoto class="w-4 h-4" />
-                      Texture Sample
-                    </a>
-                  </li>
-                  <li>
-                    <a onClick={() => addNode(NODE_TYPES.CONSTANT, { x: 200, y: 300 })}>
-                      <IconCircleDot class="w-4 h-4" />
-                      Constant
-                    </a>
-                  </li>
-                  <li>
-                    <a onClick={() => addNode(NODE_TYPES.MULTIPLY, { x: 300, y: 400 })}>
-                      <IconSettings class="w-4 h-4" />
-                      Multiply
-                    </a>
-                  </li>
-                </ul>
+                
+                <Show when={showAddNodeMenu()}>
+                  <div class="absolute top-full right-0 mt-1 w-52 bg-base-100 border border-base-300 rounded-lg shadow-lg z-50">
+                    <div class="p-2">
+                      <div class="text-xs font-semibold text-base-content/60 mb-2">Inputs</div>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.TEXTURE_SAMPLE, { x: 400, y: 200 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconPhoto class="w-4 h-4" />
+                        Texture Sample
+                      </button>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.CONSTANT, { x: 200, y: 300 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconCircleDot class="w-4 h-4" />
+                        Constant
+                      </button>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.COLOR, { x: 200, y: 400 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconPalette class="w-4 h-4" />
+                        Color
+                      </button>
+                      
+                      <div class="text-xs font-semibold text-base-content/60 mb-2 mt-3">Math</div>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.MULTIPLY, { x: 300, y: 400 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconSettings class="w-4 h-4" />
+                        Multiply
+                      </button>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.ADD, { x: 300, y: 500 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconPlus class="w-4 h-4" />
+                        Add
+                      </button>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.LERP, { x: 300, y: 600 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconSettings class="w-4 h-4" />
+                        Lerp
+                      </button>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.CLAMP, { x: 400, y: 500 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconSettings class="w-4 h-4" />
+                        Clamp
+                      </button>
+                      
+                      <div class="text-xs font-semibold text-base-content/60 mb-2 mt-3">Advanced</div>
+                      <button 
+                        class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
+                        onClick={() => {
+                          addNode(NODE_TYPES.FRESNEL, { x: 500, y: 400 });
+                          setShowAddNodeMenu(false);
+                        }}
+                      >
+                        <IconSphere class="w-4 h-4" />
+                        Fresnel
+                      </button>
+                    </div>
+                  </div>
+                </Show>
               </div>
             </div>
           </div>
@@ -967,10 +1355,19 @@ export default function MaterialsViewport() {
                             <div 
                               class={`w-2.5 h-2.5 rounded-full border cursor-pointer transition-all duration-200 pointer-events-auto flex-shrink-0 ${
                                 hoveredSocket()?.nodeId === node.id && hoveredSocket()?.socketId === input.id
-                                  ? 'bg-primary border-primary scale-110'
-                                  : 'bg-base-300 border-base-400 hover:border-primary hover:bg-primary/20'
+                                  ? 'border-primary scale-110'
+                                  : 'border-base-400 hover:border-primary'
                               }`}
-                              style={{ position: 'relative', 'z-index': '10' }}
+                              style={{
+                                'background-color': 
+                                  input.type === 'color' ? '#ff6b6b' :
+                                  input.type === 'float' ? '#51cf66' :
+                                  input.type === 'vector' ? '#339af0' :
+                                  input.type === 'texture' ? '#ffd43b' :
+                                  '#6c757d',
+                                position: 'relative',
+                                'z-index': '10'
+                              }}
                               data-socket={`${node.id}-${input.id}-input`}
                               onMouseDown={(e) => handleSocketMouseDown(e, node.id, input, 'input')}
                               onMouseEnter={() => handleSocketMouseEnter(node.id, input, 'input')}
@@ -1001,6 +1398,36 @@ export default function MaterialsViewport() {
                                     : n
                                 );
                                 setNodes(newNodes);
+                                createMaterialFromNodes();
+                              }}
+                            />
+                          </Show>
+                          <Show when={input.type === 'color' && input.value !== null && input.value instanceof Color3}>
+                            <input
+                              type="color"
+                              class="w-8 h-6 rounded border border-base-300 cursor-pointer"
+                              value={`#${Math.round(input.value.r * 255).toString(16).padStart(2, '0')}${Math.round(input.value.g * 255).toString(16).padStart(2, '0')}${Math.round(input.value.b * 255).toString(16).padStart(2, '0')}`}
+                              onChange={(e) => {
+                                const hex = e.target.value;
+                                const r = parseInt(hex.slice(1, 3), 16) / 255;
+                                const g = parseInt(hex.slice(3, 5), 16) / 255;
+                                const b = parseInt(hex.slice(5, 7), 16) / 255;
+                                const color = new Color3(r, g, b);
+                                
+                                const newNodes = nodes().map(n => 
+                                  n.id === node.id 
+                                    ? {
+                                        ...n,
+                                        inputs: n.inputs.map(i =>
+                                          i.id === input.id 
+                                            ? { ...i, value: color }
+                                            : i
+                                        )
+                                      }
+                                    : n
+                                );
+                                setNodes(newNodes);
+                                createMaterialFromNodes();
                               }}
                             />
                           </Show>
@@ -1020,10 +1447,19 @@ export default function MaterialsViewport() {
                           <div 
                             class={`w-3 h-3 rounded-full border cursor-pointer transition-all duration-200 pointer-events-auto flex-shrink-0 ${
                               hoveredSocket()?.nodeId === node.id && hoveredSocket()?.socketId === output.id
-                                ? 'bg-primary border-primary scale-125 shadow-lg shadow-primary/50'
-                                : 'bg-gradient-to-br from-primary to-primary-focus border-primary hover:border-primary-focus hover:scale-110'
+                                ? 'border-primary scale-125 shadow-lg shadow-primary/50'
+                                : 'border-base-400 hover:border-primary hover:scale-110'
                             }`}
-                            style={{ position: 'relative', 'z-index': '10' }}
+                            style={{
+                              'background-color': 
+                                output.type === 'color' ? '#ff6b6b' :
+                                output.type === 'float' ? '#51cf66' :
+                                output.type === 'vector' ? '#339af0' :
+                                output.type === 'texture' ? '#ffd43b' :
+                                '#6c757d',
+                              position: 'relative',
+                              'z-index': '10'
+                            }}
                             data-socket={`${node.id}-${output.id}-output`}
                             onMouseDown={(e) => handleSocketMouseDown(e, node.id, output, 'output')}
                             onMouseEnter={() => handleSocketMouseEnter(node.id, output, 'output')}
@@ -1045,9 +1481,13 @@ export default function MaterialsViewport() {
           
           {/* Debug Info */}
           <div class="absolute top-2 left-2 bg-black/80 text-white p-2 rounded text-xs font-mono pointer-events-none">
-            <div>Dragging: {draggingConnection() ? 'Yes' : 'No'}</div>
+            <div>Nodes: {nodes().length}</div>
             <div>Connections: {connections().length}</div>
-            <div>Zoom: {Math.round(zoom() * 100)}%</div>
+            <div>Material: {currentMaterial() ? 'Created' : 'None'}</div>
+            <div>Color Nodes: {nodes().filter(n => n.type === NODE_TYPES.COLOR).length}</div>
+            <Show when={nodes().find(n => n.type === NODE_TYPES.COLOR)}>
+              <div>First Color: {nodes().find(n => n.type === NODE_TYPES.COLOR)?.inputs.find(i => i.id === 'color')?.value ? 'Set' : 'Null'}</div>
+            </Show>
           </div>
 
           {/* Connection Lines SVG */}

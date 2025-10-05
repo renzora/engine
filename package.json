@@ -26,6 +26,7 @@
     "@babylonjs/inspector": "^8.25.0",
     "@babylonjs/loaders": "^8.20.0",
     "@babylonjs/materials": "^8.25.0",
+    "@babylonjs/node-editor": "^8.30.2",
     "@babylonjs/post-processes": "^8.20.0",
     "@babylonjs/procedural-textures": "^8.20.0",
     "@babylonjs/serializers": "^8.20.0",

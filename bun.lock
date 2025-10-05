@@ -10,6 +10,7 @@
         "@babylonjs/inspector": "^8.25.0",
         "@babylonjs/loaders": "^8.20.0",
         "@babylonjs/materials": "^8.25.0",
+        "@babylonjs/node-editor": "^8.30.2",
         "@babylonjs/post-processes": "^8.20.0",
         "@babylonjs/procedural-textures": "^8.20.0",
         "@babylonjs/serializers": "^8.20.0",
@@ -105,6 +106,8 @@
     "@babylonjs/loaders": ["@babylonjs/loaders@8.22.2", "", { "peerDependencies": { "@babylonjs/core": "^8.0.0", "babylonjs-gltf2interface": "^8.0.0" } }, "sha512-wNN92JE0aXuGED5/LY71pFEJWjy2IVO6FaMLCNi9y1YtpniHFVk7n5y6qp5KpuLjJCwIdTRbjihyEdj2rFWgfw=="],
 
     "@babylonjs/materials": ["@babylonjs/materials@8.25.0", "", { "peerDependencies": { "@babylonjs/core": "^8.6.0" } }, "sha512-DyJ3Ghh0pqgpU6nMZyAuWChxW0B/UgpZXYqGghnEpy2CtlepvUi9jfYD/YvSJ/iDry3xdR++Gv8FU4ci66tuoQ=="],
+
+    "@babylonjs/node-editor": ["@babylonjs/node-editor@8.30.2", "", { "peerDependencies": { "@babylonjs/core": "^8.0.0", "@types/react": ">=16.7.3", "@types/react-dom": ">=16.0.9" } }, "sha512-ngD37u+TAB6afsZkWdEZgkUNiPGk88GAj5KSjKd4p8J1BMjyB3o5qwYHHI3nCXexo8tQX/NNqncGzjKYpN0QJQ=="],
 
     "@babylonjs/post-processes": ["@babylonjs/post-processes@8.22.2", "", { "peerDependencies": { "@babylonjs/core": "^8.0.0" } }, "sha512-EEcqCj+IVJYUQnwx9GihvK+hPptWD/4p0gHeJ78SoLT2LuOJCfx40yAiEJRRgPmPbV1YwkGnAz/mhr74myDSsQ=="],
 
