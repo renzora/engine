@@ -447,6 +447,25 @@ export default function MaterialsViewport() {
     }
   };
 
+  // Calculate center position for new nodes
+  const getCenterPosition = () => {
+    if (!nodeGraphRef) return { x: 400, y: 300 };
+    
+    const rect = nodeGraphRef.getBoundingClientRect();
+    const currentPan = pan();
+    const currentZoom = zoom();
+    
+    // Calculate center in graph coordinates
+    const centerX = (rect.width / 2 - currentPan.x) / currentZoom;
+    const centerY = (rect.height / 2 - currentPan.y) / currentZoom;
+    
+    // Offset slightly to avoid overlapping the existing material output node
+    return { 
+      x: centerX - 100, // Offset left by 100px
+      y: centerY - 50   // Offset up by 50px
+    };
+  };
+
   // Add new node
   const addNode = (type, position, asset = null) => {
     const nodeId = `node-${Date.now()}`;
@@ -1239,7 +1258,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.TEXTURE_SAMPLE, { x: 400, y: 200 });
+                          addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1249,7 +1268,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.CONSTANT, { x: 200, y: 300 });
+                          addNode(NODE_TYPES.CONSTANT, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1259,7 +1278,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.COLOR, { x: 200, y: 400 });
+                          addNode(NODE_TYPES.COLOR, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1271,7 +1290,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.MULTIPLY, { x: 300, y: 400 });
+                          addNode(NODE_TYPES.MULTIPLY, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1281,7 +1300,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.ADD, { x: 300, y: 500 });
+                          addNode(NODE_TYPES.ADD, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1291,7 +1310,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.LERP, { x: 300, y: 600 });
+                          addNode(NODE_TYPES.LERP, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1301,7 +1320,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.CLAMP, { x: 400, y: 500 });
+                          addNode(NODE_TYPES.CLAMP, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
@@ -1313,7 +1332,7 @@ export default function MaterialsViewport() {
                       <button 
                         class="w-full flex items-center gap-2 p-2 hover:bg-base-200 rounded text-left text-sm"
                         onClick={() => {
-                          addNode(NODE_TYPES.FRESNEL, { x: 500, y: 400 });
+                          addNode(NODE_TYPES.FRESNEL, getCenterPosition());
                           setShowAddNodeMenu(false);
                         }}
                       >
