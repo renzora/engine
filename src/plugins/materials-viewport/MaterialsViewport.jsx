@@ -146,6 +146,8 @@ export default function MaterialsViewport() {
   const [dragConnectionEnd, setDragConnectionEnd] = createSignal({ x: 0, y: 0 });
   const [hoveredSocket, setHoveredSocket] = createSignal(null);
   const [showAddNodeMenu, setShowAddNodeMenu] = createSignal(false);
+  const [isDraggingAllNodes, setIsDraggingAllNodes] = createSignal(false);
+  const [allNodesDragStart, setAllNodesDragStart] = createSignal({ x: 0, y: 0 });
   
   // Throttle mouse move updates for better performance
   let lastMoveTime = 0;
@@ -655,6 +657,8 @@ export default function MaterialsViewport() {
       
       // Just update the transform, don't re-render the entire node
       setDraggedNodeTransform({ x: newX, y: newY });
+    } else if (isDraggingAllNodes()) {
+      handleAllNodesDragMove(e);
     } else if (isPanning()) {
       handlePanMove(e);
     } else if (draggingConnection()) {
@@ -665,6 +669,23 @@ export default function MaterialsViewport() {
       // Store screen coordinates for SVG rendering
       setDragConnectionEnd({ x: screenX, y: screenY });
     }
+  };
+
+  // Handle dragging all nodes
+  const handleAllNodesDragMove = (e) => {
+    const deltaX = (e.clientX - allNodesDragStart().x) / zoom();
+    const deltaY = (e.clientY - allNodesDragStart().y) / zoom();
+    
+    setNodes(prev => prev.map(node => ({
+      ...node,
+      position: {
+        x: node.position.x + deltaX,
+        y: node.position.y + deltaY
+      }
+    })));
+    
+    setAllNodesDragStart({ x: e.clientX, y: e.clientY });
+    setSocketPositionCache(new Map()); // Clear cache to update connections
   };
 
   const handleMouseUp = () => {
@@ -683,6 +704,7 @@ export default function MaterialsViewport() {
     
     setDraggedNode(null);
     setIsPanning(false);
+    setIsDraggingAllNodes(false);
     
     // Handle connection drop
     if (draggingConnection()) {
@@ -968,13 +990,18 @@ export default function MaterialsViewport() {
     setPan(newPan);
   };
 
-  // Handle pan start
+  // Handle pan start and all-nodes drag start
   const handlePanStart = (e) => {
-    if (e.button === 1 || (e.button === 0 && e.shiftKey)) { // Middle mouse or Shift+Left mouse
+    if (e.button === 1 || (e.button === 0 && e.shiftKey)) { // Middle mouse or Shift+Left mouse for panning
       e.preventDefault();
       e.stopPropagation();
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
+    } else if (e.button === 0 && !e.shiftKey && !e.altKey && !e.ctrlKey) { // Plain left mouse for dragging all nodes
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDraggingAllNodes(true);
+      setAllNodesDragStart({ x: e.clientX, y: e.clientY });
     }
   };
 
@@ -1350,7 +1377,11 @@ export default function MaterialsViewport() {
         {/* Node Graph Canvas */}
         <div 
           ref={nodeGraphRef}
-          class="flex-1 relative bg-base-100 cursor-grab"
+          class={`flex-1 relative bg-base-100 ${
+            isDraggingAllNodes() ? 'cursor-grabbing' : 
+            isPanning() ? 'cursor-grabbing' : 
+            'cursor-grab'
+          }`}
           style={{
             'background-image': 'radial-gradient(circle, #374151 1px, transparent 1px)',
             'background-size': `${20 * zoom()}px ${20 * zoom()}px`,
