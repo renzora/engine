@@ -247,6 +247,7 @@ pub fn create_project(name: &str, template: &str, settings: Option<&serde_json::
                     "type": "UniversalCamera",
                     "position": [7, 5, -7],
                     "rotation": [0, 0, 0],
+                    "target": [0, 0, 0],
                     "fov": 0.8,
                     "minZ": 1,
                     "maxZ": 10000,
