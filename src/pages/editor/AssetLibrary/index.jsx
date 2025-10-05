@@ -8,6 +8,7 @@ import ScriptCreationDialog from '../ScriptCreationDialog.jsx';
 import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
 import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
+import { getCachedAssets } from '@/api/bridge/projectCache.js';
 import { ModelProcessingAPI } from '@/api/bridge/modelProcessing';
 
 // Components
@@ -465,6 +466,25 @@ function AssetLibrary({ onContextMenu }) {
       
       const rawAssets = await listDirectory(dirPath);
       
+      // Get cached assets with thumbnail URLs
+      let cachedThumbnails = {};
+      try {
+        console.log(`📦 Fetching thumbnail URLs from cache...`);
+        const cachedData = await getCachedAssets(currentProject.name);
+        if (cachedData.success && cachedData.assets) {
+          // Create a map of asset paths to thumbnail URLs
+          for (const cachedAsset of cachedData.assets) {
+            if (cachedAsset.thumbnail_path) {
+              const thumbnailUrl = getFileUrl(`projects/${currentProject.name}/${cachedAsset.thumbnail_path}`);
+              cachedThumbnails[cachedAsset.path] = thumbnailUrl;
+            }
+          }
+          console.log(`📦 Found ${Object.keys(cachedThumbnails).length} cached thumbnails`);
+        }
+      } catch (cacheError) {
+        console.warn('Failed to load cached thumbnails:', cacheError);
+      }
+      
       const assets = rawAssets
         .filter(asset => {
           // Filter out cache directories and system files
@@ -476,14 +496,21 @@ function AssetLibrary({ onContextMenu }) {
         })
         .map(asset => {
           const hasExtension = asset.name.includes('.') && !asset.is_directory;
+          const assetPath = path ? `${path}/${asset.name}` : asset.name;
+          
+          // Look for thumbnail URL in cache
+          const thumbnailUrl = cachedThumbnails[assetPath] || null;
+          
           return {
             id: asset.path,
             name: asset.name,
-            path: path ? `${path}/${asset.name}` : asset.name,
+            path: assetPath,
             type: asset.is_directory ? 'folder' : 'file',
             extension: hasExtension ? '.' + asset.name.split('.').pop() : null,
             size: asset.size || 0,
-            fileName: asset.name
+            fileName: asset.name,
+            thumbnailUrl: thumbnailUrl,
+            cached: !!thumbnailUrl
           };
         });
       

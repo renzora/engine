@@ -15,6 +15,76 @@ pub struct CachedScriptList {
     pub total_count: usize,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProjectManifest {
+    pub project_name: String,
+    pub last_scan: u64,
+    pub file_count: usize,
+    pub checksum: String,
+    pub cache_version: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FileMetadata {
+    pub path: String,
+    pub last_modified: u64,
+    pub file_size: u64,
+    pub hash: String,
+    pub processed_at: u64,
+    pub file_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ProcessedAsset {
+    pub path: String,
+    pub file_type: String,
+    pub metadata: serde_json::Value,
+    pub thumbnail_path: Option<String>,
+    pub compressed_path: Option<String>,
+    pub extracted_materials: Option<Vec<String>>,
+    pub processing_status: String,
+    pub processed_at: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CacheValidationResult {
+    pub cache_status: String, // "valid", "needs_update", "missing"
+    pub changes_detected: usize,
+    pub estimated_processing_time: u64,
+    pub change_summary: ChangeSummary,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ChangeSummary {
+    pub new_files: usize,
+    pub modified_files: usize,
+    pub deleted_files: usize,
+    pub moved_files: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CachedAssetNode {
+    pub name: String,
+    pub path: String,
+    pub is_directory: bool,
+    pub file_size: Option<u64>,
+    pub last_modified: Option<u64>,
+    pub extension: Option<String>,
+    pub file_type: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub children: Option<Vec<CachedAssetNode>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ProjectAssetTree {
+    pub project_name: String,
+    pub root_path: String,
+    pub assets: Vec<CachedAssetNode>,
+    pub generated_at: u64,
+    pub total_files: usize,
+    pub total_directories: usize,
+}
+
 impl RedisCache {
     pub fn new() -> Self {
         let mut cache = RedisCache {
@@ -39,13 +109,39 @@ impl RedisCache {
 
     fn try_connect(&mut self) -> RedisResult<()> {
         let client = redis::Client::open("redis://127.0.0.1:6379/")?;
-        let mut connection = client.get_connection()?;
         
-        // Test the connection
-        let _: String = redis::cmd("PING").query(&mut connection)?;
+        // Retry connection a few times in case embedded server is still starting up
+        let mut last_error = None;
+        for attempt in 1..=3 {
+            match client.get_connection() {
+                Ok(mut connection) => {
+                    // Test the connection
+                    match redis::cmd("PING").query::<String>(&mut connection) {
+                        Ok(_) => {
+                            debug!("🔴 Redis connection established on attempt {}", attempt);
+                            self.connection = Some(connection);
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            last_error = Some(e);
+                            if attempt < 3 {
+                                std::thread::sleep(std::time::Duration::from_millis(100));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                    if attempt < 3 {
+                        std::thread::sleep(std::time::Duration::from_millis(100));
+                    }
+                }
+            }
+        }
         
-        self.connection = Some(connection);
-        Ok(())
+        Err(last_error.unwrap_or_else(|| {
+            redis::RedisError::from((redis::ErrorKind::IoError, "Failed to connect after retries"))
+        }))
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -291,6 +387,354 @@ impl RedisCache {
         match result {
             Ok(value) => Ok(Some(value)),
             Err(_) => Ok(None), // Key doesn't exist or other error
+        }
+    }
+
+    // Project Asset Cache Methods
+
+    pub fn cache_project_manifest(&mut self, manifest: &ProjectManifest) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:manifest", manifest.project_name);
+                match serde_json::to_string(manifest) {
+                    Ok(json) => {
+                        let result: RedisResult<()> = conn.set_ex(&key, json, 86400); // 24 hours TTL
+                        match result {
+                            Ok(_) => {
+                                info!("🔴 Cached project manifest for: {}", manifest.project_name);
+                                true
+                            }
+                            Err(e) => {
+                                warn!("🔴 Failed to cache project manifest: {}", e);
+                                false
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("🔴 Failed to serialize project manifest: {}", e);
+                        false
+                    }
+                }
+            }
+            None => false,
+        }
+    }
+
+    pub fn get_project_manifest(&mut self, project_name: &str) -> Option<ProjectManifest> {
+        if !self.is_enabled() {
+            return None;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:manifest", project_name);
+                let result: RedisResult<String> = conn.get(&key);
+                match result {
+                    Ok(json) => {
+                        match serde_json::from_str::<ProjectManifest>(&json) {
+                            Ok(manifest) => {
+                                info!("🔴 Retrieved project manifest from cache: {}", project_name);
+                                Some(manifest)
+                            }
+                            Err(e) => {
+                                warn!("🔴 Failed to deserialize project manifest: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        debug!("🔴 No cached project manifest found: {}", project_name);
+                        None
+                    }
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn cache_file_metadata(&mut self, project_name: &str, file_metadata: &[FileMetadata]) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:files", project_name);
+                
+                // Store as hash map for efficient lookups
+                for metadata in file_metadata {
+                    match serde_json::to_string(metadata) {
+                        Ok(json) => {
+                            let result: RedisResult<()> = conn.hset(&key, &metadata.path, json);
+                            if let Err(e) = result {
+                                warn!("🔴 Failed to cache file metadata for {}: {}", metadata.path, e);
+                                return false;
+                            }
+                        }
+                        Err(e) => {
+                            warn!("🔴 Failed to serialize file metadata: {}", e);
+                            return false;
+                        }
+                    }
+                }
+                
+                // Set TTL on the hash
+                let _: RedisResult<()> = conn.expire(&key, 86400); // 24 hours
+                info!("🔴 Cached {} file metadata entries for project: {}", file_metadata.len(), project_name);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub fn get_file_metadata(&mut self, project_name: &str, file_path: &str) -> Option<FileMetadata> {
+        if !self.is_enabled() {
+            return None;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:files", project_name);
+                let result: RedisResult<String> = conn.hget(&key, file_path);
+                match result {
+                    Ok(json) => {
+                        match serde_json::from_str::<FileMetadata>(&json) {
+                            Ok(metadata) => Some(metadata),
+                            Err(e) => {
+                                warn!("🔴 Failed to deserialize file metadata: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    Err(_) => None,
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn get_all_file_metadata(&mut self, project_name: &str) -> Vec<FileMetadata> {
+        if !self.is_enabled() {
+            return Vec::new();
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:files", project_name);
+                let result: RedisResult<std::collections::HashMap<String, String>> = conn.hgetall(&key);
+                match result {
+                    Ok(hash_map) => {
+                        let mut metadata_list = Vec::new();
+                        for (_path, json) in hash_map {
+                            match serde_json::from_str::<FileMetadata>(&json) {
+                                Ok(metadata) => metadata_list.push(metadata),
+                                Err(e) => warn!("🔴 Failed to deserialize file metadata: {}", e),
+                            }
+                        }
+                        if !metadata_list.is_empty() {
+                            info!("🔴 Retrieved {} file metadata entries from cache for project: {}", metadata_list.len(), project_name);
+                        }
+                        metadata_list
+                    }
+                    Err(_) => Vec::new(),
+                }
+            }
+            None => Vec::new(),
+        }
+    }
+
+    pub fn cache_processed_asset(&mut self, project_name: &str, asset: &ProcessedAsset) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:processed", project_name);
+                match serde_json::to_string(asset) {
+                    Ok(json) => {
+                        let result: RedisResult<()> = conn.hset(&key, &asset.path, json);
+                        match result {
+                            Ok(_) => {
+                                // Set TTL on the hash
+                                let _: RedisResult<()> = conn.expire(&key, 86400); // 24 hours
+                                info!("🔴 Cached processed asset: {} (thumbnail: {:?})", asset.path, asset.thumbnail_path);
+                                true
+                            }
+                            Err(e) => {
+                                warn!("🔴 Failed to cache processed asset: {}", e);
+                                false
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("🔴 Failed to serialize processed asset: {}", e);
+                        false
+                    }
+                }
+            }
+            None => false,
+        }
+    }
+
+    pub fn get_processed_asset(&mut self, project_name: &str, file_path: &str) -> Option<ProcessedAsset> {
+        if !self.is_enabled() {
+            return None;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:processed", project_name);
+                let result: RedisResult<String> = conn.hget(&key, file_path);
+                match result {
+                    Ok(json) => {
+                        match serde_json::from_str::<ProcessedAsset>(&json) {
+                            Ok(asset) => Some(asset),
+                            Err(e) => {
+                                warn!("🔴 Failed to deserialize processed asset: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    Err(_) => None,
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn get_all_processed_assets(&mut self, project_name: &str) -> Vec<ProcessedAsset> {
+        if !self.is_enabled() {
+            return Vec::new();
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:processed", project_name);
+                let result: RedisResult<std::collections::HashMap<String, String>> = conn.hgetall(&key);
+                match result {
+                    Ok(hash_map) => {
+                        let mut assets = Vec::new();
+                        for (_path, json) in hash_map {
+                            match serde_json::from_str::<ProcessedAsset>(&json) {
+                                Ok(asset) => {
+                                    debug!("🔍 Retrieved asset: {} (thumbnail: {:?})", asset.path, asset.thumbnail_path);
+                                    assets.push(asset);
+                                }
+                                Err(e) => warn!("🔴 Failed to deserialize processed asset: {}", e),
+                            }
+                        }
+                        if !assets.is_empty() {
+                            info!("🔴 Retrieved {} processed assets from cache for project: {}", assets.len(), project_name);
+                            let with_thumbnails = assets.iter().filter(|a| a.thumbnail_path.is_some()).count();
+                            info!("🖼️ Assets with thumbnails: {}/{}", with_thumbnails, assets.len());
+                        }
+                        assets
+                    }
+                    Err(_) => Vec::new(),
+                }
+            }
+            None => Vec::new(),
+        }
+    }
+
+    pub fn cache_project_asset_tree(&mut self, tree: &ProjectAssetTree) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:asset_tree", tree.project_name);
+                match serde_json::to_string(tree) {
+                    Ok(json) => {
+                        let result: RedisResult<()> = conn.set_ex(&key, json, 86400); // 24 hours TTL
+                        match result {
+                            Ok(_) => {
+                                info!("🔴 Cached project asset tree for: {} ({} files, {} directories)", 
+                                      tree.project_name, tree.total_files, tree.total_directories);
+                                true
+                            }
+                            Err(e) => {
+                                warn!("🔴 Failed to cache project asset tree: {}", e);
+                                false
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("🔴 Failed to serialize project asset tree: {}", e);
+                        false
+                    }
+                }
+            }
+            None => false,
+        }
+    }
+
+    pub fn get_project_asset_tree(&mut self, project_name: &str) -> Option<ProjectAssetTree> {
+        if !self.is_enabled() {
+            return None;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let key = format!("project:{}:asset_tree", project_name);
+                let result: RedisResult<String> = conn.get(&key);
+                match result {
+                    Ok(json) => {
+                        match serde_json::from_str::<ProjectAssetTree>(&json) {
+                            Ok(tree) => {
+                                info!("🔴 Retrieved project asset tree from cache: {} ({} files, {} directories)", 
+                                      project_name, tree.total_files, tree.total_directories);
+                                Some(tree)
+                            }
+                            Err(e) => {
+                                warn!("🔴 Failed to deserialize project asset tree: {}", e);
+                                None
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        debug!("🔴 No cached project asset tree found: {}", project_name);
+                        None
+                    }
+                }
+            }
+            None => None,
+        }
+    }
+
+    pub fn clear_project_cache(&mut self, project_name: &str) -> bool {
+        if !self.is_enabled() {
+            return false;
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let keys = vec![
+                    format!("project:{}:manifest", project_name),
+                    format!("project:{}:files", project_name),
+                    format!("project:{}:processed", project_name),
+                    format!("project:{}:asset_tree", project_name),
+                ];
+                
+                let result: RedisResult<()> = conn.del(keys.clone());
+                match result {
+                    Ok(_) => {
+                        info!("🔴 Cleared project cache for: {}", project_name);
+                        true
+                    }
+                    Err(e) => {
+                        warn!("🔴 Failed to clear project cache: {}", e);
+                        false
+                    }
+                }
+            }
+            None => false,
         }
     }
 }

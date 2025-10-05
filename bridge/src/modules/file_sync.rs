@@ -306,7 +306,9 @@ pub fn read_binary_file(file_path: &str) -> Result<Vec<u8>, String> {
     
     // Construct full path within project directory
     let project_assets_path = projects_path.join(project_name).join(&asset_path);
-    debug!("📂 Full binary file path: {:?}", project_assets_path);
+    info!("📂 Binary file debug - Projects path: {:?}, Project: {}, Asset: {}", projects_path, project_name, asset_path);
+    info!("📂 Full path constructed: {:?}", project_assets_path);
+    info!("📂 File exists: {}", project_assets_path.exists());
     
     // Security validation
     if let Err(e) = is_file_extension_allowed(&project_assets_path) {

@@ -29,3 +29,25 @@ export async function generateThumbnail(assetPath, size = 512) {
 
   return parseJsonResponse(response);
 }
+
+/**
+ * Generate thumbnails for all compatible assets in a project in batch
+ */
+export async function generateBatchThumbnails() {
+  const project = getCurrentProject();
+  if (!project?.name) {
+    throw new Error('No current project set');
+  }
+
+  const response = await bridgeFetch('/thumbnails/batch', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      project_name: project.name
+    })
+  });
+
+  return parseJsonResponse(response);
+}

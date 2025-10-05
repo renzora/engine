@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "web": "bun run kill && concurrently \"bun run bridge\" \"npx rspack serve\"",
-    "app": "bun run kill && npx tauri dev",
+    "app": "bun run kill && concurrently \"bun run bridge\" \"npx tauri dev\"",
     "bridge": "bun run kill && cargo run --manifest-path bridge/Cargo.toml --bin bridge-server --features nvidia",
     "build:bridge": "bun run kill && cargo build --release --manifest-path bridge/Cargo.toml --bin bridge-server --features nvidia",
     "build:web": "bun run kill && bun run build:bridge && npx rspack build --mode production",

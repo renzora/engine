@@ -13,7 +13,8 @@ use base64::{Engine as _, engine::general_purpose};
 use crate::types::{ApiResponse, WriteFileRequest, WriteBinaryFileRequest, CreateProjectRequest};
 use crate::project_manager::{list_projects, list_directory_contents, create_project, load_scene_with_assets, delete_project};
 use crate::file_sync::{read_file_content, write_file_content, delete_file_or_directory, get_file_content_type, read_binary_file, write_binary_file_content};
-use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest, batch_generate_thumbnails, generate_model_thumbnail, generate_material_thumbnail};
+use crate::thumbnail_generator::{get_or_generate_thumbnail, ThumbnailRequest, batch_generate_thumbnails};
+use crate::modules::thumbnail_generators::model_types::{generate_model_thumbnail, generate_material_thumbnail};
 use crate::update_manager::{Channel, check_for_updates, set_update_channel, get_current_config, get_last_update_check};
 use crate::file_watcher::{get_file_change_receiver, set_current_project};
 use crate::system_monitor::get_system_stats;
@@ -23,7 +24,7 @@ use crate::project_manager::get_projects_path;
 use crate::renscript_compiler::compile_renscript;
 use std::fs;
 use crate::database::DatabaseManager;
-use crate::redis_cache::RedisCache;
+use crate::modules::redis_cache::{RedisCache, CachedAssetNode, ProjectAssetTree};
 use crate::renscript_cache::RenScriptCache;
 
 // Static variables for shared state
@@ -109,6 +110,65 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
             };
             handle_delete_project(&decoded_name)
+        }
+        (&Method::GET, path) if path.contains("/cache/validate") && path.starts_with("/projects/") => {
+            // Extract project name from path: /projects/{name}/cache/validate
+            let path_parts: Vec<&str> = path.split('/').collect();
+            if path_parts.len() >= 4 && path_parts[1] == "projects" && path_parts[3] == "cache" && path_parts[4] == "validate" {
+                let project_name = path_parts[2];
+                let decoded_name = match decode_url_path(project_name) {
+                    Ok(name) => name,
+                    Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+                };
+                handle_validate_project_cache(&decoded_name).await
+            } else {
+                error_response(StatusCode::BAD_REQUEST, "Invalid cache validation path")
+            }
+        }
+        (&Method::POST, path) if path.contains("/cache/process") && path.starts_with("/projects/") => {
+            // Extract project name from path: /projects/{name}/cache/process
+            let path_parts: Vec<&str> = path.split('/').collect();
+            if path_parts.len() >= 4 && path_parts[1] == "projects" && path_parts[3] == "cache" && path_parts[4] == "process" {
+                let project_name = path_parts[2];
+                let decoded_name = match decode_url_path(project_name) {
+                    Ok(name) => name,
+                    Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+                };
+                match &body {
+                    Some(body_content) => handle_process_project_cache(&decoded_name, body_content).await,
+                    None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+                }
+            } else {
+                error_response(StatusCode::BAD_REQUEST, "Invalid cache process path")
+            }
+        }
+        (&Method::GET, path) if path.contains("/cache/tree") && path.starts_with("/projects/") => {
+            // Extract project name from path: /projects/{name}/cache/tree
+            let path_parts: Vec<&str> = path.split('/').collect();
+            if path_parts.len() >= 4 && path_parts[1] == "projects" && path_parts[3] == "cache" && path_parts[4] == "tree" {
+                let project_name = path_parts[2];
+                let decoded_name = match decode_url_path(project_name) {
+                    Ok(name) => name,
+                    Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+                };
+                handle_get_asset_tree(&decoded_name).await
+            } else {
+                error_response(StatusCode::BAD_REQUEST, "Invalid asset tree path")
+            }
+        }
+        (&Method::GET, path) if path.contains("/assets") && path.starts_with("/projects/") => {
+            // Extract project name from path: /projects/{name}/assets
+            let path_parts: Vec<&str> = path.split('/').collect();
+            if path_parts.len() >= 3 && path_parts[1] == "projects" && path_parts[3] == "assets" {
+                let project_name = path_parts[2];
+                let decoded_name = match decode_url_path(project_name) {
+                    Ok(name) => name,
+                    Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+                };
+                handle_get_cached_assets(&decoded_name).await
+            } else {
+                error_response(StatusCode::BAD_REQUEST, "Invalid assets path")
+            }
         }
         (&Method::GET, path) if path.starts_with("/list/") => {
             let dir_path = &path[6..];
@@ -1252,6 +1312,863 @@ async fn handle_database_query(body: &str) -> Response<BoxBody<Bytes, Infallible
         }
     } else {
         error_response(StatusCode::SERVICE_UNAVAILABLE, "Database not available")
+    }
+}
+
+// Project Cache Handlers
+
+async fn handle_validate_project_cache(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    info!("🔍 Validating cache for project: {}", project_name);
+    
+    let redis_cache = REDIS_CACHE.get().cloned();
+    let validator = crate::modules::project_cache_validator::ProjectCacheValidator::new(
+        project_name.to_string(),
+        redis_cache,
+    );
+    
+    match validator.validate_cache().await {
+        Ok(validation_result) => {
+            info!("✅ Cache validation completed for project: {} (status: {})", 
+                  project_name, validation_result.cache_status);
+            json_response(&validation_result)
+        }
+        Err(e) => {
+            error!("❌ Cache validation failed for project {}: {}", project_name, e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Cache validation failed: {}", e))
+        }
+    }
+}
+
+async fn handle_process_project_cache(project_name: &str, body: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    #[derive(serde::Deserialize)]
+    struct ProcessCacheRequest {
+        force_full_rebuild: Option<bool>,
+        file_types: Option<Vec<String>>,
+        stream_progress: Option<bool>,
+    }
+    
+    let request: ProcessCacheRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(e) => {
+            error!("❌ Failed to parse cache process request: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
+        }
+    };
+    
+    info!("🔄 Starting cache processing for project: {} (force_rebuild: {}, stream: {})", 
+          project_name, 
+          request.force_full_rebuild.unwrap_or(false),
+          request.stream_progress.unwrap_or(false));
+    
+    let redis_cache = REDIS_CACHE.get().cloned();
+    let validator = crate::modules::project_cache_validator::ProjectCacheValidator::new(
+        project_name.to_string(),
+        redis_cache.clone(),
+    );
+    
+    match validator.validate_cache().await {
+        Ok(validation_result) => {
+            if validation_result.cache_status == "valid" && !request.force_full_rebuild.unwrap_or(false) {
+                let response = serde_json::json!({
+                    "success": true,
+                    "message": "Cache is already up to date",
+                    "processed_count": 0,
+                    "cache_status": "valid"
+                });
+                return json_response(&response);
+            }
+            
+            // Process the cache with progress tracking
+            info!("🔄 Starting cache processing for project: {}", project_name);
+            
+            if request.stream_progress.unwrap_or(false) {
+                // Return SSE stream with real-time progress
+                handle_sse_cache_processing(&validator, project_name, request.force_full_rebuild.unwrap_or(false)).await
+            } else {
+                // Regular JSON response
+                match process_project_assets(&validator, project_name, request.force_full_rebuild.unwrap_or(false), None).await {
+                    Ok(processed_count) => {
+                        info!("🎉 Cache processing completed successfully for project: {} ({} assets)", project_name, processed_count);
+                        let response = serde_json::json!({
+                            "success": true,
+                            "message": "Cache processing completed successfully",
+                            "processed_count": processed_count,
+                            "cache_status": "updated"
+                        });
+                        json_response(&response)
+                    }
+                    Err(e) => {
+                        error!("❌ Cache processing failed: {}", e);
+                        error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Processing failed: {}", e))
+                    }
+                }
+            }
+        }
+        Err(e) => {
+            error!("❌ Cache validation failed: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Validation failed: {}", e))
+        }
+    }
+}
+
+async fn handle_get_cached_assets(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    info!("📦 Retrieving cached assets for project: {}", project_name);
+    
+    if let Some(redis_cache) = REDIS_CACHE.get() {
+        let mut cache = redis_cache.lock().await;
+        let processed_assets = cache.get_all_processed_assets(project_name);
+        let file_metadata = cache.get_all_file_metadata(project_name);
+        let manifest = cache.get_project_manifest(project_name);
+        
+        info!("🔍 Retrieved from Redis cache: {} processed assets, {} file metadata entries, manifest: {}", 
+              processed_assets.len(), file_metadata.len(), manifest.is_some());
+        
+        let response_data = serde_json::json!({
+            "success": true,
+            "project_name": project_name,
+            "assets": processed_assets,
+            "file_metadata": file_metadata,
+            "cache_generated_at": manifest.as_ref().map(|m| m.last_scan).unwrap_or(0),
+            "total_processed": processed_assets.len(),
+            "cache_version": manifest.as_ref().map(|m| m.cache_version.as_str()).unwrap_or("unknown")
+        });
+        
+        info!("✅ Retrieved {} cached assets for project: {}", processed_assets.len(), project_name);
+        json_response(&response_data)
+    } else {
+        error!("❌ Redis cache not available");
+        error_response(StatusCode::SERVICE_UNAVAILABLE, "Cache not available")
+    }
+}
+
+async fn handle_get_asset_tree(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    info!("🌳 Retrieving cached asset tree for project: {}", project_name);
+    
+    if let Some(redis_cache) = REDIS_CACHE.get() {
+        let mut cache = redis_cache.lock().await;
+        if let Some(asset_tree) = cache.get_project_asset_tree(project_name) {
+            info!("✅ Retrieved cached asset tree for project: {} ({} files, {} directories)", 
+                  project_name, asset_tree.total_files, asset_tree.total_directories);
+            json_response(&asset_tree)
+        } else {
+            warn!("🌳 No cached asset tree found for project: {}", project_name);
+            error_response(StatusCode::NOT_FOUND, "Asset tree not found in cache")
+        }
+    } else {
+        error!("❌ Redis cache not available");
+        error_response(StatusCode::SERVICE_UNAVAILABLE, "Cache not available")
+    }
+}
+
+// Progress callback type
+type ProgressCallback = Box<dyn Fn(serde_json::Value) + Send + Sync>;
+
+async fn handle_sse_cache_processing(
+    _validator: &crate::modules::project_cache_validator::ProjectCacheValidator,
+    project_name: &str,
+    force_rebuild: bool,
+) -> Response<BoxBody<Bytes, Infallible>> {
+    use tokio_stream::wrappers::UnboundedReceiverStream;
+    use tokio::sync::mpsc;
+    use std::convert::Infallible;
+    use futures_util::StreamExt;
+    
+    let (tx, rx) = mpsc::unbounded_channel();
+    
+    // Clone tx for the async task
+    let tx_for_task = tx.clone();
+    
+    // Create progress callback that sends SSE events
+    let progress_callback: ProgressCallback = Box::new(move |progress_data| {
+        let event = format!("data: {}\n\n", progress_data);
+        let _ = tx.send(Ok::<_, Infallible>(event.into()));
+    });
+    
+    // Clone data for async task  
+    let project_name_clone = project_name.to_string();
+    let redis_cache = REDIS_CACHE.get().cloned();
+    let validator_for_task = crate::modules::project_cache_validator::ProjectCacheValidator::new(
+        project_name_clone.clone(),
+        redis_cache,
+    );
+    
+    // Spawn processing task
+    tokio::spawn(async move {
+        let result = process_project_assets(&validator_for_task, &project_name_clone, force_rebuild, Some(progress_callback)).await;
+        
+        // Send final result
+        let final_data = match result {
+            Ok(processed_count) => serde_json::json!({
+                "type": "complete",
+                "success": true,
+                "processed_count": processed_count,
+                "message": "Cache processing completed successfully"
+            }),
+            Err(e) => serde_json::json!({
+                "type": "error",
+                "success": false,
+                "error": e.to_string()
+            })
+        };
+        
+        let final_event = format!("data: {}\n\n", final_data);
+        let _ = tx_for_task.send(Ok::<_, Infallible>(final_event.into()));
+    });
+    
+    // Return SSE response
+    let stream = UnboundedReceiverStream::new(rx);
+    let body = StreamBody::new(stream.map(|item| {
+        item.map(|data: String| Frame::data(Bytes::from(data)))
+    }));
+    
+    Response::builder()
+        .status(StatusCode::OK)
+        .header("Content-Type", "text/event-stream")
+        .header("Cache-Control", "no-cache")
+        .header("Connection", "keep-alive")
+        .header("Access-Control-Allow-Origin", "*")
+        .body(BodyExt::boxed(body))
+        .unwrap()
+}
+
+async fn process_project_assets(
+    validator: &crate::modules::project_cache_validator::ProjectCacheValidator,
+    project_name: &str,
+    force_rebuild: bool,
+    progress_callback: Option<ProgressCallback>,
+) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::redis_cache::{FileMetadata, ProcessedAsset};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::hash::{Hash, Hasher};
+    
+    // Scan all project files
+    let projects_path = crate::get_projects_path();
+    let project_path = projects_path.join(project_name);
+    let mut current_files = Vec::new();
+    scan_directory_recursive(&project_path, &mut current_files)?;
+    
+    // Filter out cache, system files, and configuration files
+    current_files.retain(|path| {
+        let path_str = path.to_string_lossy();
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        
+        // Exclude system and cache files
+        if path_str.contains(".cache") || 
+           path_str.contains(".git") || 
+           path_str.starts_with('.') ||
+           !path.is_file() {
+            return false;
+        }
+        
+        // Exclude configuration files that don't need processing
+        if file_name == "project.json" ||
+           file_name == "package.json" ||
+           file_name == "tsconfig.json" ||
+           file_name == "webpack.config.js" ||
+           ((path_str.contains("scenes/") || path_str.contains("scenes\\")) && file_name.ends_with(".json")) {
+            info!("⏭️ Skipping configuration file: {}", path_str);
+            return false;
+        }
+        
+        true
+    });
+    
+    if force_rebuild {
+        // Clear existing cache
+        if let Some(redis_cache) = REDIS_CACHE.get() {
+            let mut cache = redis_cache.lock().await;
+            cache.clear_project_cache(project_name);
+            info!("🗑️ Cleared existing cache for force rebuild");
+        }
+    }
+    
+    let mut processed_count = 0;
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    
+    // Process files in batches to avoid overwhelming the system
+    let batch_size = 10;
+    let total_batches = (current_files.len() + batch_size - 1) / batch_size;
+    
+    info!("🔄 Starting batch processing: {} total files in {} batches", current_files.len(), total_batches);
+    
+    // Send initial progress
+    if let Some(ref callback) = progress_callback {
+        callback(serde_json::json!({
+            "type": "progress",
+            "stage": "Starting file processing...",
+            "progress": 0.05,
+            "files_processed": 0,
+            "total_files": current_files.len(),
+            "current_file": ""
+        }));
+    }
+    
+    for (batch_index, batch) in current_files.chunks(batch_size).enumerate() {
+        info!("📦 Processing batch {}/{} ({} files)", batch_index + 1, total_batches, batch.len());
+        
+        for (file_index, file_path) in batch.iter().enumerate() {
+            if let Ok(relative_path) = file_path.strip_prefix(&project_path) {
+                let relative_path_str = relative_path.to_string_lossy().replace('\\', "/");
+                let file_number = batch_index * batch_size + file_index + 1;
+                let overall_progress = (file_number as f32 / current_files.len() as f32) * 0.8; // Reserve 20% for finalization
+                
+                info!("📄 Processing file {}/{}: {}", file_number, current_files.len(), relative_path_str);
+                
+                // Send progress update for each file
+                if let Some(ref callback) = progress_callback {
+                    callback(serde_json::json!({
+                        "type": "progress",
+                        "stage": format!("Processing file {}/{}", file_number, current_files.len()),
+                        "progress": overall_progress,
+                        "files_processed": file_number,
+                        "total_files": current_files.len(),
+                        "current_file": relative_path_str
+                    }));
+                }
+                
+                // Create file metadata
+                if let Ok(metadata) = std::fs::metadata(file_path) {
+                    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                    relative_path_str.hash(&mut hasher);
+                    metadata.len().hash(&mut hasher);
+                    
+                    let file_metadata = FileMetadata {
+                        path: relative_path_str.clone(),
+                        last_modified: metadata.modified()
+                            .unwrap_or(SystemTime::UNIX_EPOCH)
+                            .duration_since(UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs(),
+                        file_size: metadata.len(),
+                        hash: format!("{:x}", hasher.finish()),
+                        processed_at: current_time,
+                        file_type: get_file_type(file_path),
+                    };
+                    
+                    // Cache the file metadata
+                    if let Some(redis_cache) = REDIS_CACHE.get() {
+                        let mut cache = redis_cache.lock().await;
+                        if cache.cache_file_metadata(project_name, &[file_metadata.clone()]) {
+                            info!("📦 Cached file metadata: {} ({})", relative_path_str, file_metadata.file_type);
+                        }
+                    }
+                    
+                    // Process specific file types with detailed logging
+                    let file_type = get_file_type(file_path);
+                    let processed_asset = match file_type.as_str() {
+                        "image" | "hdr_image" => {
+                            info!("🖼️ Generating thumbnail for {}: {}", file_type, relative_path_str);
+                            // Send thumbnail generation progress
+                            if let Some(ref callback) = progress_callback {
+                                callback(serde_json::json!({
+                                    "type": "progress",
+                                    "stage": format!("🖼️ Generating thumbnail for {}", relative_path_str),
+                                    "progress": overall_progress,
+                                    "files_processed": file_number,
+                                    "total_files": current_files.len(),
+                                    "current_file": relative_path_str,
+                                    "operation": "thumbnail_generation"
+                                }));
+                            }
+                            process_image_asset(project_name, &relative_path_str, file_path).await?
+                        }
+                        "model" => {
+                            info!("🎨 Processing 3D model: {}", relative_path_str);
+                            process_model_asset(project_name, &relative_path_str, file_path).await?
+                        }
+                        "audio" => {
+                            info!("🎵 Processing audio file: {}", relative_path_str);
+                            process_audio_asset(project_name, &relative_path_str, file_path).await?
+                        }
+                        _ => {
+                            info!("📄 Processing {} file: {}", file_type, relative_path_str);
+                            // Generic processing for other file types
+                            ProcessedAsset {
+                                path: relative_path_str.clone(),
+                                file_type: file_metadata.file_type.clone(),
+                                metadata: serde_json::json!({
+                                    "size": metadata.len(),
+                                    "extension": file_path.extension()
+                                        .map(|s| s.to_string_lossy().to_string())
+                                        .unwrap_or_default()
+                                }),
+                                thumbnail_path: None,
+                                compressed_path: None,
+                                extracted_materials: None,
+                                processing_status: "processed".to_string(),
+                                processed_at: current_time,
+                            }
+                        }
+                    };
+                    
+                    // Cache the processed asset
+                    if let Some(redis_cache) = REDIS_CACHE.get() {
+                        let mut cache = redis_cache.lock().await;
+                        if cache.cache_processed_asset(project_name, &processed_asset) {
+                            info!("💾 Cached processed asset: {} (status: {})", relative_path_str, processed_asset.processing_status);
+                        }
+                    }
+                    
+                    processed_count += 1;
+                    info!("✅ Completed processing file {}/{}: {} ({})", 
+                          batch_index * batch_size + file_index + 1, 
+                          current_files.len(), 
+                          relative_path_str,
+                          processed_asset.processing_status);
+                }
+            }
+        }
+        
+        info!("✅ Completed batch {}/{}", batch_index + 1, total_batches);
+        
+        // Small delay between batches to prevent overwhelming the system
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+    }
+    
+    // Update project manifest with detailed progress
+    info!("📋 Finalizing cache - calculating project checksum for {} files...", current_files.len());
+    
+    // Send finalization progress
+    if let Some(ref callback) = progress_callback {
+        callback(serde_json::json!({
+            "type": "progress",
+            "stage": "📋 Finalizing cache - calculating checksums...",
+            "progress": 0.9,
+            "files_processed": current_files.len(),
+            "total_files": current_files.len(),
+            "current_file": "",
+            "operation": "finalization"
+        }));
+    }
+    
+    validator.update_project_manifest(&current_files).await?;
+    info!("📋 Project manifest updated successfully");
+    
+    // Build and cache project asset tree
+    info!("🌳 Building project asset tree...");
+    if let Some(ref callback) = progress_callback {
+        callback(serde_json::json!({
+            "type": "progress",
+            "stage": "🌳 Building project asset tree...",
+            "progress": 0.95,
+            "files_processed": current_files.len(),
+            "total_files": current_files.len(),
+            "current_file": "",
+            "operation": "building_tree"
+        }));
+    }
+    
+    build_and_cache_asset_tree(project_name).await?;
+    info!("🌳 Project asset tree cached successfully");
+    
+    // Send completion progress
+    if let Some(ref callback) = progress_callback {
+        callback(serde_json::json!({
+            "type": "progress",
+            "stage": "✅ Cache processing completed!",
+            "progress": 1.0,
+            "files_processed": current_files.len(),
+            "total_files": current_files.len(),
+            "current_file": "",
+            "operation": "complete"
+        }));
+    }
+    
+    info!("✅ Processed {} assets for project: {} - PROCESSING COMPLETE", processed_count, project_name);
+    Ok(processed_count)
+}
+
+fn scan_directory_recursive(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if dir.is_dir() {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            
+            if path.is_dir() {
+                // Skip hidden and cache directories
+                if let Some(dir_name) = path.file_name() {
+                    let dir_str = dir_name.to_string_lossy();
+                    if !dir_str.starts_with('.') {
+                        scan_directory_recursive(&path, files)?;
+                    }
+                }
+            } else {
+                files.push(path);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn format_file_size(file_path: &std::path::Path) -> String {
+    if let Ok(metadata) = std::fs::metadata(file_path) {
+        let size = metadata.len();
+        if size < 1024 {
+            format!("{} B", size)
+        } else if size < 1024 * 1024 {
+            format!("{:.1} KB", size as f64 / 1024.0)
+        } else {
+            format!("{:.1} MB", size as f64 / (1024.0 * 1024.0))
+        }
+    } else {
+        "Unknown size".to_string()
+    }
+}
+
+fn get_file_type(file_path: &std::path::Path) -> String {
+    if let Some(extension) = file_path.extension() {
+        let ext = extension.to_string_lossy().to_lowercase();
+        match ext.as_str() {
+            "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tga" | "tiff" | "ico" | "svg" => "image",
+            "hdr" | "exr" => "hdr_image",
+            "glb" | "gltf" | "obj" | "fbx" | "dae" | "3ds" | "blend" | "stl" | "ply" => "model",
+            "mp3" | "wav" | "ogg" | "flac" | "aac" | "m4a" => "audio",
+            "mp4" | "avi" | "mov" | "mkv" | "webm" | "wmv" => "video",
+            "js" | "ts" | "jsx" | "tsx" => "script",
+            "json" | "xml" | "yaml" | "yml" => "data",
+            "txt" | "md" | "rst" => "document",
+            "ren" => "renscript",
+            _ => "other",
+        }
+    } else {
+        "other"
+    }.to_string()
+}
+
+async fn process_image_asset(
+    project_name: &str,
+    relative_path: &str,
+    file_path: &std::path::Path,
+) -> Result<crate::modules::redis_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::redis_cache::ProcessedAsset;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    
+    // Get file extension for more specific logging
+    let extension = file_path.extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    
+    // Generate thumbnail for all image files
+    info!("🖼️ Starting thumbnail generation for {}: {} ({})", extension.to_uppercase(), relative_path, format_file_size(file_path));
+    
+    let thumbnail_start = std::time::Instant::now();
+    let thumbnail_path = match crate::thumbnail_generator::get_or_generate_thumbnail(
+        crate::thumbnail_generator::ThumbnailRequest {
+            project_name: project_name.to_string(),
+            asset_path: relative_path.to_string(),
+            size: Some(256),
+        }
+    ).await {
+        thumbnail_response if thumbnail_response.success => {
+            let duration = thumbnail_start.elapsed();
+            info!("✅ Thumbnail generated for {} in {:.2}s: {:?}", relative_path, duration.as_secs_f32(), thumbnail_response.thumbnail_file);
+            thumbnail_response.thumbnail_file
+        }
+        thumbnail_response => {
+            let duration = thumbnail_start.elapsed();
+            error!("❌ Thumbnail generation failed for {} after {:.2}s: {:?}", relative_path, duration.as_secs_f32(), thumbnail_response.error);
+            None
+        }
+    };
+    
+    // Get image metadata
+    let metadata = std::fs::metadata(file_path)?;
+    let asset_metadata = serde_json::json!({
+        "size": metadata.len(),
+        "width": null, // Could be extracted with image crate
+        "height": null,
+        "format": file_path.extension()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        "is_hdr": relative_path.ends_with(".hdr") || relative_path.ends_with(".exr")
+    });
+    
+    Ok(ProcessedAsset {
+        path: relative_path.to_string(),
+        file_type: "image".to_string(),
+        metadata: asset_metadata,
+        thumbnail_path,
+        compressed_path: None,
+        extracted_materials: None,
+        processing_status: "processed".to_string(),
+        processed_at: current_time,
+    })
+}
+
+async fn process_model_asset(
+    project_name: &str,
+    relative_path: &str,
+    file_path: &std::path::Path,
+) -> Result<crate::modules::redis_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::redis_cache::ProcessedAsset;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    
+    // Generate thumbnail
+    info!("🖼️ Generating thumbnail for model: {}", relative_path);
+    let thumbnail_path = match crate::thumbnail_generator::get_or_generate_thumbnail(
+        crate::thumbnail_generator::ThumbnailRequest {
+            project_name: project_name.to_string(),
+            asset_path: relative_path.to_string(),
+            size: Some(512),
+        }
+    ).await {
+        thumbnail_response if thumbnail_response.success => {
+            info!("✅ Thumbnail generated successfully: {:?}", thumbnail_response.thumbnail_file);
+            thumbnail_response.thumbnail_file
+        }
+        thumbnail_response => {
+            error!("❌ Thumbnail generation failed for {}: {:?}", relative_path, thumbnail_response.error);
+            None
+        }
+    };
+    
+    // Get model metadata
+    let metadata = std::fs::metadata(file_path)?;
+    let asset_metadata = serde_json::json!({
+        "size": metadata.len(),
+        "format": file_path.extension()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        "vertex_count": null, // Could be extracted with model parsing
+        "triangle_count": null,
+        "material_count": null
+    });
+    
+    let processed_asset = ProcessedAsset {
+        path: relative_path.to_string(),
+        file_type: "model".to_string(),
+        metadata: asset_metadata,
+        thumbnail_path: thumbnail_path.clone(),
+        compressed_path: None, // Could implement Draco compression here
+        extracted_materials: None, // Could extract material list here
+        processing_status: "processed".to_string(),
+        processed_at: current_time,
+    };
+    
+    info!("📦 ProcessedAsset created - path: {}, thumbnail_path: {:?}", relative_path, thumbnail_path);
+    
+    Ok(processed_asset)
+}
+
+async fn process_audio_asset(
+    _project_name: &str,
+    relative_path: &str,
+    file_path: &std::path::Path,
+) -> Result<crate::modules::redis_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::redis_cache::ProcessedAsset;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
+    
+    // Get audio metadata
+    let metadata = std::fs::metadata(file_path)?;
+    let asset_metadata = serde_json::json!({
+        "size": metadata.len(),
+        "format": file_path.extension()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        "duration": null, // Could be extracted with audio parsing crate
+        "sample_rate": null,
+        "channels": null,
+        "bitrate": null
+    });
+    
+    Ok(ProcessedAsset {
+        path: relative_path.to_string(),
+        file_type: "audio".to_string(),
+        metadata: asset_metadata,
+        thumbnail_path: None, // Could generate waveform visualization
+        compressed_path: None,
+        extracted_materials: None,
+        processing_status: "processed".to_string(),
+        processed_at: current_time,
+    })
+}
+
+async fn build_and_cache_asset_tree(project_name: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    info!("🌳 Building asset tree for project: {}", project_name);
+    
+    let projects_path = crate::get_projects_path();
+    let project_path = projects_path.join(project_name);
+    let assets_path = project_path.join("assets");
+    
+    if !assets_path.exists() {
+        warn!("🌳 Assets directory not found for project: {}", project_name);
+        return Ok(());
+    }
+    
+    // Get Redis cache for thumbnail URLs
+    let redis_cache = REDIS_CACHE.get();
+    let processed_assets = if let Some(cache) = redis_cache {
+        let mut cache_lock = cache.lock().await;
+        cache_lock.get_all_processed_assets(project_name)
+    } else {
+        Vec::new()
+    };
+    
+    // Create a map of asset paths to thumbnail URLs for quick lookup
+    let mut thumbnail_map = std::collections::HashMap::new();
+    for asset in processed_assets {
+        if let Some(thumbnail_path) = asset.thumbnail_path {
+            thumbnail_map.insert(asset.path, thumbnail_path);
+        }
+    }
+    
+    // Build the asset tree recursively
+    let assets_node = build_asset_node(&assets_path, &project_path, &thumbnail_map)?;
+    let mut total_files = 0;
+    let mut total_directories = 0;
+    count_nodes(&assets_node, &mut total_files, &mut total_directories);
+    
+    let asset_tree = ProjectAssetTree {
+        project_name: project_name.to_string(),
+        root_path: assets_path.to_string_lossy().to_string(),
+        assets: vec![assets_node],
+        generated_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+        total_files,
+        total_directories,
+    };
+    
+    // Cache the asset tree
+    if let Some(cache) = redis_cache {
+        let mut cache_lock = cache.lock().await;
+        if cache_lock.cache_project_asset_tree(&asset_tree) {
+            info!("🌳 Successfully cached asset tree for project: {} ({} files, {} directories)", 
+                  project_name, total_files, total_directories);
+        } else {
+            warn!("🌳 Failed to cache asset tree for project: {}", project_name);
+        }
+    }
+    
+    Ok(())
+}
+
+fn build_asset_node(
+    path: &std::path::Path, 
+    project_root: &std::path::Path,
+    thumbnail_map: &std::collections::HashMap<String, String>
+) -> Result<CachedAssetNode, Box<dyn std::error::Error + Send + Sync>> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    
+    let metadata = std::fs::metadata(path)?;
+    let name = path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+    
+    let relative_path = path.strip_prefix(project_root)?
+        .to_string_lossy()
+        .replace('\\', "/");
+    
+    let last_modified = metadata.modified()
+        .unwrap_or(SystemTime::UNIX_EPOCH)
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    
+    if path.is_dir() {
+        // Build directory node with children
+        let mut children = Vec::new();
+        
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries {
+                if let Ok(entry) = entry {
+                    let entry_path = entry.path();
+                    let entry_name = entry_path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("");
+                    
+                    // Skip hidden files and cache directories
+                    if !entry_name.starts_with('.') {
+                        if let Ok(child_node) = build_asset_node(&entry_path, project_root, thumbnail_map) {
+                            children.push(child_node);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Sort children: directories first, then files, both alphabetically
+        children.sort_by(|a, b| {
+            match (a.is_directory, b.is_directory) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => a.name.cmp(&b.name),
+            }
+        });
+        
+        // Always include the directory node, even if it's empty
+        Ok(CachedAssetNode {
+            name,
+            path: relative_path,
+            is_directory: true,
+            file_size: None,
+            last_modified: Some(last_modified),
+            extension: None,
+            file_type: Some("directory".to_string()),
+            thumbnail_url: None,
+            children: Some(children), // children will be empty Vec if no valid children found
+        })
+    } else {
+        // Build file node
+        let extension = path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|s| s.to_lowercase());
+        
+        let file_type = extension.as_ref()
+            .map(|ext| get_file_type_from_extension(ext))
+            .unwrap_or_else(|| "unknown".to_string());
+        
+        let thumbnail_url = thumbnail_map.get(&relative_path).cloned();
+        
+        Ok(CachedAssetNode {
+            name,
+            path: relative_path,
+            is_directory: false,
+            file_size: Some(metadata.len()),
+            last_modified: Some(last_modified),
+            extension,
+            file_type: Some(file_type),
+            thumbnail_url,
+            children: None,
+        })
+    }
+}
+
+fn get_file_type_from_extension(ext: &str) -> String {
+    match ext {
+        "jpg" | "jpeg" | "png" | "webp" | "bmp" | "tga" | "tiff" | "ico" | "svg" => "image".to_string(),
+        "hdr" | "exr" => "hdr_image".to_string(),
+        "glb" | "gltf" | "obj" | "fbx" | "dae" | "3ds" | "blend" | "stl" | "ply" => "model".to_string(),
+        "mp3" | "wav" | "ogg" | "flac" | "aac" | "m4a" => "audio".to_string(),
+        "mp4" | "avi" | "mov" | "mkv" | "webm" | "wmv" => "video".to_string(),
+        "js" | "ts" | "jsx" | "tsx" => "script".to_string(),
+        "json" | "xml" | "yaml" | "yml" => "data".to_string(),
+        "txt" | "md" | "rst" => "document".to_string(),
+        "ren" => "renscript".to_string(),
+        _ => "other".to_string(),
+    }
+}
+
+fn count_nodes(node: &CachedAssetNode, files: &mut usize, directories: &mut usize) {
+    if node.is_directory {
+        *directories += 1;
+        if let Some(children) = &node.children {
+            for child in children {
+                count_nodes(child, files, directories);
+            }
+        }
+    } else {
+        *files += 1;
     }
 }
 

@@ -1,4 +1,4 @@
-import { Show, createSignal, createEffect, onMount, onCleanup } from 'solid-js';
+import { Show, createSignal, createEffect, onMount, onCleanup, untrack, createMemo } from 'solid-js';
 import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder, IconFileCode, IconCube } from '@tabler/icons-solidjs';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
@@ -29,105 +29,87 @@ const isCodeFile = (extension) => {
   return codeExtensions.includes(extension?.toLowerCase() || '');
 };
 
+// Cache to prevent duplicate thumbnail requests for files that need generation
+const thumbnailRequestCache = new Set();
 
 const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   const [imageLoaded, setImageLoaded] = createSignal(false);
   const [imageError, setImageError] = createSignal(false);
-  const [thumbnailUrl, setThumbnailUrl] = createSignal(null);
   
-  // Check if this is a thumbnail cache file to reduce debug noise
-  const isThumbCache = asset?.path?.startsWith('.cache/thumbnails/');
+  console.log(`🖼️ ImageThumbnail component rendered for: ${asset.name}`, {
+    hasAsset: !!asset,
+    thumbnailUrl: asset?.thumbnailUrl,
+    cached: asset?.cached,
+    extension: asset?.extension
+  });
   
-  // Check if this is an HDR/EXR file that needs thumbnail generation
-  const isHdrExr = asset?.extension && ['.hdr', '.exr'].includes(asset.extension.toLowerCase());
-  
-  // Skip debug logging for thumbnail cache files to reduce noise
-  if (asset && isImageFile(asset.extension) && !isThumbCache) {
-    console.log('Rendering ImageThumbnail for:', asset.name, 'extension:', asset.extension, 'path:', asset.path);
-  }
-  
-  const getAssetThumbnailUrl = (asset) => {
-    const currentProject = getCurrentProject();
-    if (!currentProject?.name) return null;
-    
-    // Use asset.path if available, otherwise construct from asset.name
-    const assetPath = asset.path || asset.name;
-    if (!assetPath) return null;
-    
-    let fullPath;
-    
-    // Check if the path already includes the project prefix
-    if (assetPath.startsWith(`projects/${currentProject.name}/`)) {
-      // Path already includes full project path, use as-is
-      fullPath = assetPath;
-    } else if (assetPath.startsWith('.cache/')) {
-      // This is a cache file (thumbnails), add project prefix
-      fullPath = `projects/${currentProject.name}/${assetPath}`;
-    } else {
-      // For relative paths, add the full project path
-      fullPath = `projects/${currentProject.name}/${assetPath}`;
+  // Use createMemo to derive thumbnail URL once and keep it stable
+  const thumbnailUrl = createMemo(() => {
+    // If asset has a cached thumbnail URL, use it directly
+    if (asset?.thumbnailUrl) {
+      console.log(`📌 Using cached thumbnail URL for ${asset.name}: ${asset.thumbnailUrl}`);
+      return asset.thumbnailUrl;
     }
     
-    const fileUrl = getFileUrl(fullPath);
-    
-    // Only log for non-cache files to reduce noise
-    if (!isThumbCache) {
-      console.log('Generated image URL:', fileUrl, 'for asset:', asset.name, 'fullPath:', fullPath);
-    }
-    
-    return fileUrl;
+    // If no cached URL, return null and let generation happen elsewhere
+    return null;
+  });
+  
+  // Generate thumbnails for all image types for consistency
+  const needsThumbnailGeneration = (extension) => {
+    const ext = extension?.toLowerCase();
+    // All image and model files get thumbnail generation
+    return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tga', '.tiff', '.hdr', '.exr', '.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d'].includes(ext);
   };
   
-  // Handle HDR/EXR files by generating thumbnails
+  // Handle generation for assets without cached URLs
   const [thumbnailGenerating, setThumbnailGenerating] = createSignal(false);
   
   createEffect(() => {
-    if (isHdrExr && asset) {
-      // Only generate if we don't already have a thumbnail URL and aren't already generating
-      if (!thumbnailUrl() && !thumbnailGenerating() && !imageError()) {
-        const currentProject = getCurrentProject();
-        if (currentProject?.name) {
-          setThumbnailGenerating(true);
-          
-          // Run thumbnail generation asynchronously
-          (async () => {
-            try {
-              console.log('Generating thumbnail for HDR/EXR file:', asset.name);
-              const thumbnailResponse = await generateThumbnail(asset.path || asset.name, 256);
-              
-              if (thumbnailResponse.success && thumbnailResponse.thumbnail_file) {
-                const thumbnailPath = `projects/${currentProject.name}/${thumbnailResponse.thumbnail_file}`;
-                const thumbnailFileUrl = getFileUrl(thumbnailPath);
-                setThumbnailUrl(thumbnailFileUrl);
-                console.log('HDR/EXR thumbnail generated:', thumbnailFileUrl);
-              } else {
-                console.warn('Failed to generate HDR/EXR thumbnail:', thumbnailResponse.error);
-                setImageError(true);
-              }
-            } catch (error) {
-              console.error('Error generating HDR/EXR thumbnail:', error);
+    // Only generate if we don't have a cached URL and this file needs thumbnails
+    if (asset?.thumbnailUrl || !needsThumbnailGeneration(asset?.extension) || asset?.cached) {
+      return;
+    }
+    
+    const cacheKey = `${getCurrentProject()?.name || 'unknown'}:${asset.path || asset.name}`;
+    
+    if (!thumbnailRequestCache.has(cacheKey)) {
+      const currentProject = getCurrentProject();
+      if (currentProject?.name) {
+        setThumbnailGenerating(true);
+        thumbnailRequestCache.add(cacheKey);
+        
+        console.log(`🔄 Generating thumbnail for ${asset.extension} file: ${asset.name}`);
+        
+        (async () => {
+          try {
+            const thumbnailResponse = await generateThumbnail(asset.path || asset.name, 256);
+            
+            if (thumbnailResponse.success && thumbnailResponse.thumbnail_file) {
+              console.log(`✅ Generated thumbnail for ${asset.name}: ${thumbnailResponse.thumbnail_file}`);
+              // Don't set URL here - it will be available in cache on next load
+            } else {
+              console.error(`❌ Failed to generate thumbnail for ${asset.name}:`, thumbnailResponse);
               setImageError(true);
-            } finally {
-              setThumbnailGenerating(false);
+              thumbnailRequestCache.delete(cacheKey);
             }
-          })();
-        }
-      }
-    } else {
-      // For regular images, use direct URL
-      if (!thumbnailUrl()) {
-        setThumbnailUrl(getAssetThumbnailUrl(asset));
+          } catch (error) {
+            console.error(`❌ Error generating thumbnail for ${asset.name}:`, error);
+            setImageError(true);
+            thumbnailRequestCache.delete(cacheKey);
+          } finally {
+            setThumbnailGenerating(false);
+          }
+        })();
       }
     }
   });
   
   if (!thumbnailUrl()) {
-    if (!isThumbCache && !isHdrExr) {
-      console.warn('No thumbnail URL generated for image asset:', asset.name, asset.path);
-    }
+    console.log(`⚠️ No thumbnail URL for ${asset.name}, showing placeholder`);
     return (
       <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
-        <Show when={isHdrExr} fallback={
+        <Show when={thumbnailGenerating()} fallback={
           <>
             <IconPhoto class="w-10 h-10 text-base-content/60" />
             <div class="absolute bottom-1 right-1 text-xs text-warning bg-warning/10 px-1 rounded">
@@ -136,14 +118,16 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
           </>
         }>
           <div class="flex flex-col items-center justify-center">
-            <IconPhoto class="w-10 h-10 text-orange-500" />
-            <div class="text-xs text-orange-500 mt-1">HDR/EXR</div>
-            <div class="w-4 h-4 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mt-2"></div>
+            <IconPhoto class="w-10 h-10 text-primary" />
+            <div class="text-xs text-primary mt-1">Generating...</div>
+            <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mt-2"></div>
           </div>
         </Show>
       </div>
     );
   }
+  
+  console.log(`🎨 Rendering image for ${asset.name} with URL: ${thumbnailUrl()}`);
   
   return (
     <div class={`${size} bg-base-300 rounded overflow-hidden relative`}>
@@ -166,16 +150,13 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
             "background-color": "var(--fallback-bc,oklch(var(--bc)/0.2))"
           }}
           onLoad={() => {
-            if (!isThumbCache) {
-              console.log('Successfully loaded image:', asset.name);
-            }
+            console.log(`✅ Image loaded successfully: ${asset.name}`);
             setImageLoaded(true);
             setImageError(false);
           }}
           onError={(e) => {
-            if (!isThumbCache) {
-              console.warn('Failed to load image:', thumbnailUrl(), 'for asset:', asset.name, 'Error:', e);
-            }
+            console.error(`❌ Image failed to load: ${asset.name}`, e);
+            console.error(`❌ Failed URL: ${thumbnailUrl()}`);
             setImageError(true);
             setImageLoaded(false);
           }}
