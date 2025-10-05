@@ -967,6 +967,26 @@ export default function MaterialsViewport() {
     setHoveredSocket(null);
   };
 
+  // Helper function for zooming towards a specific point
+  const zoomToPoint = (zoomFactor, centerX, centerY) => {
+    const oldZoom = zoom();
+    const newZoom = Math.max(0.1, Math.min(3, oldZoom * zoomFactor));
+    
+    // Calculate the point in graph coordinates that we're zooming towards
+    const currentPan = pan();
+    const centerGraphX = (centerX - currentPan.x) / oldZoom;
+    const centerGraphY = (centerY - currentPan.y) / oldZoom;
+    
+    // Calculate new pan to keep the same point at the center
+    const newPan = {
+      x: centerX - centerGraphX * newZoom,
+      y: centerY - centerGraphY * newZoom
+    };
+    
+    setZoom(newZoom);
+    setPan(newPan);
+  };
+
   // Handle zoom
   const handleWheel = (e) => {
     e.preventDefault();
@@ -977,17 +997,7 @@ export default function MaterialsViewport() {
     const mouseY = e.clientY - rect.top;
     
     const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(0.1, Math.min(3, zoom() * zoomFactor));
-    
-    // Zoom towards mouse position
-    const currentPan = pan();
-    const newPan = {
-      x: currentPan.x - (mouseX / zoom() - mouseX / newZoom),
-      y: currentPan.y - (mouseY / zoom() - mouseY / newZoom)
-    };
-    
-    setZoom(newZoom);
-    setPan(newPan);
+    zoomToPoint(zoomFactor, mouseX, mouseY);
   };
 
   // Handle pan start and all-nodes drag start
@@ -1239,7 +1249,12 @@ export default function MaterialsViewport() {
               <div class="flex items-center gap-1 bg-base-100 rounded px-2 py-1 border border-base-300">
                 <button 
                   class="btn btn-xs btn-ghost"
-                  onClick={() => setZoom(prev => Math.max(0.1, prev * 0.8))}
+                  onClick={() => {
+                    if (nodeGraphRef) {
+                      const rect = nodeGraphRef.getBoundingClientRect();
+                      zoomToPoint(0.8, rect.width / 2, rect.height / 2);
+                    }
+                  }}
                   title="Zoom Out"
                 >
                   <IconMinus class="w-3 h-3" />
@@ -1247,7 +1262,12 @@ export default function MaterialsViewport() {
                 <span class="text-xs font-mono w-12 text-center">{Math.round(zoom() * 100)}%</span>
                 <button 
                   class="btn btn-xs btn-ghost"
-                  onClick={() => setZoom(prev => Math.min(3, prev * 1.25))}
+                  onClick={() => {
+                    if (nodeGraphRef) {
+                      const rect = nodeGraphRef.getBoundingClientRect();
+                      zoomToPoint(1.25, rect.width / 2, rect.height / 2);
+                    }
+                  }}
                   title="Zoom In"
                 >
                   <IconPlus class="w-3 h-3" />
