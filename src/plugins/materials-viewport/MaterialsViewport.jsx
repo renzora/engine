@@ -52,8 +52,29 @@ import { Texture } from '@babylonjs/core/Materials/Textures/texture.js';
 
 // Texture Preview Component - Prevents image reloading during drag
 function TexturePreview(props) {
-  const imageSrc = createMemo(() => `/api/assets/thumbnail/${props.asset.id}`);
-  const imageAlt = createMemo(() => props.asset.name);
+  const imageSrc = createMemo(() => {
+    const asset = props.asset;
+    if (!asset) return '';
+    
+    // Try different thumbnail URL formats based on what we see in the console
+    if (asset.thumbnailUrl) {
+      return asset.thumbnailUrl;
+    } else if (asset.path) {
+      // Construct thumbnail URL based on the path pattern we see in console logs
+      const pathWithoutExt = asset.path.replace(/\.[^/.]+$/, ""); // Remove extension
+      const cleanPath = pathWithoutExt.replace(/[\/\\]/g, '_'); // Replace slashes with underscores
+      return `http://localhost:3001/file/projects/test/.cache/thumbnails/${cleanPath}_${asset.extension}_256.png`;
+    } else if (asset.name) {
+      // Fallback using name
+      const nameWithoutExt = asset.name.replace(/\.[^/.]+$/, "");
+      const cleanName = nameWithoutExt.replace(/[\/\\]/g, '_');
+      return `http://localhost:3001/file/projects/test/.cache/thumbnails/${cleanName}_${asset.extension || 'jpg'}_256.png`;
+    }
+    
+    // Last resort - try the original API format
+    return `/api/assets/thumbnail/${asset.id}`;
+  });
+  const imageAlt = createMemo(() => props.asset?.name || 'Texture');
   
   return (
     <div class="relative overflow-hidden rounded border border-base-300 bg-base-200 h-16 mb-2">
@@ -61,7 +82,12 @@ function TexturePreview(props) {
         src={imageSrc()}
         alt={imageAlt()}
         class="w-full h-full object-cover"
+        onLoad={() => {
+          console.log('✅ Texture preview loaded:', imageSrc());
+        }}
         onError={(e) => {
+          console.log('❌ Texture preview failed to load:', imageSrc());
+          console.log('Asset data:', props.asset);
           e.target.style.display = 'none';
           e.target.nextElementSibling.style.display = 'flex';
         }}
@@ -425,6 +451,80 @@ export default function MaterialsViewport() {
             if (colorInput?.value && colorInput.value instanceof Color3) {
               material.diffuseColor = colorInput.value;
               console.log('Applied base color:', colorInput.value);
+            }
+          } else if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            // Handle texture connection to base color
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            console.log('Texture node input:', textureInput);
+            console.log('Texture value:', textureInput?.value);
+            
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              let textureUrl;
+              
+              // Construct URL for the actual full-resolution image file
+              // Based on console logs, thumbnails use: http://localhost:3001/file/projects/test/.cache/thumbnails/
+              // So actual files should use: http://localhost:3001/file/projects/test/assets/textures/
+              
+              if (asset.path && asset.path.includes('projects/')) {
+                // Asset path already includes full project path
+                const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
+                textureUrl = `http://localhost:3001/file/${cleanPath}`;
+              } else if (asset.name || asset.id) {
+                // Construct full path - based on thumbnail pattern we see in console
+                const fileName = asset.name || asset.id;
+                textureUrl = `http://localhost:3001/file/projects/test/assets/textures/${fileName}`;
+              } else if (asset.path) {
+                // Try to prepend the project path to the asset path
+                const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
+                textureUrl = `http://localhost:3001/file/projects/test/${cleanPath}`;
+              } else {
+                console.error('Could not determine texture URL from asset:', asset);
+                console.log('Asset structure:', {
+                  id: asset.id,
+                  path: asset.path,
+                  projectPath: asset.projectPath,
+                  relativePath: asset.relativePath,
+                  name: asset.name,
+                  fullPath: asset.fullPath,
+                  category: asset.category,
+                  extension: asset.extension
+                });
+                return;
+              }
+              
+              console.log('Loading texture from URL:', textureUrl);
+              
+              // Create Babylon.js texture from asset
+              const texture = new Texture(textureUrl, scene);
+              
+              // Add error handling with fallback attempts
+              texture.onError = () => {
+                console.error('Failed to load texture:', textureUrl);
+                console.log('Trying fallback URL approaches...');
+                
+                // Try alternative URL formats if the first one fails
+                const fallbackUrls = [
+                  `http://localhost:3001/file/projects/test/assets/textures/${asset.name}`,
+                  `http://localhost:3001/assets/${asset.name}`,
+                  `/api/file/${asset.path}`,
+                ];
+                
+                console.log('Asset data for fallback:', asset);
+                console.log('Possible fallback URLs:', fallbackUrls);
+              };
+              
+              texture.onLoad = () => {
+                console.log('✅ Texture loaded successfully:', textureUrl);
+                console.log('Texture dimensions:', texture.getSize());
+              };
+              
+              material.diffuseTexture = texture;
+              // Reset diffuse color to white so texture shows properly
+              material.diffuseColor = new Color3(1.0, 1.0, 1.0);
+              console.log('Applied texture to base color:', textureUrl);
+            } else {
+              console.log('No texture value found in node');
             }
           }
           break;
