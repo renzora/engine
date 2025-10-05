@@ -1,6 +1,7 @@
 pub mod image_types;
 pub mod model_types;
 pub mod game_engine_types;
+pub mod real_glb_renderer;
 
 use std::path::Path;
 use serde::{Deserialize, Serialize};

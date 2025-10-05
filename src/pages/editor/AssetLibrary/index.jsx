@@ -8,7 +8,7 @@ import ScriptCreationDialog from '../ScriptCreationDialog.jsx';
 import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
 import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
-import { getCachedAssets } from '@/api/bridge/projectCache.js';
+import { getCachedAssets, processProjectCache } from '@/api/bridge/projectCache.js';
 import { ModelProcessingAPI } from '@/api/bridge/modelProcessing';
 
 // Components
@@ -876,6 +876,23 @@ function AssetLibrary({ onContextMenu }) {
             await writeFile(targetPath, text);
           }
         }
+      }
+      
+      // Generate thumbnails and update cache for uploaded assets
+      console.log('📸 Generating thumbnails and updating cache for uploaded assets...');
+      
+      // Process cache to generate thumbnails for newly uploaded assets
+      try {
+        await processProjectCache(currentProject.name, {
+          forceFullRebuild: false, // Only process new/changed files
+          onProgress: (progress) => {
+            console.log(`📊 Cache processing: ${progress.progress}% - ${progress.current_stage}`);
+          }
+        });
+        console.log('✅ Thumbnails generated and cached successfully');
+      } catch (cacheError) {
+        console.warn('⚠️ Failed to process cache for thumbnails:', cacheError);
+        // Don't fail the upload if cache processing fails
       }
       
       await fetchAssetsWithCache(currentProject, currentPath());
