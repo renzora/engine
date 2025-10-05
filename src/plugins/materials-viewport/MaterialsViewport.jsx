@@ -9,7 +9,8 @@ import {
   IconPhoto,
   IconCircleDot,
   IconMinus,
-  IconPlus
+  IconPlus,
+  IconX
 } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
@@ -100,13 +101,29 @@ function ConnectionLine(props) {
   });
   
   return (
-    <path
-      d={pathData()}
-      stroke="#3b82f6"
-      stroke-width="3"
-      fill="none"
-      class="drop-shadow-sm"
-    />
+    <g>
+      {/* Invisible thicker path for easier clicking */}
+      <path
+        d={pathData()}
+        stroke="transparent"
+        stroke-width="12"
+        fill="none"
+        class="cursor-pointer"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          props.onRemove?.(props.connection.id);
+        }}
+      />
+      {/* Visible connection line */}
+      <path
+        d={pathData()}
+        stroke="#3b82f6"
+        stroke-width="3"
+        fill="none"
+        class="drop-shadow-sm pointer-events-none"
+      />
+    </g>
   );
 }
 
@@ -707,6 +724,42 @@ export default function MaterialsViewport() {
 
   const removeConnection = (connectionId) => {
     setConnections(prev => prev.filter(conn => conn.id !== connectionId));
+    createMaterialFromNodes();
+  };
+
+  // Remove selected node
+  const removeNode = (nodeId) => {
+    console.log('removeNode called with nodeId:', nodeId);
+    
+    // Don't allow removing the material output node
+    if (nodeId === 'material-output') {
+      console.log('Cannot remove material output node');
+      return;
+    }
+    
+    console.log('Removing node and its connections...');
+    
+    // Remove the node
+    setNodes(prev => {
+      const newNodes = prev.filter(node => node.id !== nodeId);
+      console.log('Nodes after removal:', newNodes.length);
+      return newNodes;
+    });
+    
+    // Remove all connections involving this node
+    setConnections(prev => {
+      const newConnections = prev.filter(conn => 
+        conn.from.nodeId !== nodeId && conn.to.nodeId !== nodeId
+      );
+      console.log('Connections after removal:', newConnections.length);
+      return newConnections;
+    });
+    
+    // Clear selection if this was the selected node
+    if (selectedNode()?.id === nodeId) {
+      setSelectedNode(null);
+    }
+    
     createMaterialFromNodes();
   };
 
@@ -1331,7 +1384,33 @@ export default function MaterialsViewport() {
                     node.type === 'Constant' ? 'bg-warning' :
                     'bg-neutral'
                   }`}></div>
-                  <span class="truncate">{node.title}</span>
+                  <span class="truncate flex-1">{node.title}</span>
+                  
+                  {/* Delete button - only show for non-output nodes */}
+                  <Show when={node.id !== 'material-output'}>
+                    <button
+                      class="w-4 h-4 flex items-center justify-center rounded hover:bg-error/20 hover:text-error transition-colors relative z-10"
+                      style="pointer-events: auto;"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Delete button mousedown');
+                      }}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('Delete button clicked for node:', node.id);
+                        removeNode(node.id);
+                      }}
+                      onPointerDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                      title="Delete Node"
+                    >
+                      <IconX class="w-3 h-3" />
+                    </button>
+                  </Show>
                   
                   {/* Active indicator line like tabs */}
                   <Show when={selectedNode() === node}>
@@ -1509,6 +1588,7 @@ export default function MaterialsViewport() {
                     draggedNodeTransform={draggedNodeTransform}
                     zoom={zoom}
                     pan={pan}
+                    onRemove={removeConnection}
                   />
                 );
               }}
