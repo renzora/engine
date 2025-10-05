@@ -49,6 +49,9 @@ import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.
 import { Scene } from '@babylonjs/core/scene.js';
 import { Engine } from '@babylonjs/core/Engines/engine.js';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js';
+// Import EXR loader for HDR textures
+import '@babylonjs/loaders/glTF';
+import '@babylonjs/core/Materials/Textures/Loaders/exrTextureLoader.js';
 
 // Texture Preview Component - Prevents image reloading during drag
 function TexturePreview(props) {
@@ -414,13 +417,85 @@ export default function MaterialsViewport() {
         { id: 'roughness', name: 'Roughness', type: 'float', value: null },
         { id: 'metallic', name: 'Metallic', type: 'float', value: null },
         { id: 'normal', name: 'Normal', type: 'vector', value: null },
-        { id: 'emissive', name: 'Emissive', type: 'color', value: null }
+        { id: 'emissive', name: 'Emissive', type: 'color', value: null },
+        { id: 'specular', name: 'Specular', type: 'color', value: null },
+        { id: 'opacity', name: 'Opacity', type: 'float', value: null },
+        { id: 'bump', name: 'Bump', type: 'float', value: null },
+        { id: 'displacement', name: 'Displacement', type: 'float', value: null },
+        { id: 'ambientOcclusion', name: 'AO', type: 'float', value: null }
       ],
       outputs: []
     };
     
     setNodes([outputNode]);
     createMaterialFromNodes();
+  };
+
+  // Helper function to construct texture URL from asset
+  const constructTextureUrl = (asset) => {
+    if (!asset) return null;
+    
+    // Construct URL for the actual full-resolution image file
+    if (asset.path && asset.path.includes('projects/')) {
+      // Asset path already includes full project path
+      const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
+      return `http://localhost:3001/file/${cleanPath}`;
+    } else if (asset.name || asset.id) {
+      // Construct full path - based on thumbnail pattern we see in console
+      const fileName = asset.name || asset.id;
+      return `http://localhost:3001/file/projects/test/assets/textures/${fileName}`;
+    } else if (asset.path) {
+      // Try to prepend the project path to the asset path
+      const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
+      return `http://localhost:3001/file/projects/test/${cleanPath}`;
+    }
+    return null;
+  };
+
+  // Helper function to create texture with proper format handling
+  const createTextureFromAsset = (asset, scene) => {
+    const textureUrl = constructTextureUrl(asset);
+    if (!textureUrl) return null;
+
+    // Check file extension to determine if special handling is needed
+    const extension = asset.extension?.toLowerCase() || 
+                    asset.name?.split('.').pop()?.toLowerCase() || 
+                    textureUrl.split('.').pop()?.toLowerCase();
+
+    console.log(`Creating texture for ${asset.name} with extension: ${extension}`);
+
+    // Create texture - Babylon.js should automatically handle EXR with the loader imported
+    const texture = new Texture(textureUrl, scene);
+
+    // Special handling for HDR formats like EXR
+    if (extension === 'exr' || extension === 'hdr') {
+      // Set proper texture format for HDR
+      texture.gammaSpace = false; // HDR textures are in linear space
+      texture.level = 1.0; // Set exposure level
+      
+      // For normal maps and other data textures, ensure proper handling
+      if (asset.name?.toLowerCase().includes('normal') || asset.name?.toLowerCase().includes('nor')) {
+        texture.gammaSpace = false; // Normal maps should always be linear
+      }
+    }
+
+    // Add error and load handling
+    texture.onError = () => {
+      console.error(`Failed to load ${extension?.toUpperCase()} texture:`, textureUrl);
+      if (extension === 'exr') {
+        console.log('Note: EXR files require proper server MIME type configuration');
+        console.log('If sphere disappears, try using a lower exposure or different texture');
+      }
+    };
+
+    texture.onLoad = () => {
+      console.log(`✅ ${extension?.toUpperCase()} texture loaded successfully:`, textureUrl);
+      if (extension === 'exr') {
+        console.log('EXR texture supports HDR data - check material properties if sphere disappears');
+      }
+    };
+
+    return texture;
   };
 
   // Create material from node graph - proper NodeMaterial implementation
@@ -455,82 +530,81 @@ export default function MaterialsViewport() {
           } else if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
             // Handle texture connection to base color
             const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
-            console.log('Texture node input:', textureInput);
-            console.log('Texture value:', textureInput?.value);
-            
             if (textureInput?.value) {
               const asset = textureInput.value;
-              let textureUrl;
-              
-              // Construct URL for the actual full-resolution image file
-              // Based on console logs, thumbnails use: http://localhost:3001/file/projects/test/.cache/thumbnails/
-              // So actual files should use: http://localhost:3001/file/projects/test/assets/textures/
-              
-              if (asset.path && asset.path.includes('projects/')) {
-                // Asset path already includes full project path
-                const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
-                textureUrl = `http://localhost:3001/file/${cleanPath}`;
-              } else if (asset.name || asset.id) {
-                // Construct full path - based on thumbnail pattern we see in console
-                const fileName = asset.name || asset.id;
-                textureUrl = `http://localhost:3001/file/projects/test/assets/textures/${fileName}`;
-              } else if (asset.path) {
-                // Try to prepend the project path to the asset path
-                const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
-                textureUrl = `http://localhost:3001/file/projects/test/${cleanPath}`;
-              } else {
-                console.error('Could not determine texture URL from asset:', asset);
-                console.log('Asset structure:', {
-                  id: asset.id,
-                  path: asset.path,
-                  projectPath: asset.projectPath,
-                  relativePath: asset.relativePath,
-                  name: asset.name,
-                  fullPath: asset.fullPath,
-                  category: asset.category,
-                  extension: asset.extension
-                });
-                return;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.diffuseTexture = texture;
+                
+                // Special handling for HDR textures on base color
+                const extension = asset.extension?.toLowerCase() || asset.name?.split('.').pop()?.toLowerCase();
+                if (extension === 'exr' || extension === 'hdr') {
+                  // For HDR textures on base color, ensure material doesn't become transparent
+                  material.alpha = 1.0;
+                  material.transparencyMode = null;
+                  
+                  // Set a neutral diffuse color to modulate the HDR texture
+                  material.diffuseColor = new Color3(0.5, 0.5, 0.5);
+                  console.log('Applied HDR texture to base color with exposure compensation');
+                } else {
+                  // Reset diffuse color to white for regular textures
+                  material.diffuseColor = new Color3(1.0, 1.0, 1.0);
+                  console.log('Applied texture to base color');
+                }
               }
-              
-              console.log('Loading texture from URL:', textureUrl);
-              
-              // Create Babylon.js texture from asset
-              const texture = new Texture(textureUrl, scene);
-              
-              // Add error handling with fallback attempts
-              texture.onError = () => {
-                console.error('Failed to load texture:', textureUrl);
-                console.log('Trying fallback URL approaches...');
-                
-                // Try alternative URL formats if the first one fails
-                const fallbackUrls = [
-                  `http://localhost:3001/file/projects/test/assets/textures/${asset.name}`,
-                  `http://localhost:3001/assets/${asset.name}`,
-                  `/api/file/${asset.path}`,
-                ];
-                
-                console.log('Asset data for fallback:', asset);
-                console.log('Possible fallback URLs:', fallbackUrls);
-              };
-              
-              texture.onLoad = () => {
-                console.log('✅ Texture loaded successfully:', textureUrl);
-                console.log('Texture dimensions:', texture.getSize());
-              };
-              
-              material.diffuseTexture = texture;
-              // Reset diffuse color to white so texture shows properly
-              material.diffuseColor = new Color3(1.0, 1.0, 1.0);
-              console.log('Applied texture to base color:', textureUrl);
-            } else {
-              console.log('No texture value found in node');
+            }
+          }
+          break;
+          
+          
+        case 'emissive':
+          if (sourceNode.type === NODE_TYPES.COLOR) {
+            const colorInput = sourceNode.inputs.find(i => i.id === 'color');
+            if (colorInput?.value && colorInput.value instanceof Color3) {
+              material.emissiveColor = colorInput.value;
+              console.log('Applied emissive color:', colorInput.value);
+            }
+          } else if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.emissiveTexture = texture;
+                console.log('Applied emissive texture');
+              }
+            }
+          }
+          break;
+          
+        case 'normal':
+          if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.bumpTexture = texture;
+                material.useParallax = false; // Use normal mapping
+                console.log('Applied normal texture');
+              }
             }
           }
           break;
           
         case 'roughness':
-          if (sourceNode.type === NODE_TYPES.CONSTANT) {
+          if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                // For StandardMaterial, we can use specularTexture for roughness
+                material.specularTexture = texture;
+                console.log('Applied roughness texture');
+              }
+            }
+          } else if (sourceNode.type === NODE_TYPES.CONSTANT) {
             const valueInput = sourceNode.inputs.find(i => i.id === 'value');
             if (valueInput?.value !== undefined) {
               // For StandardMaterial, we use specularPower (inverse relationship)
@@ -541,8 +615,17 @@ export default function MaterialsViewport() {
           break;
           
         case 'metallic':
-          // StandardMaterial doesn't have metallic, but we can simulate with specular
-          if (sourceNode.type === NODE_TYPES.CONSTANT) {
+          if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.reflectionTexture = texture;
+                console.log('Applied metallic texture');
+              }
+            }
+          } else if (sourceNode.type === NODE_TYPES.CONSTANT) {
             const valueInput = sourceNode.inputs.find(i => i.id === 'value');
             if (valueInput?.value !== undefined) {
               const metallic = valueInput.value;
@@ -552,12 +635,71 @@ export default function MaterialsViewport() {
           }
           break;
           
-        case 'emissive':
+        case 'specular':
           if (sourceNode.type === NODE_TYPES.COLOR) {
             const colorInput = sourceNode.inputs.find(i => i.id === 'color');
             if (colorInput?.value && colorInput.value instanceof Color3) {
-              material.emissiveColor = colorInput.value;
-              console.log('Applied emissive color:', colorInput.value);
+              material.specularColor = colorInput.value;
+              console.log('Applied specular color:', colorInput.value);
+            }
+          } else if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.specularTexture = texture;
+                console.log('Applied specular texture');
+              }
+            }
+          }
+          break;
+          
+        case 'opacity':
+          if (sourceNode.type === NODE_TYPES.CONSTANT) {
+            const valueInput = sourceNode.inputs.find(i => i.id === 'value');
+            if (valueInput?.value !== undefined) {
+              material.alpha = valueInput.value;
+              console.log('Applied opacity:', valueInput.value);
+            }
+          } else if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.opacityTexture = texture;
+                console.log('Applied opacity texture');
+              }
+            }
+          }
+          break;
+          
+        case 'bump':
+          if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.bumpTexture = texture;
+                material.useParallax = true; // Use parallax mapping for bump
+                console.log('Applied bump texture');
+              }
+            }
+          }
+          break;
+          
+        case 'ambientOcclusion':
+          if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
+            const textureInput = sourceNode.inputs.find(i => i.id === 'texture');
+            if (textureInput?.value) {
+              const asset = textureInput.value;
+              const texture = createTextureFromAsset(asset, scene);
+              if (texture) {
+                material.ambientTexture = texture;
+                console.log('Applied AO texture');
+              }
             }
           }
           break;
@@ -1387,10 +1529,21 @@ export default function MaterialsViewport() {
     const assets = dragData.assets || [dragData];
     
     for (const asset of assets) {
-      // Check if it's an image asset
+      console.log('Dragged asset:', {
+        name: asset.name,
+        extension: asset.extension,
+        category: asset.category,
+        mimeType: asset.mimeType
+      });
+      
+      // Check if it's an image asset - include HDR formats like EXR and HDR
       const isImage = asset.category === 'images' || 
-                     asset.extension?.match(/\.(jpg|jpeg|png|tiff|bmp|webp|gif)$/i) ||
-                     asset.mimeType?.startsWith('image/');
+                     asset.extension?.match(/\.(jpg|jpeg|png|tiff|bmp|webp|gif|exr|hdr|dds|ktx)$/i) ||
+                     asset.mimeType?.startsWith('image/') ||
+                     // Check for HDR/texture formats that might not have image/ MIME type
+                     asset.extension?.match(/\.(exr|hdr|dds|ktx)$/i);
+      
+      console.log('Is image?', isImage);
       
       if (isImage) {
         const rect = nodeGraphRef.getBoundingClientRect();
@@ -1451,6 +1604,40 @@ export default function MaterialsViewport() {
           {
             label: 'UV Coordinates',
             action: () => addNode(NODE_TYPES.UV_COORDINATES, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Textures',
+        submenu: [
+          {
+            label: 'Diffuse/Albedo',
+            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+          },
+          {
+            label: 'Normal Map',
+            action: () => addNode(NODE_TYPES.NORMAL_MAP, getCenterPosition())
+          },
+          {
+            label: 'Roughness Map',
+            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+          },
+          {
+            label: 'Metallic Map',
+            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+          },
+          {
+            label: 'Ambient Occlusion',
+            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+          },
+          {
+            label: 'Emissive Map',
+            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+          },
+          { separator: true },
+          {
+            label: 'HDR Exposure Control',
+            action: () => addNode(NODE_TYPES.MULTIPLY, getCenterPosition())
           }
         ]
       },
