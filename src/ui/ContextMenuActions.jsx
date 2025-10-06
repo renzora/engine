@@ -114,6 +114,7 @@ export const createContextMenuActions = (editorActions) => {
         return [
           { label: 'Create Folder', action: () => handleCreateAssetFolder(currentPath), icon: <IconFolder class="w-4 h-4" /> },
           { label: 'Create RenScript File', action: () => handleCreateRenScript(currentPath), icon: <IconCode class="w-4 h-4" /> },
+          { label: 'New Material', action: () => handleCreateNewMaterial(currentPath), icon: <IconPalette class="w-4 h-4" /> },
           { separator: true },
           { label: 'Paste', action: () => handlePaste(), icon: <IconClipboard class="w-4 h-4" /> },
           { separator: true },
@@ -338,6 +339,12 @@ export const createContextMenuActions = (editorActions) => {
     document.dispatchEvent(event);
   };
 
+  const handleCreateNewMaterial = (currentPath) => {
+    // Use the event-driven approach like other file creation functions
+    const event = new CustomEvent('contextMenuCreateNewMaterial', { detail: { currentPath } });
+    document.dispatchEvent(event);
+  };
+
   return {
     getContextMenuItems,
     handleCreateObject,
@@ -366,6 +373,7 @@ export const createContextMenuActions = (editorActions) => {
     handleCreateFolder,
     handleCreateAssetFolder,
     handleCreateRenScript,
-    handleRefreshAssets
+    handleRefreshAssets,
+    handleCreateNewMaterial
   };
 };

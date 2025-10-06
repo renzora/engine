@@ -25,8 +25,15 @@ const Layout = () => {
     document.dispatchEvent(new CustomEvent('engine:assets-refresh'));
   };
 
+  const handleOpenMaterialsViewport = async () => {
+    // Open the materials viewport
+    const { pluginAPI } = await import('@/api/plugin');
+    pluginAPI.open('materials', { label: 'Materials' });
+  };
+
   onMount(() => {
     document.addEventListener('engine:open-model-importer', handleOpenModelImporter);
+    document.addEventListener('openMaterialsViewport', handleOpenMaterialsViewport);
     
     // Listen for global tooltip events
     const handleTooltipShow = (e) => setGlobalTooltip(e.detail);
@@ -37,6 +44,7 @@ const Layout = () => {
     
     onCleanup(() => {
       document.removeEventListener('engine:open-model-importer', handleOpenModelImporter);
+      document.removeEventListener('openMaterialsViewport', handleOpenMaterialsViewport);
       document.removeEventListener('global:tooltip-show', handleTooltipShow);
       document.removeEventListener('global:tooltip-hide', handleTooltipHide);
     });

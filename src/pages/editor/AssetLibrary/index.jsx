@@ -10,6 +10,7 @@ import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, delet
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getCachedAssets, processProjectCache } from '@/api/bridge/projectCache.js';
 import { ModelProcessingAPI } from '@/api/bridge/modelProcessing';
+import { isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
 
 // Components
 import AssetSidebar from './AssetSidebar';
@@ -1109,6 +1110,14 @@ function AssetLibrary({ onContextMenu }) {
       return;
     }
     
+    // Check if this is a material file
+    const isMaterial = isMaterialFile(asset.extension) || isMaterialPath(asset.path);
+    if (isMaterial) {
+      // Open the materials viewport
+      document.dispatchEvent(new CustomEvent('openMaterialsViewport'));
+      return;
+    }
+    
     const isTextFile = asset.extension && ['.js', '.ts', '.jsx', '.tsx', '.json', '.txt', '.md', '.ren', '.html', '.css', '.xml', '.yaml', '.yml'].includes(asset.extension.toLowerCase());
     
     if (isTextFile) {
@@ -1602,6 +1611,52 @@ main();`;
         console.error('Error creating RenScript file:', error);
       }
     };
+
+    const handleContextMenuCreateNewMaterial = async (e) => {
+      const { currentPath: materialPath } = e.detail;
+      const currentProject = projectManager.getCurrentProject();
+      if (!currentProject?.name) return;
+      
+      const timestamp = Date.now();
+      const materialName = `NewMaterial_${timestamp}`;
+      const materialData = {
+        version: '1.0.0',
+        timestamp: new Date().toISOString(),
+        metadata: {
+          name: materialName,
+          description: 'A new material created from context menu',
+          author: '',
+          tags: []
+        },
+        material: {
+          name: materialName,
+          type: 'StandardMaterial',
+          diffuseColor: [1, 1, 1],
+          specularColor: [1, 1, 1],
+          emissiveColor: [0, 0, 0],
+          ambientColor: [0, 0, 0],
+          alpha: 1.0,
+          roughness: 1.0,
+          metallic: 0.0
+        },
+        nodes: [],
+        connections: [],
+        assets: []
+      };
+      
+      const targetPath = materialPath 
+        ? `projects/${currentProject.name}/${materialPath}/${materialName}.mat`
+        : `projects/${currentProject.name}/${materialName}.mat`;
+      
+      try {
+        await writeFile(targetPath, JSON.stringify(materialData, null, 2));
+        await fetchAssetsWithCache(currentProject, currentPath(), true, false);
+        
+        console.log('✅ Created new material:', `${materialName}.mat`);
+      } catch (error) {
+        console.error('❌ Failed to create new material:', error);
+      }
+    };
     
     const handleContextMenuRefreshAssets = () => {
       handleFileChange({ source: 'manual-button' });
@@ -1609,6 +1664,7 @@ main();`;
     
     document.addEventListener('contextMenuCreateAssetFolder', handleContextMenuCreateAssetFolder);
     document.addEventListener('contextMenuCreateRenScript', handleContextMenuCreateRenScript);
+    document.addEventListener('contextMenuCreateNewMaterial', handleContextMenuCreateNewMaterial);
     document.addEventListener('contextMenuRefreshAssets', handleContextMenuRefreshAssets);
 
     // File watching with SSE stream
@@ -1740,6 +1796,7 @@ main();`;
       document.removeEventListener('engine:assets-refresh', handleAssetsRefresh);
       document.removeEventListener('contextMenuCreateAssetFolder', handleContextMenuCreateAssetFolder);
       document.removeEventListener('contextMenuCreateRenScript', handleContextMenuCreateRenScript);
+      document.removeEventListener('contextMenuCreateNewMaterial', handleContextMenuCreateNewMaterial);
       document.removeEventListener('contextMenuRefreshAssets', handleContextMenuRefreshAssets);
     });
 
