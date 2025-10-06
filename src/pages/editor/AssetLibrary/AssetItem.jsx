@@ -1,5 +1,5 @@
 import { Show, createSignal, createEffect, onMount, onCleanup, untrack, createMemo } from 'solid-js';
-import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder, IconFileCode, IconCube } from '@tabler/icons-solidjs';
+import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder, IconFileCode, IconCube, IconMusic, IconPlayerPlay } from '@tabler/icons-solidjs';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -27,6 +27,16 @@ const isScriptFile = (extension) => {
 const isCodeFile = (extension) => {
   const codeExtensions = ['.ren', '.c', '.cpp', '.h', '.hpp', '.cs', '.java', '.go', '.rs', '.php'];
   return codeExtensions.includes(extension?.toLowerCase() || '');
+};
+
+const isAudioFile = (extension) => {
+  const audioExtensions = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a', '.wma'];
+  return audioExtensions.includes(extension?.toLowerCase() || '');
+};
+
+const isVideoFile = (extension) => {
+  const videoExtensions = ['.mp4', '.avi', '.mov', '.mkv', '.webm', '.wmv', '.flv', '.m4v'];
+  return videoExtensions.includes(extension?.toLowerCase() || '');
 };
 
 // Cache to prevent duplicate thumbnail requests for files that need generation
@@ -108,7 +118,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   if (!thumbnailUrl()) {
     console.log(`⚠️ No thumbnail URL for ${asset.name}, showing placeholder`);
     return (
-      <div class={`${size} bg-base-300 rounded flex items-center justify-center`}>
+      <div class={`${size} bg-base-300 flex items-center justify-center`}>
         <Show when={thumbnailGenerating()} fallback={
           <>
             <IconPhoto class="w-10 h-10 text-base-content/60" />
@@ -130,7 +140,7 @@ const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
   console.log(`🎨 Rendering image for ${asset.name} with URL: ${thumbnailUrl()}`);
   
   return (
-    <div class={`${size} bg-base-300 rounded overflow-hidden relative`}>
+    <div class={`${size} bg-base-300 overflow-hidden relative`}>
       <Show when={!imageError()} fallback={
         <div class="w-full h-full flex items-center justify-center">
           <IconPhoto class="w-10 h-10 text-base-content/60" />
@@ -268,22 +278,10 @@ function AssetItem({
   };
   
   const handleContextMenu = (e) => {
-    // Context menu triggered
     e.preventDefault();
     e.stopPropagation();
     
-    // Check if it's a script file
-    const isScript = isScriptFile(asset.extension);
-    // Check if script file
-    
-    // Only show context menu for script files
-    if (!isScript) {
-      // Not a script file, skipping context menu
-      return;
-    }
-    
     const { clientX: x, clientY: y } = e;
-    // Setting context menu position
     setContextMenu({
       position: { x, y },
       asset: asset
@@ -500,6 +498,10 @@ function AssetItem({
                     <IconFileCode class="w-5 h-5 text-primary" />
                   ) : isCodeFile(asset.extension) ? (
                     <IconCode class="w-5 h-5 text-success" />
+                  ) : isAudioFile(asset.extension) ? (
+                    <IconMusic class="w-5 h-5 text-purple-500" />
+                  ) : isVideoFile(asset.extension) ? (
+                    <IconPlayerPlay class="w-5 h-5 text-red-500" />
                   ) : (
                     <IconPhoto class="w-5 h-5 text-base-content/60" />
                   )}
@@ -563,10 +565,10 @@ function AssetItem({
 
   return (
     <div
-      class={`group cursor-pointer relative ${
+      class={`group cursor-pointer relative bg-base-100 overflow-hidden transition-all duration-150 hover:shadow-md ${
         isAssetSelected(asset.id) 
-          ? 'border border-blue-500' 
-          : 'border border-transparent'
+          ? 'ring-1 ring-primary shadow-md' 
+          : 'shadow-sm border border-base-300/30 hover:border-base-300'
       }`}
       data-asset-id={asset.id}
       draggable={true}
@@ -616,19 +618,23 @@ function AssetItem({
       }}
     >
       {/* Square Thumbnail */}
-      <div class="w-full aspect-square bg-base-300 flex items-center justify-center relative border-t border-l border-r border-base-content/20">
+      <div class="w-full aspect-square bg-gradient-to-br from-base-200 to-base-300 flex items-center justify-center relative overflow-hidden">
         <Show when={is3DModelFile(asset.extension)} fallback={
           <Show when={isImageFile(asset.extension)} fallback={
             <Show when={isMaterialFile(asset.extension) || isMaterialPath(asset.path)} fallback={
-              <div>
+              <div class="w-full h-full flex items-center justify-center">
                 {asset.type === 'folder' ? (
-                  <IconFolder class="w-16 h-16 text-yellow-500" />
+                  <IconFolder class="w-12 h-12 text-yellow-500" />
                 ) : isScriptFile(asset.extension) ? (
-                  <IconFileCode class="w-16 h-16 text-blue-500" />
+                  <IconFileCode class="w-12 h-12 text-blue-500" />
                 ) : isCodeFile(asset.extension) ? (
-                  <IconCode class="w-16 h-16 text-green-500" />
+                  <IconCode class="w-12 h-12 text-emerald-500" />
+                ) : isAudioFile(asset.extension) ? (
+                  <IconMusic class="w-12 h-12 text-purple-500" />
+                ) : isVideoFile(asset.extension) ? (
+                  <IconPlayerPlay class="w-12 h-12 text-red-500" />
                 ) : (
-                  <IconPhoto class="w-16 h-16 text-base-content/60" />
+                  <IconPhoto class="w-12 h-12 text-base-content/40" />
                 )}
               </div>
             }>
@@ -638,33 +644,81 @@ function AssetItem({
             <ImageThumbnail asset={asset} size="w-full h-full" />
           </Show>
         }>
-          <div class="w-full h-full bg-base-300 flex items-center justify-center">
-            <IconCube class="w-16 h-16 text-purple-500" />
+          <div class="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-400 to-purple-600">
+            <IconCube class="w-12 h-12 text-white" />
           </div>
         </Show>
         
-        {/* Colored separator between thumbnail and text */}
-        <div class={`absolute bottom-0 left-0 right-0 h-0.5 ${
-          asset.type === 'folder' 
-            ? 'bg-yellow-500' 
-            : isImageFile(asset.extension)
+        {/* Asset type indicator */}
+        <Show when={asset.type !== 'folder'}>
+          <div class={`absolute top-1 right-1 px-0.5 py-0.5 rounded text-white text-xs font-bold shadow-sm ${
+            isImageFile(asset.extension)
               ? 'bg-green-500'
             : isScriptFile(asset.extension) 
               ? 'bg-blue-500'
             : isCodeFile(asset.extension)
-              ? 'bg-green-500'
+              ? 'bg-emerald-500'
             : is3DModelFile(asset.extension)
               ? 'bg-purple-500'
+            : isAudioFile(asset.extension)
+              ? 'bg-indigo-500'
+            : isVideoFile(asset.extension)
+              ? 'bg-red-500'
             : (isMaterialFile(asset.extension) || isMaterialPath(asset.path))
               ? 'bg-orange-500'
               : 'bg-gray-500'
-        }`}></div>
+          }`}>
+            {asset.extension ? asset.extension.replace('.', '').toUpperCase().slice(0, 4) : '?'}
+          </div>
+        </Show>
+        
+        {/* Loading/Status indicators */}
+        <Show when={preloadingAssets().includes(asset.id) || failedAssets().includes(asset.id) || loadedAssets().includes(asset.id)}>
+          <div class="absolute bottom-1 left-1">
+            <Show when={preloadingAssets().includes(asset.id)}>
+              <div class="w-3 h-3 bg-warning rounded-full flex items-center justify-center">
+                <div class="w-1.5 h-1.5 border border-white border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            </Show>
+            <Show when={failedAssets().includes(asset.id)}>
+              <div class="w-3 h-3 bg-error rounded-full flex items-center justify-center">
+                <span class="text-white text-xs">!</span>
+              </div>
+            </Show>
+            <Show when={loadedAssets().includes(asset.id)}>
+              <div class="w-3 h-3 bg-success rounded-full flex items-center justify-center">
+                <span class="text-white text-xs">✓</span>
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
       
+      {/* Color-coded separator */}
+      <div class={`w-full h-1 ${
+        asset.type === 'folder' 
+          ? 'bg-yellow-500' 
+          : isImageFile(asset.extension)
+            ? 'bg-green-500'
+          : isScriptFile(asset.extension) 
+            ? 'bg-blue-500'
+          : isCodeFile(asset.extension)
+            ? 'bg-emerald-500'
+          : is3DModelFile(asset.extension)
+            ? 'bg-purple-500'
+          : isAudioFile(asset.extension)
+            ? 'bg-indigo-500'
+          : isVideoFile(asset.extension)
+            ? 'bg-red-500'
+          : (isMaterialFile(asset.extension) || isMaterialPath(asset.path))
+            ? 'bg-orange-500'
+            : 'bg-gray-500'
+      }`}></div>
+      
       {/* Text Label */}
-      <div class="w-full bg-base-200 border-x border-b border-base-content/20 p-2 text-center h-12 flex items-center justify-center">
-        <div class="text-xs text-base-content leading-tight line-clamp-2" title={asset.name}>
-          {asset.name}
+      <div class="w-full bg-base-300/80 px-2 py-1.5 text-center h-12 flex items-center justify-center">
+        <div class="text-xs font-medium text-base-content leading-tight line-clamp-2 break-words" title={asset.name}>
+          {asset.extension ? asset.name.replace(asset.extension, '') : asset.name}
         </div>
       </div>
       
@@ -676,30 +730,81 @@ function AssetItem({
       })()}
       <Show when={contextMenu()}>
         <div 
-          class="asset-context-menu fixed z-50 bg-base-200 border border-base-300 rounded-lg shadow-lg py-2 min-w-[180px]"
+          class="asset-context-menu fixed z-50 bg-base-200 border border-base-300 rounded-lg shadow-xl py-2 min-w-[200px]"
           style={{
             left: `${contextMenu().position.x}px`,
             top: `${contextMenu().position.y}px`
           }}
         >
-          <div class="px-3 py-1 text-xs text-base-content/60 border-b border-base-300 mb-1">
+          <div class="px-3 py-2 text-xs text-base-content/60 border-b border-base-300 mb-1 font-medium">
             {asset.name}
           </div>
           
-          <button 
-            class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-base-300/50 transition-colors flex items-center gap-2"
-            onClick={() => openInViewport('left')}
-          >
-            <IconArrowRight class="w-4 h-4 rotate-180" />
-            Open in Viewport (Left)
-          </button>
+          {/* Universal actions for all file types */}
+          <Show when={asset.type !== 'folder'}>
+            <button 
+              class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
+              onClick={() => {
+                // Copy file path to clipboard
+                navigator.clipboard.writeText(asset.path);
+                closeContextMenu();
+              }}
+            >
+              <IconCode class="w-4 h-4" />
+              Copy Path
+            </button>
+            
+            <button 
+              class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-primary/10 hover:text-primary transition-colors flex items-center gap-2"
+              onClick={() => {
+                // Show file properties
+                alert(`File: ${asset.name}\nSize: ${asset.size ? `${Math.round(asset.size / 1024)} KB` : 'Unknown'}\nType: ${asset.extension || 'Unknown'}\nPath: ${asset.path}`);
+                closeContextMenu();
+              }}
+            >
+              <IconPhoto class="w-4 h-4" />
+              Properties
+            </button>
+            
+            <div class="h-px bg-base-300 my-1"></div>
+          </Show>
           
+          {/* Script-specific actions */}
+          <Show when={isScriptFile(asset.extension)}>
+            <button 
+              class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-success/10 hover:text-success transition-colors flex items-center gap-2"
+              onClick={() => openInViewport('left')}
+            >
+              <IconArrowRight class="w-4 h-4 rotate-180" />
+              Open in Viewport (Left)
+            </button>
+            
+            <button 
+              class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-success/10 hover:text-success transition-colors flex items-center gap-2"
+              onClick={() => openInViewport('right')}
+            >
+              <IconArrowRight class="w-4 h-4" />
+              Open in Viewport (Right)
+            </button>
+            
+            <div class="h-px bg-base-300 my-1"></div>
+          </Show>
+          
+          {/* Delete option */}
           <button 
-            class="w-full px-3 py-2 text-left text-sm text-base-content hover:bg-base-300/50 transition-colors flex items-center gap-2"
-            onClick={() => openInViewport('right')}
+            class="w-full px-3 py-2 text-left text-sm text-error hover:bg-error/10 transition-colors flex items-center gap-2"
+            onClick={() => {
+              if (confirm(`Are you sure you want to delete ${asset.name}?`)) {
+                // Trigger delete event
+                document.dispatchEvent(new CustomEvent('asset:delete', {
+                  detail: { asset }
+                }));
+              }
+              closeContextMenu();
+            }}
           >
-            <IconArrowRight class="w-4 h-4" />
-            Open in Viewport (Right)
+            <IconX class="w-4 h-4" />
+            Delete
           </button>
         </div>
       </Show>

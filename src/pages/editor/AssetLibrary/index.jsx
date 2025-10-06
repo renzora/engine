@@ -65,6 +65,7 @@ function AssetLibrary({ onContextMenu }) {
   const [globalSearchResults, setGlobalSearchResults] = createSignal([]);
   const [isSearching, setIsSearching] = createSignal(false);
   const [tooltip, setTooltip] = createSignal(null);
+  const [itemSize, setItemSize] = createSignal(100);
   
   let fileInputRef;
   let folderInputRef;
@@ -1428,16 +1429,27 @@ function AssetLibrary({ onContextMenu }) {
   const filteredAssets = createMemo(() => {
     const allAssets = assets(); // Include both files and folders
     
-    if (!searchQuery()) return allAssets;
-    
-    if (globalSearchResults().length > 0) {
-      return globalSearchResults(); // Include both files and folders in search results
+    let result;
+    if (!searchQuery()) {
+      result = allAssets;
+    } else if (globalSearchResults().length > 0) {
+      result = globalSearchResults(); // Include both files and folders in search results
+    } else {
+      result = allAssets.filter(asset => {
+        const matchesSearch = asset.name.toLowerCase().includes(searchQuery().toLowerCase()) ||
+                             asset.fileName?.toLowerCase().includes(searchQuery().toLowerCase());
+        return matchesSearch;
+      });
     }
     
-    return allAssets.filter(asset => {
-      const matchesSearch = asset.name.toLowerCase().includes(searchQuery().toLowerCase()) ||
-                           asset.fileName?.toLowerCase().includes(searchQuery().toLowerCase());
-      return matchesSearch;
+    // Sort to put folders first, then files alphabetically
+    return result.sort((a, b) => {
+      // Folders always come first
+      if (a.type === 'folder' && b.type !== 'folder') return -1;
+      if (b.type === 'folder' && a.type !== 'folder') return 1;
+      
+      // Within same type, sort alphabetically
+      return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
     });
   });
 
@@ -1944,6 +1956,7 @@ main();`;
               setPreloadingAssets={setPreloadingAssets}
               setLoadedAssets={setLoadedAssets}
               getExtensionStyle={getExtensionStyle}
+              itemSize={itemSize}
             />
             
             <Show when={isSelecting() && selectionRect()}>
@@ -1967,9 +1980,28 @@ main();`;
             <span>•</span>
             <span>{selectedAssets().size} selected</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="text-base-content/40">View:</span>
-            <span>{layoutMode()}</span>
+          <div class="flex items-center gap-4">
+            <div class="flex items-center gap-2">
+              <span class="text-base-content/40">View:</span>
+              <span>{layoutMode()}</span>
+            </div>
+            
+            {/* Size slider for grid view */}
+            <Show when={layoutMode() === 'grid'}>
+              <div class="flex items-center gap-2">
+                <span class="text-base-content/40">Size:</span>
+                <input
+                  type="range"
+                  min="80"
+                  max="200"
+                  step="10"
+                  value={itemSize()}
+                  onInput={(e) => setItemSize(parseInt(e.target.value))}
+                  class="w-20 h-1 bg-base-300 rounded-lg appearance-none cursor-pointer slider"
+                  title={`Item size: ${itemSize()}px`}
+                />
+              </div>
+            </Show>
           </div>
         </div>
         

@@ -26,7 +26,8 @@ function AssetGrid({
   setFailedAssets,
   setPreloadingAssets,
   setLoadedAssets,
-  getExtensionStyle
+  getExtensionStyle,
+  itemSize
 }) {
   return (
     <Show when={filteredAssets().length > 0}>
@@ -68,8 +69,8 @@ function AssetGrid({
       }>
         <div 
           ref={assetGridRef}
-          class="grid gap-1.5 relative items-start"
-          style="grid-template-columns: repeat(auto-fill, minmax(100px, 1fr))"
+          class="grid gap-1.5 relative items-start p-1"
+          style={`grid-template-columns: repeat(auto-fill, minmax(${itemSize()}px, 1fr)); grid-auto-rows: minmax(${itemSize() + 40}px, auto);`}
         >
           <For each={filteredAssets()}>
             {(asset) => (
