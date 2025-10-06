@@ -206,7 +206,9 @@ export function grid(sceneSignal) {
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
         regularGrid.material.alpha = 0.6;
-        regularGrid.color = new Color3(0.16, 0.17, 0.19); // Slightly lighter grid lines
+        // Use cell color from settings
+        const cellColorRgb = parseColorToRgb(gridSettings.cellColor || '#4a5568');
+        regularGrid.color = cellColorRgb ? new Color3(cellColorRgb.r, cellColorRgb.g, cellColorRgb.b) : new Color3(0.16, 0.17, 0.19);
       }
       
       if (sectionLines.length > 0) {
@@ -216,7 +218,9 @@ export function grid(sceneSignal) {
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
         sectionGrid.material.alpha = 0.8;
-        sectionGrid.color = new Color3(0.22, 0.23, 0.26); // Slightly lighter section lines
+        // Use section color from settings
+        const sectionColorRgb = parseColorToRgb(gridSettings.sectionColor || '#2d3748');
+        sectionGrid.color = sectionColorRgb ? new Color3(sectionColorRgb.r, sectionColorRgb.g, sectionColorRgb.b) : new Color3(0.22, 0.23, 0.26);
       }
       
       // Create colored axis lines like Blender
@@ -280,7 +284,9 @@ export function grid(sceneSignal) {
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
         regularGrid.material.alpha = 0.6;
-        regularGrid.color = new Color3(0.16, 0.17, 0.19); // Slightly lighter grid lines
+        // Use cell color from settings
+        const cellColorRgb = parseColorToRgb(gridSettings.cellColor || '#4a5568');
+        regularGrid.color = cellColorRgb ? new Color3(cellColorRgb.r, cellColorRgb.g, cellColorRgb.b) : new Color3(0.16, 0.17, 0.19);
       }
       
       if (sectionLines.length > 0) {
@@ -290,7 +296,9 @@ export function grid(sceneSignal) {
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
         sectionGrid.material.alpha = 0.8;
-        sectionGrid.color = new Color3(0.22, 0.23, 0.26); // Slightly lighter section lines
+        // Use section color from settings
+        const sectionColorRgb = parseColorToRgb(gridSettings.sectionColor || '#2d3748');
+        sectionGrid.color = sectionColorRgb ? new Color3(sectionColorRgb.r, sectionColorRgb.g, sectionColorRgb.b) : new Color3(0.22, 0.23, 0.26);
       }
     }
     

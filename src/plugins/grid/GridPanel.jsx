@@ -24,7 +24,7 @@ export default function GridPanel() {
   const [sectionsOpen, setSectionsOpen] = createSignal({
     grid: true,
     snapping: true,
-    appearance: false
+    appearance: true
   });
   
   const toggleSection = (section) => {
@@ -138,6 +138,7 @@ export default function GridPanel() {
           type="color"
           value={value}
           onInput={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           class="w-full h-6 rounded border border-base-300"
         />
       </div>
@@ -276,14 +277,14 @@ export default function GridPanel() {
               <div class="space-y-0.5">
                 <ColorControl 
                   label="Cell Color" 
-                  value={gridSettings().cellColor} 
+                  value={gridSettings().cellColor || defaults.cellColor} 
                   onChange={(v) => updateGridSettings({ cellColor: v })}
                   resetKey="cellColor"
                 />
                 
                 <ColorControl 
                   label="Section Color" 
-                  value={gridSettings().sectionColor} 
+                  value={gridSettings().sectionColor || defaults.sectionColor} 
                   onChange={(v) => updateGridSettings({ sectionColor: v })}
                   resetKey="sectionColor"
                 />

@@ -4,6 +4,18 @@ import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { renderStore, renderActions } from '@/render/store.jsx';
 import { IconGridDots, IconSettings, IconPalette, IconGrid3x3, IconX, IconTarget } from '@tabler/icons-solidjs';
 
+// Global state for dropdown sections to persist across renders
+const [globalSectionsOpen, setGlobalSectionsOpen] = createSignal({
+  grid: true,
+  gridSnapping: true,
+  gizmoSnapping: true,
+  appearance: true
+});
+
+// Global state for gizmo snapping to persist across renders
+const [globalGizmoSnapEnabled, setGlobalGizmoSnapEnabled] = createSignal(true);
+const [globalGizmoSnapAmount, setGlobalGizmoSnapAmount] = createSignal(1);
+
 export default function GridSettingsDropdown() {
   const store = editorStore;
   const { updateGridSettings } = editorActions;
@@ -31,17 +43,15 @@ export default function GridSettingsDropdown() {
     'inches': 12
   };
   
-  // Section collapse state
-  const [sectionsOpen, setSectionsOpen] = createSignal({
-    grid: true,
-    gridSnapping: true,
-    gizmoSnapping: true,
-    appearance: false
-  });
+  // Use global state for sections to persist across dropdown renders
+  const sectionsOpen = globalSectionsOpen;
+  const setSectionsOpen = setGlobalSectionsOpen;
   
-  // Gizmo snapping state
-  const [gizmoSnapEnabled, setGizmoSnapEnabled] = createSignal(true);
-  const [gizmoSnapAmount, setGizmoSnapAmount] = createSignal(1);
+  // Use global state for gizmo snapping to persist across dropdown renders
+  const gizmoSnapEnabled = globalGizmoSnapEnabled;
+  const setGizmoSnapEnabled = setGlobalGizmoSnapEnabled;
+  const gizmoSnapAmount = globalGizmoSnapAmount;
+  const setGizmoSnapAmount = setGlobalGizmoSnapAmount;
   
   const toggleSection = (section) => {
     setSectionsOpen(prev => ({
@@ -212,6 +222,7 @@ export default function GridSettingsDropdown() {
           type="color"
           value={value}
           onInput={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           class="w-full h-6 rounded border border-base-300"
         />
       </div>
@@ -468,14 +479,14 @@ export default function GridSettingsDropdown() {
             <div class="space-y-0.5">
               <ColorControl 
                 label="Cell Color" 
-                value={gridSettings().cellColor} 
+                value={gridSettings().cellColor || defaults.cellColor} 
                 onChange={(v) => updateGridSettings({ cellColor: v })}
                 resetKey="cellColor"
               />
               
               <ColorControl 
                 label="Section Color" 
-                value={gridSettings().sectionColor} 
+                value={gridSettings().sectionColor || defaults.sectionColor} 
                 onChange={(v) => updateGridSettings({ sectionColor: v })}
                 resetKey="sectionColor"
               />
