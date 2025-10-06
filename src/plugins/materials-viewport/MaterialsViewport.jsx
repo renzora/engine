@@ -3048,8 +3048,8 @@ export default function MaterialsViewport() {
             />
           </Show>
           
-          {/* Control Buttons Overlay - Top Right */}
-          <div class="absolute top-4 right-4 flex gap-2">
+          {/* Control Buttons Overlay - Top Left */}
+          <div class="absolute top-4 left-4 flex gap-2">
             {/* Zoom Controls */}
             <div class="flex items-center gap-1 bg-base-100/90 backdrop-blur-sm rounded px-2 py-1 border border-base-300 shadow-lg">
               <button 
