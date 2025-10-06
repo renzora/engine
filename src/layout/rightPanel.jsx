@@ -240,10 +240,10 @@ const RightPanel = () => {
   return (
     <Show when={propertiesPanelVisible()}>
       <div 
-        className={`absolute top-0 right-0 pointer-events-auto no-select z-20`}
+        className={`absolute top-0 right-0 no-select z-20 ${isScenePanelOpen() ? 'pointer-events-auto' : 'pointer-events-none'}`}
         style={{ 
           height: 'calc(100% - 24px)', // Subtract footer height
-          width: `${rightPanelWidth()}px`,
+          width: isScenePanelOpen() ? `${rightPanelWidth()}px` : '0px',
           maxWidth: '100vw'
         }}
       >
@@ -356,11 +356,13 @@ const RightPanel = () => {
         </Show>
         
         <Show when={!isScenePanelOpen()}>
-          <PanelToggleButton
-            onClick={() => setScenePanelOpen(true)}
-            position={isLeftPanel() ? { left: 0 } : { right: 0 }}
-            isLeftPanel={isLeftPanel()}
-          />
+          <div className="absolute top-0 right-0 pointer-events-auto">
+            <PanelToggleButton
+              onClick={() => setScenePanelOpen(true)}
+              position={isLeftPanel() ? { left: 0 } : { right: 0 }}
+              isLeftPanel={isLeftPanel()}
+            />
+          </div>
         </Show>
       </div>
     </Show>
