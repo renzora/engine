@@ -40,7 +40,7 @@ export default createPlugin({
     });
     
     // Store the cleanup function for onStop
-    this.toolbarEffect = effect;
+    api.toolbarEffect = effect;
     
     console.log('[MaterialsViewportPlugin] Started');
   },
@@ -49,13 +49,13 @@ export default createPlugin({
     // Update logic if needed
   },
 
-  async onStop() {
+  async onStop(api) {
     console.log('[MaterialsViewportPlugin] Stopping...');
     
     // Clean up the toolbar effect
-    if (this.toolbarEffect) {
-      this.toolbarEffect();
-      this.toolbarEffect = null;
+    if (api.toolbarEffect) {
+      api.toolbarEffect();
+      api.toolbarEffect = null;
     }
     
     // Restore toolbar visibility when plugin stops
