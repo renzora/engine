@@ -170,7 +170,7 @@ const ViewportTabs = () => {
               }
             });
           },
-          disabled: tabs().length === 1 || tabs.every(t => t.isPinned)
+          disabled: tabs().length === 1 || tabs().every(t => t.isPinned)
         }
       ]
     });
