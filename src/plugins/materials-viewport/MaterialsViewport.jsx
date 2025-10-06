@@ -221,12 +221,20 @@ export default function MaterialsViewport() {
   const [hdrBackground, setHdrBackground] = createSignal(null); // Asset for HDR background
   const [usePBR, setUsePBR] = createSignal(false);
   
+  // Additional preview settings
+  const [wireframeMode, setWireframeMode] = createSignal(false);
+  const [autoRotate, setAutoRotate] = createSignal(false);
+  const [groundVisible, setGroundVisible] = createSignal(true);
+  const [meshScale, setMeshScale] = createSignal(1.0);
+  const [unlitMode, setUnlitMode] = createSignal(false);
+  
   // Section collapse state
   const [sectionsOpen, setSectionsOpen] = createSignal({
     material: true,
     camera: true,
     lighting: true,
-    environment: true
+    environment: true,
+    preview: true
   });
   
   const toggleSection = (section) => {
@@ -279,6 +287,59 @@ export default function MaterialsViewport() {
     } else {
       shadowGenerator.removeShadowCaster(previewMesh);
       groundMesh.receiveShadows = false;
+    }
+  };
+
+  // Update wireframe mode
+  const updateWireframe = () => {
+    if (!previewMesh) return;
+    
+    if (previewMesh.material) {
+      previewMesh.material.wireframe = wireframeMode();
+    }
+  };
+
+  // Update ground visibility
+  const updateGroundVisibility = () => {
+    if (!groundMesh) return;
+    groundMesh.setEnabled(groundVisible());
+  };
+
+  // Update mesh scale
+  const updateMeshScale = () => {
+    if (!previewMesh) return;
+    const scale = meshScale();
+    previewMesh.scaling = new Vector3(scale, scale, scale);
+  };
+
+  // Reset camera to default position
+  const resetCamera = () => {
+    if (!previewCamera) return;
+    previewCamera.setTarget(new Vector3(0, -0.5, 0));
+    previewCamera.alpha = Math.PI / 4;
+    previewCamera.beta = Math.PI / 3;
+    previewCamera.radius = 6;
+  };
+
+  // Auto rotation logic
+  let autoRotationAnimation;
+  const updateAutoRotation = () => {
+    if (!previewMesh) return;
+    
+    if (autoRotate()) {
+      // Start auto rotation
+      let rotationSpeed = 0.005;
+      autoRotationAnimation = setInterval(() => {
+        if (previewMesh && autoRotate()) {
+          previewMesh.rotation.y += rotationSpeed;
+        }
+      }, 16); // ~60fps
+    } else {
+      // Stop auto rotation
+      if (autoRotationAnimation) {
+        clearInterval(autoRotationAnimation);
+        autoRotationAnimation = null;
+      }
     }
   };
 
@@ -1159,6 +1220,11 @@ export default function MaterialsViewport() {
       previewMesh.material = testMaterial;
       console.log('Applied test green material to mesh');
     }
+    
+    // Apply current settings to new mesh
+    updateMeshScale();
+    updateWireframe();
+    updateAutoRotation();
   };
 
   // Initialize with default nodes
@@ -4168,6 +4234,30 @@ export default function MaterialsViewport() {
     updateShadows();
   });
 
+  // Update wireframe when controls change
+  createEffect(() => {
+    wireframeMode();
+    updateWireframe();
+  });
+
+  // Update ground visibility when controls change
+  createEffect(() => {
+    groundVisible();
+    updateGroundVisibility();
+  });
+
+  // Update mesh scale when controls change
+  createEffect(() => {
+    meshScale();
+    updateMeshScale();
+  });
+
+  // Update auto rotation when controls change
+  createEffect(() => {
+    autoRotate();
+    updateAutoRotation();
+  });
+
   // Update background when controls change
   createEffect(() => {
     backgroundColor();
@@ -4200,6 +4290,11 @@ export default function MaterialsViewport() {
   onCleanup(() => {
     document.removeEventListener('mousemove', handleMouseMove);
     document.removeEventListener('mouseup', handleMouseUp);
+    
+    // Clean up auto rotation
+    if (autoRotationAnimation) {
+      clearInterval(autoRotationAnimation);
+    }
     
     if (previewEngine) {
       previewEngine.dispose();
@@ -4534,6 +4629,97 @@ export default function MaterialsViewport() {
                   </Show>
                 </div>
               </div>
+              </div>
+            </Show>
+          </div>
+
+          {/* Preview Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().preview ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('preview')}>
+                <IconWorld class="w-3 h-3" />
+                Preview
+              </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().preview}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('preview');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="checkbox checkbox-xs checkbox-primary"
+              />
+            </div>
+            <Show when={sectionsOpen().preview}>
+              <div class="!p-2">
+                <div class="form-control">
+                  <div class="space-y-3">
+                    
+                    {/* Wireframe Mode */}
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/80">Wireframe</span>
+                      <input
+                        type="checkbox"
+                        class="toggle toggle-xs toggle-primary"
+                        checked={wireframeMode()}
+                        onChange={(e) => setWireframeMode(e.target.checked)}
+                      />
+                    </div>
+
+                    {/* Auto Rotation */}
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/80">Auto Rotate</span>
+                      <input
+                        type="checkbox"
+                        class="toggle toggle-xs toggle-primary"
+                        checked={autoRotate()}
+                        onChange={(e) => setAutoRotate(e.target.checked)}
+                      />
+                    </div>
+
+                    {/* Ground Visibility */}
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/80">Show Ground</span>
+                      <input
+                        type="checkbox"
+                        class="toggle toggle-xs toggle-primary"
+                        checked={groundVisible()}
+                        onChange={(e) => setGroundVisible(e.target.checked)}
+                      />
+                    </div>
+
+                    {/* Mesh Scale */}
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/80">Scale</span>
+                      <div class="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="3.0"
+                          step="0.1"
+                          value={meshScale()}
+                          class="range range-xs range-primary w-16"
+                          onChange={(e) => setMeshScale(parseFloat(e.target.value))}
+                        />
+                        <span class="text-xs text-base-content/60 w-8">{meshScale().toFixed(1)}</span>
+                      </div>
+                    </div>
+
+                    {/* Camera Reset Button */}
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/80">Camera</span>
+                      <button
+                        class="btn btn-xs btn-outline btn-primary"
+                        onClick={resetCamera}
+                        title="Reset camera to default position"
+                      >
+                        Reset
+                      </button>
+                    </div>
+                    
+                  </div>
+                </div>
               </div>
             </Show>
           </div>
