@@ -77,7 +77,8 @@ class PluginLoader {
       { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
       { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
       { path: '/src/plugins/terrain', main: 'index.jsx', priority: 2 },
-      { path: '/src/plugins/environment', main: 'index.jsx', priority: 2 }
+      { path: '/src/plugins/environment', main: 'index.jsx', priority: 2 },
+      { path: '/src/plugins/fog', main: 'index.jsx', priority: 2 }
     ];
 
     for (const location of pluginLocations) {
@@ -202,6 +203,9 @@ class PluginLoader {
             break;
           case 'environment-plugin':
             pluginModule = await import(`@/plugins/environment/index.jsx`);
+            break;
+          case 'fog-plugin':
+            pluginModule = await import(`@/plugins/fog/index.jsx`);
             break;
           default:
             try {

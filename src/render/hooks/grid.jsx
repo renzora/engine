@@ -206,6 +206,8 @@ export function grid(sceneSignal) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
+        regularGrid.checkCollisions = false;
+        regularGrid.renderingGroupId = 0;
         regularGrid.material.alpha = 0.6;
         // Use cell color from settings
         const cellColorRgb = parseColorToRgb(gridSettings.cellColor || '#4a5568');
@@ -218,6 +220,8 @@ export function grid(sceneSignal) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
+        sectionGrid.checkCollisions = false;
+        sectionGrid.renderingGroupId = 0;
         sectionGrid.material.alpha = 0.8;
         // Use section color from settings
         const sectionColorRgb = parseColorToRgb(gridSettings.sectionColor || '#2d3748');
@@ -229,6 +233,8 @@ export function grid(sceneSignal) {
         const xAxis = MeshBuilder.CreateLineSystem("__grid_x_axis__", { lines: xAxisLine }, scene);
         xAxis.parent = gridContainer;
         xAxis.isPickable = false;
+        xAxis.checkCollisions = false;
+        xAxis.renderingGroupId = 0;
         xAxis.material.alpha = 0.8;
         // Use X-axis color from settings
         const xAxisColorRgb = parseColorToRgb(gridSettings.xAxisColor || '#cc5555');
@@ -239,6 +245,8 @@ export function grid(sceneSignal) {
         const zAxis = MeshBuilder.CreateLineSystem("__grid_z_axis__", { lines: zAxisLine }, scene);
         zAxis.parent = gridContainer;
         zAxis.isPickable = false;
+        zAxis.checkCollisions = false;
+        zAxis.renderingGroupId = 0;
         zAxis.material.alpha = 0.8;
         // Use Z-axis color from settings
         const zAxisColorRgb = parseColorToRgb(gridSettings.zAxisColor || '#5555cc');
@@ -258,6 +266,8 @@ export function grid(sceneSignal) {
           const yAxis = MeshBuilder.CreateLineSystem("__grid_y_axis__", { lines: yAxisLineData }, scene);
           yAxis.parent = gridContainer;
           yAxis.isPickable = false;
+          yAxis.checkCollisions = false;
+          yAxis.renderingGroupId = 0;
           yAxis.material.alpha = 0.8;
           // Use Y-axis color from settings
           const yAxisColorRgb = parseColorToRgb(gridSettings.yAxisColor || '#55cc55');
@@ -317,6 +327,8 @@ export function grid(sceneSignal) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
+        regularGrid.checkCollisions = false;
+        regularGrid.renderingGroupId = 0;
         regularGrid.material.alpha = 0.6;
         // Use cell color from settings
         const cellColorRgb = parseColorToRgb(gridSettings.cellColor || '#4a5568');
@@ -329,6 +341,8 @@ export function grid(sceneSignal) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
+        sectionGrid.checkCollisions = false;
+        sectionGrid.renderingGroupId = 0;
         sectionGrid.material.alpha = 0.8;
         // Use section color from settings
         const sectionColorRgb = parseColorToRgb(gridSettings.sectionColor || '#2d3748');
@@ -340,6 +354,8 @@ export function grid(sceneSignal) {
         const xAxis = MeshBuilder.CreateLineSystem("__grid_x_axis__", { lines: xAxisLine }, scene);
         xAxis.parent = gridContainer;
         xAxis.isPickable = false;
+        xAxis.checkCollisions = false;
+        xAxis.renderingGroupId = 0;
         xAxis.material.alpha = 0.8;
         // Use X-axis color from settings
         const xAxisColorRgb = parseColorToRgb(gridSettings.xAxisColor || '#cc5555');
@@ -350,6 +366,8 @@ export function grid(sceneSignal) {
         const zAxis = MeshBuilder.CreateLineSystem("__grid_z_axis__", { lines: zAxisLine }, scene);
         zAxis.parent = gridContainer;
         zAxis.isPickable = false;
+        zAxis.checkCollisions = false;
+        zAxis.renderingGroupId = 0;
         zAxis.material.alpha = 0.8;
         // Use Z-axis color from settings
         const zAxisColorRgb = parseColorToRgb(gridSettings.zAxisColor || '#5555cc');
@@ -369,6 +387,8 @@ export function grid(sceneSignal) {
           const yAxis = MeshBuilder.CreateLineSystem("__grid_y_axis__", { lines: yAxisLineData }, scene);
           yAxis.parent = gridContainer;
           yAxis.isPickable = false;
+          yAxis.checkCollisions = false;
+          yAxis.renderingGroupId = 0;
           yAxis.material.alpha = 0.8;
           // Use Y-axis color from settings
           const yAxisColorRgb = parseColorToRgb(gridSettings.yAxisColor || '#55cc55');
@@ -378,6 +398,8 @@ export function grid(sceneSignal) {
     }
     
     gridContainer.isPickable = false;
+    gridContainer.checkCollisions = false;
+    gridContainer.renderingGroupId = 0;
     gridContainer._isSystemObject = true;
     gridContainer.position = new Vector3(
       gridSettings.position[0],

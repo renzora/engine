@@ -25,6 +25,81 @@ export const [renderStore, setRenderStore] = createStore({
     gridSize: 10,
     renderingEngine: 'webgl'
   },
+  lighting: {
+    // Time controls
+    timeOfDay: 12.0,
+    timeSpeed: 0.0,
+    timeEnabled: false,
+    sunriseHour: 6.0,
+    sunsetHour: 18.0,
+    transitionDuration: 2.0,
+    
+    // Post processing
+    exposure: 1.0,
+    contrast: 1.0,
+    brightness: 0.0,
+    saturation: 1.0,
+    toneMappingEnabled: true,
+    toneMappingType: 'ACES',
+    fxaaEnabled: true,
+    vignetteEnabled: false,
+    vignetteWeight: 1.5,
+    vignetteStretch: 1.0,
+    vignetteCameraFov: 1.0,
+    
+    // Sky & atmosphere
+    nightSkyColor: [0.0, 0.0, 0.1],
+    daySkyColor: [0.4, 0.7, 1.0],
+    nightTurbidity: 10,
+    dayTurbidity: 2,
+    baseLuminance: 0.05,
+    dayLuminance: 1.0,
+    environmentIntensity: 1.0,
+    
+    // Clouds
+    cloudsEnabled: false,
+    cloudSize: 25,
+    cloudDensity: 0.6,
+    
+    // Fog
+    fogEnabled: false,
+    fogMode: 'linear',
+    fogStart: 20,
+    fogEnd: 200,
+    fogDensity: 0.01,
+    fogColor: [0.7, 0.7, 0.7],
+    fogColorDay: [0.8, 0.8, 0.9],
+    fogColorNight: [0.1, 0.1, 0.2],
+    fogDynamicColor: true,
+    fogIntensity: 1.0,
+    fogHeightFalloff: 0.0,
+    
+    // Light sources
+    sunIntensity: 3.0,
+    sunColor: [1.0, 0.95, 0.8],
+    skyIntensity: 0.5,
+    skyColor: [0.5, 0.7, 1.0],
+    rimIntensity: 1.0,
+    rimColor: [1.0, 0.8, 0.6],
+    bounceIntensity: 0.3,
+    bounceColor: [0.8, 0.9, 1.0],
+    moonIntensity: 0.2,
+    
+    // Shadows
+    cascadeShadows: true,
+    contactHardeningShadows: false,
+    shadowDarkness: 0.5,
+    shadowBlur: 32,
+    shadowMapSize: 2048,
+    shadowBias: 0.001,
+    shadowCascades: 4,
+    
+    // Particles
+    snowEnabled: false,
+    starsEnabled: false,
+    snowIntensity: 100,
+    starIntensity: 1000
+  },
   
 });
 
@@ -1157,6 +1232,89 @@ export const renderActions = {
     // Mark scene as modified
     import('@/api/scene/SceneManager.js').then(({ sceneManager }) => {
       sceneManager.markAsModified();
+    });
+  },
+
+  // Lighting settings actions
+  setLightingSetting(key, value) {
+    setRenderStore('lighting', key, value);
+  },
+
+  resetLightingSettings() {
+    setRenderStore('lighting', {
+      // Time controls
+      timeOfDay: 12.0,
+      timeSpeed: 0.0,
+      timeEnabled: false,
+      sunriseHour: 6.0,
+      sunsetHour: 18.0,
+      transitionDuration: 2.0,
+      
+      // Post processing
+      exposure: 1.0,
+      contrast: 1.0,
+      brightness: 0.0,
+      saturation: 1.0,
+      toneMappingEnabled: true,
+      toneMappingType: 'ACES',
+      fxaaEnabled: true,
+      vignetteEnabled: false,
+      vignetteWeight: 1.5,
+      vignetteStretch: 1.0,
+      vignetteCameraFov: 1.0,
+      
+      // Sky & atmosphere
+      nightSkyColor: [0.0, 0.0, 0.1],
+      daySkyColor: [0.4, 0.7, 1.0],
+      nightTurbidity: 10,
+      dayTurbidity: 2,
+      baseLuminance: 0.05,
+      dayLuminance: 1.0,
+      environmentIntensity: 1.0,
+      
+      // Clouds
+      cloudsEnabled: false,
+      cloudSize: 25,
+      cloudDensity: 0.6,
+      
+      // Fog
+      fogEnabled: false,
+      fogMode: 'linear',
+      fogStart: 20,
+      fogEnd: 200,
+      fogDensity: 0.01,
+      fogColor: [0.7, 0.7, 0.7],
+      fogColorDay: [0.8, 0.8, 0.9],
+      fogColorNight: [0.1, 0.1, 0.2],
+      fogDynamicColor: true,
+      fogIntensity: 1.0,
+      fogHeightFalloff: 0.0,
+      
+      // Light sources
+      sunIntensity: 3.0,
+      sunColor: [1.0, 0.95, 0.8],
+      skyIntensity: 0.5,
+      skyColor: [0.5, 0.7, 1.0],
+      rimIntensity: 1.0,
+      rimColor: [1.0, 0.8, 0.6],
+      bounceIntensity: 0.3,
+      bounceColor: [0.8, 0.9, 1.0],
+      moonIntensity: 0.2,
+      
+      // Shadows
+      cascadeShadows: true,
+      contactHardeningShadows: false,
+      shadowDarkness: 0.5,
+      shadowBlur: 32,
+      shadowMapSize: 2048,
+      shadowBias: 0.001,
+      shadowCascades: 4,
+      
+      // Particles
+      snowEnabled: false,
+      starsEnabled: false,
+      snowIntensity: 100,
+      starIntensity: 1000
     });
   },
 

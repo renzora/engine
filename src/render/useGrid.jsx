@@ -197,6 +197,8 @@ export function useGrid(sceneSignal) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
+        regularGrid.checkCollisions = false;
+        regularGrid.renderingGroupId = 0;
         regularGrid.material.alpha = 0.15;
         regularGrid.color = getDaisyUIColor('bc').scale(0.3); // Use theme border color, dimmed
       }
@@ -207,6 +209,8 @@ export function useGrid(sceneSignal) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
+        sectionGrid.checkCollisions = false;
+        sectionGrid.renderingGroupId = 0;
         sectionGrid.material.alpha = 0.25;
         sectionGrid.color = getDaisyUIColor('bc').scale(0.5); // Use theme border color, brighter for sections
       }
@@ -254,6 +258,8 @@ export function useGrid(sceneSignal) {
         const regularGrid = MeshBuilder.CreateLineSystem("__grid_regular__", { lines: linesToCreate }, scene);
         regularGrid.parent = gridContainer;
         regularGrid.isPickable = false;
+        regularGrid.checkCollisions = false;
+        regularGrid.renderingGroupId = 0;
         regularGrid.material.alpha = 0.15;
         regularGrid.color = getDaisyUIColor('bc').scale(0.3); // Use theme border color, dimmed
       }
@@ -264,12 +270,16 @@ export function useGrid(sceneSignal) {
         const sectionGrid = MeshBuilder.CreateLineSystem("__grid_sections__", { lines: linesToCreate }, scene);
         sectionGrid.parent = gridContainer;
         sectionGrid.isPickable = false;
+        sectionGrid.checkCollisions = false;
+        sectionGrid.renderingGroupId = 0;
         sectionGrid.material.alpha = 0.25;
         sectionGrid.color = getDaisyUIColor('bc').scale(0.5); // Use theme border color, brighter for sections
       }
     }
     
     gridContainer.isPickable = false;
+    gridContainer.checkCollisions = false;
+    gridContainer.renderingGroupId = 0;
     gridContainer._isSystemObject = true;
     gridContainer.position = new Vector3(
       gridSettings.position[0],
