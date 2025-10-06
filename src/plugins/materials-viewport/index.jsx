@@ -1,5 +1,7 @@
 import { createPlugin } from '@/api/plugin';
 import { IconPalette } from '@tabler/icons-solidjs';
+import { createEffect, onCleanup } from 'solid-js';
+import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 import MaterialsViewport from './MaterialsViewport.jsx';
 
 export default createPlugin({
@@ -23,6 +25,23 @@ export default createPlugin({
       description: 'Material library, editor and preview viewport'
     });
     
+    // Monitor active tab and control toolbar visibility
+    const effect = createEffect(() => {
+      const activeTabId = viewportStore.activeTabId;
+      const activeTab = viewportStore.tabs.find(tab => tab.id === activeTabId);
+      
+      if (activeTab && activeTab.type === 'materials') {
+        // Materials viewport is active - hide toolbar
+        api.hideToolbar();
+      } else {
+        // Materials viewport is not active - show toolbar
+        api.showToolbar();
+      }
+    });
+    
+    // Store the cleanup function for onStop
+    this.toolbarEffect = effect;
+    
     console.log('[MaterialsViewportPlugin] Started');
   },
 
@@ -32,9 +51,23 @@ export default createPlugin({
 
   async onStop() {
     console.log('[MaterialsViewportPlugin] Stopping...');
+    
+    // Clean up the toolbar effect
+    if (this.toolbarEffect) {
+      this.toolbarEffect();
+      this.toolbarEffect = null;
+    }
+    
+    // Restore toolbar visibility when plugin stops
+    const { pluginAPI } = await import('@/api/plugin');
+    pluginAPI.showToolbar();
   },
 
   async onDispose() {
     console.log('[MaterialsViewportPlugin] Disposing...');
+    
+    // Ensure toolbar is restored
+    const { pluginAPI } = await import('@/api/plugin');
+    pluginAPI.showToolbar();
   }
 });

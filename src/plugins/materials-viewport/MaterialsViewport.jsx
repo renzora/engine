@@ -25,7 +25,10 @@ import {
   IconTexture,
   IconSquare,
   IconCircle,
-  IconHexagon
+  IconHexagon,
+  IconBulb,
+  IconVideo,
+  IconWorld
 } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
@@ -215,6 +218,21 @@ export default function MaterialsViewport() {
   const [backgroundColor, setBackgroundColor] = createSignal('#262626');
   const [hdrBackground, setHdrBackground] = createSignal(null); // Asset for HDR background
   const [usePBR, setUsePBR] = createSignal(false);
+  
+  // Section collapse state
+  const [sectionsOpen, setSectionsOpen] = createSignal({
+    material: true,
+    camera: true,
+    lighting: true,
+    environment: true
+  });
+  
+  const toggleSection = (section) => {
+    setSectionsOpen(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
   
   // Throttle mouse move updates for better performance
   let lastMoveTime = 0;
@@ -2520,7 +2538,7 @@ export default function MaterialsViewport() {
   return (
     <div class="h-full flex bg-base-100">
       {/* Left Panel - Preview */}
-      <div class="w-96 border-r border-base-300 flex flex-col bg-base-200">
+      <div class="w-80 border-r border-base-300 flex flex-col bg-base-200">
         {/* Preview Canvas - Fixed at top */}
         <div class="h-80 bg-base-300 relative border-b border-base-300">
           <canvas
@@ -2571,177 +2589,271 @@ export default function MaterialsViewport() {
 
         {/* Preview Controls */}
         <div 
-          class="flex-1 overflow-y-auto p-4 border-b border-base-300"
+          class="flex-1 overflow-y-auto border-b border-base-300 p-2 space-y-2"
           onDrop={handleAssetDrop}
           onDragOver={handleDragOver}
         >
-          <h3 class="text-md font-semibold mb-3">Material Preview</h3>
-
-          {/* Material Type */}
-          <div class="mb-3">
-            <div class="flex items-center justify-between">
-              <span class="text-sm font-medium">Material Type</span>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-base-content/60">Standard</span>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-xs"
-                  checked={usePBR()}
-                  onChange={(e) => setUsePBR(e.target.checked)}
-                />
-                <span class="text-xs text-base-content/60">PBR</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Camera Controls */}
-          <div class="mb-3">
-            <div class="flex items-center justify-between mb-2">
-              <button
-                class="btn btn-xs btn-ghost"
-                onClick={() => {
-                  if (previewCamera) {
-                    previewCamera.alpha = Math.PI / 4;
-                    previewCamera.beta = Math.PI / 3;
-                    previewCamera.radius = 6;
-                    setCameraDistance(6);
-                  }
-                }}
-                title="Reset Camera"
-              >
+          {/* Material Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().material ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('material')}>
                 <IconSettings class="w-3 h-3" />
-              </button>
-              <div class="text-xs text-base-content/60">
-                Distance: {Math.round((previewCamera?.radius || cameraDistance()) * 10) / 10}
+                Material
               </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().material}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('material');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="toggle toggle-primary toggle-xs"
+              />
             </div>
-          </div>
-
-          {/* Lighting Controls */}
-          <div class="mb-3">
-            <div class="text-sm font-medium mb-2">Lighting</div>
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-base-content/80">Directional</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  value={lightIntensity()}
-                  class="range range-xs w-20"
-                  onChange={(e) => setLightIntensity(parseFloat(e.target.value))}
-                />
-                <span class="text-xs text-base-content/60 w-8 text-right">{lightIntensity().toFixed(1)}</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-base-content/80">Ambient</span>
-                <input
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.1"
-                  value={ambientIntensity()}
-                  class="range range-xs w-20"
-                  onChange={(e) => setAmbientIntensity(parseFloat(e.target.value))}
-                />
-                <span class="text-xs text-base-content/60 w-8 text-right">{ambientIntensity().toFixed(1)}</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-base-content/80">Shadows</span>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-xs"
-                  checked={shadowsEnabled()}
-                  onChange={(e) => setShadowsEnabled(e.target.checked)}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Environment Controls */}
-          <div class="mb-3">
-            <div class="text-sm font-medium mb-2">Environment</div>
-            <div class="space-y-2">
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-base-content/80">Type</span>
-                <div class="flex items-center gap-2">
-                  <button
-                    class={`btn btn-xs ${backgroundType() === 'color' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setBackgroundType('color')}
-                  >
-                    Color
-                  </button>
-                  <button
-                    class={`btn btn-xs ${backgroundType() === 'hdr' ? 'btn-primary' : 'btn-ghost'}`}
-                    onClick={() => setBackgroundType('hdr')}
-                  >
-                    HDR
-                  </button>
-                </div>
-              </div>
-              
-              {/* Color Background */}
-              <Show when={backgroundType() === 'color'}>
+            <Show when={sectionsOpen().material}>
+              <div class="!p-2">
+              {/* Material Type */}
+              <div class="form-control">
                 <div class="flex items-center justify-between">
-                  <span class="text-xs text-base-content/80">Color</span>
-                  <input
-                    type="color"
-                    value={backgroundColor()}
-                    class="w-8 h-6 rounded border border-base-300 cursor-pointer"
-                    onChange={(e) => setBackgroundColor(e.target.value)}
-                  />
+                  <label class="label-text text-sm font-medium">Material Type</label>
+                  <div class="flex items-center gap-2">
+                    <span class="text-xs text-base-content/60">Standard</span>
+                    <input
+                      type="checkbox"
+                      class="toggle toggle-xs toggle-primary"
+                      checked={usePBR()}
+                      onChange={(e) => setUsePBR(e.target.checked)}
+                    />
+                    <span class="text-xs text-base-content/60">PBR</span>
+                  </div>
                 </div>
-              </Show>
-              
-              {/* HDR Background */}
-              <Show when={backgroundType() === 'hdr'}>
-                <div class="space-y-2">
+              </div>
+              </div>
+            </Show>
+          </div>
+
+          {/* Camera Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().camera ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('camera')}>
+                <IconVideo class="w-3 h-3" />
+                Camera
+              </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().camera}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('camera');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="toggle toggle-primary toggle-xs"
+              />
+            </div>
+            <Show when={sectionsOpen().camera}>
+              <div class="!p-2">
+              {/* Camera Controls */}
+              <div class="form-control">
+                <div class="flex items-center justify-between">
+                  <button
+                    class="btn btn-xs btn-outline btn-primary"
+                    onClick={() => {
+                      if (previewCamera) {
+                        previewCamera.alpha = Math.PI / 4;
+                        previewCamera.beta = Math.PI / 3;
+                        previewCamera.radius = 6;
+                        setCameraDistance(6);
+                      }
+                    }}
+                    title="Reset Camera"
+                  >
+                    <IconSettings class="w-3 h-3" />
+                    Reset
+                  </button>
+                  <div class="text-xs text-base-content/60 bg-base-200 px-2 py-1 rounded">
+                    Distance: {Math.round((previewCamera?.radius || cameraDistance()) * 10) / 10}
+                  </div>
+                </div>
+              </div>
+              </div>
+            </Show>
+          </div>
+
+          {/* Lighting Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().lighting ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('lighting')}>
+                <IconBulb class="w-3 h-3" />
+                Lighting
+              </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().lighting}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('lighting');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="toggle toggle-primary toggle-xs"
+              />
+            </div>
+            <Show when={sectionsOpen().lighting}>
+              <div class="!p-2">
+              {/* Lighting Controls */}
+              <div class="form-control">
+                <div class="space-y-3">
                   <div class="flex items-center justify-between">
-                    <span class="text-xs text-base-content/80">HDR Image</span>
-                    <div class="flex gap-1">
+                    <span class="text-xs text-base-content/80">Directional</span>
+                    <div class="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="0"
+                        max="2"
+                        step="0.1"
+                        value={lightIntensity()}
+                        class="range range-xs range-primary w-20"
+                        onChange={(e) => setLightIntensity(parseFloat(e.target.value))}
+                      />
+                      <span class="text-xs text-base-content/60 bg-base-200 px-2 py-1 rounded w-10 text-center">{lightIntensity().toFixed(1)}</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-base-content/80">Ambient</span>
+                    <div class="flex items-center gap-2">
+                      <input
+                        type="range"
+                        min="0"
+                        max="1"
+                        step="0.1"
+                        value={ambientIntensity()}
+                        class="range range-xs range-primary w-20"
+                        onChange={(e) => setAmbientIntensity(parseFloat(e.target.value))}
+                      />
+                      <span class="text-xs text-base-content/60 bg-base-200 px-2 py-1 rounded w-10 text-center">{ambientIntensity().toFixed(1)}</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-base-content/80">Shadows</span>
+                    <input
+                      type="checkbox"
+                      class="toggle toggle-xs toggle-primary"
+                      checked={shadowsEnabled()}
+                      onChange={(e) => setShadowsEnabled(e.target.checked)}
+                    />
+                  </div>
+                </div>
+              </div>
+              </div>
+            </Show>
+          </div>
+
+          {/* Environment Section */}
+          <div class="bg-base-100 border-base-300 border rounded-lg">
+            <div class={`!min-h-0 !py-1 !px-2 flex items-center justify-between font-medium text-xs border-b border-base-300/50 transition-colors ${ sectionsOpen().environment ? 'bg-primary/15 text-white rounded-t-lg' : 'hover:bg-base-200/50 rounded-t-lg' }`}>
+              <div class="flex items-center gap-1.5 cursor-pointer" onClick={() => toggleSection('environment')}>
+                <IconWorld class="w-3 h-3" />
+                Environment
+              </div>
+              <input
+                type="checkbox"
+                checked={sectionsOpen().environment}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  toggleSection('environment');
+                }}
+                onClick={(e) => e.stopPropagation()}
+                class="toggle toggle-primary toggle-xs"
+              />
+            </div>
+            <Show when={sectionsOpen().environment}>
+              <div class="!p-2">
+              {/* Environment Controls */}
+              <div class="form-control">
+                <div class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-base-content/80">Type</span>
+                    <div class="btn-group btn-group-xs">
                       <button
-                        class="btn btn-xs btn-ghost"
-                        onClick={() => document.getElementById('hdr-file-input').click()}
-                        title="Upload HDR file"
+                        class={`btn btn-xs ${backgroundType() === 'color' ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => setBackgroundType('color')}
                       >
-                        <IconPhoto class="w-3 h-3" />
+                        Color
                       </button>
                       <button
-                        class="btn btn-xs btn-ghost"
-                        onClick={() => setHdrBackground(null)}
-                        disabled={!hdrBackground()}
-                        title="Clear HDR"
+                        class={`btn btn-xs ${backgroundType() === 'hdr' ? 'btn-primary' : 'btn-outline'}`}
+                        onClick={() => setBackgroundType('hdr')}
                       >
-                        <IconX class="w-3 h-3" />
+                        HDR
                       </button>
                     </div>
                   </div>
                   
-                  {/* Hidden file input */}
-                  <input
-                    id="hdr-file-input"
-                    type="file"
-                    accept=".hdr,.exr,.dds,.ktx"
-                    style={{ display: 'none' }}
-                    onChange={handleHDRFileUpload}
-                  />
-                  
-                  <Show when={hdrBackground()}>
-                    <div class="text-xs text-base-content/60 bg-base-200 p-2 rounded">
-                      {hdrBackground().name}
+                  {/* Color Background */}
+                  <Show when={backgroundType() === 'color'}>
+                    <div class="flex items-center justify-between">
+                      <span class="text-xs text-base-content/80">Color</span>
+                      <input
+                        type="color"
+                        value={backgroundColor()}
+                        class="input input-xs w-10 h-8 p-0 rounded border border-base-300 cursor-pointer"
+                        onChange={(e) => setBackgroundColor(e.target.value)}
+                      />
                     </div>
                   </Show>
-                  <Show when={!hdrBackground()}>
-                    <div class="text-xs text-base-content/40 italic text-center p-2 border-2 border-dashed border-base-300 rounded">
-                      Click 📷 to upload HDR/EXR file
-                      <br />
-                      or drag from assets
+                  
+                  {/* HDR Background */}
+                  <Show when={backgroundType() === 'hdr'}>
+                    <div class="space-y-2">
+                      <div class="flex items-center justify-between">
+                        <span class="text-xs text-base-content/80">HDR Image</span>
+                        <div class="btn-group btn-group-xs">
+                          <button
+                            class="btn btn-xs btn-outline btn-primary"
+                            onClick={() => document.getElementById('hdr-file-input').click()}
+                            title="Upload HDR file"
+                          >
+                            <IconPhoto class="w-3 h-3" />
+                          </button>
+                          <button
+                            class="btn btn-xs btn-outline btn-error"
+                            onClick={() => setHdrBackground(null)}
+                            disabled={!hdrBackground()}
+                            title="Clear HDR"
+                          >
+                            <IconX class="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Hidden file input */}
+                      <input
+                        id="hdr-file-input"
+                        type="file"
+                        accept=".hdr,.exr,.dds,.ktx"
+                        style={{ display: 'none' }}
+                        onChange={handleHDRFileUpload}
+                      />
+                      
+                      <Show when={hdrBackground()}>
+                        <div class="alert alert-info py-2">
+                          <span class="text-xs">{hdrBackground().name}</span>
+                        </div>
+                      </Show>
+                      <Show when={!hdrBackground()}>
+                        <div class="alert py-3">
+                          <div class="text-xs text-center">
+                            <div>Click 📷 to upload HDR/EXR file</div>
+                            <div>or drag from assets</div>
+                          </div>
+                        </div>
+                      </Show>
                     </div>
                   </Show>
                 </div>
-              </Show>
-            </div>
+              </div>
+              </div>
+            </Show>
           </div>
         </div>
       </div>
