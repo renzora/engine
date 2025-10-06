@@ -2,6 +2,8 @@ import { createSignal, createEffect, Show } from 'solid-js';
 import { renderStore } from '@/render/store';
 import { IconSun, IconCloudRain, IconEye } from '@tabler/icons-solidjs';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
+import { Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
+import { Plane } from '@babylonjs/core/Maths/math.plane';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture';
 import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture';
@@ -24,6 +26,7 @@ function EnvironmentPanel(props) {
   const [sunAzimuth, setSunAzimuth] = createSignal(180);
   const [atmosphereIntensity, setAtmosphereIntensity] = createSignal(1.0);
   const [skyTurbidity, setSkyTurbidity] = createSignal(10);
+  const [hideSkyboxBottom, setHideSkyboxBottom] = createSignal(false);
 
   // Section collapse state
   const [sectionsOpen, setSectionsOpen] = createSignal({
@@ -219,6 +222,7 @@ function EnvironmentPanel(props) {
       setSunAzimuth(settings.sunAzimuth || 180);
       setAtmosphereIntensity(settings.atmosphereIntensity || 1.0);
       setSkyTurbidity(settings.turbidity || 10);
+      setHideSkyboxBottom(settings.hideSkyboxBottom || false);
       
       // Load skybox color from stored metadata since we use texture now
       if (settings.color) {
@@ -679,6 +683,37 @@ function EnvironmentPanel(props) {
     console.log('🌪️ Sky turbidity updated:', turbidity);
   });
 
+  // Reactive effect for hide skybox bottom
+  createEffect(() => {
+    const obj = selectedObject();
+    const scene = renderStore.scene;
+    if (!obj || !obj.metadata?.isEnvironmentObject || !scene) return;
+    
+    const hideBottom = hideSkyboxBottom();
+    
+    if (hideBottom) {
+      // Use scene-level clip plane to hide bottom half
+      // Create plane at Y = 0 with normal pointing down (0, -1, 0)
+      scene.clipPlane = Plane.FromPositionAndNormal(
+        new Vector3(0, 0, 0), // Point on plane (origin)
+        new Vector3(0, -1, 0) // Normal vector pointing down to clip bottom half
+      );
+      console.log('🌐 Enabled clip plane to hide skybox bottom');
+    } else {
+      // Remove clip plane
+      scene.clipPlane = null;
+      console.log('🌐 Disabled clip plane');
+    }
+    
+    // Update metadata
+    if (!obj.metadata.skyboxSettings) {
+      obj.metadata.skyboxSettings = {};
+    }
+    obj.metadata.skyboxSettings.hideSkyboxBottom = hideBottom;
+    
+    console.log('🌐 Hide skybox bottom updated:', hideBottom);
+  });
+
   return (
     <div class="h-full flex flex-col">
       <div class="flex-1 p-2 space-y-2">
@@ -826,6 +861,19 @@ function EnvironmentPanel(props) {
                     onInput={(e) => setSkyRotation(parseFloat(e.target.value))}
                     class="range range-primary range-xs"
                   />
+                </div>
+
+                <div class="form-control">
+                  <div class="flex items-center justify-between">
+                    <label class="label-text text-xs">Hide Bottom Half</label>
+                    <input
+                      type="checkbox"
+                      class="toggle toggle-primary toggle-sm"
+                      checked={hideSkyboxBottom()}
+                      onChange={(e) => setHideSkyboxBottom(e.target.checked)}
+                    />
+                  </div>
+                  <div class="text-xs text-base-content/50 mt-1">Removes the bottom half of the skybox</div>
                 </div>
               </div>
             </div>
