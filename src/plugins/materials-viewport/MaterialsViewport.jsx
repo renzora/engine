@@ -27,6 +27,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js'
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
 import { NodeMaterial } from '@babylonjs/core/Materials/Node/nodeMaterial.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
+import { bridgeService } from '@/plugins/core/bridge';
 
 // Node Material Blocks
 import { InputBlock } from '@babylonjs/core/Materials/Node/Blocks/Input/inputBlock.js';
@@ -43,12 +44,15 @@ import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera.js';
+import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js';
 import { ShadowGenerator } from '@babylonjs/core/Lights/Shadows/shadowGenerator.js';
 import { Scene } from '@babylonjs/core/scene.js';
 import { Engine } from '@babylonjs/core/Engines/engine.js';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js';
+import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture.js';
+import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture.js';
 // Import EXR loader for HDR textures
 import '@babylonjs/loaders/glTF';
 import '@babylonjs/core/Materials/Textures/Loaders/exrTextureLoader.js';
@@ -190,6 +194,21 @@ export default function MaterialsViewport() {
   const [contextMenu, setContextMenu] = createSignal(null);
   const [contextMenuPosition, setContextMenuPosition] = createSignal(null);
   
+  // Preview camera controls
+  const [cameraDistance, setCameraDistance] = createSignal(6);
+  const [isRotatingCamera, setIsRotatingCamera] = createSignal(false);
+  const [lastMousePos, setLastMousePos] = createSignal({ x: 0, y: 0 });
+  
+  // Environment and lighting controls
+  const [lightIntensity, setLightIntensity] = createSignal(0.8);
+  const [ambientIntensity, setAmbientIntensity] = createSignal(0.4);
+  const [shadowsEnabled, setShadowsEnabled] = createSignal(true);
+  const [shadowQuality, setShadowQuality] = createSignal(1024);
+  const [backgroundType, setBackgroundType] = createSignal('color'); // 'color', 'hdr'
+  const [backgroundColor, setBackgroundColor] = createSignal('#262626');
+  const [hdrBackground, setHdrBackground] = createSignal(null); // Asset for HDR background
+  const [usePBR, setUsePBR] = createSignal(false);
+  
   // Throttle mouse move updates for better performance
   let lastMoveTime = 0;
   const MOVE_THROTTLE_MS = 16; // ~60fps
@@ -203,7 +222,544 @@ export default function MaterialsViewport() {
   let backdropMesh;
   let shadowGenerator;
   let nodeGraphRef;
+  let previewCamera;
+  let directionalLight;
+  let ambientLight;
   
+  // Update camera distance for zoom
+  const updateCameraDistance = () => {
+    if (!previewCamera) return;
+    previewCamera.radius = cameraDistance();
+  };
+
+  // Update lighting
+  const updateLighting = () => {
+    if (directionalLight) {
+      directionalLight.intensity = lightIntensity();
+    }
+    if (ambientLight) {
+      ambientLight.intensity = ambientIntensity();
+    }
+  };
+
+  // Update shadows
+  const updateShadows = () => {
+    if (!shadowGenerator || !previewMesh || !groundMesh) return;
+    
+    if (shadowsEnabled()) {
+      shadowGenerator.addShadowCaster(previewMesh);
+      groundMesh.receiveShadows = true;
+    } else {
+      shadowGenerator.removeShadowCaster(previewMesh);
+      groundMesh.receiveShadows = false;
+    }
+  };
+
+  // Update background
+  const updateBackground = () => {
+    if (!previewScene) return;
+    
+    if (backgroundType() === 'color') {
+      const hexColor = backgroundColor();
+      const r = parseInt(hexColor.slice(1, 3), 16) / 255;
+      const g = parseInt(hexColor.slice(3, 5), 16) / 255;
+      const b = parseInt(hexColor.slice(5, 7), 16) / 255;
+      previewScene.clearColor = new Color3(r, g, b);
+      
+      // Clear HDR environment when switching to color
+      clearHDREnvironment();
+      
+      // Create a simple environment texture from the color for PBR reflections
+      createColorEnvironmentTexture(hexColor);
+      
+    } else if (backgroundType() === 'hdr' && hdrBackground()) {
+      const asset = hdrBackground();
+      console.log('updateBackground: HDR mode with asset:', asset);
+      
+      // Handle uploaded files
+      if (asset.isUploaded && asset.file) {
+        console.log('Loading uploaded HDR file:', asset.file.name);
+        loadUploadedHDRFile(asset.file);
+        return;
+      }
+      
+      // Handle assets from project (original logic)
+      const hdrUrl = constructTextureUrl(asset);
+      
+      if (hdrUrl) {
+        console.log('Loading HDR environment:', hdrUrl);
+        
+        // Debug: Try multiple URL variations
+        const debugUrls = [
+          hdrUrl,
+          hdrUrl.replace('/assets/materials/', '/assets/'),
+          hdrUrl.replace('/assets/materials/', '/'),
+          hdrUrl.replace('.hdr', '.HDR'),
+          // Try the bridge API format
+          `http://localhost:3001/api/file/${asset.path}`,
+          `http://localhost:3001/api/assets/${asset.name}`,
+          // Try without file prefix
+          `http://localhost:3001/projects/test/${asset.path}`,
+        ];
+        
+        console.log('Testing multiple URL variations:', debugUrls);
+        
+        // Test each URL
+        const testUrls = debugUrls.map(url => 
+          fetch(url, { method: 'HEAD' })
+            .then(response => ({ url, status: response.status, ok: response.ok }))
+            .catch(error => ({ url, status: 'ERROR', error }))
+        );
+        
+        Promise.all(testUrls).then(results => {
+          console.log('URL test results:', results);
+          
+          const workingUrl = results.find(result => result.ok);
+          if (workingUrl) {
+            console.log('✅ Found working URL:', workingUrl.url);
+            loadHDRTexture(workingUrl.url);
+          } else {
+            console.error('❌ No working URLs found. Trying bridge service...');
+            tryBridgeService(asset);
+          }
+        });
+      } else {
+        console.error('❌ Could not construct HDR URL from asset');
+      }
+    }
+  };
+
+  // Separate function to load HDR texture
+  const loadHDRTexture = (hdrUrl) => {
+    try {
+      console.log('Attempting HDR loading with multiple methods...');
+      
+      // Add a timeout to detect silent failures
+      let loadTimeout = setTimeout(() => {
+        console.warn('⚠️ HDR loading timeout - trying fallback methods');
+        tryRegularTexture(hdrUrl);
+      }, 5000); // 5 second timeout
+      
+      // Method 1: Try HDRCubeTexture
+      console.log('Method 1: Trying HDRCubeTexture...');
+      const hdrTexture = new HDRCubeTexture(hdrUrl, previewScene, 256); // Increased size
+      
+      hdrTexture.onLoad = () => {
+        console.log('✅ HDR environment loaded successfully via HDRCubeTexture');
+        clearTimeout(loadTimeout);
+        
+        // Set the environment texture
+        previewScene.environmentTexture = hdrTexture;
+        
+        // Create skybox
+        previewScene.createDefaultSkybox(hdrTexture, true, 1000);
+        
+        // Set environment intensity
+        previewScene.environmentIntensity = 1.2;
+        
+        console.log('Environment texture set:', previewScene.environmentTexture);
+        console.log('Scene background:', previewScene.clearColor);
+      };
+      
+      hdrTexture.onError = (error) => {
+        console.error('❌ HDRCubeTexture failed:', error);
+        clearTimeout(loadTimeout);
+        
+        // Method 2: Try regular texture with environment mapping
+        console.log('Method 2: Trying regular Texture with environment mapping...');
+        tryEnvironmentTexture(hdrUrl);
+      };
+      
+      // Log the texture object for debugging
+      console.log('HDRCubeTexture object created:', hdrTexture);
+      
+    } catch (loadError) {
+      console.error('❌ Exception during HDR loading:', loadError);
+      tryEnvironmentTexture(hdrUrl);
+    }
+  };
+
+  // Try environment texture method
+  const tryEnvironmentTexture = (hdrUrl) => {
+    console.log('Method 2: Trying regular Texture with environment setup...');
+    const envTexture = new Texture(hdrUrl, previewScene);
+    
+    envTexture.onLoad = () => {
+      console.log('✅ HDR loaded as environment texture');
+      
+      // Set as environment texture
+      previewScene.environmentTexture = envTexture;
+      previewScene.environmentIntensity = 1.5;
+      
+      // Create a simple colored background to show something is working
+      previewScene.clearColor = new Color3(0.2, 0.4, 0.8); // Blue background
+      
+      console.log('Environment texture setup complete with blue background');
+    };
+    
+    envTexture.onError = (envError) => {
+      console.error('❌ Environment texture failed:', envError);
+      // Create a simple environment effect even without the HDR
+      createSimpleEnvironment();
+    };
+  };
+
+  // Create a simple environment effect when HDR fails
+  const createSimpleEnvironment = () => {
+    console.log('Creating simple environment effect...');
+    
+    // Change background to a gradient-like color
+    previewScene.clearColor = new Color3(0.1, 0.2, 0.4);
+    
+    // Enhance lighting to simulate environment lighting
+    if (directionalLight) {
+      directionalLight.intensity = lightIntensity() * 1.5;
+    }
+    if (ambientLight) {
+      ambientLight.intensity = ambientIntensity() * 2.0;
+    }
+    
+    console.log('✅ Simple environment effect applied');
+  };
+
+  // Fallback to regular texture
+  const tryRegularTexture = (hdrUrl) => {
+    console.log('Method 3: Trying regular Texture as final fallback...');
+    const fallbackTexture = new Texture(hdrUrl, previewScene);
+    
+    fallbackTexture.onLoad = () => {
+      console.log('✅ HDR loaded as regular texture (fallback)');
+      previewScene.environmentTexture = fallbackTexture;
+      previewScene.clearColor = new Color3(0.2, 0.4, 0.8); // Blue background to show it worked
+      console.log('Final fallback environment texture set');
+    };
+    
+    fallbackTexture.onError = (fallbackError) => {
+      console.error('❌ All HDR loading methods failed:', fallbackError);
+      console.log('Applying simple environment as last resort...');
+      createSimpleEnvironment();
+    };
+  };
+
+  // Try loading HDR via bridge service
+  const tryBridgeService = async (asset) => {
+    try {
+      console.log('Trying to load HDR via bridge service...');
+      console.log('Asset path:', asset.path);
+      
+      // Try to read the file via bridge service
+      const fileData = await bridgeService.readFile(asset.path);
+      console.log('✅ Bridge service read file successfully');
+      
+      // Create a blob URL from the file data
+      const blob = new Blob([fileData], { type: 'application/octet-stream' });
+      const blobUrl = URL.createObjectURL(blob);
+      
+      console.log('Created blob URL:', blobUrl);
+      
+      // Try loading HDR from blob URL
+      loadHDRTexture(blobUrl);
+      
+    } catch (error) {
+      console.error('❌ Bridge service failed:', error);
+      console.log('Trying HDR loading with original URL anyway...');
+      loadHDRTexture(constructTextureUrl(asset)); // Last resort
+    }
+  };
+
+  // Handle HDR file upload from filesystem
+  const handleHDRFileUpload = (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    console.log('HDR file selected:', file.name, file.type, file.size);
+    
+    // Check if it's an HDR file
+    const isValidHDR = file.name.match(/\.(hdr|exr|dds|ktx)$/i);
+    if (!isValidHDR) {
+      console.error('Invalid file type. Please select an HDR, EXR, DDS, or KTX file.');
+      return;
+    }
+    
+    // Create a fake asset object for the uploaded file
+    const uploadedAsset = {
+      name: file.name,
+      path: null, // No path for uploaded files
+      file: file, // Store the actual file object
+      isUploaded: true
+    };
+    
+    setHdrBackground(uploadedAsset);
+    console.log('HDR background set to uploaded file:', file.name);
+    
+    // Clear the file input so the same file can be selected again
+    event.target.value = '';
+  };
+
+  // Load HDR file from uploaded file object (based on Sky panel approach)
+  const loadUploadedHDRFile = (file) => {
+    console.log('🌍 Loading uploaded HDR file with Sky panel approach:', file.name);
+    
+    // Create file URL for HDR files (same as Sky panel)
+    const fileUrl = URL.createObjectURL(file);
+    console.log('🌍 Created file URL:', fileUrl);
+    
+    // Use the same approach as Sky panel
+    loadHDRWithNativeBabylonJS(fileUrl, file.name);
+  };
+
+  // Load HDR with native BabylonJS support (copied from Sky panel)
+  const loadHDRWithNativeBabylonJS = (hdrUrl, fileName) => {
+    console.log('🌍 Loading HDR with native BabylonJS support:', fileName);
+    
+    let loadHandled = false;
+    
+    try {
+      // Try HDRCubeTexture with proper material setup (same as Sky panel)
+      console.log('🌍 Trying HDR loading: HDRCubeTexture with proper setup');
+      
+      const hdrTexture = new HDRCubeTexture(hdrUrl, previewScene, 512);
+      
+      console.log('🌍 HDR texture created:', {
+        url: hdrUrl,
+        isReady: hdrTexture.isReady(),
+        hasObservable: !!hdrTexture.onLoadObservable
+      });
+      
+      // Add error handling for load failures
+      if (hdrTexture.onErrorObservable) {
+        hdrTexture.onErrorObservable.add((error) => {
+          console.error('❌ HDR texture load error:', error);
+        });
+      }
+      
+      // Test direct URL fetch (same as Sky panel)
+      fetch(hdrUrl)
+        .then(response => {
+          console.log('🌍 Direct fetch test result:', {
+            ok: response.ok,
+            status: response.status,
+            contentType: response.headers.get('content-type'),
+            contentLength: response.headers.get('content-length')
+          });
+          return response.blob();
+        })
+        .then(blob => {
+          console.log('🌍 HDR file blob size:', blob.size, 'type:', blob.type);
+        })
+        .catch(error => {
+          console.error('❌ Direct fetch failed:', error);
+        });
+
+      // Load success handler
+      hdrTexture.onLoadObservable.addOnce(() => {
+        loadHandled = true;
+        console.log('🌍 HDR texture loaded via observable, applying to environment...');
+        applyHDRToEnvironment(hdrTexture);
+      });
+      
+      // Multiple fallbacks to ensure HDR gets applied (same as Sky panel)
+      const checkAndApplyHDR = () => {
+        if (!loadHandled && hdrTexture.isReady()) {
+          loadHandled = true;
+          console.log('🔄 HDR texture ready via polling, applying fallback setup...');
+          applyHDRToEnvironment(hdrTexture);
+        } else if (!loadHandled) {
+          console.log('🌍 HDR texture not ready yet, will retry...');
+        }
+      };
+      
+      // Check multiple times in case observable doesn't fire
+      setTimeout(checkAndApplyHDR, 100);
+      setTimeout(checkAndApplyHDR, 500);
+      setTimeout(checkAndApplyHDR, 1000);
+      setTimeout(checkAndApplyHDR, 2000);
+      
+    } catch (error) {
+      console.error('❌ HDRCubeTexture approach failed:', error);
+    }
+    
+    // ArrayBuffer fallback approach (adapted from Sky panel)
+    setTimeout(() => {
+      if (!loadHandled) {
+        console.log('🔄 HDR texture failed to load, trying ArrayBuffer approach...');
+        
+        fetch(hdrUrl)
+          .then(response => response.arrayBuffer())
+          .then(arrayBuffer => {
+            console.log('🌍 HDR ArrayBuffer loaded, size:', arrayBuffer.byteLength);
+            
+            // Create blob URL with proper MIME type
+            const blob = new Blob([arrayBuffer], { type: 'image/vnd.radiance' });
+            const blobUrl = URL.createObjectURL(blob);
+            
+            console.log('🌍 Created blob URL for HDR:', blobUrl);
+            
+            const hdrFromBlob = new HDRCubeTexture(blobUrl, previewScene, 512);
+            hdrFromBlob.onLoadObservable.addOnce(() => {
+              loadHandled = true;
+              console.log('🌍 HDR from blob loaded successfully!');
+              applyHDRToEnvironment(hdrFromBlob);
+              
+              // Clean up blob URL
+              URL.revokeObjectURL(blobUrl);
+            });
+            
+            // Final fallback to regular texture
+            setTimeout(() => {
+              if (!loadHandled) {
+                console.log('🔄 Blob approach failed, trying regular texture...');
+                try {
+                  const fallbackTexture = new Texture(hdrUrl, previewScene);
+                  fallbackTexture.onLoadObservable.addOnce(() => {
+                    console.log('🌍 Regular texture loaded, applying as environment...');
+                    loadHandled = true;
+                    applyRegularTextureAsEnvironment(fallbackTexture);
+                  });
+                } catch (fallbackError) {
+                  console.error('❌ Regular texture approach also failed:', fallbackError);
+                }
+              }
+            }, 2000);
+          })
+          .catch(error => {
+            console.error('❌ Failed to load HDR as ArrayBuffer:', error);
+          });
+      }
+    }, 3000);
+  };
+
+  // Apply HDR texture to environment (adapted from Sky panel)
+  const applyHDRToEnvironment = (hdrTexture) => {
+    console.log('🌍 Applying HDR texture to environment...');
+    console.log('🌍 HDR texture details:', {
+      isReady: hdrTexture.isReady(),
+      size: hdrTexture.getSize ? hdrTexture.getSize() : 'unknown',
+      url: hdrTexture.url
+    });
+    
+    // Set environment texture for PBR lighting
+    previewScene.environmentTexture = hdrTexture;
+    previewScene.environmentIntensity = 1.2;
+    
+    // Create skybox for background
+    previewScene.createDefaultSkybox(hdrTexture, true, 1000);
+    
+    console.log('✅ HDR texture applied to environment');
+  };
+
+  // Apply regular texture as environment fallback
+  const applyRegularTextureAsEnvironment = (texture) => {
+    console.log('🌍 Applying regular texture as environment fallback...');
+    
+    previewScene.environmentTexture = texture;
+    previewScene.environmentIntensity = 1.0;
+    
+    // Change background to show something worked
+    previewScene.clearColor = new Color3(0.2, 0.4, 0.8);
+    
+    console.log('✅ Regular texture applied as environment');
+  };
+
+  // Create a simple environment texture from color for PBR reflections
+  const createColorEnvironmentTexture = (hexColor) => {
+    console.log('🎨 Creating color environment texture for PBR:', hexColor);
+    
+    try {
+      // Create a simple canvas texture with the color
+      const canvas = document.createElement('canvas');
+      canvas.width = 256;
+      canvas.height = 256;
+      const ctx = canvas.getContext('2d');
+      
+      // Fill with the background color
+      ctx.fillStyle = hexColor;
+      ctx.fillRect(0, 0, 256, 256);
+      
+      // Create texture from canvas
+      const colorTexture = new Texture('data:' + canvas.toDataURL(), previewScene);
+      
+      // Set as environment texture for PBR reflections
+      colorTexture.coordinatesMode = Texture.SKYBOX_MODE;
+      previewScene.environmentTexture = colorTexture;
+      previewScene.environmentIntensity = 0.8; // Subtle environment effect
+      
+      console.log('✅ Color environment texture created for PBR reflections');
+      
+    } catch (error) {
+      console.error('❌ Failed to create color environment texture:', error);
+    }
+  };
+
+  // Clear HDR environment when switching back to color mode
+  const clearHDREnvironment = () => {
+    console.log('🗑️ Clearing HDR environment...');
+    
+    if (previewScene.environmentTexture) {
+      // Dispose of the environment texture
+      previewScene.environmentTexture.dispose();
+      previewScene.environmentTexture = null;
+      console.log('🗑️ Environment texture disposed');
+    }
+    
+    // Reset environment intensity
+    previewScene.environmentIntensity = 1.0;
+    
+    // Find and remove ALL potential skybox meshes (more comprehensive search)
+    const allMeshes = previewScene.meshes.slice(); // Create a copy to avoid modification during iteration
+    let skyboxesRemoved = 0;
+    
+    allMeshes.forEach(mesh => {
+      const meshName = mesh.name.toLowerCase();
+      // Check for various skybox naming patterns
+      if (meshName.includes('skybox') || 
+          meshName.includes('sky') || 
+          meshName.includes('environment') ||
+          meshName.includes('envbox') ||
+          (mesh.material && mesh.material.reflectionTexture && 
+           mesh.material.reflectionTexture.coordinatesMode === Texture.SKYBOX_MODE)) {
+        
+        console.log('🗑️ Found potential skybox mesh:', mesh.name, mesh.material?.constructor.name);
+        mesh.dispose();
+        skyboxesRemoved++;
+      }
+    });
+    
+    console.log('🗑️ Removed', skyboxesRemoved, 'skybox meshes');
+    
+    // Also clear the default skybox if it exists (Babylon.js creates these)
+    if (previewScene._defaultSkybox) {
+      previewScene._defaultSkybox.dispose();
+      previewScene._defaultSkybox = null;
+      console.log('🗑️ Default skybox disposed');
+    }
+    
+    // Force clear any background meshes
+    if (previewScene._backgroundSkybox) {
+      previewScene._backgroundSkybox.dispose();
+      previewScene._backgroundSkybox = null;
+      console.log('🗑️ Background skybox disposed');
+    }
+    
+    // Clear any HDR background asset
+    if (hdrBackground()) {
+      const currentHDR = hdrBackground();
+      // Clean up blob URL if it was created from file input
+      if (currentHDR && typeof currentHDR === 'object' && currentHDR.isUploaded && currentHDR.file) {
+        const fileUrl = URL.createObjectURL(currentHDR.file);
+        URL.revokeObjectURL(fileUrl);
+        console.log('🗑️ Cleaned up blob URL for uploaded HDR');
+      }
+      setHdrBackground(null);
+    }
+    
+    // Force scene to re-render
+    previewScene.markAllMaterialsAsDirty();
+    
+    console.log('✅ HDR environment cleared completely');
+    console.log('🔍 Remaining meshes:', previewScene.meshes.map(m => m.name));
+  };
+
   // Node types
   const NODE_TYPES = {
     MATERIAL_OUTPUT: 'MaterialOutput',
@@ -249,25 +805,31 @@ export default function MaterialsViewport() {
     previewScene = new Scene(previewEngine);
     previewScene.clearColor = new Color3(0.15, 0.15, 0.15);
     
-    // Setup camera with side angle view
-    const camera = new FreeCamera('previewCamera', new Vector3(3, 2, -3), previewScene);
-    camera.setTarget(new Vector3(0, -0.5, 0)); // Look at the object position
-    camera.attachControl(previewCanvasRef, true);
+    // Setup camera with arc rotation
+    previewCamera = new ArcRotateCamera('previewCamera', Math.PI / 4, Math.PI / 3, 6, new Vector3(0, -0.5, 0), previewScene);
+    previewCamera.attachControl(previewCanvasRef, true);
+    
+    // Set camera limits
+    previewCamera.lowerRadiusLimit = 2;
+    previewCamera.upperRadiusLimit = 10;
+    
+    // Set zoom speed (lower = slower)
+    previewCamera.wheelDeltaPercentage = 0.01;
     
     // Setup lighting with shadows
     // Ambient lighting
-    const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), previewScene);
-    ambientLight.intensity = 0.4;
+    ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), previewScene);
+    ambientLight.intensity = ambientIntensity();
     ambientLight.diffuse = new Color3(1, 1, 1);
     
     // Directional light for shadows
-    const directionalLight = new DirectionalLight('dirLight', new Vector3(-1, -1, -1), previewScene);
+    directionalLight = new DirectionalLight('dirLight', new Vector3(-1, -1, -1), previewScene);
     directionalLight.position = new Vector3(3, 5, 3);
-    directionalLight.intensity = 0.8;
+    directionalLight.intensity = lightIntensity();
     directionalLight.diffuse = new Color3(1, 1, 1);
     
     // Shadow generator
-    shadowGenerator = new ShadowGenerator(1024, directionalLight);
+    shadowGenerator = new ShadowGenerator(shadowQuality(), directionalLight);
     shadowGenerator.useBlurExponentialShadowMap = true;
     shadowGenerator.blurKernel = 32;
     
@@ -309,26 +871,26 @@ export default function MaterialsViewport() {
     const checkerTexture = new Texture('data:image/svg+xml;base64,' + btoa(`
       <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <pattern id="checker" width="20" height="20" patternUnits="userSpaceOnUse">
-            <rect x="0" y="0" width="10" height="10" fill="#f0f0f0"/>
-            <rect x="10" y="10" width="10" height="10" fill="#f0f0f0"/>
-            <rect x="10" y="0" width="10" height="10" fill="#ffffff"/>
-            <rect x="0" y="10" width="10" height="10" fill="#ffffff"/>
+          <pattern id="checker" width="200" height="200" patternUnits="userSpaceOnUse">
+            <rect x="0" y="0" width="100" height="100" fill="#f0f0f0"/>
+            <rect x="100" y="100" width="100" height="100" fill="#f0f0f0"/>
+            <rect x="100" y="0" width="100" height="100" fill="#ffffff"/>
+            <rect x="0" y="100" width="100" height="100" fill="#ffffff"/>
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#checker)"/>
         <!-- Grid lines overlay -->
         <defs>
-          <pattern id="gridlines" width="20" height="20" patternUnits="userSpaceOnUse">
-            <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#d0d0d0" stroke-width="0.5"/>
+          <pattern id="gridlines" width="200" height="200" patternUnits="userSpaceOnUse">
+            <path d="M 200 0 L 0 0 0 200" fill="none" stroke="#d0d0d0" stroke-width="0.5"/>
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#gridlines)"/>
       </svg>
     `), previewScene);
     
-    checkerTexture.uScale = 15;
-    checkerTexture.vScale = 15;
+    checkerTexture.uScale = 3;
+    checkerTexture.vScale = 4;
     gridMaterial.diffuseTexture = checkerTexture;
     groundMesh.material = gridMaterial;
     
@@ -433,23 +995,64 @@ export default function MaterialsViewport() {
 
   // Helper function to construct texture URL from asset
   const constructTextureUrl = (asset) => {
-    if (!asset) return null;
-    
-    // Construct URL for the actual full-resolution image file
-    if (asset.path && asset.path.includes('projects/')) {
-      // Asset path already includes full project path
-      const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
-      return `http://localhost:3001/file/${cleanPath}`;
-    } else if (asset.name || asset.id) {
-      // Construct full path - based on thumbnail pattern we see in console
-      const fileName = asset.name || asset.id;
-      return `http://localhost:3001/file/projects/test/assets/textures/${fileName}`;
-    } else if (asset.path) {
-      // Try to prepend the project path to the asset path
-      const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
-      return `http://localhost:3001/file/projects/test/${cleanPath}`;
+    if (!asset) {
+      console.log('constructTextureUrl: No asset provided');
+      return null;
     }
-    return null;
+    
+    console.log('constructTextureUrl: Full asset object:', asset);
+    
+    let url = null;
+    
+    // Try multiple URL construction methods
+    const possibleUrls = [];
+    
+    // Method 1: Use asset.path if it includes full project path
+    if (asset.path && asset.path.includes('projects/')) {
+      const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
+      possibleUrls.push(`http://localhost:3001/file/${cleanPath}`);
+    }
+    
+    // Method 2: Use asset.path directly with projects/test prefix
+    if (asset.path) {
+      const cleanPath = asset.path.startsWith('/') ? asset.path.slice(1) : asset.path;
+      possibleUrls.push(`http://localhost:3001/file/projects/test/${cleanPath}`);
+    }
+    
+    // Method 3: Try with assets subdirectory
+    if (asset.name || asset.id) {
+      const fileName = asset.name || asset.id;
+      possibleUrls.push(`http://localhost:3001/file/projects/test/assets/${fileName}`);
+      possibleUrls.push(`http://localhost:3001/file/projects/test/assets/textures/${fileName}`);
+      possibleUrls.push(`http://localhost:3001/file/projects/test/assets/hdri/${fileName}`);
+      possibleUrls.push(`http://localhost:3001/file/projects/test/assets/images/${fileName}`);
+    }
+    
+    // Method 4: Try the exact same pattern as thumbnail URLs work
+    if (asset.thumbnailUrl) {
+      console.log('constructTextureUrl: Found thumbnail URL pattern:', asset.thumbnailUrl);
+      // Extract the base path from thumbnail URL and construct full image URL
+      // Thumbnail: http://localhost:3001/file/projects/test/.cache/thumbnails/hills_hdr_256.png
+      // Should be: http://localhost:3001/file/projects/test/assets/materials/hills.hdr
+      
+      // Extract the base URL up to the project directory
+      const baseProjectUrl = asset.thumbnailUrl.split('/.cache/')[0]; // http://localhost:3001/file/projects/test
+      
+      // Use the asset path to construct the full URL
+      if (asset.path) {
+        const fullUrl = `${baseProjectUrl}/${asset.path}`;
+        possibleUrls.unshift(fullUrl); // Add to beginning as most likely to work
+        console.log('constructTextureUrl: Constructed from thumbnail pattern:', fullUrl);
+      }
+    }
+    
+    console.log('constructTextureUrl: Possible URLs to try:', possibleUrls);
+    
+    // Return the first URL (we'll implement fallback later if needed)
+    url = possibleUrls[0] || null;
+    
+    console.log('constructTextureUrl: Using URL:', url);
+    return url;
   };
 
   // Helper function to create texture with proper format handling
@@ -498,19 +1101,29 @@ export default function MaterialsViewport() {
     return texture;
   };
 
-  // Create material from node graph - proper NodeMaterial implementation
+  // Create material from node graph - supports both Standard and PBR materials
   const createMaterialFromNodes = () => {
     const scene = previewScene;
     if (!scene) return;
     
-    // Use StandardMaterial for simpler, more predictable results
-    const material = new StandardMaterial('NodeBasedMaterial', scene);
+    // Choose material type based on PBR setting
+    const material = usePBR() 
+      ? new PBRMaterial('NodeBasedPBRMaterial', scene)
+      : new StandardMaterial('NodeBasedMaterial', scene);
     
     // Set some defaults that will be visible
-    material.diffuseColor = new Color3(1.0, 0.0, 1.0); // Bright magenta default
-    material.specularColor = new Color3(0.2, 0.2, 0.2); // Low specular
+    if (usePBR()) {
+      // PBR Material defaults
+      material.baseColor = new Color3(0.8, 0.8, 0.8);
+      material.metallicFactor = 0.0;
+      material.roughnessFactor = 0.5;
+    } else {
+      // Standard Material defaults
+      material.diffuseColor = new Color3(0.8, 0.8, 0.8);
+      material.specularColor = new Color3(0.2, 0.2, 0.2);
+    }
     
-    console.log('Default material created with gray color');
+    console.log('Default material created:', usePBR() ? 'PBR' : 'Standard');
     
     // Handle all material property connections
     connections().forEach(connection => {
@@ -524,7 +1137,11 @@ export default function MaterialsViewport() {
           if (sourceNode.type === NODE_TYPES.COLOR) {
             const colorInput = sourceNode.inputs.find(i => i.id === 'color');
             if (colorInput?.value && colorInput.value instanceof Color3) {
-              material.diffuseColor = colorInput.value;
+              if (usePBR()) {
+                material.baseColor = colorInput.value;
+              } else {
+                material.diffuseColor = colorInput.value;
+              }
               console.log('Applied base color:', colorInput.value);
             }
           } else if (sourceNode.type === NODE_TYPES.TEXTURE_SAMPLE) {
@@ -534,21 +1151,26 @@ export default function MaterialsViewport() {
               const asset = textureInput.value;
               const texture = createTextureFromAsset(asset, scene);
               if (texture) {
-                material.diffuseTexture = texture;
+                if (usePBR()) {
+                  material.baseTexture = texture;
+                  material.baseColor = new Color3(1.0, 1.0, 1.0);
+                } else {
+                  material.diffuseTexture = texture;
+                  material.diffuseColor = new Color3(1.0, 1.0, 1.0);
+                }
                 
                 // Special handling for HDR textures on base color
                 const extension = asset.extension?.toLowerCase() || asset.name?.split('.').pop()?.toLowerCase();
                 if (extension === 'exr' || extension === 'hdr') {
                   // For HDR textures on base color, ensure material doesn't become transparent
                   material.alpha = 1.0;
-                  material.transparencyMode = null;
-                  
-                  // Set a neutral diffuse color to modulate the HDR texture
-                  material.diffuseColor = new Color3(0.5, 0.5, 0.5);
+                  if (usePBR()) {
+                    material.baseColor = new Color3(0.5, 0.5, 0.5);
+                  } else {
+                    material.diffuseColor = new Color3(0.5, 0.5, 0.5);
+                  }
                   console.log('Applied HDR texture to base color with exposure compensation');
                 } else {
-                  // Reset diffuse color to white for regular textures
-                  material.diffuseColor = new Color3(1.0, 1.0, 1.0);
                   console.log('Applied texture to base color');
                 }
               }
@@ -599,17 +1221,25 @@ export default function MaterialsViewport() {
               const asset = textureInput.value;
               const texture = createTextureFromAsset(asset, scene);
               if (texture) {
-                // For StandardMaterial, we can use specularTexture for roughness
-                material.specularTexture = texture;
+                if (usePBR()) {
+                  material.metallicRoughnessTexture = texture;
+                  material.useRoughnessFromMetallicTextureGreen = true;
+                } else {
+                  material.specularTexture = texture;
+                }
                 console.log('Applied roughness texture');
               }
             }
           } else if (sourceNode.type === NODE_TYPES.CONSTANT) {
             const valueInput = sourceNode.inputs.find(i => i.id === 'value');
             if (valueInput?.value !== undefined) {
-              // For StandardMaterial, we use specularPower (inverse relationship)
-              material.specularPower = Math.max(1, (1 - valueInput.value) * 128);
-              console.log('Applied roughness (specularPower):', material.specularPower);
+              if (usePBR()) {
+                material.roughnessFactor = valueInput.value;
+              } else {
+                // For StandardMaterial, we use specularPower (inverse relationship)
+                material.specularPower = Math.max(1, (1 - valueInput.value) * 128);
+              }
+              console.log('Applied roughness:', valueInput.value);
             }
           }
           break;
@@ -621,7 +1251,12 @@ export default function MaterialsViewport() {
               const asset = textureInput.value;
               const texture = createTextureFromAsset(asset, scene);
               if (texture) {
-                material.reflectionTexture = texture;
+                if (usePBR()) {
+                  material.metallicRoughnessTexture = texture;
+                  material.useMetallnessFromMetallicTextureBlue = true;
+                } else {
+                  material.reflectionTexture = texture;
+                }
                 console.log('Applied metallic texture');
               }
             }
@@ -629,8 +1264,12 @@ export default function MaterialsViewport() {
             const valueInput = sourceNode.inputs.find(i => i.id === 'value');
             if (valueInput?.value !== undefined) {
               const metallic = valueInput.value;
-              material.specularColor = new Color3(metallic, metallic, metallic);
-              console.log('Applied metallic (specular):', metallic);
+              if (usePBR()) {
+                material.metallicFactor = metallic;
+              } else {
+                material.specularColor = new Color3(metallic, metallic, metallic);
+              }
+              console.log('Applied metallic:', metallic);
             }
           }
           break;
@@ -1536,16 +2175,28 @@ export default function MaterialsViewport() {
         mimeType: asset.mimeType
       });
       
-      // Check if it's an image asset - include HDR formats like EXR and HDR
+      // Check if it's an HDR image for environment use
+      const isHDR = asset.extension?.match(/\.(exr|hdr)$/i);
+      
+      // Check if it's a regular image asset
       const isImage = asset.category === 'images' || 
                      asset.extension?.match(/\.(jpg|jpeg|png|tiff|bmp|webp|gif|exr|hdr|dds|ktx)$/i) ||
                      asset.mimeType?.startsWith('image/') ||
                      // Check for HDR/texture formats that might not have image/ MIME type
                      asset.extension?.match(/\.(exr|hdr|dds|ktx)$/i);
       
-      console.log('Is image?', isImage);
+      console.log('Is image?', isImage, 'Is HDR?', isHDR);
       
-      if (isImage) {
+      console.log('Background type:', backgroundType(), 'Is HDR file:', isHDR);
+      
+      if (isHDR) {
+        // Always allow HDR files to be set as background, auto-switch to HDR mode
+        console.log('Setting HDR background and switching to HDR mode');
+        setBackgroundType('hdr');
+        setHdrBackground(asset);
+        console.log('Set HDR background:', asset.name);
+        break;
+      } else if (isImage) {
         const rect = nodeGraphRef.getBoundingClientRect();
         const position = {
           x: e.clientX - rect.left - 100,
@@ -1567,6 +2218,7 @@ export default function MaterialsViewport() {
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'copy';
   };
+
 
   // Handle context menu
   const handleContextMenu = (e) => {
@@ -1777,6 +2429,39 @@ export default function MaterialsViewport() {
     setSocketPositionCache(new Map()); // Clear cache on zoom/pan changes
   });
 
+  // Update camera when distance changes
+  createEffect(() => {
+    cameraDistance();
+    updateCameraDistance();
+  });
+
+  // Update lighting when controls change
+  createEffect(() => {
+    lightIntensity();
+    ambientIntensity();
+    updateLighting();
+  });
+
+  // Update shadows when controls change
+  createEffect(() => {
+    shadowsEnabled();
+    updateShadows();
+  });
+
+  // Update background when controls change
+  createEffect(() => {
+    backgroundColor();
+    backgroundType();
+    hdrBackground();
+    updateBackground();
+  });
+
+  // Recreate material when PBR setting changes
+  createEffect(() => {
+    usePBR();
+    createMaterialFromNodes();
+  });
+
   onMount(() => {
     setTimeout(() => {
       initPreviewScene();
@@ -1813,7 +2498,11 @@ export default function MaterialsViewport() {
       {/* Left Panel - Preview */}
       <div class="w-96 border-r border-base-300 flex flex-col bg-base-200">
         {/* Preview Controls */}
-        <div class="p-4 border-b border-base-300">
+        <div 
+          class="p-4 border-b border-base-300"
+          onDrop={handleAssetDrop}
+          onDragOver={handleDragOver}
+        >
           <h3 class="text-md font-semibold mb-3">Material Preview</h3>
           
           {/* Preview Shape Selector */}
@@ -1833,13 +2522,180 @@ export default function MaterialsViewport() {
               <IconCube class="w-4 h-4" />
             </button>
           </div>
+
+          {/* Material Type */}
+          <div class="mb-3">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium">Material Type</span>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-base-content/60">Standard</span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-xs"
+                  checked={usePBR()}
+                  onChange={(e) => setUsePBR(e.target.checked)}
+                />
+                <span class="text-xs text-base-content/60">PBR</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Camera Controls */}
+          <div class="mb-3">
+            <div class="flex items-center justify-between mb-2">
+              <button
+                class="btn btn-xs btn-ghost"
+                onClick={() => {
+                  if (previewCamera) {
+                    previewCamera.alpha = Math.PI / 4;
+                    previewCamera.beta = Math.PI / 3;
+                    previewCamera.radius = 6;
+                    setCameraDistance(6);
+                  }
+                }}
+                title="Reset Camera"
+              >
+                <IconSettings class="w-3 h-3" />
+              </button>
+              <div class="text-xs text-base-content/60">
+                Distance: {Math.round((previewCamera?.radius || cameraDistance()) * 10) / 10}
+              </div>
+            </div>
+          </div>
+
+          {/* Lighting Controls */}
+          <div class="mb-3">
+            <div class="text-sm font-medium mb-2">Lighting</div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-base-content/80">Directional</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.1"
+                  value={lightIntensity()}
+                  class="range range-xs w-20"
+                  onChange={(e) => setLightIntensity(parseFloat(e.target.value))}
+                />
+                <span class="text-xs text-base-content/60 w-8 text-right">{lightIntensity().toFixed(1)}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-base-content/80">Ambient</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={ambientIntensity()}
+                  class="range range-xs w-20"
+                  onChange={(e) => setAmbientIntensity(parseFloat(e.target.value))}
+                />
+                <span class="text-xs text-base-content/60 w-8 text-right">{ambientIntensity().toFixed(1)}</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-base-content/80">Shadows</span>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-xs"
+                  checked={shadowsEnabled()}
+                  onChange={(e) => setShadowsEnabled(e.target.checked)}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Environment Controls */}
+          <div class="mb-3">
+            <div class="text-sm font-medium mb-2">Environment</div>
+            <div class="space-y-2">
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-base-content/80">Type</span>
+                <div class="flex items-center gap-2">
+                  <button
+                    class={`btn btn-xs ${backgroundType() === 'color' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setBackgroundType('color')}
+                  >
+                    Color
+                  </button>
+                  <button
+                    class={`btn btn-xs ${backgroundType() === 'hdr' ? 'btn-primary' : 'btn-ghost'}`}
+                    onClick={() => setBackgroundType('hdr')}
+                  >
+                    HDR
+                  </button>
+                </div>
+              </div>
+              
+              {/* Color Background */}
+              <Show when={backgroundType() === 'color'}>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-base-content/80">Color</span>
+                  <input
+                    type="color"
+                    value={backgroundColor()}
+                    class="w-8 h-6 rounded border border-base-300 cursor-pointer"
+                    onChange={(e) => setBackgroundColor(e.target.value)}
+                  />
+                </div>
+              </Show>
+              
+              {/* HDR Background */}
+              <Show when={backgroundType() === 'hdr'}>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs text-base-content/80">HDR Image</span>
+                    <div class="flex gap-1">
+                      <button
+                        class="btn btn-xs btn-ghost"
+                        onClick={() => document.getElementById('hdr-file-input').click()}
+                        title="Upload HDR file"
+                      >
+                        <IconPhoto class="w-3 h-3" />
+                      </button>
+                      <button
+                        class="btn btn-xs btn-ghost"
+                        onClick={() => setHdrBackground(null)}
+                        disabled={!hdrBackground()}
+                        title="Clear HDR"
+                      >
+                        <IconX class="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {/* Hidden file input */}
+                  <input
+                    id="hdr-file-input"
+                    type="file"
+                    accept=".hdr,.exr,.dds,.ktx"
+                    style={{ display: 'none' }}
+                    onChange={handleHDRFileUpload}
+                  />
+                  
+                  <Show when={hdrBackground()}>
+                    <div class="text-xs text-base-content/60 bg-base-200 p-2 rounded">
+                      {hdrBackground().name}
+                    </div>
+                  </Show>
+                  <Show when={!hdrBackground()}>
+                    <div class="text-xs text-base-content/40 italic text-center p-2 border-2 border-dashed border-base-300 rounded">
+                      Click 📷 to upload HDR/EXR file
+                      <br />
+                      or drag from assets
+                    </div>
+                  </Show>
+                </div>
+              </Show>
+            </div>
+          </div>
         </div>
         
         {/* Preview Canvas */}
         <div class="h-64 bg-base-300 relative">
           <canvas
             ref={previewCanvasRef}
-            class="w-full h-full"
+            class="w-full h-full cursor-grab"
             style={{ display: 'block' }}
           />
         </div>
