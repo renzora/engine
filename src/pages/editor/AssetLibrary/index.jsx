@@ -18,7 +18,6 @@ import AssetHeader from './AssetHeader';
 import AssetBreadcrumbs from './AssetBreadcrumbs';
 import AssetUploadArea from './AssetUploadArea';
 import AssetGrid from './AssetGrid';
-import CodeEditorPanel from './CodeEditorPanel';
 
 const getProjectManager = () => {
   return {
@@ -65,8 +64,6 @@ function AssetLibrary({ onContextMenu }) {
   const [selectionRect, setSelectionRect] = createSignal(null);
   const [globalSearchResults, setGlobalSearchResults] = createSignal([]);
   const [isSearching, setIsSearching] = createSignal(false);
-  const [isCodeEditorOpen, setIsCodeEditorOpen] = createSignal(false);
-  const [selectedFileForEdit, setSelectedFileForEdit] = createSignal(null);
   const [tooltip, setTooltip] = createSignal(null);
   
   let fileInputRef;
@@ -1121,21 +1118,13 @@ function AssetLibrary({ onContextMenu }) {
     const isTextFile = asset.extension && ['.js', '.ts', '.jsx', '.tsx', '.json', '.txt', '.md', '.ren', '.html', '.css', '.xml', '.yaml', '.yml'].includes(asset.extension.toLowerCase());
     
     if (isTextFile) {
-      setSelectedFileForEdit(asset);
-      setIsCodeEditorOpen(true);
-      // Open file in code editor
+      // Open file in code editor viewport instead of bottom panel
+      document.dispatchEvent(new CustomEvent('engine:open-code-editor', {
+        detail: { file: asset }
+      }));
     }
   };
 
-  const handleCodeEditorToggle = () => {
-    setIsCodeEditorOpen(!isCodeEditorOpen());
-    // Don't clear the selected file when opening, only when closing
-  };
-
-  const handleCodeEditorClose = () => {
-    setIsCodeEditorOpen(false);
-    setSelectedFileForEdit(null);
-  };
 
   const handleImportClick = () => {
     document.dispatchEvent(new CustomEvent('engine:open-model-importer', {
@@ -1897,95 +1886,78 @@ main();`;
               isUploading={isUploading}
               layoutMode={layoutMode}
               setLayoutMode={setLayoutMode}
-              onCodeToggle={handleCodeEditorToggle}
-              isCodeEditorOpen={isCodeEditorOpen}
               onImport={handleImportClick}
             />
           </div>
         </div>
         
         <div class="flex-1 flex overflow-hidden">
-          {/* Show Assets Panel when code editor is closed */}
-          <Show when={!isCodeEditorOpen()}>
-            <div 
-              ref={mainContentRef}
-              class="flex flex-col p-3 overflow-y-auto overflow-x-hidden scrollbar-thin relative user-select-none w-full"
-              onDragOver={handleDragOver}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onContextMenu={handleContextMenu}
-              onMouseDown={startDragSelection}
-            >
-              <AssetUploadArea
-                isDragOver={isDragOver}
-                isUploading={isUploading}
-                loading={loading}
-                error={error}
-                filteredAssets={filteredAssets}
-                searchQuery={searchQuery}
-                viewMode={viewMode}
-                selectedCategory={selectedCategory}
-                assetCategories={assetCategories}
-                fileInputRef={fileInputRef}
-                folderInputRef={folderInputRef}
-                onFileInputChange={handleFileInputChange}
-                onFolderInputChange={handleFolderInputChange}
+          <div 
+            ref={mainContentRef}
+            class="flex flex-col p-3 overflow-y-auto overflow-x-hidden scrollbar-thin relative user-select-none w-full"
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onContextMenu={handleContextMenu}
+            onMouseDown={startDragSelection}
+          >
+            <AssetUploadArea
+              isDragOver={isDragOver}
+              isUploading={isUploading}
+              loading={loading}
+              error={error}
+              filteredAssets={filteredAssets}
+              searchQuery={searchQuery}
+              viewMode={viewMode}
+              selectedCategory={selectedCategory}
+              assetCategories={assetCategories}
+              fileInputRef={fileInputRef}
+              folderInputRef={folderInputRef}
+              onFileInputChange={handleFileInputChange}
+              onFolderInputChange={handleFolderInputChange}
+            />
+            
+            <AssetGrid
+              layoutMode={layoutMode}
+              filteredAssets={filteredAssets}
+              assetGridRef={assetGridRef}
+              isAssetSelected={isAssetSelected}
+              hoveredItem={hoveredItem}
+              setHoveredItem={setHoveredItem}
+              setTooltip={setTooltip}
+              toggleAssetSelection={toggleAssetSelection}
+              handleAssetDoubleClick={handleAssetDoubleClick}
+              isInternalDrag={isInternalDrag}
+              setIsInternalDrag={setIsInternalDrag}
+              selectedAssets={selectedAssets}
+              setSelectedAssets={setSelectedAssets}
+              lastSelectedAsset={lastSelectedAsset}
+              setLastSelectedAsset={setLastSelectedAsset}
+              setDragOverFolder={setDragOverFolder}
+              setDragOverTreeFolder={setDragOverTreeFolder}
+              setDragOverBreadcrumb={setDragOverBreadcrumb}
+              loadedAssets={loadedAssets}
+              preloadingAssets={preloadingAssets}
+              failedAssets={failedAssets}
+              setFailedAssets={setFailedAssets}
+              setPreloadingAssets={setPreloadingAssets}
+              setLoadedAssets={setLoadedAssets}
+              getExtensionStyle={getExtensionStyle}
+            />
+            
+            <Show when={isSelecting() && selectionRect()}>
+              <div
+                class="absolute border-2 border-primary bg-primary/10 pointer-events-none z-20"
+                style={{
+                  left: `${selectionRect().x}px`,
+                  top: `${selectionRect().y}px`,
+                  width: `${selectionRect().width}px`,
+                  height: `${selectionRect().height}px`
+                }}
               />
-              
-              <AssetGrid
-                layoutMode={layoutMode}
-                filteredAssets={filteredAssets}
-                assetGridRef={assetGridRef}
-                isAssetSelected={isAssetSelected}
-                hoveredItem={hoveredItem}
-                setHoveredItem={setHoveredItem}
-                setTooltip={setTooltip}
-                toggleAssetSelection={toggleAssetSelection}
-                handleAssetDoubleClick={handleAssetDoubleClick}
-                isInternalDrag={isInternalDrag}
-                setIsInternalDrag={setIsInternalDrag}
-                selectedAssets={selectedAssets}
-                setSelectedAssets={setSelectedAssets}
-                lastSelectedAsset={lastSelectedAsset}
-                setLastSelectedAsset={setLastSelectedAsset}
-                setDragOverFolder={setDragOverFolder}
-                setDragOverTreeFolder={setDragOverTreeFolder}
-                setDragOverBreadcrumb={setDragOverBreadcrumb}
-                loadedAssets={loadedAssets}
-                preloadingAssets={preloadingAssets}
-                failedAssets={failedAssets}
-                setFailedAssets={setFailedAssets}
-                setPreloadingAssets={setPreloadingAssets}
-                setLoadedAssets={setLoadedAssets}
-                getExtensionStyle={getExtensionStyle}
-              />
-              
-              <Show when={isSelecting() && selectionRect()}>
-                <div
-                  class="absolute border-2 border-primary bg-primary/10 pointer-events-none z-20"
-                  style={{
-                    left: `${selectionRect().x}px`,
-                    top: `${selectionRect().y}px`,
-                    width: `${selectionRect().width}px`,
-                    height: `${selectionRect().height}px`
-                  }}
-                />
-              </Show>
-            </div>
-          </Show>
-          
-          {/* Show Code Editor Panel when editor is open - replaces the asset grid entirely */}
-          <Show when={isCodeEditorOpen()}>
-            <div class="w-full h-full">
-              <CodeEditorPanel
-                isOpen={isCodeEditorOpen}
-                onClose={handleCodeEditorClose}
-                selectedFile={selectedFileForEdit}
-                width="100%" // Full width
-              />
-            </div>
-          </Show>
+            </Show>
+          </div>
         </div>
         
         {/* Unreal Engine style footer */}

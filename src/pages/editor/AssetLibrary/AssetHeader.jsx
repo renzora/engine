@@ -1,5 +1,5 @@
 import { Show } from 'solid-js';
-import { IconGrid3x3, IconMenu2, IconRefresh, IconCode, IconPlus } from '@tabler/icons-solidjs';
+import { IconGrid3x3, IconMenu2, IconRefresh, IconPlus } from '@tabler/icons-solidjs';
 
 function AssetHeader({ 
   selectedAssets, 
@@ -8,8 +8,6 @@ function AssetHeader({
   layoutMode, 
   setLayoutMode,
   onRefresh,
-  onCodeToggle,
-  isCodeEditorOpen = false,
   onImport
 }) {
   return (
@@ -34,17 +32,6 @@ function AssetHeader({
           </button>
           
           <div class="flex bg-base-300 rounded overflow-hidden">
-            <button
-              onClick={onCodeToggle}
-              class={`px-2 py-1 text-xs transition-colors ${
-                isCodeEditorOpen()
-                  ? 'bg-primary text-primary-content'
-                  : 'text-base-content/60 hover:text-base-content hover:bg-base-200'
-              }`}
-              title="Toggle Code Editor"
-            >
-              <IconCode class="w-3 h-3" />
-            </button>
             <button
               onClick={() => setLayoutMode('grid')}
               class={`px-2 py-1 text-xs transition-colors ${

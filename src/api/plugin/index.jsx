@@ -73,6 +73,7 @@ class PluginLoader {
       { path: '/src/plugins/light', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/web-browser', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/materials-viewport', main: 'index.jsx', priority: 1 },
+      { path: '/src/plugins/code-editor-viewport', main: 'index.jsx', priority: 1 },
       { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
       { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
       { path: '/src/plugins/terrain', main: 'index.jsx', priority: 2 },
@@ -192,6 +193,9 @@ class PluginLoader {
             break;
           case 'materials-viewport-plugin':
             pluginModule = await import(`@/plugins/materials-viewport/index.jsx`);
+            break;
+          case 'code-editor-viewport-plugin':
+            pluginModule = await import(`@/plugins/code-editor-viewport/index.jsx`);
             break;
           case 'terrain-plugin':
             pluginModule = await import(`@/plugins/terrain/index.jsx`);

@@ -31,9 +31,46 @@ const Layout = () => {
     pluginAPI.open('materials', { label: 'Materials' });
   };
 
+  const handleOpenCodeEditor = async (event) => {
+    // Open the code editor viewport or switch to existing tab
+    const { pluginAPI } = await import('@/api/plugin');
+    const { viewportStore, viewportActions } = await import('@/layout/stores/ViewportStore.jsx');
+    const { file } = event.detail;
+    
+    if (!file) {
+      // No file specified, just open a new code editor
+      pluginAPI.open('code-editor', { 
+        label: 'Code Editor'
+      });
+      return;
+    }
+    
+    // Check if this file is already open in an existing code editor tab
+    const existingTab = viewportStore.tabs.find(tab => 
+      tab.type === 'code-editor' && 
+      tab.initialFile && 
+      tab.initialFile.path === file.path
+    );
+    
+    if (existingTab) {
+      // File is already open, switch to that tab
+      console.log(`[Layout] Switching to existing code editor tab for: ${file.path}`);
+      viewportActions.setActiveViewportTab(existingTab.id);
+    } else {
+      // File is not open, create a new tab
+      console.log(`[Layout] Opening new code editor tab for: ${file.path}`);
+      const tabName = file.name;
+      pluginAPI.open('code-editor', { 
+        label: tabName,
+        initialFile: file 
+      });
+    }
+  };
+
   onMount(() => {
     document.addEventListener('engine:open-model-importer', handleOpenModelImporter);
     document.addEventListener('openMaterialsViewport', handleOpenMaterialsViewport);
+    document.addEventListener('engine:open-code-editor', handleOpenCodeEditor);
     
     // Listen for global tooltip events
     const handleTooltipShow = (e) => setGlobalTooltip(e.detail);
@@ -45,6 +82,7 @@ const Layout = () => {
     onCleanup(() => {
       document.removeEventListener('engine:open-model-importer', handleOpenModelImporter);
       document.removeEventListener('openMaterialsViewport', handleOpenMaterialsViewport);
+      document.removeEventListener('engine:open-code-editor', handleOpenCodeEditor);
       document.removeEventListener('global:tooltip-show', handleTooltipShow);
       document.removeEventListener('global:tooltip-hide', handleTooltipHide);
     });
