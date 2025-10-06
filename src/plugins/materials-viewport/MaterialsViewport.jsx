@@ -191,6 +191,8 @@ export default function MaterialsViewport() {
   const [dragOffset, setDragOffset] = createSignal({ x: 0, y: 0 });
   const [selectedNode, setSelectedNode] = createSignal(null);
   const [draggedNodeTransform, setDraggedNodeTransform] = createSignal({ x: 0, y: 0 });
+  const [maxZIndex, setMaxZIndex] = createSignal(1);
+  const [nodeZIndices, setNodeZIndices] = createSignal(new Map());
   const [currentMaterial, setCurrentMaterial] = createSignal(null);
   const [zoom, setZoom] = createSignal(1);
   const [pan, setPan] = createSignal({ x: 0, y: 0 });
@@ -787,34 +789,192 @@ export default function MaterialsViewport() {
 
   // Node types
   const NODE_TYPES = {
+    // Output Blocks
     MATERIAL_OUTPUT: 'MaterialOutput',
-    TEXTURE_SAMPLE: 'TextureSample',
-    CONSTANT: 'Constant',
-    MULTIPLY: 'Multiply',
+    VERTEX_OUTPUT: 'VertexOutput',
+    FRAGMENT_OUTPUT: 'FragmentOutput',
+    DISCARD: 'Discard',
+    
+    // Input Blocks
+    FLOAT: 'Float',
+    VECTOR2: 'Vector2',
+    VECTOR3: 'Vector3',
+    VECTOR4: 'Vector4',
+    COLOR3: 'Color3',
+    COLOR4: 'Color4',
+    TEXTURE: 'Texture',
+    REFLECTION_TEXTURE: 'ReflectionTexture',
+    IMAGE_SOURCE: 'ImageSource',
+    TIME: 'Time',
+    DELTA_TIME: 'DeltaTime',
+    SCREEN_SIZE: 'ScreenSize',
+    FRAG_COORD: 'FragCoord',
+    MATERIAL_ALPHA: 'MaterialAlpha',
+    CAMERA_POSITION: 'CameraPosition',
+    
+    // Mesh Inputs
+    MESH_POSITION: 'MeshPosition',
+    MESH_NORMAL: 'MeshNormal',
+    MESH_TANGENT: 'MeshTangent',
+    MESH_UV: 'MeshUV',
+    MESH_COLOR: 'MeshColor',
+    WORLD_POSITION: 'WorldPosition',
+    WORLD_NORMAL: 'WorldNormal',
+    WORLD_TANGENT: 'WorldTangent',
+    
+    // Transform Blocks
+    TRANSFORM: 'Transform',
+    BONES: 'Bones',
+    MORPH_TARGETS: 'MorphTargets',
+    INSTANCE_COLOR: 'InstanceColor',
+    
+    // Math Blocks - Basic
     ADD: 'Add',
     SUBTRACT: 'Subtract',
+    MULTIPLY: 'Multiply',
     DIVIDE: 'Divide',
-    LERP: 'Lerp',
-    FRESNEL: 'Fresnel',
-    CLAMP: 'Clamp',
     POWER: 'Power',
-    COLOR: 'Color',
-    TIME: 'Time',
-    UV_COORDINATES: 'UVCoordinates',
-    NORMAL_MAP: 'NormalMap',
-    DOT_PRODUCT: 'DotProduct',
-    CROSS_PRODUCT: 'CrossProduct',
-    NOISE: 'Noise',
-    GRADIENT: 'Gradient',
-    MASK: 'Mask',
-    MIX: 'Mix',
-    SATURATE: 'Saturate',
+    SCALE: 'Scale',
+    NEGATE: 'Negate',
+    ONE_MINUS: 'OneMinus',
+    RECIPROCAL: 'Reciprocal',
+    
+    // Math Blocks - Scientific
     ABS: 'Abs',
+    SIGN: 'Sign',
     FLOOR: 'Floor',
-    CEIL: 'Ceil',
+    CEILING: 'Ceiling',
+    ROUND: 'Round',
     FRACT: 'Fract',
+    MOD: 'Mod',
+    MIN: 'Min',
+    MAX: 'Max',
+    SQRT: 'Sqrt',
+    EXP: 'Exp',
+    EXP2: 'Exp2',
+    LOG: 'Log',
+    LOG2: 'Log2',
+    POW: 'Pow',
+    
+    // Trigonometry
     SIN: 'Sin',
-    COS: 'Cos'
+    COS: 'Cos',
+    TAN: 'Tan',
+    ASIN: 'ASin',
+    ACOS: 'ACos',
+    ATAN: 'ATan',
+    ATAN2: 'ATan2',
+    RADIANS: 'Radians',
+    DEGREES: 'Degrees',
+    
+    // Vector Math
+    DOT: 'Dot',
+    CROSS: 'Cross',
+    NORMALIZE: 'Normalize',
+    LENGTH: 'Length',
+    DISTANCE: 'Distance',
+    REFLECT: 'Reflect',
+    REFRACT: 'Refract',
+    FRESNEL: 'Fresnel',
+    DERIVATIVE: 'Derivative',
+    
+    // Range/Interpolation
+    CLAMP: 'Clamp',
+    SATURATE: 'Saturate',
+    REMAP: 'Remap',
+    LERP: 'Lerp',
+    NLERP: 'NLerp',
+    STEP: 'Step',
+    SMOOTHSTEP: 'SmoothStep',
+    
+    // Logical
+    AND: 'And',
+    OR: 'Or',
+    XOR: 'Xor',
+    NOT: 'Not',
+    EQUAL: 'Equal',
+    NOT_EQUAL: 'NotEqual',
+    GREATER_THAN: 'GreaterThan',
+    GREATER_OR_EQUAL: 'GreaterOrEqual',
+    LESS_THAN: 'LessThan',
+    LESS_OR_EQUAL: 'LessOrEqual',
+    
+    // Conversion
+    COLOR_MERGER: 'ColorMerger',
+    COLOR_SPLITTER: 'ColorSplitter',
+    VECTOR_MERGER: 'VectorMerger',
+    VECTOR_SPLITTER: 'VectorSplitter',
+    
+    // Color Management
+    DESATURATE: 'Desaturate',
+    GRADIENT: 'Gradient',
+    POSTERIZE: 'Posterize',
+    REPLACE_COLOR: 'ReplaceColor',
+    
+    // Matrices
+    WORLD_MATRIX: 'WorldMatrix',
+    WORLD_VIEW_MATRIX: 'WorldViewMatrix',
+    WORLD_VIEW_PROJECTION_MATRIX: 'WorldViewProjectionMatrix',
+    VIEW_MATRIX: 'ViewMatrix',
+    VIEW_PROJECTION_MATRIX: 'ViewProjectionMatrix',
+    PROJECTION_MATRIX: 'ProjectionMatrix',
+    MATRIX_BUILDER: 'MatrixBuilder',
+    
+    // Noise
+    SIMPLEX_PERLIN_3D: 'SimplexPerlin3D',
+    VORONOI_NOISE: 'VoronoiNoise',
+    WORLEY_NOISE_3D: 'WorleyNoise3D',
+    CLOUD: 'Cloud',
+    RANDOM_NUMBER: 'RandomNumber',
+    
+    // Texture Operations
+    TRIPLANAR: 'TriPlanar',
+    BIPLANAR: 'BiPlanar',
+    NORMAL_MAP: 'NormalMap',
+    NORMAL_BLEND: 'NormalBlend',
+    PARALLAX: 'Parallax',
+    TWIRL: 'Twirl',
+    
+    // Particle
+    PARTICLE_COLOR: 'ParticleColor',
+    PARTICLE_TEXTURE: 'ParticleTexture',
+    PARTICLE_UV: 'ParticleUV',
+    PARTICLE_POSITION: 'ParticlePosition',
+    PARTICLE_RAMP_GRADIENT: 'ParticleRampGradient',
+    
+    // PBR
+    PBR_METALLIC_ROUGHNESS: 'PBRMetallicRoughness',
+    ANISOTROPY: 'Anisotropy',
+    CLEARCOAT: 'ClearCoat',
+    IRIDESCENCE: 'Iridescence',
+    SHEEN: 'Sheen',
+    SUB_SURFACE: 'SubSurface',
+    
+    // Advanced
+    CLIP_PLANES: 'ClipPlanes',
+    FOG: 'Fog',
+    LIGHT_INFORMATION: 'LightInformation',
+    VIEW_DIRECTION: 'ViewDirection',
+    SCENE_DEPTH: 'SceneDepth',
+    SCREEN_SPACE_REFLECTION: 'ScreenSpaceReflection',
+    CURRENT_SCREEN_BLOCK: 'CurrentScreenBlock',
+    
+    // Loop & Storage
+    LOOP: 'Loop',
+    STORAGE_READ: 'StorageRead',
+    STORAGE_WRITE: 'StorageWrite',
+    
+    // Conditionals
+    CONDITIONAL: 'Conditional',
+    ELBOW: 'Elbow',
+    
+    // Image Processing
+    WAVE: 'Wave',
+    OSCILLATOR: 'Oscillator',
+    
+    // Custom
+    CUSTOM: 'Custom',
+    OPTIMIZERS: 'Optimizers'
   };
 
   // Initialize preview scene
@@ -1423,6 +1583,164 @@ export default function MaterialsViewport() {
     let newNode;
     
     switch (type) {
+      // Output Blocks
+      case NODE_TYPES.VERTEX_OUTPUT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Vertex Output',
+          inputs: [
+            { id: 'vector', name: 'Vector', type: 'vector4', value: null }
+          ],
+          outputs: []
+        };
+        break;
+        
+      case NODE_TYPES.FRAGMENT_OUTPUT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Fragment Output',
+          inputs: [
+            { id: 'rgba', name: 'RGBA', type: 'color', value: null },
+            { id: 'rgb', name: 'RGB', type: 'color', value: null },
+            { id: 'a', name: 'A', type: 'float', value: 1.0 }
+          ],
+          outputs: []
+        };
+        break;
+        
+      case NODE_TYPES.DISCARD:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Discard',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 0.0 }
+          ],
+          outputs: []
+        };
+        break;
+        
+      // Input Blocks
+      case NODE_TYPES.FLOAT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Float',
+          inputs: [
+            { id: 'value', name: 'Value', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.VECTOR2:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Vector2',
+          inputs: [
+            { id: 'x', name: 'X', type: 'float', value: 0.0 },
+            { id: 'y', name: 'Y', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'xy', name: 'XY', type: 'vector2' },
+            { id: 'x', name: 'X', type: 'float' },
+            { id: 'y', name: 'Y', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.VECTOR3:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Vector3',
+          inputs: [
+            { id: 'x', name: 'X', type: 'float', value: 0.0 },
+            { id: 'y', name: 'Y', type: 'float', value: 0.0 },
+            { id: 'z', name: 'Z', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'xyz', name: 'XYZ', type: 'vector3' },
+            { id: 'x', name: 'X', type: 'float' },
+            { id: 'y', name: 'Y', type: 'float' },
+            { id: 'z', name: 'Z', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.VECTOR4:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Vector4',
+          inputs: [
+            { id: 'x', name: 'X', type: 'float', value: 0.0 },
+            { id: 'y', name: 'Y', type: 'float', value: 0.0 },
+            { id: 'z', name: 'Z', type: 'float', value: 0.0 },
+            { id: 'w', name: 'W', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'xyzw', name: 'XYZW', type: 'vector4' },
+            { id: 'xyz', name: 'XYZ', type: 'vector3' },
+            { id: 'x', name: 'X', type: 'float' },
+            { id: 'y', name: 'Y', type: 'float' },
+            { id: 'z', name: 'Z', type: 'float' },
+            { id: 'w', name: 'W', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.COLOR3:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Color3',
+          inputs: [
+            { id: 'color', name: 'Color', type: 'color3', value: new Color3(1.0, 1.0, 1.0) }
+          ],
+          outputs: [
+            { id: 'rgb', name: 'RGB', type: 'color3' },
+            { id: 'r', name: 'R', type: 'float' },
+            { id: 'g', name: 'G', type: 'float' },
+            { id: 'b', name: 'B', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.COLOR4:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Color4',
+          inputs: [
+            { id: 'color', name: 'Color', type: 'color4', value: new Color3(1.0, 1.0, 1.0) }
+          ],
+          outputs: [
+            { id: 'rgba', name: 'RGBA', type: 'color4' },
+            { id: 'rgb', name: 'RGB', type: 'color3' },
+            { id: 'r', name: 'R', type: 'float' },
+            { id: 'g', name: 'G', type: 'float' },
+            { id: 'b', name: 'B', type: 'float' },
+            { id: 'a', name: 'A', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.TEXTURE:
       case NODE_TYPES.TEXTURE_SAMPLE:
         newNode = {
           id: nodeId,
@@ -1728,14 +2046,816 @@ export default function MaterialsViewport() {
           ]
         };
         break;
+        
+      // Input Nodes
+      case NODE_TYPES.CAMERA_POSITION:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Camera Position',
+          inputs: [],
+          outputs: [
+            { id: 'position', name: 'Position', type: 'vector' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.VIEW_DIRECTION:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'View Direction',
+          inputs: [],
+          outputs: [
+            { id: 'direction', name: 'Direction', type: 'vector' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.WORLD_POSITION:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'World Position',
+          inputs: [],
+          outputs: [
+            { id: 'position', name: 'Position', type: 'vector' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.WORLD_NORMAL:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'World Normal',
+          inputs: [],
+          outputs: [
+            { id: 'normal', name: 'Normal', type: 'vector' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.SCREEN_SIZE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Screen Size',
+          inputs: [],
+          outputs: [
+            { id: 'size', name: 'Size', type: 'vector2' },
+            { id: 'width', name: 'Width', type: 'float' },
+            { id: 'height', name: 'Height', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Math - Basic Operations
+      case NODE_TYPES.SUBTRACT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Subtract',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.DIVIDE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Divide',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.SCALE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Scale',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 },
+            { id: 'factor', name: 'Factor', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.NEGATE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Negate',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.ONE_MINUS:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'One Minus',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.RECIPROCAL:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Reciprocal',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Math - Range Operations
+      case NODE_TYPES.NORMALIZE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Normalize',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'vector', value: null }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'vector' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.REMAP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Remap',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 },
+            { id: 'sourceMin', name: 'Source Min', type: 'float', value: 0.0 },
+            { id: 'sourceMax', name: 'Source Max', type: 'float', value: 1.0 },
+            { id: 'targetMin', name: 'Target Min', type: 'float', value: 0.0 },
+            { id: 'targetMax', name: 'Target Max', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.STEP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Step',
+          inputs: [
+            { id: 'edge', name: 'Edge', type: 'float', value: 0.5 },
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.SMOOTHSTEP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Smoothstep',
+          inputs: [
+            { id: 'min', name: 'Min', type: 'float', value: 0.0 },
+            { id: 'max', name: 'Max', type: 'float', value: 1.0 },
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Math - Trigonometry
+      case NODE_TYPES.TAN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Tangent',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.ASIN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Arcsine',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.ACOS:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Arccosine',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.ATAN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Arctangent',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.ATAN2:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Arctangent2',
+          inputs: [
+            { id: 'y', name: 'Y', type: 'float', value: 1.0 },
+            { id: 'x', name: 'X', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Math - Vector Operations
+      case NODE_TYPES.DISTANCE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Distance',
+          inputs: [
+            { id: 'left', name: 'A', type: 'vector', value: null },
+            { id: 'right', name: 'B', type: 'vector', value: null }
+          ],
+          outputs: [
+            { id: 'output', name: 'Distance', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.LENGTH:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Length',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'vector', value: null }
+          ],
+          outputs: [
+            { id: 'output', name: 'Length', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.REFLECT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Reflect',
+          inputs: [
+            { id: 'incident', name: 'Incident', type: 'vector', value: null },
+            { id: 'normal', name: 'Normal', type: 'vector', value: null }
+          ],
+          outputs: [
+            { id: 'output', name: 'Reflection', type: 'vector' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.REFRACT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Refract',
+          inputs: [
+            { id: 'incident', name: 'Incident', type: 'vector', value: null },
+            { id: 'normal', name: 'Normal', type: 'vector', value: null },
+            { id: 'eta', name: 'IOR', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Refraction', type: 'vector' }
+          ]
+        };
+        break;
+        
+      // Math - Rounding
+      case NODE_TYPES.SIGN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Sign',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.ROUND:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Round',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.MOD:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Modulo',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Math - Exponential
+      case NODE_TYPES.EXP:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Exponential',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.EXP2:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Exponential2',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.LOG:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Logarithm',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.LOG2:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Logarithm2',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.SQRT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Square Root',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 4.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Math - Comparison
+      case NODE_TYPES.MIN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Minimum',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 0.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.MAX:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Maximum',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 0.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.LESS_THAN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Less Than',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 0.0 },
+            { id: 'right', name: 'B', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.GREATER_THAN:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Greater Than',
+          inputs: [
+            { id: 'left', name: 'A', type: 'float', value: 1.0 },
+            { id: 'right', name: 'B', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Result', type: 'float' }
+          ]
+        };
+        break;
+        
+      // Utilities
+      case NODE_TYPES.VORONOI_NOISE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Voronoi Noise',
+          inputs: [
+            { id: 'uv', name: 'UV', type: 'vector2', value: null },
+            { id: 'scale', name: 'Scale', type: 'float', value: 5.0 },
+            { id: 'offset', name: 'Offset', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' },
+            { id: 'cells', name: 'Cells', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.WAVE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Wave',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.0 },
+            { id: 'frequency', name: 'Frequency', type: 'float', value: 1.0 },
+            { id: 'amplitude', name: 'Amplitude', type: 'float', value: 1.0 },
+            { id: 'offset', name: 'Offset', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'sine', name: 'Sine', type: 'float' },
+            { id: 'cosine', name: 'Cosine', type: 'float' },
+            { id: 'sawtooth', name: 'Sawtooth', type: 'float' },
+            { id: 'triangle', name: 'Triangle', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.DESATURATE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Desaturate',
+          inputs: [
+            { id: 'color', name: 'Color', type: 'color', value: new Color3(1.0, 0.5, 0.0) },
+            { id: 'level', name: 'Level', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'color' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.POSTERIZE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Posterize',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 },
+            { id: 'steps', name: 'Steps', type: 'float', value: 4.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.CONDITIONAL:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Conditional',
+          inputs: [
+            { id: 'condition', name: 'Condition', type: 'float', value: 0.0 },
+            { id: 'true', name: 'True', type: 'float', value: 1.0 },
+            { id: 'false', name: 'False', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.HUE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Hue',
+          inputs: [
+            { id: 'color', name: 'Color', type: 'color', value: new Color3(1.0, 0.5, 0.0) },
+            { id: 'hue', name: 'Hue', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'color' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.SATURATION:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Saturation',
+          inputs: [
+            { id: 'color', name: 'Color', type: 'color', value: new Color3(1.0, 0.5, 0.0) },
+            { id: 'saturation', name: 'Saturation', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'color' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.CONTRAST:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Contrast',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 },
+            { id: 'contrast', name: 'Contrast', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.BRIGHTNESS:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Brightness',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 },
+            { id: 'brightness', name: 'Brightness', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.INVERT:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Invert',
+          inputs: [
+            { id: 'input', name: 'Input', type: 'float', value: 0.5 }
+          ],
+          outputs: [
+            { id: 'output', name: 'Output', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.VERTEX_COLOR:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Vertex Color',
+          inputs: [],
+          outputs: [
+            { id: 'color', name: 'Color', type: 'color' },
+            { id: 'r', name: 'R', type: 'float' },
+            { id: 'g', name: 'G', type: 'float' },
+            { id: 'b', name: 'B', type: 'float' },
+            { id: 'a', name: 'A', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.TEXTURE_COORDINATE:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'Texture Coordinate',
+          inputs: [
+            { id: 'index', name: 'Index', type: 'float', value: 0.0 }
+          ],
+          outputs: [
+            { id: 'uv', name: 'UV', type: 'vector2' },
+            { id: 'u', name: 'U', type: 'float' },
+            { id: 'v', name: 'V', type: 'float' }
+          ]
+        };
+        break;
+        
+      case NODE_TYPES.PBR_METALLIC_ROUGHNESS:
+        newNode = {
+          id: nodeId,
+          type,
+          position,
+          title: 'PBR Metallic Roughness',
+          inputs: [
+            { id: 'baseColor', name: 'Base Color', type: 'color', value: new Color3(0.8, 0.8, 0.8) },
+            { id: 'metallic', name: 'Metallic', type: 'float', value: 0.0 },
+            { id: 'roughness', name: 'Roughness', type: 'float', value: 0.5 },
+            { id: 'normal', name: 'Normal', type: 'vector', value: null },
+            { id: 'emissive', name: 'Emissive', type: 'color', value: new Color3(0.0, 0.0, 0.0) },
+            { id: 'occlusion', name: 'Occlusion', type: 'float', value: 1.0 }
+          ],
+          outputs: [
+            { id: 'material', name: 'Material', type: 'material' }
+          ]
+        };
+        break;
     }
     
     if (newNode) {
       setNodes(prev => [...prev, newNode]);
+      // Bring newly created node to the front
+      bringNodeToFront(newNode.id);
     }
   };
 
   // Handle node drag
+  // Function to get z-index for a node
+  const getNodeZIndex = (nodeId) => {
+    const zIndices = nodeZIndices();
+    return zIndices.get(nodeId) || 1;
+  };
+
+  // Function to bring a node to the front
+  const bringNodeToFront = (nodeId) => {
+    const currentMax = maxZIndex();
+    const newZIndex = currentMax + 1;
+    setMaxZIndex(newZIndex);
+    setNodeZIndices(prev => {
+      const newMap = new Map(prev);
+      newMap.set(nodeId, newZIndex);
+      return newMap;
+    });
+  };
+
   const handleNodeMouseDown = (e, node) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1746,6 +2866,9 @@ export default function MaterialsViewport() {
     const screenY = e.clientY - rect.top;
     const graphX = (screenX - pan().x) / zoom();
     const graphY = (screenY - pan().y) / zoom();
+    
+    // Bring the node to front when starting to drag
+    bringNodeToFront(node.id);
     
     setDraggedNode(node);
     setDragOffset({
@@ -2273,69 +3396,144 @@ export default function MaterialsViewport() {
     
     const contextMenuItems = [
       {
-        label: 'Inputs',
+        label: 'Input Blocks',
         submenu: [
           {
-            label: 'Texture Sample',
-            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+            label: 'Basic Types',
+            submenu: [
+              {
+                label: 'Float',
+                action: () => addNode(NODE_TYPES.FLOAT, getCenterPosition())
+              },
+              {
+                label: 'Vector2',
+                action: () => addNode(NODE_TYPES.VECTOR2, getCenterPosition())
+              },
+              {
+                label: 'Vector3',
+                action: () => addNode(NODE_TYPES.VECTOR3, getCenterPosition())
+              },
+              {
+                label: 'Vector4',
+                action: () => addNode(NODE_TYPES.VECTOR4, getCenterPosition())
+              },
+              {
+                label: 'Color3',
+                action: () => addNode(NODE_TYPES.COLOR3, getCenterPosition())
+              },
+              {
+                label: 'Color4',
+                action: () => addNode(NODE_TYPES.COLOR4, getCenterPosition())
+              }
+            ]
           },
           {
-            label: 'Constant',
-            action: () => addNode(NODE_TYPES.CONSTANT, getCenterPosition())
+            label: 'Textures',
+            submenu: [
+              {
+                label: 'Texture',
+                action: () => addNode(NODE_TYPES.TEXTURE, getCenterPosition())
+              },
+              {
+                label: 'Reflection Texture',
+                action: () => addNode(NODE_TYPES.REFLECTION_TEXTURE, getCenterPosition())
+              },
+              {
+                label: 'Image Source',
+                action: () => addNode(NODE_TYPES.IMAGE_SOURCE, getCenterPosition())
+              }
+            ]
           },
           {
-            label: 'Color',
-            action: () => addNode(NODE_TYPES.COLOR, getCenterPosition())
+            label: 'System',
+            submenu: [
+              {
+                label: 'Time',
+                action: () => addNode(NODE_TYPES.TIME, getCenterPosition())
+              },
+              {
+                label: 'Delta Time',
+                action: () => addNode(NODE_TYPES.DELTA_TIME, getCenterPosition())
+              },
+              {
+                label: 'Screen Size',
+                action: () => addNode(NODE_TYPES.SCREEN_SIZE, getCenterPosition())
+              },
+              {
+                label: 'Frag Coord',
+                action: () => addNode(NODE_TYPES.FRAG_COORD, getCenterPosition())
+              },
+              {
+                label: 'Camera Position',
+                action: () => addNode(NODE_TYPES.CAMERA_POSITION, getCenterPosition())
+              },
+              {
+                label: 'Material Alpha',
+                action: () => addNode(NODE_TYPES.MATERIAL_ALPHA, getCenterPosition())
+              }
+            ]
           },
           {
-            label: 'Time',
-            action: () => addNode(NODE_TYPES.TIME, getCenterPosition())
-          },
-          {
-            label: 'UV Coordinates',
-            action: () => addNode(NODE_TYPES.UV_COORDINATES, getCenterPosition())
+            label: 'Mesh Attributes',
+            submenu: [
+              {
+                label: 'Mesh Position',
+                action: () => addNode(NODE_TYPES.MESH_POSITION, getCenterPosition())
+              },
+              {
+                label: 'Mesh Normal',
+                action: () => addNode(NODE_TYPES.MESH_NORMAL, getCenterPosition())
+              },
+              {
+                label: 'Mesh Tangent',
+                action: () => addNode(NODE_TYPES.MESH_TANGENT, getCenterPosition())
+              },
+              {
+                label: 'Mesh UV',
+                action: () => addNode(NODE_TYPES.MESH_UV, getCenterPosition())
+              },
+              {
+                label: 'Mesh Color',
+                action: () => addNode(NODE_TYPES.MESH_COLOR, getCenterPosition())
+              },
+              {
+                label: 'World Position',
+                action: () => addNode(NODE_TYPES.WORLD_POSITION, getCenterPosition())
+              },
+              {
+                label: 'World Normal',
+                action: () => addNode(NODE_TYPES.WORLD_NORMAL, getCenterPosition())
+              },
+              {
+                label: 'World Tangent',
+                action: () => addNode(NODE_TYPES.WORLD_TANGENT, getCenterPosition())
+              }
+            ]
           }
         ]
       },
       {
-        label: 'Textures',
+        label: 'Output Blocks',
         submenu: [
           {
-            label: 'Diffuse/Albedo',
-            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
+            label: 'Vertex Output',
+            action: () => addNode(NODE_TYPES.VERTEX_OUTPUT, getCenterPosition())
           },
           {
-            label: 'Normal Map',
-            action: () => addNode(NODE_TYPES.NORMAL_MAP, getCenterPosition())
+            label: 'Fragment Output',
+            action: () => addNode(NODE_TYPES.FRAGMENT_OUTPUT, getCenterPosition())
           },
           {
-            label: 'Roughness Map',
-            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
-          },
-          {
-            label: 'Metallic Map',
-            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
-          },
-          {
-            label: 'Ambient Occlusion',
-            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
-          },
-          {
-            label: 'Emissive Map',
-            action: () => addNode(NODE_TYPES.TEXTURE_SAMPLE, getCenterPosition())
-          },
-          { separator: true },
-          {
-            label: 'HDR Exposure Control',
-            action: () => addNode(NODE_TYPES.MULTIPLY, getCenterPosition())
+            label: 'Discard',
+            action: () => addNode(NODE_TYPES.DISCARD, getCenterPosition())
           }
         ]
       },
       {
-        label: 'Math',
+        label: 'Math Blocks',
         submenu: [
           {
-            label: 'Basic',
+            label: 'Basic Operations',
             submenu: [
               {
                 label: 'Add',
@@ -2352,20 +3550,85 @@ export default function MaterialsViewport() {
               {
                 label: 'Divide',
                 action: () => addNode(NODE_TYPES.DIVIDE, getCenterPosition())
-              }
-            ]
-          },
-          {
-            label: 'Functions',
-            submenu: [
+              },
               {
                 label: 'Power',
                 action: () => addNode(NODE_TYPES.POWER, getCenterPosition())
               },
               {
+                label: 'Scale',
+                action: () => addNode(NODE_TYPES.SCALE, getCenterPosition())
+              },
+              {
+                label: 'Negate',
+                action: () => addNode(NODE_TYPES.NEGATE, getCenterPosition())
+              },
+              {
+                label: 'One Minus',
+                action: () => addNode(NODE_TYPES.ONE_MINUS, getCenterPosition())
+              },
+              {
+                label: 'Reciprocal',
+                action: () => addNode(NODE_TYPES.RECIPROCAL, getCenterPosition())
+              }
+            ]
+          },
+          {
+            label: 'Scientific',
+            submenu: [
+              {
                 label: 'Absolute',
                 action: () => addNode(NODE_TYPES.ABS, getCenterPosition())
               },
+              {
+                label: 'Sign',
+                action: () => addNode(NODE_TYPES.SIGN, getCenterPosition())
+              },
+              {
+                label: 'Floor',
+                action: () => addNode(NODE_TYPES.FLOOR, getCenterPosition())
+              },
+              {
+                label: 'Ceiling',
+                action: () => addNode(NODE_TYPES.CEILING, getCenterPosition())
+              },
+              {
+                label: 'Round',
+                action: () => addNode(NODE_TYPES.ROUND, getCenterPosition())
+              },
+              {
+                label: 'Fraction',
+                action: () => addNode(NODE_TYPES.FRACT, getCenterPosition())
+              },
+              {
+                label: 'Modulo',
+                action: () => addNode(NODE_TYPES.MOD, getCenterPosition())
+              },
+              {
+                label: 'Min',
+                action: () => addNode(NODE_TYPES.MIN, getCenterPosition())
+              },
+              {
+                label: 'Max',
+                action: () => addNode(NODE_TYPES.MAX, getCenterPosition())
+              },
+              {
+                label: 'Square Root',
+                action: () => addNode(NODE_TYPES.SQRT, getCenterPosition())
+              },
+              {
+                label: 'Exponential',
+                action: () => addNode(NODE_TYPES.EXP, getCenterPosition())
+              },
+              {
+                label: 'Logarithm',
+                action: () => addNode(NODE_TYPES.LOG, getCenterPosition())
+              }
+            ]
+          },
+          {
+            label: 'Trigonometry',
+            submenu: [
               {
                 label: 'Sine',
                 action: () => addNode(NODE_TYPES.SIN, getCenterPosition())
@@ -2373,11 +3636,80 @@ export default function MaterialsViewport() {
               {
                 label: 'Cosine',
                 action: () => addNode(NODE_TYPES.COS, getCenterPosition())
+              },
+              {
+                label: 'Tangent',
+                action: () => addNode(NODE_TYPES.TAN, getCenterPosition())
+              },
+              {
+                label: 'ASin',
+                action: () => addNode(NODE_TYPES.ASIN, getCenterPosition())
+              },
+              {
+                label: 'ACos',
+                action: () => addNode(NODE_TYPES.ACOS, getCenterPosition())
+              },
+              {
+                label: 'ATan',
+                action: () => addNode(NODE_TYPES.ATAN, getCenterPosition())
+              },
+              {
+                label: 'ATan2',
+                action: () => addNode(NODE_TYPES.ATAN2, getCenterPosition())
+              },
+              {
+                label: 'Radians',
+                action: () => addNode(NODE_TYPES.RADIANS, getCenterPosition())
+              },
+              {
+                label: 'Degrees',
+                action: () => addNode(NODE_TYPES.DEGREES, getCenterPosition())
               }
             ]
           },
           {
-            label: 'Utility',
+            label: 'Vector Math',
+            submenu: [
+              {
+                label: 'Dot Product',
+                action: () => addNode(NODE_TYPES.DOT, getCenterPosition())
+              },
+              {
+                label: 'Cross Product',
+                action: () => addNode(NODE_TYPES.CROSS, getCenterPosition())
+              },
+              {
+                label: 'Normalize',
+                action: () => addNode(NODE_TYPES.NORMALIZE, getCenterPosition())
+              },
+              {
+                label: 'Length',
+                action: () => addNode(NODE_TYPES.LENGTH, getCenterPosition())
+              },
+              {
+                label: 'Distance',
+                action: () => addNode(NODE_TYPES.DISTANCE, getCenterPosition())
+              },
+              {
+                label: 'Reflect',
+                action: () => addNode(NODE_TYPES.REFLECT, getCenterPosition())
+              },
+              {
+                label: 'Refract',
+                action: () => addNode(NODE_TYPES.REFRACT, getCenterPosition())
+              },
+              {
+                label: 'Fresnel',
+                action: () => addNode(NODE_TYPES.FRESNEL, getCenterPosition())
+              },
+              {
+                label: 'Derivative',
+                action: () => addNode(NODE_TYPES.DERIVATIVE, getCenterPosition())
+              }
+            ]
+          },
+          {
+            label: 'Interpolation',
             submenu: [
               {
                 label: 'Clamp',
@@ -2388,10 +3720,274 @@ export default function MaterialsViewport() {
                 action: () => addNode(NODE_TYPES.SATURATE, getCenterPosition())
               },
               {
+                label: 'Remap',
+                action: () => addNode(NODE_TYPES.REMAP, getCenterPosition())
+              },
+              {
                 label: 'Lerp',
                 action: () => addNode(NODE_TYPES.LERP, getCenterPosition())
+              },
+              {
+                label: 'NLerp',
+                action: () => addNode(NODE_TYPES.NLERP, getCenterPosition())
+              },
+              {
+                label: 'Step',
+                action: () => addNode(NODE_TYPES.STEP, getCenterPosition())
+              },
+              {
+                label: 'SmoothStep',
+                action: () => addNode(NODE_TYPES.SMOOTHSTEP, getCenterPosition())
               }
             ]
+          }
+        ]
+      },
+      {
+        label: 'Logical Blocks',
+        submenu: [
+          {
+            label: 'And',
+            action: () => addNode(NODE_TYPES.AND, getCenterPosition())
+          },
+          {
+            label: 'Or',
+            action: () => addNode(NODE_TYPES.OR, getCenterPosition())
+          },
+          {
+            label: 'Xor',
+            action: () => addNode(NODE_TYPES.XOR, getCenterPosition())
+          },
+          {
+            label: 'Not',
+            action: () => addNode(NODE_TYPES.NOT, getCenterPosition())
+          },
+          {
+            label: 'Equal',
+            action: () => addNode(NODE_TYPES.EQUAL, getCenterPosition())
+          },
+          {
+            label: 'Not Equal',
+            action: () => addNode(NODE_TYPES.NOT_EQUAL, getCenterPosition())
+          },
+          {
+            label: 'Greater Than',
+            action: () => addNode(NODE_TYPES.GREATER_THAN, getCenterPosition())
+          },
+          {
+            label: 'Greater Or Equal',
+            action: () => addNode(NODE_TYPES.GREATER_OR_EQUAL, getCenterPosition())
+          },
+          {
+            label: 'Less Than',
+            action: () => addNode(NODE_TYPES.LESS_THAN, getCenterPosition())
+          },
+          {
+            label: 'Less Or Equal',
+            action: () => addNode(NODE_TYPES.LESS_OR_EQUAL, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Conversion Blocks',
+        submenu: [
+          {
+            label: 'Color Merger',
+            action: () => addNode(NODE_TYPES.COLOR_MERGER, getCenterPosition())
+          },
+          {
+            label: 'Color Splitter',
+            action: () => addNode(NODE_TYPES.COLOR_SPLITTER, getCenterPosition())
+          },
+          {
+            label: 'Vector Merger',
+            action: () => addNode(NODE_TYPES.VECTOR_MERGER, getCenterPosition())
+          },
+          {
+            label: 'Vector Splitter',
+            action: () => addNode(NODE_TYPES.VECTOR_SPLITTER, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Noise Blocks',
+        submenu: [
+          {
+            label: 'Simplex Perlin 3D',
+            action: () => addNode(NODE_TYPES.SIMPLEX_PERLIN_3D, getCenterPosition())
+          },
+          {
+            label: 'Voronoi Noise',
+            action: () => addNode(NODE_TYPES.VORONOI_NOISE, getCenterPosition())
+          },
+          {
+            label: 'Worley Noise 3D',
+            action: () => addNode(NODE_TYPES.WORLEY_NOISE_3D, getCenterPosition())
+          },
+          {
+            label: 'Cloud',
+            action: () => addNode(NODE_TYPES.CLOUD, getCenterPosition())
+          },
+          {
+            label: 'Random Number',
+            action: () => addNode(NODE_TYPES.RANDOM_NUMBER, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Matrix Blocks',
+        submenu: [
+          {
+            label: 'World Matrix',
+            action: () => addNode(NODE_TYPES.WORLD_MATRIX, getCenterPosition())
+          },
+          {
+            label: 'View Matrix',
+            action: () => addNode(NODE_TYPES.VIEW_MATRIX, getCenterPosition())
+          },
+          {
+            label: 'Projection Matrix',
+            action: () => addNode(NODE_TYPES.PROJECTION_MATRIX, getCenterPosition())
+          },
+          {
+            label: 'World View Matrix',
+            action: () => addNode(NODE_TYPES.WORLD_VIEW_MATRIX, getCenterPosition())
+          },
+          {
+            label: 'World View Projection Matrix',
+            action: () => addNode(NODE_TYPES.WORLD_VIEW_PROJECTION_MATRIX, getCenterPosition())
+          },
+          {
+            label: 'Matrix Builder',
+            action: () => addNode(NODE_TYPES.MATRIX_BUILDER, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'PBR Blocks',
+        submenu: [
+          {
+            label: 'PBR Metallic Roughness',
+            action: () => addNode(NODE_TYPES.PBR_METALLIC_ROUGHNESS, getCenterPosition())
+          },
+          {
+            label: 'Anisotropy',
+            action: () => addNode(NODE_TYPES.ANISOTROPY, getCenterPosition())
+          },
+          {
+            label: 'Clear Coat',
+            action: () => addNode(NODE_TYPES.CLEARCOAT, getCenterPosition())
+          },
+          {
+            label: 'Iridescence',
+            action: () => addNode(NODE_TYPES.IRIDESCENCE, getCenterPosition())
+          },
+          {
+            label: 'Sheen',
+            action: () => addNode(NODE_TYPES.SHEEN, getCenterPosition())
+          },
+          {
+            label: 'Sub Surface',
+            action: () => addNode(NODE_TYPES.SUB_SURFACE, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Texture Operations',
+        submenu: [
+          {
+            label: 'TriPlanar',
+            action: () => addNode(NODE_TYPES.TRIPLANAR, getCenterPosition())
+          },
+          {
+            label: 'BiPlanar',
+            action: () => addNode(NODE_TYPES.BIPLANAR, getCenterPosition())
+          },
+          {
+            label: 'Normal Map',
+            action: () => addNode(NODE_TYPES.NORMAL_MAP, getCenterPosition())
+          },
+          {
+            label: 'Normal Blend',
+            action: () => addNode(NODE_TYPES.NORMAL_BLEND, getCenterPosition())
+          },
+          {
+            label: 'Parallax',
+            action: () => addNode(NODE_TYPES.PARALLAX, getCenterPosition())
+          },
+          {
+            label: 'Twirl',
+            action: () => addNode(NODE_TYPES.TWIRL, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Advanced Blocks',
+        submenu: [
+          {
+            label: 'Transform',
+            action: () => addNode(NODE_TYPES.TRANSFORM, getCenterPosition())
+          },
+          {
+            label: 'Bones',
+            action: () => addNode(NODE_TYPES.BONES, getCenterPosition())
+          },
+          {
+            label: 'Morph Targets',
+            action: () => addNode(NODE_TYPES.MORPH_TARGETS, getCenterPosition())
+          },
+          {
+            label: 'Fog',
+            action: () => addNode(NODE_TYPES.FOG, getCenterPosition())
+          },
+          {
+            label: 'Light Information',
+            action: () => addNode(NODE_TYPES.LIGHT_INFORMATION, getCenterPosition())
+          },
+          {
+            label: 'Scene Depth',
+            action: () => addNode(NODE_TYPES.SCENE_DEPTH, getCenterPosition())
+          },
+          {
+            label: 'View Direction',
+            action: () => addNode(NODE_TYPES.VIEW_DIRECTION, getCenterPosition())
+          },
+          {
+            label: 'Loop',
+            action: () => addNode(NODE_TYPES.LOOP, getCenterPosition())
+          },
+          {
+            label: 'Storage Read',
+            action: () => addNode(NODE_TYPES.STORAGE_READ, getCenterPosition())
+          },
+          {
+            label: 'Storage Write',
+            action: () => addNode(NODE_TYPES.STORAGE_WRITE, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Particle Blocks',
+        submenu: [
+          {
+            label: 'Particle Color',
+            action: () => addNode(NODE_TYPES.PARTICLE_COLOR, getCenterPosition())
+          },
+          {
+            label: 'Particle Texture',
+            action: () => addNode(NODE_TYPES.PARTICLE_TEXTURE, getCenterPosition())
+          },
+          {
+            label: 'Particle UV',
+            action: () => addNode(NODE_TYPES.PARTICLE_UV, getCenterPosition())
+          },
+          {
+            label: 'Particle Position',
+            action: () => addNode(NODE_TYPES.PARTICLE_POSITION, getCenterPosition())
+          },
+          {
+            label: 'Particle Ramp Gradient',
+            action: () => addNode(NODE_TYPES.PARTICLE_RAMP_GRADIENT, getCenterPosition())
           }
         ]
       },
@@ -2401,6 +3997,26 @@ export default function MaterialsViewport() {
           {
             label: 'Dot Product',
             action: () => addNode(NODE_TYPES.DOT_PRODUCT, getCenterPosition())
+          },
+          {
+            label: 'Cross Product',
+            action: () => addNode(NODE_TYPES.CROSS_PRODUCT, getCenterPosition())
+          },
+          {
+            label: 'Distance',
+            action: () => addNode(NODE_TYPES.DISTANCE, getCenterPosition())
+          },
+          {
+            label: 'Length',
+            action: () => addNode(NODE_TYPES.LENGTH, getCenterPosition())
+          },
+          {
+            label: 'Reflect',
+            action: () => addNode(NODE_TYPES.REFLECT, getCenterPosition())
+          },
+          {
+            label: 'Refract',
+            action: () => addNode(NODE_TYPES.REFRACT, getCenterPosition())
           },
           {
             label: 'Normal Map',
@@ -2414,15 +4030,81 @@ export default function MaterialsViewport() {
           {
             label: 'Noise',
             action: () => addNode(NODE_TYPES.NOISE, getCenterPosition())
+          },
+          {
+            label: 'Voronoi Noise',
+            action: () => addNode(NODE_TYPES.VORONOI_NOISE, getCenterPosition())
+          },
+          {
+            label: 'Wave',
+            action: () => addNode(NODE_TYPES.WAVE, getCenterPosition())
+          },
+          {
+            label: 'Gradient',
+            action: () => addNode(NODE_TYPES.GRADIENT, getCenterPosition())
           }
         ]
       },
       {
-        label: 'Advanced',
+        label: 'Image Processing',
+        submenu: [
+          {
+            label: 'Desaturate',
+            action: () => addNode(NODE_TYPES.DESATURATE, getCenterPosition())
+          },
+          {
+            label: 'Hue',
+            action: () => addNode(NODE_TYPES.HUE, getCenterPosition())
+          },
+          {
+            label: 'Saturation',
+            action: () => addNode(NODE_TYPES.SATURATION, getCenterPosition())
+          },
+          {
+            label: 'Contrast',
+            action: () => addNode(NODE_TYPES.CONTRAST, getCenterPosition())
+          },
+          {
+            label: 'Brightness',
+            action: () => addNode(NODE_TYPES.BRIGHTNESS, getCenterPosition())
+          },
+          {
+            label: 'Invert',
+            action: () => addNode(NODE_TYPES.INVERT, getCenterPosition())
+          },
+          {
+            label: 'Posterize',
+            action: () => addNode(NODE_TYPES.POSTERIZE, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Utilities',
         submenu: [
           {
             label: 'Fresnel',
             action: () => addNode(NODE_TYPES.FRESNEL, getCenterPosition())
+          },
+          {
+            label: 'Mask',
+            action: () => addNode(NODE_TYPES.MASK, getCenterPosition())
+          },
+          {
+            label: 'Mix',
+            action: () => addNode(NODE_TYPES.MIX, getCenterPosition())
+          },
+          {
+            label: 'Conditional',
+            action: () => addNode(NODE_TYPES.CONDITIONAL, getCenterPosition())
+          }
+        ]
+      },
+      {
+        label: 'Materials',
+        submenu: [
+          {
+            label: 'PBR Metallic Roughness',
+            action: () => addNode(NODE_TYPES.PBR_METALLIC_ROUGHNESS, getCenterPosition())
           }
         ]
       },
@@ -2902,7 +4584,7 @@ export default function MaterialsViewport() {
                     style={{
                       left: `${position().x}px`,
                       top: `${position().y}px`,
-                      'z-index': isDragged() ? '1000' : 'auto'
+                      'z-index': getNodeZIndex(node.id)
                     }}
                   >
                 {/* Node Header - Compact like Unreal */}
