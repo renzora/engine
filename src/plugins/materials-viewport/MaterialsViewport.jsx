@@ -1,5 +1,6 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For, createMemo } from 'solid-js';
 import { renderStore } from '@/render/store';
+import { editorActions } from '@/layout/stores/EditorStore.jsx';
 import ContextMenu from '@/ui/ContextMenu.jsx';
 import { 
   IconPalette, 
@@ -28,6 +29,7 @@ import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
 import { NodeMaterial } from '@babylonjs/core/Materials/Node/nodeMaterial.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
 import { bridgeService } from '@/plugins/core/bridge';
+import { bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
 
 // Node Material Blocks
 import { InputBlock } from '@babylonjs/core/Materials/Node/Blocks/Input/inputBlock.js';
@@ -2463,6 +2465,10 @@ export default function MaterialsViewport() {
   });
 
   onMount(() => {
+    // Hide bottom and right panels when materials viewport mounts
+    editorActions.setScenePanelOpen(false);
+    editorActions.setAssetPanelOpen(false);
+    
     setTimeout(() => {
       initPreviewScene();
       initializeDefaultNodes();
@@ -2497,31 +2503,40 @@ export default function MaterialsViewport() {
     <div class="h-full flex bg-base-100">
       {/* Left Panel - Preview */}
       <div class="w-96 border-r border-base-300 flex flex-col bg-base-200">
-        {/* Preview Controls */}
-        <div 
-          class="p-4 border-b border-base-300"
-          onDrop={handleAssetDrop}
-          onDragOver={handleDragOver}
-        >
-          <h3 class="text-md font-semibold mb-3">Material Preview</h3>
+        {/* Preview Canvas - Fixed at top */}
+        <div class="h-80 bg-base-300 relative border-b border-base-300">
+          <canvas
+            ref={previewCanvasRef}
+            class="w-full h-full"
+            style={{ display: 'block', 'object-fit': 'contain' }}
+          />
           
-          {/* Preview Shape Selector */}
-          <div class="flex gap-2 mb-3">
+          {/* Shape Selector Overlay - Bottom Left */}
+          <div class="absolute bottom-2 left-2 flex gap-2">
             <button
-              class={`btn btn-sm ${previewShape() === 'sphere' ? 'btn-primary' : 'btn-ghost'}`}
+              class={`btn btn-sm ${previewShape() === 'sphere' ? 'btn-primary' : 'btn-ghost'} bg-opacity-80 backdrop-blur-sm`}
               onClick={() => setPreviewShape('sphere')}
               title="Sphere"
             >
               <IconSphere class="w-4 h-4" />
             </button>
             <button
-              class={`btn btn-sm ${previewShape() === 'cube' ? 'btn-primary' : 'btn-ghost'}`}
+              class={`btn btn-sm ${previewShape() === 'cube' ? 'btn-primary' : 'btn-ghost'} bg-opacity-80 backdrop-blur-sm`}
               onClick={() => setPreviewShape('cube')}
               title="Cube"
             >
               <IconCube class="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* Preview Controls */}
+        <div 
+          class="flex-1 overflow-y-auto p-4 border-b border-base-300"
+          onDrop={handleAssetDrop}
+          onDragOver={handleDragOver}
+        >
+          <h3 class="text-md font-semibold mb-3">Material Preview</h3>
 
           {/* Material Type */}
           <div class="mb-3">
@@ -2690,98 +2705,14 @@ export default function MaterialsViewport() {
             </div>
           </div>
         </div>
-        
-        {/* Preview Canvas */}
-        <div class="h-64 bg-base-300 relative">
-          <canvas
-            ref={previewCanvasRef}
-            class="w-full h-full cursor-grab"
-            style={{ display: 'block' }}
-          />
-        </div>
-        
-        {/* Material Info */}
-        <div class="p-4 border-t border-base-300">
-          <div class="text-sm text-base-content/60">
-            <div class="flex items-center gap-2 mb-2">
-              <IconPalette class="w-4 h-4" />
-              <span class="font-medium">Node Material</span>
-            </div>
-            <div class="text-xs space-y-1">
-              <div>Nodes: {nodes().length} | Connections: {connections().length}</div>
-              <div class={`flex items-center gap-1 ${currentMaterial() ? 'text-success' : 'text-warning'}`}>
-                <div class={`w-2 h-2 rounded-full ${currentMaterial() ? 'bg-success' : 'bg-warning'}`}></div>
-                {currentMaterial() ? 'Material Built' : 'Building...'}
-              </div>
-              <Show when={currentMaterial()?.name}>
-                <div class="text-xs text-base-content/40">
-                  {currentMaterial().name}
-                </div>
-              </Show>
-            </div>
-          </div>
-        </div>
       </div>
       
       {/* Right Panel - Node Graph */}
       <div class="flex-1 flex flex-col">
-        {/* Node Graph Header */}
-        <div class="p-4 border-b border-base-300 bg-base-200">
-          <div class="flex items-center justify-between">
-            <h3 class="text-md font-semibold">Material Graph</h3>
-            <div class="flex gap-2">
-              {/* Zoom Controls */}
-              <div class="flex items-center gap-1 bg-base-100 rounded px-2 py-1 border border-base-300">
-                <button 
-                  class="btn btn-xs btn-ghost"
-                  onClick={() => {
-                    if (nodeGraphRef) {
-                      const rect = nodeGraphRef.getBoundingClientRect();
-                      zoomToPoint(0.8, rect.width / 2, rect.height / 2);
-                    }
-                  }}
-                  title="Zoom Out"
-                >
-                  <IconMinus class="w-3 h-3" />
-                </button>
-                <span class="text-xs font-mono w-12 text-center">{Math.round(zoom() * 100)}%</span>
-                <button 
-                  class="btn btn-xs btn-ghost"
-                  onClick={() => {
-                    if (nodeGraphRef) {
-                      const rect = nodeGraphRef.getBoundingClientRect();
-                      zoomToPoint(1.25, rect.width / 2, rect.height / 2);
-                    }
-                  }}
-                  title="Zoom In"
-                >
-                  <IconPlus class="w-3 h-3" />
-                </button>
-                <div class="divider divider-horizontal mx-1"></div>
-                <button 
-                  class="btn btn-xs btn-ghost"
-                  onClick={resetView}
-                  title="Reset View"
-                >
-                  <IconSettings class="w-3 h-3" />
-                </button>
-                <button 
-                  class="btn btn-xs btn-ghost"
-                  onClick={zoomToFit}
-                  title="Zoom to Fit"
-                >
-                  <IconSphere class="w-3 h-3" />
-                </button>
-              </div>
-              
-            </div>
-          </div>
-        </div>
-        
         {/* Node Graph Canvas */}
         <div 
           ref={nodeGraphRef}
-          class={`flex-1 relative bg-base-100 ${
+          class={`flex-1 relative bg-base-100 h-full ${
             isDraggingAllNodes() ? 'cursor-grabbing' : 
             isPanning() ? 'cursor-grabbing' : 
             'cursor-grab'
@@ -3011,16 +2942,6 @@ export default function MaterialsViewport() {
             </For>
           </div>
           
-          {/* Debug Info */}
-          <div class="absolute top-2 left-2 bg-black/80 text-white p-2 rounded text-xs font-mono pointer-events-none">
-            <div>Nodes: {nodes().length}</div>
-            <div>Connections: {connections().length}</div>
-            <div>Material: {currentMaterial() ? 'Created' : 'None'}</div>
-            <div>Color Nodes: {nodes().filter(n => n.type === NODE_TYPES.COLOR).length}</div>
-            <Show when={nodes().find(n => n.type === NODE_TYPES.COLOR)}>
-              <div>First Color: {nodes().find(n => n.type === NODE_TYPES.COLOR)?.inputs.find(i => i.id === 'color')?.value ? 'Set' : 'Null'}</div>
-            </Show>
-          </div>
 
           {/* Connection Lines SVG */}
           <svg 
@@ -3087,6 +3008,53 @@ export default function MaterialsViewport() {
               }}
             />
           </Show>
+          
+          {/* Control Buttons Overlay - Top Right */}
+          <div class="absolute top-4 right-4 flex gap-2">
+            {/* Zoom Controls */}
+            <div class="flex items-center gap-1 bg-base-100/90 backdrop-blur-sm rounded px-2 py-1 border border-base-300 shadow-lg">
+              <button 
+                class="btn btn-xs btn-ghost"
+                onClick={() => {
+                  if (nodeGraphRef) {
+                    const rect = nodeGraphRef.getBoundingClientRect();
+                    zoomToPoint(0.8, rect.width / 2, rect.height / 2);
+                  }
+                }}
+                title="Zoom Out"
+              >
+                <IconMinus class="w-3 h-3" />
+              </button>
+              <span class="text-xs font-mono w-12 text-center">{Math.round(zoom() * 100)}%</span>
+              <button 
+                class="btn btn-xs btn-ghost"
+                onClick={() => {
+                  if (nodeGraphRef) {
+                    const rect = nodeGraphRef.getBoundingClientRect();
+                    zoomToPoint(1.25, rect.width / 2, rect.height / 2);
+                  }
+                }}
+                title="Zoom In"
+              >
+                <IconPlus class="w-3 h-3" />
+              </button>
+              <div class="divider divider-horizontal mx-1"></div>
+              <button 
+                class="btn btn-xs btn-ghost"
+                onClick={resetView}
+                title="Reset View"
+              >
+                <IconSettings class="w-3 h-3" />
+              </button>
+              <button 
+                class="btn btn-xs btn-ghost"
+                onClick={zoomToFit}
+                title="Zoom to Fit"
+              >
+                <IconSphere class="w-3 h-3" />
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
