@@ -22,7 +22,10 @@ import {
   IconColorFilter,
   IconAdjustments,
   IconGradient,
-  IconTexture
+  IconTexture,
+  IconSquare,
+  IconCircle,
+  IconHexagon
 } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
@@ -44,6 +47,8 @@ import { ClampBlock } from '@babylonjs/core/Materials/Node/Blocks/clampBlock.js'
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
 import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
+import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder.js';
+import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera.js';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
@@ -939,6 +944,19 @@ export default function MaterialsViewport() {
       case 'cube':
         previewMesh = CreateBox('previewCube', { size: 2 }, previewScene);
         previewMesh.position.y = -0.5; // Ground(-1.5) + half-height(1) = -0.5
+        break;
+      case 'plane':
+        previewMesh = CreateGround('previewPlane', { width: 2, height: 2 }, previewScene);
+        previewMesh.position.y = -0.5; // Plane at ground level
+        previewMesh.rotation.x = Math.PI / 3; // Tilt slightly for better viewing
+        break;
+      case 'cylinder':
+        previewMesh = CreateCylinder('previewCylinder', { height: 2, diameter: 1.5 }, previewScene);
+        previewMesh.position.y = -0.5; // Ground(-1.5) + half-height(1) = -0.5
+        break;
+      case 'torus':
+        previewMesh = CreateTorus('previewTorus', { diameter: 2, thickness: 0.5 }, previewScene);
+        previewMesh.position.y = -0.5; // Center torus above ground
         break;
       default:
         previewMesh = CreateSphere('previewSphere', { diameter: 2 }, previewScene);
@@ -2526,6 +2544,27 @@ export default function MaterialsViewport() {
               title="Cube"
             >
               <IconCube class="w-4 h-4" />
+            </button>
+            <button
+              class={`btn btn-sm ${previewShape() === 'plane' ? 'btn-primary' : 'btn-ghost'} bg-opacity-80 backdrop-blur-sm`}
+              onClick={() => setPreviewShape('plane')}
+              title="Plane"
+            >
+              <IconSquare class="w-4 h-4" />
+            </button>
+            <button
+              class={`btn btn-sm ${previewShape() === 'cylinder' ? 'btn-primary' : 'btn-ghost'} bg-opacity-80 backdrop-blur-sm`}
+              onClick={() => setPreviewShape('cylinder')}
+              title="Cylinder"
+            >
+              <IconCircle class="w-4 h-4" />
+            </button>
+            <button
+              class={`btn btn-sm ${previewShape() === 'torus' ? 'btn-primary' : 'btn-ghost'} bg-opacity-80 backdrop-blur-sm`}
+              onClick={() => setPreviewShape('torus')}
+              title="Torus"
+            >
+              <IconHexagon class="w-4 h-4" />
             </button>
           </div>
         </div>
