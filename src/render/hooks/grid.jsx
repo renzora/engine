@@ -155,6 +155,7 @@ export function grid(sceneSignal) {
       const regularLines = [];
       const sectionLines = [];
       const xAxisLine = [];
+      const yAxisLine = [];
       const zAxisLine = [];
       const halfSize = gridSize / 2;
       
@@ -166,7 +167,7 @@ export function grid(sceneSignal) {
             new Vector3(x, 0, halfSize)
           ];
           
-          if (i === 0) {
+          if (i === 0 && (gridSettings.showZAxis ?? true)) {
             // Z-axis line (blue) - runs along X direction at X=0
             zAxisLine.push(line);
           } else if (i % sectionSize === 0) {
@@ -185,7 +186,7 @@ export function grid(sceneSignal) {
             new Vector3(halfSize, 0, z)
           ];
           
-          if (i === 0) {
+          if (i === 0 && (gridSettings.showXAxis ?? true)) {
             // X-axis line (red) - runs along Z direction at Z=0
             xAxisLine.push(line);
           } else if (i % sectionSize === 0) {
@@ -224,27 +225,54 @@ export function grid(sceneSignal) {
       }
       
       // Create colored axis lines like Blender
-      if (xAxisLine.length > 0) {
+      if (xAxisLine.length > 0 && (gridSettings.showXAxis ?? true)) {
         const xAxis = MeshBuilder.CreateLineSystem("__grid_x_axis__", { lines: xAxisLine }, scene);
         xAxis.parent = gridContainer;
         xAxis.isPickable = false;
         xAxis.material.alpha = 0.8;
-        xAxis.color = new Color3(0.6, 0.3, 0.3); // More noticeable red for X-axis
+        // Use X-axis color from settings
+        const xAxisColorRgb = parseColorToRgb(gridSettings.xAxisColor || '#cc5555');
+        xAxis.color = xAxisColorRgb ? new Color3(xAxisColorRgb.r, xAxisColorRgb.g, xAxisColorRgb.b) : new Color3(0.6, 0.3, 0.3);
       }
       
-      if (zAxisLine.length > 0) {
+      if (zAxisLine.length > 0 && (gridSettings.showZAxis ?? true)) {
         const zAxis = MeshBuilder.CreateLineSystem("__grid_z_axis__", { lines: zAxisLine }, scene);
         zAxis.parent = gridContainer;
         zAxis.isPickable = false;
         zAxis.material.alpha = 0.8;
-        zAxis.color = new Color3(0.3, 0.4, 0.6); // More noticeable blue for Z-axis
+        // Use Z-axis color from settings
+        const zAxisColorRgb = parseColorToRgb(gridSettings.zAxisColor || '#5555cc');
+        zAxis.color = zAxisColorRgb ? new Color3(zAxisColorRgb.r, zAxisColorRgb.g, zAxisColorRgb.b) : new Color3(0.3, 0.4, 0.6);
+      }
+      
+      // Create Y-axis line (vertical line at origin)
+      if (gridSettings.showYAxis ?? true) {
+        const yAxisLineData = [
+          [
+            new Vector3(0, -halfSize/10, 0), // Start below grid
+            new Vector3(0, halfSize/10, 0)   // End above grid
+          ]
+        ];
+        
+        if (yAxisLineData.length > 0) {
+          const yAxis = MeshBuilder.CreateLineSystem("__grid_y_axis__", { lines: yAxisLineData }, scene);
+          yAxis.parent = gridContainer;
+          yAxis.isPickable = false;
+          yAxis.material.alpha = 0.8;
+          // Use Y-axis color from settings
+          const yAxisColorRgb = parseColorToRgb(gridSettings.yAxisColor || '#55cc55');
+          yAxis.color = yAxisColorRgb ? new Color3(yAxisColorRgb.r, yAxisColorRgb.g, yAxisColorRgb.b) : new Color3(0.3, 0.6, 0.3);
+        }
       }
     } else {
       const gridSize = gridSettings.size * unitScale;
       const gridCells = Math.floor(gridSize / cellSize);
       const regularLines = [];
       const sectionLines = [];
+      const xAxisLine = [];
+      const zAxisLine = [];
       const halfSize = gridSize / 2;
+      const centerIndex = Math.floor(gridCells / 2);
       
       for (let i = 0; i <= gridCells; i++) {
         const x = (i / gridCells) * gridSize - halfSize;
@@ -253,7 +281,10 @@ export function grid(sceneSignal) {
           new Vector3(x, 0, halfSize)
         ];
         
-        if (i % sectionSize === 0 || i === gridCells) {
+        // Check if this is the center line (Z-axis) and if Z-axis is enabled
+        if (i === centerIndex && (gridSettings.showZAxis ?? true)) {
+          zAxisLine.push(line);
+        } else if (i % sectionSize === 0 || i === gridCells) {
           sectionLines.push(line);
         } else {
           regularLines.push(line);
@@ -267,7 +298,10 @@ export function grid(sceneSignal) {
           new Vector3(halfSize, 0, z)
         ];
         
-        if (i % sectionSize === 0 || i === gridCells) {
+        // Check if this is the center line (X-axis) and if X-axis is enabled
+        if (i === centerIndex && (gridSettings.showXAxis ?? true)) {
+          xAxisLine.push(line);
+        } else if (i % sectionSize === 0 || i === gridCells) {
           sectionLines.push(line);
         } else {
           regularLines.push(line);
@@ -299,6 +333,47 @@ export function grid(sceneSignal) {
         // Use section color from settings
         const sectionColorRgb = parseColorToRgb(gridSettings.sectionColor || '#2d3748');
         sectionGrid.color = sectionColorRgb ? new Color3(sectionColorRgb.r, sectionColorRgb.g, sectionColorRgb.b) : new Color3(0.22, 0.23, 0.26);
+      }
+      
+      // Render separated axis lines for finite grid
+      if (xAxisLine.length > 0) {
+        const xAxis = MeshBuilder.CreateLineSystem("__grid_x_axis__", { lines: xAxisLine }, scene);
+        xAxis.parent = gridContainer;
+        xAxis.isPickable = false;
+        xAxis.material.alpha = 0.8;
+        // Use X-axis color from settings
+        const xAxisColorRgb = parseColorToRgb(gridSettings.xAxisColor || '#cc5555');
+        xAxis.color = xAxisColorRgb ? new Color3(xAxisColorRgb.r, xAxisColorRgb.g, xAxisColorRgb.b) : new Color3(0.6, 0.3, 0.3);
+      }
+      
+      if (zAxisLine.length > 0) {
+        const zAxis = MeshBuilder.CreateLineSystem("__grid_z_axis__", { lines: zAxisLine }, scene);
+        zAxis.parent = gridContainer;
+        zAxis.isPickable = false;
+        zAxis.material.alpha = 0.8;
+        // Use Z-axis color from settings
+        const zAxisColorRgb = parseColorToRgb(gridSettings.zAxisColor || '#5555cc');
+        zAxis.color = zAxisColorRgb ? new Color3(zAxisColorRgb.r, zAxisColorRgb.g, zAxisColorRgb.b) : new Color3(0.3, 0.4, 0.6);
+      }
+      
+      // Y-axis line (green) - vertical line at origin
+      if (gridSettings.showYAxis ?? true) {
+        const yAxisLineData = [
+          [
+            new Vector3(0, -halfSize/10, 0), // Start below grid
+            new Vector3(0, halfSize/10, 0)   // End above grid
+          ]
+        ];
+        
+        if (yAxisLineData.length > 0) {
+          const yAxis = MeshBuilder.CreateLineSystem("__grid_y_axis__", { lines: yAxisLineData }, scene);
+          yAxis.parent = gridContainer;
+          yAxis.isPickable = false;
+          yAxis.material.alpha = 0.8;
+          // Use Y-axis color from settings
+          const yAxisColorRgb = parseColorToRgb(gridSettings.yAxisColor || '#55cc55');
+          yAxis.color = yAxisColorRgb ? new Color3(yAxisColorRgb.r, yAxisColorRgb.g, yAxisColorRgb.b) : new Color3(0.3, 0.6, 0.3);
+        }
       }
     }
     

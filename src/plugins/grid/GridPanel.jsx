@@ -16,6 +16,12 @@ export default function GridPanel() {
     position: [0, 0, 0],
     cellColor: '#4a5568',
     sectionColor: '#2d3748',
+    xAxisColor: '#cc5555',
+    yAxisColor: '#55cc55', 
+    zAxisColor: '#5555cc',
+    showXAxis: true,
+    showYAxis: true,
+    showZAxis: true,
     infiniteGrid: false,
     gridSnapping: false
   };
@@ -219,24 +225,34 @@ export default function GridPanel() {
                   <div>
                     <label class="text-xs text-base-content/80 mb-1 block">Position</label>
                     <div class="grid grid-cols-3 gap-1">
-                      {['X', 'Y', 'Z'].map((axis, index) => (
-                        <div class="relative">
-                          <span class="absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center text-xs text-base-content/70 pointer-events-none font-medium bg-base-300 border border-base-300 rounded-l">
-                            {axis}
-                          </span>
-                          <input
-                            type="number"
-                            step="0.1"
-                            value={gridSettings().position[index]}
-                            onChange={(e) => {
-                              const newPos = [...gridSettings().position];
-                              newPos[index] = parseFloat(e.target.value) || 0;
-                              updateGridSettings({ position: newPos });
-                            }}
-                            class="w-full input input-xs pl-5 pr-1 text-center border border-base-300"
-                          />
-                        </div>
-                      ))}
+                      {['X', 'Y', 'Z'].map((axis, index) => {
+                        // Define axis colors (Red, Green, Blue)
+                        const axisColors = {
+                          X: { bg: 'bg-red-500', border: 'border-red-400', text: 'text-white' },
+                          Y: { bg: 'bg-green-500', border: 'border-green-400', text: 'text-white' },
+                          Z: { bg: 'bg-blue-500', border: 'border-blue-400', text: 'text-white' }
+                        };
+                        const colors = axisColors[axis];
+                        
+                        return (
+                          <div class="relative">
+                            <span class={`absolute left-0 top-0 bottom-0 w-4 flex items-center justify-center text-xs pointer-events-none font-medium ${colors.bg} ${colors.text} border ${colors.border} rounded-l`}>
+                              {axis}
+                            </span>
+                            <input
+                              type="number"
+                              step="0.1"
+                              value={gridSettings().position[index]}
+                              onChange={(e) => {
+                                const newPos = [...gridSettings().position];
+                                newPos[index] = parseFloat(e.target.value) || 0;
+                                updateGridSettings({ position: newPos });
+                              }}
+                              class={`w-full input input-xs pl-5 pr-1 text-center border ${colors.border}`}
+                            />
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -288,6 +304,73 @@ export default function GridPanel() {
                   onChange={(v) => updateGridSettings({ sectionColor: v })}
                   resetKey="sectionColor"
                 />
+                
+                <div class="divider my-1 text-xs opacity-50">Axis Lines</div>
+                
+                <div class="space-y-2">
+                  {/* X-Axis Controls */}
+                  <div class="bg-base-200/30 rounded p-2 space-y-1">
+                    <div class="flex items-center gap-2">
+                      <div class="w-3 h-3 bg-red-500 rounded-sm"></div>
+                      <ToggleControl 
+                        label="Show X-Axis" 
+                        value={gridSettings().showXAxis ?? defaults.showXAxis} 
+                        onChange={(v) => updateGridSettings({ showXAxis: v })}
+                        resetKey="showXAxis"
+                      />
+                    </div>
+                    {(gridSettings().showXAxis ?? defaults.showXAxis) && (
+                      <ColorControl 
+                        label="X-Axis Color" 
+                        value={gridSettings().xAxisColor || defaults.xAxisColor} 
+                        onChange={(v) => updateGridSettings({ xAxisColor: v })}
+                        resetKey="xAxisColor"
+                      />
+                    )}
+                  </div>
+                  
+                  {/* Y-Axis Controls */}
+                  <div class="bg-base-200/30 rounded p-2 space-y-1">
+                    <div class="flex items-center gap-2">
+                      <div class="w-3 h-3 bg-green-500 rounded-sm"></div>
+                      <ToggleControl 
+                        label="Show Y-Axis" 
+                        value={gridSettings().showYAxis ?? defaults.showYAxis} 
+                        onChange={(v) => updateGridSettings({ showYAxis: v })}
+                        resetKey="showYAxis"
+                      />
+                    </div>
+                    {(gridSettings().showYAxis ?? defaults.showYAxis) && (
+                      <ColorControl 
+                        label="Y-Axis Color" 
+                        value={gridSettings().yAxisColor || defaults.yAxisColor} 
+                        onChange={(v) => updateGridSettings({ yAxisColor: v })}
+                        resetKey="yAxisColor"
+                      />
+                    )}
+                  </div>
+                  
+                  {/* Z-Axis Controls */}
+                  <div class="bg-base-200/30 rounded p-2 space-y-1">
+                    <div class="flex items-center gap-2">
+                      <div class="w-3 h-3 bg-blue-500 rounded-sm"></div>
+                      <ToggleControl 
+                        label="Show Z-Axis" 
+                        value={gridSettings().showZAxis ?? defaults.showZAxis} 
+                        onChange={(v) => updateGridSettings({ showZAxis: v })}
+                        resetKey="showZAxis"
+                      />
+                    </div>
+                    {(gridSettings().showZAxis ?? defaults.showZAxis) && (
+                      <ColorControl 
+                        label="Z-Axis Color" 
+                        value={gridSettings().zAxisColor || defaults.zAxisColor} 
+                        onChange={(v) => updateGridSettings({ zAxisColor: v })}
+                        resetKey="zAxisColor"
+                      />
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </Show>
