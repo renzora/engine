@@ -27,6 +27,24 @@ use std::fs;
 use crate::modules::memory_cache::{MemoryCache, CachedAssetNode, ProjectAssetTree};
 use crate::renscript_cache::RenScriptCache;
 
+// Unified file operations
+#[derive(Debug)]
+enum FileOperation {
+    List,
+    Read,
+    Write { content: String },
+    WriteBinary { content: String },
+    Delete,
+    Serve,
+}
+
+#[derive(Debug)]
+struct UnifiedFileRequest {
+    path: String,
+    operation: FileOperation,
+    accept_header: Option<String>,
+}
+
 // Static variables for shared state
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
 // Database removed - using Redis-only caching
@@ -55,6 +73,9 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
     let user_agent = req.headers().get("user-agent")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("unknown");
+    let accept_header = req.headers().get("accept")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.to_string());
     
     info!("📥 {} {} {} - User-Agent: {}", method, path, 
           if query.is_empty() { "".to_string() } else { format!("?{}", query) }, user_agent);
@@ -168,47 +189,72 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 error_response(StatusCode::BAD_REQUEST, "Invalid assets path")
             }
         }
+        // Unified file operations
         (&Method::GET, path) if path.starts_with("/list/") => {
-            let dir_path = &path[6..];
-            let decoded_path = match decode_url_path(dir_path) {
+            let file_path = &path[6..];
+            let decoded_path = match decode_and_validate_path(file_path) {
                 Ok(path) => path,
                 Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
             };
-            handle_list_directory(&decoded_path)
+            handle_unified_file_operation(UnifiedFileRequest {
+                path: decoded_path,
+                operation: FileOperation::List,
+                accept_header: accept_header.clone(),
+            })
         }
         (&Method::GET, path) if path.starts_with("/read/") => {
             let file_path = &path[6..];
-            let decoded_path = match decode_url_path(file_path) {
+            let decoded_path = match decode_and_validate_path(file_path) {
                 Ok(path) => path,
                 Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
             };
-            handle_read_file(&decoded_path)
+            handle_unified_file_operation(UnifiedFileRequest {
+                path: decoded_path,
+                operation: FileOperation::Read,
+                accept_header: accept_header.clone(),
+            })
         }
         (&Method::POST, path) if path.starts_with("/write/") => {
             let file_path = &path[7..];
-            let decoded_path = match decode_url_path(file_path) {
+            let decoded_path = match decode_and_validate_path(file_path) {
                 Ok(path) => path,
                 Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
             };
             match &body {
-                Some(body_content) => handle_write_file(&decoded_path, body_content),
+                Some(body_content) => handle_unified_file_operation(UnifiedFileRequest {
+                    path: decoded_path,
+                    operation: FileOperation::Write { content: body_content.clone() },
+                    accept_header: accept_header.clone(),
+                }),
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
         (&Method::POST, path) if path.starts_with("/write-binary/") => {
             let file_path = &path[14..];
-            let decoded_path = match decode_url_path(file_path) {
+            let decoded_path = match decode_and_validate_path(file_path) {
                 Ok(path) => path,
                 Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
             };
             match &body {
-                Some(body_content) => handle_write_binary_file(&decoded_path, body_content),
+                Some(body_content) => handle_unified_file_operation(UnifiedFileRequest {
+                    path: decoded_path,
+                    operation: FileOperation::WriteBinary { content: body_content.clone() },
+                    accept_header: accept_header.clone(),
+                }),
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
         (&Method::DELETE, path) if path.starts_with("/delete/") => {
             let file_path = &path[8..];
-            handle_delete_file(file_path)
+            let decoded_path = match decode_and_validate_path(file_path) {
+                Ok(path) => path,
+                Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
+            };
+            handle_unified_file_operation(UnifiedFileRequest {
+                path: decoded_path,
+                operation: FileOperation::Delete,
+                accept_header: accept_header.clone(),
+            })
         }
         (&Method::GET, path) if path.starts_with("/script/") => {
             let script_name = &path[8..];
@@ -242,11 +288,15 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         // Database query endpoint removed - using Redis-only caching
         (&Method::GET, path) if path.starts_with("/file/") => {
             let file_path = &path[6..];
-            let decoded_path = match decode_url_path(file_path) {
+            let decoded_path = match decode_and_validate_path(file_path) {
                 Ok(path) => path,
                 Err(e) => return Ok(error_response(StatusCode::BAD_REQUEST, &e)),
             };
-            return Ok(handle_serve_asset(&decoded_path));
+            return Ok(handle_unified_file_operation(UnifiedFileRequest {
+                path: decoded_path,
+                operation: FileOperation::Serve,
+                accept_header: accept_header.clone(),
+            }));
         }
         (&Method::POST, "/start-watcher") => handle_start_watcher(),
         (&Method::GET, "/file-changes") => handle_get_file_changes(),
@@ -394,26 +444,7 @@ fn handle_get_projects() -> Response<BoxBody<Bytes, Infallible>> {
     }
 }
 
-fn handle_list_directory(dir_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
-    match list_directory_contents(dir_path) {
-        Ok(files) => json_response(&files),
-        Err(e) => error_response(StatusCode::FORBIDDEN, &e),
-    }
-}
-
-fn handle_read_file(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
-    match read_file_content(file_path) {
-        Ok(content) => {
-            let response = ApiResponse {
-                success: true,
-                content: Some(content),
-                error: None,
-            };
-            json_response(&response)
-        }
-        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
-    }
-}
+// Old file handlers removed - using unified file handler
 
 fn handle_get_scene_bundle(project_name: &str, scene_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match load_scene_with_assets(project_name, scene_name) {
@@ -523,7 +554,93 @@ fn handle_delete_file(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
     }
 }
 
-fn handle_serve_asset(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
+// Unified smart file handler
+fn handle_unified_file_operation(request: UnifiedFileRequest) -> Response<BoxBody<Bytes, Infallible>> {
+    match request.operation {
+        FileOperation::List => handle_list_operation(&request.path),
+        FileOperation::Read => handle_read_operation(&request.path, request.accept_header.as_deref()),
+        FileOperation::Write { content } => handle_write_operation(&request.path, &content, false),
+        FileOperation::WriteBinary { content } => handle_write_operation(&request.path, &content, true),
+        FileOperation::Delete => handle_delete_operation(&request.path),
+        FileOperation::Serve => handle_serve_operation(&request.path),
+    }
+}
+
+fn handle_list_operation(dir_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    match list_directory_contents(dir_path) {
+        Ok(files) => json_response(&files),
+        Err(e) => error_response(StatusCode::FORBIDDEN, &e),
+    }
+}
+
+fn handle_read_operation(file_path: &str, accept_header: Option<&str>) -> Response<BoxBody<Bytes, Infallible>> {
+    // Check if client wants raw content (e.g., Accept: application/octet-stream)
+    let wants_raw = accept_header
+        .map(|h| h.contains("application/octet-stream") || h.contains("*/*"))
+        .unwrap_or(false);
+    
+    if wants_raw || is_likely_binary_file(file_path) {
+        // Serve as binary
+        handle_serve_operation(file_path)
+    } else {
+        // Read as text and return JSON
+        match read_file_content(file_path) {
+            Ok(content) => {
+                let response = ApiResponse {
+                    success: true,
+                    content: Some(content),
+                    error: None,
+                };
+                json_response(&response)
+            }
+            Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        }
+    }
+}
+
+fn handle_write_operation(file_path: &str, content: &str, is_binary: bool) -> Response<BoxBody<Bytes, Infallible>> {
+    let result = if is_binary {
+        let write_req: WriteBinaryFileRequest = match serde_json::from_str(content) {
+            Ok(req) => req,
+            Err(_) => return error_response(StatusCode::BAD_REQUEST, "Invalid JSON"),
+        };
+        write_binary_file_content(file_path, &write_req)
+    } else {
+        let write_req: WriteFileRequest = match serde_json::from_str(content) {
+            Ok(req) => req,
+            Err(_) => return error_response(StatusCode::BAD_REQUEST, "Invalid JSON"),
+        };
+        write_file_content(file_path, &write_req)
+    };
+
+    match result {
+        Ok(_) => {
+            let response = ApiResponse {
+                success: true,
+                content: None,
+                error: None,
+            };
+            json_response(&response)
+        }
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
+    }
+}
+
+fn handle_delete_operation(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    match delete_file_or_directory(file_path) {
+        Ok(_) => {
+            let response = ApiResponse {
+                success: true,
+                content: None,
+                error: None,
+            };
+            json_response(&response)
+        }
+        Err(e) => error_response(StatusCode::INTERNAL_SERVER_ERROR, &e),
+    }
+}
+
+fn handle_serve_operation(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
     match read_binary_file(file_path) {
         Ok(contents) => {
             let full_path = std::path::Path::new(file_path);
@@ -546,6 +663,31 @@ fn handle_serve_asset(file_path: &str) -> Response<BoxBody<Bytes, Infallible>> {
         }
     }
 }
+
+// Helper function to detect binary files based on extension
+fn is_likely_binary_file(file_path: &str) -> bool {
+    let path = std::path::Path::new(file_path);
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        matches!(ext.to_lowercase().as_str(), 
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "ico" |
+            "mp4" | "mov" | "avi" | "mkv" | "webm" |
+            "mp3" | "wav" | "ogg" | "flac" |
+            "zip" | "rar" | "7z" | "tar" | "gz" |
+            "pdf" | "doc" | "docx" | "ppt" | "pptx" |
+            "exe" | "dll" | "so" | "dylib" |
+            "glb" | "gltf" | "fbx" | "obj" | "dae" | "blend" |
+            "ttf" | "otf" | "woff" | "woff2"
+        )
+    } else {
+        false
+    }
+}
+
+// Helper function to decode and validate file paths
+fn decode_and_validate_path(encoded_path: &str) -> Result<String, String> {
+    decode_url_path(encoded_path)
+}
+
 
 fn handle_start_watcher() -> Response<BoxBody<Bytes, Infallible>> {
     let response = ApiResponse {

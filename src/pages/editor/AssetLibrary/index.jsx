@@ -7,7 +7,6 @@ import ContextMenu from '@/ui/ContextMenu.jsx';
 import ScriptCreationDialog from '../ScriptCreationDialog.jsx';
 import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
 import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
-import { getCachedAssets, processProjectCache } from '@/api/bridge/projectCache.js';
 import { ModelProcessingAPI } from '@/api/bridge/modelProcessing';
 import { isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
 
@@ -464,24 +463,7 @@ function AssetLibrary({ onContextMenu }) {
       
       const rawAssets = await listDirectory(dirPath);
       
-      // Get cached assets with thumbnail URLs
-      let cachedThumbnails = {};
-      try {
-        console.log(`📦 Fetching thumbnail URLs from cache...`);
-        const cachedData = await getCachedAssets(currentProject.name);
-        if (cachedData.success && cachedData.assets) {
-          // Create a map of asset paths to thumbnail URLs
-          for (const cachedAsset of cachedData.assets) {
-            if (cachedAsset.thumbnail_path) {
-              const thumbnailUrl = getFileUrl(`projects/${currentProject.name}/${cachedAsset.thumbnail_path}`);
-              cachedThumbnails[cachedAsset.path] = thumbnailUrl;
-            }
-          }
-          console.log(`📦 Found ${Object.keys(cachedThumbnails).length} cached thumbnails`);
-        }
-      } catch (cacheError) {
-        console.warn('Failed to load cached thumbnails:', cacheError);
-      }
+      // No caching - thumbnails will be loaded directly if available
       
       const assets = rawAssets
         .filter(asset => {
@@ -496,8 +478,8 @@ function AssetLibrary({ onContextMenu }) {
           const hasExtension = asset.name.includes('.') && !asset.is_directory;
           const assetPath = path ? `${path}/${asset.name}` : asset.name;
           
-          // Look for thumbnail URL in cache
-          const thumbnailUrl = cachedThumbnails[assetPath] || null;
+          // No cached thumbnails - files load directly
+          const thumbnailUrl = null;
           
           return {
             id: asset.path,
@@ -507,8 +489,7 @@ function AssetLibrary({ onContextMenu }) {
             extension: hasExtension ? '.' + asset.name.split('.').pop() : null,
             size: asset.size || 0,
             fileName: asset.name,
-            thumbnailUrl: thumbnailUrl,
-            cached: !!thumbnailUrl
+            thumbnailUrl: thumbnailUrl
           };
         });
       
@@ -876,22 +857,7 @@ function AssetLibrary({ onContextMenu }) {
         }
       }
       
-      // Generate thumbnails and update cache for uploaded assets
-      console.log('📸 Generating thumbnails and updating cache for uploaded assets...');
-      
-      // Process cache to generate thumbnails for newly uploaded assets
-      try {
-        await processProjectCache(currentProject.name, {
-          forceFullRebuild: false, // Only process new/changed files
-          onProgress: (progress) => {
-            console.log(`📊 Cache processing: ${progress.progress}% - ${progress.current_stage}`);
-          }
-        });
-        console.log('✅ Thumbnails generated and cached successfully');
-      } catch (cacheError) {
-        console.warn('⚠️ Failed to process cache for thumbnails:', cacheError);
-        // Don't fail the upload if cache processing fails
-      }
+      // Files uploaded successfully - no cache processing needed
       
       await fetchAssetsWithCache(currentProject, currentPath());
       

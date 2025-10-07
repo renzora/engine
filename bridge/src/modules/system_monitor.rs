@@ -2,7 +2,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use sysinfo::System;
 use serde::{Serialize, Deserialize};
-use tokio::time::interval;
 use log::info;
 
 #[cfg(feature = "nvidia")]
@@ -42,7 +41,6 @@ impl Default for SystemStats {
 #[derive(Debug)]
 pub struct SystemMonitor {
     system: Arc<Mutex<System>>,
-    stats: Arc<Mutex<SystemStats>>,
     #[cfg(feature = "nvidia")]
     nvml: Option<Arc<Nvml>>,
 }
@@ -50,7 +48,6 @@ pub struct SystemMonitor {
 impl SystemMonitor {
     pub fn new() -> Self {
         let system = Arc::new(Mutex::new(System::new_all()));
-        let stats = Arc::new(Mutex::new(SystemStats::default()));
         
         #[cfg(feature = "nvidia")]
         let nvml = match Nvml::init() {
@@ -66,120 +63,92 @@ impl SystemMonitor {
 
         Self {
             system,
-            stats,
             #[cfg(feature = "nvidia")]
             nvml,
         }
     }
 
-    pub fn start_monitoring(&self) {
-        let system = Arc::clone(&self.system);
-        let stats = Arc::clone(&self.stats);
-        
-        #[cfg(feature = "nvidia")]
-        let nvml = self.nvml.clone();
+    pub fn get_stats(&self) -> SystemStats {
+        // Refresh system information on-demand
+        if let Ok(mut sys) = self.system.lock() {
+            sys.refresh_cpu_usage();
+            sys.refresh_memory();
+            
+            let cpu_usage = sys.global_cpu_info().cpu_usage();
+            let memory_total = sys.total_memory();
+            let memory_used = sys.used_memory();
+            let memory_usage = if memory_total > 0 {
+                (memory_used as f32 / memory_total as f32) * 100.0
+            } else {
+                0.0
+            };
 
-        tokio::spawn(async move {
-            let mut interval = interval(Duration::from_millis(50)); // 50ms = 20fps  
-            info!("📊 System monitoring started (50ms intervals for real-time)");
+            #[cfg(feature = "nvidia")]
+            let mut gpu_usage = None;
+            #[cfg(not(feature = "nvidia"))]
+            let gpu_usage = None;
+            
+            #[cfg(feature = "nvidia")]
+            let mut gpu_memory_usage = None;
+            #[cfg(not(feature = "nvidia"))]
+            let gpu_memory_usage = None;
+            
+            #[cfg(feature = "nvidia")]
+            let mut gpu_memory_total = None;
+            #[cfg(not(feature = "nvidia"))]
+            let gpu_memory_total = None;
+            
+            #[cfg(feature = "nvidia")]
+            let mut gpu_memory_used = None;
+            #[cfg(not(feature = "nvidia"))]
+            let gpu_memory_used = None;
+            
+            #[cfg(feature = "nvidia")]
+            let mut gpu_name = None;
+            #[cfg(not(feature = "nvidia"))]
+            let gpu_name = None;
 
-            loop {
-                interval.tick().await;
-                
-                // Update system information
-                if let Ok(mut sys) = system.lock() {
-                    sys.refresh_cpu_usage();
-                    sys.refresh_memory();
-                }
-
-                // Calculate stats
-                if let Ok(sys) = system.lock() {
-                    let cpu_usage = sys.global_cpu_info().cpu_usage();
-                    let memory_total = sys.total_memory();
-                    let memory_used = sys.used_memory();
-                    let memory_usage = if memory_total > 0 {
-                        (memory_used as f32 / memory_total as f32) * 100.0
-                    } else {
-                        0.0
-                    };
-
-                    #[cfg(feature = "nvidia")]
-                    let mut gpu_usage = None;
-                    #[cfg(not(feature = "nvidia"))]
-                    let gpu_usage = None;
-                    
-                    #[cfg(feature = "nvidia")]
-                    let mut gpu_memory_usage = None;
-                    #[cfg(not(feature = "nvidia"))]
-                    let gpu_memory_usage = None;
-                    
-                    #[cfg(feature = "nvidia")]
-                    let mut gpu_memory_total = None;
-                    #[cfg(not(feature = "nvidia"))]
-                    let gpu_memory_total = None;
-                    
-                    #[cfg(feature = "nvidia")]
-                    let mut gpu_memory_used = None;
-                    #[cfg(not(feature = "nvidia"))]
-                    let gpu_memory_used = None;
-                    
-                    #[cfg(feature = "nvidia")]
-                    let mut gpu_name = None;
-                    #[cfg(not(feature = "nvidia"))]
-                    let gpu_name = None;
-
-                    // Get GPU stats if available
-                    #[cfg(feature = "nvidia")]
-                    if let Some(ref nvml) = nvml {
-                        if let Ok(device_count) = nvml.device_count() {
-                            if device_count > 0 {
-                                if let Ok(device) = nvml.device_by_index(0) {
-                                    if let Ok(utilization) = device.utilization_rates() {
-                                        gpu_usage = Some(utilization.gpu as f32);
-                                    }
-                                    
-                                    if let Ok(memory_info) = device.memory_info() {
-                                        gpu_memory_total = Some(memory_info.total);
-                                        gpu_memory_used = Some(memory_info.used);
-                                        gpu_memory_usage = Some((memory_info.used as f32 / memory_info.total as f32) * 100.0);
-                                    }
-                                    
-                                    if let Ok(name) = device.name() {
-                                        gpu_name = Some(name);
-                                    }
-                                }
+            // Get GPU stats if available
+            #[cfg(feature = "nvidia")]
+            if let Some(ref nvml) = self.nvml {
+                if let Ok(device_count) = nvml.device_count() {
+                    if device_count > 0 {
+                        if let Ok(device) = nvml.device_by_index(0) {
+                            if let Ok(utilization) = device.utilization_rates() {
+                                gpu_usage = Some(utilization.gpu as f32);
+                            }
+                            
+                            if let Ok(memory_info) = device.memory_info() {
+                                gpu_memory_total = Some(memory_info.total);
+                                gpu_memory_used = Some(memory_info.used);
+                                gpu_memory_usage = Some((memory_info.used as f32 / memory_info.total as f32) * 100.0);
+                            }
+                            
+                            if let Ok(name) = device.name() {
+                                gpu_name = Some(name);
                             }
                         }
                     }
-
-                    let timestamp = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .unwrap_or(Duration::ZERO)
-                        .as_secs();
-
-                    // Update shared stats
-                    if let Ok(mut stats) = stats.lock() {
-                        *stats = SystemStats {
-                            cpu_usage,
-                            memory_usage,
-                            memory_total,
-                            memory_used,
-                            gpu_usage,
-                            gpu_memory_usage,
-                            gpu_memory_total,
-                            gpu_memory_used,
-                            gpu_name,
-                            timestamp,
-                        };
-                    }
                 }
             }
-        });
-    }
 
-    pub fn get_stats(&self) -> SystemStats {
-        if let Ok(stats) = self.stats.lock() {
-            stats.clone()
+            let timestamp = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_secs();
+
+            SystemStats {
+                cpu_usage,
+                memory_usage,
+                memory_total,
+                memory_used,
+                gpu_usage,
+                gpu_memory_usage,
+                gpu_memory_total,
+                gpu_memory_used,
+                gpu_name,
+                timestamp,
+            }
         } else {
             SystemStats::default()
         }
@@ -192,9 +161,8 @@ static SYSTEM_MONITOR: OnceLock<SystemMonitor> = OnceLock::new();
 
 pub fn initialize_system_monitor() {
     let monitor = SystemMonitor::new();
-    monitor.start_monitoring();
     SYSTEM_MONITOR.set(monitor).expect("Failed to set system monitor");
-    info!("🖥️  System monitor initialized");
+    info!("🖥️  System monitor initialized (on-demand mode)");
 }
 
 pub fn get_system_stats() -> SystemStats {

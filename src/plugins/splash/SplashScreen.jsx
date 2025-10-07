@@ -2,10 +2,8 @@ import { createSignal, onMount, Show, For } from 'solid-js';
 import { IconFolder, IconPlus, IconFolderOpen, IconSettings, IconCode, IconRocket, IconBox, IconTrash } from '@tabler/icons-solidjs';
 import { getProjects, deleteProject } from '@/api/bridge/projects';
 import { sceneManager } from '@/api/scene/SceneManager.js';
-import { getProjectCacheStatus, ensureProjectCacheValid } from '@/api/bridge/projectCache.js';
 import AnimatedBackground from './AnimatedBackground';
 import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
-import ProjectProcessingProgress from '@/ui/ProjectProcessingProgress.jsx';
 
 export default function SplashScreen({ onProjectSelect }) {
   const [projects, setProjects] = createSignal([]);
@@ -19,18 +17,6 @@ export default function SplashScreen({ onProjectSelect }) {
   const [showDeleteDialog, setShowDeleteDialog] = createSignal(false);
   const [projectToDelete, setProjectToDelete] = createSignal(null);
   const [deletingProject, setDeletingProject] = createSignal(false);
-  
-  // Cache processing state
-  const [showProcessingDialog, setShowProcessingDialog] = createSignal(false);
-  const [processingProject, setProcessingProject] = createSignal(null);
-  const [processingProgress, setProcessingProgress] = createSignal(0);
-  const [processingStage, setProcessingStage] = createSignal('');
-  const [processingComplete, setProcessingComplete] = createSignal(false);
-  const [processingError, setProcessingError] = createSignal(null);
-  const [cacheStatus, setCacheStatus] = createSignal(null);
-  const [currentFile, setCurrentFile] = createSignal('');
-  const [filesProcessed, setFilesProcessed] = createSignal(0);
-  const [totalFiles, setTotalFiles] = createSignal(0);
 
   // Load projects from bridge
   const loadProjects = async () => {
@@ -70,81 +56,9 @@ export default function SplashScreen({ onProjectSelect }) {
     }
   };
 
-  // Handle project selection with cache processing
-  const handleProjectSelect = async (project) => {
-    try {
-      setProcessingProject(project);
-      setProcessingProgress(0);
-      setProcessingStage('Validating cache...');
-      setProcessingComplete(false);
-      setProcessingError(null);
-      setCurrentFile('');
-      setFilesProcessed(0);
-      setTotalFiles(0);
-      setShowProcessingDialog(true);
-
-      // Check cache status
-      const status = await getProjectCacheStatus(project.name);
-      setCacheStatus(status);
-
-      if (status.isValid) {
-        // Cache is valid, load instantly
-        setProcessingProgress(1);
-        setProcessingStage('Loading project...');
-        setProcessingComplete(true);
-        
-        setTimeout(() => {
-          setShowProcessingDialog(false);
-          onProjectSelect(project);
-        }, 500);
-      } else {
-        // Cache needs processing
-        setProcessingStage(`Processing ${status.changesDetected} changes...`);
-        
-        try {
-          await ensureProjectCacheValid(project.name, {
-            onProgress: (progressData) => {
-              console.log('Progress update:', progressData);
-              setProcessingProgress(progressData.progress || 0);
-              if (progressData.current_stage || progressData.stage) {
-                setProcessingStage(progressData.current_stage || progressData.stage);
-              }
-              if (progressData.currentFile) {
-                setCurrentFile(progressData.currentFile);
-              }
-              if (progressData.filesProcessed !== undefined) {
-                setFilesProcessed(progressData.filesProcessed);
-              }
-              if (progressData.totalFiles !== undefined) {
-                setTotalFiles(progressData.totalFiles);
-              }
-            },
-            onComplete: (result) => {
-              console.log('Processing completed:', result);
-              setProcessingComplete(true);
-              setProcessingStage('Cache updated successfully!');
-              setTimeout(() => {
-                setShowProcessingDialog(false);
-                onProjectSelect(project);
-              }, 1000);
-            },
-            onError: (error) => {
-              console.error('Processing error:', error);
-              setProcessingError(error);
-              setProcessingStage('Processing failed');
-            }
-          });
-        } catch (error) {
-          console.error('Failed to ensure cache valid:', error);
-          setProcessingError(error.message || 'Cache processing failed');
-          setProcessingStage('Processing failed');
-        }
-      }
-    } catch (error) {
-      console.error('Failed to process project:', error);
-      setProcessingError(error.message || 'Failed to process project');
-      setProcessingStage('Processing failed');
-    }
+  // Handle project selection directly
+  const handleProjectSelect = (project) => {
+    onProjectSelect(project);
   };
 
   // Load a specific scene and open project
@@ -153,8 +67,8 @@ export default function SplashScreen({ onProjectSelect }) {
       const project = selectedProject();
       if (!project) return;
       
-      // Use cache-aware project selection
-      await handleProjectSelect(project);
+      // Load project directly
+      handleProjectSelect(project);
       
       // Wait a bit for project to load, then load the scene
       setTimeout(async () => {
@@ -580,41 +494,6 @@ export default function SplashScreen({ onProjectSelect }) {
         </div>
       </Show>
 
-      {/* Cache Processing Dialog */}
-      <Show when={showProcessingDialog()}>
-        <div class="fixed inset-0 bg-base-100/80 backdrop-blur-md flex items-center justify-center p-4 z-[100] animate-in fade-in duration-300">
-          <ProjectProcessingProgress
-            title="Processing Project"
-            projectName={processingProject()?.name}
-            processing={!processingComplete() && !processingError()}
-            completed={processingComplete()}
-            error={processingError()}
-            progress={processingProgress()}
-            currentStage={processingStage()}
-            currentFile={currentFile()}
-            filesProcessed={filesProcessed()}
-            totalFiles={totalFiles()}
-            cacheStatus={cacheStatus()?.status}
-            changesDetected={cacheStatus()?.changesDetected}
-            changeSummary={cacheStatus()?.changeSummary}
-            onCancel={() => {
-              setShowProcessingDialog(false);
-              setProcessingProject(null);
-            }}
-            onRetry={() => {
-              if (processingProject()) {
-                handleProjectSelect(processingProject());
-              }
-            }}
-            onContinue={() => {
-              setShowProcessingDialog(false);
-              if (processingProject()) {
-                onProjectSelect(processingProject());
-              }
-            }}
-          />
-        </div>
-      </Show>
 
     </div>
   );
