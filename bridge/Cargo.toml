@@ -47,8 +47,6 @@ ahash = "0.8"
 # Draco compression via external binary
 which = "4.4"
 tmf = "0.2"
-wgpu = "0.19"
-pollster = "0.3"
 
 [features]
 default = []

@@ -48,6 +48,8 @@ function AssetLibrary({ onContextMenu }) {
   const [_showLoadingBar, _setShowLoadingBar] = createSignal(false);
   const [isDragOver, setIsDragOver] = createSignal(false);
   const [isUploading, setIsUploading] = createSignal(false);
+  const [isDeleting, setIsDeleting] = createSignal(false);
+  const [blockAllFetches, setBlockAllFetches] = createSignal(false);
   const [contextMenu, setContextMenu] = createSignal(null);
   const [_dragOverFolder, setDragOverFolder] = createSignal(null);
   const [dragOverTreeFolder, setDragOverTreeFolder] = createSignal(null);
@@ -588,6 +590,14 @@ function AssetLibrary({ onContextMenu }) {
 
   // Asset fetching and caching
   const fetchAssetsWithCache = async (currentProject, path = '', forceRefresh = false, showLoading = true) => {
+    console.log('🔄 fetchAssetsWithCache called:', { path, forceRefresh, showLoading, isUploading: isUploading(), isDeleting: isDeleting(), blockAllFetches: blockAllFetches() });
+    
+    // Block ALL refreshes during upload/delete operations or temporary block period
+    if (isUploading() || isDeleting() || blockAllFetches()) {
+      console.log('🚫 Blocking fetchAssetsWithCache - upload/delete/block state');
+      return;
+    }
+    
     const cachedAssets = !forceRefresh ? assetsActions.getAssetsForPath(path || currentPath()) : null;
     if (cachedAssets) {
       setAssets(cachedAssets);
@@ -618,9 +628,11 @@ function AssetLibrary({ onContextMenu }) {
   // Incremental file change handler
   const handleIncrementalFileChanges = async (currentProject, changes) => {
     // Process incremental file changes without full reload
+    console.log('🔍 Processing incremental changes for current path:', currentPath());
     
     const currentAssets = [...assets()];
     let updatedAssets = currentAssets;
+    let hasRelevantChanges = false;
     
     // Process all changes
     for (const change of changes) {
@@ -635,9 +647,12 @@ function AssetLibrary({ onContextMenu }) {
         const fileName = pathParts.pop();
         const parentPath = pathParts.join('/');
         
+        console.log(`📁 Checking change: ${event_type} ${relativePath} (parent: "${parentPath}", current: "${currentPath()}")`);
+        
         // Process changes in current directory
-        if (parentPath === currentPath() || (currentPath() === '' && parentPath === 'assets')) {
-          // Handle file system events in current directory
+        if (parentPath === currentPath() || (currentPath() === '' && parentPath === '')) {
+          console.log(`✅ Change affects current directory: ${event_type} ${fileName}`);
+          hasRelevantChanges = true;
           
           if (event_type === 'create') {
             // Check if file already exists in list
@@ -676,15 +691,23 @@ function AssetLibrary({ onContextMenu }) {
               // Asset modified
             }
           }
+        } else {
+          console.log(`🚫 Change doesn't affect current directory: ${event_type} ${relativePath}`);
         }
       }
     }
     
-    // Update the assets list with the changes
-    setAssets(updatedAssets);
-    
-    // Update cache with new asset list
-    assetsActions.setAssetsForPath(currentPath(), updatedAssets);
+    // Only update if there are relevant changes
+    if (hasRelevantChanges) {
+      console.log('📝 Updating assets list with relevant changes');
+      // Update the assets list with the changes
+      setAssets(updatedAssets);
+      
+      // Update cache with new asset list
+      assetsActions.setAssetsForPath(currentPath(), updatedAssets);
+    } else {
+      console.log('⏭️ No relevant changes for current directory, skipping update');
+    }
     
     // Check if any directory changes occurred and refresh tree if needed
     const hasDirectoryChanges = changes.some(change => 
@@ -696,6 +719,7 @@ function AssetLibrary({ onContextMenu }) {
     );
     
     if (hasDirectoryChanges) {
+      console.log('🌳 Directory changes detected, updating folder tree only');
       // Refresh folder tree to show new/removed directories
       updateFolderTreeIncrementally(currentProject);
     }
@@ -721,6 +745,13 @@ function AssetLibrary({ onContextMenu }) {
   // Event handlers
   const handleFileChange = async (changeData) => {
     // Handle file system changes
+    console.log('📂 handleFileChange called:', { source: changeData.source, isUploading: isUploading(), isDeleting: isDeleting(), changeData });
+    
+    // Skip SSE updates while uploading or deleting to prevent flicker
+    if ((isUploading() || isDeleting()) && changeData.source === 'sse') {
+      console.log('🚫 Skipping SSE update during upload/delete');
+      return;
+    }
     
     if (changeData.message) {
       const message = changeData.message.toLowerCase();
@@ -748,10 +779,34 @@ function AssetLibrary({ onContextMenu }) {
     }
     
     // For SSE file changes, do incremental updates
+    let changes = null;
+    
+    // Parse changes from SSE message format
     if (changeData.changes && Array.isArray(changeData.changes)) {
-      await handleIncrementalFileChanges(currentProject, changeData.changes);
+      changes = changeData.changes;
+    } else if (changeData.message) {
+      try {
+        // Fix common JSON escape issues in file paths
+        let cleanedMessage = changeData.message;
+        // Replace problematic escape sequences
+        cleanedMessage = cleanedMessage.replace(/\\\\/g, '/'); // Replace \\ with /
+        cleanedMessage = cleanedMessage.replace(/\\([^"\\\/bfnrtux])/g, '/$1'); // Fix invalid escapes
+        
+        const parsedMessage = JSON.parse(cleanedMessage);
+        if (parsedMessage.changes && Array.isArray(parsedMessage.changes)) {
+          changes = parsedMessage.changes;
+        }
+      } catch (e) {
+        console.error('Failed to parse SSE message even after cleanup:', e);
+        console.error('Original message:', changeData.message);
+      }
+    }
+    
+    if (changes) {
+      console.log('✅ Using incremental updates for changes:', changes);
+      await handleIncrementalFileChanges(currentProject, changes);
     } else {
-      // Fallback: refresh current directory and update tree
+      console.log('⚠️ Falling back to full refresh, changeData structure:', changeData);
       // Fallback: refresh current directory and update tree
       assetsActions.invalidateAssetPaths([currentPath()]);
       
@@ -806,10 +861,10 @@ function AssetLibrary({ onContextMenu }) {
               separateBy: 'material',
               createCollisionMeshes: false,
               enableLODs: false,
-              globalScale: 1.0
+              globalScale: 1.0,
+              dracoCompression: true // Moved to correct location for geometry compression
             },
             materials: {
-              dracoCompression: true, // Enable compression by default
               tmfEncoding: false,
               importMaterials: true,
               createUnlitMaterials: false,
@@ -857,15 +912,46 @@ function AssetLibrary({ onContextMenu }) {
         }
       }
       
-      // Files uploaded successfully - no cache processing needed
+      // Files uploaded successfully - add new files incrementally
+      // (SSE is disabled during upload to prevent flicker)
+      const newAssets = [];
+      for (const file of files) {
+        // Create asset object for each uploaded file
+        const assetPath = currentPath() ? `${currentPath()}/${file.name}` : file.name;
+        const hasExtension = file.name.includes('.');
+        
+        const newAsset = {
+          id: assetPath,
+          name: file.name,
+          path: assetPath,
+          type: 'file',
+          extension: hasExtension ? '.' + file.name.split('.').pop() : null,
+          size: file.size || 0,
+          fileName: file.name,
+          thumbnailUrl: null
+        };
+        newAssets.push(newAsset);
+      }
       
-      await fetchAssetsWithCache(currentProject, currentPath());
+      // Add new assets to current list
+      setAssets(prev => [...prev, ...newAssets]);
+      
+      // Update folder tree only if needed
+      await updateFolderTreeIncrementally(currentProject);
       
     } catch (error) {
       console.error('Error uploading files:', error);
       setError(`Failed to upload files: ${error.message}`);
     } finally {
+      console.log('🔄 Setting block flag and isUploading(false) - preventing immediate refresh');
+      setBlockAllFetches(true);
       setIsUploading(false);
+      
+      // Clear the block after a short delay to allow normal operations to resume
+      setTimeout(() => {
+        console.log('✅ Clearing fetch block - normal operations can resume');
+        setBlockAllFetches(false);
+      }, 2000);
     }
   };
 
@@ -1216,32 +1302,77 @@ function AssetLibrary({ onContextMenu }) {
         return;
       }
 
-      const assetsToDelete = filteredAssets().filter(asset => selectedAssets().has(asset.id));
-      let deletedCount = 0;
-      let failedCount = 0;
-      const failedFiles = [];
+      setIsDeleting(true);
       
-      for (const asset of assetsToDelete) {
-        try {
+      try {
+        const assetsToDelete = filteredAssets().filter(asset => selectedAssets().has(asset.id));
+        let deletedCount = 0;
+        let failedCount = 0;
+        const failedFiles = [];
+        const successfullyDeletedAssets = [];
+        
+        for (const asset of assetsToDelete) {
           // Use the correct path structure - assets are stored directly in the project folder
           const fullAssetPath = `projects/${currentProject.name}/${asset.path}`;
-          await deleteFile(fullAssetPath);
-          // Asset deleted
-          deletedCount++;
-        } catch (error) {
-          console.error('Failed to delete asset:', asset.name, error);
-          failedCount++;
-          failedFiles.push(asset.name);
+          
+          try {
+            await deleteFile(fullAssetPath);
+            // Asset deleted successfully
+            successfullyDeletedAssets.push(asset);
+            deletedCount++;
+          } catch (error) {
+            console.error('Failed to delete asset:', asset.name, error);
+            console.error('Delete error details:', {
+              assetName: asset.name,
+              assetPath: asset.path,
+              fullPath: fullAssetPath,
+              errorMessage: error.message,
+              errorStack: error.stack
+            });
+            
+            // If file doesn't exist, treat it as successfully "deleted" (remove from UI)
+            if (error.message && (error.message.includes('not found') || error.message.includes('does not exist'))) {
+              console.log('📁 File already deleted or missing, removing from UI:', asset.name);
+              successfullyDeletedAssets.push(asset);
+            } else {
+              failedCount++;
+              failedFiles.push(asset.name);
+            }
+          }
         }
-      }
-      
-      clearSelection();
-      await fetchAssetsWithCache(currentProject, currentPath(), true, false);
-      
-      if (failedCount > 0) {
-        setError(`Deleted ${deletedCount} files. Failed to delete ${failedCount} files with special characters: ${failedFiles.join(', ')}`);
-      } else if (deletedCount > 0) {
-        // Files deleted successfully
+        
+        clearSelection();
+        
+        // Remove only successfully deleted assets incrementally
+        // (SSE is disabled during delete to prevent flicker)
+        const deletedAssetIds = new Set(successfullyDeletedAssets.map(asset => asset.id));
+        console.log('🗑️ Removing deleted assets from UI:', deletedAssetIds);
+        setAssets(prev => {
+          const filtered = prev.filter(asset => !deletedAssetIds.has(asset.id));
+          console.log('📊 Assets before delete:', prev.length, 'after delete:', filtered.length);
+          return filtered;
+        });
+        
+        // Update folder tree only if needed
+        await updateFolderTreeIncrementally(currentProject);
+        
+        console.log('✅ Delete operation complete - assets should be removed from UI');
+        
+        if (failedCount > 0) {
+          setError(`Deleted ${deletedCount} files. Failed to delete ${failedCount} files with special characters: ${failedFiles.join(', ')}`);
+        } else if (deletedCount > 0) {
+          // Files deleted successfully
+        }
+      } finally {
+        console.log('🔄 Setting block flag and isDeleting(false) - preventing immediate refresh');
+        setBlockAllFetches(true);
+        setIsDeleting(false);
+        
+        // Clear the block after a short delay to allow normal operations to resume
+        setTimeout(() => {
+          console.log('✅ Clearing fetch block - normal operations can resume');
+          setBlockAllFetches(false);
+        }, 2000);
       }
     }
   };
@@ -1438,6 +1569,10 @@ function AssetLibrary({ onContextMenu }) {
   createEffect(() => {
     const currentProject = projectManager.getCurrentProject();
     if (!currentProject?.name) return;
+    
+    // Don't auto-fetch during upload/delete operations to prevent conflicts
+    if (isUploading() || isDeleting()) return;
+    
     
     if (viewMode() === 'folder') {
       fetchAssetsWithCache(currentProject, currentPath());

@@ -13,14 +13,6 @@ function AssetHeader({
   return (
     <div class="flex items-center gap-3">
           
-          <Show when={isUploading()}>
-            <div class="flex items-center gap-2 transition-all duration-300 opacity-100">
-              <div class="w-20 h-1.5 bg-base-300 rounded-full overflow-hidden">
-                <div class="h-full bg-primary rounded-full animate-pulse" style={{ width: '100%' }} />
-              </div>
-              <span class="text-xs text-base-content/60">Uploading...</span>
-            </div>
-          </Show>
           
           
           <button

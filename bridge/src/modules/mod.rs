@@ -3,8 +3,6 @@ pub mod handlers;
 pub mod file_watcher;
 pub mod file_sync;
 pub mod project_manager;
-pub mod thumbnail_generator;
-pub mod thumbnail_generators;
 pub mod update_manager;
 pub mod system_monitor;
 pub mod model_processor;

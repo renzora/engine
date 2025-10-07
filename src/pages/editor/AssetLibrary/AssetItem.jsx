@@ -1,9 +1,9 @@
 import { Show, createSignal, createEffect, onMount, onCleanup, createMemo } from 'solid-js';
 import { IconPhoto, IconCode, IconX, IconCheck, IconArrowRight, IconFolder, IconFileCode, IconCube, IconMusic, IconPlayerPlay } from '@tabler/icons-solidjs';
-import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getCurrentProject } from '@/api/bridge/projects';
 import MaterialThumbnail from '@/ui/MaterialThumbnail';
 import { isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
+import ImageThumbnail from './ImageThumbnail';
 
 const is3DModelFile = (extension) => {
   const modelExtensions = ['.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d'];
@@ -38,147 +38,6 @@ const isVideoFile = (extension) => {
   return videoExtensions.includes(extension?.toLowerCase() || '');
 };
 
-// Cache to prevent duplicate thumbnail requests for files that need generation
-const thumbnailRequestCache = new Set();
-
-const ImageThumbnail = ({ asset, size = 'w-full h-full' }) => {
-  const [imageLoaded, setImageLoaded] = createSignal(false);
-  const [imageError, setImageError] = createSignal(false);
-  
-  console.log(`🖼️ ImageThumbnail component rendered for: ${asset.name}`, {
-    hasAsset: !!asset,
-    thumbnailUrl: asset?.thumbnailUrl,
-    cached: asset?.cached,
-    extension: asset?.extension
-  });
-  
-  // Use createMemo to derive thumbnail URL once and keep it stable
-  const thumbnailUrl = createMemo(() => {
-    // If asset has a cached thumbnail URL, use it directly
-    if (asset?.thumbnailUrl) {
-      console.log(`📌 Using cached thumbnail URL for ${asset.name}: ${asset.thumbnailUrl}`);
-      return asset.thumbnailUrl;
-    }
-    
-    // If no cached URL, return null and let generation happen elsewhere
-    return null;
-  });
-  
-  // Generate thumbnails for all image types for consistency
-  const needsThumbnailGeneration = (extension) => {
-    const ext = extension?.toLowerCase();
-    // All image and model files get thumbnail generation
-    return ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tga', '.tiff', '.hdr', '.exr', '.glb', '.gltf', '.obj', '.fbx', '.dae', '.3ds', '.blend', '.max', '.ma', '.mb', '.stl', '.ply', '.x3d'].includes(ext);
-  };
-  
-  // Handle generation for assets without cached URLs
-  const [thumbnailGenerating, setThumbnailGenerating] = createSignal(false);
-  
-  createEffect(() => {
-    // Only generate if we don't have a cached URL and this file needs thumbnails
-    if (asset?.thumbnailUrl || !needsThumbnailGeneration(asset?.extension) || asset?.cached) {
-      return;
-    }
-    
-    const cacheKey = `${getCurrentProject()?.name || 'unknown'}:${asset.path || asset.name}`;
-    
-    if (!thumbnailRequestCache.has(cacheKey)) {
-      const currentProject = getCurrentProject();
-      if (currentProject?.name) {
-        setThumbnailGenerating(true);
-        thumbnailRequestCache.add(cacheKey);
-        
-        console.log(`🔄 Generating thumbnail for ${asset.extension} file: ${asset.name}`);
-        
-        (async () => {
-          try {
-            const thumbnailResponse = await generateThumbnail(asset.path || asset.name, 256);
-            
-            if (thumbnailResponse.success && thumbnailResponse.thumbnail_file) {
-              console.log(`✅ Generated thumbnail for ${asset.name}: ${thumbnailResponse.thumbnail_file}`);
-              // Don't set URL here - it will be available in cache on next load
-            } else {
-              console.error(`❌ Failed to generate thumbnail for ${asset.name}:`, thumbnailResponse);
-              setImageError(true);
-              thumbnailRequestCache.delete(cacheKey);
-            }
-          } catch (error) {
-            console.error(`❌ Error generating thumbnail for ${asset.name}:`, error);
-            setImageError(true);
-            thumbnailRequestCache.delete(cacheKey);
-          } finally {
-            setThumbnailGenerating(false);
-          }
-        })();
-      }
-    }
-  });
-  
-  if (!thumbnailUrl()) {
-    console.log(`⚠️ No thumbnail URL for ${asset.name}, showing placeholder`);
-    return (
-      <div class={`${size} bg-base-300 flex items-center justify-center`}>
-        <Show when={thumbnailGenerating()} fallback={
-          <>
-            <IconPhoto class="w-10 h-10 text-base-content/60" />
-            <div class="absolute bottom-1 right-1 text-xs text-warning bg-warning/10 px-1 rounded">
-              No URL
-            </div>
-          </>
-        }>
-          <div class="flex flex-col items-center justify-center">
-            <IconPhoto class="w-10 h-10 text-primary" />
-            <div class="text-xs text-primary mt-1">Generating...</div>
-            <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin mt-2"></div>
-          </div>
-        </Show>
-      </div>
-    );
-  }
-  
-  console.log(`🎨 Rendering image for ${asset.name} with URL: ${thumbnailUrl()}`);
-  
-  return (
-    <div class={`${size} bg-base-300 overflow-hidden relative`}>
-      <Show when={!imageError()} fallback={
-        <div class="w-full h-full flex items-center justify-center">
-          <IconPhoto class="w-10 h-10 text-base-content/60" />
-          <div class="absolute bottom-1 right-1 text-xs text-error bg-error/10 px-1 rounded">
-            Error
-          </div>
-        </div>
-      }>
-        <img 
-          src={thumbnailUrl()}
-          alt={asset.name}
-          class={`w-full h-full object-cover transition-all duration-300 ${
-            imageLoaded() ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-          } hover:scale-105 cursor-pointer`}
-          style={{
-            "image-rendering": "auto",
-            "background-color": "var(--fallback-bc,oklch(var(--bc)/0.2))"
-          }}
-          onLoad={() => {
-            console.log(`✅ Image loaded successfully: ${asset.name}`);
-            setImageLoaded(true);
-            setImageError(false);
-          }}
-          onError={(e) => {
-            console.error(`❌ Image failed to load: ${asset.name}`, e);
-            console.error(`❌ Failed URL: ${thumbnailUrl()}`);
-            setImageError(true);
-            setImageLoaded(false);
-          }}
-        />
-        <Show when={!imageLoaded() && !imageError()}>
-          <div class="absolute inset-0 bg-base-300 flex items-center justify-center">
-            <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-          </div>
-        </Show>
-      </Show>
-    </div>
-  );
-};
 
 function AssetItem({
   asset,

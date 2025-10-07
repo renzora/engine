@@ -44,16 +44,6 @@ function AssetUploadArea({
         </div>
       </Show>
       
-      <Show when={isUploading()}>
-        <div class="flex-1 flex items-center justify-center">
-          <div class="text-center text-primary">
-            <div class="flex items-center justify-center gap-2">
-              <div class="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-              <p class="text-sm">Uploading files...</p>
-            </div>
-          </div>
-        </div>
-      </Show>
       
       <Show when={isDragOver()}>
         <div class="absolute inset-0 flex items-center justify-center bg-primary/20 backdrop-blur-sm z-10">
@@ -67,7 +57,7 @@ function AssetUploadArea({
         </div>
       </Show>
       
-      <Show when={!loading() && !error() && !isUploading()}>
+      <Show when={!loading() && !error()}>
         <Show when={filteredAssets().length === 0}>
           <div class="flex-1 flex items-center justify-center">
             <Show when={searchQuery()} fallback={
