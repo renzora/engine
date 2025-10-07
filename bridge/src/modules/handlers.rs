@@ -23,13 +23,13 @@ use crate::model_converter::{convert_model_to_glb_and_extract, ImportMode, Compr
 use crate::project_manager::get_projects_path;
 use crate::renscript_compiler::compile_renscript;
 use std::fs;
-use crate::database::DatabaseManager;
+// Database removed - using Redis-only caching
 use crate::modules::redis_cache::{RedisCache, CachedAssetNode, ProjectAssetTree};
 use crate::renscript_cache::RenScriptCache;
 
 // Static variables for shared state
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
-static DATABASE: OnceLock<Arc<DatabaseManager>> = OnceLock::new();
+// Database removed - using Redis-only caching
 static REDIS_CACHE: OnceLock<Arc<tokio::sync::Mutex<RedisCache>>> = OnceLock::new();
 static RENSCRIPT_CACHE: OnceLock<Arc<RenScriptCache>> = OnceLock::new();
 
@@ -37,9 +37,7 @@ pub fn set_startup_time(timestamp: u64) {
     STARTUP_TIME.set(timestamp).ok();
 }
 
-pub fn set_database(database: Arc<DatabaseManager>) {
-    DATABASE.set(database).ok();
-}
+// Database functions removed - using Redis-only caching
 
 pub fn set_redis_cache(redis_cache: Arc<tokio::sync::Mutex<RedisCache>>) {
     REDIS_CACHE.set(redis_cache).ok();
@@ -241,12 +239,7 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
         (&Method::POST, "/renscripts/cache/refresh") => {
             return Ok(handle_refresh_renscript_cache().await);
         }
-        (&Method::POST, "/database/query") => {
-            match &body {
-                Some(body_content) => return Ok(handle_database_query(body_content).await),
-                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
-            }
-        }
+        // Database query endpoint removed - using Redis-only caching
         (&Method::GET, path) if path.starts_with("/file/") => {
             let file_path = &path[6..];
             let decoded_path = match decode_url_path(file_path) {
@@ -1059,39 +1052,38 @@ async fn handle_search_scripts(query: &str) -> Response<BoxBody<Bytes, Infallibl
         }
     }
     
-    // Cache miss - search database
-    let database = match DATABASE.get() {
-        Some(db) => db,
-        None => {
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "Database not initialized");
-        }
-    };
-    
-    let results = if search_term.is_empty() {
-        database.get_all_scripts().await
-    } else {
-        database.search_scripts(&search_term).await
-    };
-    
-    match results {
-        Ok(scripts) => {
-            // Cache the results
-            if let Some(redis_cache) = REDIS_CACHE.get() {
-                let mut cache = redis_cache.lock().await;
-                cache.cache_script_list(&scripts);
+    // Cache miss - use RenScript cache instead of database
+    if let Some(renscript_cache) = RENSCRIPT_CACHE.get() {
+        match if search_term.is_empty() {
+            renscript_cache.get_all_scripts().await
+        } else {
+            renscript_cache.search(&search_term).await
+        } {
+            Ok(scripts) => {
+                // Convert RenScript entries to the expected format
+                let script_results: Vec<_> = scripts.into_iter().map(|script| {
+                    serde_json::json!({
+                        "name": script.name,
+                        "path": script.path,
+                        "directory": script.directory,
+                        "last_modified": 0 // RenScript cache doesn't track modification time
+                    })
+                }).collect();
+                
+                let response = ApiResponse {
+                    success: true,
+                    content: Some(serde_json::to_string(&script_results).unwrap()),
+                    error: None,
+                };
+                json_response(&response)
             }
-            
-            let response = ApiResponse {
-                success: true,
-                content: Some(serde_json::to_string(&scripts).unwrap()),
-                error: None,
-            };
-            json_response(&response)
+            Err(e) => {
+                error!("❌ Failed to search RenScript cache: {}", e);
+                error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("RenScript cache search failed: {}", e))
+            }
         }
-        Err(e) => {
-            error!("❌ Failed to search scripts: {}", e);
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, &format!("Database search failed: {}", e))
-        }
+    } else {
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, "RenScript cache not initialized")
     }
 }
 
@@ -1133,25 +1125,12 @@ async fn handle_cache_stats() -> Response<BoxBody<Bytes, Infallible>> {
         stats["redis"] = cache.get_cache_stats();
     }
     
-    // Get Database stats
-    if let Some(database) = DATABASE.get() {
-        match database.get_compilation_stats().await {
-            Ok(db_stats) => {
-                stats["database"] = serde_json::json!({
-                    "enabled": true,
-                    "status": "connected",
-                    "stats": db_stats
-                });
-            }
-            Err(e) => {
-                stats["database"] = serde_json::json!({
-                    "enabled": true,
-                    "status": "error",
-                    "error": e.to_string()
-                });
-            }
-        }
-    }
+    // Database removed - using Redis-only caching
+    stats["database"] = serde_json::json!({
+        "enabled": false,
+        "status": "removed",
+        "note": "Using Redis-only caching for better performance"
+    });
     
     let response = ApiResponse {
         success: true,
@@ -1285,35 +1264,7 @@ async fn handle_refresh_renscript_cache() -> Response<BoxBody<Bytes, Infallible>
     }
 }
 
-async fn handle_database_query(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
-    #[derive(serde::Deserialize)]
-    struct QueryRequest {
-        query: String,
-    }
-
-    let request: QueryRequest = match serde_json::from_str(body) {
-        Ok(req) => req,
-        Err(e) => {
-            error!("❌ Failed to parse database query request: {}", e);
-            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
-        }
-    };
-
-    if let Some(database) = DATABASE.get() {
-        match database.execute_raw_query(&request.query).await {
-            Ok(results) => {
-                info!("✅ Database query executed successfully");
-                json_response(&results)
-            }
-            Err(e) => {
-                error!("❌ Database query failed: {}", e);
-                error_response(StatusCode::BAD_REQUEST, &e.to_string())
-            }
-        }
-    } else {
-        error_response(StatusCode::SERVICE_UNAVAILABLE, "Database not available")
-    }
-}
+// Database query function removed - using Redis-only caching
 
 // Project Cache Handlers
 

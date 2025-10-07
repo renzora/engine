@@ -1,16 +1,25 @@
-use redis::{RedisResult, Connection, Commands};
+use redis::{RedisResult, Connection, Commands, Client};
 use serde::{Serialize, Deserialize};
 use std::time::{SystemTime, UNIX_EPOCH};
-use log::{info, warn, debug};
+use log::{info, warn, debug, error};
 
 pub struct RedisCache {
     connection: Option<Connection>,
+    client: Option<Client>,
     enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScriptSearchResult {
+    pub name: String,
+    pub path: String,
+    pub directory: String,
+    pub last_modified: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CachedScriptList {
-    pub scripts: Vec<crate::modules::database::ScriptSearchResult>,
+    pub scripts: Vec<ScriptSearchResult>,
     pub timestamp: u64,
     pub total_count: usize,
 }
@@ -89,6 +98,7 @@ impl RedisCache {
     pub fn new() -> Self {
         let mut cache = RedisCache {
             connection: None,
+            client: None,
             enabled: false,
         };
         
@@ -120,6 +130,7 @@ impl RedisCache {
                         Ok(_) => {
                             debug!("🔴 Redis connection established on attempt {}", attempt);
                             self.connection = Some(connection);
+                            self.client = Some(client);
                             return Ok(());
                         }
                         Err(e) => {
@@ -144,11 +155,44 @@ impl RedisCache {
         }))
     }
 
+    // Reconnect if connection is lost
+    fn ensure_connection(&mut self) -> RedisResult<()> {
+        if let Some(ref mut conn) = self.connection {
+            // Test if connection is still alive
+            match redis::cmd("PING").query::<String>(conn) {
+                Ok(_) => return Ok(()), // Connection is fine
+                Err(_) => {
+                    warn!("🔴 Redis connection lost, attempting to reconnect...");
+                    self.connection = None;
+                }
+            }
+        }
+
+        // Reconnect using stored client
+        if let Some(ref client) = self.client {
+            match client.get_connection() {
+                Ok(connection) => {
+                    info!("🔴 Redis connection restored");
+                    self.connection = Some(connection);
+                    Ok(())
+                }
+                Err(e) => {
+                    error!("🔴 Failed to restore Redis connection: {}", e);
+                    self.enabled = false;
+                    Err(e)
+                }
+            }
+        } else {
+            // Try to reconnect from scratch
+            self.try_connect()
+        }
+    }
+
     pub fn is_enabled(&self) -> bool {
         self.enabled && self.connection.is_some()
     }
 
-    pub fn cache_script_list(&mut self, scripts: &[crate::modules::database::ScriptSearchResult]) -> bool {
+    pub fn cache_script_list(&mut self, scripts: &[ScriptSearchResult]) -> bool {
         if !self.is_enabled() {
             return false;
         }
@@ -188,7 +232,7 @@ impl RedisCache {
         }
     }
 
-    pub fn get_cached_script_list(&mut self) -> Option<Vec<crate::modules::database::ScriptSearchResult>> {
+    pub fn get_cached_script_list(&mut self) -> Option<Vec<ScriptSearchResult>> {
         if !self.is_enabled() {
             return None;
         }
@@ -355,38 +399,45 @@ impl RedisCache {
         }
     }
 
-    pub async fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
+    pub async fn set_string(&mut self, key: &str, value: &str) -> Result<(), String> {
         if !self.is_enabled() {
             return Err("Redis not enabled".to_string());
         }
 
-        // Since we can't modify self.connection (it's not mutable), we'll create a new connection
-        let client = redis::Client::open("redis://127.0.0.1:6379/")
-            .map_err(|e| format!("Failed to create Redis client: {}", e))?;
-        let mut conn = client.get_connection()
-            .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
-        
-        let _: () = conn.set_ex(key, value, 300) // 5 minutes TTL
-            .map_err(|e| format!("Failed to set value in Redis: {}", e))?;
-        
-        Ok(())
+        // Ensure connection is alive
+        if let Err(e) = self.ensure_connection() {
+            return Err(format!("Failed to ensure Redis connection: {}", e));
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let result: RedisResult<()> = conn.set_ex(key, value, 300); // 5 minutes TTL
+                result.map_err(|e| format!("Failed to set value in Redis: {}", e))
+            }
+            None => Err("Redis connection not available".to_string())
+        }
     }
 
-    pub async fn get_string(&self, key: &str) -> Result<Option<String>, String> {
+    pub async fn get_string(&mut self, key: &str) -> Result<Option<String>, String> {
         if !self.is_enabled() {
             return Ok(None);
         }
 
-        // Since we can't modify self.connection (it's not mutable), we'll create a new connection
-        let client = redis::Client::open("redis://127.0.0.1:6379/")
-            .map_err(|e| format!("Failed to create Redis client: {}", e))?;
-        let mut conn = client.get_connection()
-            .map_err(|e| format!("Failed to get Redis connection: {}", e))?;
-        
-        let result: RedisResult<String> = conn.get(key);
-        match result {
-            Ok(value) => Ok(Some(value)),
-            Err(_) => Ok(None), // Key doesn't exist or other error
+        // Ensure connection is alive
+        if let Err(e) = self.ensure_connection() {
+            warn!("Failed to ensure Redis connection for get: {}", e);
+            return Ok(None);
+        }
+
+        match self.connection.as_mut() {
+            Some(conn) => {
+                let result: RedisResult<String> = conn.get(key);
+                match result {
+                    Ok(value) => Ok(Some(value)),
+                    Err(_) => Ok(None), // Key doesn't exist or other error
+                }
+            }
+            None => Ok(None)
         }
     }
 

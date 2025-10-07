@@ -50,18 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Initialize system monitor
     initialize_system_monitor();
     
-    // Initialize database (in-memory for testing)
-    info!("📊 Initializing in-memory database for testing...");
-    let database = match DatabaseManager::new(":memory:").await {
-        Ok(db) => {
-            info!("📊 Database ready");
-            Arc::new(db)
-        }
-        Err(e) => {
-            error!("❌ Failed to initialize database: {}", e);
-            return Err(e);
-        }
-    };
+    // Database removed - using Redis-only caching
     
     // Start embedded Redis server
     info!("🔴 Starting embedded Redis server...");
@@ -85,9 +74,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("🔴 Initializing Redis cache...");
     let redis_cache = Arc::new(tokio::sync::Mutex::new(RedisCache::new()));
     
-    // Initialize RenScript cache
+    // Initialize RenScript cache with Redis integration
     info!("📜 Initializing RenScript cache...");
-    let renscript_cache = Arc::new(RenScriptCache::new(None)); // For now, skip Redis integration
+    let renscript_cache = Arc::new(RenScriptCache::new(Some(redis_cache.clone())));
     
     // Initialize the RenScript cache with directory scanning
     let renscripts_path = base_path.join("renscripts");
@@ -97,7 +86,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Set state in handlers module
     set_startup_time(startup_time);
-    set_database(database);
     set_redis_cache(redis_cache);
     set_renscript_cache(renscript_cache);
     
