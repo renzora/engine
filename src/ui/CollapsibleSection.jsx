@@ -13,7 +13,7 @@ function CollapsibleSection({
   
   const toggle = () => setIsOpen(!isOpen())
   
-  const getDynamicHeaderStyle = (title) => {
+  const getDynamicHeaderStyle = () => {
     return 'bg-base-300 text-base-content'
   }
   

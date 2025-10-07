@@ -13,8 +13,8 @@ function AssetUploadArea({
   assetCategories,
   fileInputRef,
   folderInputRef,
-  onFileInputChange,
-  onFolderInputChange
+  _onFileInputChange,
+  _onFolderInputChange
 }) {
   const getCategoryIcon = (categoryId) => {
     const iconMap = {

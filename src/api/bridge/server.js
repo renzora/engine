@@ -48,7 +48,7 @@ export async function isServerConnected() {
   try {
     await getHealth();
     return true;
-  } catch (error) {
+  } catch {
     return false;
   }
 }

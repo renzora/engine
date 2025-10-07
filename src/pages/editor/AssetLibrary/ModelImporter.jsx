@@ -1,5 +1,5 @@
-import { createSignal, createEffect, Show, For } from 'solid-js';
-import { IconX, IconChevronDown, IconChevronRight, IconUpload, IconSettings, IconDownload, IconFolderOpen, IconAlertTriangle, IconCheckCircle, IconCircle } from '@tabler/icons-solidjs';
+import { createSignal, Show, For } from 'solid-js';
+import { IconX, IconChevronDown, IconChevronRight, IconUpload, IconFolderOpen } from '@tabler/icons-solidjs';
 import { bridgeService } from '@/plugins/core/bridge';
 import { getCurrentProject } from '@/api/bridge/projects';
 import { modelProcessor } from './ModelProcessor';
@@ -80,8 +80,6 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
       useSettingsForSubsequentFiles: true
     }
   });
-
-  let fileInputRef;
 
   const toggleSection = (sectionName) => {
     console.log('Toggling section:', sectionName);
@@ -174,7 +172,7 @@ function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
           setImportProgress(fileProgress + 50);
           
           const fileName = file.name;
-          const fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
+          const _fileNameWithoutExt = fileName.replace(/\.[^/.]+$/, "");
           
           // Use context current path exactly, or project root if not specified
           const currentPath = context()?.currentPath || '';

@@ -7,12 +7,10 @@
 
 import { 
   Vector3, 
-  Quaternion, 
   Matrix, 
   Space,
   Tools,
   Animation,
-  AnimationKeys,
   BezierCurveEase,
   CircleEase,
   BackEase,
@@ -202,7 +200,7 @@ export class TransformAPI {
    * @param {Object|Array} target - Babylon object or [x,y,z] array
    * @param {Array} up - Up vector [x,y,z], defaults to [0,1,0]
    */
-  lookAt(target, up = [0, 1, 0]) {
+  lookAt(target, _up = [0, 1, 0]) {
     if (!this.babylonObject?.lookAt) return false;
     
     let targetPos;

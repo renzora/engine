@@ -3,7 +3,7 @@ import { IconChevronRight } from '@tabler/icons-solidjs';
 
 // Recursive submenu component for unlimited nesting
 const SubmenuRenderer = ({ items, level = 0, onClose, position, preferredDirection = null }) => {
-  let menuRef;
+  let menuRef = null;
   const [menuPosition, setMenuPosition] = createSignal(position || { top: 0, left: 0 });
   const [hoveredItem, setHoveredItem] = createSignal(null);
   const [activeSubmenu, setActiveSubmenu] = createSignal(null);

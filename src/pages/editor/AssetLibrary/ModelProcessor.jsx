@@ -129,7 +129,7 @@ export class ModelProcessor {
     };
 
     // Analyze meshes
-    importResult.meshes.forEach((mesh, index) => {
+    importResult.meshes.forEach((mesh, _index) => {
       const meshInfo = {
         name: mesh.name,
         id: mesh.id,
@@ -375,7 +375,7 @@ export class ModelProcessor {
       });
 
       // Save material definitions
-      for (const [materialId, material] of materials) {
+      for (const [_materialId, material] of materials) {
         onProgress?.(++progressCount / totalOperations);
         
         const materialData = {
@@ -448,7 +448,7 @@ export class ModelProcessor {
       .toLowerCase();
   }
 
-  async performDeepSceneAnalysis(file, serverResult, settings) {
+  async performDeepSceneAnalysis(file, _serverResult, _settings) {
     try {
       this.initTempScene();
       
@@ -637,7 +637,7 @@ export class ModelProcessor {
 
   detectLodGroup(mesh) {
     const name = mesh.name.toLowerCase();
-    const lodMatch = name.match(/lod[_\-]?(\d+)/);
+    const lodMatch = name.match(/lod[_-]?(\d+)/);
     return lodMatch ? `lod_group_${lodMatch[1]}` : null;
   }
 
@@ -1172,10 +1172,10 @@ export class ModelProcessor {
     
     // Group meshes by LOD patterns
     importResult.meshes.forEach(mesh => {
-      const lodMatch = mesh.name.toLowerCase().match(/lod[_\-]?(\d+)/);
+      const lodMatch = mesh.name.toLowerCase().match(/lod[_-]?(\d+)/);
       if (lodMatch) {
         const level = parseInt(lodMatch[1]);
-        const baseName = mesh.name.replace(/lod[_\-]?\d+/i, '').trim();
+        const baseName = mesh.name.replace(/lod[_-]?\d+/i, '').trim();
         
         if (!lodGroups.has(baseName)) {
           lodGroups.set(baseName, []);
@@ -1185,10 +1185,10 @@ export class ModelProcessor {
     });
     
     // Create LOD level data
-    lodGroups.forEach((lods, baseName) => {
+    lodGroups.forEach((lods, _baseName) => {
       lods.sort((a, b) => a.level - b.level);
       
-      lods.forEach((lod, index) => {
+      lods.forEach((lod, _index) => {
         const baseVertices = lods[0].mesh.getTotalVertices();
         const currentVertices = lod.mesh.getTotalVertices();
         const vertexReduction = 1.0 - (currentVertices / baseVertices);

@@ -2,7 +2,6 @@ import { createSignal, onMount, Show } from 'solid-js';
 import { Select } from '@/ui';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
-import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
 import { IconDeviceDesktop, IconSettings, IconPalette, IconUser, IconAdjustments } from '@tabler/icons-solidjs';
 
 function Settings() {

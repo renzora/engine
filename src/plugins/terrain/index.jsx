@@ -1,7 +1,7 @@
 import { createPlugin } from '@/api/plugin';
-import { IconMountain, IconBrush } from '@tabler/icons-solidjs';
+import { IconMountain } from '@tabler/icons-solidjs';
 import TerrainPropertiesPanel from './TerrainPropertiesPanel.jsx';
-import { renderStore, renderActions } from '@/render/store.jsx';
+import { renderStore } from '@/render/store.jsx';
 import { editorActions, editorStore } from '@/layout/stores/EditorStore.jsx';
 import { addObjectToHierarchy } from '@/api/creation/ObjectCreationUtils.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
@@ -98,7 +98,7 @@ const updateTerrainHeightmap = (terrainMesh, x, z, tool, brushSize, brushStrengt
   
   // Ensure we have heightmap data
   if (!terrainData.heightmapData || terrainData.heightmapData.length !== verticesPerSide * verticesPerSide) {
-    terrainData.heightmapData = new Array(verticesPerSide * verticesPerSide).fill(0);
+    terrainData.heightmapData = Array.from({ length: verticesPerSide * verticesPerSide }, () => 0);
   }
   
   const heightmapData = terrainData.heightmapData;
@@ -292,58 +292,6 @@ const createBrushCursor = (scene, brushSize) => {
   return brushCursorMesh;
 };
 
-// Sample terrain height at a given world position
-const sampleTerrainHeight = (terrainMesh, worldX, worldZ) => {
-  if (!terrainMesh || !terrainMesh._terrainData) return 0;
-  
-  const terrainData = terrainMesh._terrainData;
-  const terrainSize = terrainData.size;
-  const subdivisions = terrainData.subdivisions;
-  const heightmapData = terrainData.heightmapData;
-  const verticesPerSide = subdivisions + 1;
-  
-  // Account for terrain scaling - transform world coordinates to original terrain space
-  const scaleX = terrainMesh.scaling.x;
-  const scaleZ = terrainMesh.scaling.z;
-  
-  // Transform coordinates back to original terrain space
-  const originalX = worldX / scaleX;
-  const originalZ = worldZ / scaleZ;
-  
-  // Convert world coordinates to heightmap coordinates (relative to terrain center)
-  const halfSize = terrainSize / 2;
-  const localX = originalX + halfSize;
-  const localZ = originalZ + halfSize;
-  
-  // Convert to grid coordinates
-  const gridX = (localX / terrainSize) * subdivisions;
-  const gridZ = (localZ / terrainSize) * subdivisions;
-  
-  // Clamp to valid range
-  const clampedX = Math.max(0, Math.min(subdivisions, gridX));
-  const clampedZ = Math.max(0, Math.min(subdivisions, gridZ));
-  
-  // Bilinear interpolation for smooth height sampling
-  const x0 = Math.floor(clampedX);
-  const x1 = Math.min(subdivisions, x0 + 1);
-  const z0 = Math.floor(clampedZ);
-  const z1 = Math.min(subdivisions, z0 + 1);
-  
-  const fx = clampedX - x0;
-  const fz = clampedZ - z0;
-  
-  const h00 = heightmapData[z0 * verticesPerSide + x0] || 0;
-  const h10 = heightmapData[z0 * verticesPerSide + x1] || 0;
-  const h01 = heightmapData[z1 * verticesPerSide + x0] || 0;
-  const h11 = heightmapData[z1 * verticesPerSide + x1] || 0;
-  
-  // Bilinear interpolation
-  const h0 = h00 * (1 - fx) + h10 * fx;
-  const h1 = h01 * (1 - fx) + h11 * fx;
-  const height = h0 * (1 - fz) + h1 * fz;
-  
-  return height;
-};
 
 // Update brush cursor position and size
 const updateBrushCursor = (scene, pickedPoint, brushSize, terrainMesh) => {
@@ -389,45 +337,6 @@ const updateBrushCursor = (scene, pickedPoint, brushSize, terrainMesh) => {
   console.log('Brush cursor updated - position:', brushCursorMesh.position, 'scale:', scaleFactor, 'enabled:', brushCursorMesh.isEnabled());
 };
 
-// Deform the cursor mesh to conform to the terrain surface
-const conformCursorToTerrain = (cursorMesh, terrainMesh, centerPoint, radius) => {
-  if (!cursorMesh || !terrainMesh) return;
-  
-  const positions = cursorMesh.getVerticesData('position');
-  if (!positions) return;
-  
-  // Convert world position to terrain local coordinates
-  const terrainLocalCenter = centerPoint.subtract(terrainMesh.position);
-  
-  // Update each vertex height to match terrain
-  for (let i = 0; i < positions.length; i += 3) {
-    // Get vertex position in cursor local space
-    const localX = positions[i];
-    const localZ = positions[i + 2];
-    
-    // Convert to world space (accounting for cursor scaling)
-    const scale = cursorMesh.scaling.x;
-    const worldX = terrainLocalCenter.x + (localX * scale);
-    const worldZ = terrainLocalCenter.z + (localZ * scale);
-    
-    // Sample terrain height at this position
-    const terrainHeight = sampleTerrainHeight(terrainMesh, worldX, worldZ);
-    
-    // Set Y position to match terrain height (in cursor local space)
-    positions[i + 1] = (terrainHeight - centerPoint.y) / scale;
-  }
-  
-  // Update the mesh geometry
-  cursorMesh.updateVerticesData('position', positions, true);
-  
-  // Recalculate normals
-  const indices = cursorMesh.getIndices();
-  if (indices) {
-    const normals = [];
-    VertexData.ComputeNormals(positions, indices, normals);
-    cursorMesh.updateVerticesData('normal', normals, true);
-  }
-};
 
 // Handle mouse movement for brush cursor
 const handleMouseMove = (pointerInfo) => {
@@ -520,7 +429,7 @@ const handleMouseMove = (pointerInfo) => {
   }
 };
 
-const handleTerrainEdit = (pointerInfo) => {
+const handleTerrainEdit = (_pointerInfo) => {
   console.log('Terrain edit attempt - isEditMode:', isTerrainEditMode());
   
   if (!isTerrainEditMode()) return false;
@@ -805,7 +714,7 @@ const handleCreateTerrain = async () => {
     
     // Initialize heightmap data for editing
     const verticesPerSide = subdivisions + 1;
-    const initialHeightmap = new Array(verticesPerSide * verticesPerSide).fill(0);
+    const initialHeightmap = Array.from({ length: verticesPerSide * verticesPerSide }, () => 0);
     
     // Create terrain mesh using custom function for proper editing support
     const terrainMesh = createTerrainMesh('terrain', terrainSize, subdivisions, initialHeightmap, scene);
@@ -833,7 +742,7 @@ const handleCreateTerrain = async () => {
     
     
     // Use unified folder-aware creation system
-    const objectId = addObjectToHierarchy(terrainMesh, 'Terrain', true);
+    const _objectId = addObjectToHierarchy(terrainMesh, 'Terrain', true);
     editorActions.addConsoleMessage('Created terrain. Switch to Sculpting mode from the toolbar dropdown to start editing.', 'info');
     
   } catch (error) {
@@ -842,16 +751,6 @@ const handleCreateTerrain = async () => {
   }
 };
 
-const generateSimpleHeightmap = (width, height) => {
-  const data = new Array(width * height);
-  
-  // Create a flat plane with slight elevation to make it visible
-  for (let i = 0; i < data.length; i++) {
-    data[i] = 0.1; // Small elevation to ensure visibility
-  }
-  
-  return data;
-};
 
 const createTerrainMesh = (name, size, subdivisions, heightmapData, scene) => {
   const positions = [];

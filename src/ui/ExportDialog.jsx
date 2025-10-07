@@ -1,4 +1,4 @@
-import { createSignal, Show, For } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 import { exportManager } from '@/api/export/ExportManager.js';
 import { getCurrentProject } from '@/api/bridge/projects';
 
@@ -6,7 +6,6 @@ import { getCurrentProject } from '@/api/bridge/projects';
  * ExportDialog - UI for exporting projects
  */
 export default function ExportDialog(props) {
-  const [isOpen, setIsOpen] = createSignal(false);
   const [isExporting, setIsExporting] = createSignal(false);
   const [exportProgress, setExportProgress] = createSignal(0);
   const [exportStatus, setExportStatus] = createSignal('');

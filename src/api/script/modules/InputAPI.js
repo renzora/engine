@@ -424,7 +424,7 @@ export class InputAPI {
 
   // === VIRTUAL JOYSTICKS ===
   
-  createVirtualJoystick(position = 'left') {
+  createVirtualJoystick() {
     console.warn('Virtual joystick creation requires UI implementation');
     return null;
   }

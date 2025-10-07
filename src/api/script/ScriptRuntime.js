@@ -203,7 +203,7 @@ class ScriptRuntime {
       // Registering with script manager
       
       // Register with script manager
-      const registerSuccess = this.scriptManager.registerScript(scriptPath, ScriptClass);
+      this.scriptManager.registerScript(scriptPath, ScriptClass);
       // Script registration completed
       
       // Attaching script to object
@@ -426,7 +426,7 @@ class ScriptRuntime {
    * Enable debug mode for more verbose logging
    * @param {boolean} enabled - Whether to enable debug mode
    */
-  setDebugMode(enabled) {
+  setDebugMode() {
     // Could be used to enable more verbose logging in the future
     // Debug mode toggle
   }

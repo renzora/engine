@@ -16,7 +16,7 @@ function BridgeFooterButton() {
         timeout: 2000
       });
       setIsOnline(response.ok);
-    } catch (error) {
+    } catch {
       setIsOnline(false);
     } finally {
       setIsChecking(false);

@@ -1,9 +1,9 @@
-import { createSignal, createEffect, onMount } from 'solid-js';
+import { createSignal, onMount } from 'solid-js';
 import { IconRocket } from '@tabler/icons-solidjs';
 
 export default function LoadingScreen({ onLoadComplete }) {
-  const [loadingStage, setLoadingStage] = createSignal('Initializing...');
-  const [progress, setProgress] = createSignal(0);
+  const [_loadingStage, setLoadingStage] = createSignal('Initializing...');
+  const [_progress, setProgress] = createSignal(0);
   const [fadeOut, setFadeOut] = createSignal(false);
 
   onMount(async () => {

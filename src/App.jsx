@@ -1,4 +1,4 @@
-import { onMount, For, createSignal, Show } from 'solid-js'
+import { onMount, For } from 'solid-js'
 import './base.css'
 import './themes'
 import { Engine, layoutComponents } from '@/api/plugin'

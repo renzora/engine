@@ -2,24 +2,11 @@ import { createSignal, For, Show } from 'solid-js';
 import Helper from './Helper.jsx';
 import { helperVisible } from '@/api/plugin';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
-import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconDeviceGamepad2, IconBrush, IconMovie, IconMountain, IconWaveSine, IconBrush2, IconPaintBucket, IconTriangle, IconRectangle } from '@tabler/icons-solidjs';
+import { IconPointer, IconArrowsMove, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconCylinder, IconSquare, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause, IconChevronDown, IconCube, IconBrush, IconMountain, IconTriangle, IconRectangle } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store.jsx';
-import { getScriptRuntime } from '@/api/script';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Ray } from '@babylonjs/core/Culling/ray';
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
-import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { createAndAddObject } from '@/api/creation/ObjectCreationUtils.jsx';
-import { PointLight } from '@babylonjs/core/Lights/pointLight';
-import { SpotLight } from '@babylonjs/core/Lights/spotLight';
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
-import { RectAreaLight } from '@babylonjs/core/Lights/rectAreaLight';
-import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
 import '@babylonjs/core/Meshes/Builders/boxBuilder';
 import '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import '@babylonjs/core/Meshes/Builders/cylinderBuilder';
@@ -32,11 +19,11 @@ function Toolbar() {
   const selectedTool = () => editorStore.ui.selectedTool;
   const transformMode = () => selection().transformMode;
   
-  const { setSelectedTool, setTransformMode, selectEntity } = editorActions;
+  const { setSelectedTool, setTransformMode } = editorActions;
   
   // Camera view dropdown state
   const [cameraViewDropdownOpen, setCameraViewDropdownOpen] = createSignal(false);
-  const [currentViewName, setCurrentViewName] = createSignal("View");
+  const [_currentViewName, setCurrentViewName] = createSignal("View");
   
   // Initialize global camera view name
   window._currentCameraViewName = "Camera";
@@ -128,11 +115,11 @@ function Toolbar() {
     return renderStore.scene;
   };
   
-  const getObjectName = (type) => {
+  const _getObjectName = (type) => {
     return type.toLowerCase();
   };
   
-  const getViewportCenterPosition = async (scene, distance = 5) => {
+  const _getViewportCenterPosition = async (scene, distance = 5) => {
     if (!scene || !scene._camera) {
       console.log('No scene or camera, using fallback position');
       return new Vector3(0, 1, 0);
@@ -184,7 +171,7 @@ function Toolbar() {
 
     try {
       // Use unified creation system for consistent sizes and colors
-      const objectId = createAndAddObject(type, scene);
+      createAndAddObject(type, scene);
       editorActions.addConsoleMessage(`Created ${type}`, 'info');
     } catch (error) {
       console.error('Failed to create primitive:', error);
@@ -201,7 +188,7 @@ function Toolbar() {
 
     try {
       // Use unified creation system for consistent behavior
-      const objectId = createAndAddObject(`${lightType}-light`, scene);
+      createAndAddObject(`${lightType}-light`, scene);
       editorActions.addConsoleMessage(`Created ${lightType} light`, 'info');
     } catch (error) {
       console.error('Failed to create light:', error);
@@ -218,7 +205,7 @@ function Toolbar() {
 
     try {
       // Use unified creation system for consistent behavior
-      const objectId = createAndAddObject('camera', scene);
+      createAndAddObject('camera', scene);
       editorActions.addConsoleMessage('Created camera', 'info');
     } catch (error) {
       console.error('Failed to create camera:', error);
@@ -241,7 +228,7 @@ function Toolbar() {
         newObject.position.z += 1;
         
         // Add object to hierarchy (with folder awareness) first, then select it
-        const objectId = addObjectToHierarchy(newObject, `${selectedObject.name}_duplicate`);
+        addObjectToHierarchy(newObject, `${selectedObject.name}_duplicate`);
         renderActions.selectObject(newObject);
         editorActions.addConsoleMessage(`Duplicated ${selectedObject.name}`, 'info');
       }
@@ -514,7 +501,7 @@ function Toolbar() {
 
   // Check if terrain object is selected to show terrain-specific tools
   const isTerrainSelected = () => {
-    const entity = selectedEntity();
+    const _entity = selectedEntity();
     const babylonObject = renderStore.selectedObject; // Get the actual Babylon.js object
     return babylonObject && babylonObject._terrainData;
   };

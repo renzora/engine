@@ -1,7 +1,7 @@
 import { createSignal, Show, For } from 'solid-js';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { renderStore, renderActions } from '@/render/store.jsx';
+import { renderStore } from '@/render/store.jsx';
 import { IconGridDots, IconSettings, IconPalette, IconGrid3x3, IconX, IconTarget } from '@tabler/icons-solidjs';
 
 // Global state for dropdown sections to persist across renders

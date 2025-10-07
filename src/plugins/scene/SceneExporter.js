@@ -1,7 +1,7 @@
 import { GLTF2Export } from '@babylonjs/serializers/glTF/index.js';
 import { OBJExport } from '@babylonjs/serializers/OBJ/index.js';
 import { SceneSerializer } from '@babylonjs/core/Misc/sceneSerializer.js';
-const getBabylonScene = () => window._cleanBabylonScene;
+const _getBabylonScene = () => window._cleanBabylonScene;
 
 export class SceneExporter {
   static async exportGLTF(scene, fileName = 'scene') {
@@ -55,6 +55,7 @@ export class SceneExporter {
       
       return { success: true, message: 'Scene exported as OBJ' };
     } catch (error) {
+      console.error('Failed to export as OBJ:', error);
       throw error;
     }
   }
@@ -77,6 +78,7 @@ export class SceneExporter {
       
       return { success: true, message: 'Scene exported as Babylon format' };
     } catch (error) {
+      console.error('Failed to export as Babylon:', error);
       throw error;
     }
   }
@@ -93,6 +95,7 @@ export class SceneExporter {
       
       return { success: true, message: 'Scene exported as JSON' };
     } catch (error) {
+      console.error('Failed to export as JSON:', error);
       throw error;
     }
   }

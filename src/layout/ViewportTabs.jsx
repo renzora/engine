@@ -1,8 +1,7 @@
-import { createSignal, createEffect, createMemo, For, Show } from 'solid-js';
-import { IconSettings, IconFileText, IconX, IconStar, IconCopy, IconPlayerPlay, IconPlayerPause, IconPlus, IconChairDirector } from '@tabler/icons-solidjs';
-import { editorStore, editorActions } from "@/layout/stores/EditorStore";
+import { createSignal, createMemo, For, Show } from 'solid-js';
+import { IconFileText, IconX, IconStar, IconCopy, IconPlayerPlay, IconPlayerPause, IconPlus, IconChairDirector } from '@tabler/icons-solidjs';
 import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
-import { viewportTypes, toolbarButtons, horizontalMenuButtonsEnabled } from "@/api/plugin";
+import { viewportTypes } from "@/api/plugin";
 
 const ViewportTabs = () => {
   const [isAddDropdownOpen, setIsAddDropdownOpen] = createSignal(false);
@@ -332,7 +331,7 @@ const ViewportTabs = () => {
           >
             <div className="p-2">
               <For each={contextMenu().items}>
-                {(item, index) => (
+                {(item, _index) => (
                   <Show
                     when={item.divider}
                     fallback={

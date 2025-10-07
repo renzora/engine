@@ -1,4 +1,4 @@
-import { createSignal, createMemo, onCleanup, onMount, createEffect, For, Show, Switch, Match, createComponent } from 'solid-js';
+import { createSignal, onCleanup, createEffect, For, Show, Switch, Match } from 'solid-js';
 import { IconCode, IconX, IconRotateClockwise, IconPlayerPlay, IconPlayerPause, IconArrowsMove } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { objectPropertiesActions, objectPropertiesStore } from '@/layout/stores/ViewportStore';
@@ -13,7 +13,7 @@ export default function ScriptsPanel() {
   const [isResettingProperties, setIsResettingProperties] = createSignal(false);
   const [scriptSearchTerm, setScriptSearchTerm] = createSignal('');
   const [searchResults, setSearchResults] = createSignal([]);
-  const [isSearching, setIsSearching] = createSignal(false);
+  const [_isSearching, setIsSearching] = createSignal(false);
   const [showSearchResults, setShowSearchResults] = createSignal(false);
   
   // Individual signals for script properties
@@ -41,12 +41,12 @@ export default function ScriptsPanel() {
   };
 
   // Simple cache to avoid repeated API calls
-  let scriptCache = null;
-  let cacheTimestamp = 0;
-  const CACHE_DURATION = 30000; // 30 seconds
+  let _scriptCache = null;
+  let _cacheTimestamp = 0;
+  const _CACHE_DURATION = 30000; // 30 seconds
 
   // Function to load scripts from bridge API
-  const loadScriptCache = async () => {
+  const _loadScriptCache = async () => {
     try {
       const response = await fetch('http://localhost:3001/renscripts');
       if (response.ok) {
@@ -585,7 +585,7 @@ export default function ScriptsPanel() {
     // Use a simple function instead of createMemo to avoid circular dependencies
     const getCurrentValue = () => {
       // Force reactivity by accessing the signal
-      const currentProps = scriptPropertiesSignal();
+      scriptPropertiesSignal();
       
       if (!babylonObject?.metadata?.scriptProperties) {
         return property.defaultValue !== undefined ? property.defaultValue : getDefaultValueForType(property.type);
@@ -794,7 +794,7 @@ export default function ScriptsPanel() {
                       handlePropertyChange(property.name, data.path);
                     }
                   }
-                } catch (err) {
+                } catch {
                   console.warn('Invalid drop data for string property:', droppedData);
                 }
               }}
@@ -1163,7 +1163,7 @@ export default function ScriptsPanel() {
                               }
                             }
                           }
-                        } catch (err) {
+                        } catch {
                           console.warn('Invalid drop data:', droppedData);
                         }
                       }}
@@ -1182,7 +1182,7 @@ export default function ScriptsPanel() {
               {/* Script Properties */}
               <Show when={Object.keys(scriptPropertiesSignal()).length > 0}>
                 {(() => {
-                  const metadataVersion = scriptMetadataVersion();
+                  scriptMetadataVersion();
                   const babylonObject = getSelectedBabylonObject();
                   if (!babylonObject) {
                     return null;

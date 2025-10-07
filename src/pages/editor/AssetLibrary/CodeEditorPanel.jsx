@@ -10,7 +10,7 @@ function CodeEditorPanel({
   isOpen, 
   onClose, 
   selectedFile, 
-  width = 400,
+  _width = 400,
   onToggleSide,
   currentSide = 'left'
 }) {
@@ -23,7 +23,7 @@ function CodeEditorPanel({
   const [fileName, setFileName] = createSignal('untitled.ren');
   const [originalFileName, setOriginalFileName] = createSignal('');
   const [parsedScript, setParsedScript] = createSignal(null);
-  const [parseError, setParseError] = createSignal(null);
+  const [_parseError, _setParseError] = createSignal(null);
   const [parseErrors, setParseErrors] = createSignal([]); // Array of errors with line numbers
   const [previousProperties, setPreviousProperties] = createSignal([]);
   const [previousScriptContent, setPreviousScriptContent] = createSignal(''); // Track full script content
@@ -145,7 +145,7 @@ function CodeEditorPanel({
     };
     
     // Helper function to get line content
-    const getLineContent = (lineNum) => {
+    const _getLineContent = (lineNum) => {
       const lines = content.split('\n');
       return lines[lineNum - 1] || '';
     };
@@ -524,7 +524,7 @@ function CodeEditorPanel({
     const scriptPath = currentFile.path;
     
     // Get the script manager stats to find active instances
-    const stats = runtime.getStats();
+    runtime.getStats();
     
     // Only log if there are actual changes
     if (propertyChanges.added.length > 0 || propertyChanges.removed.length > 0 || 
@@ -591,7 +591,7 @@ function CodeEditorPanel({
       console.log('🗑️ Removing script from all objects:', scriptPath);
       
       // Find all objects that have this script attached
-      const stats = runtime.getStats();
+      runtime.getStats();
       const affectedObjects = [];
       
       // Search through active scripts to find objects using this script

@@ -92,7 +92,7 @@ export class RuntimeAssetLoader {
    * @param {string} path - Model path
    * @param {Object} assetData - Asset metadata
    */
-  async loadModel(path, assetData) {
+  async loadModel(path) {
     try {
       const { SceneLoader } = await import('@babylonjs/core/Loading/sceneLoader.js');
       
@@ -138,7 +138,7 @@ export class RuntimeAssetLoader {
    * @param {string} path - Material path
    * @param {Object} assetData - Asset metadata
    */
-  async loadMaterial(path, assetData) {
+  async loadMaterial(path) {
     try {
       // Material files are JSON describing material properties
       // For runtime, we need to create Babylon materials from this data
@@ -180,7 +180,7 @@ export class RuntimeAssetLoader {
    * Load scene from scene data
    * @param {Object} sceneData - Scene configuration
    */
-  async loadScene(sceneData) {
+  async loadScene() {
     try {
       // Load scene data and hierarchy
       

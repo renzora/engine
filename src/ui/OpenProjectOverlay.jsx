@@ -1,4 +1,4 @@
-import { createSignal, Show, For, onMount, createEffect } from 'solid-js';
+import { createSignal, Show, For, createEffect } from 'solid-js';
 import { IconX, IconFolder, IconFolderOpen, IconSettings, IconCode, IconBox } from '@tabler/icons-solidjs';
 import { getProjects } from '@/api/bridge/projects';
 import { sceneManager } from '@/api/scene/SceneManager.js';

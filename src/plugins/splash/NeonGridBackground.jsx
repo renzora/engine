@@ -1,7 +1,7 @@
 import { createSignal, onMount, onCleanup } from 'solid-js';
 
 export default function NeonGridBackground() {
-  let containerRef;
+  let containerRef = null; // SolidJS ref
   const [shapes, setShapes] = createSignal([]);
 
   const createMovingShapes = () => {

@@ -16,7 +16,7 @@ export class ExportCompiler {
    * @param {string} projectName - Name of the project
    * @returns {Promise<{success: boolean, code?: string, error?: string}>}
    */
-  async compileScript(scriptPath, projectName) {
+  async compileScript(scriptPath, _projectName) {
     try {
       console.log('🔥 ExportCompiler: Compiling script for export:', scriptPath);
       
@@ -108,7 +108,7 @@ export class ExportCompiler {
    * @param {string} scriptPath - Path to the original script
    * @returns {string} Standalone JavaScript code
    */
-  makeScriptStandalone(compiledJS, scriptPath) {
+  makeScriptStandalone(compiledJS, _scriptPath) {
     // Inject embedded API runtime instead of requiring bridge connection
     const apiRuntime = this.generateEmbeddedAPIRuntime();
     

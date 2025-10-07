@@ -3,7 +3,7 @@ import { usePluginAPI } from '@/api/plugin'
 
 export default function DevNotice() {
   const [isVisible, setIsVisible] = createSignal(false)
-  const api = usePluginAPI()
+  const _api = usePluginAPI()
 
   onMount(() => {
     const dismissed = localStorage.getItem('dev-disclaimer-dismissed')

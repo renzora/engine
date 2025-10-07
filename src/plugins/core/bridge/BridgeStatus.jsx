@@ -14,7 +14,7 @@ export default function BridgeStatus({ onOpenViewport }) {
     try {
       const response = await fetch('http://localhost:3001/health');
       setBridgeConnected(response.ok);
-    } catch (error) {
+    } catch {
       setBridgeConnected(false);
     }
   };

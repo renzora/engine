@@ -1,7 +1,7 @@
 import { createPlugin } from '@/api/plugin';
 import SplashScreen from './SplashScreen.jsx';
-import { ProjectProvider, useProject } from './ProjectStore.jsx';
-import { IconHome, IconFolder, IconSettings } from '@tabler/icons-solidjs';
+import { useProject } from './ProjectStore.jsx';
+import { IconHome, IconFolder } from '@tabler/icons-solidjs';
 import { createSignal, Show, createEffect } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
@@ -259,7 +259,7 @@ export default createPlugin({
   description: 'Project selection and startup screen for Renzora Engine',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     // Splash plugin initialized
   },
 
@@ -289,15 +289,15 @@ export default createPlugin({
       });
     }, 500);
 
-    api.on('project-created', (data) => {
+    api.on('project-created', () => {
       // Project created event received
     });
 
-    api.on('project-opened', (data) => {
+    api.on('project-opened', () => {
       // Project opened event received
     });
 
-    api.on('project-selected', (data) => {
+    api.on('project-selected', () => {
       // Project selected
     });
 

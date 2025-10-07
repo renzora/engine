@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount } from 'solid-js';
+import { createSignal, onMount } from 'solid-js';
 import { Button } from '../../../components/ui/Button';
 import { Section } from '../../../components/ui/Section';
 import { Select } from '../../../components/ui/Select';
@@ -17,7 +17,7 @@ export function UpdatePlugin() {
       const response = await fetch('http://localhost:3001/update/config');
       const data = await response.json();
       setUpdateConfig(data);
-    } catch (err) {
+    } catch {
       setError('Failed to load update configuration');
     }
   };
@@ -29,7 +29,7 @@ export function UpdatePlugin() {
       const response = await fetch('http://localhost:3001/update/check');
       const data = await response.json();
       setUpdateCheck(data);
-    } catch (err) {
+    } catch {
       setError('Failed to check for updates');
     } finally {
       setIsChecking(false);
@@ -52,7 +52,7 @@ export function UpdatePlugin() {
       } else {
         setError('Failed to update channel');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to update channel');
     }
   };
@@ -76,7 +76,7 @@ export function UpdatePlugin() {
       if (!response.ok) {
         setError('Failed to download update');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to download update');
     } finally {
       setIsDownloading(false);
@@ -96,7 +96,7 @@ export function UpdatePlugin() {
       } else {
         setError('Failed to apply update');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to apply update');
     } finally {
       setIsApplying(false);

@@ -277,7 +277,7 @@ export class MaterialExportImport {
   }
 
   // Deserialize material from data
-  async deserializeMaterial(materialData, scene) {
+  async deserializeMaterial(materialData, _scene) {
     // This would need to be implemented based on the specific material system
     // For now, return the serialized data
     return materialData;
@@ -328,7 +328,7 @@ export class MaterialExportImport {
     for (const asset of assets) {
       try {
         await bridgeService.readFile(asset.path);
-      } catch (error) {
+      } catch {
         missingAssets.push(asset);
       }
     }

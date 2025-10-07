@@ -315,9 +315,9 @@ export function useGrid(sceneSignal) {
 
   createEffect(() => {
     // Track scene signal, grid settings, and viewport showGrid
-    const scene = sceneSignal();
-    const gridSettings = settings().grid;
-    const showGrid = viewport().showGrid;
+    sceneSignal();
+    settings().grid;
+    viewport().showGrid;
     
     // Grid settings or scene changed, update grid
     updateGrid();

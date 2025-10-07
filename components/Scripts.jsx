@@ -51,7 +51,7 @@ function Scripts() {
     scripts.forEach(scriptPath => {
       try {
         newStates[scriptPath] = runtime.isScriptPaused(entityId, scriptPath);
-      } catch (error) {
+      } catch {
         newStates[scriptPath] = false;
       }
     });

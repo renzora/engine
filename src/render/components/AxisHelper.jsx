@@ -1,9 +1,9 @@
 import { createSignal, createEffect, onMount, onCleanup } from 'solid-js';
 import { renderStore } from '../store.jsx';
-import { Vector3, Matrix, Color3 } from '@babylonjs/core/Maths/math';
+import { Vector3, Matrix } from '@babylonjs/core/Maths/math';
 
 export function AxisHelper() {
-  let canvasRef;
+  let canvasRef = null;
   let ctx;
   const [isInitialized, setIsInitialized] = createSignal(false);
   

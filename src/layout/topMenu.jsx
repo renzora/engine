@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup, createMemo, For, Show } from 'solid-js';
-import { IconArrowDown, IconArrowUp, IconRefresh, IconChevronRight, IconMinus, IconSquare, IconCopy, IconX, IconSettings } from '@tabler/icons-solidjs';
+import { IconChevronRight, IconMinus, IconSquare, IconCopy, IconX } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { topMenuItems, horizontalMenuButtonsEnabled } from '@/api/plugin';
 import ThemeSwitcher from '@/ui/ThemeSwitcher';
@@ -8,10 +8,10 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 function TopMenu() {
   const [activeMenu, setActiveMenu] = createSignal(null);
   const [isSaving, setIsSaving] = createSignal(false);
-  const [lastSync, setLastSync] = createSignal(null);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = createSignal(false);
-  const [showSyncTooltip, setShowSyncTooltip] = createSignal(false);
-  const [showUpdateTooltip, setShowUpdateTooltip] = createSignal(false);
+  const [lastSync, _setLastSync] = createSignal(null);
+  const [hasUnsavedChanges, _setHasUnsavedChanges] = createSignal(false);
+  const [_showSyncTooltip, _setShowSyncTooltip] = createSignal(false);
+  const [_showUpdateTooltip, _setShowUpdateTooltip] = createSignal(false);
   const [showProjectManager, setShowProjectManager] = createSignal(false);
   const [menuPosition, setMenuPosition] = createSignal(null);
   const [isMaximized, setIsMaximized] = createSignal(false);
@@ -224,9 +224,9 @@ function TopMenu() {
     };
   };
 
-  const settings = createMemo(() => editorStore.settings);
+  const _settings = createMemo(() => editorStore.settings);
 
-  const handleSave = async () => {
+  const _handleSave = async () => {
     if (isSaving()) return;
     
     try {
@@ -256,7 +256,7 @@ function TopMenu() {
     return `${days}d ago`;
   };
 
-  const getSyncStatusInfo = createMemo(() => {
+  const _getSyncStatusInfo = createMemo(() => {
     if (hasUnsavedChanges()) {
       return {
         color: 'bg-yellow-500',
@@ -339,7 +339,7 @@ function TopMenu() {
             class="flex items-center"
           >
             <For each={Object.entries(menuStructure())}>
-              {([menuName, items]) => (
+              {([menuName, _items]) => (
                 <div class="relative inline-block">
                   <button
                     onClick={(e) => handleMenuClick(menuName, e)}
@@ -431,7 +431,7 @@ function TopMenu() {
         >
           <div class="p-1">
             <For each={menuStructure()[activeMenu()]}>
-              {(item, index) => (
+              {(item, _index) => (
                 <>
                   <Show when={item.divider}>
                     <div class="border-t border-base-300 my-1 mx-2" />

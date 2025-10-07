@@ -1,7 +1,6 @@
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder.js';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 
 // Function to create visual helpers for lights (shared between toolbar creation and scene loading)
 export const createLightVisualHelper = (mainContainer, lightType, lightPosition, scene) => {

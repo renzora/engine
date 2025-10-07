@@ -7,23 +7,17 @@ import {
   Vector3,
   Color3,
   StandardMaterial,
-  LinesMesh,
   MeshBuilder,
   Ray,
   RayHelper,
-  BoundingBoxGizmo,
-  PositionGizmo,
-  RotationGizmo,
-  ScaleGizmo,
   GizmoManager,
-  UtilityLayerRenderer,
   DynamicTexture,
   Mesh,
   Tools,
   SkeletonViewer
 } from '@babylonjs/core';
 
-import { AdvancedDynamicTexture, TextBlock, Rectangle } from '@babylonjs/gui';
+import { AdvancedDynamicTexture, TextBlock } from '@babylonjs/gui';
 import '@babylonjs/inspector';
 
 export class DebugAPI {
@@ -116,7 +110,7 @@ export class DebugAPI {
   }
 
   clearDebugTexts() {
-    this.debugTexts.forEach((textBlock, key) => {
+    this.debugTexts.forEach((textBlock) => {
       if (this.debugOverlay) {
         this.debugOverlay.removeControl(textBlock);
       }
@@ -391,7 +385,7 @@ export class DebugAPI {
     if (!skeleton) return [];
     
     const boneAxes = [];
-    skeleton.bones.forEach((bone, index) => {
+    skeleton.bones.forEach((bone) => {
       const axes = new BoneAxesViewer(this.scene, bone, skeleton, size);
       boneAxes.push(axes);
     });
@@ -531,7 +525,6 @@ export class DebugAPI {
     if (!targetCamera) return null;
     
     // Create frustum visualization
-    const frustumLines = [];
     const near = targetCamera.minZ || 0.1;
     const far = targetCamera.maxZ || 100;
     const fov = targetCamera.fov || Math.PI / 4;

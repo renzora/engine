@@ -4,7 +4,7 @@ import { viewportStore } from '@/layout/stores/ViewportStore';
 import { renderStore } from '../store.jsx';
 import { editorActions } from '@/layout/stores/EditorStore.jsx';
 
-export function useCameraController(camera, canvas, scene) {
+export function useCameraController(camera, canvas) {
   const cameraSettings = () => viewportStore.camera;
   let isLeftMouseDown = false;
   let isMiddleMouseDown = false;
@@ -16,7 +16,6 @@ export function useCameraController(camera, canvas, scene) {
   let mouseDownPos = null;
   let defaultFov = Math.PI / 4;
   let currentFov = Math.PI / 4;
-  let targetFov = Math.PI / 4;
   let fovAnimationId = null;
   let isDisabled = false;
   
@@ -26,7 +25,7 @@ export function useCameraController(camera, canvas, scene) {
   const panSpeed = 0.01;
   const zoomSpeed = 0.3;
   const moveSpeed = () => 0.3 * (cameraSpeed() / 5);
-  const fovSpeed = 0.02;
+  const _fovSpeed = 0.02;
   const fovSpringSpeed = 0.15;
   const fovSpringDamping = 0.8;
 
@@ -111,7 +110,6 @@ export function useCameraController(camera, canvas, scene) {
   const isOrthographicView = () => {
     if (!camera()) return false;
     
-    const position = camera().position;
     const rotation = camera().rotation;
     
     // Check if camera is aligned with world axes (within tolerance)
@@ -367,7 +365,6 @@ export function useCameraController(camera, canvas, scene) {
       } else {
         camera().fov = defaultFov;
         currentFov = defaultFov;
-        targetFov = defaultFov;
         fovAnimationId = null;
       }
     };
@@ -380,47 +377,6 @@ export function useCameraController(camera, canvas, scene) {
   };
 
   // Keyboard movement functions - simple and direct like before
-  const moveForward = (speedMultiplier = 1.0) => {
-    if (!camera()) return;
-    const speed = moveSpeed() * speedMultiplier;
-    const forward = camera().getDirection(Vector3.Forward()).normalize();
-    camera().position = camera().position.add(forward.scale(speed));
-  };
-  
-  const moveBackward = (speedMultiplier = 1.0) => {
-    if (!camera()) return;
-    const speed = moveSpeed() * speedMultiplier;
-    const forward = camera().getDirection(Vector3.Forward()).normalize();
-    camera().position = camera().position.add(forward.scale(-speed));
-  };
-  
-  const moveLeft = (speedMultiplier = 1.0) => {
-    if (!camera()) return;
-    const speed = moveSpeed() * speedMultiplier;
-    const forward = camera().getDirection(Vector3.Forward()).normalize();
-    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
-    camera().position = camera().position.add(right.scale(-speed));
-  };
-  
-  const moveRight = (speedMultiplier = 1.0) => {
-    if (!camera()) return;
-    const speed = moveSpeed() * speedMultiplier;
-    const forward = camera().getDirection(Vector3.Forward()).normalize();
-    const right = Vector3.Cross(Vector3.Up(), forward).normalize();
-    camera().position = camera().position.add(right.scale(speed));
-  };
-  
-  const moveUp = (speedMultiplier = 1.0) => {
-    if (!camera()) return;
-    const speed = moveSpeed() * speedMultiplier;
-    camera().position = camera().position.add(Vector3.Up().scale(speed));
-  };
-  
-  const moveDown = (speedMultiplier = 1.0) => {
-    if (!camera()) return;
-    const speed = moveSpeed() * speedMultiplier;
-    camera().position = camera().position.add(Vector3.Up().scale(-speed));
-  };
 
   // Arrow key movement functions based on camera view
   const handleArrowKeyMovement = (finalSpeed) => {
@@ -673,7 +629,6 @@ export function useCameraController(camera, canvas, scene) {
       const initialFov = camera().fov || Math.PI / 4;
       defaultFov = initialFov;
       currentFov = initialFov;
-      targetFov = initialFov;
     }
   });
 

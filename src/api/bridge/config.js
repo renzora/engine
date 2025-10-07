@@ -36,7 +36,7 @@ export async function bridgeFetch(endpoint, options = {}) {
 export async function parseJsonResponse(response) {
   try {
     return await response.json();
-  } catch (error) {
+  } catch {
     throw new Error('Failed to parse JSON response from bridge server');
   }
 }

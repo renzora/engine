@@ -42,7 +42,7 @@ export async function loadProjectDirect(project, onProjectReady) {
             totalFiles: progressData.totalFiles
           });
         },
-        onComplete: (result) => {
+        onComplete: () => {
           projectIndexingActions.complete('Project indexed successfully');
           // Auto-hide after 2 seconds
           setTimeout(() => {

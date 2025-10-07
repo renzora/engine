@@ -9,7 +9,7 @@ export default createPlugin({
   description: 'Material and color assignment controls in the scene panel',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     // Initializing material plugin
   },
 

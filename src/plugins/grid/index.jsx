@@ -9,7 +9,7 @@ export default createPlugin({
   description: 'Grid settings, object snapping, and gizmo snapping controls',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     console.log('[GridPlugin] Initializing...');
   },
 

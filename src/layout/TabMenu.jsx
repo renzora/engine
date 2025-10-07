@@ -59,7 +59,7 @@ function TabMenu(props) {
   function getOrderedTools() {
     const currentWorkflow = getCurrentWorkflow();
     const allowedToolIds = workflowTools[currentWorkflow] || workflowTools['default'];
-    const selectedEntityId = editorStore.selection.entity;
+    const _selectedEntityId = editorStore.selection.entity;
     const selectedBabylonObject = renderStore.selectedObject;
     
     const pluginTabs = Array.from(propertyTabs().values())
@@ -202,7 +202,7 @@ function TabMenu(props) {
     });
   };
 
-  const handleDragOver = (e, tool, isBottomArea = false) => {
+  const handleDragOver = (e, tool) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     
@@ -299,7 +299,7 @@ function TabMenu(props) {
         return;
       }
       
-      const currentWorkflow = getCurrentWorkflow();
+      const _currentWorkflow = getCurrentWorkflow();
       
       if (!props.scenePanelOpen) {
         props.onScenePanelToggle();

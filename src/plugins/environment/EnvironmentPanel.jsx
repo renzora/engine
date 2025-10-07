@@ -1,13 +1,11 @@
 import { createSignal, createEffect, Show } from 'solid-js';
 import { renderStore } from '@/render/store';
 import { IconSun, IconCloudRain, IconEye } from '@tabler/icons-solidjs';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
-import { Vector3, Vector4 } from '@babylonjs/core/Maths/math.vector';
+import { Color3 } from '@babylonjs/core/Maths/math.color';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Plane } from '@babylonjs/core/Maths/math.plane';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture';
-import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture';
-import { bridgeService } from '@/plugins/core/bridge';
 
 function EnvironmentPanel(props) {
   // Skybox controls
@@ -502,7 +500,7 @@ function EnvironmentPanel(props) {
                 console.log('🌍 HDR ArrayBuffer loaded, size:', arrayBuffer.byteLength);
                 
                 // Create HDR texture from ArrayBuffer
-                const hdrFromBuffer = new HDRCubeTexture(null, scene, 512);
+                new HDRCubeTexture(null, scene, 512);
                 
                 // BabylonJS expects HDR data in a specific format
                 // Let's try creating a blob URL instead

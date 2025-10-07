@@ -4,20 +4,9 @@ import {
   ParticleSystem,
   GPUParticleSystem,
   SubEmitter,
-  BoxParticleEmitter,
-  ConeParticleEmitter,
-  SphereParticleEmitter,
-  HemisphereParticleEmitter,
-  CylinderParticleEmitter,
-  PointParticleEmitter,
-  MeshParticleEmitter,
-  CustomParticleEmitter,
-  Texture,
   Vector3,
-  Color3,
   Color4,
-  Animation,
-  Mesh
+  Animation
 } from '@babylonjs/core';
 
 export class ParticleAPI {

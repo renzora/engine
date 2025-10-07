@@ -9,7 +9,7 @@ export default createPlugin({
   description: 'Object render settings including shadows and collision in the scene panel',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit(_api) {
     // Initializing render plugin
   },
 

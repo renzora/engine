@@ -1,4 +1,4 @@
-import { Show, createEffect, createMemo, Switch, Match, createSignal, onMount, onCleanup } from 'solid-js';
+import { Show, createEffect, Switch, Match, createSignal, onMount, onCleanup } from 'solid-js';
 import BottomTabs from './BottomTabs.jsx';
 import AssetLibrary from '@/pages/editor/AssetLibrary';
 import PanelResizer from '@/ui/PanelResizer.jsx';
@@ -9,7 +9,6 @@ import { renderStore } from '@/render/store.jsx';
 
 const BottomPanel = () => {
   const { showContextMenu } = useViewportContextMenu();
-  const [contextMenu, setContextMenu] = createSignal(null);
   
   // Handle window resize to ensure panel height stays within bounds
   onMount(() => {
@@ -29,8 +28,8 @@ const BottomPanel = () => {
   // Recalculate viewport when bottom panel visibility or position changes
   createEffect(() => {
     // Watch for changes in panel state and position
-    const panelOpen = isAssetPanelOpen();
-    const panelHeight = bottomPanelHeight();
+    isAssetPanelOpen();
+    bottomPanelHeight();
     
     // Trigger resize for any bottom panel changes (open/close/resize)
     setTimeout(() => {

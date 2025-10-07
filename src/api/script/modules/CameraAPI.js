@@ -1,6 +1,4 @@
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
-import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera.js';
 
 /**
  * CameraAPI - Camera control and manipulation

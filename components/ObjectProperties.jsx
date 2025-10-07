@@ -3,7 +3,7 @@ import { Show, createMemo, For } from 'solid-js';
 
 const ObjectProperties = (props) => {
   const { objectProperties } = editorStore;
-  const { updateObjectProperty, bindNodeToProperty, unbindNodeFromProperty } = editorActions;
+  const { updateObjectProperty } = editorActions;
   
   const objectProps = createMemo(() => objectProperties.objects[props.objectId]);
   
@@ -18,7 +18,7 @@ const ObjectProperties = (props) => {
       } else if (data.type === 'asset' && data.fileType === 'script') {
         updateObjectProperty(props.objectId, propertyPath, data.path);
       }
-    } catch (err) {
+    } catch {
       console.warn('Invalid drop data:', droppedData);
     }
   };

@@ -7,7 +7,6 @@ import ContextMenu from '@/ui/ContextMenu.jsx';
 import ScriptCreationDialog from '../ScriptCreationDialog.jsx';
 import { getCurrentProject, setCurrentProject, getProjects } from '@/api/bridge/projects';
 import { getFileUrl, writeFile, writeBinaryFile, readFile, readBinaryFile, deleteFile, listDirectory } from '@/api/bridge/files';
-import { generateThumbnail } from '@/api/bridge/thumbnails';
 import { getCachedAssets, processProjectCache } from '@/api/bridge/projectCache.js';
 import { ModelProcessingAPI } from '@/api/bridge/modelProcessing';
 import { isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
@@ -47,11 +46,11 @@ function AssetLibrary({ onContextMenu }) {
   const [loadedAssets, setLoadedAssets] = createSignal([]);
   const [preloadingAssets, setPreloadingAssets] = createSignal([]);
   const [failedAssets, setFailedAssets] = createSignal([]);
-  const [showLoadingBar, setShowLoadingBar] = createSignal(false);
+  const [_showLoadingBar, _setShowLoadingBar] = createSignal(false);
   const [isDragOver, setIsDragOver] = createSignal(false);
   const [isUploading, setIsUploading] = createSignal(false);
   const [contextMenu, setContextMenu] = createSignal(null);
-  const [dragOverFolder, setDragOverFolder] = createSignal(null);
+  const [_dragOverFolder, setDragOverFolder] = createSignal(null);
   const [dragOverTreeFolder, setDragOverTreeFolder] = createSignal(null);
   const [dragOverBreadcrumb, setDragOverBreadcrumb] = createSignal(null);
   const [isInternalDrag, setIsInternalDrag] = createSignal(false);
@@ -60,20 +59,20 @@ function AssetLibrary({ onContextMenu }) {
   const [lastSelectedAsset, setLastSelectedAsset] = createSignal(null);
   const [isSelecting, setIsSelecting] = createSignal(false);
   const [selectionStart, setSelectionStart] = createSignal(null);
-  const [selectionEnd, setSelectionEnd] = createSignal(null);
+  const [_selectionEnd, setSelectionEnd] = createSignal(null);
   const [selectionRect, setSelectionRect] = createSignal(null);
   const [globalSearchResults, setGlobalSearchResults] = createSignal([]);
   const [isSearching, setIsSearching] = createSignal(false);
   const [tooltip, setTooltip] = createSignal(null);
   const [itemSize, setItemSize] = createSignal(100);
   
-  let fileInputRef;
-  let folderInputRef;
-  let assetGridRef;
-  let mainContentRef;
+  let fileInputRef = null;
+  let folderInputRef = null;
+  let assetGridRef = null;
+  let mainContentRef = null;
 
   const ui = () => editorStore.ui;
-  const assetCache = () => assetsStore;
+  const _assetCache = () => assetsStore;
   const treePanelWidth = () => ui().assetsLibraryWidth && ui().assetsLibraryWidth > 100 ? ui().assetsLibraryWidth : 100;
   const { setAssetsLibraryWidth: setTreePanelWidth } = editorActions;
   const contextMenuActions = createContextMenuActions(editorActions);
@@ -338,7 +337,7 @@ function AssetLibrary({ onContextMenu }) {
               children: children,
               files: files
             });
-          } catch (err) {
+          } catch {
             tree.push({
               name: item.name,
               path: fullPath,
@@ -589,7 +588,7 @@ function AssetLibrary({ onContextMenu }) {
     }
   };
 
-  const deleteAsset = async (currentProject, assetPath) => {
+  const _deleteAsset = async (currentProject, assetPath) => {
     try {
       // Simple path construction - assetPath is relative to project root
       const fullAssetPath = `projects/${currentProject.name}/${assetPath}`;
@@ -722,7 +721,7 @@ function AssetLibrary({ onContextMenu }) {
   };
   
   // Update folder tree without full reload
-  const updateFolderTreeIncrementally = async (currentProject, affectedPaths = []) => {
+  const updateFolderTreeIncrementally = async (currentProject, _affectedPaths = []) => {
     try {
       // Always fetch a fresh tree to ensure new directories are shown
       // This is needed because directory creation/deletion events need to refresh the tree structure
@@ -1296,7 +1295,7 @@ function AssetLibrary({ onContextMenu }) {
     updateDragSelection(e);
   };
 
-  const handleGlobalMouseUp = (e) => {
+  const handleGlobalMouseUp = (_e) => {
     if (isSelecting()) {
       endDragSelection();
     } else if (selectionStart()) {
@@ -1760,7 +1759,7 @@ main();`;
     }
 
     // Listen for project selection events
-    const handleProjectSelection = (event) => {
+    const handleProjectSelection = (_event) => {
       // Handle project selection and initialize data
       const projectData = projectManager.getCurrentProject();
       initializeProjectData(projectData);

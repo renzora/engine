@@ -4,7 +4,7 @@ import { IconAlertTriangle } from '@tabler/icons-solidjs';
 import { footerButtons } from '@/api/plugin';
 
 const Footer = () => {
-  const [engineInfo, setEngineInfo] = createSignal('Engine Ready');
+  const [engineInfo] = createSignal('Engine Ready');
   const [systemStats, setSystemStats] = createSignal(null);
   
   // Ultra-fast system stats polling (100ms for near real-time)
@@ -46,13 +46,6 @@ const Footer = () => {
     return '';
   };
   
-  const formatBytes = (bytes) => {
-    if (!bytes) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-  };
   
   const getUsageColor = (usage, type = 'default') => {
     // Different thresholds for different resources
@@ -166,7 +159,7 @@ const Footer = () => {
         
         {/* Plugin footer buttons */}
         <For each={Array.from(footerButtons().entries())}>
-          {([id, button]) => {
+          {([_id, button]) => {
             const Component = button.component;
             return Component ? <Component /> : null;
           }}

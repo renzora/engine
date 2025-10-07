@@ -1,6 +1,5 @@
-import { createSignal, Show, onMount, onCleanup } from 'solid-js';
-import { IconMountain, IconBrush, IconCircle, IconSquare, IconPlayerPlay, IconPlayerStop, IconSun, IconBulb } from '@tabler/icons-solidjs';
-import { renderActions } from '@/render/store.jsx';
+import { createSignal, Show, onMount } from 'solid-js';
+import { IconMountain, IconBrush, IconCircle, IconSquare, IconSun, IconBulb } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore.jsx';
 import { currentTool } from './index.jsx';
 
@@ -70,10 +69,10 @@ const TerrainPropertiesPanel = (props) => {
   };
 
   const generateFlatHeightmap = (width, height) => {
-    return new Array(width * height).fill(0);
+    return Array.from({ length: width * height }, () => 0);
   };
 
-  const updateTerrainGeometry = (terrainMesh, heightmapData) => {
+  const updateTerrainGeometry = (_terrainMesh, _heightmapData) => {
     // This would update the mesh vertices based on new heightmap data
     // For now, we'll just log that it would update
     console.log('Would update terrain geometry with new heightmap data');

@@ -255,7 +255,7 @@ export const editorActions = {
     setEditorStore('ui', 'assetsLibraryWidth', width)
   },
 
-  updateBabylonObjectFromProperties: (entityId) => {
+  updateBabylonObjectFromProperties: () => {
     // This will be used to sync changes from property panel to Babylon object
     // Note: This creates a circular dependency, so we'll implement this differently
     // by calling it from the Scene.jsx component where both stores are already imported

@@ -151,7 +151,8 @@ const updateVignetteUniforms = () => {
 // Track previous vignette enabled state to avoid unnecessary recreations
 let previousVignetteEnabled = false;
 
-// Global effect to apply camera settings when they change
+// Auto-initialize camera effects when this module is imported
+// This will be executed within the plugin system's createRoot context
 createEffect(() => {
   const scene = renderStore.scene;
   const camera = scene?.activeCamera;

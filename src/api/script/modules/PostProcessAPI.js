@@ -2,14 +2,11 @@
 
 import {
   PostProcess,
-  PassPostProcess,
   BlurPostProcess,
   FxaaPostProcess,
   HighlightsPostProcess,
   ImageProcessingPostProcess,
   ColorCorrectionPostProcess,
-  ConvolutionPostProcess,
-  FilterPostProcess,
   VolumetricLightScatteringPostProcess,
   DepthOfFieldEffect,
   DefaultRenderingPipeline,
@@ -17,12 +14,7 @@ import {
   PostProcessRenderEffect,
   Vector2,
   Vector3,
-  Color3,
-  Color4,
-  Camera,
-  RenderTargetTexture,
-  Effect,
-  Texture
+  Color4
 } from '@babylonjs/core';
 
 // Advanced post processes

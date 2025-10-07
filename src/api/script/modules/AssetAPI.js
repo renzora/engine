@@ -3,19 +3,7 @@
 import {
   SceneLoader,
   AssetsManager,
-  MeshAssetTask,
-  TextureAssetTask,
-  CubeTextureAssetTask,
-  HDRCubeTextureAssetTask,
-  BinaryFileAssetTask,
-  ImageAssetTask,
-  TextFileAssetTask,
-  AbstractMesh,
-  Texture,
-  AnimationGroup,
-  Skeleton,
-  Vector3,
-  ImportMeshMode
+  Vector3
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders'; // Enable all loaders
@@ -157,7 +145,7 @@ export class AssetAPI {
   loadAllAssets() {
     if (!this.assetsManager) return Promise.resolve();
     
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve, _reject) => {
       this.assetsManager.onFinish = (tasks) => {
         console.log(`Loaded ${tasks.length} assets`);
         resolve(tasks);
@@ -247,7 +235,7 @@ export class AssetAPI {
   // === BATCH LOADING ===
 
   async loadAssetBatch(assets) {
-    const manager = this.createAssetsManager();
+    const _manager = this.createAssetsManager();
     
     assets.forEach(asset => {
       switch (asset.type) {
@@ -329,7 +317,7 @@ export class AssetAPI {
     const manager = this.createAssetsManager();
     let completed = 0;
     
-    assetList.forEach((asset, index) => {
+    assetList.forEach((asset, _index) => {
       let task;
       
       switch (asset.type) {
@@ -595,18 +583,18 @@ export class AssetAPI {
 
   // === ASSET STREAMING ===
 
-  enableAssetStreaming(distance = 50) {
+  enableAssetStreaming(streamingDistance = 50) {
     // Simple distance-based streaming
     const streamingCheck = () => {
       if (!this.scene.activeCamera) return;
       
       const cameraPosition = this.scene.activeCamera.position;
       
-      this.loadedAssets.forEach((asset, name) => {
+      this.loadedAssets.forEach((asset, _name) => {
         if (asset.type === 'mesh' && asset.meshes) {
           asset.meshes.forEach(mesh => {
             const distance = Vector3.Distance(cameraPosition, mesh.position);
-            mesh.setEnabled(distance <= distance);
+            mesh.setEnabled(distance <= streamingDistance);
           });
         }
       });

@@ -330,7 +330,7 @@ class WebSocketClient {
   async initializeServerPaths() {
     try {
       // Frontend knows where it's running from
-      const currentPath = window.location.origin;
+      const _currentPath = window.location.origin;
       
       // Derive engine path from frontend location
       // Frontend typically runs from engine root or engine/dist

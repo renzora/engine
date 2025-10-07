@@ -1,24 +1,16 @@
-import { onMount, onCleanup, createSignal, createEffect, onCleanup as solidOnCleanup } from 'solid-js';
+import { onMount, onCleanup, createSignal, createEffect } from 'solid-js';
 import { Engine } from '@babylonjs/core/Engines/engine';
 import { Scene } from '@babylonjs/core/scene';
-import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Ray } from '@babylonjs/core/Culling/ray';
 import { Color4 } from '@babylonjs/core/Maths/math.color';
-import { Color3 } from '@babylonjs/core/Maths/math.color';
 import '@babylonjs/core/Cameras/Inputs/arcRotateCameraPointersInput';
 import '@babylonjs/core/Cameras/Inputs/arcRotateCameraKeyboardMoveInput';
 import '@babylonjs/core/Cameras/Inputs/arcRotateCameraMouseWheelInput';
-import { GizmoManager } from '@babylonjs/core/Gizmos/gizmoManager';
-import { UtilityLayerRenderer } from '@babylonjs/core/Rendering/utilityLayerRenderer';
 import { HighlightLayer } from '@babylonjs/core/Layers/highlightLayer';
 import '@babylonjs/core/Rendering/edgesRenderer';
 import '@babylonjs/core/Layers/effectLayerSceneComponent';
 import '@babylonjs/core/Materials/standardMaterial';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
-import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader';
 import '@babylonjs/loaders/glTF';
 import { HavokPlugin } from '@babylonjs/core/Physics/v2/Plugins/havokPlugin';
 import HavokPhysics from '@babylonjs/havok';
@@ -33,13 +25,12 @@ import { GizmoManagerComponent } from './hooks/gizmo.jsx';
 import { useAssetLoader } from './hooks/assetLoader.jsx';
 import { LoadingTooltip } from './components/LoadingTooltip.jsx';
 import { AxisHelper } from './components/AxisHelper.jsx';
-import Stats from 'stats.js';
 import { pluginAPI } from '@/api/plugin';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 
 
 
-const loadDefaultSceneContent = (scene, canvas) => {
+const loadDefaultSceneContent = (scene, _canvas) => {
   if (window.DEBUG_RENDER) console.log('🌟 Loading default scene content');
   
   // Add default lighting if no lights exist
@@ -75,7 +66,7 @@ const loadDefaultSceneContent = (scene, canvas) => {
 };
 
 // Function to snap an object to the grid
-const snapObjectToGrid = (object) => {
+const _snapObjectToGrid = (object) => {
   if (!object) return;
   
   // Get grid cell size from editor store, fallback to 1.0 if not available
@@ -99,15 +90,15 @@ const snapObjectToGrid = (object) => {
   }
 };
 
-export default function BabylonRenderer(props) {
-  let canvasRef;
+export default function BabylonRenderer(_props) {
+  let canvasRef = null;
   let renderLoopRunning = false; // Track render loop state for proper cleanup
   const [engine, setEngine] = createSignal(null);
   const [scene, setScene] = createSignal(null);
-  const [stats, setStats] = createSignal(null);
+  const [stats, _setStats] = createSignal(null);
   
   // Initialize asset loader
-  const { loadingTooltip, handleDragOver, handleDragEnter, handleDragLeave, handleDrop, loadAssetIntoScene, isPositioning } = useAssetLoader(scene, () => canvasRef);
+  const { loadingTooltip, handleDragOver, handleDragEnter, handleDragLeave, handleDrop, loadAssetIntoScene: _loadAssetIntoScene, isPositioning: _isPositioning } = useAssetLoader(scene, () => canvasRef);
 
   // Show UI panels when this 3D viewport is active
   createEffect(() => {

@@ -74,7 +74,7 @@ export default function CameraPropertiesTab(props) {
   
   // Reset handled by cameraActions.resetToDefaults
   
-  const SliderControl = ({ label, getValue, min, max, step, onChange, unit = '' }) => {
+  const _SliderControl = ({ label, getValue, min, max, step, onChange, unit = '' }) => {
     const displayValue = () => {
       const value = getValue();
       if (typeof value !== 'number') return value;
@@ -102,7 +102,7 @@ export default function CameraPropertiesTab(props) {
     );
   };
 
-  const ColorControl = ({ label, value, onChange }) => {
+  const _ColorControl = ({ label, value, onChange }) => {
     return (
       <div>
         <label class="text-xs text-base-content/80 mb-1 block">{label}</label>
@@ -116,7 +116,7 @@ export default function CameraPropertiesTab(props) {
     );
   };
 
-  const ToggleControl = ({ label, value, onChange }) => {
+  const _ToggleControl = ({ label, value, onChange }) => {
     return (
       <div class="flex items-center justify-between">
         <label class="text-xs text-base-content/80">{label}</label>

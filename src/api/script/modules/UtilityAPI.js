@@ -10,28 +10,6 @@ import {
   Color4,
   Angle,
   Tools,
-  Epsilon,
-  Space,
-  Axis,
-  Path3D,
-  Curve3,
-  BezierCurve,
-  Arc2,
-  Polygon,
-  PointerEventTypes,
-  ActionManager,
-  ExecuteCodeAction,
-  InterpolateValueAction,
-  SetValueAction,
-  IncrementValueAction,
-  PlayAnimationAction,
-  StopAnimationAction,
-  DoNothingAction,
-  CombineAction,
-  SetStateAction,
-  SetParentAction,
-  PlaySoundAction,
-  StopSoundAction
 } from '@babylonjs/core';
 
 export class UtilityAPI {

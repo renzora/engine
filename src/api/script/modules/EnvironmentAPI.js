@@ -3,7 +3,6 @@ import { SkyMaterial } from '@babylonjs/materials/sky/skyMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
-import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration.js';
 
 /**
  * EnvironmentAPI - Sky, fog, and scene environment management for RenScript
@@ -405,32 +404,6 @@ export class EnvironmentAPI {
     return environment;
   }
 
-  createMoon(name, options = {}) {
-    if (!this.scene) return null;
-    
-    const diameter = options.diameter || 20;
-    const moon = CreateSphere(name || 'moon', { diameter }, this.scene);
-    
-    // Set position
-    if (options.position) {
-      moon.position = new Vector3(...options.position);
-    } else {
-      moon.position = new Vector3(100, 300, 200);
-    }
-    
-    // Create moon material
-    const moonMaterial = new PBRMaterial(`${name || 'moon'}Material`, this.scene);
-    moonMaterial.baseColor = new Color3(...(options.baseColor || [0.9, 0.9, 0.8]));
-    moonMaterial.emissiveColor = new Color3(...(options.emissiveColor || [0.3, 0.3, 0.25]));
-    moonMaterial.metallicFactor = options.metallicFactor || 0.0;
-    moonMaterial.roughnessFactor = options.roughnessFactor || 0.8;
-    moonMaterial.disableLighting = options.disableLighting !== undefined ? options.disableLighting : true;
-    
-    moon.material = moonMaterial;
-    moon._isInternalMesh = true;
-    
-    return moon;
-  }
 
   // === ENVIRONMENTAL PRESETS ===
   

@@ -236,7 +236,7 @@ export const createAndAddObject = (objectType, scene) => {
  * Legacy function for backward compatibility
  * @deprecated Use createAndAddObject instead
  */
-export const finalizeObjectCreation = async (babylonObject, objectType, objectName, scene) => {
+export const finalizeObjectCreation = async (babylonObject, objectType, objectName, _scene) => {
   console.warn('finalizeObjectCreation is deprecated, use createAndAddObject instead');
   return addObjectToHierarchy(babylonObject, objectName, true);
 };

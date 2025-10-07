@@ -81,7 +81,7 @@ const parseColorToRgb = (colorStr) => {
 };
 
 // Helper function to get DaisyUI color from CSS custom properties
-const getDaisyUIColor = (colorName) => {
+const _getDaisyUIColor = (colorName) => {
   const style = getComputedStyle(document.documentElement);
   // Map short names to actual DaisyUI CSS custom property names
   const colorPropertyMap = {
@@ -155,7 +155,7 @@ export function grid(sceneSignal) {
       const regularLines = [];
       const sectionLines = [];
       const xAxisLine = [];
-      const yAxisLine = [];
+      const _yAxisLine = [];
       const zAxisLine = [];
       const halfSize = gridSize / 2;
       
@@ -435,9 +435,9 @@ export function grid(sceneSignal) {
 
   createEffect(() => {
     // Track scene signal, grid settings, and viewport showGrid
-    const scene = sceneSignal();
-    const gridSettings = settings().grid;
-    const showGrid = viewport().showGrid;
+    sceneSignal();
+    settings().grid;
+    viewport().showGrid;
     
     // Grid settings or scene changed, update grid
     updateGrid();

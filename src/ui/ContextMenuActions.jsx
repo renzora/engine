@@ -1,18 +1,5 @@
-import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconCylinder, IconSquare, IconBulb, IconVideo, IconClipboard, IconArrowBackUp, IconArrowForwardUp, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus, IconSun, IconSphere, IconPlane } from '@tabler/icons-solidjs';
+import { IconEdit, IconCopy, IconTrash, IconFolder, IconBox, IconCode, IconArchive, IconMountain, IconBrush, IconPalette, IconX, IconCirclePlus, IconCircle, IconCylinder, IconSquare, IconBulb, IconVideo, IconClipboard, IconMaximize, IconSearch, IconRotate, IconArrowUp, IconArrowRight, IconArrowDown, IconPointer, IconCircleMinus, IconSun, IconSphere } from '@tabler/icons-solidjs';
 import { renderStore, renderActions } from '@/render/store';
-import { editorStore } from '@/layout/stores/EditorStore';
-import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder';
-import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
-import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder';
-import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder';
-import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight';
-import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight';
-import { PointLight } from '@babylonjs/core/Lights/pointLight';
-import { SpotLight } from '@babylonjs/core/Lights/spotLight';
-import { UniversalCamera } from '@babylonjs/core/Cameras/universalCamera';
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
-import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { createAndAddObject } from '@/api/creation/ObjectCreationUtils.jsx';
 
 export const createContextMenuActions = (editorActions) => {

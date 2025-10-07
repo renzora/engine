@@ -22,23 +22,12 @@ import {
   CreatePolygon,
   CreateText,
   Vector3,
-  Vector4,
-  Color3,
   Color4,
-  Path3D,
-  Curve3,
   Mesh,
-  InstancedMesh,
-  TransformNode,
-  AbstractMesh,
-  VertexData,
-  BoundingInfo,
-  BoundingSphere,
-  BoundingBox
+  VertexData
 } from '@babylonjs/core';
 
 import { CSG } from '@babylonjs/core/Meshes/csg.js';
-import { PolygonMeshBuilder } from '@babylonjs/core/Meshes/polygonMesh.js';
 
 export class MeshAPI {
   constructor(scene) {
@@ -580,7 +569,7 @@ export class MeshAPI {
     if (!mesh) return false;
     
     const vertexCount = mesh.getTotalVertices();
-    const colors = new Array(vertexCount * 4);
+    const colors = Array.from({ length: vertexCount * 4 });
     
     for (let i = 0; i < vertexCount; i++) {
       colors[i * 4] = 1;     // R

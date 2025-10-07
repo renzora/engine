@@ -1,4 +1,4 @@
-import { createSignal, createEffect, createMemo, onMount, onCleanup, Show, For } from 'solid-js';
+import { createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
 import { IconMenu2, IconChevronDown, IconChevronUp, IconGripVertical } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportStore } from '@/layout/stores/ViewportStore';
@@ -11,10 +11,10 @@ const workflowTabs = {
   'default': []
 };
 
-function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPanel, rightPanelWidth, isScenePanelOpen, panelResize }) {
+function BottomTabs({ _activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPanel, _rightPanelWidth, _isScenePanelOpen, panelResize }) {
   // Use store directly for bottom panel state
   const bottomPanelOpen = () => editorStore.panels.isAssetPanelOpen;
-  const selectedBottomTab = () => editorStore.ui.selectedBottomTab;
+  const _selectedBottomTab = () => editorStore.ui.selectedBottomTab;
   // Use the store directly for reactivity instead of the prop
   const currentActiveTab = () => editorStore.ui.selectedBottomTab;
   const bottomTabOrder = () => editorStore.ui.bottomTabOrder;
@@ -93,9 +93,9 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
   });
   const [dragOverOverflowButton, setDragOverOverflowButton] = createSignal(false);
   
-  let containerRef;
-  let tabsRef;
-  let overflowButtonRef;
+  let containerRef = null;
+  let tabsRef = null;
+  let overflowButtonRef = null;
   let dropdownOpenTimeoutRef = null;
 
   createEffect(() => {
@@ -301,7 +301,7 @@ function BottomTabs({ activeTab, onTabChange, isAssetPanelOpen, onToggleAssetPan
     }
   });
 
-  const currentWorkflow = getCurrentWorkflow();
+  const _currentWorkflow = getCurrentWorkflow();
 
   return (
     <div ref={containerRef} class="h-8 bg-base-200/90 border-t border-b border-base-content/15 shadow-md flex items-center relative z-50 cursor-row-resize" onMouseDown={(e) => {

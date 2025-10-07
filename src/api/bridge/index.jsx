@@ -12,9 +12,7 @@ import * as wsBridge from './websocket.jsx';
 // Direct imports and re-exports for critical functions
 import { 
   connectToServer as wsConnectToServer,
-  isConnected as wsIsConnected,
-  getHealth as wsGetHealth,
-  getSystemStats as wsGetSystemStats
+  isConnected as wsIsConnected
 } from './websocket.jsx';
 
 // Immediately export the critical functions
@@ -231,7 +229,7 @@ export async function getHealth() {
     try {
       const response = await fetch('http://localhost:3001/health');
       return await response.json();
-    } catch (error) {
+    } catch {
       throw new Error('HTTP bridge health check failed');
     }
   }
@@ -244,7 +242,7 @@ export async function getSystemStats() {
     try {
       const response = await fetch('http://localhost:3001/system/stats');
       return await response.json();
-    } catch (error) {
+    } catch {
       throw new Error('HTTP bridge system stats failed');
     }
   }

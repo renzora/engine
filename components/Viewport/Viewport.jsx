@@ -1,7 +1,7 @@
 import { onMount, onCleanup } from 'solid-js';
 
-function Viewport(props) {
-  let canvasRef;
+function Viewport() {
+  let canvasRef = null;
 
   onMount(() => {
     const canvas = canvasRef;

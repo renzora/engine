@@ -1,13 +1,13 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconArrowUp, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconDownload, IconUpload, IconPhoto, IconDeviceGamepad2, IconWorld, IconDeviceDesktop, IconBox, IconCircle, IconCylinder, IconSquare, IconChartDonutFilled, IconChairDirector, IconNetwork, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconWorld, IconBox, IconCircle, IconCylinder, IconSquare, IconChairDirector, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
 import ExportDialog from '@/ui/ExportDialog.jsx';
 import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
 import OpenProjectOverlay from '@/ui/OpenProjectOverlay.jsx';
 import { sceneManager } from '@/api/scene/SceneManager.js';
-import { getCurrentProject, getProjectCurrentScene } from '@/api/bridge/projects.js';
+import { getCurrentProject } from '@/api/bridge/projects.js';
 import UnsavedChangesOverlay from '@/ui/UnsavedChangesOverlay.jsx';
 import SceneSelectionOverlay from '@/ui/SceneSelectionOverlay.jsx';
 import SaveAsOverlay from '@/ui/SaveAsOverlay.jsx';

@@ -9,7 +9,7 @@ export default createPlugin({
   description: 'Script management and property controls in the right panel',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     // Initializing scripts plugin
   },
 

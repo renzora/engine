@@ -120,7 +120,7 @@ export function GizmoManagerComponent() {
               // Monitor scaling changes and override Y-axis
               const scaleGizmo = gizmoManager.gizmos.scaleGizmo;
               if (scaleGizmo && !scaleGizmo._planeConstraintAdded) {
-                const originalOnDragObservable = scaleGizmo.onDragStartObservable.clone();
+                const _originalOnDragObservable = scaleGizmo.onDragStartObservable.clone();
                 let initialScale = null;
                 
                 scaleGizmo.onDragStartObservable.add(() => {

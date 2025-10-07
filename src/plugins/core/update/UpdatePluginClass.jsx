@@ -71,7 +71,7 @@ export class UpdatePluginClass {
       } else {
         alert('You\'re running the latest version!');
       }
-    } catch (error) {
+    } catch {
       alert('Failed to check for updates');
     }
   }

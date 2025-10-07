@@ -212,7 +212,7 @@ export class PhysicsAPI {
     this.babylonObject.aggregate.body.applyImpulse(force, contactPoint);
   }
 
-  applyForce(forceX, forceY, forceZ, contactPointX = 0, contactPointY = 0, contactPointZ = 0) {
+  applyForce(forceX, forceY, forceZ, _contactPointX = 0, _contactPointY = 0, _contactPointZ = 0) {
     if (!this.babylonObject?.aggregate?.body) return;
     
     const force = new Vector3(forceX, forceY, forceZ);
@@ -295,7 +295,7 @@ export class PhysicsAPI {
     return massProps ? massProps.mass : 0;
   }
 
-  setFriction(friction) {
+  setFriction(_friction) {
     console.warn('setFriction: Use updatePhysics() instead for V2 API');
   }
 
@@ -303,7 +303,7 @@ export class PhysicsAPI {
     return 0.5; // Default fallback
   }
 
-  setRestitution(restitution) {
+  setRestitution(_restitution) {
     console.warn('setRestitution: Use updatePhysics() instead for V2 API');
   }
 
@@ -399,7 +399,7 @@ export class PhysicsAPI {
       if (!mesh.physicsImpostor._collisionTracker) {
         mesh._previousCollisions = new Set();
         
-        mesh.physicsImpostor.registerOnPhysicsCollide(mesh.physicsImpostor, (main, collided) => {
+        mesh.physicsImpostor.registerOnPhysicsCollide(mesh.physicsImpostor, (main, _collided) => {
           const currentCollisions = new Set();
           
           // Track current collisions
@@ -439,8 +439,8 @@ export class PhysicsAPI {
     const physicsEngine = this.scene.getPhysicsEngine();
     if (!physicsEngine) return null;
     
-    const from = new Vector3(originX, originY, originZ);
-    const to = new Vector3(
+    const _from = new Vector3(originX, originY, originZ);
+    const _to = new Vector3(
       originX + directionX * maxDistance,
       originY + directionY * maxDistance,
       originZ + directionZ * maxDistance
@@ -453,16 +453,16 @@ export class PhysicsAPI {
 
   // === CHARACTER CONTROLLER (HAVOK) ===
   
-  createCharacterController(options = {}) {
+  createCharacterController(_options = {}) {
     console.warn('Character controller requires Havok physics engine');
     return null;
   }
 
-  moveCharacter(velocityX, velocityY, velocityZ) {
+  moveCharacter(_velocityX, _velocityY, _velocityZ) {
     console.warn('Character movement requires Havok character controller');
   }
 
-  jumpCharacter(force = 5) {
+  jumpCharacter(_force = 5) {
     console.warn('Character jump requires Havok character controller');
   }
 
@@ -479,12 +479,12 @@ export class PhysicsAPI {
 
   // === SOFT BODY PHYSICS ===
   
-  enableSoftBody(options = {}) {
+  enableSoftBody(_options = {}) {
     console.warn('Soft body physics requires advanced physics engine');
     return false;
   }
 
-  setSoftBodyProperties(stiffness, damping) {
+  setSoftBodyProperties(_stiffness, _damping) {
     console.warn('Soft body properties require advanced physics engine');
   }
 

@@ -3,13 +3,12 @@ import { keyboardShortcuts } from '@/components/KeyboardShortcuts';
 import { renderStore, renderActions } from '../store.jsx';
 import { editorStore } from '@/layout/stores/EditorStore.jsx';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { Matrix } from '@babylonjs/core/Maths/math.vector.js';
 import { CreateLines } from '@babylonjs/core/Meshes/Builders/linesBuilder.js';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
+import { Color3 } from '@babylonjs/core/Maths/math.color.js';
 
 // Hook for registering render viewport keyboard shortcuts
 // Export the transform trigger function for external use
-let triggerTransform = null;
+let _triggerTransform = null;
 
 export function renderShortcuts(callbacks = {}) {
   let keysPressed = new Set();
@@ -552,7 +551,7 @@ export function renderShortcuts(callbacks = {}) {
   };
 
   const applyFreeTransform = (deltaX, deltaY) => {
-    const selectedObjects = renderStore.selectedObjects;
+    const _selectedObjects = renderStore.selectedObjects;
     const primaryObject = renderStore.selectedObject;
     if (!primaryObject || !transformState.originalTransforms || transformState.originalTransforms.length === 0) return;
 
@@ -868,7 +867,7 @@ export function renderShortcuts(callbacks = {}) {
   };
 
 
-  const snapObjectToCursor = () => {
+  const _snapObjectToCursor = () => {
     const selectedObject = renderStore.selectedObject;
     const camera = renderStore.camera;
     const canvas = document.querySelector('canvas');

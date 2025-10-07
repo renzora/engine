@@ -1,6 +1,6 @@
-import { createEffect, onCleanup, createMemo } from 'solid-js';
+import { createEffect, createMemo } from 'solid-js';
 import { renderStore, renderActions } from '@/render/store';
-import { IconSun, IconBulb, IconMoon, IconPalette, IconCamera, IconSettings, IconEye, IconCloud, IconClock } from '@tabler/icons-solidjs';
+import { IconSun, IconBulb, IconPalette, IconCamera, IconSettings, IconEye, IconCloud, IconClock } from '@tabler/icons-solidjs';
 import { ImageProcessingConfiguration } from '@babylonjs/core/Materials/imageProcessingConfiguration';
 
 export default function LightDropdownContent() {
@@ -33,7 +33,7 @@ export default function LightDropdownContent() {
     }
   };
   
-  const toggleSetting = (key) => {
+  const _toggleSetting = (key) => {
     setSetting(key, !lighting()[key]);
   };
   
@@ -148,7 +148,7 @@ export default function LightDropdownContent() {
   });
 
   // Reactive formatter for different value types
-  const formatValue = createMemo(() => (value, step) => {
+  const _formatValue = createMemo(() => (value, step) => {
     if (typeof value !== 'number') return value;
     if (step < 0.01) return value.toFixed(4);
     if (step < 0.1) return value.toFixed(2);
@@ -157,13 +157,13 @@ export default function LightDropdownContent() {
   });
 
   // Reactive text displays for key lighting values
-  const exposureText = createMemo(() => `${lighting().exposure.toFixed(2)}`);
-  const contrastText = createMemo(() => `${lighting().contrast.toFixed(2)}`);
-  const timeSpeedText = createMemo(() => `${lighting().timeSpeed.toFixed(1)}x`);
-  const timeOfDayText = createMemo(() => `${lighting().timeOfDay.toFixed(1)}h`);
-  const environmentText = createMemo(() => `${lighting().environmentIntensity.toFixed(1)}`);
-  const sunIntensityText = createMemo(() => `${lighting().sunIntensity.toFixed(1)}`);
-  const moonIntensityText = createMemo(() => `${lighting().moonIntensity.toFixed(1)}`);
+  const _exposureText = createMemo(() => `${lighting().exposure.toFixed(2)}`);
+  const _contrastText = createMemo(() => `${lighting().contrast.toFixed(2)}`);
+  const _timeSpeedText = createMemo(() => `${lighting().timeSpeed.toFixed(1)}x`);
+  const _timeOfDayText = createMemo(() => `${lighting().timeOfDay.toFixed(1)}h`);
+  const _environmentText = createMemo(() => `${lighting().environmentIntensity.toFixed(1)}`);
+  const _sunIntensityText = createMemo(() => `${lighting().sunIntensity.toFixed(1)}`);
+  const _moonIntensityText = createMemo(() => `${lighting().moonIntensity.toFixed(1)}`);
   
   // Time status indicator
   const timeStatus = createMemo(() => lighting().timeEnabled ? 'ON' : 'OFF');

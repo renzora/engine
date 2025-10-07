@@ -156,7 +156,6 @@ export class SceneManager {
    * @returns {Promise<{success: boolean, error?: string}>}
    */
   async loadScene(sceneName) {
-    const startTime = Date.now();
     // Starting scene load process
     
     // Set loading state to prevent false "modified" flags during loading
@@ -221,7 +220,6 @@ export class SceneManager {
       await updateProjectCurrentScene(sceneName);
 
       dispatchProgress('Scene loading complete!');
-      const totalTime = Date.now() - startTime;
       // Scene load completed
       
       // Clear loading state
@@ -395,7 +393,7 @@ export class SceneManager {
    * @param {Function} dispatchProgress - Progress callback
    * @returns {Object|null} Created Babylon object
    */
-  async createBabylonObjectFromData(item, assets, dispatchProgress = null) {
+  async createBabylonObjectFromData(item, assets) {
     const scene = renderStore.scene;
     if (!scene) return null;
 
@@ -828,7 +826,7 @@ export class SceneManager {
     
     // For now, just restore the hierarchy structure without Babylon objects
     if (sceneData.hierarchy) {
-      const cleanHierarchy = this.cleanHierarchyForDisplay(sceneData.hierarchy);
+      this.cleanHierarchyForDisplay(sceneData.hierarchy);
       renderActions.initializeHierarchy();
     }
   }
@@ -1160,11 +1158,9 @@ export class SceneManager {
         // Container created for meshes
         
         // Parent all loaded meshes to the container
-        let parentedMeshes = 0;
-        result.meshes.forEach((mesh, index) => {
+        result.meshes.forEach((mesh) => {
           if (mesh.name !== "__root__") {
             mesh.setParent(container);
-            parentedMeshes++;
             // Parented mesh to container
           }
         });
@@ -1243,7 +1239,6 @@ export class SceneManager {
         const { createTerrainMesh } = await import('@/plugins/terrain/index.jsx');
         const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
         const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
-        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
         
         if (babylonData.__isTerrainSystem) {
           // Restore terrain system manager
@@ -1393,7 +1388,6 @@ export class SceneManager {
         const { MeshBuilder } = await import('@babylonjs/core/Meshes/meshBuilder.js');
         const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
         const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
-        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
         
         // Import specific builders based on mesh type (required for side effects)
         await import('@babylonjs/core/Meshes/Builders/boxBuilder.js');
@@ -1638,7 +1632,6 @@ export class SceneManager {
         console.log('📦 Restoring TransformNode container:', item.name);
         
         const { TransformNode } = await import('@babylonjs/core/Meshes/transformNode.js');
-        const { Vector3 } = await import('@babylonjs/core/Maths/math.vector.js');
         
         // Create TransformNode
         const transformNode = new TransformNode(babylonData.name || item.name, scene);

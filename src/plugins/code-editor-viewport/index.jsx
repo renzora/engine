@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { IconCode } from '@tabler/icons-solidjs';
-import { createEffect, onCleanup } from 'solid-js';
+import { createEffect } from 'solid-js';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 import CodeEditorViewport from './CodeEditorViewport.jsx';
 
@@ -11,7 +11,7 @@ export default createPlugin({
   description: 'Code editor viewport for editing scripts and text files',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit(_api) {
     console.log('[CodeEditorViewportPlugin] Initializing...');
   },
 

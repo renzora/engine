@@ -27,7 +27,7 @@ function AssetSidebar({
   onTreeDragLeave,
   onTreeDrop,
   onResizeMouseDown,
-  onRefresh
+  _onRefresh
 }) {
   return (
     <div 

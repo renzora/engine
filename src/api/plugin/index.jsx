@@ -1,4 +1,4 @@
-import { createSignal, createContext, useContext, onMount, onCleanup } from 'solid-js';
+import { createSignal, createContext, useContext, onMount, onCleanup, createRoot } from 'solid-js';
 
 const PLUGIN_STATES = {
   DISCOVERED: 'discovered',
@@ -320,7 +320,20 @@ class PluginLoader {
       // Starting plugin
 
       if (typeof plugin.instance.onStart === 'function') {
-        await plugin.instance.onStart();
+        // Wrap onStart in createRoot to properly handle SolidJS effects
+        await new Promise((resolve, reject) => {
+          createRoot(async (dispose) => {
+            try {
+              await plugin.instance.onStart();
+              // Store dispose function on plugin instance for cleanup
+              plugin.instance._dispose = dispose;
+              resolve();
+            } catch (error) {
+              dispose();
+              reject(error);
+            }
+          });
+        });
       }
 
       this.setPluginState(pluginId, PLUGIN_STATES.RUNNING);
@@ -502,11 +515,22 @@ export class PluginAPI {
     
     const plugins = this.pluginLoader.getAllPlugins();
     for (const plugin of plugins) {
-      if (plugin.instance && typeof plugin.instance.onDispose === 'function') {
-        try {
-          await plugin.instance.onDispose();
-        } catch (error) {
-          console.error(`Failed to dispose plugin ${plugin.id}:`, error);
+      if (plugin.instance) {
+        // Clean up SolidJS reactive context if it exists
+        if (plugin.instance._dispose) {
+          try {
+            plugin.instance._dispose();
+          } catch (error) {
+            console.error(`Failed to dispose SolidJS context for plugin ${plugin.id}:`, error);
+          }
+        }
+        
+        if (typeof plugin.instance.onDispose === 'function') {
+          try {
+            await plugin.instance.onDispose();
+          } catch (error) {
+            console.error(`Failed to dispose plugin ${plugin.id}:`, error);
+          }
         }
       }
     }

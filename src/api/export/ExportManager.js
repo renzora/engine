@@ -144,7 +144,7 @@ export class ExportManager {
    * @param {Object} options - Export options
    * @returns {Promise<{success: boolean, outputPath?: string, error?: string}>}
    */
-  async generateRuntimeApp(bundle, projectName, options) {
+  async generateRuntimeApp(bundle, projectName) {
     try {
       console.log('🔧 ExportManager: Generating runtime application...');
       
@@ -183,7 +183,7 @@ export class ExportManager {
    * @param {Object} options - Export options
    * @returns {Promise<{success: boolean, error?: string}>}
    */
-  async buildTauriApp(projectName, options) {
+  async buildTauriApp() {
     try {
       console.log('🔧 ExportManager: Building Tauri application...');
       

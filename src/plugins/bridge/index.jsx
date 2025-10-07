@@ -1,9 +1,7 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal, createEffect, onMount, onCleanup, For, Show, Switch, Match } from 'solid-js';
-import { CollapsibleSection } from '@/ui';
 import { IconSettings } from '@tabler/icons-solidjs';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
-import { editorActions } from '@/layout/stores/EditorStore.jsx';
 import { pluginAPI } from '@/api/plugin';
 import BridgeFooterButton from './BridgeFooterButton.jsx';
 
@@ -11,7 +9,7 @@ function BridgeViewport({ tab }) {
   const [activeTab, setActiveTab] = createSignal('cache');
   const [isOnline, setIsOnline] = createSignal(false);
   const [bridgeStatus, setBridgeStatus] = createSignal({});
-  const [cacheStats, setCacheStats] = createSignal({});
+  const [_cacheStats, setCacheStats] = createSignal({});
   const [searchTerm, setSearchTerm] = createSignal('');
   const [searchResults, setSearchResults] = createSignal([]);
   const [allScripts, setAllScripts] = createSignal([]);
@@ -32,7 +30,7 @@ function BridgeViewport({ tab }) {
       } else {
         setIsOnline(false);
       }
-    } catch (error) {
+    } catch {
       setIsOnline(false);
     }
   };
@@ -44,7 +42,7 @@ function BridgeViewport({ tab }) {
         const stats = await response.json();
         setCacheStats(stats);
       }
-    } catch (error) {
+    } catch {
       console.warn('Failed to load cache stats:', error);
     }
   };
@@ -56,7 +54,7 @@ function BridgeViewport({ tab }) {
         const scripts = await response.json();
         setAllScripts(scripts);
       }
-    } catch (error) {
+    } catch {
       console.warn('Failed to load scripts:', error);
     }
   };
@@ -73,7 +71,7 @@ function BridgeViewport({ tab }) {
         const results = await response.json();
         setSearchResults(results);
       }
-    } catch (error) {
+    } catch {
       console.warn('Failed to search scripts:', error);
     }
   };
@@ -90,7 +88,7 @@ function BridgeViewport({ tab }) {
       } else {
         console.error('Failed to clear cache');
       }
-    } catch (error) {
+    } catch {
       console.error('Error clearing cache:', error.message);
     } finally {
       setIsLoading(false);
@@ -109,7 +107,7 @@ function BridgeViewport({ tab }) {
       } else {
         console.error('Failed to refresh RenScript cache');
       }
-    } catch (error) {
+    } catch {
       console.error('Error refreshing cache:', error.message);
     } finally {
       setIsLoading(false);
@@ -137,7 +135,7 @@ function BridgeViewport({ tab }) {
         console.error('Query failed:', error);
         setQueryResults({ error });
       }
-    } catch (error) {
+    } catch {
       console.error('Query error:', error.message);
       setQueryResults({ error: error.message });
     } finally {
@@ -501,7 +499,7 @@ export default createPlugin({
   description: 'Bridge server management and monitoring tools',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     // Initializing bridge management plugin
   },
 

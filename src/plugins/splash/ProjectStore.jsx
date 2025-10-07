@@ -25,7 +25,7 @@ export function Project(props) {
         });
         
         if (response.ok) {
-          const result = await response.json();
+          await response.json();
           // File watcher updated for project
         }
       } catch (error) {

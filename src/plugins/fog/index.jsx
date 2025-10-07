@@ -1,7 +1,7 @@
 import { createPlugin } from '@/api/plugin';
 import { IconEye } from '@tabler/icons-solidjs';
 import FogPanel from './FogPanel.jsx';
-import { renderStore, renderActions } from '@/render/store';
+import { renderStore } from '@/render/store';
 
 export default createPlugin({
   id: 'fog',

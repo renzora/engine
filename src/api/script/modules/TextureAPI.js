@@ -10,19 +10,9 @@ import {
   RenderTargetTexture,
   MirrorTexture,
   RefractionTexture,
-  ProceduralTexture,
-  CustomProceduralTexture,
   NoiseProceduralTexture,
-  ColorGradingTexture,
-  EquiRectangularCubeTexture,
-  BaseTexture,
-  InternalTexture,
-  Vector2,
-  Vector3,
   Color3,
-  Color4,
-  Matrix,
-  Engine
+  Matrix
 } from '@babylonjs/core';
 
 // Procedural textures
@@ -108,9 +98,6 @@ export class TextureAPI {
     return new RoadProceduralTexture(name, size, this.scene);
   }
 
-  createNoiseTexture(name, size = 512) {
-    return new NoiseProceduralTexture(name, size, this.scene);
-  }
 
   // === TEXTURE PROPERTIES ===
 
@@ -350,7 +337,7 @@ export class TextureAPI {
     return texture.isReady();
   }
 
-  cloneTexture(texture, name = null) {
+  cloneTexture(texture, _name = null) {
     if (!texture || !texture.clone) return null;
     return texture.clone();
   }
@@ -367,7 +354,7 @@ export class TextureAPI {
     return new Promise((resolve, reject) => {
       const texture = new Texture(url, this.scene, true, false, Texture.TRILINEAR_SAMPLINGMODE, () => {
         resolve(texture);
-      }, (message, exception) => {
+      }, (message, _exception) => {
         reject(new Error(message || 'Failed to load texture'));
       });
     });
@@ -377,7 +364,7 @@ export class TextureAPI {
     return new Promise((resolve, reject) => {
       const texture = new CubeTexture(rootUrl, this.scene, extensions, false, null, () => {
         resolve(texture);
-      }, (message, exception) => {
+      }, (message, _exception) => {
         reject(new Error(message || 'Failed to load cube texture'));
       });
     });

@@ -1,5 +1,4 @@
 import { createSignal, createEffect, Show } from 'solid-js';
-import { renderStore } from '@/render/store';
 import { IconBulb, IconSun, IconTriangle, IconCircle, IconRectangle, IconEye, IconSettings, IconPalette } from '@tabler/icons-solidjs';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector';

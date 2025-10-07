@@ -9,7 +9,7 @@ export default createPlugin({
   description: 'Light properties and settings controls in the scene panel',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     // Initializing light plugin
     console.log('[LightPlugin] Initializing...');
   },

@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show, createEffect } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import TopMenu from './topMenu.jsx';
 import Viewport from './viewport.jsx';
 import RightPanel from './rightPanel.jsx';
@@ -8,7 +8,7 @@ import ModelImporter from '@/pages/editor/AssetLibrary/ModelImporter';
 import { ViewportContextMenuProvider } from '@/ui/ViewportContextMenu.jsx';
 import KeyboardShortcuts from './KeyboardShortcuts.jsx';
 import { editorActions } from './stores/EditorStore.jsx';
-import { horizontalMenuButtonsEnabled, propertiesPanelVisible, bottomPanelVisible, footerVisible } from '@/api/plugin';
+import { propertiesPanelVisible, bottomPanelVisible, footerVisible } from '@/api/plugin';
 
 const Layout = () => {
   const [showModelImporter, setShowModelImporter] = createSignal(false);

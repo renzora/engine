@@ -8,7 +8,7 @@ import { RuntimeAssetLoader } from './RuntimeAssetLoader.jsx';
  * Contains only what's needed to run the game/experience
  */
 export default function RuntimeApp() {
-  let canvasRef;
+  let canvasRef = null;
   const [isLoading, setIsLoading] = createSignal(true);
   const [loadingProgress, setLoadingProgress] = createSignal(0);
   const [loadingStatus, setLoadingStatus] = createSignal('Initializing...');

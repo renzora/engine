@@ -1,7 +1,5 @@
 import { Ray } from '@babylonjs/core/Culling/ray.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { PickingInfo } from '@babylonjs/core/Collisions/pickingInfo.js';
-import { Tags } from '@babylonjs/core/Misc/tags.js';
 
 /**
  * SceneAPI - Scene queries, raycasting, and object management

@@ -9,7 +9,7 @@ export default createPlugin({
   description: 'Web browser viewport for browsing websites',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     console.log('[WebBrowserPlugin] Initializing...');
   },
 

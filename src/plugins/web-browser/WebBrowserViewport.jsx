@@ -1,4 +1,4 @@
-import { createSignal, onMount, Show } from 'solid-js';
+import { createSignal, Show } from 'solid-js';
 
 export default function WebBrowserViewport() {
   const [url, setUrl] = createSignal('https://example.com');

@@ -164,7 +164,7 @@ if (!isProduction) {
       if (!devServer) {
         throw new Error('webpack-dev-server is not defined');
       }
-      const { port, address } = devServer.server.address();
+      const { port } = devServer.server.address();
       const protocol = devServer.server.listening && devServer.options.server?.type === 'https' ? 'https' : 'http';
       const url = `${protocol}://localhost:${port}`;
       
@@ -200,7 +200,7 @@ if (!isProduction) {
             }
           }
         }
-      } catch (error) {
+      } catch {
         console.warn('HTTPS certificates not found, falling back to HTTP')
       }
       return 'http'

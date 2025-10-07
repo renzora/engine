@@ -1,5 +1,5 @@
 import { createSignal, createEffect, Show } from 'solid-js';
-import { renderStore, renderActions } from '@/render/store';
+import { renderStore } from '@/render/store';
 import { IconShadow, IconShield, IconEye } from '@tabler/icons-solidjs';
 
 function RenderPanel(props) {

@@ -3,12 +3,10 @@
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 import ora from 'ora';
-import boxen from 'boxen';
-import { execSync, exec, spawn } from 'child_process';
+import { execSync, spawn } from 'child_process';
 import { existsSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { createInterface } from 'readline';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.join(__dirname, '..');
@@ -79,23 +77,6 @@ function runCommand(command, options = {}) {
   }
 }
 
-function runCommandAsync(command, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = exec(command, { 
-      cwd: projectRoot, 
-      ...options 
-    }, (error, stdout, stderr) => {
-      if (error) {
-        reject(error);
-      } else {
-        resolve({ stdout, stderr });
-      }
-    });
-    
-    child.stdout?.pipe(process.stdout);
-    child.stderr?.pipe(process.stderr);
-  });
-}
 
 function startServerBackground(target) {
   if (runningProcesses[target]) {
@@ -269,11 +250,13 @@ function showStatus() {
   console.log(chalk.dim('┌────────────────────────────────────────────────────────┐'));
   
   const buildText = ` ${chalk.bold('Build:')} ${buildStatus}     ${chalk.bold('Servers:')} ${serverStatus}`;
+  // eslint-disable-next-line no-control-regex
   const buildTextClean = buildText.replace(/\u001b\[[0-9;]*m/g, '');
   const buildPadding = ' '.repeat(Math.max(0, 56 - buildTextClean.length));
   console.log(chalk.dim('│') + buildText + buildPadding + chalk.dim('│'));
   
   if (runningInfo) {
+    // eslint-disable-next-line no-control-regex
     const runningTextClean = runningInfo.replace(/\u001b\[[0-9;]*m/g, '');
     const runningPadding = ' '.repeat(Math.max(0, 56 - runningTextClean.length));
     console.log(chalk.dim('│') + runningInfo + runningPadding + chalk.dim('│'));
@@ -497,7 +480,7 @@ async function mainMenu() {
           prefix: '',
           helpMode: 'never'
         },
-        validate: (input, answers) => {
+        validate: () => {
           // Handle ESC key
           return true;
         }

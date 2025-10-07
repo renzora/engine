@@ -34,7 +34,7 @@ function CameraNameDisplay() {
 
     // Watch for scene changes
     if (renderStore.scene) {
-      const scene = renderStore.scene;
+      const _scene = renderStore.scene;
       
       // Listen for camera changes (when activeCamera is set)
       const interval = setInterval(updateCameraName, 500); // Check every 500ms

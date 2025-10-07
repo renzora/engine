@@ -7,8 +7,7 @@ const PanelResizer = ({
   onResizeEnd,
   onResize,
   position,
-  className = '',
-  isLeftPanel = false
+  className = ''
 }) => {
   createEffect(() => {
     const resizing = typeof isResizing === 'function' ? isResizing() : isResizing;

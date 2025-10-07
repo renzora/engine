@@ -2,7 +2,6 @@
 
 import {
   Sound,
-  AudioEngine,
   Analyser,
   SoundTrack,
   Vector3
@@ -305,7 +304,7 @@ export class AudioAPI {
     return true;
   }
 
-  cloneSound(sound, name) {
+  cloneSound(sound, _name) {
     if (!sound || !sound.clone) return null;
     return sound.clone();
   }
@@ -661,7 +660,7 @@ export class AudioAPI {
     
     const fadeSteps = 60; // 60 steps for smooth fade
     const stepTime = (duration * 1000) / fadeSteps;
-    const volumeStep = 1.0 / fadeSteps;
+    // const volumeStep = 1.0 / fadeSteps; // Not used, progress calculation is used instead
     
     let step = 0;
     

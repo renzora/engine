@@ -1,5 +1,5 @@
 import { createSignal, createEffect, Show, For } from 'solid-js';
-import { IconX, IconPlus, IconFolder, IconChairDirector, IconTrash } from '@tabler/icons-solidjs';
+import { IconX, IconPlus, IconFolder, IconChairDirector } from '@tabler/icons-solidjs';
 import { sceneManager } from '@/api/scene/SceneManager.js';
 
 export default function SceneSelectionOverlay({ isOpen, onClose, onSceneSelect, onCreateScene }) {

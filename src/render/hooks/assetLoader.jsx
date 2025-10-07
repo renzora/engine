@@ -1,13 +1,10 @@
 import { createSignal } from 'solid-js'
 import { Vector3, Matrix, Plane } from '@babylonjs/core/Maths/math'
-import { Color3 } from '@babylonjs/core/Maths/math.color'
 import '@babylonjs/loaders'
 import { SceneLoader } from '@babylonjs/core/Loading/sceneLoader'
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder'
-import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture'
-import { Mesh } from '@babylonjs/core/Meshes/mesh'
 import { TransformNode } from '@babylonjs/core/Meshes/transformNode'
 import { editorActions } from '@/layout/stores/EditorStore'
 import { renderActions } from '@/render/store'
@@ -184,7 +181,7 @@ export const useAssetLoader = (sceneInstance, canvasRef) => {
     }
   }
 
-  const loadAssetIntoScene = async (assetData, position = null, importSettings = null) => {
+  const loadAssetIntoScene = async (assetData, position = null) => {
     const scene = sceneInstance()
     
     if (!scene || scene.isDisposed) {

@@ -1,8 +1,5 @@
 import { createPlugin } from '@/api/plugin';
 import { setCurrentProject } from '@/api/bridge/projects';
-import BridgeStatus from './BridgeStatus.jsx';
-import BridgeViewport from './BridgeViewport.jsx';
-import { IconServer, IconDatabase, IconCloud } from '@tabler/icons-solidjs';
 
 let projectSelectedHandler = null;
 
@@ -13,7 +10,7 @@ export default createPlugin({
   description: 'Manages communication between Renzora Engine and project files',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     // Bridge plugin initialized
   },
 

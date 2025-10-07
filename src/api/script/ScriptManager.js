@@ -21,7 +21,6 @@ import { EnvironmentAPI } from './modules/EnvironmentAPI.js';
 import { DayNightAPI } from './modules/DayNightAPI.js';
 import { ShadowAPI } from './modules/ShadowAPI.js';
 import { TransformAPI } from './modules/TransformAPI.js';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
 
 /**
  * ScriptManager - Manages script execution and lifecycle for Babylon.js objects
@@ -86,7 +85,7 @@ class ScriptManager {
   bindAPIMethodsToScript(scriptInstance, apiModules) {
     
     // Bind all methods from each module to the script instance
-    Object.entries(apiModules).forEach(([moduleName, moduleInstance]) => {
+    Object.entries(apiModules).forEach(([_moduleName, moduleInstance]) => {
       const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(moduleInstance))
         .filter(name => name !== 'constructor' && typeof moduleInstance[name] === 'function');
         
@@ -591,7 +590,7 @@ class ScriptManager {
       const apiContext = {};
       
       // Bind all API methods to the context object
-      Object.entries(apiModules).forEach(([moduleName, moduleInstance]) => {
+      Object.entries(apiModules).forEach(([_moduleName, moduleInstance]) => {
         const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(moduleInstance))
           .filter(name => name !== 'constructor' && typeof moduleInstance[name] === 'function');
           
@@ -688,7 +687,7 @@ class ScriptManager {
           const tempAPIContext = {};
           
           // Bind API methods to temp context
-          Object.entries(tempAPIModules).forEach(([moduleName, moduleInstance]) => {
+          Object.entries(tempAPIModules).forEach(([_moduleName, moduleInstance]) => {
             const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(moduleInstance))
               .filter(name => name !== 'constructor' && typeof moduleInstance[name] === 'function');
               
@@ -1029,13 +1028,13 @@ class ScriptManager {
   updateScriptProperties(scriptPath, newProperties, propertyChanges) {
     // Updating properties for script
     
-    let updatedInstances = 0;
+    let _updatedInstances = 0;
     
-    this.activeScripts.forEach((scripts, objectId) => {
+    this.activeScripts.forEach((scripts, _objectId) => {
       scripts.forEach(script => {
         if (script._scriptPath === scriptPath) {
           this.updateScriptInstanceProperties(script, newProperties, propertyChanges);
-          updatedInstances++;
+          _updatedInstances++;
         }
       });
     });

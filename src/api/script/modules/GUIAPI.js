@@ -15,18 +15,12 @@ import {
   Checkbox,
   RadioButton,
   InputText,
-  KeyboardEventTypes,
   Control,
   Container,
-  ColorPicker,
-  VirtualKeyboard,
-  DisplayGrid,
-  SelectionPanel,
-  ImageScrollBar,
-  ImageBasedSlider
+  ColorPicker
 } from '@babylonjs/gui';
 
-import { Vector2, Vector3, Color3, Observable } from '@babylonjs/core';
+import { Color3 } from '@babylonjs/core';
 
 export class GUIAPI {
   constructor(scene) {

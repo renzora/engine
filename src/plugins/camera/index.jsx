@@ -10,7 +10,7 @@ export default createPlugin({
   description: 'Camera controls in the toolbar helper',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit() {
     console.log('[CameraPlugin] Initializing...');
   },
 
@@ -19,6 +19,7 @@ export default createPlugin({
     
     // Initialize camera store to start global vignette effects
     try {
+      // Just import the store - the effects will be handled by the plugin system's createRoot
       await import('./cameraStore.jsx');
       console.log('[CameraPlugin] Camera store initialized');
     } catch (error) {

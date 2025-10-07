@@ -15,7 +15,7 @@ export class ProjectBundler {
    * @param {Object} options - Bundling options
    * @returns {Promise<{success: boolean, bundle?: Object, errors?: Array}>}
    */
-  async createBundle(projectName, options = {}) {
+  async createBundle(projectName) {
     try {
       console.log('📦 ProjectBundler: Creating bundle for project:', projectName);
       

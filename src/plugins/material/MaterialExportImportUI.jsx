@@ -4,12 +4,7 @@ import {
   IconUpload, 
   IconFolder, 
   IconFile, 
-  IconTrash, 
-  IconEdit,
-  IconCopy,
-  IconShare,
-  IconTag,
-  IconUser,
+  IconTrash,
   IconClock
 } from '@tabler/icons-solidjs';
 import MaterialExportImport from './MaterialExportImport';

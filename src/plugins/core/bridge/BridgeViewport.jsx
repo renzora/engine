@@ -1,4 +1,4 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from 'solid-js';
+import { createSignal, onMount, onCleanup, Show } from 'solid-js';
 import { IconServer, IconRefresh, IconTrash, IconX } from '@tabler/icons-solidjs';
 import { useProject } from '@/plugins/splash/ProjectStore';
 
@@ -38,7 +38,7 @@ export default function BridgeViewport({ onClose }) {
         setBridgeConnected(false);
         setBridgeInfo(prev => ({ ...prev, status: 'error' }));
       }
-    } catch (error) {
+    } catch {
       setBridgeConnected(false);
       setBridgeInfo(prev => ({ ...prev, status: 'disconnected' }));
     }

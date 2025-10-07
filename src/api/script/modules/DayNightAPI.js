@@ -246,13 +246,8 @@ export class DayNightAPI {
     const isAfterSunset = currentHour > cycle.sunsetHour || currentHour < cycle.sunriseHour;
     
     // Calculate periods
-    const dawnStart = cycle.sunriseHour - cycle.transitionDuration;
-    const dayStart = cycle.sunriseHour;
-    const duskStart = cycle.sunsetHour;
-    const nightStart = cycle.sunsetHour + cycle.transitionDuration;
     
     // Calculate sun elevation and position
-    const timeFromSunrise = currentHour - cycle.sunriseHour;
     const dayDuration = cycle.sunsetHour - cycle.sunriseHour;
     const solarNoon = (cycle.sunriseHour + cycle.sunsetHour) / 2;
     const timeFromSolarNoon = currentHour - solarNoon;

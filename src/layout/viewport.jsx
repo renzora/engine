@@ -1,14 +1,11 @@
-import { editorStore, editorActions } from "@/layout/stores/EditorStore";
-import { viewportStore, viewportActions, objectPropertiesActions } from "@/layout/stores/ViewportStore";
-import { IconSettings, IconX, IconPointer, IconRefresh, IconMaximize, IconVideo, IconCopy, IconTrash, IconBox, IconCircle, IconRectangle, IconSun, IconBulb, IconPlayerPlay, IconPlayerPause } from '@tabler/icons-solidjs';
+import { editorStore } from "@/layout/stores/EditorStore";
+import { viewportStore } from "@/layout/stores/ViewportStore";
 import ViewportTabs from './ViewportTabs.jsx';
 import Toolbar from './Toolbar.jsx';
-import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, toolbarVisible, helperVisible, pluginAPI } from "@/api/plugin";
-import { Show, createMemo, createSignal, createEffect, onCleanup, For } from 'solid-js';
+import { viewportTypes, propertiesPanelVisible, bottomPanelVisible, footerVisible, viewportTabsVisible, toolbarVisible } from "@/api/plugin";
+import { Show, createMemo, createSignal, createEffect, onCleanup } from 'solid-js';
 import CodeEditorPanel from '@/pages/editor/AssetLibrary/CodeEditorPanel.jsx';
 import BabylonRenderer from '@/render/index.jsx';
-import { renderStore, renderActions } from '@/render/store.jsx';
-import { getScriptRuntime } from '@/api/script';
 
 // Babylon.js viewport with new render system
 const BabylonViewport = (props) => {
@@ -22,7 +19,7 @@ const BabylonViewport = (props) => {
   );
 };
 
-const PersistentRenderViewport = (props) => {
+const PersistentRenderViewport = (_props) => {
   return (
     <BabylonViewport
       style={{ width: '100%', height: '100%' }}
@@ -34,8 +31,8 @@ const Viewport = () => {
   const [splitViewMode, setSplitViewMode] = createSignal(false);
   const [selectedScript, setSelectedScript] = createSignal(null);
   const [editorSide, setEditorSide] = createSignal('left'); // 'left' or 'right'
-  const [scriptRuntimePlaying, setScriptRuntimePlaying] = createSignal(true);
-  const [showLightDropdown, setShowLightDropdown] = createSignal(false);
+  const [_scriptRuntimePlaying, _setScriptRuntimePlaying] = createSignal(true);
+  const [_showLightDropdown, _setShowLightDropdown] = createSignal(false);
   
   // Track mouse button states for drag detection and cancellation
   const [rightMouseState, setRightMouseState] = createSignal({ 
@@ -53,7 +50,7 @@ const Viewport = () => {
   });
   
   // Get reactive store values
-  const ui = () => editorStore.ui;
+  const _ui = () => editorStore.ui;
   const settings = () => editorStore.settings;
   const rightPanelWidth = () => editorStore.ui.rightPanelWidth;
   const bottomPanelHeight = () => editorStore.ui.bottomPanelHeight;
@@ -160,7 +157,7 @@ const Viewport = () => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
       }
-    } catch (error) {
+    } catch {
       // Silently ignore errors and let other handlers process
     }
   };
@@ -273,7 +270,7 @@ const Viewport = () => {
         setSplitViewMode(true);
       }
       // For non-script assets, don't prevent default - let other handlers process
-    } catch (error) {
+    } catch {
       // Failed to parse - let other handlers deal with it
       return;
     }
@@ -291,7 +288,7 @@ const Viewport = () => {
   // Listen for context menu "Open in Viewport" events and global mouse events
   createEffect(() => {
     const handleOpenInViewport = (event) => {
-      const { asset, side, script } = event.detail;
+      const { asset: _asset, side, script } = event.detail;
       // Open asset in viewport split view
       
       // Set editor side

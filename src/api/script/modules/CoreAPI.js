@@ -1,7 +1,5 @@
-import { Vector3, Vector2, Vector4 } from '@babylonjs/core/Maths/math.vector.js';
-import { Color3, Color4 } from '@babylonjs/core/Maths/math.color.js';
-import { Matrix, Quaternion } from '@babylonjs/core/Maths/math.vector.js';
-import { Tools } from '@babylonjs/core/Misc/tools.js';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
+import { Quaternion } from '@babylonjs/core/Maths/math.vector.js';
 
 /**
  * CoreAPI - Essential transform, visibility, and utility functions

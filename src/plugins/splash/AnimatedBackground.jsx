@@ -9,7 +9,6 @@ import { Color3, Color4 } from '@babylonjs/core/Maths/math.color';
 import { MeshBuilder } from '@babylonjs/core/Meshes/meshBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Animation } from '@babylonjs/core/Animations/animation';
-import { Mesh } from '@babylonjs/core/Meshes/mesh';
 import '@babylonjs/core/Meshes/Builders/torusBuilder';
 import '@babylonjs/core/Meshes/Builders/boxBuilder';
 import '@babylonjs/core/Meshes/Builders/sphereBuilder';
@@ -19,14 +18,14 @@ import '@babylonjs/core/Meshes/Builders/cylinderBuilder';
 import '@babylonjs/core/Meshes/Builders/capsuleBuilder';
 
 export default function AnimatedBackground() {
-  let canvasRef;
+  let canvasRef = null;
   let engine;
   let scene;
   let camera;
   let movingShapes = [];
 
   // Helper function to create shapes with consistent vertex counts for morphing
-  const createMorphableShape = (type, size, name) => {
+  const _createMorphableShape = (type, size, name) => {
     const segments = 16; // Consistent tessellation for all shapes
     
     switch (type) {
@@ -367,7 +366,7 @@ export default function AnimatedBackground() {
     
     scene.registerBeforeRender(() => {
       movingShapes.forEach((shapeData, index) => {
-        const { mesh, material, velocity, rotationSpeed, bounds } = shapeData;
+        const { mesh, material: _material, velocity, rotationSpeed, bounds } = shapeData;
         
         
         

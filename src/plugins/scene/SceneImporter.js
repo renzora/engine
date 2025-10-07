@@ -103,7 +103,7 @@ export class SceneImporter {
             throw new Error('No active scene');
           }
 
-          const sceneData = JSON.parse(data);
+          JSON.parse(data);
           
           await SceneLoader.AppendAsync('', 'data:' + data, scene, undefined, '.babylon');
           

@@ -1,13 +1,13 @@
 import { Show } from 'solid-js';
-import { IconGrid3x3, IconMenu2, IconRefresh, IconPlus } from '@tabler/icons-solidjs';
+import { IconGrid3x3, IconMenu2, IconPlus } from '@tabler/icons-solidjs';
 
 function AssetHeader({ 
-  selectedAssets, 
+  _selectedAssets, 
   filteredAssets, 
   isUploading, 
   layoutMode, 
   setLayoutMode,
-  onRefresh,
+  _onRefresh,
   onImport
 }) {
   return (

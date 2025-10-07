@@ -1,5 +1,4 @@
 import { createStore } from 'solid-js/store';
-import { createSignal } from 'solid-js';
 import { viewportActions } from './ViewportStore.jsx';
 
 // Store for script editor state

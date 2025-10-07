@@ -1,17 +1,9 @@
 // === XR/VR/AR API MODULE ===
 
 import {
-  WebXRDefaultExperience,
   WebXRFeatureName,
-  WebXRFeaturesManager,
-  WebXRControllerComponent,
-  WebXRInputSource,
-  WebXRCamera,
   Vector3,
-  Quaternion,
-  Matrix,
-  Ray,
-  AbstractMesh
+  Quaternion
 } from '@babylonjs/core';
 
 export class XRAPI {
@@ -546,7 +538,7 @@ export class XRAPI {
     
     try {
       return await navigator.xr.isSessionSupported(mode);
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -652,7 +644,7 @@ export class XRAPI {
 
   // === XR PERFORMANCE ===
 
-  setXRFrameRate(rate = 90) {
+  setXRFrameRate(_rate = 90) {
     if (!this.xrExperience || !this.xrExperience.baseExperience) return false;
     
     const session = this.xrExperience.baseExperience.session;

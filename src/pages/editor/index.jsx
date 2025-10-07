@@ -1,17 +1,12 @@
-import { onMount, onCleanup, createSignal, createEffect, For, Show } from 'solid-js';
+import { onMount, onCleanup } from 'solid-js';
 import { usePluginAPI } from '@/api/plugin';
 import { 
-  IconCamera, IconGrid3x3, IconSettings as SettingsIcon, IconMaximize, IconVideo, IconFolder, IconGridDots, IconClock, IconSun
+  IconSettings as SettingsIcon, IconMaximize, IconFolder
 } from '@tabler/icons-solidjs';
-import ThemeSwitcher from '@/ui/ThemeSwitcher';
 
-import Scene from './Scene.jsx';
 import SettingsDropdownContent from '@/ui/display/SettingsDropdownContent.jsx';
 import AssetLibrary from './AssetLibrary';
 
-import { scriptEditorStore, scriptEditorActions } from '../../layout/stores/ScriptEditorStore.js';
-import { getCurrentProject } from '@/api/bridge/projects';
-import { readFile, writeFile } from '@/api/bridge/files';
 
 
 export default function EditorPage() {

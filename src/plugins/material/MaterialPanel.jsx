@@ -1,5 +1,5 @@
 import { createSignal, createEffect, Show } from 'solid-js';
-import { renderStore, renderActions } from '@/render/store';
+import { renderStore } from '@/render/store';
 import { IconPalette, IconEye, IconDroplet, IconSun } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Color3 } from '@babylonjs/core/Maths/math.color';

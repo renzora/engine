@@ -1,6 +1,6 @@
 import { createSignal, Show } from 'solid-js';
 import { editorStore, editorActions } from "@/layout/stores/EditorStore";
-import { viewportStore, viewportActions } from "@/layout/stores/ViewportStore";
+import { viewportStore } from "@/layout/stores/ViewportStore";
 import { IconGridDots, IconSettings, IconPalette } from '@tabler/icons-solidjs';
 
 export default function GridPanel() {

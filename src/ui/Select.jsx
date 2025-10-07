@@ -43,7 +43,7 @@ const Select = (props) => {
         </option>
       </Show>
       <For each={options}>
-        {(option, index) => (
+        {(option) => (
           <option 
             value={option.value || option}
           >

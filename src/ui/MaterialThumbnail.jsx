@@ -1,5 +1,5 @@
 import { Show, createSignal, createEffect } from 'solid-js';
-import { IconPalette, IconPhoto } from '@tabler/icons-solidjs';
+import { IconPalette } from '@tabler/icons-solidjs';
 import { materialThumbnailAPI, isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
 import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';

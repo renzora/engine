@@ -1,4 +1,3 @@
-import { bridgeService } from '@/plugins/core/bridge';
 
 export class ModelProcessingAPI {
   constructor() {

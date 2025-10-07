@@ -1,28 +1,14 @@
 import { createSignal, createEffect, onMount, onCleanup, Show, For, createMemo } from 'solid-js';
-import { renderStore } from '@/render/store';
 import { editorActions } from '@/layout/stores/EditorStore.jsx';
 import ContextMenu from '@/ui/ContextMenu.jsx';
 import { 
-  IconPalette, 
   IconSphere,
-  IconBox,
   IconCube,
   IconSettings,
   IconPhoto,
-  IconCircleDot,
   IconMinus,
   IconPlus,
   IconX,
-  IconClock,
-  IconHash,
-  IconWave,
-  IconMath,
-  IconMathFunction,
-  IconVector,
-  IconColorFilter,
-  IconAdjustments,
-  IconGradient,
-  IconTexture,
   IconSquare,
   IconCircle,
   IconHexagon,
@@ -32,20 +18,10 @@ import {
 } from '@tabler/icons-solidjs';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial.js';
 import { PBRMaterial } from '@babylonjs/core/Materials/PBR/pbrMaterial.js';
-import { NodeMaterial } from '@babylonjs/core/Materials/Node/nodeMaterial.js';
 import { Color3 } from '@babylonjs/core/Maths/math.color.js';
 import { bridgeService } from '@/plugins/core/bridge';
-import { bottomPanelVisible, propertiesPanelVisible } from '@/api/plugin';
 
 // Node Material Blocks
-import { InputBlock } from '@babylonjs/core/Materials/Node/Blocks/Input/inputBlock.js';
-import { FragmentOutputBlock } from '@babylonjs/core/Materials/Node/Blocks/Fragment/fragmentOutputBlock.js';
-import { TextureBlock } from '@babylonjs/core/Materials/Node/Blocks/Dual/textureBlock.js';
-import { MultiplyBlock } from '@babylonjs/core/Materials/Node/Blocks/multiplyBlock.js';
-import { AddBlock } from '@babylonjs/core/Materials/Node/Blocks/addBlock.js';
-import { LerpBlock } from '@babylonjs/core/Materials/Node/Blocks/lerpBlock.js';
-import { FresnelBlock } from '@babylonjs/core/Materials/Node/Blocks/fresnelBlock.js';
-import { ClampBlock } from '@babylonjs/core/Materials/Node/Blocks/clampBlock.js';
 // Removing PowBlock for now - will implement later
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder.js';
 import { CreateBox } from '@babylonjs/core/Meshes/Builders/boxBuilder.js';
@@ -53,7 +29,6 @@ import { CreateGround } from '@babylonjs/core/Meshes/Builders/groundBuilder.js';
 import { CreateCylinder } from '@babylonjs/core/Meshes/Builders/cylinderBuilder.js';
 import { CreateTorus } from '@babylonjs/core/Meshes/Builders/torusBuilder.js';
 import { Vector3 } from '@babylonjs/core/Maths/math.vector.js';
-import { FreeCamera } from '@babylonjs/core/Cameras/freeCamera.js';
 import { ArcRotateCamera } from '@babylonjs/core/Cameras/arcRotateCamera.js';
 import { HemisphericLight } from '@babylonjs/core/Lights/hemisphericLight.js';
 import { DirectionalLight } from '@babylonjs/core/Lights/directionalLight.js';
@@ -62,7 +37,6 @@ import { Scene } from '@babylonjs/core/scene.js';
 import { Engine } from '@babylonjs/core/Engines/engine.js';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture.js';
 import { HDRCubeTexture } from '@babylonjs/core/Materials/Textures/hdrCubeTexture.js';
-import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture.js';
 // Import EXR loader for HDR textures
 import '@babylonjs/loaders/glTF';
 import '@babylonjs/core/Materials/Textures/Loaders/exrTextureLoader.js';
@@ -79,12 +53,12 @@ function TexturePreview(props) {
     } else if (asset.path) {
       // Construct thumbnail URL based on the path pattern we see in console logs
       const pathWithoutExt = asset.path.replace(/\.[^/.]+$/, ""); // Remove extension
-      const cleanPath = pathWithoutExt.replace(/[\/\\]/g, '_'); // Replace slashes with underscores
+      const cleanPath = pathWithoutExt.replace(/[/\\]/g, '_'); // Replace slashes with underscores
       return `http://localhost:3001/file/projects/test/.cache/thumbnails/${cleanPath}_${asset.extension}_256.png`;
     } else if (asset.name) {
       // Fallback using name
       const nameWithoutExt = asset.name.replace(/\.[^/.]+$/, "");
-      const cleanName = nameWithoutExt.replace(/[\/\\]/g, '_');
+      const cleanName = nameWithoutExt.replace(/[/\\]/g, '_');
       return `http://localhost:3001/file/projects/test/.cache/thumbnails/${cleanName}_${asset.extension || 'jpg'}_256.png`;
     }
     
@@ -131,12 +105,12 @@ function ConnectionLine(props) {
     if (!fromNode || !toNode) return '';
     
     // Access signals to make this reactive
-    const currentZoom = zoom();
-    const currentPan = pan();
-    const currentDragTransform = draggedNodeTransform(); // Make reactive to drag transform
+    const _currentZoom = zoom();
+    const _currentPan = pan();
+    const _currentDragTransform = draggedNodeTransform(); // Make reactive to drag transform
     
     // Check if this connection involves the dragged node
-    const isDraggedConnection = draggedNodeId === connection.from.nodeId || draggedNodeId === connection.to.nodeId;
+    const _isDraggedConnection = draggedNodeId === connection.from.nodeId || draggedNodeId === connection.to.nodeId;
     
     // Get socket positions in screen coordinates
     const fromPos = getSocketScreenPosition(connection.from.nodeId, connection.from.socketId, 'output');
@@ -208,14 +182,18 @@ export default function MaterialsViewport() {
   
   // Preview camera controls
   const [cameraDistance, setCameraDistance] = createSignal(6);
-  const [isRotatingCamera, setIsRotatingCamera] = createSignal(false);
-  const [lastMousePos, setLastMousePos] = createSignal({ x: 0, y: 0 });
+  const [_isRotatingCamera, _setIsRotatingCamera] = createSignal(false);
+  const [_lastMousePos, _setLastMousePos] = createSignal({ x: 0, y: 0 });
   
   // Environment and lighting controls
   const [lightIntensity, setLightIntensity] = createSignal(0.8);
+  
+  // Refs for canvas and node graph elements
+  let previewCanvasRef = null;
+  let nodeGraphRef = null;
   const [ambientIntensity, setAmbientIntensity] = createSignal(0.4);
   const [shadowsEnabled, setShadowsEnabled] = createSignal(true);
-  const [shadowQuality, setShadowQuality] = createSignal(1024);
+  const [shadowQuality, _setShadowQuality] = createSignal(1024);
   const [backgroundType, setBackgroundType] = createSignal('color'); // 'color', 'hdr'
   const [backgroundColor, setBackgroundColor] = createSignal('#262626');
   const [hdrBackground, setHdrBackground] = createSignal(null); // Asset for HDR background
@@ -226,7 +204,7 @@ export default function MaterialsViewport() {
   const [autoRotate, setAutoRotate] = createSignal(false);
   const [groundVisible, setGroundVisible] = createSignal(true);
   const [meshScale, setMeshScale] = createSignal(1.0);
-  const [unlitMode, setUnlitMode] = createSignal(false);
+  const [_unlitMode, _setUnlitMode] = createSignal(false);
   
   // Section collapse state
   const [sectionsOpen, setSectionsOpen] = createSignal({
@@ -245,18 +223,16 @@ export default function MaterialsViewport() {
   };
   
   // Throttle mouse move updates for better performance
-  let lastMoveTime = 0;
-  const MOVE_THROTTLE_MS = 16; // ~60fps
+  let _lastMoveTime = 0;
+  const _MOVE_THROTTLE_MS = 16; // ~60fps
   
   // Preview scene refs
-  let previewCanvasRef;
   let previewScene;
   let previewEngine;
   let previewMesh;
   let groundMesh;
   let backdropMesh;
   let shadowGenerator;
-  let nodeGraphRef;
   let previewCamera;
   let directionalLight;
   let ambientLight;
@@ -1951,36 +1927,6 @@ export default function MaterialsViewport() {
           ]
         };
         break;
-      case NODE_TYPES.SUBTRACT:
-        newNode = {
-          id: nodeId,
-          type,
-          position,
-          title: 'Subtract',
-          inputs: [
-            { id: 'left', name: 'A', type: 'float', value: 1.0 },
-            { id: 'right', name: 'B', type: 'float', value: 0.0 }
-          ],
-          outputs: [
-            { id: 'output', name: 'Result', type: 'float' }
-          ]
-        };
-        break;
-      case NODE_TYPES.DIVIDE:
-        newNode = {
-          id: nodeId,
-          type,
-          position,
-          title: 'Divide',
-          inputs: [
-            { id: 'left', name: 'A', type: 'float', value: 1.0 },
-            { id: 'right', name: 'B', type: 'float', value: 1.0 }
-          ],
-          outputs: [
-            { id: 'output', name: 'Result', type: 'float' }
-          ]
-        };
-        break;
       case NODE_TYPES.TIME:
         newNode = {
           id: nodeId,
@@ -3133,7 +3079,7 @@ export default function MaterialsViewport() {
       
       // Get the current DOM position to calculate offset
       const socketRect = socketElement.getBoundingClientRect();
-      const graphRect = nodeGraphRef.getBoundingClientRect();
+      const _graphRect = nodeGraphRef.getBoundingClientRect();
       
       // Calculate how much the socket is offset from the node's top-left
       const nodeElement = socketElement.closest('.absolute');
@@ -3162,7 +3108,7 @@ export default function MaterialsViewport() {
     
     if (socketElement && nodeGraphRef) {
       const socketRect = socketElement.getBoundingClientRect();
-      const graphRect = nodeGraphRef.getBoundingClientRect();
+      const _graphRect = nodeGraphRef.getBoundingClientRect();
       
       // Calculate center of socket in screen coordinates relative to graph container
       const socketCenterX = socketRect.left + socketRect.width / 2 - graphRect.left;

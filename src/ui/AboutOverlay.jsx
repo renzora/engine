@@ -1,5 +1,5 @@
-import { createSignal, Show } from 'solid-js';
-import { IconX, IconRocket, IconHeart, IconCode, IconGithub, IconWorld, IconUsers } from '@tabler/icons-solidjs';
+import { Show } from 'solid-js';
+import { IconX, IconRocket, IconHeart, IconCode, IconWorld, IconUsers } from '@tabler/icons-solidjs';
 
 export default function AboutOverlay({ isOpen, onClose }) {
   const handleOverlayClick = (e) => {

@@ -13,7 +13,7 @@ function MonacoEditor({
   onMount: onMountCallback
 }) {
   const [editor, setEditor] = createSignal(null);
-  let containerRef;
+  let containerRef = null;
 
   const defaultOptions = {
     automaticLayout: true,
@@ -113,8 +113,8 @@ function MonacoEditor({
             [/[a-zA-Z_$][\w$]*/, 'identifier'],
             
             // Operators and punctuation  
-            [/[{}()\[\]]/, '@brackets'],
-            [/[<>=!&|+\-*\/]/, 'operator'],
+            [/[{}()[\]]/, '@brackets'],
+            [/[<>=!&|+\-*/]/, 'operator'],
             [/[;,.]/, 'delimiter'],
             
             // Whitespace
@@ -158,7 +158,7 @@ function MonacoEditor({
   const registerScriptingLanguage = (monaco) => {
     // Register tokens provider for syntax highlighting
     monaco.languages.setMonarchTokensProvider('javascript', {
-      symbols: /[=><!~?:&|+\-*\/\^%]+/,
+      symbols: /[=><!~?:&|+\-*/^%]+/,
       keywords: [
         'break', 'case', 'catch', 'class', 'const', 'continue', 'debugger',
         'default', 'delete', 'do', 'else', 'export', 'extends', 'false', 'finally',
@@ -191,9 +191,9 @@ function MonacoEditor({
               '@default': 'identifier'
             }
           }],
-          [/[A-Z][\w\$]*/, 'type.identifier'],
+          [/[A-Z][\w$]*/, 'type.identifier'],
           
-          [/[{}()\[\]]/, '@brackets'],
+          [/[{}()[\]]/, '@brackets'],
           [/[<>](?!@symbols)/, '@brackets'],
           [/@symbols/, {
             cases: {
@@ -202,7 +202,7 @@ function MonacoEditor({
             }
           }],
           
-          [/\d*\.\d+([eE][\-+]?\d+)?/, 'number.float'],
+          [/\d*\.\d+([eE][-+]?\d+)?/, 'number.float'],
           [/0[xX][0-9a-fA-F]+/, 'number.hex'],
           [/\d+/, 'number'],
           [/[;,.]/, 'delimiter'],
@@ -214,10 +214,10 @@ function MonacoEditor({
           [/\/\/.*$/, 'comment'],
         ],
         comment: [
-          [/[^\/*]+/, 'comment'],
+          [/[^/*]+/, 'comment'],
           [/\/\*/, 'comment', '@push'],
           ["\\*/", 'comment', '@pop'],
-          [/[\/*]/, 'comment']
+          [/[/*]/, 'comment']
         ],
         string: [
           [/[^\\"]+/, 'string'],
@@ -403,7 +403,7 @@ function MonacoEditor({
     const primary = getCSSVariable('--p', '3ABFF8');
     const secondary = getCSSVariable('--s', '828DF8');
     const accent = getCSSVariable('--a', 'F471B5');
-    const neutral = getCSSVariable('--n', '1B1D1D');
+    const _neutral = getCSSVariable('--n', '1B1D1D');
     const info = getCSSVariable('--in', '3ABFF8');
     const success = getCSSVariable('--su', '36D399');
     const warning = getCSSVariable('--wa', 'FBBD23');

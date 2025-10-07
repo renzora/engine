@@ -2,12 +2,10 @@ import { createPlugin } from '@/api/plugin';
 import { IconSun } from '@tabler/icons-solidjs';
 import EnvironmentPanel from './EnvironmentPanel.jsx';
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { Texture } from '@babylonjs/core/Materials/Textures/texture';
 import { DynamicTexture } from '@babylonjs/core/Materials/Textures/dynamicTexture';
-import { CubeTexture } from '@babylonjs/core/Materials/Textures/cubeTexture';
 import { addObjectToHierarchy } from '@/api/creation/ObjectCreationUtils.jsx';
 import { sceneManager } from '@/api/scene/SceneManager.js';
 import { editorActions } from '@/layout/stores/EditorStore';
@@ -113,7 +111,7 @@ const handleCreateSkybox = async () => {
     });
 
     // Use unified folder-aware creation system
-    const objectId = addObjectToHierarchy(skybox, 'Skybox', true);
+    addObjectToHierarchy(skybox, 'Skybox', true);
     
     // Mark scene as modified
     sceneManager.markAsModified();

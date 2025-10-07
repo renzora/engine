@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { IconPalette } from '@tabler/icons-solidjs';
-import { createEffect, onCleanup } from 'solid-js';
+import { createEffect } from 'solid-js';
 import { viewportStore } from '@/layout/stores/ViewportStore.jsx';
 import MaterialsViewport from './MaterialsViewport.jsx';
 
@@ -11,7 +11,7 @@ export default createPlugin({
   description: 'Material library and preview viewport similar to Unreal Engine',
   author: 'Renzora Engine Team',
 
-  async onInit(api) {
+  async onInit(_api) {
     console.log('[MaterialsViewportPlugin] Initializing...');
   },
 

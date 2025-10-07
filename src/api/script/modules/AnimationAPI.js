@@ -3,23 +3,15 @@
 import {
   Animation,
   AnimationGroup,
-  AnimationRange,
   Skeleton,
   Bone,
-  AnimationPropertiesOverride,
-  EasingFunction,
   BezierCurveEase,
   CircleEase,
   BackEase,
   BounceEase,
-  CubicEase,
   ElasticEase,
   ExponentialEase,
   PowerEase,
-  QuadraticEase,
-  QuarticEase,
-  QuinticEase,
-  SineEase,
   Vector3,
   Color3,
   Quaternion,
@@ -853,7 +845,7 @@ export class AnimationAPI {
     return this.scene.beginAnimation(target, 0, 60, false, 60000 / duration);
   }
 
-  animateScale(x, y, z, duration = 1000, easing = null) {
+  scaleAnimation(x, y, z, duration = 1000, easing = null) {
     const target = this.mesh;
     if (!target) return null;
 

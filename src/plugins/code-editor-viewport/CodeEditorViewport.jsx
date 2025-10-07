@@ -1,5 +1,5 @@
 import { createSignal, createEffect, onCleanup, Show, For } from 'solid-js';
-import { IconX, IconDeviceFloppy, IconFileText, IconCode } from '@tabler/icons-solidjs';
+import { } from '@tabler/icons-solidjs';
 import MonacoEditor from '@/components/MonacoEditor';
 import { readFile, writeFile, deleteFile } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
@@ -7,12 +7,11 @@ import { getScriptRuntime } from '@/api/script';
 import { editorStore } from '@/layout/stores/EditorStore';
 
 function CodeEditorViewport({ 
-  tab = null,
-  onClose
+  tab = null
 }) {
   const [editorValue, setEditorValue] = createSignal('');
   const [loading, setLoading] = createSignal(false);
-  const [saving, setSaving] = createSignal(false);
+  const [, setSaving] = createSignal(false);
   const [error, setError] = createSignal(null);
   const [hasChanges, setHasChanges] = createSignal(false);
   const [originalValue, setOriginalValue] = createSignal('');
@@ -20,10 +19,10 @@ function CodeEditorViewport({
   const [originalFileName, setOriginalFileName] = createSignal('');
   const [selectedFile, setSelectedFile] = createSignal(tab?.initialFile || null);
   const [parsedScript, setParsedScript] = createSignal(null);
-  const [parseError, setParseError] = createSignal(null);
+  const [, setParseError] = createSignal(null);
   const [parseErrors, setParseErrors] = createSignal([]); // Array of errors with line numbers
-  const [previousProperties, setPreviousProperties] = createSignal([]);
-  const [previousScriptContent, setPreviousScriptContent] = createSignal(''); // Track full script content
+  const [, setPreviousProperties] = createSignal([]);
+  const [, setPreviousScriptContent] = createSignal(''); // Track full script content
 
   const getLanguageFromExtension = (fileName) => {
     const ext = fileName.toLowerCase().split('.').pop();
@@ -216,37 +215,6 @@ function CodeEditorViewport({
     }));
   };
 
-  // Trigger full script reload when code changes
-  const triggerScriptReload = async (scriptPath, newContent) => {
-    try {
-      const runtime = getScriptRuntime();
-      const currentProject = getCurrentProject();
-      
-      if (!runtime || !currentProject) return;
-      
-      console.log('🔄 Triggering script reload for', scriptPath);
-      
-      // Save the file first
-      const filePath = `projects/${currentProject.name}/${scriptPath}`;
-      await writeFile(filePath, newContent);
-      
-      // Use the runtime's reload method to properly reload the script
-      await runtime.reloadScript(scriptPath);
-      
-      console.log('✅ Script reloaded successfully');
-      
-      // Dispatch event to notify UI components that script was fully reloaded
-      document.dispatchEvent(new CustomEvent('engine:script-reloaded', {
-        detail: { 
-          scriptPath,
-          action: 'full_reload'
-        }
-      }));
-      
-    } catch (error) {
-      console.error('❌ Failed to reload script:', error);
-    }
-  };
 
   // Remove script from all objects when script becomes empty
   const triggerScriptRemoval = async (scriptPath) => {
@@ -415,10 +383,6 @@ function CodeEditorViewport({
     }
   };
 
-  const handleFileNameChange = (name) => {
-    setFileName(name);
-    updateHasChanges(editorValue(), name);
-  };
 
   const updateHasChanges = (content, name) => {
     const contentChanged = content !== originalValue();
@@ -426,15 +390,6 @@ function CodeEditorViewport({
     setHasChanges(contentChanged || nameChanged);
   };
 
-  const handleClose = () => {
-    if (hasChanges()) {
-      if (confirm('You have unsaved changes. Are you sure you want to close?')) {
-        if (onClose) onClose();
-      }
-    } else {
-      if (onClose) onClose();
-    }
-  };
 
   const handleKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 's') {

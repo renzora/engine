@@ -173,7 +173,7 @@ export const renderActions = {
               break;
           }
         }
-      } catch (e) {
+      } catch {
         // Custom gizmo handles this internally
       }
       
@@ -547,7 +547,7 @@ export const renderActions = {
             gizmoManager.positionGizmoEnabled = currentMode === 'move';
             gizmoManager.rotationGizmoEnabled = currentMode === 'rotate';
             gizmoManager.scaleGizmoEnabled = currentMode === 'scale';
-          } catch (e) {
+          } catch {
             // Custom gizmo handles this internally
           }
         } else {
@@ -556,7 +556,7 @@ export const renderActions = {
             gizmoManager.positionGizmoEnabled = false;
             gizmoManager.rotationGizmoEnabled = false;
             gizmoManager.scaleGizmoEnabled = false;
-          } catch (e) {
+          } catch {
             // Custom gizmo handles this internally
           }
         }
@@ -639,7 +639,7 @@ export const renderActions = {
           gizmoManager.positionGizmoEnabled = false;
           gizmoManager.rotationGizmoEnabled = false;
           gizmoManager.scaleGizmoEnabled = false;
-        } catch (e) {
+        } catch {
           // Custom gizmo handles this internally
         }
         setRenderStore('transformMode', 'select');
@@ -1149,7 +1149,7 @@ export const renderActions = {
 
   reorderObjectInHierarchy(draggedId, targetId, position) {
     setRenderStore('hierarchy', prev => {
-      const reorderInNodes = (nodes, parentLevel = true) => {
+      const reorderInNodes = (nodes, _parentLevel = true) => {
         // First, find and remove the dragged item from its current position
         let draggedItem = null;
         const removeDraggedItem = (items) => {

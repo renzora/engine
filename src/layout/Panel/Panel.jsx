@@ -19,7 +19,7 @@ export const Panel = (props) => {
           </h3>
           
           <div className="flex items-center gap-1">
-            {props.actions && props.actions}
+            {props.actions}
             
             {props.collapsible && (
               <button

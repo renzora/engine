@@ -13,7 +13,7 @@ import { IconBox } from '@tabler/icons-solidjs';
 
 const RightPanel = () => {
   const { showContextMenu } = useViewportContextMenu();
-  const [contextMenu, setContextMenu] = createSignal(null);
+  const [_contextMenu, _setContextMenu] = createSignal(null);
   
   // Get reactive store values
   const selection = () => editorStore.selection;
@@ -124,7 +124,7 @@ const RightPanel = () => {
       
       if (rightPanelElement && sceneElement) {
         const panelRect = rightPanelElement.getBoundingClientRect();
-        const sceneRect = sceneElement.getBoundingClientRect();
+        const _sceneRect = sceneElement.getBoundingClientRect();
         
         // Reserve minimum 150px for Scene.jsx (header + some content + bottom panel)
         const minSceneHeight = 150;
@@ -200,7 +200,7 @@ const RightPanel = () => {
     return selectedItem ? selectedItem.type !== 'folder' : true;
   });
 
-  const getTabTitle = createMemo(() => {
+  const _getTabTitle = createMemo(() => {
     const pluginTab = propertyTabs().get(selectedRightTool());
     if (pluginTab) {
       return pluginTab.title;

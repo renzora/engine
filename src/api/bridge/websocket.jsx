@@ -26,7 +26,7 @@ export async function getProjects() {
   return response.data?.projects || [];
 }
 
-export async function createProject(name, template = 'basic', settings = null) {
+export async function createProject(name, template = 'basic', _settings = null) {
   await ensureConnection();
   const response = await client.createProject(name, template);
   
@@ -60,7 +60,7 @@ export async function readFile(path) {
   return response.data?.content;
 }
 
-export async function writeFile(path, content, createDirs = false) {
+export async function writeFile(path, content, _createDirs = false) {
   await ensureConnection();
   const response = await client.writeFile(path, content);
   

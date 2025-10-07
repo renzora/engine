@@ -279,7 +279,7 @@ export class RuntimeScriptManager {
       },
       
       // Input API (basic)
-      isKeyPressed: (key) => {
+      isKeyPressed: () => {
         // TODO: Implement basic keyboard input tracking
         return false;
       },

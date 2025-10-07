@@ -105,7 +105,7 @@ class ScriptLoader {
       // Check if this is a RenScript file that needs compilation
       if (scriptPath.endsWith('.ren')) {
         // Extract script name for compilation endpoint
-        const scriptName = scriptPath.replace(/.*\/([^\/]+)\.ren$/, '$1');
+        const scriptName = scriptPath.replace(/.*\/([^/]+)\.ren$/, '$1');
         url = `http://localhost:3001/script/${scriptName}`;
         // RenScript detected, using compilation endpoint
       } else {

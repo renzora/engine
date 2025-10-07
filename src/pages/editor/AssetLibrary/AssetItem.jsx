@@ -1,7 +1,6 @@
-import { Show, createSignal, createEffect, onMount, onCleanup, untrack, createMemo } from 'solid-js';
-import { IconPhoto, IconCode, IconX, IconCheck, IconCode as IconCodeSlash, IconArrowRight, IconVideo, IconFolder, IconFileCode, IconCube, IconMusic, IconPlayerPlay } from '@tabler/icons-solidjs';
+import { Show, createSignal, createEffect, onMount, onCleanup, createMemo } from 'solid-js';
+import { IconPhoto, IconCode, IconX, IconCheck, IconArrowRight, IconFolder, IconFileCode, IconCube, IconMusic, IconPlayerPlay } from '@tabler/icons-solidjs';
 import { generateThumbnail } from '@/api/bridge/thumbnails';
-import { getFileUrl } from '@/api/bridge/files';
 import { getCurrentProject } from '@/api/bridge/projects';
 import MaterialThumbnail from '@/ui/MaterialThumbnail';
 import { isMaterialFile, isMaterialPath } from '@/api/bridge/materialThumbnails';
@@ -188,14 +187,14 @@ function AssetItem({
   isAssetSelected,
   hoveredItem,
   setHoveredItem,
-  setTooltip,
+  _setTooltip,
   toggleAssetSelection,
   handleAssetDoubleClick,
-  isInternalDrag,
+  _isInternalDrag,
   setIsInternalDrag,
   selectedAssets,
   setSelectedAssets,
-  lastSelectedAsset,
+  _lastSelectedAsset,
   setLastSelectedAsset,
   filteredAssets,
   setDragOverFolder,
@@ -210,7 +209,7 @@ function AssetItem({
   getExtensionStyle
 }) {
   const [contextMenu, setContextMenu] = createSignal(null);
-  const [showTooltip, setShowTooltip] = createSignal(false);
+  const [, setShowTooltip] = createSignal(false);
   const [isDragging, setIsDragging] = createSignal(false);
   
   let tooltipTimeout;

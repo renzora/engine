@@ -1,8 +1,7 @@
 import { createSignal, onCleanup, onMount, For, Show } from 'solid-js';
-import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconEdit, IconVideo, IconChevronRight, IconChevronDown, IconMountain, IconSphere } from '@tabler/icons-solidjs';
+import { IconBox, IconBulb, IconChairDirector, IconFolder, IconFolderOpen, IconCircle, IconEye, IconEyeOff, IconTrash, IconVideo, IconChevronRight, IconChevronDown, IconMountain, IconSphere } from '@tabler/icons-solidjs';
 import { editorStore, editorActions } from '@/layout/stores/EditorStore';
 import { viewportActions, viewportStore } from '@/layout/stores/ViewportStore';
-import { TransformNode } from '@babylonjs/core/Meshes/transformNode';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { renderStore, renderActions, setRenderStore } from '@/render/store';
 
@@ -11,10 +10,13 @@ function Scene(props) {
   const { ui, selection } = editorStore;
   const bottomPanelHeight = () => ui.scenePropertiesHeight;
   const { setScenePropertiesHeight: setBottomPanelHeight } = editorActions;
-  const [isResizing, setIsResizing] = createSignal(false);
-  const { selectEntity: setSelectedEntity, setTransformMode } = editorActions;
-  const { addViewportTab, setActiveViewportTab } = viewportActions;
-  const tabs = () => viewportStore.tabs;
+  const [_isResizing, setIsResizing] = createSignal(false);
+  const { selectEntity: setSelectedEntity } = editorActions;
+  const { addViewportTab: _addViewportTab, setActiveViewportTab: _setActiveViewportTab } = viewportActions;
+  const _tabs = () => viewportStore.tabs;
+  
+  // Ref for the main container
+  let containerRef = null;
   
   // Helper function to update render store with multi-selection
   const updateRenderStoreSelection = (primaryEntityId, selectedEntityIds) => {
@@ -153,7 +155,7 @@ function Scene(props) {
     };
     
     const handleContextMenuAddToNewFolder = (e) => {
-      const { itemId } = e.detail;
+      const { itemId: _itemId } = e.detail;
       // Create a new folder and move the item to it
       handleCreateFolder();
       // Note: This would need additional logic to move the item after folder creation
@@ -179,7 +181,7 @@ function Scene(props) {
       });
     };
 
-    const handleGetSceneColorCodes = (e) => {
+    const handleGetSceneColorCodes = (_e) => {
       console.log('🔄 Scene: Received request for color codes, current itemColors:', itemColors());
       // Respond with current color codes
       const response = new CustomEvent('sceneColorCodesResponse', {
@@ -261,7 +263,7 @@ function Scene(props) {
     document.addEventListener('keydown', handleGlobalKeyDown);
     
     // Debug: Watch for any other selection changes
-    const handleSelectionChange = () => {
+    const _handleSelectionChange = () => {
       console.log('Selection changed externally:', {
         entity: selection.entity,
         entities: selection.entities
@@ -614,13 +616,12 @@ function Scene(props) {
     console.log(`Successfully moved ${draggedIds.length} items to ${targetItem.name}`);
   };
 
-  const handleDragEnd = (e) => {
+  const handleDragEnd = (_e) => {
     setDraggedItem(null);
     setDragOverItem(null);
     setDropPosition(null);
   };
 
-  let containerRef;
 
   const handleDropWithAnimation = (e, item) => {
     handleDrop(e, item);
@@ -632,7 +633,7 @@ function Scene(props) {
   };
 
 
-  const expandAll = () => {
+  const _expandAll = () => {
     const expandAllNodes = (nodes) => {
       const newExpanded = {};
       nodes.forEach(node => {
@@ -648,7 +649,7 @@ function Scene(props) {
     setExpandedItems(allExpanded);
   };
   
-  const collapseAll = () => {
+  const _collapseAll = () => {
     setExpandedItems({});
   };
   
@@ -755,7 +756,7 @@ function Scene(props) {
   };
 
   // Helper function to get all object IDs within a folder (recursively)
-  const getAllObjectsInFolder = (folderItem, hierarchy) => {
+  const getAllObjectsInFolder = (folderItem, _hierarchy) => {
     const objectIds = [];
     
     const collectObjects = (items) => {
@@ -782,7 +783,7 @@ function Scene(props) {
 
   // Persistent highlighting function that can be re-called during transforms
   const applyPersistentHighlighting = (selectedObjects, primaryObject) => {
-    const scene = renderStore.scene;
+    const _scene = renderStore.scene;
     const gizmoManager = renderStore.gizmoManager;
     const highlightLayer = renderStore.highlightLayer;
     
@@ -927,7 +928,7 @@ function Scene(props) {
     }
   };
 
-  const handleMouseDown = (e) => {
+  const _handleMouseDown = (e) => {
     e.preventDefault();
     setIsResizing(true);
     
