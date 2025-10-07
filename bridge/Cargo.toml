@@ -16,6 +16,7 @@ bytes = "1.0"
 tokio-stream = { version = "0.1", features = ["sync", "time"] }
 async-stream = "0.3"
 futures-util = "0.3"
+futures = "0.3"
 tokio-tungstenite = "0.24"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -35,7 +36,7 @@ percent-encoding = "2.3"
 sysinfo = "0.30"
 nvml-wrapper = { version = "0.10", optional = true }
 regex = "1.0"
-redis = { version = "0.24", features = ["tokio-comp"] }
+# Redis dependency removed - using lightweight memory cache
 uuid = { version = "1.0", features = ["v4"] }
 gltf = { version = "1.4", features = ["extras", "names", "utils"] }
 gltf-json = "1.4"

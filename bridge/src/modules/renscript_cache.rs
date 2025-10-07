@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use crate::modules::redis_cache::RedisCache;
+use crate::modules::memory_cache::MemoryCache;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RenScriptEntry {
@@ -16,17 +16,17 @@ pub struct RenScriptEntry {
 }
 
 pub struct RenScriptCache {
-    redis: Option<Arc<tokio::sync::Mutex<RedisCache>>>,
+    memory_cache_ref: Option<Arc<tokio::sync::Mutex<MemoryCache>>>,
     cache_key: String,
-    memory_cache: Arc<RwLock<Vec<RenScriptEntry>>>,
+    local_memory_cache: Arc<RwLock<Vec<RenScriptEntry>>>,
 }
 
 impl RenScriptCache {
-    pub fn new(redis: Option<Arc<tokio::sync::Mutex<RedisCache>>>) -> Self {
+    pub fn new(memory_cache: Option<Arc<tokio::sync::Mutex<MemoryCache>>>) -> Self {
         Self {
-            redis,
+            memory_cache_ref: memory_cache,
             cache_key: "renscripts:cache".to_string(),
-            memory_cache: Arc::new(RwLock::new(Vec::new())),
+            local_memory_cache: Arc::new(RwLock::new(Vec::new())),
         }
     }
 
@@ -35,21 +35,21 @@ impl RenScriptCache {
         
         let scripts = Self::scan_directory_recursive(renscripts_path, "")?;
         
-        // Store in memory cache
+        // Store in local memory cache
         {
-            let mut cache = self.memory_cache.write().await;
+            let mut cache = self.local_memory_cache.write().await;
             *cache = scripts.clone();
-            println!("✅ Cached {} RenScript entries in memory", scripts.len());
+            println!("✅ Cached {} RenScript entries in local memory", scripts.len());
         }
         
-        // Also store in Redis if available
-        if let Some(redis) = &self.redis {
+        // Also store in shared memory cache if available
+        if let Some(memory_cache_ref) = &self.memory_cache_ref {
             let json_data = serde_json::to_string(&scripts)?;
-            let mut redis_cache = redis.lock().await;
-            if let Err(e) = redis_cache.set_string(&self.cache_key, &json_data).await {
-                println!("⚠️ Failed to cache RenScript entries in Redis: {}", e);
+            let mut memory_cache = memory_cache_ref.lock().await;
+            if let Err(e) = memory_cache.set_string(&self.cache_key, &json_data).await {
+                println!("⚠️ Failed to cache RenScript entries in shared memory cache: {}", e);
             } else {
-                println!("✅ Also cached {} RenScript entries in Redis", scripts.len());
+                println!("✅ Also cached {} RenScript entries in shared memory cache", scripts.len());
             }
         }
         
@@ -124,24 +124,24 @@ impl RenScriptCache {
     }
 
     pub async fn get_all_scripts(&self) -> Result<Vec<RenScriptEntry>, Box<dyn std::error::Error>> {
-        // First try memory cache
+        // First try local memory cache
         {
-            let cache = self.memory_cache.read().await;
+            let cache = self.local_memory_cache.read().await;
             if !cache.is_empty() {
                 return Ok(cache.clone());
             }
         }
         
-        // Try Redis if memory cache is empty
-        if let Some(redis) = &self.redis {
-            let mut redis_cache = redis.lock().await;
-            match redis_cache.get_string(&self.cache_key).await {
+        // Try shared memory cache if local cache is empty
+        if let Some(memory_cache_ref) = &self.memory_cache_ref {
+            let mut memory_cache = memory_cache_ref.lock().await;
+            match memory_cache.get_string(&self.cache_key).await {
                 Ok(Some(json_data)) => {
                     match serde_json::from_str::<Vec<RenScriptEntry>>(&json_data) {
                         Ok(scripts) => {
-                            // Update memory cache
+                            // Update local memory cache
                             {
-                                let mut cache = self.memory_cache.write().await;
+                                let mut cache = self.local_memory_cache.write().await;
                                 *cache = scripts.clone();
                             }
                             return Ok(scripts);
@@ -152,10 +152,10 @@ impl RenScriptCache {
                     }
                 }
                 Ok(None) => {
-                    println!("⚠️ RenScript cache not found in Redis");
+                    println!("⚠️ RenScript cache not found in shared memory cache");
                 }
                 Err(e) => {
-                    println!("⚠️ Failed to get RenScript cache from Redis: {}", e);
+                    println!("⚠️ Failed to get RenScript cache from shared memory cache: {}", e);
                 }
             }
         }

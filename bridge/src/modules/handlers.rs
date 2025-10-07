@@ -24,13 +24,13 @@ use crate::project_manager::get_projects_path;
 use crate::renscript_compiler::compile_renscript;
 use std::fs;
 // Database removed - using Redis-only caching
-use crate::modules::redis_cache::{RedisCache, CachedAssetNode, ProjectAssetTree};
+use crate::modules::memory_cache::{MemoryCache, CachedAssetNode, ProjectAssetTree};
 use crate::renscript_cache::RenScriptCache;
 
 // Static variables for shared state
 static STARTUP_TIME: OnceLock<u64> = OnceLock::new();
 // Database removed - using Redis-only caching
-static REDIS_CACHE: OnceLock<Arc<tokio::sync::Mutex<RedisCache>>> = OnceLock::new();
+static MEMORY_CACHE: OnceLock<Arc<tokio::sync::Mutex<MemoryCache>>> = OnceLock::new();
 static RENSCRIPT_CACHE: OnceLock<Arc<RenScriptCache>> = OnceLock::new();
 
 pub fn set_startup_time(timestamp: u64) {
@@ -39,8 +39,8 @@ pub fn set_startup_time(timestamp: u64) {
 
 // Database functions removed - using Redis-only caching
 
-pub fn set_redis_cache(redis_cache: Arc<tokio::sync::Mutex<RedisCache>>) {
-    REDIS_CACHE.set(redis_cache).ok();
+pub fn set_memory_cache(memory_cache: Arc<tokio::sync::Mutex<MemoryCache>>) {
+    MEMORY_CACHE.set(memory_cache).ok();
 }
 
 pub fn set_renscript_cache(renscript_cache: Arc<RenScriptCache>) {
@@ -984,7 +984,7 @@ async fn handle_update_model_summary(body: &str) -> Response<BoxBody<Bytes, Infa
 
 async fn handle_compile_script(script_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
     // Check Redis cache first
-    if let Some(redis_cache) = REDIS_CACHE.get() {
+    if let Some(redis_cache) = MEMORY_CACHE.get() {
         let mut cache = redis_cache.lock().await;
         if let Some(cached_js) = cache.get_cached_compiled_script(script_name) {
             info!("🔴 Cache hit for compiled script: {}", script_name);
@@ -1001,7 +1001,7 @@ async fn handle_compile_script(script_name: &str) -> Response<BoxBody<Bytes, Inf
     match compile_renscript(script_name) {
         Ok(compiled_js) => {
             // Cache the compiled result
-            if let Some(redis_cache) = REDIS_CACHE.get() {
+            if let Some(redis_cache) = MEMORY_CACHE.get() {
                 let mut cache = redis_cache.lock().await;
                 cache.cache_compiled_script(script_name, &compiled_js);
             }
@@ -1028,7 +1028,7 @@ async fn handle_search_scripts(query: &str) -> Response<BoxBody<Bytes, Infallibl
     };
     
     // Check Redis cache first
-    if let Some(redis_cache) = REDIS_CACHE.get() {
+    if let Some(redis_cache) = MEMORY_CACHE.get() {
         let mut cache = redis_cache.lock().await;
         if let Some(cached_scripts) = cache.get_cached_script_list() {
             let filtered_scripts: Vec<_> = if search_term.is_empty() {
@@ -1092,7 +1092,7 @@ async fn handle_list_scripts() -> Response<BoxBody<Bytes, Infallible>> {
 }
 
 async fn handle_clear_script_cache() -> Response<BoxBody<Bytes, Infallible>> {
-    if let Some(redis_cache) = REDIS_CACHE.get() {
+    if let Some(redis_cache) = MEMORY_CACHE.get() {
         let mut cache = redis_cache.lock().await;
         let cleared = cache.clear_all_cache();
         
@@ -1103,13 +1103,13 @@ async fn handle_clear_script_cache() -> Response<BoxBody<Bytes, Infallible>> {
         };
         json_response(&response)
     } else {
-        error_response(StatusCode::INTERNAL_SERVER_ERROR, "Redis cache not initialized")
+        error_response(StatusCode::INTERNAL_SERVER_ERROR, "Memory cache not initialized")
     }
 }
 
 async fn handle_cache_stats() -> Response<BoxBody<Bytes, Infallible>> {
     let mut stats = serde_json::json!({
-        "redis": {
+        "memory_cache": {
             "enabled": false,
             "status": "not_initialized"
         },
@@ -1119,17 +1119,17 @@ async fn handle_cache_stats() -> Response<BoxBody<Bytes, Infallible>> {
         }
     });
     
-    // Get Redis stats
-    if let Some(redis_cache) = REDIS_CACHE.get() {
-        let mut cache = redis_cache.lock().await;
-        stats["redis"] = cache.get_cache_stats();
+    // Get Memory Cache stats
+    if let Some(memory_cache) = MEMORY_CACHE.get() {
+        let mut cache = memory_cache.lock().await;
+        stats["memory_cache"] = cache.get_cache_stats();
     }
     
     // Database removed - using Redis-only caching
     stats["database"] = serde_json::json!({
         "enabled": false,
         "status": "removed",
-        "note": "Using Redis-only caching for better performance"
+        "note": "Using lightweight memory-only caching for better performance"
     });
     
     let response = ApiResponse {
@@ -1271,7 +1271,7 @@ async fn handle_refresh_renscript_cache() -> Response<BoxBody<Bytes, Infallible>
 async fn handle_validate_project_cache(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
     info!("🔍 Validating cache for project: {}", project_name);
     
-    let redis_cache = REDIS_CACHE.get().cloned();
+    let redis_cache = MEMORY_CACHE.get().cloned();
     let validator = crate::modules::project_cache_validator::ProjectCacheValidator::new(
         project_name.to_string(),
         redis_cache,
@@ -1311,7 +1311,7 @@ async fn handle_process_project_cache(project_name: &str, body: &str) -> Respons
           request.force_full_rebuild.unwrap_or(false),
           request.stream_progress.unwrap_or(false));
     
-    let redis_cache = REDIS_CACHE.get().cloned();
+    let redis_cache = MEMORY_CACHE.get().cloned();
     let validator = crate::modules::project_cache_validator::ProjectCacheValidator::new(
         project_name.to_string(),
         redis_cache.clone(),
@@ -1365,7 +1365,7 @@ async fn handle_process_project_cache(project_name: &str, body: &str) -> Respons
 async fn handle_get_cached_assets(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
     info!("📦 Retrieving cached assets for project: {}", project_name);
     
-    if let Some(redis_cache) = REDIS_CACHE.get() {
+    if let Some(redis_cache) = MEMORY_CACHE.get() {
         let mut cache = redis_cache.lock().await;
         let processed_assets = cache.get_all_processed_assets(project_name);
         let file_metadata = cache.get_all_file_metadata(project_name);
@@ -1395,7 +1395,7 @@ async fn handle_get_cached_assets(project_name: &str) -> Response<BoxBody<Bytes,
 async fn handle_get_asset_tree(project_name: &str) -> Response<BoxBody<Bytes, Infallible>> {
     info!("🌳 Retrieving cached asset tree for project: {}", project_name);
     
-    if let Some(redis_cache) = REDIS_CACHE.get() {
+    if let Some(redis_cache) = MEMORY_CACHE.get() {
         let mut cache = redis_cache.lock().await;
         if let Some(asset_tree) = cache.get_project_asset_tree(project_name) {
             info!("✅ Retrieved cached asset tree for project: {} ({} files, {} directories)", 
@@ -1437,7 +1437,7 @@ async fn handle_sse_cache_processing(
     
     // Clone data for async task  
     let project_name_clone = project_name.to_string();
-    let redis_cache = REDIS_CACHE.get().cloned();
+    let redis_cache = MEMORY_CACHE.get().cloned();
     let validator_for_task = crate::modules::project_cache_validator::ProjectCacheValidator::new(
         project_name_clone.clone(),
         redis_cache,
@@ -1488,7 +1488,7 @@ async fn process_project_assets(
     force_rebuild: bool,
     progress_callback: Option<ProgressCallback>,
 ) -> Result<usize, Box<dyn std::error::Error + Send + Sync>> {
-    use crate::modules::redis_cache::{FileMetadata, ProcessedAsset};
+    use crate::modules::memory_cache::{FileMetadata, ProcessedAsset};
     use std::time::{SystemTime, UNIX_EPOCH};
     use std::hash::{Hash, Hasher};
     
@@ -1526,7 +1526,7 @@ async fn process_project_assets(
     
     if force_rebuild {
         // Clear existing cache
-        if let Some(redis_cache) = REDIS_CACHE.get() {
+        if let Some(redis_cache) = MEMORY_CACHE.get() {
             let mut cache = redis_cache.lock().await;
             cache.clear_project_cache(project_name);
             info!("🗑️ Cleared existing cache for force rebuild");
@@ -1597,7 +1597,7 @@ async fn process_project_assets(
                     };
                     
                     // Cache the file metadata
-                    if let Some(redis_cache) = REDIS_CACHE.get() {
+                    if let Some(redis_cache) = MEMORY_CACHE.get() {
                         let mut cache = redis_cache.lock().await;
                         if cache.cache_file_metadata(project_name, &[file_metadata.clone()]) {
                             info!("📦 Cached file metadata: {} ({})", relative_path_str, file_metadata.file_type);
@@ -1653,7 +1653,7 @@ async fn process_project_assets(
                     };
                     
                     // Cache the processed asset
-                    if let Some(redis_cache) = REDIS_CACHE.get() {
+                    if let Some(redis_cache) = MEMORY_CACHE.get() {
                         let mut cache = redis_cache.lock().await;
                         if cache.cache_processed_asset(project_name, &processed_asset) {
                             info!("💾 Cached processed asset: {} (status: {})", relative_path_str, processed_asset.processing_status);
@@ -1790,8 +1790,8 @@ async fn process_image_asset(
     project_name: &str,
     relative_path: &str,
     file_path: &std::path::Path,
-) -> Result<crate::modules::redis_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
-    use crate::modules::redis_cache::ProcessedAsset;
+) -> Result<crate::modules::memory_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::memory_cache::ProcessedAsset;
     use std::time::{SystemTime, UNIX_EPOCH};
     
     let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -1852,8 +1852,8 @@ async fn process_model_asset(
     project_name: &str,
     relative_path: &str,
     file_path: &std::path::Path,
-) -> Result<crate::modules::redis_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
-    use crate::modules::redis_cache::ProcessedAsset;
+) -> Result<crate::modules::memory_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::memory_cache::ProcessedAsset;
     use std::time::{SystemTime, UNIX_EPOCH};
     
     let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -1909,8 +1909,8 @@ async fn process_audio_asset(
     _project_name: &str,
     relative_path: &str,
     file_path: &std::path::Path,
-) -> Result<crate::modules::redis_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
-    use crate::modules::redis_cache::ProcessedAsset;
+) -> Result<crate::modules::memory_cache::ProcessedAsset, Box<dyn std::error::Error + Send + Sync>> {
+    use crate::modules::memory_cache::ProcessedAsset;
     use std::time::{SystemTime, UNIX_EPOCH};
     
     let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
@@ -1955,7 +1955,7 @@ async fn build_and_cache_asset_tree(project_name: &str) -> Result<(), Box<dyn st
     }
     
     // Get Redis cache for thumbnail URLs
-    let redis_cache = REDIS_CACHE.get();
+    let redis_cache = MEMORY_CACHE.get();
     let processed_assets = if let Some(cache) = redis_cache {
         let mut cache_lock = cache.lock().await;
         cache_lock.get_all_processed_assets(project_name)

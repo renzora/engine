@@ -52,31 +52,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Database removed - using Redis-only caching
     
-    // Start embedded Redis server
-    info!("🔴 Starting embedded Redis server...");
-    let mut redis_server = EmbeddedRedisServer::new(Some(6379));
-    if let Err(e) = redis_server.start().await {
-        warn!("⚠️ Failed to start embedded Redis server: {}", e);
-    } else {
-        // Wait for Redis to be ready
-        if redis_server.wait_for_ready(5000).await {
-            info!("🔴 Embedded Redis server is ready");
-        } else {
-            warn!("⚠️ Embedded Redis server did not become ready in time");
-        }
-    }
+    // Initialize lightweight memory cache (replacing Redis)
+    info!("💾 Initializing lightweight memory cache...");
+    let memory_cache = Arc::new(tokio::sync::Mutex::new(MemoryCache::new()));
     
-    // Keep the Redis server alive by moving it into a static or long-lived context
-    // We'll leak it intentionally since it should live for the entire program duration
-    let _redis_server_handle = Box::leak(Box::new(redis_server));
-
-    // Initialize Redis cache (now connects to our embedded server)
-    info!("🔴 Initializing Redis cache...");
-    let redis_cache = Arc::new(tokio::sync::Mutex::new(RedisCache::new()));
-    
-    // Initialize RenScript cache with Redis integration
+    // Initialize RenScript cache with memory cache integration
     info!("📜 Initializing RenScript cache...");
-    let renscript_cache = Arc::new(RenScriptCache::new(Some(redis_cache.clone())));
+    let renscript_cache = Arc::new(RenScriptCache::new(Some(memory_cache.clone())));
     
     // Initialize the RenScript cache with directory scanning
     let renscripts_path = base_path.join("renscripts");
@@ -86,7 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Set state in handlers module
     set_startup_time(startup_time);
-    set_redis_cache(redis_cache);
+    set_memory_cache(memory_cache);
     set_renscript_cache(renscript_cache);
     
     // File watching now uses SSE streaming endpoint instead of separate WebSocket server

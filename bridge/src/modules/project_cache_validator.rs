@@ -4,14 +4,14 @@ use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use sha2::{Sha256, Digest};
 use log::{info, debug};
-use crate::modules::redis_cache::{RedisCache, ProjectManifest, FileMetadata, CacheValidationResult, ChangeSummary};
+use crate::modules::memory_cache::{MemoryCache, ProjectManifest, FileMetadata, CacheValidationResult, ChangeSummary};
 
 const CACHE_VERSION: &str = "1.0";
 
 pub struct ProjectCacheValidator {
     project_name: String,
     project_path: PathBuf,
-    redis_cache: Option<std::sync::Arc<tokio::sync::Mutex<RedisCache>>>,
+    memory_cache: Option<std::sync::Arc<tokio::sync::Mutex<MemoryCache>>>,
 }
 
 #[derive(Debug)]
@@ -101,14 +101,14 @@ fn estimate_file_processing_time(file_path: &Path) -> u64 {
 }
 
 impl ProjectCacheValidator {
-    pub fn new(project_name: String, redis_cache: Option<std::sync::Arc<tokio::sync::Mutex<RedisCache>>>) -> Self {
+    pub fn new(project_name: String, memory_cache: Option<std::sync::Arc<tokio::sync::Mutex<MemoryCache>>>) -> Self {
         let projects_path = crate::get_projects_path();
         let project_path = projects_path.join(&project_name);
         
         Self {
             project_name,
             project_path,
-            redis_cache,
+            memory_cache,
         }
     }
 
@@ -116,7 +116,7 @@ impl ProjectCacheValidator {
         info!("🔍 Validating cache for project: {}", self.project_name);
         
         // Get cached manifest
-        let cached_manifest = if let Some(redis) = &self.redis_cache {
+        let cached_manifest = if let Some(redis) = &self.memory_cache {
             let mut redis_guard = redis.lock().await;
             redis_guard.get_project_manifest(&self.project_name)
         } else {
@@ -185,7 +185,7 @@ impl ProjectCacheValidator {
         let mut plan = ProcessingPlan::new();
 
         // Get cached file metadata
-        let cached_files = if let Some(redis) = &self.redis_cache {
+        let cached_files = if let Some(redis) = &self.memory_cache {
             let mut redis_guard = redis.lock().await;
             redis_guard.get_all_file_metadata(&self.project_name)
         } else {
@@ -351,7 +351,7 @@ impl ProjectCacheValidator {
     }
 
     pub async fn update_project_manifest(&self, current_files: &[PathBuf]) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        if let Some(redis) = &self.redis_cache {
+        if let Some(redis) = &self.memory_cache {
             let checksum = self.calculate_project_checksum(current_files)?;
             let current_time = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
             
