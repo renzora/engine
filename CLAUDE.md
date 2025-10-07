@@ -25,10 +25,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `bun run kill` - Stop processes and clear ports 3000/3001
 - `bun run lint` - Run oxlint for code quality
 
-### CLI Tools
-- `renzora` or `node bin/renzora.js` - CLI interface
-- `renzora tui` - Interactive terminal interface
-- `renzora status` - Check build status and running processes
 
 ## Architecture Overview
 
@@ -111,7 +107,7 @@ export default MyPlugin;
 
 ### Technology Stack
 - Uses Bun as package manager and task runner
-- Rspack for fast bundling (not Webpack/Vite)
+- Rspack for fast bundling (not Webpack)
 - SolidJS for reactive UI (not React)
 - DaisyUI component library with TailwindCSS
 - Babylon.js for 3D rendering and physics

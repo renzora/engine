@@ -1,9 +1,8 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconWorld, IconBox, IconCircle, IconCylinder, IconSquare, IconChairDirector, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconPackageExport, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconWorld, IconBox, IconCircle, IconCylinder, IconSquare, IconChairDirector, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
-import ExportDialog from '@/ui/ExportDialog.jsx';
 import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
 import OpenProjectOverlay from '@/ui/OpenProjectOverlay.jsx';
 import { sceneManager } from '@/api/scene/SceneManager.js';
@@ -14,8 +13,6 @@ import SaveAsOverlay from '@/ui/SaveAsOverlay.jsx';
 
 // About overlay state
 const [showAbout, setShowAbout] = createSignal(false);
-// Export dialog state
-const [showExport, setShowExport] = createSignal(false);
 // New project overlay state
 const [showNewProject, setShowNewProject] = createSignal(false);
 // Open project overlay state
@@ -373,12 +370,6 @@ export default createPlugin({
             document.dispatchEvent(new CustomEvent('engine:open-model-importer'));
           }
         },
-        { 
-          id: 'export', 
-          label: 'Export Game', 
-          icon: IconPackageExport,
-          action: () => setShowExport(true)
-        },
         { divider: true },
         { id: 'recent', label: 'Recent Projects', icon: IconRefresh },
       ],
@@ -510,13 +501,6 @@ export default createPlugin({
       />
     ));
     
-    // Register Export dialog component
-    api.registerLayoutComponent('export-dialog', () => (
-      <ExportDialog 
-        isOpen={showExport} 
-        onClose={() => setShowExport(false)} 
-      />
-    ));
     
     // Register New Project overlay component
     api.registerLayoutComponent('new-project-overlay', () => (

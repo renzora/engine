@@ -1,8 +1,8 @@
 [package]
-name = "vite-solid-starter"
-version = "0.0.0"
-description = "A Tauri App"
-authors = ["you"]
+name = "renzora-engine"
+version = "1.0.0"
+description = "Renzora Game Engine"
+authors = ["Renzora Team"]
 license = ""
 repository = ""
 edition = "2021"

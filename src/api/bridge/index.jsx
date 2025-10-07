@@ -17,6 +17,7 @@ import {
 
 // Immediately export the critical functions
 export { wsConnectToServer as connectToServer };
+
 export const getCurrentTransport = () => {
   try {
     const useWS = useWebSocket();
@@ -49,7 +50,9 @@ export const isConnected = () => {
 // Configuration
 const [useWebSocket, setUseWebSocket] = createSignal(
   // Check environment variable or default to WebSocket
-  import.meta.env.VITE_USE_WEBSOCKET !== 'false'
+  // Use native browser environment or default to true
+  typeof window !== 'undefined' ? 
+    (localStorage.getItem('renzora_use_websocket') !== 'false') : true
 );
 
 const [serverStatus, setServerStatus] = createSignal('checking');
@@ -98,6 +101,16 @@ async function detectBestServer() {
 
 // Initialize server detection
 let serverDetectionPromise = null;
+
+// Export configuration function
+export const setWebSocketPreference = (enabled) => {
+  setUseWebSocket(enabled);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('renzora_use_websocket', enabled ? 'true' : 'false');
+  }
+  // Reset server detection to re-evaluate with new preference
+  serverDetectionPromise = null;
+};
 
 async function ensureServer() {
   if (!serverDetectionPromise) {

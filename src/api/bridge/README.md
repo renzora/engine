@@ -9,14 +9,19 @@ The bridge API now automatically detects and switches between:
 
 ### Configuration
 
-Set environment variables in `.env.local`:
+Configure transport preference via localStorage:
 
-```bash
-# Force WebSocket (default: true)
-VITE_USE_WEBSOCKET=true
+```javascript
+// Force WebSocket (default: true)
+localStorage.setItem('renzora_use_websocket', 'true');
 
-# Force HTTP bridge  
-VITE_USE_WEBSOCKET=false
+// Force HTTP bridge  
+localStorage.setItem('renzora_use_websocket', 'false');
+
+// Or programmatically via bridge API
+import { setWebSocketPreference } from '@/api/bridge';
+setWebSocketPreference(true);  // Enable WebSocket
+setWebSocketPreference(false); // Force HTTP
 ```
 
 ### Features Comparison

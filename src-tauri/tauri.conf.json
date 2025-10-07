@@ -1,7 +1,7 @@
 {
-  "productName": "vite-solid-starter",
-  "version": "0.0.0",
-  "identifier": "com.tauri.vite-solid-starter",
+  "productName": "renzora-engine",
+  "version": "1.0.0",
+  "identifier": "com.renzora.engine",
   "build": {
     "beforeBuildCommand": "cargo build --release --manifest-path bridge/Cargo.toml --bin bridge-server && bunx rspack build --mode production",
     "beforeDevCommand": "bun run web",

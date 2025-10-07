@@ -146,7 +146,7 @@ Renzora Engine R2 uses Rspack for lightning fast builds with the following featu
 
 ### Technical Enhancements
 - SolidJS for reactive UI (upgrading from React)
-- Rspack for faster builds (upgrading from Vite)
+- Rspack for fast and efficient builds
 - Tauri 2.0 for modern desktop integration
 - Enhanced TypeScript support
 - Improved error handling and debugging

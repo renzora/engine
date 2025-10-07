@@ -75,13 +75,18 @@ The frontend will automatically connect to available servers:
 
 ### Frontend Configuration
 
-Set in `.env.local`:
-```bash
-# Force WebSocket (default)
-VITE_USE_WEBSOCKET=true
+Configure via browser localStorage or programmatically:
+```javascript
+// Force WebSocket (default)
+localStorage.setItem('renzora_use_websocket', 'true');
 
-# Force HTTP fallback
-VITE_USE_WEBSOCKET=false
+// Force HTTP fallback
+localStorage.setItem('renzora_use_websocket', 'false');
+
+// Or via API
+import { setWebSocketPreference } from '@/api/bridge';
+setWebSocketPreference(true);  // Enable WebSocket
+setWebSocketPreference(false); // Force HTTP
 ```
 
 ## 📡 Runtime Configuration
