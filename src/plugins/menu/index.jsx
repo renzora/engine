@@ -477,22 +477,6 @@ export default createPlugin({
       ]
     });
 
-    api.menu('viewports', {
-      label: 'Viewports',
-      icon: IconChairDirector,
-      order: 5,
-      submenu: [
-        { id: 'viewport-bridge', label: 'Bridge', icon: IconLink },
-        { id: 'viewport-web-browser', label: 'Web Browser', icon: IconWorld, 
-          action: () => {
-            const api = document.querySelector('[data-plugin-api]')?.__pluginAPI;
-            if (api) {
-              api.open('web-browser', { label: 'Web Browser' });
-            }
-          }
-        }
-      ]
-    });
 
     api.menu('help', {
       label: 'Help',
