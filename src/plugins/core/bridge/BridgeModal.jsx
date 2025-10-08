@@ -1,6 +1,6 @@
 import { createSignal, createEffect, onCleanup, Show } from 'solid-js';
 import { IconServer, IconRefresh, IconTrash } from '@tabler/icons-solidjs';
-import { useProject } from '@/plugins/splash/ProjectStore';
+import { useProject } from '@/plugins/core/splash/ProjectStore';
 
 export default function BridgeModal({ isOpen, onClose }) {
   const [bridgeConnected, setBridgeConnected] = createSignal(false);

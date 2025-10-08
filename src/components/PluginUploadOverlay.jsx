@@ -21,12 +21,25 @@ export default function PluginUploadOverlay(props) {
   
   const pluginAPI = usePluginAPI();
 
-  // Get reactive plugin list from store
-  const pluginList = () => pluginStore.getAllPlugins();
+  // Get reactive plugin list from store, excluding core plugins
+  const pluginList = () => pluginStore.getAllPlugins().filter(plugin => 
+    !plugin.path || !plugin.path.includes('/src/plugins/core/')
+  );
+  
+  // Helper function to check if plugin is core
+  const isCorePlugin = (plugin) => {
+    return plugin.path && plugin.path.includes('/src/plugins/core/');
+  };
 
   const togglePlugin = async (pluginId) => {
     const plugin = pluginStore.getPluginConfig(pluginId);
     if (!plugin) return;
+    
+    // Prevent toggling core plugins
+    if (plugin.path && plugin.path.includes('/src/plugins/core/')) {
+      console.log('Core plugins cannot be disabled');
+      return;
+    }
     
     const newEnabledState = !plugin.enabled;
     

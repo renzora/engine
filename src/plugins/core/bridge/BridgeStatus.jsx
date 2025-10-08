@@ -1,5 +1,5 @@
 import { createSignal, onMount, onCleanup, Show } from 'solid-js';
-import { useProject } from '@/plugins/splash/ProjectStore';
+import { useProject } from '@/plugins/core/splash/ProjectStore';
 
 export default function BridgeStatus({ onOpenViewport }) {
   const [bridgeConnected, setBridgeConnected] = createSignal(false);

@@ -31,9 +31,12 @@ class PluginLoader {
     this.updateInterval = null;
     this.pluginDirectories = [
       '/src/plugins/core',
-      '/src/plugins/editor', 
-      '/src/plugins/community'
+      '/plugins'
     ];
+  }
+
+  isCorePlugin(pluginPath) {
+    return pluginPath.includes('/src/plugins/core/');
   }
 
   async discoverPlugins() {
@@ -70,10 +73,13 @@ class PluginLoader {
             .join(' '))
           .join(' ') + ' Plugin');
 
+        const isCore = this.isCorePlugin(pluginConfig.path);
+        
         const plugin = {
           id: pluginConfig.id,
           path: pluginConfig.path,
-          enabled: pluginConfig.enabled,
+          enabled: isCore ? true : pluginConfig.enabled, // Core plugins are always enabled
+          isCore: isCore,
           manifest: {
             name: pluginName,
             version: pluginConfig.version || '1.0.0',
@@ -83,7 +89,8 @@ class PluginLoader {
             dependencies: [],
             permissions: this.inferPermissions(pluginConfig.path),
             apiVersion: '1.0.0',
-            priority: pluginConfig.priority || 1
+            priority: pluginConfig.priority || 1,
+            isCore: isCore
           }
         };
 
@@ -98,29 +105,36 @@ class PluginLoader {
   }
 
   async loadPluginDynamic(id, path, mainFile) {
-    // Extract plugin directory name from path
-    const pluginDir = path.split('/').pop();
-    
-    console.log(`[PluginLoader] Attempting to load plugin ${id} from: ${pluginDir}/${mainFile}`);
+    console.log(`[PluginLoader] Attempting to load plugin ${id} from path: ${path}/${mainFile}`);
     
     try {
       // Use require.context to create a webpack context that includes all plugin files
       const pluginContext = require.context('@/plugins', true, /\.(jsx|js)$/);
       
-      // Try to resolve the main file
-      const mainPath = `./${pluginDir}/${mainFile}`;
+      // Convert the full path to a relative path for webpack context
+      // Remove /src/plugins from the beginning and create relative path
+      const relativePath = path.replace('/src/plugins', '');
+      const mainPath = `.${relativePath}/${mainFile}`;
+      
+      console.log(`[PluginLoader] Trying webpack context path: ${mainPath}`);
+      
       if (pluginContext.keys().includes(mainPath)) {
         const pluginModule = pluginContext(mainPath);
         return pluginModule;
       }
       
       // Try fallback with index.jsx
-      const fallbackPath = `./${pluginDir}/index.jsx`;
+      const fallbackPath = `.${relativePath}/index.jsx`;
+      console.log(`[PluginLoader] Trying fallback path: ${fallbackPath}`);
+      
       if (pluginContext.keys().includes(fallbackPath)) {
         console.log(`[PluginLoader] Using fallback path for ${id}: ${fallbackPath}`);
         const pluginModule = pluginContext(fallbackPath);
         return pluginModule;
       }
+      
+      // Log available paths for debugging
+      console.log(`[PluginLoader] Available webpack context paths:`, pluginContext.keys());
       
       throw new Error(`Plugin file not found: ${mainPath}`);
       
@@ -447,11 +461,12 @@ class PluginLoader {
     try {
       console.log(`[PluginLoader] Dynamic import loading plugin: ${pluginId}`);
       
-      // Extract plugin directory name from path
-      const pluginDir = pluginPath.split('/').pop();
+      // Convert the full path to import path
+      // Remove /src from the beginning to create import path
+      const relativePath = pluginPath.replace('/src', '');
       // Remove file extension from mainFile for import path
       const mainFileWithoutExt = mainFile.replace(/\.[^/.]+$/, "");
-      const importPath = `@/plugins/${pluginDir}/${mainFileWithoutExt}`;
+      const importPath = `@${relativePath}/${mainFileWithoutExt}`;
       
       console.log(`[PluginLoader] Dynamic import path: ${importPath}`);
       

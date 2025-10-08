@@ -173,6 +173,12 @@ export const pluginStore = {
       return false;
     }
 
+    // Prevent disabling core plugins
+    if (!enabled && currentConfig.path && currentConfig.path.includes('/src/plugins/core/')) {
+      console.warn(`Cannot disable core plugin: ${id}`);
+      return false;
+    }
+
     // Update local state
     setPluginConfigs(prev => {
       const newConfigs = new Map(prev);
@@ -274,6 +280,14 @@ export const pluginStore = {
   
   // Remove plugin configuration
   removePluginConfig: (id) => {
+    const currentConfig = pluginConfigs().get(id);
+    
+    // Prevent removing core plugins
+    if (currentConfig && currentConfig.path && currentConfig.path.includes('/src/plugins/core/')) {
+      console.warn(`Cannot remove core plugin: ${id}`);
+      return false;
+    }
+    
     setPluginConfigs(prev => {
       const newMap = new Map(prev);
       newMap.delete(id);

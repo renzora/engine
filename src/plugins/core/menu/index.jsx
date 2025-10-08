@@ -470,7 +470,7 @@ export default createPlugin({
       submenu: [
         { 
           id: 'install-plugin', 
-          label: 'Install Plugin...', 
+          label: 'Plugins', 
           icon: IconPackage,
           action: () => setShowPluginUpload(true)
         }
