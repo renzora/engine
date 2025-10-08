@@ -117,8 +117,8 @@ impl ProjectCacheValidator {
         
         // Get cached manifest
         let cached_manifest = if let Some(redis) = &self.memory_cache {
-            let mut redis_guard = redis.lock().await;
-            redis_guard.get_project_manifest(&self.project_name)
+            let redis_guard = redis.lock().await;
+            redis_guard.get_project_manifest(&self.project_name).await
         } else {
             None
         };
@@ -186,8 +186,8 @@ impl ProjectCacheValidator {
 
         // Get cached file metadata
         let cached_files = if let Some(redis) = &self.memory_cache {
-            let mut redis_guard = redis.lock().await;
-            redis_guard.get_all_file_metadata(&self.project_name)
+            let redis_guard = redis.lock().await;
+            redis_guard.get_all_file_metadata(&self.project_name).await
         } else {
             Vec::new()
         };
@@ -363,8 +363,8 @@ impl ProjectCacheValidator {
                 cache_version: CACHE_VERSION.to_string(),
             };
             
-            let mut redis_guard = redis.lock().await;
-            if redis_guard.cache_project_manifest(&manifest) {
+            let redis_guard = redis.lock().await;
+            if redis_guard.cache_project_manifest(&manifest).await {
                 info!("📋 Cached project manifest to Redis: {} ({} files, checksum: {})", 
                       self.project_name, manifest.file_count, &manifest.checksum[..8]);
             } else {

@@ -1,4 +1,5 @@
 pub mod types;
+pub mod errors;
 pub mod handlers;
 pub mod file_watcher;
 pub mod file_sync;

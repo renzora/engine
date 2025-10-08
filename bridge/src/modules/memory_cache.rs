@@ -1,8 +1,7 @@
-use std::collections::HashMap;
-use std::sync::RwLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 use serde::{Serialize, Deserialize};
 use log::{info, warn, debug};
+use dashmap::DashMap;
 
 #[derive(Debug, Clone)]
 struct CacheEntry {
@@ -40,7 +39,7 @@ impl CacheEntry {
 }
 
 pub struct MemoryCache {
-    storage: RwLock<HashMap<String, CacheEntry>>,
+    storage: DashMap<String, CacheEntry>,
     enabled: bool,
 }
 
@@ -131,9 +130,9 @@ pub struct ProjectAssetTree {
 
 impl MemoryCache {
     pub fn new() -> Self {
-        info!("💾 Initializing lightweight memory cache");
+        info!("💾 Initializing lightweight memory cache with DashMap");
         Self {
-            storage: RwLock::new(HashMap::new()),
+            storage: DashMap::new(),
             enabled: true,
         }
     }
@@ -143,89 +142,51 @@ impl MemoryCache {
     }
     
     // Core cache operations
-    pub async fn set_string(&mut self, key: &str, value: &str) -> Result<(), String> {
+    pub async fn set_string(&self, key: &str, value: &str) -> Result<(), String> {
         self.set_string_with_ttl(key, value, 300).await // Default 5 minutes TTL
     }
     
-    pub async fn set_string_with_ttl(&mut self, key: &str, value: &str, ttl_seconds: u64) -> Result<(), String> {
+    pub async fn set_string_with_ttl(&self, key: &str, value: &str, ttl_seconds: u64) -> Result<(), String> {
         if !self.enabled {
             return Err("Memory cache not enabled".to_string());
         }
         
         let entry = CacheEntry::new(value.to_string(), ttl_seconds);
-        
-        match self.storage.write() {
-            Ok(mut cache) => {
-                cache.insert(key.to_string(), entry);
-                debug!("💾 Cached key: {} (TTL: {}s)", key, ttl_seconds);
-                Ok(())
-            }
-            Err(e) => Err(format!("Failed to acquire write lock: {}", e))
-        }
+        self.storage.insert(key.to_string(), entry);
+        debug!("💾 Cached key: {} (TTL: {}s)", key, ttl_seconds);
+        Ok(())
     }
     
-    pub async fn get_string(&mut self, key: &str) -> Result<Option<String>, String> {
+    pub async fn get_string(&self, key: &str) -> Result<Option<String>, String> {
         if !self.enabled {
             return Ok(None);
         }
         
-        // First, check if the key exists and is not expired
-        let should_remove = {
-            match self.storage.read() {
-                Ok(cache) => {
-                    match cache.get(key) {
-                        Some(entry) => {
-                            if entry.is_expired() {
-                                true // Mark for removal
-                            } else {
-                                return Ok(Some(entry.value.clone()));
-                            }
-                        }
-                        None => return Ok(None),
-                    }
-                }
-                Err(e) => return Err(format!("Failed to acquire read lock: {}", e)),
+        // Check if the key exists and is not expired
+        if let Some(entry) = self.storage.get(key) {
+            if entry.is_expired() {
+                // Remove expired entry
+                self.storage.remove(key);
+                debug!("💾 Removed expired key: {}", key);
+                Ok(None)
+            } else {
+                Ok(Some(entry.value.clone()))
             }
-        };
-        
-        // Remove expired entry
-        if should_remove {
-            match self.storage.write() {
-                Ok(mut cache) => {
-                    cache.remove(key);
-                    debug!("💾 Removed expired key: {}", key);
-                }
-                Err(e) => warn!("Failed to remove expired key {}: {}", key, e),
-            }
-        }
-        
-        Ok(None)
-    }
-    
-    pub fn clear_all_cache(&mut self) -> bool {
-        match self.storage.write() {
-            Ok(mut cache) => {
-                let count = cache.len();
-                cache.clear();
-                info!("💾 Cleared {} cache entries", count);
-                true
-            }
-            Err(e) => {
-                warn!("💾 Failed to clear cache: {}", e);
-                false
-            }
+        } else {
+            Ok(None)
         }
     }
     
-    pub fn get_cache_stats(&mut self) -> serde_json::Value {
-        let (total_keys, expired_keys) = match self.storage.read() {
-            Ok(cache) => {
-                let total = cache.len();
-                let expired = cache.values().filter(|entry| entry.is_expired()).count();
-                (total, expired)
-            }
-            Err(_) => (0, 0),
-        };
+    pub fn clear_all_cache(&self) -> bool {
+        let count = self.storage.len();
+        self.storage.clear();
+        info!("💾 Cleared {} cache entries", count);
+        true
+    }
+    
+    pub fn get_cache_stats(&self) -> serde_json::Value {
+        let total_keys = self.storage.len();
+        let expired_keys = self.storage.iter().filter(|entry| entry.value().is_expired()).count();
         
         serde_json::json!({
             "memory_cache_enabled": true,
@@ -233,34 +194,26 @@ impl MemoryCache {
             "total_keys": total_keys,
             "expired_keys": expired_keys,
             "active_keys": total_keys - expired_keys,
-            "cache_type": "lightweight_memory"
+            "cache_type": "dashmap_concurrent"
         })
     }
     
     // Cleanup expired entries periodically
-    pub fn cleanup_expired(&mut self) -> usize {
-        match self.storage.write() {
-            Ok(mut cache) => {
-                let original_size = cache.len();
-                cache.retain(|_, entry| !entry.is_expired());
-                let removed = original_size - cache.len();
-                
-                if removed > 0 {
-                    debug!("💾 Cleaned up {} expired cache entries", removed);
-                }
-                removed
-            }
-            Err(e) => {
-                warn!("💾 Failed to cleanup expired entries: {}", e);
-                0
-            }
+    pub fn cleanup_expired(&self) -> usize {
+        let original_size = self.storage.len();
+        self.storage.retain(|_, entry| !entry.is_expired());
+        let removed = original_size - self.storage.len();
+        
+        if removed > 0 {
+            debug!("💾 Cleaned up {} expired cache entries", removed);
         }
+        removed
     }
     
     // Compiled script caching methods
-    pub fn cache_compiled_script(&mut self, script_name: &str, compiled_js: &str) -> bool {
+    pub async fn cache_compiled_script(&self, script_name: &str, compiled_js: &str) -> bool {
         let key = format!("renscript:compiled:{}", script_name);
-        match futures::executor::block_on(self.set_string_with_ttl(&key, compiled_js, 600)) { // 10 minutes
+        match self.set_string_with_ttl(&key, compiled_js, 600).await { // 10 minutes
             Ok(_) => {
                 debug!("💾 Cached compiled script: {}", script_name);
                 true
@@ -272,9 +225,9 @@ impl MemoryCache {
         }
     }
     
-    pub fn get_cached_compiled_script(&mut self, script_name: &str) -> Option<String> {
+    pub async fn get_cached_compiled_script(&self, script_name: &str) -> Option<String> {
         let key = format!("renscript:compiled:{}", script_name);
-        match futures::executor::block_on(self.get_string(&key)) {
+        match self.get_string(&key).await {
             Ok(Some(compiled_js)) => {
                 debug!("💾 Retrieved compiled script from cache: {}", script_name);
                 Some(compiled_js)
@@ -291,7 +244,7 @@ impl MemoryCache {
     }
     
     // Script list caching (compatible with Redis interface)
-    pub fn cache_script_list(&mut self, scripts: &[ScriptSearchResult]) -> bool {
+    pub async fn cache_script_list(&self, scripts: &[ScriptSearchResult]) -> bool {
         let cached_data = CachedScriptList {
             scripts: scripts.to_vec(),
             timestamp: SystemTime::now()
@@ -303,7 +256,7 @@ impl MemoryCache {
         
         match serde_json::to_string(&cached_data) {
             Ok(json) => {
-                match futures::executor::block_on(self.set_string_with_ttl("renscripts:list", &json, 300)) {
+                match self.set_string_with_ttl("renscripts:list", &json, 300).await {
                     Ok(_) => {
                         debug!("💾 Cached {} scripts in memory", scripts.len());
                         true
@@ -321,8 +274,8 @@ impl MemoryCache {
         }
     }
     
-    pub fn get_cached_script_list(&mut self) -> Option<Vec<ScriptSearchResult>> {
-        match futures::executor::block_on(self.get_string("renscripts:list")) {
+    pub async fn get_cached_script_list(&self) -> Option<Vec<ScriptSearchResult>> {
+        match self.get_string("renscripts:list").await {
             Ok(Some(json)) => {
                 match serde_json::from_str::<CachedScriptList>(&json) {
                     Ok(cached_data) => {
@@ -347,11 +300,11 @@ impl MemoryCache {
     }
     
     // Project asset cache methods
-    pub fn cache_project_manifest(&mut self, manifest: &ProjectManifest) -> bool {
+    pub async fn cache_project_manifest(&self, manifest: &ProjectManifest) -> bool {
         let key = format!("project:{}:manifest", manifest.project_name);
         match serde_json::to_string(manifest) {
             Ok(json) => {
-                match futures::executor::block_on(self.set_string_with_ttl(&key, &json, 86400)) { // 24 hours
+                match self.set_string_with_ttl(&key, &json, 86400).await { // 24 hours
                     Ok(_) => {
                         info!("💾 Cached project manifest for: {}", manifest.project_name);
                         true
@@ -369,9 +322,9 @@ impl MemoryCache {
         }
     }
     
-    pub fn get_project_manifest(&mut self, project_name: &str) -> Option<ProjectManifest> {
+    pub async fn get_project_manifest(&self, project_name: &str) -> Option<ProjectManifest> {
         let key = format!("project:{}:manifest", project_name);
-        match futures::executor::block_on(self.get_string(&key)) {
+        match self.get_string(&key).await {
             Ok(Some(json)) => {
                 match serde_json::from_str::<ProjectManifest>(&json) {
                     Ok(manifest) => {
@@ -395,11 +348,11 @@ impl MemoryCache {
         }
     }
     
-    pub fn cache_project_asset_tree(&mut self, tree: &ProjectAssetTree) -> bool {
+    pub async fn cache_project_asset_tree(&self, tree: &ProjectAssetTree) -> bool {
         let key = format!("project:{}:asset_tree", tree.project_name);
         match serde_json::to_string(tree) {
             Ok(json) => {
-                match futures::executor::block_on(self.set_string_with_ttl(&key, &json, 86400)) { // 24 hours
+                match self.set_string_with_ttl(&key, &json, 86400).await { // 24 hours
                     Ok(_) => {
                         info!("💾 Cached project asset tree for: {} ({} files, {} directories)", 
                               tree.project_name, tree.total_files, tree.total_directories);
@@ -418,9 +371,9 @@ impl MemoryCache {
         }
     }
     
-    pub fn get_project_asset_tree(&mut self, project_name: &str) -> Option<ProjectAssetTree> {
+    pub async fn get_project_asset_tree(&self, project_name: &str) -> Option<ProjectAssetTree> {
         let key = format!("project:{}:asset_tree", project_name);
-        match futures::executor::block_on(self.get_string(&key)) {
+        match self.get_string(&key).await {
             Ok(Some(json)) => {
                 match serde_json::from_str::<ProjectAssetTree>(&json) {
                     Ok(tree) => {
@@ -445,7 +398,7 @@ impl MemoryCache {
         }
     }
     
-    pub fn clear_project_cache(&mut self, project_name: &str) -> bool {
+    pub fn clear_project_cache(&self, project_name: &str) -> bool {
         let keys = vec![
             format!("project:{}:manifest", project_name),
             format!("project:{}:files", project_name),
@@ -455,16 +408,8 @@ impl MemoryCache {
         
         let mut cleared = 0;
         for key in &keys {
-            match self.storage.write() {
-                Ok(mut cache) => {
-                    if cache.remove(key).is_some() {
-                        cleared += 1;
-                    }
-                }
-                Err(e) => {
-                    warn!("💾 Failed to clear cache key {}: {}", key, e);
-                    return false;
-                }
+            if self.storage.remove(key).is_some() {
+                cleared += 1;
             }
         }
         
@@ -473,7 +418,7 @@ impl MemoryCache {
     }
     
     // File metadata caching methods
-    pub fn cache_file_metadata(&mut self, project_name: &str, file_metadata: &[FileMetadata]) -> bool {
+    pub async fn cache_file_metadata(&self, project_name: &str, file_metadata: &[FileMetadata]) -> bool {
         let key = format!("project:{}:files", project_name);
         
         // Store as JSON for simplicity (in real Redis this was a hash)
@@ -484,7 +429,7 @@ impl MemoryCache {
         
         match serde_json::to_string(&metadata_map) {
             Ok(json) => {
-                match futures::executor::block_on(self.set_string_with_ttl(&key, &json, 86400)) { // 24 hours
+                match self.set_string_with_ttl(&key, &json, 86400).await { // 24 hours
                     Ok(_) => {
                         info!("💾 Cached {} file metadata entries for project: {}", file_metadata.len(), project_name);
                         true
@@ -502,9 +447,9 @@ impl MemoryCache {
         }
     }
     
-    pub fn get_all_file_metadata(&mut self, project_name: &str) -> Vec<FileMetadata> {
+    pub async fn get_all_file_metadata(&self, project_name: &str) -> Vec<FileMetadata> {
         let key = format!("project:{}:files", project_name);
-        match futures::executor::block_on(self.get_string(&key)) {
+        match self.get_string(&key).await {
             Ok(Some(json)) => {
                 match serde_json::from_str::<std::collections::HashMap<String, FileMetadata>>(&json) {
                     Ok(metadata_map) => {
@@ -529,12 +474,12 @@ impl MemoryCache {
     }
     
     // Processed asset caching methods  
-    pub fn cache_processed_asset(&mut self, project_name: &str, asset: &ProcessedAsset) -> bool {
+    pub async fn cache_processed_asset(&self, project_name: &str, asset: &ProcessedAsset) -> bool {
         let key = format!("project:{}:processed", project_name);
         
         // Get existing processed assets
         let mut assets_map: std::collections::HashMap<String, ProcessedAsset> = 
-            match futures::executor::block_on(self.get_string(&key)) {
+            match self.get_string(&key).await {
                 Ok(Some(json)) => {
                     serde_json::from_str(&json).unwrap_or_default()
                 }
@@ -547,7 +492,7 @@ impl MemoryCache {
         // Store back
         match serde_json::to_string(&assets_map) {
             Ok(json) => {
-                match futures::executor::block_on(self.set_string_with_ttl(&key, &json, 86400)) { // 24 hours
+                match self.set_string_with_ttl(&key, &json, 86400).await { // 24 hours
                     Ok(_) => {
                         info!("💾 Cached processed asset: {} (thumbnail: {:?})", asset.path, asset.thumbnail_path);
                         true
@@ -565,9 +510,9 @@ impl MemoryCache {
         }
     }
     
-    pub fn get_all_processed_assets(&mut self, project_name: &str) -> Vec<ProcessedAsset> {
+    pub async fn get_all_processed_assets(&self, project_name: &str) -> Vec<ProcessedAsset> {
         let key = format!("project:{}:processed", project_name);
-        match futures::executor::block_on(self.get_string(&key)) {
+        match self.get_string(&key).await {
             Ok(Some(json)) => {
                 match serde_json::from_str::<std::collections::HashMap<String, ProcessedAsset>>(&json) {
                     Ok(assets_map) => {

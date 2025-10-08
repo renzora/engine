@@ -45,7 +45,7 @@ impl RenScriptCache {
         // Also store in shared memory cache if available
         if let Some(memory_cache_ref) = &self.memory_cache_ref {
             let json_data = serde_json::to_string(&scripts)?;
-            let mut memory_cache = memory_cache_ref.lock().await;
+            let memory_cache = memory_cache_ref.lock().await;
             if let Err(e) = memory_cache.set_string(&self.cache_key, &json_data).await {
                 println!("⚠️ Failed to cache RenScript entries in shared memory cache: {}", e);
             } else {
@@ -134,7 +134,7 @@ impl RenScriptCache {
         
         // Try shared memory cache if local cache is empty
         if let Some(memory_cache_ref) = &self.memory_cache_ref {
-            let mut memory_cache = memory_cache_ref.lock().await;
+            let memory_cache = memory_cache_ref.lock().await;
             match memory_cache.get_string(&self.cache_key).await {
                 Ok(Some(json_data)) => {
                     match serde_json::from_str::<Vec<RenScriptEntry>>(&json_data) {

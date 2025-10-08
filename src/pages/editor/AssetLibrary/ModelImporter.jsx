@@ -5,6 +5,7 @@ import { getCurrentProject } from '@/api/bridge/projects';
 import { modelProcessor } from './ModelProcessor';
 
 function ModelImporter({ isOpen, onClose, onImportComplete, context }) {
+  let fileInputRef;
   const [selectedFiles, setSelectedFiles] = createSignal([]);
   const [isImporting, setIsImporting] = createSignal(false);
   const [importProgress, setImportProgress] = createSignal(0);

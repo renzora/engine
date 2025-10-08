@@ -20,6 +20,7 @@ futures = "0.3"
 tokio-tungstenite = "0.24"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+simd-json = "0.13"
 base64 = "0.21"
 notify = "6.1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -36,8 +37,15 @@ percent-encoding = "2.3"
 sysinfo = "0.30"
 nvml-wrapper = { version = "0.10", optional = true }
 regex = "1.0"
-# Redis dependency removed - using lightweight memory cache
-uuid = { version = "1.0", features = ["v4"] }
+# High-performance concurrent data structures
+dashmap = "6.0"
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+# Memory mapping for large files
+memmap2 = "0.9"
+# UUID with better performance
+uuid = { version = "1.0", features = ["v4", "fast-rng"] }
 gltf = { version = "1.4", features = ["extras", "names", "utils"] }
 gltf-json = "1.4"
 image = "0.25"
@@ -53,7 +61,9 @@ default = []
 nvidia = ["nvml-wrapper"]
 
 [profile.release]
-lto = true
-codegen-units = 1
+lto = "thin"        # Faster than full LTO with similar benefits
+codegen-units = 4   # Better parallelization than 1
 panic = "abort"
 strip = true
+opt-level = 3
+overflow-checks = false
