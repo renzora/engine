@@ -85,6 +85,29 @@ export function getProjectAssetPath(assetPath = '', projectName = null) {
 }
 
 /**
+ * Initialize project.json with default values if it doesn't exist
+ */
+async function initializeProjectFile(projectName) {
+  const projectPath = `projects/${projectName}/project.json`;
+  const defaultProjectData = {
+    name: projectName,
+    currentScene: 'main',
+    created: new Date().toISOString(),
+    last_modified: new Date().toISOString(),
+    version: '1.0.0'
+  };
+  
+  try {
+    await bridgeService.writeFile(projectPath, JSON.stringify(defaultProjectData, null, 2));
+    console.log('✅ Initialized project.json for:', projectName);
+    return defaultProjectData;
+  } catch (error) {
+    console.error('❌ Failed to initialize project.json:', error);
+    throw error;
+  }
+}
+
+/**
  * Update current scene in project.json
  */
 export async function updateProjectCurrentScene(sceneName, projectName = null) {
@@ -95,8 +118,15 @@ export async function updateProjectCurrentScene(sceneName, projectName = null) {
   
   try {
     const projectPath = `projects/${project}/project.json`;
-    const projectContent = await bridgeService.readFile(projectPath);
-    const projectData = JSON.parse(projectContent);
+    let projectContent = await bridgeService.readFile(projectPath);
+    let projectData;
+    
+    if (!projectContent || projectContent === 'undefined') {
+      console.log('📁 Project file not found, initializing...');
+      projectData = await initializeProjectFile(project);
+    } else {
+      projectData = JSON.parse(projectContent);
+    }
     
     projectData.currentScene = sceneName;
     projectData.last_modified = new Date().toISOString();
@@ -122,7 +152,14 @@ export async function getProjectCurrentScene(projectName = null) {
   
   try {
     const projectPath = `projects/${project}/project.json`;
-    const projectContent = await bridgeService.readFile(projectPath);
+    let projectContent = await bridgeService.readFile(projectPath);
+    
+    if (!projectContent || projectContent === 'undefined') {
+      console.log('📁 Project file not found, initializing...');
+      const projectData = await initializeProjectFile(project);
+      return projectData.currentScene || 'main';
+    }
+    
     const projectData = JSON.parse(projectContent);
     
     return projectData.currentScene || 'main';
