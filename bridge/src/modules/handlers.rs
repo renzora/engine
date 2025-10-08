@@ -351,6 +351,12 @@ pub async fn handle_http_request(req: Request<hyper::body::Incoming>) -> Result<
                 None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
             }
         }
+        (&Method::POST, "/api/plugins/install") => {
+            match &body {
+                Some(body_content) => handle_plugin_install(body_content).await,
+                None => error_response(StatusCode::BAD_REQUEST, "Missing request body"),
+            }
+        }
         (&Method::GET, path) if path.starts_with("/scene-bundle/") => {
             let path_parts: Vec<&str> = path[14..].split('/').collect();
             if path_parts.len() != 2 {
@@ -2141,6 +2147,279 @@ fn count_nodes(node: &CachedAssetNode, files: &mut usize, directories: &mut usiz
     } else {
         *files += 1;
     }
+}
+
+// Plugin installation handler
+async fn handle_plugin_install(body: &str) -> Response<BoxBody<Bytes, Infallible>> {
+    
+    info!("📦 Starting plugin installation request");
+    
+    // Parse multipart form data from the body
+    // For now, we'll assume the body contains base64 encoded ZIP data in JSON format
+    #[derive(serde::Deserialize)]
+    struct PluginInstallRequest {
+        plugin: String, // base64 encoded ZIP file
+    }
+    
+    let request: PluginInstallRequest = match serde_json::from_str(body) {
+        Ok(req) => req,
+        Err(e) => {
+            error!("❌ Failed to parse plugin install request: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid JSON format");
+        }
+    };
+    
+    // Decode the base64 ZIP file
+    let zip_data = match general_purpose::STANDARD.decode(&request.plugin) {
+        Ok(data) => data,
+        Err(e) => {
+            error!("❌ Failed to decode base64 ZIP data: {}", e);
+            return error_response(StatusCode::BAD_REQUEST, "Invalid base64 ZIP data");
+        }
+    };
+    
+    info!("📦 Decoded ZIP file, size: {} bytes", zip_data.len());
+    
+    // Extract and install the plugin
+    match extract_and_install_plugin(zip_data).await {
+        Ok(install_result) => {
+            info!("✅ Plugin installation completed: {}", install_result.plugin_id);
+            json_response(&install_result)
+        }
+        Err(e) => {
+            error!("❌ Plugin installation failed: {}", e);
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, &e)
+        }
+    }
+}
+
+#[derive(serde::Serialize)]
+struct PluginInstallResult {
+    plugin_id: String,
+    plugin_path: String,
+    main_file: String,
+    success: bool,
+    message: String,
+}
+
+async fn extract_and_install_plugin(zip_data: Vec<u8>) -> Result<PluginInstallResult, String> {
+    use std::io::Cursor;
+    use zip::ZipArchive;
+    
+    info!("🔍 Extracting plugin ZIP archive");
+    
+    // Read the ZIP archive
+    let cursor = Cursor::new(zip_data.clone());
+    let mut archive = ZipArchive::new(cursor).map_err(|e| format!("Failed to read ZIP archive: {}", e))?;
+    
+    // Find the main plugin file (index.jsx or similar) and analyze structure
+    let mut main_file = None;
+    let mut plugin_id = None;
+    let mut all_files = Vec::new();
+    let mut root_folders = std::collections::HashSet::new();
+    let mut has_root_level_files = false;
+    
+    for i in 0..archive.len() {
+        let file = archive.by_index(i).map_err(|e| format!("Failed to read ZIP entry: {}", e))?;
+        let file_name = file.name().to_string();
+        all_files.push(file_name.clone());
+        
+        // Look for main entry files
+        if file_name.ends_with("index.jsx") || file_name.ends_with("index.js") || file_name.ends_with("plugin.jsx") {
+            main_file = Some(file_name.clone());
+        }
+        
+        // Analyze directory structure
+        if file_name.contains('/') {
+            if let Some(first_dir) = file_name.split('/').next() {
+                if !first_dir.is_empty() && first_dir != "." {
+                    root_folders.insert(first_dir.to_string());
+                }
+            }
+        } else if !file_name.ends_with('/') {
+            // This is a root-level file
+            has_root_level_files = true;
+        }
+        
+        // Extract plugin ID from directory structure or package.json
+        if plugin_id.is_none() {
+            if let Some(first_dir) = file_name.split('/').next() {
+                if !first_dir.is_empty() && first_dir != "." {
+                    plugin_id = Some(first_dir.to_string());
+                }
+            }
+        }
+    }
+    
+    // Determine if we need to flatten the structure
+    let should_flatten = !has_root_level_files && root_folders.len() == 1;
+    let folder_prefix = if should_flatten {
+        root_folders.iter().next().cloned().unwrap_or_default()
+    } else {
+        String::new()
+    };
+    
+    info!("📦 ZIP structure analysis: should_flatten={}, folder_prefix='{}', root_folders={:?}", 
+          should_flatten, folder_prefix, root_folders);
+    
+    let main_file = main_file.ok_or("No main plugin file found (looking for index.jsx, index.js, or plugin.jsx)")?;
+    
+    // Adjust main file path if flattening
+    let adjusted_main_file = if should_flatten && main_file.starts_with(&folder_prefix) {
+        main_file.strip_prefix(&format!("{}/", folder_prefix)).unwrap_or(&main_file).to_string()
+    } else {
+        main_file.clone()
+    };
+    
+    // Use folder prefix as plugin ID if flattening, otherwise use detected plugin ID
+    let final_plugin_id = if should_flatten {
+        folder_prefix.clone()
+    } else {
+        plugin_id.ok_or("Could not determine plugin ID from ZIP structure")?
+    };
+    
+    info!("📦 Found plugin: {} with main file: {} (adjusted: {})", final_plugin_id, main_file, adjusted_main_file);
+    
+    // Create plugins directory if it doesn't exist
+    let base_path = crate::get_base_path();
+    let plugins_dir = base_path.join("src").join("plugins").join(&final_plugin_id);
+    
+    if plugins_dir.exists() {
+        return Err(format!("Plugin '{}' already exists", final_plugin_id));
+    }
+    
+    tokio_fs::create_dir_all(&plugins_dir).await
+        .map_err(|e| format!("Failed to create plugin directory: {}", e))?;
+    
+    // Extract all files to the plugin directory
+    let mut archive = ZipArchive::new(Cursor::new(zip_data)).unwrap(); // Safe to unwrap as we've already validated
+    
+    // First, extract all file contents synchronously to avoid Send issues
+    let mut extracted_files = Vec::new();
+    
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i).map_err(|e| format!("Failed to read ZIP entry: {}", e))?;
+        let file_path = file.name().to_string();
+        
+        if file_path.ends_with('/') {
+            // Directory
+            extracted_files.push((file_path, None));
+        } else {
+            // File - read contents synchronously
+            let mut contents = Vec::new();
+            std::io::copy(&mut file, &mut contents)
+                .map_err(|e| format!("Failed to read file {}: {}", file_path, e))?;
+            extracted_files.push((file_path, Some(contents)));
+        }
+    }
+    
+    // Now write files asynchronously
+    for (file_path, contents) in extracted_files {
+        // Adjust file path if flattening
+        let adjusted_file_path = if should_flatten && file_path.starts_with(&folder_prefix) {
+            file_path.strip_prefix(&format!("{}/", folder_prefix)).unwrap_or(&file_path).to_string()
+        } else {
+            file_path.clone()
+        };
+        
+        // Skip empty adjusted paths
+        if adjusted_file_path.is_empty() {
+            continue;
+        }
+        
+        if let Some(contents) = contents {
+            // File
+            let file_path_buf = plugins_dir.join(&adjusted_file_path);
+            if let Some(parent) = file_path_buf.parent() {
+                tokio_fs::create_dir_all(parent).await
+                    .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+            }
+            
+            tokio_fs::write(&file_path_buf, contents).await
+                .map_err(|e| format!("Failed to write file {}: {}", adjusted_file_path, e))?;
+            
+            info!("📄 Extracted: {} -> {}", file_path, adjusted_file_path);
+        } else {
+            // Directory - only create if not the root folder being flattened
+            if !should_flatten || adjusted_file_path != folder_prefix {
+                let dir_path = plugins_dir.join(&adjusted_file_path);
+                tokio_fs::create_dir_all(dir_path).await
+                    .map_err(|e| format!("Failed to create directory {}: {}", adjusted_file_path, e))?;
+            }
+        }
+    }
+    
+    // Update the plugins registry
+    let registry_path = base_path.join("src").join("api").join("plugin").join("plugins.json");
+    update_plugin_registry(&registry_path, &final_plugin_id, &plugins_dir, &adjusted_main_file).await?;
+    
+    let plugin_path = format!("/src/plugins/{}", final_plugin_id);
+    
+    info!("✅ Plugin '{}' installed successfully at {}", final_plugin_id, plugin_path);
+    
+    Ok(PluginInstallResult {
+        plugin_id: final_plugin_id.clone(),
+        plugin_path,
+        main_file: adjusted_main_file,
+        success: true,
+        message: format!("Plugin '{}' installed successfully", final_plugin_id),
+    })
+}
+
+async fn update_plugin_registry(
+    registry_path: &std::path::PathBuf,
+    plugin_id: &str,
+    _plugin_dir: &std::path::PathBuf,
+    main_file: &str,
+) -> Result<(), String> {
+    use serde_json::Value;
+    
+    info!("📝 Updating plugin registry: {}", registry_path.display());
+    
+    // Read existing registry
+    let registry_content = if registry_path.exists() {
+        tokio_fs::read_to_string(&registry_path).await
+            .map_err(|e| format!("Failed to read plugins registry: {}", e))?
+    } else {
+        r#"{"plugins": []}"#.to_string()
+    };
+    
+    let mut registry: Value = serde_json::from_str(&registry_content)
+        .map_err(|e| format!("Failed to parse plugins registry: {}", e))?;
+    
+    // Get the plugins array
+    let plugins = registry.get_mut("plugins")
+        .and_then(|p| p.as_array_mut())
+        .ok_or("Invalid registry format: missing 'plugins' array")?;
+    
+    // Check if plugin already exists
+    let plugin_exists = plugins.iter().any(|p| {
+        p.get("id").and_then(|id| id.as_str()) == Some(plugin_id)
+    });
+    
+    if plugin_exists {
+        return Err(format!("Plugin '{}' already exists in registry", plugin_id));
+    }
+    
+    // Add new plugin entry
+    let new_plugin = serde_json::json!({
+        "id": plugin_id,
+        "path": format!("/src/plugins/{}", plugin_id),
+        "main": main_file,
+        "priority": 1
+    });
+    
+    plugins.push(new_plugin);
+    
+    // Write updated registry
+    let updated_content = serde_json::to_string_pretty(&registry)
+        .map_err(|e| format!("Failed to serialize registry: {}", e))?;
+    
+    tokio_fs::write(&registry_path, updated_content).await
+        .map_err(|e| format!("Failed to write registry: {}", e))?;
+    
+    info!("✅ Plugin registry updated successfully");
+    Ok(())
 }
 
 

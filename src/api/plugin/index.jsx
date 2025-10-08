@@ -1,4 +1,5 @@
 import { createSignal, createContext, useContext, onMount, onCleanup, createRoot } from 'solid-js';
+import pluginsConfig from './plugins.json';
 
 const PLUGIN_STATES = {
   DISCOVERED: 'discovered',
@@ -62,34 +63,13 @@ class PluginLoader {
   async scanForPlugins() {
     const plugins = [];
     
-    const pluginLocations = [
-      { path: '/src/plugins/splash', main: 'index.jsx', priority: -1 },
-      { path: '/src/plugins/menu', main: 'index.jsx', priority: 0 },
-      { path: '/src/plugins/core/bridge', main: 'index.jsx', priority: -2 },
-      { path: '/src/plugins/bridge', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/scripts', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/render', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/material', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/light', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/web-browser', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/materials-viewport', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/code-editor-viewport', main: 'index.jsx', priority: 1 },
-      { path: '/src/plugins/camera', main: 'index.jsx', priority: 3 },
-      { path: '/src/plugins/grid', main: 'index.jsx', priority: 4 },
-      { path: '/src/plugins/terrain', main: 'index.jsx', priority: 2 },
-      { path: '/src/plugins/environment', main: 'index.jsx', priority: 2 },
-      { path: '/src/plugins/fog', main: 'index.jsx', priority: 2 }
-    ];
-
-    for (const location of pluginLocations) {
+    for (const pluginConfig of pluginsConfig.plugins) {
       try {
-        const pathParts = location.path.split('/').filter(p => p && p !== 'src' && p !== 'plugins' && p !== 'ui');
-        const pluginId = pathParts.join('-') + '-plugin';
-        
-        if (pluginId.includes('test') && process.env.NODE_ENV === 'production') {
+        if (pluginConfig.id.includes('test') && process.env.NODE_ENV === 'production') {
           continue;
         }
 
+        const pathParts = pluginConfig.path.split('/').filter(p => p && p !== 'src' && p !== 'plugins' && p !== 'ui');
         const pluginName = pathParts
           .map(part => part.split(/[-_]/)
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
@@ -97,30 +77,62 @@ class PluginLoader {
           .join(' ') + ' Plugin';
 
         const plugin = {
-          id: pluginId,
-          path: location.path,
+          id: pluginConfig.id,
+          path: pluginConfig.path,
           manifest: {
             name: pluginName,
             version: '1.0.0',
-            description: `Auto-discovered plugin: ${pluginName}`,
+            description: `Plugin: ${pluginName}`,
             author: 'Renzora Engine Team',
-            main: location.main,
+            main: pluginConfig.main,
             dependencies: [],
-            permissions: this.inferPermissions(location.path),
+            permissions: this.inferPermissions(pluginConfig.path),
             apiVersion: '1.0.0',
-            priority: location.priority
+            priority: pluginConfig.priority
           }
         };
 
         plugins.push(plugin);
-        // Auto-discovered plugin: pluginId at location.path
       } catch (error) {
-        console.warn(`[PluginLoader] Failed to process plugin at ${location.path}:`, error);
+        console.warn(`[PluginLoader] Failed to process plugin ${pluginConfig.id}:`, error);
       }
     }
 
     plugins.sort((a, b) => a.manifest.priority - b.manifest.priority);
     return plugins;
+  }
+
+  async loadPluginDynamic(id, path, mainFile) {
+    // Extract plugin directory name from path
+    const pluginDir = path.split('/').pop();
+    
+    console.log(`[PluginLoader] Attempting to load plugin ${id} from: ${pluginDir}/${mainFile}`);
+    
+    try {
+      // Use require.context to create a webpack context that includes all plugin files
+      const pluginContext = require.context('@/plugins', true, /\.(jsx|js)$/);
+      
+      // Try to resolve the main file
+      const mainPath = `./${pluginDir}/${mainFile}`;
+      if (pluginContext.keys().includes(mainPath)) {
+        const pluginModule = pluginContext(mainPath);
+        return pluginModule;
+      }
+      
+      // Try fallback with index.jsx
+      const fallbackPath = `./${pluginDir}/index.jsx`;
+      if (pluginContext.keys().includes(fallbackPath)) {
+        console.log(`[PluginLoader] Using fallback path for ${id}: ${fallbackPath}`);
+        const pluginModule = pluginContext(fallbackPath);
+        return pluginModule;
+      }
+      
+      throw new Error(`Plugin file not found: ${mainPath}`);
+      
+    } catch (error) {
+      console.error(`[PluginLoader] Context loading failed for ${id}:`, error);
+      throw error;
+    }
   }
 
   inferPermissions(pluginPath) {
@@ -158,69 +170,10 @@ class PluginLoader {
       let pluginModule;
       
       try {
-        switch (id) {
-          case 'splash-plugin':
-            pluginModule = await import(`@/plugins/splash/index.jsx`);
-            break;
-          case 'menu-plugin':
-            pluginModule = await import(`@/plugins/menu/index.jsx`);
-            break;
-          case 'core-bridge-plugin':
-            pluginModule = await import(`@/plugins/core/bridge/BridgePluginClass.jsx`);
-            break;
-          case 'bridge-plugin':
-            pluginModule = await import(`@/plugins/bridge/index.jsx`);
-            break;
-          case 'camera-plugin':
-            pluginModule = await import(`@/plugins/camera/index.jsx`);
-            break;
-          case 'grid-plugin':
-            pluginModule = await import(`@/plugins/grid/index.jsx`);
-            break;
-          case 'scripts-plugin':
-            pluginModule = await import(`@/plugins/scripts/index.jsx`);
-            break;
-          case 'render-plugin':
-            pluginModule = await import(`@/plugins/render/index.jsx`);
-            break;
-          case 'material-plugin':
-            pluginModule = await import(`@/plugins/material/index.jsx`);
-            break;
-          case 'light-plugin':
-            pluginModule = await import(`@/plugins/light/index.jsx`);
-            break;
-          case 'web-browser-plugin':
-            pluginModule = await import(`@/plugins/web-browser/index.jsx`);
-            break;
-          case 'materials-viewport-plugin':
-            pluginModule = await import(`@/plugins/materials-viewport/index.jsx`);
-            break;
-          case 'code-editor-viewport-plugin':
-            pluginModule = await import(`@/plugins/code-editor-viewport/index.jsx`);
-            break;
-          case 'terrain-plugin':
-            pluginModule = await import(`@/plugins/terrain/index.jsx`);
-            break;
-          case 'environment-plugin':
-            pluginModule = await import(`@/plugins/environment/index.jsx`);
-            break;
-          case 'fog-plugin':
-            pluginModule = await import(`@/plugins/fog/index.jsx`);
-            break;
-          default:
-            try {
-              const mainPath = `${path}/${manifest.main}`;
-              pluginModule = await import(/* webpackIgnore: true */ mainPath);
-            } catch {
-              try {
-                pluginModule = await import(/* webpackIgnore: true */ `${path}/index.jsx`);
-              } catch {
-                pluginModule = await import(/* webpackIgnore: true */ `${path}/index.js`);
-              }
-            }
-        }
+        // Use a mapping approach that works with bundlers
+        pluginModule = await this.loadPluginDynamic(id, path, manifest.main);
       } catch (importError) {
-        console.warn(`[PluginLoader] Failed to import plugin ${id}:`, importError);
+        console.error(`[PluginLoader] Failed to import plugin ${id}:`, importError);
         throw new Error(`Could not load plugin from ${path}`);
       }
 
@@ -392,6 +345,168 @@ class PluginLoader {
     await Promise.all(startPromises);
 
     // Plugin loading completed
+  }
+
+  async reloadPluginRegistry() {
+    // Refresh plugins configuration from registry
+    try {
+      const response = await fetch('/src/api/plugin/plugins.json?' + Date.now());
+      const updatedConfig = await response.json();
+      
+      // Update the imported config (note: this is a runtime update)
+      Object.assign(pluginsConfig, updatedConfig);
+      
+      console.log('[PluginLoader] Plugin registry reloaded successfully');
+      return true;
+    } catch (error) {
+      console.error('[PluginLoader] Failed to reload plugin registry:', error);
+      return false;
+    }
+  }
+
+  async loadSinglePlugin(pluginId, pluginPath, mainFile) {
+    try {
+      console.log(`[PluginLoader] Loading single plugin: ${pluginId}`);
+      
+      // Create plugin info from parameters
+      const pluginInfo = {
+        id: pluginId,
+        path: pluginPath,
+        manifest: {
+          name: pluginId.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ') + ' Plugin',
+          version: '1.0.0',
+          description: `Dynamically loaded plugin: ${pluginId}`,
+          author: 'Plugin Developer',
+          main: mainFile,
+          dependencies: [],
+          permissions: this.inferPermissions(pluginPath),
+          apiVersion: '1.0.0',
+          priority: 1
+        }
+      };
+
+      // Load the plugin
+      const pluginInstance = await this.loadPlugin(pluginInfo);
+      
+      // Initialize the plugin
+      await this.initializePlugin(pluginId);
+      
+      // Start the plugin
+      await this.startPlugin(pluginId);
+      
+      console.log(`[PluginLoader] Successfully loaded and started plugin: ${pluginId}`);
+      return pluginInstance;
+    } catch (error) {
+      console.error(`[PluginLoader] Failed to load single plugin ${pluginId}:`, error);
+      throw error;
+    }
+  }
+
+  async loadPluginWithDynamicImport(pluginId, pluginPath, mainFile) {
+    try {
+      console.log(`[PluginLoader] Dynamic import loading plugin: ${pluginId}`);
+      
+      // Extract plugin directory name from path
+      const pluginDir = pluginPath.split('/').pop();
+      // Remove file extension from mainFile for import path
+      const mainFileWithoutExt = mainFile.replace(/\.[^/.]+$/, "");
+      const importPath = `@/plugins/${pluginDir}/${mainFileWithoutExt}`;
+      
+      console.log(`[PluginLoader] Dynamic import path: ${importPath}`);
+      
+      // Use dynamic import to load the plugin
+      const pluginModule = await import(/* webpackIgnore: true */ importPath);
+      
+      if (!pluginModule.default && !pluginModule.Plugin) {
+        throw new Error(`Plugin ${pluginId} must export a default plugin function`);
+      }
+
+      const PluginFactory = pluginModule.default || pluginModule.Plugin;
+      let pluginInstance;
+      
+      // Handle class-based plugins
+      if (PluginFactory.prototype && PluginFactory.prototype.constructor) {
+        pluginInstance = new PluginFactory(this.PluginAPI);
+      } else {
+        // Handle function-based plugins
+        pluginInstance = PluginFactory(this.PluginAPI);
+      }
+
+      // Create plugin info
+      const pluginInfo = {
+        id: pluginId,
+        path: pluginPath,
+        manifest: {
+          name: pluginId.split('-').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1)
+          ).join(' ') + ' Plugin',
+          version: '1.0.0',
+          description: `Dynamically loaded plugin: ${pluginId}`,
+          author: 'Plugin Developer',
+          main: mainFile,
+          dependencies: [],
+          permissions: this.inferPermissions(pluginPath),
+          apiVersion: '1.0.0',
+          priority: 1
+        }
+      };
+
+      // Store plugin in registry
+      setPlugins(prev => new Map(prev.set(pluginId, {
+        ...pluginInfo,
+        instance: pluginInstance,
+        module: pluginModule,
+        loadedAt: Date.now()
+      })));
+
+      this.setPluginState(pluginId, PLUGIN_STATES.LOADED);
+      
+      // Initialize the plugin
+      if (typeof pluginInstance.onInit === 'function') {
+        this.setPluginState(pluginId, PLUGIN_STATES.INITIALIZING);
+        await pluginInstance.onInit();
+        
+        this.PluginAPI.registerPlugin(pluginId, {
+          name: pluginInfo.manifest.name,
+          version: pluginInfo.manifest.version,
+          description: pluginInfo.manifest.description,
+          author: pluginInfo.manifest.author,
+          instance: pluginInstance
+        });
+        
+        this.setPluginState(pluginId, PLUGIN_STATES.INITIALIZED);
+      }
+      
+      // Start the plugin
+      if (typeof pluginInstance.onStart === 'function') {
+        this.setPluginState(pluginId, PLUGIN_STATES.STARTING);
+        
+        await new Promise((resolve, reject) => {
+          createRoot(async (dispose) => {
+            try {
+              await pluginInstance.onStart();
+              pluginInstance._dispose = dispose;
+              resolve();
+            } catch (error) {
+              dispose();
+              reject(error);
+            }
+          });
+        });
+        
+        this.setPluginState(pluginId, PLUGIN_STATES.RUNNING);
+      }
+
+      console.log(`[PluginLoader] Successfully loaded and started plugin via dynamic import: ${pluginId}`);
+      return pluginInstance;
+    } catch (error) {
+      console.error(`[PluginLoader] Failed to load plugin via dynamic import ${pluginId}:`, error);
+      this.setPluginError(pluginId, error);
+      this.setPluginState(pluginId, PLUGIN_STATES.ERROR);
+      throw error;
+    }
   }
 
   startUpdateLoop() {
@@ -885,6 +1000,47 @@ export class PluginAPI {
 
   getPluginStats() {
     return this.pluginLoader.getStats();
+  }
+
+  async loadPluginDynamically(pluginId, pluginPath, mainFile) {
+    try {
+      console.log(`[PluginAPI] Loading plugin dynamically: ${pluginId}`);
+      return await this.pluginLoader.loadPluginWithDynamicImport(pluginId, pluginPath, mainFile);
+    } catch (error) {
+      console.error(`[PluginAPI] Failed to load plugin dynamically: ${pluginId}`, error);
+      throw error;
+    }
+  }
+
+  async reloadPlugins() {
+    try {
+      console.log('[PluginAPI] Reloading plugin registry...');
+      await this.pluginLoader.reloadPluginRegistry();
+      
+      // Discover and load any new plugins
+      const discovered = await this.pluginLoader.discoverPlugins();
+      const currentPlugins = new Set(Array.from(plugins().keys()));
+      
+      // Load only new plugins
+      for (const [id, pluginInfo] of discovered) {
+        if (!currentPlugins.has(id)) {
+          console.log(`[PluginAPI] Loading new plugin: ${id}`);
+          try {
+            await this.pluginLoader.loadPlugin(pluginInfo);
+            await this.pluginLoader.initializePlugin(id);
+            await this.pluginLoader.startPlugin(id);
+          } catch (error) {
+            console.error(`Failed to load new plugin ${id}:`, error);
+          }
+        }
+      }
+      
+      console.log('[PluginAPI] Plugin reload completed');
+      return true;
+    } catch (error) {
+      console.error('[PluginAPI] Failed to reload plugins:', error);
+      return false;
+    }
   }
 
   emit(eventType, data) {

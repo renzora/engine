@@ -1,6 +1,6 @@
 import { createPlugin } from '@/api/plugin';
 import { createSignal } from 'solid-js';
-import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconWorld, IconBox, IconCircle, IconCylinder, IconSquare, IconChairDirector, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere
+import { IconRefresh, IconVideo, IconEdit, IconArrowLeft, IconArrowRight, IconPlus, IconFolder, IconFile, IconArrowDown, IconScissors, IconCopy, IconClipboard, IconTrash, IconCube, IconWorld, IconBox, IconCircle, IconCylinder, IconSquare, IconChairDirector, IconLink, IconHelp, IconHeadphones, IconBrandYoutube, IconBrandDiscord, IconBook, IconInfoCircle, IconDeviceFloppy, IconMountain, IconSun, IconBulb, IconSphere, IconPackage, IconSettings
 } from '@tabler/icons-solidjs';
 import AboutOverlay from '@/ui/AboutOverlay.jsx';
 import NewProjectOverlay from '@/ui/NewProjectOverlay.jsx';
@@ -10,6 +10,7 @@ import { getCurrentProject } from '@/api/bridge/projects.js';
 import UnsavedChangesOverlay from '@/ui/UnsavedChangesOverlay.jsx';
 import SceneSelectionOverlay from '@/ui/SceneSelectionOverlay.jsx';
 import SaveAsOverlay from '@/ui/SaveAsOverlay.jsx';
+import PluginUploadOverlay from '@/components/PluginUploadOverlay.jsx';
 
 // About overlay state
 const [showAbout, setShowAbout] = createSignal(false);
@@ -24,6 +25,8 @@ const [showSaveAs, setShowSaveAs] = createSignal(false);
 // Unsaved changes overlay state
 const [showUnsavedChanges, setShowUnsavedChanges] = createSignal(false);
 const [pendingAction, setPendingAction] = createSignal(null);
+// Plugin upload overlay state
+const [showPluginUpload, setShowPluginUpload] = createSignal(false);
 
 // Helper function to check for unsaved changes and handle accordingly
 const checkUnsavedChanges = async (action) => {
@@ -460,10 +463,24 @@ export default createPlugin({
       ]
     });
 
+    api.menu('tools', {
+      label: 'Tools',
+      icon: IconSettings,
+      order: 4,
+      submenu: [
+        { 
+          id: 'install-plugin', 
+          label: 'Install Plugin...', 
+          icon: IconPackage,
+          action: () => setShowPluginUpload(true)
+        }
+      ]
+    });
+
     api.menu('viewports', {
       label: 'Viewports',
       icon: IconChairDirector,
-      order: 4,
+      order: 5,
       submenu: [
         { id: 'viewport-bridge', label: 'Bridge', icon: IconLink },
         { id: 'viewport-web-browser', label: 'Web Browser', icon: IconWorld, 
@@ -480,7 +497,7 @@ export default createPlugin({
     api.menu('help', {
       label: 'Help',
       icon: IconHelp,
-      order: 5,
+      order: 6,
       submenu: [
         { id: 'help-support', label: 'Support', icon: IconHeadphones },
         { id: 'help-youtube', label: 'YouTube', icon: IconBrandYoutube },
@@ -577,5 +594,13 @@ export default createPlugin({
         />
       );
     });
+    
+    // Register Plugin Upload overlay component
+    api.registerLayoutComponent('plugin-upload-overlay', () => (
+      <PluginUploadOverlay 
+        isOpen={showPluginUpload()} 
+        onClose={() => setShowPluginUpload(false)}
+      />
+    ));
   }
 });
