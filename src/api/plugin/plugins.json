@@ -4,109 +4,127 @@
       "id": "splash-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/splash",
-      "priority": -1
+      "priority": -1,
+      "enabled": true
     },
     {
       "id": "menu-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/menu",
-      "priority": 0
+      "priority": 0,
+      "enabled": true
     },
     {
       "id": "core-bridge-plugin",
       "main": "BridgePluginClass.jsx",
       "path": "/src/plugins/core/bridge",
-      "priority": -2
+      "priority": -2,
+      "enabled": true
     },
     {
       "id": "bridge-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/bridge",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "scripts-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/scripts",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "render-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/render",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "material-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/material",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "light-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/light",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "web-browser-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/web-browser",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "materials-viewport-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/materials-viewport",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "code-editor-viewport-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/code-editor-viewport",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     },
     {
       "id": "camera-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/camera",
-      "priority": 3
+      "priority": 3,
+      "enabled": true
     },
     {
       "id": "grid-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/grid",
-      "priority": 4
+      "priority": 4,
+      "enabled": true
     },
     {
       "id": "terrain-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/terrain",
-      "priority": 2
+      "priority": 2,
+      "enabled": true
     },
     {
       "id": "environment-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/environment",
-      "priority": 2
+      "priority": 2,
+      "enabled": true
     },
     {
       "id": "fog-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/fog",
-      "priority": 2
+      "priority": 2,
+      "enabled": true
     },
     {
       "id": "snow-plugin",
       "main": "index.jsx",
       "path": "/src/plugins/snow",
-      "priority": 2
+      "priority": 2,
+      "enabled": true
     },
     {
       "id": "web-browser",
       "main": "web-browser/index.jsx",
       "path": "/src/plugins/web-browser",
-      "priority": 1
+      "priority": 1,
+      "enabled": true
     }
   ]
 }

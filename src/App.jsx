@@ -132,7 +132,11 @@ export default function App() {
           
           {/* Render layout components from plugins */}
           <For each={Array.from(layoutComponents().values())}>
-            {(Component) => <Component />}
+            {(layoutComponent) => {
+              // Handle both old and new structure for backwards compatibility
+              const Component = layoutComponent?.component || layoutComponent;
+              return <Component />;
+            }}
           </For>
         </div>
         

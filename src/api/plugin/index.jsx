@@ -1,17 +1,8 @@
 import { createSignal, createContext, useContext, onMount, onCleanup, createRoot } from 'solid-js';
-import pluginsConfig from './plugins.json';
+import pluginStore, { PLUGIN_STATES as STORE_PLUGIN_STATES } from '@/stores/PluginStore.jsx';
 
-const PLUGIN_STATES = {
-  DISCOVERED: 'discovered',
-  LOADING: 'loading', 
-  LOADED: 'loaded',
-  INITIALIZING: 'initializing',
-  INITIALIZED: 'initialized',
-  STARTING: 'starting',
-  RUNNING: 'running',
-  ERROR: 'error',
-  DISABLED: 'disabled'
-};
+// Re-export plugin states from store to maintain compatibility
+const PLUGIN_STATES = STORE_PLUGIN_STATES;
 
 const PluginAPIContext = createContext();
 
@@ -63,32 +54,36 @@ class PluginLoader {
   async scanForPlugins() {
     const plugins = [];
     
-    for (const pluginConfig of pluginsConfig.plugins) {
+    // Get plugin configs from store instead of importing JSON
+    const pluginConfigs = pluginStore.getPluginConfigs();
+    
+    for (const [id, pluginConfig] of pluginConfigs) {
       try {
         if (pluginConfig.id.includes('test') && process.env.NODE_ENV === 'production') {
           continue;
         }
 
         const pathParts = pluginConfig.path.split('/').filter(p => p && p !== 'src' && p !== 'plugins' && p !== 'ui');
-        const pluginName = pathParts
+        const pluginName = pluginConfig.name || (pathParts
           .map(part => part.split(/[-_]/)
             .map(word => word.charAt(0).toUpperCase() + word.slice(1))
             .join(' '))
-          .join(' ') + ' Plugin';
+          .join(' ') + ' Plugin');
 
         const plugin = {
           id: pluginConfig.id,
           path: pluginConfig.path,
+          enabled: pluginConfig.enabled,
           manifest: {
             name: pluginName,
-            version: '1.0.0',
-            description: `Plugin: ${pluginName}`,
-            author: 'Renzora Engine Team',
+            version: pluginConfig.version || '1.0.0',
+            description: pluginConfig.description || `Plugin: ${pluginName}`,
+            author: pluginConfig.author || 'Renzora Engine Team',
             main: pluginConfig.main,
             dependencies: [],
             permissions: this.inferPermissions(pluginConfig.path),
             apiVersion: '1.0.0',
-            priority: pluginConfig.priority
+            priority: pluginConfig.priority || 1
           }
         };
 
@@ -218,6 +213,9 @@ class PluginLoader {
         loadedAt: Date.now()
       })));
 
+      // Sync with store
+      pluginStore.setPluginInstance(id, pluginInstance, pluginModule);
+
       this.setPluginState(id, PLUGIN_STATES.LOADED);
       // Plugin loaded successfully
       
@@ -240,6 +238,9 @@ class PluginLoader {
       this.setPluginState(pluginId, PLUGIN_STATES.INITIALIZING);
       // Initializing plugin
 
+      // Set the plugin context for registration tracking
+      this.PluginAPI.setCurrentPluginContext(pluginId);
+
       if (typeof plugin.instance.onInit === 'function') {
         await plugin.instance.onInit();
       }
@@ -252,12 +253,18 @@ class PluginLoader {
         instance: plugin.instance
       });
 
+      // Clear the plugin context
+      this.PluginAPI.clearCurrentPluginContext();
+
       this.setPluginState(pluginId, PLUGIN_STATES.INITIALIZED);
       // Plugin initialized successfully
     } catch (error) {
       console.error(`[PluginLoader] Failed to initialize plugin ${pluginId}:`, error);
       this.setPluginError(pluginId, error);
       this.setPluginState(pluginId, PLUGIN_STATES.ERROR);
+      
+      // Clear the plugin context on error
+      this.PluginAPI.clearCurrentPluginContext();
       throw error;
     }
   }
@@ -273,11 +280,14 @@ class PluginLoader {
       // Starting plugin
 
       if (typeof plugin.instance.onStart === 'function') {
+        // Set the plugin context for registration tracking during onStart
+        this.PluginAPI.setCurrentPluginContext(pluginId);
+        
         // Wrap onStart in createRoot to properly handle SolidJS effects
         await new Promise((resolve, reject) => {
           createRoot(async (dispose) => {
             try {
-              await plugin.instance.onStart();
+              await plugin.instance.onStart(this.PluginAPI);
               // Store dispose function on plugin instance for cleanup
               plugin.instance._dispose = dispose;
               resolve();
@@ -287,6 +297,9 @@ class PluginLoader {
             }
           });
         });
+        
+        // Clear the plugin context after onStart
+        this.PluginAPI.clearCurrentPluginContext();
       }
 
       this.setPluginState(pluginId, PLUGIN_STATES.RUNNING);
@@ -295,6 +308,9 @@ class PluginLoader {
       console.error(`[PluginLoader] Failed to start plugin ${pluginId}:`, error);
       this.setPluginError(pluginId, error);
       this.setPluginState(pluginId, PLUGIN_STATES.ERROR);
+      
+      // Clear the plugin context on error
+      this.PluginAPI.clearCurrentPluginContext();
       throw error;
     }
   }
@@ -306,9 +322,29 @@ class PluginLoader {
     const loadPromises = [];
 
     for (const [id, pluginInfo] of discovered) {
+      // Skip loading disabled plugins but still add them to store
+      if (!pluginInfo.enabled) {
+        console.log(`[PluginLoader] Skipping disabled plugin: ${id}`);
+        this.setPluginState(id, PLUGIN_STATES.DISABLED);
+        
+        // Add disabled plugin to registry so it appears in the list
+        setPlugins(prev => new Map(prev.set(id, {
+          ...pluginInfo,
+          instance: null,
+          module: null,
+          loadedAt: null
+        })));
+        
+        // Update store state
+        pluginStore.setPluginState(id, PLUGIN_STATES.DISABLED);
+        continue;
+      }
+      
       loadPromises.push(
         this.loadPlugin(pluginInfo).catch(error => {
           console.error(`Failed to load plugin ${id}:`, error);
+          pluginStore.setPluginError(id, error);
+          pluginStore.setPluginState(id, PLUGIN_STATES.ERROR);
           return null;
         })
       );
@@ -318,10 +354,13 @@ class PluginLoader {
 
     const initPromises = [];
     for (const [id] of plugins()) {
-      if (this.getPluginState(id) === PLUGIN_STATES.LOADED) {
+      const pluginInfo = discovered.get(id);
+      if (this.getPluginState(id) === PLUGIN_STATES.LOADED && pluginInfo?.enabled) {
         initPromises.push(
           this.initializePlugin(id).catch(error => {
             console.error(`Failed to initialize plugin ${id}:`, error);
+            pluginStore.setPluginError(id, error);
+            pluginStore.setPluginState(id, PLUGIN_STATES.ERROR);
             return null;
           })
         );
@@ -332,10 +371,13 @@ class PluginLoader {
 
     const startPromises = [];
     for (const [id] of plugins()) {
-      if (this.getPluginState(id) === PLUGIN_STATES.INITIALIZED) {
+      const pluginInfo = discovered.get(id);
+      if (this.getPluginState(id) === PLUGIN_STATES.INITIALIZED && pluginInfo?.enabled) {
         startPromises.push(
           this.startPlugin(id).catch(error => {
             console.error(`Failed to start plugin ${id}:`, error);
+            pluginStore.setPluginError(id, error);
+            pluginStore.setPluginState(id, PLUGIN_STATES.ERROR);
             return null;
           })
         );
@@ -348,16 +390,13 @@ class PluginLoader {
   }
 
   async reloadPluginRegistry() {
-    // Refresh plugins configuration from registry
+    // Refresh plugins configuration from registry via store
     try {
-      const response = await fetch('/src/api/plugin/plugins.json?' + Date.now());
-      const updatedConfig = await response.json();
-      
-      // Update the imported config (note: this is a runtime update)
-      Object.assign(pluginsConfig, updatedConfig);
-      
-      console.log('[PluginLoader] Plugin registry reloaded successfully');
-      return true;
+      const success = await pluginStore.reloadConfigsFromFile();
+      if (success) {
+        console.log('[PluginLoader] Plugin registry reloaded successfully');
+      }
+      return success;
     } catch (error) {
       console.error('[PluginLoader] Failed to reload plugin registry:', error);
       return false;
@@ -554,6 +593,9 @@ class PluginLoader {
   setPluginState(pluginId, state) {
     setPluginStates(prev => new Map(prev.set(pluginId, state)));
     
+    // Sync with store
+    pluginStore.setPluginState(pluginId, state);
+    
     this.PluginAPI.emit('plugin-state-changed', {
       pluginId,
       state,
@@ -599,6 +641,138 @@ export class PluginAPI {
     this.version = '1.0.0';
     this.pluginLoader = new PluginLoader(this);
     this.initialized = false;
+    this.currentRegistringPlugin = null; // Track which plugin is currently registering
+    
+    // Set up plugin store event listeners for reactive UI updates
+    this.setupPluginStoreListeners();
+  }
+  
+  // Helper method to get the current plugin ID for registration
+  getCurrentPluginId() {
+    return this.currentRegistringPlugin;
+  }
+  
+  // Set the current plugin context for registration
+  setCurrentPluginContext(pluginId) {
+    this.currentRegistringPlugin = pluginId;
+  }
+  
+  // Clear the current plugin context
+  clearCurrentPluginContext() {
+    this.currentRegistringPlugin = null;
+  }
+  
+  setupPluginStoreListeners() {
+    // Listen for plugin state changes and clean up UI elements
+    pluginStore.on('plugin-disabled', (data) => {
+      this.cleanupPluginUIElements(data.pluginId);
+    });
+    
+    pluginStore.on('plugin-enabling', (data) => {
+      console.log(`[PluginAPI] Plugin ${data.pluginId} is being enabled`);
+    });
+  }
+  
+  // Clean up all UI elements registered by a plugin
+  cleanupPluginUIElements(pluginId) {
+    console.log(`[PluginAPI] Cleaning up UI elements for plugin: ${pluginId}`);
+    
+    try {
+      // Remove top menu items
+      setTopMenuItems(prev => {
+        const newMap = new Map(prev);
+        for (const [key, item] of newMap) {
+          if (item.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed top menu item: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove property tabs
+      setPropertyTabs(prev => {
+        const newMap = new Map(prev);
+        for (const [key, tab] of newMap) {
+          if (tab.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed property tab: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove bottom panel tabs
+      setBottomPanelTabs(prev => {
+        const newMap = new Map(prev);
+        for (const [key, tab] of newMap) {
+          if (tab.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed bottom panel tab: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove viewport types
+      setViewportTypes(prev => {
+        const newMap = new Map(prev);
+        for (const [key, viewport] of newMap) {
+          if (viewport.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed viewport type: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove toolbar buttons
+      setToolbarButtons(prev => {
+        const newMap = new Map(prev);
+        for (const [key, button] of newMap) {
+          if (button.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed toolbar button: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove footer buttons
+      setFooterButtons(prev => {
+        const newMap = new Map(prev);
+        for (const [key, button] of newMap) {
+          if (button.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed footer button: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove layout components
+      setLayoutComponents(prev => {
+        const newMap = new Map(prev);
+        for (const [key, component] of newMap) {
+          if (component.plugin === pluginId) {
+            newMap.delete(key);
+            console.log(`[PluginAPI] Removed layout component: ${key}`);
+          }
+        }
+        return newMap;
+      });
+      
+      // Remove from registered plugins
+      setRegisteredPlugins(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(pluginId);
+        return newMap;
+      });
+      
+      console.log(`[PluginAPI] Completed cleanup for plugin: ${pluginId}`);
+    } catch (error) {
+      console.error(`[PluginAPI] Error cleaning up plugin ${pluginId}:`, error);
+    }
   }
 
   async initialize() {
@@ -662,11 +836,11 @@ export class PluginAPI {
       icon: config.icon,
       submenu: config.submenu,
       order: config.order || 100,
-      plugin: config.plugin || 'unknown'
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown'
     };
 
     setTopMenuItems(prev => new Map(prev.set(id, menuItem)));
-    // Top menu item registered
+    console.log(`[PluginAPI] Registered top menu item '${id}' for plugin '${menuItem.plugin}'`);
     return true;
   }
 
@@ -678,11 +852,11 @@ export class PluginAPI {
       icon: config.icon,
       order: config.order || 100,
       condition: config.condition || (() => true),
-      plugin: config.plugin || 'unknown'
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown'
     };
 
     setPropertyTabs(prev => new Map(prev.set(id, tab)));
-    // Property tab registered
+    console.log(`[PluginAPI] Registered property tab '${id}' for plugin '${tab.plugin}'`);
     return true;
   }
 
@@ -694,11 +868,11 @@ export class PluginAPI {
       icon: config.icon,
       order: config.order || 100,
       defaultHeight: config.defaultHeight || 300,
-      plugin: config.plugin || 'unknown'
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown'
     };
 
     setBottomPanelTabs(prev => new Map(prev.set(id, tab)));
-    // Bottom panel tab registered
+    console.log(`[PluginAPI] Registered bottom panel tab '${id}' for plugin '${tab.plugin}'`);
     return true;
   }
 
@@ -709,11 +883,11 @@ export class PluginAPI {
       component: config.component,
       icon: config.icon,
       description: config.description || `${config.label} viewport`,
-      plugin: config.plugin || 'unknown'
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown'
     };
 
     setViewportTypes(prev => new Map(prev.set(id, viewportType)));
-    // Viewport type registered
+    console.log(`[PluginAPI] Registered viewport type '${id}' for plugin '${viewportType.plugin}'`);
     return true;
   }
 
@@ -725,7 +899,7 @@ export class PluginAPI {
       onClick: config.onClick,
       order: config.order || 100,
       section: config.section || 'main',
-      plugin: config.plugin || 'unknown',
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown',
       hasDropdown: config.hasDropdown || false,
       dropdownComponent: config.dropdownComponent || null,
       dropdownWidth: config.dropdownWidth || 192,
@@ -734,7 +908,7 @@ export class PluginAPI {
     };
 
     setToolbarButtons(prev => new Map(prev.set(id, button)));
-    // Toolbar button registered
+    console.log(`[PluginAPI] Registered toolbar button '${id}' for plugin '${button.plugin}'`);
     return true;
   }
 
@@ -746,7 +920,7 @@ export class PluginAPI {
       onClick: config.onClick,
       order: config.order || 100,
       section: 'helper',
-      plugin: config.plugin || 'unknown',
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown',
       hasDropdown: config.hasDropdown || false,
       dropdownComponent: config.dropdownComponent || null,
       dropdownWidth: config.dropdownWidth || 192,
@@ -755,7 +929,7 @@ export class PluginAPI {
     };
 
     setToolbarButtons(prev => new Map(prev.set(id, button)));
-    // Helper button registered
+    console.log(`[PluginAPI] Registered helper button '${id}' for plugin '${button.plugin}'`);
     return true;
   }
 
@@ -766,18 +940,22 @@ export class PluginAPI {
       order: config.order || 100,
       priority: config.priority || 100,
       section: config.section || 'status',
-      plugin: config.plugin || 'unknown'
+      plugin: config.plugin || this.getCurrentPluginId() || 'unknown'
     };
 
     setFooterButtons(prev => new Map(prev.set(id, button)));
-    // Footer button registered
+    console.log(`[PluginAPI] Registered footer button '${id}' for plugin '${button.plugin}'`);
     return true;
   }
 
 
   registerLayoutComponent(region, component) {
-    setLayoutComponents(prev => new Map(prev.set(region, component)));
-    // Layout component registered
+    const layoutComponent = {
+      component,
+      plugin: this.getCurrentPluginId() || 'unknown'
+    };
+    setLayoutComponents(prev => new Map(prev.set(region, layoutComponent)));
+    console.log(`[PluginAPI] Registered layout component for region '${region}' by plugin '${layoutComponent.plugin}'`);
     return true;
   }
 
@@ -792,7 +970,12 @@ export class PluginAPI {
   }
 
   getLayoutComponent(region) {
-    return layoutComponents().get(region);
+    const layoutComponent = layoutComponents().get(region);
+    // Handle both old and new structure for backwards compatibility
+    if (layoutComponent?.component) {
+      return layoutComponent.component;
+    }
+    return layoutComponent;
   }
 
   getLayoutComponents() {

@@ -495,56 +495,66 @@ export default createPlugin({
     // All menu items registered
     
     // Register About overlay component
-    api.registerLayoutComponent('about-overlay', () => (
-      <AboutOverlay 
-        isOpen={showAbout} 
-        onClose={() => setShowAbout(false)} 
-      />
-    ));
+    api.registerLayoutComponent('about-overlay', () => {
+      return (
+        <AboutOverlay 
+          isOpen={showAbout} 
+          onClose={() => setShowAbout(false)} 
+        />
+      );
+    });
     
     
     // Register New Project overlay component
-    api.registerLayoutComponent('new-project-overlay', () => (
-      <NewProjectOverlay 
-        isOpen={showNewProject} 
-        onClose={() => setShowNewProject(false)}
-        onProjectSelect={handleProjectSelect}
-        reloadProjects={async () => {
-          // For menu context, we don't need to reload a project list
-          // but this prop is required by NewProjectOverlay for splash screen compatibility
-          console.log('Menu context: project reload not needed');
-        }}
-      />
-    ));
+    api.registerLayoutComponent('new-project-overlay', () => {
+      return (
+        <NewProjectOverlay 
+          isOpen={showNewProject} 
+          onClose={() => setShowNewProject(false)}
+          onProjectSelect={handleProjectSelect}
+          reloadProjects={async () => {
+            // For menu context, we don't need to reload a project list
+            // but this prop is required by NewProjectOverlay for splash screen compatibility
+            console.log('Menu context: project reload not needed');
+          }}
+        />
+      );
+    });
     
     // Register Open Project overlay component
-    api.registerLayoutComponent('open-project-overlay', () => (
-      <OpenProjectOverlay 
-        isOpen={showOpenProject} 
-        onClose={() => setShowOpenProject(false)}
-        onProjectSelect={handleProjectSelect}
-      />
-    ));
+    api.registerLayoutComponent('open-project-overlay', () => {
+      return (
+        <OpenProjectOverlay 
+          isOpen={showOpenProject} 
+          onClose={() => setShowOpenProject(false)}
+          onProjectSelect={handleProjectSelect}
+        />
+      );
+    });
     
     // Register Scene Selection overlay component
-    api.registerLayoutComponent('scene-selection-overlay', () => (
-      <SceneSelectionOverlay 
-        isOpen={showSceneSelection} 
-        onClose={() => setShowSceneSelection(false)}
-        onSceneSelect={handleSceneSelect}
-        onCreateScene={handleSceneCreate}
-      />
-    ));
+    api.registerLayoutComponent('scene-selection-overlay', () => {
+      return (
+        <SceneSelectionOverlay 
+          isOpen={showSceneSelection} 
+          onClose={() => setShowSceneSelection(false)}
+          onSceneSelect={handleSceneSelect}
+          onCreateScene={handleSceneCreate}
+        />
+      );
+    });
     
     // Register Save As overlay component
-    api.registerLayoutComponent('save-as-overlay', () => (
-      <SaveAsOverlay 
-        isOpen={showSaveAs} 
-        onClose={() => setShowSaveAs(false)}
-        onSave={handleSaveAs}
-        currentSceneName={sceneManager.getCurrentSceneName()}
-      />
-    ));
+    api.registerLayoutComponent('save-as-overlay', () => {
+      return (
+        <SaveAsOverlay 
+          isOpen={showSaveAs} 
+          onClose={() => setShowSaveAs(false)}
+          onSave={handleSaveAs}
+          currentSceneName={sceneManager.getCurrentSceneName()}
+        />
+      );
+    });
     
     // Register Unsaved Changes overlay component
     api.registerLayoutComponent('unsaved-changes-overlay', () => {
@@ -580,11 +590,13 @@ export default createPlugin({
     });
     
     // Register Plugin Upload overlay component
-    api.registerLayoutComponent('plugin-upload-overlay', () => (
-      <PluginUploadOverlay 
-        isOpen={showPluginUpload()} 
-        onClose={() => setShowPluginUpload(false)}
-      />
-    ));
+    api.registerLayoutComponent('plugin-upload-overlay', () => {
+      return (
+        <PluginUploadOverlay 
+          isOpen={showPluginUpload()} 
+          onClose={() => setShowPluginUpload(false)}
+        />
+      );
+    });
   }
 });
