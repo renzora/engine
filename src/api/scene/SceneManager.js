@@ -31,7 +31,7 @@ export class SceneManager {
       // Get camera settings from camera store
       let cameraSettings = null;
       try {
-        const { cameraSettings: getCameraSettings } = await import('@/plugins/camera/cameraStore.jsx');
+        const { cameraSettings: getCameraSettings } = await import('@/plugins/core/camera/cameraStore.jsx');
         cameraSettings = getCameraSettings();
       } catch (error) {
         console.warn('Failed to get camera settings:', error);
@@ -884,7 +884,7 @@ export class SceneManager {
     // Restore camera settings if available
     if (sceneData.cameraSettings) {
       try {
-        const { cameraActions } = await import('@/plugins/camera/cameraStore.jsx');
+        const { cameraActions } = await import('@/plugins/core/camera/cameraStore.jsx');
         // Restore FOV setting
         if (sceneData.cameraSettings.fov !== undefined) {
           cameraActions.setFOV(sceneData.cameraSettings.fov);
@@ -1236,7 +1236,7 @@ export class SceneManager {
         console.log('🏔️ Restoring terrain object:', item.name);
         
         // Import terrain creation function
-        const { createTerrainMesh } = await import('@/plugins/terrain/index.jsx');
+        const { createTerrainMesh } = await import('@/plugins/core/terrain/index.jsx');
         const { StandardMaterial } = await import('@babylonjs/core/Materials/standardMaterial.js');
         const { Color3 } = await import('@babylonjs/core/Maths/math.color.js');
         
