@@ -163,8 +163,8 @@ export const createBabylonObject = (objectType, scene) => {
       break;
     }
     case 'camera': {
-      newObject = new UniversalCamera(objectName, new Vector3(7, 5, -7), scene);
-      newObject.lookAt(Vector3.Zero());
+      newObject = new UniversalCamera(objectName, new Vector3(7, 8, -7), scene);
+      newObject.lookAt(new Vector3(0, 2, 0));
       break;
     }
     default:
