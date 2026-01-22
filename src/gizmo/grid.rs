@@ -1,17 +1,17 @@
 use bevy::prelude::*;
-use crate::core::EditorState;
+use crate::core::EditorSettings;
 
 /// Draw a reference grid on the XZ plane
-pub fn draw_grid(mut gizmos: Gizmos, editor_state: Res<EditorState>) {
-    if !editor_state.show_grid {
+pub fn draw_grid(mut gizmos: Gizmos, settings: Res<EditorSettings>) {
+    if !settings.show_grid {
         return;
     }
 
-    let grid_size = editor_state.grid_divisions;
-    let grid_spacing = editor_state.grid_size / grid_size as f32;
-    let half_size = editor_state.grid_size / 2.0;
+    let grid_size = settings.grid_divisions;
+    let grid_spacing = settings.grid_size / grid_size as f32;
+    let half_size = settings.grid_size / 2.0;
 
-    let gc = editor_state.grid_color;
+    let gc = settings.grid_color;
     let grid_color = Color::srgba(gc[0], gc[1], gc[2], 0.5);
     let axis_color_x = Color::srgba(0.8, 0.3, 0.3, 0.7);
     let axis_color_z = Color::srgba(0.3, 0.3, 0.8, 0.7);

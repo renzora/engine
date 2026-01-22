@@ -1,6 +1,6 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
 
-use crate::core::{EditorState, SceneTab};
+use crate::core::{SceneManagerState, SceneTab};
 
 use egui_phosphor::regular::{FILM_SCRIPT, SCROLL};
 
@@ -10,7 +10,7 @@ const TAB_GAP: f32 = 2.0;
 
 pub fn render_scene_tabs(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    scene_state: &mut SceneManagerState,
     left_panel_width: f32,
     right_panel_width: f32,
     top_y: f32,
@@ -55,8 +55,8 @@ pub fn render_scene_tabs(
             let mut script_tab_to_activate: Option<usize> = None;
 
             // Render scene tabs
-            for (idx, tab) in editor_state.scene_tabs.iter().enumerate() {
-                let is_active = editor_state.active_script_tab.is_none() && idx == editor_state.active_scene_tab;
+            for (idx, tab) in scene_state.scene_tabs.iter().enumerate() {
+                let is_active = scene_state.active_script_tab.is_none() && idx == scene_state.active_scene_tab;
 
                 // Calculate tab width based on text
                 let tab_text = if tab.is_modified {
@@ -162,7 +162,7 @@ pub fn render_scene_tabs(
                 );
 
                 // Handle clicks
-                if close_response.clicked() && editor_state.scene_tabs.len() > 1 {
+                if close_response.clicked() && scene_state.scene_tabs.len() > 1 {
                     scene_tab_to_close = Some(idx);
                 } else if tab_response.clicked() {
                     scene_tab_to_activate = Some(idx);
@@ -210,19 +210,19 @@ pub fn render_scene_tabs(
 
             if add_response.clicked() {
                 // Add new tab
-                let new_tab_num = editor_state.scene_tabs.len() + 1;
-                editor_state.scene_tabs.push(SceneTab {
+                let new_tab_num = scene_state.scene_tabs.len() + 1;
+                scene_state.scene_tabs.push(SceneTab {
                     name: format!("Untitled {}", new_tab_num),
                     ..Default::default()
                 });
                 // Request switch to the new tab (this will save current scene first)
-                editor_state.pending_tab_switch = Some(editor_state.scene_tabs.len() - 1);
+                scene_state.pending_tab_switch = Some(scene_state.scene_tabs.len() - 1);
             }
 
             x_offset += 24.0 + TAB_GAP;
 
             // Separator between scene tabs and script tabs
-            if !editor_state.open_scripts.is_empty() {
+            if !scene_state.open_scripts.is_empty() {
                 x_offset += 8.0;
                 ui.painter().line_segment(
                     [
@@ -235,8 +235,8 @@ pub fn render_scene_tabs(
             }
 
             // Render script tabs
-            for (idx, script) in editor_state.open_scripts.iter().enumerate() {
-                let is_active = editor_state.active_script_tab == Some(idx);
+            for (idx, script) in scene_state.open_scripts.iter().enumerate() {
+                let is_active = scene_state.active_script_tab == Some(idx);
 
                 let tab_text = if script.is_modified {
                     format!("{}*", script.name)
@@ -346,41 +346,41 @@ pub fn render_scene_tabs(
 
             // Process scene tab actions
             if let Some(idx) = scene_tab_to_close {
-                if editor_state.scene_tabs.len() > 1 {
-                    editor_state.pending_tab_close = Some(idx);
+                if scene_state.scene_tabs.len() > 1 {
+                    scene_state.pending_tab_close = Some(idx);
                 }
             }
 
             if let Some(idx) = scene_tab_to_activate {
-                if editor_state.active_script_tab.is_some() || idx != editor_state.active_scene_tab {
-                    editor_state.active_script_tab = None; // Deactivate script tab
-                    editor_state.pending_tab_switch = Some(idx);
+                if scene_state.active_script_tab.is_some() || idx != scene_state.active_scene_tab {
+                    scene_state.active_script_tab = None; // Deactivate script tab
+                    scene_state.pending_tab_switch = Some(idx);
                 }
             }
 
             // Process script tab actions
             if let Some(idx) = script_tab_to_close {
-                close_script_tab(editor_state, idx);
+                close_script_tab(scene_state, idx);
             }
 
             if let Some(idx) = script_tab_to_activate {
-                editor_state.active_script_tab = Some(idx);
+                scene_state.active_script_tab = Some(idx);
             }
         });
 
     TAB_HEIGHT
 }
 
-fn close_script_tab(editor_state: &mut EditorState, idx: usize) {
-    editor_state.open_scripts.remove(idx);
+fn close_script_tab(scene_state: &mut SceneManagerState, idx: usize) {
+    scene_state.open_scripts.remove(idx);
 
-    if editor_state.open_scripts.is_empty() {
-        editor_state.active_script_tab = None;
-    } else if let Some(active) = editor_state.active_script_tab {
-        if active >= editor_state.open_scripts.len() {
-            editor_state.active_script_tab = Some(editor_state.open_scripts.len() - 1);
+    if scene_state.open_scripts.is_empty() {
+        scene_state.active_script_tab = None;
+    } else if let Some(active) = scene_state.active_script_tab {
+        if active >= scene_state.open_scripts.len() {
+            scene_state.active_script_tab = Some(scene_state.open_scripts.len() - 1);
         } else if active > idx {
-            editor_state.active_script_tab = Some(active - 1);
+            scene_state.active_script_tab = Some(active - 1);
         }
     }
 }

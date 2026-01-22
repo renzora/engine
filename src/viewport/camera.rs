@@ -1,10 +1,13 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 
-use crate::core::{EditorState, EditorEntity, ViewportCamera, KeyBindings, EditorAction};
+use crate::core::{EditorEntity, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings};
 
 pub fn camera_controller(
-    mut editor_state: ResMut<EditorState>,
+    selection: Res<SelectionState>,
+    viewport: Res<ViewportState>,
+    mut orbit: ResMut<OrbitCameraState>,
+    settings: Res<EditorSettings>,
     time: Res<Time>,
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
@@ -20,16 +23,16 @@ pub fn camera_controller(
 
     // Focus on selected entity (works even when not hovering viewport)
     if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
-        if let Some(selected) = editor_state.selected_entity {
+        if let Some(selected) = selection.selected_entity {
             if let Ok(target_transform) = entity_query.get(selected) {
-                editor_state.orbit_focus = target_transform.translation;
+                orbit.focus = target_transform.translation;
                 // Optionally adjust distance based on object bounds (simplified to fixed distance)
-                editor_state.orbit_distance = 5.0;
+                orbit.distance = 5.0;
             }
         }
     }
 
-    if !editor_state.viewport_hovered {
+    if !viewport.hovered {
         mouse_motion.clear();
         scroll_events.clear();
         return;
@@ -38,7 +41,7 @@ pub fn camera_controller(
     let orbit_speed = 0.005;
     let pan_speed = 0.01;
     let zoom_speed = 1.0;
-    let move_speed = editor_state.camera_move_speed;
+    let move_speed = settings.camera_move_speed;
     let delta = time.delta_secs();
 
     let middle_pressed = mouse_button.pressed(MouseButton::Middle);
@@ -58,9 +61,9 @@ pub fn camera_controller(
 
     // Get camera forward/right on XZ plane
     let forward = Vec3::new(
-        editor_state.orbit_yaw.sin(),
+        orbit.yaw.sin(),
         0.0,
-        editor_state.orbit_yaw.cos(),
+        orbit.yaw.cos(),
     ).normalize();
     let right_dir = Vec3::new(forward.z, 0.0, -forward.x);
 
@@ -91,13 +94,13 @@ pub fn camera_controller(
     // Apply movement (faster with modifier)
     if move_delta.length_squared() > 0.0 {
         let speed_mult = if keybindings.pressed(EditorAction::CameraMoveFaster, &keyboard) { 2.0 } else { 1.0 };
-        editor_state.orbit_focus += move_delta.normalize() * move_speed * speed_mult * delta;
+        orbit.focus += move_delta.normalize() * move_speed * speed_mult * delta;
     }
 
     // Scroll wheel - zoom
     for ev in scroll_events.read() {
-        editor_state.orbit_distance -= ev.y * zoom_speed;
-        editor_state.orbit_distance = editor_state.orbit_distance.clamp(1.0, 100.0);
+        orbit.distance -= ev.y * zoom_speed;
+        orbit.distance = orbit.distance.clamp(1.0, 100.0);
     }
 
     // Middle mouse + Shift OR Right mouse - pan
@@ -105,31 +108,31 @@ pub fn camera_controller(
         for ev in mouse_motion.read() {
             let right = transform.right();
             let up = transform.up();
-            let pan_delta = -*right * ev.delta.x * pan_speed * editor_state.orbit_distance * 0.1
-                + *up * ev.delta.y * pan_speed * editor_state.orbit_distance * 0.1;
-            editor_state.orbit_focus += pan_delta;
+            let pan_delta = -*right * ev.delta.x * pan_speed * orbit.distance * 0.1
+                + *up * ev.delta.y * pan_speed * orbit.distance * 0.1;
+            orbit.focus += pan_delta;
         }
     }
     // Middle mouse - orbit
     else if middle_pressed {
         for ev in mouse_motion.read() {
-            editor_state.orbit_yaw -= ev.delta.x * orbit_speed;
-            editor_state.orbit_pitch += ev.delta.y * orbit_speed;
+            orbit.yaw -= ev.delta.x * orbit_speed;
+            orbit.pitch += ev.delta.y * orbit_speed;
             // Clamp pitch to avoid flipping
-            editor_state.orbit_pitch = editor_state.orbit_pitch.clamp(-1.5, 1.5);
+            orbit.pitch = orbit.pitch.clamp(-1.5, 1.5);
         }
     } else {
         mouse_motion.clear();
     }
 
     // Calculate camera position from orbit parameters
-    let cam_pos = editor_state.orbit_focus
+    let cam_pos = orbit.focus
         + Vec3::new(
-            editor_state.orbit_distance * editor_state.orbit_pitch.cos() * editor_state.orbit_yaw.sin(),
-            editor_state.orbit_distance * editor_state.orbit_pitch.sin(),
-            editor_state.orbit_distance * editor_state.orbit_pitch.cos() * editor_state.orbit_yaw.cos(),
+            orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),
+            orbit.distance * orbit.pitch.sin(),
+            orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
         );
 
     transform.translation = cam_pos;
-    transform.look_at(editor_state.orbit_focus, Vec3::Y);
+    transform.look_at(orbit.focus, Vec3::Y);
 }

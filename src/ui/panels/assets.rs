@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Sense, Vec2};
 use std::path::PathBuf;
 
-use crate::core::{AssetViewMode, EditorState};
+use crate::core::{AssetBrowserState, AssetViewMode, ViewportState, SceneManagerState};
 use crate::project::CurrentProject;
 
 // Icon constants from phosphor
@@ -22,12 +22,14 @@ const LIST_ROW_HEIGHT: f32 = 24.0;
 pub fn render_assets(
     ctx: &egui::Context,
     current_project: Option<&CurrentProject>,
-    editor_state: &mut EditorState,
+    viewport: &mut ViewportState,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
     _left_panel_width: f32,
     _right_panel_width: f32,
     _bottom_panel_height: f32,
 ) {
-    let panel_height = editor_state.assets_height;
+    let panel_height = viewport.assets_height;
 
     egui::TopBottomPanel::bottom("assets_panel")
         .exact_height(panel_height)
@@ -53,30 +55,31 @@ pub fn render_assets(
 
             if resize_response.dragged() {
                 let delta = resize_response.drag_delta().y;
-                editor_state.assets_height = (panel_height - delta).clamp(100.0, 600.0);
+                viewport.assets_height = (panel_height - delta).clamp(100.0, 600.0);
             }
 
             ui.add_space(4.0);
 
-            render_assets_content(ui, current_project, editor_state);
+            render_assets_content(ui, current_project, assets, scene_state);
         });
 
     // Dialogs
-    render_create_script_dialog(ctx, editor_state);
-    render_create_folder_dialog(ctx, editor_state);
-    handle_import_request(editor_state);
+    render_create_script_dialog(ctx, assets);
+    render_create_folder_dialog(ctx, assets);
+    handle_import_request(assets);
 }
 
 /// Render assets content (for use in docking)
 pub fn render_assets_content(
     ui: &mut egui::Ui,
     current_project: Option<&CurrentProject>,
-    editor_state: &mut EditorState,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
 ) {
     let ctx = ui.ctx().clone();
 
     // Toolbar with breadcrumb, search, view toggle, and zoom
-    render_toolbar(ui, &ctx, editor_state, current_project);
+    render_toolbar(ui, &ctx, assets, current_project);
 
     ui.add_space(4.0);
     ui.separator();
@@ -85,23 +88,23 @@ pub fn render_assets_content(
     // Main content area
     egui::ScrollArea::vertical().show(ui, |ui| {
         if let Some(project) = current_project {
-            let items = collect_items(editor_state, project);
-            let filtered_items = filter_items(&items, &editor_state.assets_search);
+            let items = collect_items(assets, project);
+            let filtered_items = filter_items(&items, &assets.search);
 
-            match editor_state.assets_view_mode {
+            match assets.view_mode {
                 AssetViewMode::Grid => {
-                    render_grid_view(ui, &ctx, editor_state, &filtered_items);
+                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items);
                 }
                 AssetViewMode::List => {
-                    render_list_view(ui, &ctx, editor_state, &filtered_items);
+                    render_list_view(ui, &ctx, assets, scene_state, &filtered_items);
                 }
             }
 
             // Context menu (only when inside a folder)
-            if editor_state.current_assets_folder.is_some() {
+            if assets.current_folder.is_some() {
                 ui.allocate_response(ui.available_size(), Sense::click())
                     .context_menu(|ui| {
-                        render_context_menu(ui, editor_state);
+                        render_context_menu(ui, assets);
                     });
             }
         } else {
@@ -118,23 +121,23 @@ pub fn render_assets_content(
 fn render_toolbar(
     ui: &mut egui::Ui,
     _ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    assets: &mut AssetBrowserState,
     current_project: Option<&CurrentProject>,
 ) {
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 4.0;
 
         // Back button
-        let can_go_back = editor_state.current_assets_folder.is_some();
+        let can_go_back = assets.current_folder.is_some();
         ui.add_enabled_ui(can_go_back, |ui| {
             if ui.button(RichText::new(ARROW_LEFT).size(16.0)).clicked() {
-                if let Some(ref current) = editor_state.current_assets_folder {
+                if let Some(ref current) = assets.current_folder {
                     if let Some(project) = current_project {
                         if current == &project.path {
                             // Already at project root, can't go back
                         } else if let Some(parent) = current.parent() {
                             if parent >= project.path.as_path() {
-                                editor_state.current_assets_folder = Some(parent.to_path_buf());
+                                assets.current_folder = Some(parent.to_path_buf());
                             }
                         }
                     }
@@ -145,7 +148,7 @@ fn render_toolbar(
         // Home button
         if ui.button(RichText::new(HOUSE).size(16.0)).on_hover_text("Go to project root").clicked() {
             if let Some(project) = current_project {
-                editor_state.current_assets_folder = Some(project.path.clone());
+                assets.current_folder = Some(project.path.clone());
             }
         }
 
@@ -159,7 +162,7 @@ fn render_toolbar(
                 .and_then(|n| n.to_str())
                 .unwrap_or("Project");
 
-            if let Some(ref current_folder) = editor_state.current_assets_folder {
+            if let Some(ref current_folder) = assets.current_folder {
                 // Build breadcrumb parts
                 let mut parts: Vec<(String, PathBuf)> = vec![];
 
@@ -185,7 +188,7 @@ fn render_toolbar(
                         ui.label(RichText::new(CARET_RIGHT).size(12.0).color(Color32::from_rgb(100, 100, 110)));
                     }
 
-                    let is_current = Some(path) == editor_state.current_assets_folder.as_ref();
+                    let is_current = Some(path) == assets.current_folder.as_ref();
                     let text_color = if is_current {
                         Color32::WHITE
                     } else {
@@ -193,7 +196,7 @@ fn render_toolbar(
                     };
 
                     if ui.link(RichText::new(name).color(text_color).size(13.0)).clicked() {
-                        editor_state.current_assets_folder = Some(path.clone());
+                        assets.current_folder = Some(path.clone());
                     }
                 }
             } else {
@@ -206,27 +209,27 @@ fn render_toolbar(
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             // Zoom slider
             ui.spacing_mut().slider_width = 80.0;
-            ui.add(egui::Slider::new(&mut editor_state.assets_zoom, 0.5..=1.5).show_value(false));
+            ui.add(egui::Slider::new(&mut assets.zoom, 0.5..=1.5).show_value(false));
 
             ui.separator();
 
             // View mode toggle
-            let grid_color = if editor_state.assets_view_mode == AssetViewMode::Grid {
+            let grid_color = if assets.view_mode == AssetViewMode::Grid {
                 Color32::WHITE
             } else {
                 Color32::from_rgb(120, 120, 130)
             };
-            let list_color = if editor_state.assets_view_mode == AssetViewMode::List {
+            let list_color = if assets.view_mode == AssetViewMode::List {
                 Color32::WHITE
             } else {
                 Color32::from_rgb(120, 120, 130)
             };
 
             if ui.button(RichText::new(LIST).size(16.0).color(list_color)).clicked() {
-                editor_state.assets_view_mode = AssetViewMode::List;
+                assets.view_mode = AssetViewMode::List;
             }
             if ui.button(RichText::new(SQUARES_FOUR).size(16.0).color(grid_color)).clicked() {
-                editor_state.assets_view_mode = AssetViewMode::Grid;
+                assets.view_mode = AssetViewMode::Grid;
             }
 
             ui.separator();
@@ -234,17 +237,17 @@ fn render_toolbar(
             // Search input
             ui.add_sized(
                 [150.0, 20.0],
-                egui::TextEdit::singleline(&mut editor_state.assets_search)
+                egui::TextEdit::singleline(&mut assets.search)
                     .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
             );
         });
     });
 }
 
-fn collect_items(editor_state: &EditorState, project: &CurrentProject) -> Vec<AssetItem> {
+fn collect_items(assets: &AssetBrowserState, project: &CurrentProject) -> Vec<AssetItem> {
     let mut items = Vec::new();
 
-    let folder_to_read = editor_state.current_assets_folder.as_ref()
+    let folder_to_read = assets.current_folder.as_ref()
         .unwrap_or(&project.path);
 
     if let Ok(entries) = std::fs::read_dir(folder_to_read) {
@@ -322,10 +325,11 @@ fn filter_items<'a>(items: &'a [AssetItem], search: &str) -> Vec<&'a AssetItem> 
 fn render_grid_view(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
     items: &[&AssetItem],
 ) {
-    let tile_size = DEFAULT_TILE_SIZE * editor_state.assets_zoom;
+    let tile_size = DEFAULT_TILE_SIZE * assets.zoom;
     let icon_size = (tile_size * 0.45).max(24.0);
 
     ui.horizontal_wrapped(|ui| {
@@ -340,7 +344,7 @@ fn render_grid_view(
             );
 
             let is_hovered = response.hovered();
-            let is_selected = editor_state.selected_asset.as_ref() == Some(&item.path);
+            let is_selected = assets.selected_asset.as_ref() == Some(&item.path);
 
             // Background
             let bg_color = if is_selected {
@@ -394,10 +398,10 @@ fn render_grid_view(
             );
 
             // Handle interactions
-            handle_item_interaction(ctx, editor_state, item, &response, is_draggable);
+            handle_item_interaction(ctx, assets, scene_state, item, &response, is_draggable);
 
             // Tooltip
-            if is_hovered && editor_state.dragging_asset.is_none() {
+            if is_hovered && assets.dragging_asset.is_none() {
                 response.on_hover_text(&item.name);
             }
         }
@@ -407,7 +411,8 @@ fn render_grid_view(
 fn render_list_view(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
     items: &[&AssetItem],
 ) {
     for item in items {
@@ -419,7 +424,7 @@ fn render_list_view(
         );
 
         let is_hovered = response.hovered();
-        let is_selected = editor_state.selected_asset.as_ref() == Some(&item.path);
+        let is_selected = assets.selected_asset.as_ref() == Some(&item.path);
 
         // Background
         let bg_color = if is_selected {
@@ -465,41 +470,42 @@ fn render_list_view(
             }
         }
 
-        handle_item_interaction(ctx, editor_state, item, &response, is_draggable);
+        handle_item_interaction(ctx, assets, scene_state, item, &response, is_draggable);
     }
 }
 
 fn handle_item_interaction(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
     item: &AssetItem,
     response: &egui::Response,
     is_draggable: bool,
 ) {
     if response.clicked() {
         if item.is_folder {
-            editor_state.current_assets_folder = Some(item.path.clone());
+            assets.current_folder = Some(item.path.clone());
         } else {
-            editor_state.selected_asset = Some(item.path.clone());
+            assets.selected_asset = Some(item.path.clone());
 
             // Open script files in the editor
             if is_script_file(&item.path) {
-                super::script_editor::open_script(editor_state, item.path.clone());
+                super::script_editor::open_script(scene_state, item.path.clone());
             }
         }
     }
 
     if response.double_clicked() && item.is_folder {
-        editor_state.current_assets_folder = Some(item.path.clone());
+        assets.current_folder = Some(item.path.clone());
     }
 
     // Drag support for models
     if is_draggable {
         if response.drag_started() {
-            editor_state.dragging_asset = Some(item.path.clone());
+            assets.dragging_asset = Some(item.path.clone());
         }
 
-        if editor_state.dragging_asset.as_ref() == Some(&item.path) {
+        if assets.dragging_asset.as_ref() == Some(&item.path) {
             if let Some(pos) = ctx.pointer_hover_pos() {
                 egui::Area::new(egui::Id::new("drag_tooltip"))
                     .fixed_pos(pos + Vec2::new(10.0, 10.0))
@@ -518,31 +524,31 @@ fn handle_item_interaction(
     }
 }
 
-fn render_context_menu(ui: &mut egui::Ui, editor_state: &mut EditorState) {
+fn render_context_menu(ui: &mut egui::Ui, assets: &mut AssetBrowserState) {
     ui.set_min_width(150.0);
 
     if ui.button(format!("{} New Folder", FOLDER_PLUS)).clicked() {
-        editor_state.show_create_folder_dialog = true;
-        editor_state.new_folder_name = "New Folder".to_string();
+        assets.show_create_folder_dialog = true;
+        assets.new_folder_name = "New Folder".to_string();
         ui.close();
     }
 
     if ui.button(format!("{} Create Script", SCROLL)).clicked() {
-        editor_state.show_create_script_dialog = true;
-        editor_state.new_script_name = "new_script".to_string();
+        assets.show_create_script_dialog = true;
+        assets.new_script_name = "new_script".to_string();
         ui.close();
     }
 
     ui.separator();
 
     if ui.button(format!("{} Import", DOWNLOAD)).clicked() {
-        editor_state.import_asset_requested = true;
+        assets.import_asset_requested = true;
         ui.close();
     }
 }
 
-fn render_create_script_dialog(ctx: &egui::Context, editor_state: &mut EditorState) {
-    if !editor_state.show_create_script_dialog {
+fn render_create_script_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_script_dialog {
         return;
     }
 
@@ -555,22 +561,22 @@ fn render_create_script_dialog(ctx: &egui::Context, editor_state: &mut EditorSta
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Name:");
-                ui.text_edit_singleline(&mut editor_state.new_script_name);
+                ui.text_edit_singleline(&mut assets.new_script_name);
             });
 
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
                 if ui.button("Create").clicked() {
-                    if let Some(ref target_folder) = editor_state.current_assets_folder {
-                        let script_name = if editor_state.new_script_name.ends_with(".rhai") {
-                            editor_state.new_script_name.clone()
+                    if let Some(ref target_folder) = assets.current_folder {
+                        let script_name = if assets.new_script_name.ends_with(".rhai") {
+                            assets.new_script_name.clone()
                         } else {
-                            format!("{}.rhai", editor_state.new_script_name)
+                            format!("{}.rhai", assets.new_script_name)
                         };
 
                         let script_path = target_folder.join(&script_name);
-                        let template = create_script_template(&editor_state.new_script_name);
+                        let template = create_script_template(&assets.new_script_name);
 
                         if let Err(e) = std::fs::write(&script_path, template) {
                             error!("Failed to create script: {}", e);
@@ -579,24 +585,24 @@ fn render_create_script_dialog(ctx: &egui::Context, editor_state: &mut EditorSta
                         }
                     }
 
-                    editor_state.show_create_script_dialog = false;
-                    editor_state.new_script_name.clear();
+                    assets.show_create_script_dialog = false;
+                    assets.new_script_name.clear();
                 }
 
                 if ui.button("Cancel").clicked() {
-                    editor_state.show_create_script_dialog = false;
-                    editor_state.new_script_name.clear();
+                    assets.show_create_script_dialog = false;
+                    assets.new_script_name.clear();
                 }
             });
         });
 
     if !open {
-        editor_state.show_create_script_dialog = false;
+        assets.show_create_script_dialog = false;
     }
 }
 
-fn render_create_folder_dialog(ctx: &egui::Context, editor_state: &mut EditorState) {
-    if !editor_state.show_create_folder_dialog {
+fn render_create_folder_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_create_folder_dialog {
         return;
     }
 
@@ -609,48 +615,48 @@ fn render_create_folder_dialog(ctx: &egui::Context, editor_state: &mut EditorSta
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.label("Name:");
-                ui.text_edit_singleline(&mut editor_state.new_folder_name);
+                ui.text_edit_singleline(&mut assets.new_folder_name);
             });
 
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
                 if ui.button("Create").clicked() {
-                    if let Some(ref current_folder) = editor_state.current_assets_folder {
-                        let new_folder_path = current_folder.join(&editor_state.new_folder_name);
+                    if let Some(ref current_folder) = assets.current_folder {
+                        let new_folder_path = current_folder.join(&assets.new_folder_name);
 
                         if let Err(e) = std::fs::create_dir_all(&new_folder_path) {
                             error!("Failed to create folder: {}", e);
                         } else {
                             info!("Created folder: {}", new_folder_path.display());
-                            editor_state.current_assets_folder = Some(new_folder_path);
+                            assets.current_folder = Some(new_folder_path);
                         }
                     }
 
-                    editor_state.show_create_folder_dialog = false;
-                    editor_state.new_folder_name.clear();
+                    assets.show_create_folder_dialog = false;
+                    assets.new_folder_name.clear();
                 }
 
                 if ui.button("Cancel").clicked() {
-                    editor_state.show_create_folder_dialog = false;
-                    editor_state.new_folder_name.clear();
+                    assets.show_create_folder_dialog = false;
+                    assets.new_folder_name.clear();
                 }
             });
         });
 
     if !open {
-        editor_state.show_create_folder_dialog = false;
+        assets.show_create_folder_dialog = false;
     }
 }
 
-fn handle_import_request(editor_state: &mut EditorState) {
-    if !editor_state.import_asset_requested {
+fn handle_import_request(assets: &mut AssetBrowserState) {
+    if !assets.import_asset_requested {
         return;
     }
 
-    editor_state.import_asset_requested = false;
+    assets.import_asset_requested = false;
 
-    let Some(target_folder) = editor_state.current_assets_folder.clone() else {
+    let Some(target_folder) = assets.current_folder.clone() else {
         return;
     };
 

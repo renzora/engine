@@ -1,15 +1,15 @@
 use bevy::prelude::KeyCode;
 use bevy_egui::egui::{self, Color32, RichText, Vec2};
 
-use crate::core::{EditorState, EditorAction, KeyBinding, KeyBindings, bindable_keys, key_name};
+use crate::core::{EditorSettings, EditorAction, KeyBinding, KeyBindings, bindable_keys};
 
 /// Render the settings window
 pub fn render_settings_window(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    settings: &mut EditorSettings,
     keybindings: &mut KeyBindings,
 ) {
-    if !editor_state.show_settings_window {
+    if !settings.show_settings_window {
         return;
     }
 
@@ -30,7 +30,7 @@ pub fn render_settings_window(
 
                 ui.horizontal(|ui| {
                     ui.label("Move Speed:");
-                    ui.add(egui::DragValue::new(&mut editor_state.camera_move_speed)
+                    ui.add(egui::DragValue::new(&mut settings.camera_move_speed)
                         .range(1.0..=50.0)
                         .speed(0.1));
                 });
@@ -43,30 +43,30 @@ pub fn render_settings_window(
                 ui.heading("Grid");
                 ui.add_space(4.0);
 
-                ui.checkbox(&mut editor_state.show_grid, "Show Grid");
+                ui.checkbox(&mut settings.show_grid, "Show Grid");
 
                 ui.horizontal(|ui| {
                     ui.label("Grid Size:");
-                    ui.add(egui::DragValue::new(&mut editor_state.grid_size)
+                    ui.add(egui::DragValue::new(&mut settings.grid_size)
                         .range(1.0..=100.0)
                         .speed(0.5));
                 });
 
                 ui.horizontal(|ui| {
                     ui.label("Divisions:");
-                    ui.add(egui::DragValue::new(&mut editor_state.grid_divisions)
+                    ui.add(egui::DragValue::new(&mut settings.grid_divisions)
                         .range(1..=50));
                 });
 
                 ui.horizontal(|ui| {
                     ui.label("Grid Color:");
                     let mut color = [
-                        (editor_state.grid_color[0] * 255.0) as u8,
-                        (editor_state.grid_color[1] * 255.0) as u8,
-                        (editor_state.grid_color[2] * 255.0) as u8,
+                        (settings.grid_color[0] * 255.0) as u8,
+                        (settings.grid_color[1] * 255.0) as u8,
+                        (settings.grid_color[2] * 255.0) as u8,
                     ];
                     if ui.color_edit_button_srgb(&mut color).changed() {
-                        editor_state.grid_color = [
+                        settings.grid_color = [
                             color[0] as f32 / 255.0,
                             color[1] as f32 / 255.0,
                             color[2] as f32 / 255.0,
@@ -112,7 +112,7 @@ pub fn render_settings_window(
                 // Close button
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
                     if ui.button("Close").clicked() {
-                        editor_state.show_settings_window = false;
+                        settings.show_settings_window = false;
                     }
                 });
             });

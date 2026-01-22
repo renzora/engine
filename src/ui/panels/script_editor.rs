@@ -3,7 +3,7 @@ use bevy_egui::egui::{self, Color32, Sense, Vec2, TextEdit, FontId, FontFamily, 
 use std::path::PathBuf;
 use rhai::Engine;
 
-use crate::core::{EditorState, OpenScript, ScriptError};
+use crate::core::{SceneManagerState, OpenScript, ScriptError};
 use super::syntax_highlight::highlight_rhai;
 
 use egui_phosphor::regular::{FLOPPY_DISK, WARNING};
@@ -27,18 +27,18 @@ fn check_script_errors(content: &str) -> Option<ScriptError> {
 /// Render the script editor panel (when a script tab is active)
 pub fn render_script_editor(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    scene_state: &mut SceneManagerState,
     left_panel_width: f32,
     right_panel_width: f32,
     top_y: f32,
     available_height: f32,
 ) -> bool {
     // Only show if a script tab is active
-    let Some(active_idx) = editor_state.active_script_tab else {
+    let Some(active_idx) = scene_state.active_script_tab else {
         return false;
     };
 
-    let Some(script) = editor_state.open_scripts.get_mut(active_idx) else {
+    let Some(script) = scene_state.open_scripts.get_mut(active_idx) else {
         return false;
     };
 
@@ -173,7 +173,7 @@ pub fn render_script_editor(
                             ui.style_mut().visuals.widgets.hovered.bg_fill = Color32::from_rgb(30, 30, 38);
 
                             // Get script mutably again for the text edit
-                            if let Some(script) = editor_state.open_scripts.get_mut(active_idx) {
+                            if let Some(script) = scene_state.open_scripts.get_mut(active_idx) {
                                 let font_size = 16.0;
                                 let mut layouter = |ui: &egui::Ui, text: &dyn TextBuffer, _wrap_width: f32| {
                                     let layout_job = highlight_rhai(text.as_str(), font_size);
@@ -199,7 +199,7 @@ pub fn render_script_editor(
         });
 
     // Error panel (if there's an error)
-    if let Some(script) = editor_state.open_scripts.get(active_idx) {
+    if let Some(script) = scene_state.open_scripts.get(active_idx) {
         if let Some(ref error) = script.error {
             let error_rect = egui::Rect::from_min_max(
                 egui::pos2(left_panel_width, top_y + available_height - error_panel_height),
@@ -282,11 +282,11 @@ fn save_script(script: &mut OpenScript) {
 }
 
 /// Open a script file in the editor
-pub fn open_script(editor_state: &mut EditorState, path: PathBuf) {
+pub fn open_script(scene_state: &mut SceneManagerState, path: PathBuf) {
     // Check if already open
-    for (idx, script) in editor_state.open_scripts.iter().enumerate() {
+    for (idx, script) in scene_state.open_scripts.iter().enumerate() {
         if script.path == path {
-            editor_state.active_script_tab = Some(idx);
+            scene_state.active_script_tab = Some(idx);
             return;
         }
     }
@@ -306,7 +306,7 @@ pub fn open_script(editor_state: &mut EditorState, path: PathBuf) {
         .to_string();
 
     let content_clone = content.clone();
-    editor_state.open_scripts.push(OpenScript {
+    scene_state.open_scripts.push(OpenScript {
         path,
         name,
         content,
@@ -315,5 +315,5 @@ pub fn open_script(editor_state: &mut EditorState, path: PathBuf) {
         last_checked_content: content_clone,
     });
 
-    editor_state.active_script_tab = Some(editor_state.open_scripts.len() - 1);
+    scene_state.active_script_tab = Some(scene_state.open_scripts.len() - 1);
 }

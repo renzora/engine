@@ -1,18 +1,18 @@
 use bevy::prelude::*;
 
-use crate::core::{EditorState, ViewportCamera};
+use crate::core::{ViewportCamera, ViewportState};
 
 /// Get ray from cursor position in viewport
 pub fn get_cursor_ray(
-    editor_state: &EditorState,
+    viewport: &ViewportState,
     windows: &Query<&Window>,
     camera_query: &Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
 ) -> Option<Ray3d> {
     let window = windows.single().ok()?;
     let cursor_pos = window.cursor_position()?;
 
-    let viewport_pos = editor_state.viewport_position;
-    let viewport_size = editor_state.viewport_size;
+    let viewport_pos = viewport.position;
+    let viewport_size = viewport.size;
 
     let local_x = cursor_pos.x - viewport_pos[0];
     let local_y = cursor_pos.y - viewport_pos[1];

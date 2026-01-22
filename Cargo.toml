@@ -15,8 +15,15 @@ rfd = "0.15"
 dirs = "5.0"
 rhai = { version = "1.21", features = ["sync"] }
 
+# Plugin system dependencies
+libloading = "0.8"
+notify = "6.0"
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
+[workspace]
+members = ["crates/editor_plugin_api"]
 
 [profile.dev]
 opt-level = 2

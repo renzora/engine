@@ -1,0 +1,9 @@
+[package]
+name = "editor_plugin_api"
+version = "0.1.0"
+edition = "2021"
+description = "API for creating plugins for the Bevy Editor"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Minimal dependencies for plugin authors

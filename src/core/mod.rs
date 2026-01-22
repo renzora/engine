@@ -1,12 +1,21 @@
 mod app_state;
 mod components;
 mod keybindings;
-mod state;
+pub mod resources;
 
 pub use app_state::AppState;
 pub use components::{AudioListenerMarker, EditorEntity, MainCamera, SceneNode, SceneTabId, ViewportCamera, WorldEnvironmentMarker};
 pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys, key_name};
-pub use state::{AssetViewMode, DragAxis, EditorState, GizmoMode, HierarchyDropPosition, HierarchyDropTarget, OpenScript, SceneTab, ScriptError, TabCameraState};
+
+// Re-export all resources
+pub use resources::{
+    AssetBrowserState, AssetViewMode, EditorSettings, HierarchyDropPosition, HierarchyDropTarget,
+    HierarchyState, OpenScript, OrbitCameraState, SceneManagerState, SceneTab, ScriptError,
+    SelectionState, TabCameraState, ViewportState, WindowState,
+};
+
+// Re-export gizmo types from the gizmo module (they were moved there)
+pub use crate::gizmo::{DragAxis, GizmoMode, GizmoState};
 
 use bevy::prelude::*;
 use crate::scene_file::SkyMode;
@@ -19,7 +28,15 @@ pub struct CorePlugin;
 
 impl Plugin for CorePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<EditorState>()
+        // Initialize split resources
+        app.init_resource::<SelectionState>()
+            .init_resource::<ViewportState>()
+            .init_resource::<OrbitCameraState>()
+            .init_resource::<HierarchyState>()
+            .init_resource::<WindowState>()
+            .init_resource::<SceneManagerState>()
+            .init_resource::<AssetBrowserState>()
+            .init_resource::<EditorSettings>()
             .init_resource::<KeyBindings>()
             .add_systems(Update, apply_world_environment.run_if(in_state(AppState::Editor)));
     }

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use std::path::PathBuf;
 
-use crate::core::{EditorEntity, EditorState, SceneNode};
+use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState};
 use crate::node_system::components::{MeshInstanceData, NodeTypeMarker};
 
 /// Resource to track pending GLB loads
@@ -72,11 +72,11 @@ pub fn handle_file_drop(
 
 /// System to handle assets dragged from the assets panel to viewport
 pub fn handle_asset_panel_drop(
-    mut editor_state: ResMut<EditorState>,
+    mut assets: ResMut<AssetBrowserState>,
     asset_server: Res<AssetServer>,
     mut pending_loads: ResMut<PendingGltfLoads>,
 ) {
-    if let Some((path, position)) = editor_state.pending_asset_drop.take() {
+    if let Some((path, position)) = assets.pending_asset_drop.take() {
         let extension = path
             .extension()
             .and_then(|e| e.to_str())
@@ -114,7 +114,8 @@ pub fn spawn_loaded_gltfs(
     mut commands: Commands,
     mut pending_loads: ResMut<PendingGltfLoads>,
     gltf_assets: Res<Assets<Gltf>>,
-    mut editor_state: ResMut<EditorState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
 ) {
     let mut completed = Vec::new();
 
@@ -168,9 +169,9 @@ pub fn spawn_loaded_gltfs(
                 info!("Spawned MeshInstance '{}' with model as child", pending.name);
 
                 // Auto-select the MeshInstance parent
-                editor_state.selected_entity = Some(mesh_instance_entity);
+                selection.selected_entity = Some(mesh_instance_entity);
                 // Auto-expand the MeshInstance in hierarchy to show the model child
-                editor_state.expanded_entities.insert(mesh_instance_entity);
+                hierarchy.expanded_entities.insert(mesh_instance_entity);
             }
 
             completed.push(index);

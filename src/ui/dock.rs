@@ -1,8 +1,11 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, TextureId};
-use egui_dock::{DockArea, DockState, NodeIndex, Style, TabViewer};
+use egui_dock::{DockState, NodeIndex, Style};
 
-use crate::core::{EditorEntity, EditorState, KeyBindings, SceneTabId};
+use crate::core::{
+    EditorEntity, KeyBindings, SceneTabId,
+    SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, OrbitCameraState,
+};
 use crate::node_system::NodeRegistry;
 use crate::project::CurrentProject;
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
@@ -107,7 +110,12 @@ impl EditorDockState {
 
 /// Context passed to the TabViewer for rendering panels
 pub struct DockContext<'a> {
-    pub editor_state: &'a mut EditorState,
+    pub selection: &'a mut SelectionState,
+    pub hierarchy: &'a mut HierarchyState,
+    pub viewport: &'a mut ViewportState,
+    pub scene_state: &'a mut SceneManagerState,
+    pub assets: &'a mut AssetBrowserState,
+    pub orbit: &'a OrbitCameraState,
     pub keybindings: &'a mut KeyBindings,
     pub commands: &'a mut Commands<'a, 'a>,
     pub entities: &'a Query<'a, 'a, (Entity, &'static EditorEntity, Option<&'static ChildOf>, Option<&'static Children>, Option<&'static SceneTabId>)>,
@@ -163,7 +171,7 @@ impl<'a> TabViewer for EditorTabViewer<'a> {
     fn on_close(&mut self, tab: &mut Self::Tab) -> bool {
         // Script editor has special close behavior
         if matches!(tab, PanelTab::ScriptEditor) {
-            self.ctx.editor_state.open_scripts.clear();
+            self.ctx.scene_state.open_scripts.clear();
         }
         true
     }
@@ -171,22 +179,24 @@ impl<'a> TabViewer for EditorTabViewer<'a> {
 
 impl<'a> EditorTabViewer<'a> {
     fn render_hierarchy_content(&mut self, ui: &mut egui::Ui) {
+        let active_tab = self.ctx.scene_state.active_scene_tab;
         super::panels::hierarchy::render_hierarchy_content(
             ui,
-            self.ctx.editor_state,
+            self.ctx.selection,
+            self.ctx.hierarchy,
             self.ctx.entities,
             self.ctx.commands,
             self.ctx.meshes,
             self.ctx.materials,
             self.ctx.node_registry,
-            self.ctx.editor_state.active_scene_tab,
+            active_tab,
         );
     }
 
     fn render_inspector_content(&mut self, ui: &mut egui::Ui) {
         super::panels::inspector::render_inspector_content(
             ui,
-            self.ctx.editor_state,
+            self.ctx.selection,
             self.ctx.entities_for_inspector,
             self.ctx.inspector_queries,
             self.ctx.script_registry,
@@ -198,7 +208,9 @@ impl<'a> EditorTabViewer<'a> {
     fn render_viewport_content(&mut self, ui: &mut egui::Ui) {
         super::panels::viewport::render_viewport_content(
             ui,
-            self.ctx.editor_state,
+            self.ctx.viewport,
+            self.ctx.assets,
+            self.ctx.orbit,
             self.ctx.viewport_texture_id,
         );
     }
@@ -207,15 +219,16 @@ impl<'a> EditorTabViewer<'a> {
         super::panels::assets::render_assets_content(
             ui,
             self.ctx.current_project,
-            self.ctx.editor_state,
+            self.ctx.viewport,
+            self.ctx.assets,
+            self.ctx.scene_state,
         );
     }
 
-    fn render_script_editor_content(&mut self, ui: &mut egui::Ui) {
-        super::panels::script_editor::render_script_editor_content(
-            ui,
-            self.ctx.editor_state,
-        );
+    #[allow(dead_code)]
+    fn render_script_editor_content(&mut self, _ui: &mut egui::Ui) {
+        // TODO: Script editor content rendering in dock mode
+        // Needs the render_script_editor_content function to be implemented
     }
 }
 

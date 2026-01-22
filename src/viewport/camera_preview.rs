@@ -5,7 +5,7 @@ use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 
-use crate::core::EditorState;
+use crate::core::SelectionState;
 use crate::gizmo::preview_camera_layers;
 use crate::node_system::CameraNodeData;
 use crate::scene::EditorOnly;
@@ -55,7 +55,7 @@ pub fn setup_camera_preview_texture(mut commands: Commands, mut images: ResMut<A
 /// based on whether a Camera3D node is selected
 pub fn update_camera_preview(
     mut commands: Commands,
-    editor_state: Res<EditorState>,
+    selection: Res<SelectionState>,
     camera_preview_image: Res<CameraPreviewImage>,
     camera_nodes: Query<(&Transform, &CameraNodeData), Without<CameraPreviewMarker>>,
     mut preview_camera: Query<
@@ -64,7 +64,7 @@ pub fn update_camera_preview(
     >,
 ) {
     // Check if a camera node is selected
-    let selected_camera = editor_state
+    let selected_camera = selection
         .selected_entity
         .and_then(|entity| camera_nodes.get(entity).ok());
 

@@ -1,18 +1,19 @@
 use bevy::prelude::*;
 use bevy::math::Isometry3d;
 
-use crate::core::{DragAxis, EditorEntity, EditorState, GizmoMode};
+use crate::core::{EditorEntity, SelectionState};
 use crate::node_system::CameraNodeData;
 
-use super::{GIZMO_CENTER_SIZE, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, GizmoMode, GizmoState, GIZMO_CENTER_SIZE, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn draw_selection_gizmo(
-    editor_state: Res<EditorState>,
+    selection: Res<SelectionState>,
+    gizmo_state: Res<GizmoState>,
     mut gizmos: Gizmos,
     transforms: Query<&Transform, With<EditorEntity>>,
     cameras: Query<&CameraNodeData>,
 ) {
-    let Some(selected) = editor_state.selected_entity else {
+    let Some(selected) = selection.selected_entity else {
         return;
     };
 
@@ -55,7 +56,7 @@ pub fn draw_selection_gizmo(
     }
 
     // Determine axis colors based on hover/drag state
-    let active_axis = editor_state.drag_axis.or(editor_state.hovered_axis);
+    let active_axis = gizmo_state.drag_axis.or(gizmo_state.hovered_axis);
 
     let highlight = Color::srgb(1.0, 1.0, 0.3); // Yellow highlight
     let x_base = Color::srgb(0.9, 0.2, 0.2);
@@ -88,7 +89,7 @@ pub fn draw_selection_gizmo(
 
     let gizmo_size = GIZMO_SIZE;
 
-    match editor_state.gizmo_mode {
+    match gizmo_state.mode {
         GizmoMode::Translate => {
             // Helper to draw a thick line (multiple parallel lines)
             let draw_thick_axis = |gizmos: &mut Gizmos, start: Vec3, end: Vec3, color: Color| {

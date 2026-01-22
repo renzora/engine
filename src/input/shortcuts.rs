@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 
-use crate::core::{EditorState, GizmoMode, KeyBindings, EditorAction};
+use crate::core::{KeyBindings, EditorAction, SelectionState};
+use crate::gizmo::{GizmoMode, GizmoState};
 
 pub fn handle_selection(
     keyboard: Res<ButtonInput<KeyCode>>,
     keybindings: Res<KeyBindings>,
-    mut editor_state: ResMut<EditorState>,
+    mut selection: ResMut<SelectionState>,
+    mut gizmo: ResMut<GizmoState>,
     mut commands: Commands,
 ) {
     // Don't process keybindings while rebinding
@@ -14,24 +16,24 @@ pub fn handle_selection(
     }
 
     if keybindings.just_pressed(EditorAction::Delete, &keyboard) {
-        if let Some(entity) = editor_state.selected_entity {
+        if let Some(entity) = selection.selected_entity {
             commands.entity(entity).despawn();
-            editor_state.selected_entity = None;
+            selection.selected_entity = None;
         }
     }
 
     if keybindings.just_pressed(EditorAction::Deselect, &keyboard) {
-        editor_state.selected_entity = None;
+        selection.selected_entity = None;
     }
 
     // Gizmo mode hotkeys
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) {
-        editor_state.gizmo_mode = GizmoMode::Translate;
+        gizmo.mode = GizmoMode::Translate;
     }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) {
-        editor_state.gizmo_mode = GizmoMode::Rotate;
+        gizmo.mode = GizmoMode::Rotate;
     }
     if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) {
-        editor_state.gizmo_mode = GizmoMode::Scale;
+        gizmo.mode = GizmoMode::Scale;
     }
 }

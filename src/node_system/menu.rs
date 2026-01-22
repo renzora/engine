@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText, Color32};
 
-use crate::core::EditorState;
+use crate::core::{SelectionState, HierarchyState};
 use super::registry::NodeRegistry;
 use super::definition::NodeCategory;
 
@@ -22,7 +22,8 @@ pub fn render_add_node_popup(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     parent: Option<Entity>,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
 ) {
     // Use popup_below_widget for dropdown menu
     egui::popup_below_widget(
@@ -32,7 +33,7 @@ pub fn render_add_node_popup(
         egui::PopupCloseBehavior::CloseOnClickOutside,
         |ui: &mut egui::Ui| {
             ui.set_min_width(180.0);
-            render_node_menu_items(ui, registry, commands, meshes, materials, parent, editor_state);
+            render_node_menu_items(ui, registry, commands, meshes, materials, parent, selection, hierarchy);
         },
     );
 }
@@ -45,7 +46,8 @@ pub fn render_node_menu_items(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     parent: Option<Entity>,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
 ) {
     let categories = registry.categories_with_nodes();
 
@@ -71,10 +73,10 @@ pub fn render_node_menu_items(
                 // Spawn the node using the registered spawn function
                 let entity = (definition.spawn_fn)(commands, meshes, materials, parent);
                 // Auto-select the newly created node
-                editor_state.selected_entity = Some(entity);
+                selection.selected_entity = Some(entity);
                 // Auto-expand parent if adding as child
                 if let Some(parent_entity) = parent {
-                    editor_state.expanded_entities.insert(parent_entity);
+                    hierarchy.expanded_entities.insert(parent_entity);
                 }
                 ui.close();
             }
@@ -133,9 +135,10 @@ pub fn render_add_child_menu(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     parent: Entity,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
 ) {
     ui.menu_button("Add Child", |ui| {
-        render_node_menu_items(ui, registry, commands, meshes, materials, Some(parent), editor_state);
+        render_node_menu_items(ui, registry, commands, meshes, materials, Some(parent), selection, hierarchy);
     });
 }

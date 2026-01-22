@@ -2,11 +2,13 @@ mod core;
 mod gizmo;
 mod input;
 mod node_system;
+mod plugin_core;
 mod project;
 mod scene;
 mod scene_file;
 mod scripting;
 mod ui;
+mod ui_api;
 mod viewport;
 
 use bevy::asset::UnapprovedPathMode;
@@ -37,7 +39,7 @@ fn main() {
                 .set(AssetPlugin {
                     unapproved_path_mode: UnapprovedPathMode::Allow,
                     ..default()
-                }),
+                })
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
         .add_plugins((
@@ -144,12 +146,15 @@ fn load_project_scene(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     viewport_image: Res<viewport::ViewportImage>,
-    mut editor_state: ResMut<core::EditorState>,
+    mut orbit: ResMut<core::OrbitCameraState>,
+    viewport: Res<core::ViewportState>,
+    mut scene_state: ResMut<core::SceneManagerState>,
+    mut hierarchy: ResMut<core::HierarchyState>,
     current_project: Option<Res<project::CurrentProject>>,
     node_registry: Res<node_system::NodeRegistry>,
 ) {
     // Always set up the editor camera for the viewport
-    scene::setup_editor_camera(&mut commands, &mut meshes, &mut materials, &viewport_image, &editor_state);
+    scene::setup_editor_camera(&mut commands, &mut meshes, &mut materials, &viewport_image, &orbit, &viewport);
 
     // Add ambient light
     commands.insert_resource(AmbientLight {
@@ -171,7 +176,7 @@ fn load_project_scene(
                 Ok(result) => {
                     info!("Loaded scene: {}", scene_path.display());
                     // Set the current scene path so Ctrl+S knows where to save
-                    editor_state.current_scene_path = Some(scene_path.clone());
+                    scene_state.current_scene_path = Some(scene_path.clone());
 
                     // Update the first tab with the loaded scene info
                     let scene_name = scene_path
@@ -179,24 +184,24 @@ fn load_project_scene(
                         .and_then(|s| s.to_str())
                         .unwrap_or("main")
                         .to_string();
-                    if let Some(tab) = editor_state.scene_tabs.get_mut(0) {
+                    if let Some(tab) = scene_state.scene_tabs.get_mut(0) {
                         tab.name = scene_name;
                         tab.path = Some(scene_path);
                     }
 
                     // Apply camera state
-                    editor_state.orbit_focus = Vec3::new(
+                    orbit.focus = Vec3::new(
                         result.editor_camera.orbit_focus[0],
                         result.editor_camera.orbit_focus[1],
                         result.editor_camera.orbit_focus[2],
                     );
-                    editor_state.orbit_distance = result.editor_camera.orbit_distance;
-                    editor_state.orbit_yaw = result.editor_camera.orbit_yaw;
-                    editor_state.orbit_pitch = result.editor_camera.orbit_pitch;
+                    orbit.distance = result.editor_camera.orbit_distance;
+                    orbit.yaw = result.editor_camera.orbit_yaw;
+                    orbit.pitch = result.editor_camera.orbit_pitch;
 
                     // Restore expanded entities in hierarchy
                     for entity in result.expanded_entities {
-                        editor_state.expanded_entities.insert(entity);
+                        hierarchy.expanded_entities.insert(entity);
                     }
                 }
                 Err(e) => {

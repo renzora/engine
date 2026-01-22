@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::core::{EditorEntity, EditorState, SceneNode, SceneTabId};
+use crate::core::{EditorEntity, SceneNode, SceneTabId, SceneManagerState, HierarchyState, OrbitCameraState};
 use crate::node_system::components::NodeTypeMarker;
 use crate::node_system::registry::NodeRegistry;
 
@@ -16,8 +16,9 @@ pub fn collect_scene_data(
 ) -> Result<SceneData, Box<dyn std::error::Error>> {
     // Get current tab and expanded entities
     let (current_tab, expanded_entities) = {
-        let state = world.resource::<EditorState>();
-        (state.active_scene_tab, state.expanded_entities.clone())
+        let scene_state = world.resource::<SceneManagerState>();
+        let hierarchy_state = world.resource::<HierarchyState>();
+        (scene_state.active_scene_tab, hierarchy_state.expanded_entities.clone())
     };
 
     // Query for all scene nodes
@@ -48,12 +49,12 @@ pub fn collect_scene_data(
     }
 
     // Get editor camera state
-    let state = world.resource::<EditorState>();
+    let orbit = world.resource::<OrbitCameraState>();
     let editor_camera = EditorCameraData {
-        orbit_focus: [state.orbit_focus.x, state.orbit_focus.y, state.orbit_focus.z],
-        orbit_distance: state.orbit_distance,
-        orbit_yaw: state.orbit_yaw,
-        orbit_pitch: state.orbit_pitch,
+        orbit_focus: [orbit.focus.x, orbit.focus.y, orbit.focus.z],
+        orbit_distance: orbit.distance,
+        orbit_yaw: orbit.yaw,
+        orbit_pitch: orbit.pitch,
     };
 
     Ok(SceneData {

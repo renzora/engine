@@ -1,31 +1,33 @@
 use bevy::prelude::*;
 
-use crate::core::{DragAxis, EditorEntity, EditorState, GizmoMode, ViewportCamera};
+use crate::core::{EditorEntity, ViewportCamera, SelectionState, ViewportState};
 
 use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
     ray_quad_intersection, ray_to_axis_closest_point, ray_to_axis_distance, ray_to_circle_distance,
 };
-use super::{GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, GizmoMode, GizmoState, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn gizmo_hover_system(
-    mut editor_state: ResMut<EditorState>,
+    mut gizmo: ResMut<GizmoState>,
+    mut selection: ResMut<SelectionState>,
+    viewport: Res<ViewportState>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     transforms: Query<&Transform, With<EditorEntity>>,
 ) {
     // Don't update hover while dragging
-    if editor_state.is_dragging {
+    if gizmo.is_dragging {
         return;
     }
 
-    editor_state.hovered_axis = None;
+    gizmo.hovered_axis = None;
 
-    if !editor_state.viewport_hovered {
+    if !viewport.hovered {
         return;
     }
 
-    let Some(selected) = editor_state.selected_entity else {
+    let Some(selected) = selection.selected_entity else {
         return;
     };
 
@@ -33,13 +35,13 @@ pub fn gizmo_hover_system(
         return;
     };
 
-    let Some(ray) = get_cursor_ray(&editor_state, &windows, &camera_query) else {
+    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
         return;
     };
 
     let pos = obj_transform.translation;
 
-    match editor_state.gizmo_mode {
+    match gizmo.mode {
         GizmoMode::Translate => {
             // Check hits with priority: planes > axes > center
             // Check plane handles (small squares)
@@ -68,13 +70,13 @@ pub fn gizmo_hover_system(
             }
 
             if let Some((axis, _)) = best_plane {
-                editor_state.hovered_axis = Some(axis);
+                gizmo.hovered_axis = Some(axis);
                 return;
             }
 
             // Check center cube
             if ray_box_intersection(&ray, pos, GIZMO_CENTER_SIZE).is_some() {
-                editor_state.hovered_axis = Some(DragAxis::Free);
+                gizmo.hovered_axis = Some(DragAxis::Free);
                 return;
             }
 
@@ -87,11 +89,11 @@ pub fn gizmo_hover_system(
 
             if min_dist < GIZMO_PICK_THRESHOLD {
                 if (x_dist - min_dist).abs() < 0.001 {
-                    editor_state.hovered_axis = Some(DragAxis::X);
+                    gizmo.hovered_axis = Some(DragAxis::X);
                 } else if (y_dist - min_dist).abs() < 0.001 {
-                    editor_state.hovered_axis = Some(DragAxis::Y);
+                    gizmo.hovered_axis = Some(DragAxis::Y);
                 } else {
-                    editor_state.hovered_axis = Some(DragAxis::Z);
+                    gizmo.hovered_axis = Some(DragAxis::Z);
                 }
             }
         }
@@ -108,11 +110,11 @@ pub fn gizmo_hover_system(
 
             if min_dist < threshold {
                 if (x_dist - min_dist).abs() < 0.001 {
-                    editor_state.hovered_axis = Some(DragAxis::X);
+                    gizmo.hovered_axis = Some(DragAxis::X);
                 } else if (y_dist - min_dist).abs() < 0.001 {
-                    editor_state.hovered_axis = Some(DragAxis::Y);
+                    gizmo.hovered_axis = Some(DragAxis::Y);
                 } else {
-                    editor_state.hovered_axis = Some(DragAxis::Z);
+                    gizmo.hovered_axis = Some(DragAxis::Z);
                 }
             }
         }
@@ -126,24 +128,26 @@ pub fn gizmo_hover_system(
 
             if min_dist < GIZMO_PICK_THRESHOLD {
                 if (x_dist - min_dist).abs() < 0.001 {
-                    editor_state.hovered_axis = Some(DragAxis::X);
+                    gizmo.hovered_axis = Some(DragAxis::X);
                 } else if (y_dist - min_dist).abs() < 0.001 {
-                    editor_state.hovered_axis = Some(DragAxis::Y);
+                    gizmo.hovered_axis = Some(DragAxis::Y);
                 } else {
-                    editor_state.hovered_axis = Some(DragAxis::Z);
+                    gizmo.hovered_axis = Some(DragAxis::Z);
                 }
             }
 
             // Check center cube for uniform scale
             if ray_box_intersection(&ray, pos, GIZMO_CENTER_SIZE).is_some() {
-                editor_state.hovered_axis = Some(DragAxis::Free);
+                gizmo.hovered_axis = Some(DragAxis::Free);
             }
         }
     }
 }
 
 pub fn gizmo_interaction_system(
-    mut editor_state: ResMut<EditorState>,
+    mut gizmo: ResMut<GizmoState>,
+    mut selection: ResMut<SelectionState>,
+    viewport: Res<ViewportState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
@@ -152,12 +156,12 @@ pub fn gizmo_interaction_system(
 ) {
     // Handle drag end
     if mouse_button.just_released(MouseButton::Left) {
-        editor_state.is_dragging = false;
-        editor_state.drag_axis = None;
+        gizmo.is_dragging = false;
+        gizmo.drag_axis = None;
         return;
     }
 
-    if !editor_state.viewport_hovered {
+    if !viewport.hovered {
         return;
     }
 
@@ -167,15 +171,15 @@ pub fn gizmo_interaction_system(
     }
 
     // If hovering over a gizmo axis, start axis-constrained drag
-    if let Some(axis) = editor_state.hovered_axis {
+    if let Some(axis) = gizmo.hovered_axis {
         // Calculate initial drag state based on gizmo mode
-        if let Some(selected) = editor_state.selected_entity {
+        if let Some(selected) = selection.selected_entity {
             if let Ok(obj_transform) = transforms.get(selected) {
-                if let Some(ray) = get_cursor_ray(&editor_state, &windows, &camera_query) {
+                if let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) {
                     let pos = obj_transform.translation;
                     let cam_transform = camera_query.single().map(|(_, t)| t);
 
-                    match editor_state.gizmo_mode {
+                    match gizmo.mode {
                         GizmoMode::Translate => {
                             // Calculate where cursor intersects the constraint
                             let drag_point = match axis {
@@ -194,11 +198,11 @@ pub fn gizmo_interaction_system(
                                     }
                                 }
                             };
-                            editor_state.drag_start_offset = drag_point - pos;
+                            gizmo.drag_start_offset = drag_point - pos;
                         }
                         GizmoMode::Rotate => {
                             // Store initial rotation and angle
-                            editor_state.drag_start_rotation = obj_transform.rotation;
+                            gizmo.drag_start_rotation = obj_transform.rotation;
                             let axis_vec = match axis {
                                 DragAxis::X => Vec3::X,
                                 DragAxis::Y => Vec3::Y,
@@ -207,13 +211,13 @@ pub fn gizmo_interaction_system(
                             };
                             if let Some(hit_point) = ray_circle_intersection_point(&ray, pos, axis_vec) {
                                 let to_hit = (hit_point - pos).normalize();
-                                editor_state.drag_start_angle = to_hit.x.atan2(to_hit.z);
-                                editor_state.drag_start_offset = to_hit;
+                                gizmo.drag_start_angle = to_hit.x.atan2(to_hit.z);
+                                gizmo.drag_start_offset = to_hit;
                             }
                         }
                         GizmoMode::Scale => {
                             // Store initial scale and distance from center
-                            editor_state.drag_start_scale = obj_transform.scale;
+                            gizmo.drag_start_scale = obj_transform.scale;
                             let axis_vec = match axis {
                                 DragAxis::X => Vec3::X,
                                 DragAxis::Y => Vec3::Y,
@@ -222,21 +226,21 @@ pub fn gizmo_interaction_system(
                                 _ => Vec3::ONE,
                             };
                             let drag_point = ray_to_axis_closest_point(&ray, pos, axis_vec);
-                            editor_state.drag_start_distance = (drag_point - pos).length();
-                            editor_state.drag_start_offset = drag_point - pos;
+                            gizmo.drag_start_distance = (drag_point - pos).length();
+                            gizmo.drag_start_offset = drag_point - pos;
                         }
                     }
                 }
             }
         }
 
-        editor_state.is_dragging = true;
-        editor_state.drag_axis = Some(axis);
+        gizmo.is_dragging = true;
+        gizmo.drag_axis = Some(axis);
         return;
     }
 
     // Otherwise, do object picking
-    let Some(ray) = get_cursor_ray(&editor_state, &windows, &camera_query) else {
+    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
         return;
     };
 
@@ -263,24 +267,26 @@ pub fn gizmo_interaction_system(
     }
 
     if let Some(clicked) = closest_entity {
-        editor_state.selected_entity = Some(clicked);
+        selection.selected_entity = Some(clicked);
     } else {
-        editor_state.selected_entity = None;
+        selection.selected_entity = None;
     }
 }
 
 pub fn object_drag_system(
-    editor_state: Res<EditorState>,
+    gizmo: Res<GizmoState>,
+    selection: Res<SelectionState>,
+    viewport: Res<ViewportState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
 ) {
-    if !editor_state.is_dragging || !mouse_button.pressed(MouseButton::Left) {
+    if !gizmo.is_dragging || !mouse_button.pressed(MouseButton::Left) {
         return;
     }
 
-    let Some(selected) = editor_state.selected_entity else {
+    let Some(selected) = selection.selected_entity else {
         return;
     };
 
@@ -288,7 +294,7 @@ pub fn object_drag_system(
         return;
     };
 
-    let Some(ray) = get_cursor_ray(&editor_state, &windows, &camera_query) else {
+    let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
         return;
     };
 
@@ -296,12 +302,12 @@ pub fn object_drag_system(
         return;
     };
 
-    match editor_state.gizmo_mode {
+    match gizmo.mode {
         GizmoMode::Translate => {
             let current_pos = obj_transform.translation;
-            let offset = editor_state.drag_start_offset;
+            let offset = gizmo.drag_start_offset;
 
-            let new_pos = match editor_state.drag_axis {
+            let new_pos = match gizmo.drag_axis {
                 Some(DragAxis::X) => {
                     let point = ray_to_axis_closest_point(&ray, current_pos, Vec3::X);
                     Vec3::new(point.x - offset.x, current_pos.y, current_pos.z)
@@ -350,7 +356,7 @@ pub fn object_drag_system(
         }
         GizmoMode::Rotate => {
             let pos = obj_transform.translation;
-            let axis_vec = match editor_state.drag_axis {
+            let axis_vec = match gizmo.drag_axis {
                 Some(DragAxis::X) => Vec3::X,
                 Some(DragAxis::Y) => Vec3::Y,
                 Some(DragAxis::Z) => Vec3::Z,
@@ -359,7 +365,7 @@ pub fn object_drag_system(
 
             if let Some(hit_point) = ray_circle_intersection_point(&ray, pos, axis_vec) {
                 let to_hit = (hit_point - pos).normalize();
-                let start_dir = editor_state.drag_start_offset;
+                let start_dir = gizmo.drag_start_offset;
 
                 // Calculate angle between start direction and current direction
                 let cross = start_dir.cross(to_hit);
@@ -368,15 +374,15 @@ pub fn object_drag_system(
 
                 // Apply rotation relative to start rotation
                 let rotation_delta = Quat::from_axis_angle(axis_vec, angle);
-                obj_transform.rotation = rotation_delta * editor_state.drag_start_rotation;
+                obj_transform.rotation = rotation_delta * gizmo.drag_start_rotation;
             }
         }
         GizmoMode::Scale => {
             let pos = obj_transform.translation;
-            let start_scale = editor_state.drag_start_scale;
-            let start_dist = editor_state.drag_start_distance.max(0.001);
+            let start_scale = gizmo.drag_start_scale;
+            let start_dist = gizmo.drag_start_distance.max(0.001);
 
-            match editor_state.drag_axis {
+            match gizmo.drag_axis {
                 Some(DragAxis::X) => {
                     let point = ray_to_axis_closest_point(&ray, pos, Vec3::X);
                     let current_dist = (point - pos).dot(Vec3::X).abs();

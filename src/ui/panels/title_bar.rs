@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
 
-use crate::core::{EditorEntity, EditorState, SceneNode};
+use crate::core::{EditorEntity, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
 use crate::scene::{spawn_primitive, PrimitiveType};
 
 use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR};
@@ -12,12 +12,15 @@ pub const TITLE_BAR_HEIGHT: f32 = 28.0;
 
 pub fn render_title_bar(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    window_state: &mut WindowState,
+    selection: &mut SelectionState,
+    scene_state: &mut SceneManagerState,
+    settings: &mut EditorSettings,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
 ) {
-    let is_maximized = editor_state.window_is_maximized;
+    let is_maximized = window_state.is_maximized;
 
     egui::TopBottomPanel::top("title_bar")
         .exact_height(TITLE_BAR_HEIGHT)
@@ -64,19 +67,19 @@ pub fn render_title_bar(
 
             // Handle double-click to maximize
             if drag_response.double_clicked() {
-                editor_state.window_request_toggle_maximize = true;
+                window_state.request_toggle_maximize = true;
             }
 
             // Handle drag - set flag when drag starts
             if drag_response.drag_started() {
-                editor_state.window_start_drag = true;
+                window_state.start_drag = true;
             }
 
             // Stop manual drag when mouse released
             if drag_response.drag_stopped() || !drag_response.dragged() && !drag_response.drag_started() {
-                if editor_state.window_is_being_dragged {
-                    editor_state.window_is_being_dragged = false;
-                    editor_state.window_drag_offset = None;
+                if window_state.is_being_dragged {
+                    window_state.is_being_dragged = false;
+                    window_state.drag_offset = None;
                 }
             }
 
@@ -86,7 +89,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                render_menu_items(ui, editor_state, commands, meshes, materials);
+                render_menu_items(ui, selection, scene_state, settings, commands, meshes, materials);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -97,20 +100,20 @@ pub fn render_title_bar(
                 // Minimize button
                 let min_resp = window_button(ui, MINUS, Color32::from_rgb(60, 60, 70), button_width);
                 if min_resp.clicked() {
-                    editor_state.window_request_minimize = true;
+                    window_state.request_minimize = true;
                 }
 
                 // Maximize/Restore button
                 let max_icon = if is_maximized { SQUARES_FOUR } else { SQUARE };
                 let max_resp = window_button(ui, max_icon, Color32::from_rgb(60, 60, 70), button_width);
                 if max_resp.clicked() {
-                    editor_state.window_request_toggle_maximize = true;
+                    window_state.request_toggle_maximize = true;
                 }
 
                 // Close button (red on hover)
                 let close_resp = window_button(ui, X, Color32::from_rgb(200, 60, 60), button_width);
                 if close_resp.clicked() {
-                    editor_state.window_request_close = true;
+                    window_state.request_close = true;
                 }
             });
         });
@@ -118,47 +121,47 @@ pub fn render_title_bar(
 
 /// System to sync window state and apply pending window actions
 pub fn handle_window_actions(
-    mut editor_state: ResMut<EditorState>,
+    mut window_state: ResMut<WindowState>,
     mut windows: Query<&mut Window>,
 ) {
     let Ok(mut window) = windows.single_mut() else { return };
 
-    // Sync window state to editor state
-    editor_state.window_is_maximized = window.mode == WindowMode::BorderlessFullscreen(MonitorSelection::Current);
+    // Sync window state
+    window_state.is_maximized = window.mode == WindowMode::BorderlessFullscreen(MonitorSelection::Current);
 
     // Apply pending actions
-    if editor_state.window_request_close {
+    if window_state.request_close {
         std::process::exit(0);
     }
 
-    if editor_state.window_request_minimize {
+    if window_state.request_minimize {
         window.set_minimized(true);
-        editor_state.window_request_minimize = false;
+        window_state.request_minimize = false;
     }
 
-    if editor_state.window_request_toggle_maximize {
+    if window_state.request_toggle_maximize {
         if window.mode == WindowMode::BorderlessFullscreen(MonitorSelection::Current) {
             window.mode = WindowMode::Windowed;
         } else {
             window.mode = WindowMode::BorderlessFullscreen(MonitorSelection::Current);
         }
-        editor_state.window_request_toggle_maximize = false;
+        window_state.request_toggle_maximize = false;
     }
 
     // Handle window drag start - use manual drag (native winit drag has timing issues)
-    if editor_state.window_start_drag && window.mode == WindowMode::Windowed {
+    if window_state.start_drag && window.mode == WindowMode::Windowed {
         // Get current cursor position relative to window
         if let Some(cursor_pos) = window.cursor_position() {
             // Store the offset from window corner to cursor
-            editor_state.window_drag_offset = Some((cursor_pos.x, cursor_pos.y));
-            editor_state.window_is_being_dragged = true;
+            window_state.drag_offset = Some((cursor_pos.x, cursor_pos.y));
+            window_state.is_being_dragged = true;
         }
 
-        editor_state.window_start_drag = false;
+        window_state.start_drag = false;
     }
 
     // Manual window dragging fallback
-    if editor_state.window_is_being_dragged && window.mode == WindowMode::Windowed {
+    if window_state.is_being_dragged && window.mode == WindowMode::Windowed {
         #[cfg(target_os = "windows")]
         {
             use windows_sys::Win32::UI::WindowsAndMessaging::GetCursorPos;
@@ -167,7 +170,7 @@ pub fn handle_window_actions(
             let mut screen_cursor = POINT { x: 0, y: 0 };
             unsafe {
                 if GetCursorPos(&mut screen_cursor) != 0 {
-                    if let Some((offset_x, offset_y)) = editor_state.window_drag_offset {
+                    if let Some((offset_x, offset_y)) = window_state.drag_offset {
                         // Calculate new window position
                         let new_x = screen_cursor.x as f32 - offset_x;
                         let new_y = screen_cursor.y as f32 - offset_y;
@@ -182,7 +185,9 @@ pub fn handle_window_actions(
 
 fn render_menu_items(
     ui: &mut egui::Ui,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    scene_state: &mut SceneManagerState,
+    settings: &mut EditorSettings,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -193,20 +198,20 @@ fn render_menu_items(
 
     ui.menu_button("File", |ui| {
         if ui.button("New Scene").clicked() {
-            editor_state.new_scene_requested = true;
+            scene_state.new_scene_requested = true;
             ui.close();
         }
         if ui.button("Open Scene...").clicked() {
-            editor_state.open_scene_requested = true;
+            scene_state.open_scene_requested = true;
             ui.close();
         }
         ui.separator();
         if ui.button("Save Scene        Ctrl+S").clicked() {
-            editor_state.save_scene_requested = true;
+            scene_state.save_scene_requested = true;
             ui.close();
         }
         if ui.button("Save Scene As...  Ctrl+Shift+S").clicked() {
-            editor_state.save_scene_as_requested = true;
+            scene_state.save_scene_as_requested = true;
             ui.close();
         }
         ui.separator();
@@ -237,9 +242,9 @@ fn render_menu_items(
             ui.close();
         }
         if ui.button("Delete").clicked() {
-            if let Some(entity) = editor_state.selected_entity {
+            if let Some(entity) = selection.selected_entity {
                 commands.entity(entity).despawn();
-                editor_state.selected_entity = None;
+                selection.selected_entity = None;
             }
             ui.close();
         }
@@ -289,7 +294,7 @@ fn render_menu_items(
     });
 
     ui.menu_button("View", |ui| {
-        ui.checkbox(&mut editor_state.show_demo_window, "egui Demo");
+        ui.checkbox(&mut settings.show_demo_window, "egui Demo");
     });
 
     ui.menu_button("Help", |ui| {
@@ -333,9 +338,9 @@ fn window_button(ui: &mut egui::Ui, icon: &str, hover_color: Color32, width: f32
 /// Render a simplified title bar for the splash screen (no menu items)
 pub fn render_splash_title_bar(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    window_state: &mut WindowState,
 ) {
-    let is_maximized = editor_state.window_is_maximized;
+    let is_maximized = window_state.is_maximized;
 
     egui::TopBottomPanel::top("splash_title_bar")
         .exact_height(TITLE_BAR_HEIGHT)
@@ -380,18 +385,18 @@ pub fn render_splash_title_bar(
 
             // Handle double-click to maximize
             if drag_response.double_clicked() {
-                editor_state.window_request_toggle_maximize = true;
+                window_state.request_toggle_maximize = true;
             }
 
             // Handle drag
             if drag_response.drag_started() {
-                editor_state.window_start_drag = true;
+                window_state.start_drag = true;
             }
 
             if drag_response.drag_stopped() || !drag_response.dragged() && !drag_response.drag_started() {
-                if editor_state.window_is_being_dragged {
-                    editor_state.window_is_being_dragged = false;
-                    editor_state.window_drag_offset = None;
+                if window_state.is_being_dragged {
+                    window_state.is_being_dragged = false;
+                    window_state.drag_offset = None;
                 }
             }
 
@@ -406,20 +411,20 @@ pub fn render_splash_title_bar(
                 // Minimize button
                 let min_resp = window_button(ui, MINUS, Color32::from_rgb(60, 60, 70), button_width);
                 if min_resp.clicked() {
-                    editor_state.window_request_minimize = true;
+                    window_state.request_minimize = true;
                 }
 
                 // Maximize/Restore button
                 let max_icon = if is_maximized { SQUARES_FOUR } else { SQUARE };
                 let max_resp = window_button(ui, max_icon, Color32::from_rgb(60, 60, 70), button_width);
                 if max_resp.clicked() {
-                    editor_state.window_request_toggle_maximize = true;
+                    window_state.request_toggle_maximize = true;
                 }
 
                 // Close button (red on hover)
                 let close_resp = window_button(ui, X, Color32::from_rgb(200, 60, 60), button_width);
                 if close_resp.clicked() {
-                    editor_state.window_request_close = true;
+                    window_state.request_close = true;
                 }
             });
         });

@@ -3,7 +3,7 @@ use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 
-use crate::core::{EditorState, MainCamera};
+use crate::core::{MainCamera, ViewportState};
 
 use super::ViewportImage;
 
@@ -48,20 +48,20 @@ pub fn setup_viewport_texture(mut commands: Commands, mut images: ResMut<Assets<
 
 /// System to resize the viewport texture when the UI viewport size changes
 pub fn resize_viewport_texture(
-    editor_state: Res<EditorState>,
+    viewport_state: Res<ViewportState>,
     mut texture_size: ResMut<ViewportTextureSize>,
     viewport_image: Res<ViewportImage>,
     mut images: ResMut<Assets<Image>>,
     mut camera_query: Query<&mut Projection, With<MainCamera>>,
 ) {
     // Skip if viewport size hasn't been set yet by UI (still at default 0,0)
-    if editor_state.viewport_size[0] < 10.0 || editor_state.viewport_size[1] < 10.0 {
+    if viewport_state.size[0] < 10.0 || viewport_state.size[1] < 10.0 {
         return;
     }
 
     // Get the current viewport size from UI
-    let new_width = editor_state.viewport_size[0] as u32;
-    let new_height = editor_state.viewport_size[1] as u32;
+    let new_width = viewport_state.size[0] as u32;
+    let new_height = viewport_state.size[1] as u32;
 
     // Check if size has changed
     if new_width == texture_size.width && new_height == texture_size.height {

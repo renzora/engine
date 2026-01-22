@@ -2,7 +2,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, TextureId, Vec2};
 
-use crate::core::{EditorEntity, EditorState, WorldEnvironmentMarker};
+use crate::core::{EditorEntity, SelectionState, WorldEnvironmentMarker};
 use crate::node_system::{
     render_camera_inspector, render_directional_light_inspector, render_point_light_inspector,
     render_script_inspector, render_spot_light_inspector, render_transform_inspector,
@@ -30,7 +30,7 @@ pub struct InspectorQueries<'w, 's> {
 
 pub fn render_inspector(
     ctx: &egui::Context,
-    editor_state: &EditorState,
+    selection: &SelectionState,
     entities: &Query<(Entity, &EditorEntity)>,
     queries: &mut InspectorQueries,
     script_registry: &ScriptRegistry,
@@ -42,14 +42,14 @@ pub fn render_inspector(
         .default_width(320.0)
         .resizable(true)
         .show(ctx, |ui| {
-            render_inspector_content(ui, editor_state, entities, queries, script_registry, rhai_engine, camera_preview_texture_id);
+            render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id);
         });
 }
 
 /// Render inspector content (for use in docking)
 pub fn render_inspector_content(
     ui: &mut egui::Ui,
-    editor_state: &EditorState,
+    selection: &SelectionState,
     entities: &Query<(Entity, &EditorEntity)>,
     queries: &mut InspectorQueries,
     script_registry: &ScriptRegistry,
@@ -67,7 +67,7 @@ pub fn render_inspector_content(
     ui.add_space(8.0);
 
     egui::ScrollArea::vertical().show(ui, |ui| {
-        if let Some(selected) = editor_state.selected_entity {
+        if let Some(selected) = selection.selected_entity {
             if let Ok((_, editor_entity)) = entities.get(selected) {
                 // Entity name with accent bar
                 ui.horizontal(|ui| {

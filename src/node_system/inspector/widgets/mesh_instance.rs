@@ -3,7 +3,7 @@
 use bevy_egui::egui::{self, Color32, RichText, Sense, Vec2};
 use std::path::PathBuf;
 
-use crate::core::EditorState;
+use crate::core::AssetBrowserState;
 use crate::node_system::MeshInstanceData;
 
 // Phosphor icons
@@ -14,7 +14,7 @@ use egui_phosphor::regular::{CUBE, FILE, FOLDER_OPEN, X_CIRCLE};
 pub fn render_mesh_instance_inspector(
     ui: &mut egui::Ui,
     instance: &mut MeshInstanceData,
-    editor_state: &EditorState,
+    assets: &AssetBrowserState,
 ) -> (bool, Option<PathBuf>) {
     let mut changed = false;
     let mut new_model_to_load: Option<PathBuf> = None;
@@ -36,7 +36,7 @@ pub fn render_mesh_instance_inspector(
     );
 
     // Check if we're currently dragging an asset
-    let is_drag_target = editor_state.dragging_asset.is_some();
+    let is_drag_target = assets.dragging_asset.is_some();
     let is_hovered = response.hovered();
 
     // Background color based on state
@@ -109,7 +109,7 @@ pub fn render_mesh_instance_inspector(
 
     // Handle drop
     if is_hovered && !response.dragged() {
-        if let Some(dragging_path) = &editor_state.dragging_asset {
+        if let Some(dragging_path) = &assets.dragging_asset {
             // Check if it's a valid model file
             let ext = dragging_path.extension()
                 .and_then(|e| e.to_str())

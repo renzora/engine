@@ -2,10 +2,12 @@ mod drawing;
 mod grid;
 mod interaction;
 pub mod picking;
+pub mod state;
 
 pub use drawing::draw_selection_gizmo;
 pub use grid::draw_grid;
 pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
+pub use state::{DragAxis, GizmoMode, GizmoState};
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
@@ -35,6 +37,8 @@ pub struct GizmoPlugin;
 
 impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
+        // Initialize gizmo state
+        app.init_resource::<GizmoState>();
         // Configure gizmos to render on the gizmo layer
         app.add_systems(Startup, configure_gizmo_render_layers);
     }

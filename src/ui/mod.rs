@@ -1,10 +1,31 @@
 mod panels;
 mod style;
 
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiTextureHandle};
 
-use crate::core::{AppState, EditorEntity, EditorState, KeyBindings, SceneTabId};
+use crate::core::{
+    AppState, EditorEntity, KeyBindings, SceneTabId,
+    SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
+    OrbitCameraState,
+};
+use crate::gizmo::GizmoState;
+
+/// Bundled editor state resources for system parameter limits
+#[derive(SystemParam)]
+pub struct EditorResources<'w> {
+    pub selection: ResMut<'w, SelectionState>,
+    pub hierarchy: ResMut<'w, HierarchyState>,
+    pub viewport: ResMut<'w, ViewportState>,
+    pub scene_state: ResMut<'w, SceneManagerState>,
+    pub assets: ResMut<'w, AssetBrowserState>,
+    pub settings: ResMut<'w, EditorSettings>,
+    pub window_state: ResMut<'w, WindowState>,
+    pub gizmo: ResMut<'w, GizmoState>,
+    pub orbit: Res<'w, OrbitCameraState>,
+    pub keybindings: ResMut<'w, KeyBindings>,
+}
 use crate::node_system::NodeRegistry;
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
@@ -28,7 +49,8 @@ impl Plugin for UiPlugin {
 /// Splash screen UI system (runs in Splash state)
 pub fn splash_ui(
     mut contexts: EguiContexts,
-    mut editor_state: ResMut<EditorState>,
+    mut window_state: ResMut<WindowState>,
+    mut settings: ResMut<EditorSettings>,
     mut app_config: ResMut<AppConfig>,
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
@@ -44,7 +66,8 @@ pub fn splash_ui(
 
     render_splash(
         ctx,
-        &mut editor_state,
+        &mut window_state,
+        &mut settings,
         &mut app_config,
         &mut commands,
         &mut next_state,
@@ -54,8 +77,7 @@ pub fn splash_ui(
 /// Editor UI system (runs in Editor state)
 pub fn editor_ui(
     mut contexts: EguiContexts,
-    mut editor_state: ResMut<EditorState>,
-    mut keybindings: ResMut<KeyBindings>,
+    mut editor: EditorResources,
     mut commands: Commands,
     entities: Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
     entities_for_inspector: Query<(Entity, &EditorEntity)>,
@@ -99,7 +121,10 @@ pub fn editor_ui(
     // Render custom title bar (includes menu)
     render_title_bar(
         ctx,
-        &mut editor_state,
+        &mut editor.window_state,
+        &mut editor.selection,
+        &mut editor.scene_state,
+        &mut editor.settings,
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -109,7 +134,8 @@ pub fn editor_ui(
 
     render_toolbar(
         ctx,
-        &mut editor_state,
+        &mut editor.gizmo,
+        &mut editor.settings,
         TITLE_BAR_HEIGHT,
         toolbar_height,
         1600.0, // Default width, will be constrained by panel
@@ -120,7 +146,7 @@ pub fn editor_ui(
     let right_panel_width = 320.0;
     let scene_tabs_height = render_scene_tabs(
         ctx,
-        &mut editor_state,
+        &mut editor.scene_state,
         left_panel_width,
         right_panel_width,
         TITLE_BAR_HEIGHT + toolbar_height,
@@ -131,7 +157,9 @@ pub fn editor_ui(
     render_assets(
         ctx,
         current_project.as_deref(),
-        &mut editor_state,
+        &mut editor.viewport,
+        &mut editor.assets,
+        &mut editor.scene_state,
         260.0,
         320.0,
         bottom_panel_height,
@@ -141,10 +169,11 @@ pub fn editor_ui(
     let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + scene_tabs_height;
     let viewport_height = 500.0; // Will be calculated by panels
 
-    let active_tab = editor_state.active_scene_tab;
+    let active_tab = editor.scene_state.active_scene_tab;
     render_hierarchy(
         ctx,
-        &mut editor_state,
+        &mut editor.selection,
+        &mut editor.hierarchy,
         &entities,
         &mut commands,
         &mut meshes,
@@ -159,7 +188,7 @@ pub fn editor_ui(
     // Render right panel (inspector)
     render_inspector(
         ctx,
-        &editor_state,
+        &editor.selection,
         &entities_for_inspector,
         &mut inspector_queries,
         &script_registry,
@@ -170,12 +199,12 @@ pub fn editor_ui(
 
     // Calculate available height for central area
     let screen_rect = ctx.screen_rect();
-    let central_height = screen_rect.height() - content_start_y - editor_state.assets_height;
+    let central_height = screen_rect.height() - content_start_y - editor.viewport.assets_height;
 
     // Render script editor if scripts are open, otherwise render viewport
     let script_editor_shown = render_script_editor(
         ctx,
-        &mut editor_state,
+        &mut editor.scene_state,
         left_panel_width,
         right_panel_width,
         content_start_y,
@@ -186,7 +215,9 @@ pub fn editor_ui(
         // Render central viewport
         render_viewport(
             ctx,
-            &mut editor_state,
+            &mut editor.viewport,
+            &mut editor.assets,
+            &editor.orbit,
             left_panel_width,
             right_panel_width,
             content_start_y,
@@ -198,9 +229,9 @@ pub fn editor_ui(
 
     // Ctrl+, to open settings
     if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
-        editor_state.show_settings_window = !editor_state.show_settings_window;
+        editor.settings.show_settings_window = !editor.settings.show_settings_window;
     }
 
     // Render settings window (floating)
-    render_settings_window(ctx, &mut editor_state, &mut keybindings);
+    render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
 }

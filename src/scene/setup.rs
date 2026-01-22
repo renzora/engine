@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::{EditorState, MainCamera, ViewportCamera};
+use crate::core::{MainCamera, ViewportCamera, OrbitCameraState, ViewportState};
 use crate::gizmo::editor_camera_layers;
 use crate::viewport::ViewportImage;
 
@@ -18,20 +18,21 @@ pub fn setup_editor_camera(
     _meshes: &mut Assets<Mesh>,
     _materials: &mut Assets<StandardMaterial>,
     viewport_image: &ViewportImage,
-    editor_state: &EditorState,
+    orbit: &OrbitCameraState,
+    viewport: &ViewportState,
 ) {
     // Camera that renders to the viewport texture
     // Position calculated from orbit parameters
-    let cam_pos = editor_state.orbit_focus
+    let cam_pos = orbit.focus
         + Vec3::new(
-            editor_state.orbit_distance * editor_state.orbit_pitch.cos() * editor_state.orbit_yaw.sin(),
-            editor_state.orbit_distance * editor_state.orbit_pitch.sin(),
-            editor_state.orbit_distance * editor_state.orbit_pitch.cos() * editor_state.orbit_yaw.cos(),
+            orbit.distance * orbit.pitch.cos() * orbit.yaw.sin(),
+            orbit.distance * orbit.pitch.sin(),
+            orbit.distance * orbit.pitch.cos() * orbit.yaw.cos(),
         );
 
     // Calculate initial aspect ratio from viewport size
-    let aspect = if editor_state.viewport_size[1] > 0.0 {
-        editor_state.viewport_size[0] / editor_state.viewport_size[1]
+    let aspect = if viewport.size[1] > 0.0 {
+        viewport.size[0] / viewport.size[1]
     } else {
         16.0 / 9.0 // Default aspect ratio
     };
@@ -47,7 +48,7 @@ pub fn setup_editor_camera(
             aspect_ratio: aspect,
             ..default()
         }),
-        Transform::from_translation(cam_pos).looking_at(editor_state.orbit_focus, Vec3::Y),
+        Transform::from_translation(cam_pos).looking_at(orbit.focus, Vec3::Y),
         MainCamera,
         ViewportCamera,
         EditorOnly,

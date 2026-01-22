@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2};
 
-use crate::core::{EditorEntity, EditorState, GizmoMode, SceneNode};
+use crate::core::{EditorEntity, SceneNode, SelectionState, EditorSettings};
+use crate::gizmo::{GizmoMode, GizmoState};
 use crate::scene::{spawn_primitive, PrimitiveType};
 
 // Phosphor icons for toolbar
@@ -9,9 +10,11 @@ use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
 };
 
+#[allow(dead_code)]
 pub fn render_menu_bar(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    settings: &mut EditorSettings,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -60,9 +63,9 @@ pub fn render_menu_bar(
                     ui.close();
                 }
                 if ui.button("Delete").clicked() {
-                    if let Some(entity) = editor_state.selected_entity {
+                    if let Some(entity) = selection.selected_entity {
                         commands.entity(entity).despawn();
-                        editor_state.selected_entity = None;
+                        selection.selected_entity = None;
                     }
                     ui.close();
                 }
@@ -112,7 +115,7 @@ pub fn render_menu_bar(
             });
 
             ui.menu_button("View", |ui| {
-                ui.checkbox(&mut editor_state.show_demo_window, "egui Demo");
+                ui.checkbox(&mut settings.show_demo_window, "egui Demo");
             });
 
             ui.menu_button("Help", |ui| {
@@ -129,7 +132,8 @@ pub fn render_menu_bar(
 
 pub fn render_toolbar(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    gizmo: &mut GizmoState,
+    settings: &mut EditorSettings,
     _menu_bar_height: f32,
     toolbar_height: f32,
     _window_width: f32,
@@ -143,26 +147,26 @@ pub fn render_toolbar(
                 let inactive_color = Color32::from_rgb(46, 46, 56);
 
                 // Move button (Translate)
-                let is_translate = editor_state.gizmo_mode == GizmoMode::Translate;
+                let is_translate = gizmo.mode == GizmoMode::Translate;
                 let translate_resp = tool_button(ui, ARROWS_OUT_CARDINAL, button_size, is_translate, active_color, inactive_color);
                 if translate_resp.clicked() {
-                    editor_state.gizmo_mode = GizmoMode::Translate;
+                    gizmo.mode = GizmoMode::Translate;
                 }
                 translate_resp.on_hover_text("Move (W)");
 
                 // Rotate button
-                let is_rotate = editor_state.gizmo_mode == GizmoMode::Rotate;
+                let is_rotate = gizmo.mode == GizmoMode::Rotate;
                 let rotate_resp = tool_button(ui, ARROW_CLOCKWISE, button_size, is_rotate, active_color, inactive_color);
                 if rotate_resp.clicked() {
-                    editor_state.gizmo_mode = GizmoMode::Rotate;
+                    gizmo.mode = GizmoMode::Rotate;
                 }
                 rotate_resp.on_hover_text("Rotate (E)");
 
                 // Scale button
-                let is_scale = editor_state.gizmo_mode == GizmoMode::Scale;
+                let is_scale = gizmo.mode == GizmoMode::Scale;
                 let scale_resp = tool_button(ui, ARROWS_OUT, button_size, is_scale, active_color, inactive_color);
                 if scale_resp.clicked() {
-                    editor_state.gizmo_mode = GizmoMode::Scale;
+                    gizmo.mode = GizmoMode::Scale;
                 }
                 scale_resp.on_hover_text("Scale (R)");
 
@@ -200,9 +204,9 @@ pub fn render_toolbar(
                 // Spacer to push settings to the right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Settings button
-                    let settings_resp = tool_button(ui, GEAR, button_size, editor_state.show_settings_window, active_color, inactive_color);
+                    let settings_resp = tool_button(ui, GEAR, button_size, settings.show_settings_window, active_color, inactive_color);
                     if settings_resp.clicked() {
-                        editor_state.show_settings_window = !editor_state.show_settings_window;
+                        settings.show_settings_window = !settings.show_settings_window;
                     }
                     settings_resp.on_hover_text("Settings (Ctrl+,)");
                 });
@@ -210,11 +214,11 @@ pub fn render_toolbar(
         });
 
     // Show demo window if enabled
-    if editor_state.show_demo_window {
+    if settings.show_demo_window {
         egui::Window::new("egui Demo").show(ctx, |ui| {
             ui.label("This is the egui demo window.");
             if ui.button("Close").clicked() {
-                editor_state.show_demo_window = false;
+                settings.show_demo_window = false;
             }
         });
     }

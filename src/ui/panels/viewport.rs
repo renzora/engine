@@ -1,11 +1,13 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, TextureId};
 
-use crate::core::EditorState;
+use crate::core::{ViewportState, AssetBrowserState, OrbitCameraState};
 
 pub fn render_viewport(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    viewport: &mut ViewportState,
+    assets: &mut AssetBrowserState,
+    orbit: &OrbitCameraState,
     _left_panel_width: f32,
     _right_panel_width: f32,
     _content_start_y: f32,
@@ -16,21 +18,23 @@ pub fn render_viewport(
     egui::CentralPanel::default()
         .frame(egui::Frame::new().fill(Color32::from_rgb(20, 20, 26)))
         .show(ctx, |ui| {
-            render_viewport_content(ui, editor_state, viewport_texture_id);
+            render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id);
         });
 }
 
 /// Render viewport content (for use in docking)
 pub fn render_viewport_content(
     ui: &mut egui::Ui,
-    editor_state: &mut EditorState,
+    viewport: &mut ViewportState,
+    assets: &mut AssetBrowserState,
+    orbit: &OrbitCameraState,
     viewport_texture_id: Option<TextureId>,
 ) {
     let ctx = ui.ctx().clone();
     let content_rect = ui.available_rect_before_wrap();
-    editor_state.viewport_position = [content_rect.min.x, content_rect.min.y];
-    editor_state.viewport_size = [content_rect.width(), content_rect.height()];
-    editor_state.viewport_hovered = ui.rect_contains_pointer(content_rect);
+    viewport.position = [content_rect.min.x, content_rect.min.y];
+    viewport.size = [content_rect.width(), content_rect.height()];
+    viewport.hovered = ui.rect_contains_pointer(content_rect);
 
     // Display the viewport texture if available
     if let Some(texture_id) = viewport_texture_id {
@@ -45,9 +49,9 @@ pub fn render_viewport_content(
     let pointer_pos = ctx.pointer_hover_pos();
     let in_viewport = pointer_pos.map_or(false, |p| content_rect.contains(p));
 
-    if editor_state.dragging_asset.is_some() && ctx.input(|i| i.pointer.any_released()) {
+    if assets.dragging_asset.is_some() && ctx.input(|i| i.pointer.any_released()) {
         if in_viewport {
-            if let Some(asset_path) = editor_state.dragging_asset.take() {
+            if let Some(asset_path) = assets.dragging_asset.take() {
                 if let Some(mouse_pos) = pointer_pos {
                     let local_x = mouse_pos.x - content_rect.min.x;
                     let local_y = mouse_pos.y - content_rect.min.y;
@@ -57,10 +61,10 @@ pub fn render_viewport_content(
 
                     // Calculate ground plane intersection
                     let camera_pos = calculate_camera_position(
-                        editor_state.orbit_focus,
-                        editor_state.orbit_distance,
-                        editor_state.orbit_yaw,
-                        editor_state.orbit_pitch,
+                        orbit.focus,
+                        orbit.distance,
+                        orbit.yaw,
+                        orbit.pitch,
                     );
 
                     let fov = std::f32::consts::FRAC_PI_4;
@@ -77,7 +81,7 @@ pub fn render_viewport_content(
                     )
                     .normalize();
 
-                    let camera_forward = (editor_state.orbit_focus - camera_pos).normalize();
+                    let camera_forward = (orbit.focus - camera_pos).normalize();
                     let camera_right = camera_forward.cross(Vec3::Y).normalize();
                     let camera_up = camera_right.cross(camera_forward).normalize();
 
@@ -97,12 +101,12 @@ pub fn render_viewport_content(
                         Vec3::ZERO
                     };
 
-                    editor_state.pending_asset_drop = Some((asset_path, ground_point));
+                    assets.pending_asset_drop = Some((asset_path, ground_point));
                 }
             }
         } else {
             // Released outside viewport, cancel the drag
-            editor_state.dragging_asset = None;
+            assets.dragging_asset = None;
         }
     }
 }

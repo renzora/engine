@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
 
-use crate::core::{EditorEntity, EditorState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId};
+use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId};
 use crate::node_system::{NodeRegistry, render_node_menu_items};
 use crate::scripting::ScriptComponent;
 
@@ -23,7 +23,8 @@ fn drop_child_color() -> Color32 {
 
 pub fn render_hierarchy(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
     entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -38,11 +39,11 @@ pub fn render_hierarchy(
         .default_width(260.0)
         .resizable(true)
         .show(ctx, |ui| {
-            render_hierarchy_content(ui, editor_state, entities, commands, meshes, materials, node_registry, active_tab);
+            render_hierarchy_content(ui, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab);
         });
 
     // Show drag tooltip
-    if let Some(drag_entity) = editor_state.hierarchy_drag_entity {
+    if let Some(drag_entity) = hierarchy.drag_entity {
         if let Ok((_, editor_entity, _, _, _)) = entities.get(drag_entity) {
             if let Some(pos) = ctx.pointer_hover_pos() {
                 egui::Area::new(egui::Id::new("hierarchy_drag_tooltip"))
@@ -66,7 +67,8 @@ pub fn render_hierarchy(
 /// Render hierarchy content (for use in docking)
 pub fn render_hierarchy_content(
     ui: &mut egui::Ui,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
     entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -92,7 +94,7 @@ pub fn render_hierarchy_content(
     egui::Popup::from_toggle_button_response(&add_response)
         .show(|ui| {
             ui.set_min_width(180.0);
-            render_node_menu_items(ui, node_registry, commands, meshes, materials, None, editor_state);
+            render_node_menu_items(ui, node_registry, commands, meshes, materials, None, selection, hierarchy);
         });
 
     ui.add_space(8.0);
@@ -115,7 +117,7 @@ pub fn render_hierarchy_content(
             ui.label(RichText::new("Click '+ Add Node' to begin").weak());
         } else {
             // Clear drop target at start of frame
-            editor_state.hierarchy_drop_target = None;
+            hierarchy.drop_target = None;
 
             let root_count = root_entities.len();
             for (i, (entity, editor_entity, _, children, _)) in root_entities.into_iter().enumerate() {
@@ -123,7 +125,8 @@ pub fn render_hierarchy_content(
                 render_tree_node(
                     ui,
                     &ctx,
-                    editor_state,
+                    selection,
+                    hierarchy,
                     entities,
                     commands,
                     meshes,
@@ -142,8 +145,8 @@ pub fn render_hierarchy_content(
             // Handle drop when mouse released
             if ctx.input(|i| i.pointer.any_released()) {
                 if let (Some(drag_entity), Some(drop_target)) = (
-                    editor_state.hierarchy_drag_entity.take(),
-                    editor_state.hierarchy_drop_target.take(),
+                    hierarchy.drag_entity.take(),
+                    hierarchy.drop_target.take(),
                 ) {
                     // Don't drop onto self
                     if drag_entity != drop_target.entity {
@@ -154,8 +157,8 @@ pub fn render_hierarchy_content(
 
             // Clear drag if released without valid target
             if ctx.input(|i| i.pointer.any_released()) {
-                editor_state.hierarchy_drag_entity = None;
-                editor_state.hierarchy_drop_target = None;
+                hierarchy.drag_entity = None;
+                hierarchy.drop_target = None;
             }
         }
     });
@@ -164,7 +167,8 @@ pub fn render_hierarchy_content(
 fn render_tree_node(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
     entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
@@ -178,10 +182,10 @@ fn render_tree_node(
     parent_lines: &mut Vec<bool>, // true = draw vertical line at this depth
     _parent_entity: Option<Entity>,
 ) {
-    let is_selected = editor_state.selected_entity == Some(entity);
+    let is_selected = selection.selected_entity == Some(entity);
     let has_children = children.map_or(false, |c| !c.is_empty());
-    let is_expanded = editor_state.expanded_entities.contains(&entity);
-    let is_being_dragged = editor_state.hierarchy_drag_entity == Some(entity);
+    let is_expanded = hierarchy.expanded_entities.contains(&entity);
+    let is_being_dragged = hierarchy.drag_entity == Some(entity);
 
     let row_height = 22.0;
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), row_height), Sense::click_and_drag());
@@ -192,18 +196,18 @@ fn render_tree_node(
 
     // Handle drag start
     if response.drag_started() {
-        editor_state.hierarchy_drag_entity = Some(entity);
+        hierarchy.drag_entity = Some(entity);
     }
 
     // Show drag cursor when dragging
-    if editor_state.hierarchy_drag_entity.is_some() && response.hovered() {
+    if hierarchy.drag_entity.is_some() && response.hovered() {
         ctx.set_cursor_icon(CursorIcon::Grabbing);
     }
 
     // Determine drop target based on mouse position
     let mut current_drop_target: Option<(HierarchyDropPosition, bool)> = None; // (position, show_indicator)
 
-    if let Some(drag_entity) = editor_state.hierarchy_drag_entity {
+    if let Some(drag_entity) = hierarchy.drag_entity {
         if drag_entity != entity && response.hovered() {
             if let Some(pointer_pos) = ctx.pointer_hover_pos() {
                 let relative_y = pointer_pos.y - rect.min.y;
@@ -212,7 +216,7 @@ fn render_tree_node(
                 if relative_y < drop_zone_size {
                     // Top zone - insert before
                     current_drop_target = Some((HierarchyDropPosition::Before, true));
-                    editor_state.hierarchy_drop_target = Some(HierarchyDropTarget {
+                    hierarchy.drop_target = Some(HierarchyDropTarget {
                         entity,
                         position: HierarchyDropPosition::Before,
                     });
@@ -220,13 +224,13 @@ fn render_tree_node(
                     // Bottom zone - insert after (or as first child if has children and expanded)
                     if has_children && is_expanded {
                         current_drop_target = Some((HierarchyDropPosition::AsChild, true));
-                        editor_state.hierarchy_drop_target = Some(HierarchyDropTarget {
+                        hierarchy.drop_target = Some(HierarchyDropTarget {
                             entity,
                             position: HierarchyDropPosition::AsChild,
                         });
                     } else {
                         current_drop_target = Some((HierarchyDropPosition::After, true));
-                        editor_state.hierarchy_drop_target = Some(HierarchyDropTarget {
+                        hierarchy.drop_target = Some(HierarchyDropTarget {
                             entity,
                             position: HierarchyDropPosition::After,
                         });
@@ -234,7 +238,7 @@ fn render_tree_node(
                 } else {
                     // Middle zone - insert as child
                     current_drop_target = Some((HierarchyDropPosition::AsChild, true));
-                    editor_state.hierarchy_drop_target = Some(HierarchyDropTarget {
+                    hierarchy.drop_target = Some(HierarchyDropTarget {
                         entity,
                         position: HierarchyDropPosition::AsChild,
                     });
@@ -331,9 +335,9 @@ fn render_tree_node(
             let arrow = if is_expanded { "▼" } else { "▶" };
             if ui.add(egui::Button::new(RichText::new(arrow).size(10.0)).frame(false)).clicked() {
                 if is_expanded {
-                    editor_state.expanded_entities.remove(&entity);
+                    hierarchy.expanded_entities.remove(&entity);
                 } else {
-                    editor_state.expanded_entities.insert(entity);
+                    hierarchy.expanded_entities.insert(entity);
                 }
             }
         } else {
@@ -353,8 +357,8 @@ fn render_tree_node(
 
         let name_response = ui.selectable_label(is_selected, RichText::new(&editor_entity.name).color(text_color));
 
-        if name_response.clicked() && editor_state.hierarchy_drag_entity.is_none() {
-            editor_state.selected_entity = Some(entity);
+        if name_response.clicked() && hierarchy.drag_entity.is_none() {
+            selection.selected_entity = Some(entity);
         }
 
         // Right-click context menu
@@ -363,7 +367,7 @@ fn render_tree_node(
 
             // Add Child submenu
             ui.menu_button(format!("{} Add Child", PLUS), |ui| {
-                render_node_menu_items(ui, node_registry, commands, meshes, materials, Some(entity), editor_state);
+                render_node_menu_items(ui, node_registry, commands, meshes, materials, Some(entity), selection, hierarchy);
             });
 
             // Add Script
@@ -399,11 +403,11 @@ fn render_tree_node(
                 // Despawn entity and its children
                 commands.entity(entity).despawn();
                 // Clear selection if this was selected
-                if editor_state.selected_entity == Some(entity) {
-                    editor_state.selected_entity = None;
+                if selection.selected_entity == Some(entity) {
+                    selection.selected_entity = None;
                 }
                 // Remove from expanded set
-                editor_state.expanded_entities.remove(&entity);
+                hierarchy.expanded_entities.remove(&entity);
                 ui.close();
             }
         });
@@ -425,7 +429,8 @@ fn render_tree_node(
                     render_tree_node(
                         ui,
                         ctx,
-                        editor_state,
+                        selection,
+                        hierarchy,
                         entities,
                         commands,
                         meshes,

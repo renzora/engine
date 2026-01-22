@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, RichText, Stroke, StrokeKind, Vec2};
 
-use crate::core::{AppState, EditorState};
+use crate::core::{AppState, WindowState, EditorSettings};
 use crate::project::{create_project, open_project, AppConfig, CurrentProject};
 
 use super::title_bar::{render_splash_title_bar, TITLE_BAR_HEIGHT};
@@ -193,14 +193,15 @@ pub struct SplashAnimationState {
 
 pub fn render_splash(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    window_state: &mut WindowState,
+    settings: &mut EditorSettings,
     app_config: &mut AppConfig,
     commands: &mut Commands,
     next_state: &mut NextState<AppState>,
 ) {
     ctx.request_repaint();
 
-    render_splash_title_bar(ctx, editor_state);
+    render_splash_title_bar(ctx, window_state);
 
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE.fill(Color32::from_rgb(18, 18, 22)))
@@ -245,13 +246,13 @@ pub fn render_splash(
                 (screen_rect.height() - splash_height) / 2.0,
             );
 
-            render_splash_window(ui.ctx(), editor_state, app_config, commands, next_state, window_pos, splash_width, splash_height);
+            render_splash_window(ui.ctx(), settings, app_config, commands, next_state, window_pos, splash_width, splash_height);
         });
 }
 
 fn render_splash_window(
     ctx: &egui::Context,
-    editor_state: &mut EditorState,
+    settings: &mut EditorSettings,
     app_config: &mut AppConfig,
     commands: &mut Commands,
     next_state: &mut NextState<AppState>,
@@ -297,7 +298,7 @@ fn render_splash_window(
                     ui.horizontal(|ui| {
                         ui.add_sized(
                             Vec2::new(input_width, 32.0),
-                            egui::TextEdit::singleline(&mut editor_state.new_project_name)
+                            egui::TextEdit::singleline(&mut settings.new_project_name)
                                 .hint_text("Project name...")
                                 .margin(egui::Margin::symmetric(12, 8)),
                         );
@@ -318,10 +319,10 @@ fn render_splash_window(
                             .set_title("Select Project Location")
                             .pick_folder()
                         {
-                            let project_name = if editor_state.new_project_name.is_empty() {
+                            let project_name = if settings.new_project_name.is_empty() {
                                 "New Project"
                             } else {
-                                &editor_state.new_project_name
+                                &settings.new_project_name
                             };
                             let project_path = folder.join(project_name.replace(' ', "_").to_lowercase());
 
