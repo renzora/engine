@@ -1,136 +1,17 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
-use crate::core::{EditorEntity, SceneNode, SelectionState, EditorSettings};
+use crate::core::{EditorSettings, SelectionState, HierarchyState};
 use crate::gizmo::{GizmoMode, GizmoState};
+use crate::node_system::{NodeRegistry, NodeCategory};
 use crate::plugin_core::PluginHost;
-use crate::scene::{spawn_primitive, PrimitiveType};
 use crate::ui_api::UiEvent;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
+    CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN,
 };
-
-#[allow(dead_code)]
-pub fn render_menu_bar(
-    ctx: &egui::Context,
-    selection: &mut SelectionState,
-    settings: &mut EditorSettings,
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-) {
-    egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-        egui::MenuBar::new().ui(ui, |ui| {
-            ui.menu_button("File", |ui| {
-                if ui.button("New Scene").clicked() {
-                    ui.close();
-                }
-                if ui.button("Open Scene...").clicked() {
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Save Scene").clicked() {
-                    ui.close();
-                }
-                if ui.button("Save Scene As...").clicked() {
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Exit").clicked() {
-                    std::process::exit(0);
-                }
-            });
-
-            ui.menu_button("Edit", |ui| {
-                if ui.button("Undo").clicked() {
-                    ui.close();
-                }
-                if ui.button("Redo").clicked() {
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Cut").clicked() {
-                    ui.close();
-                }
-                if ui.button("Copy").clicked() {
-                    ui.close();
-                }
-                if ui.button("Paste").clicked() {
-                    ui.close();
-                }
-                ui.separator();
-                if ui.button("Duplicate").clicked() {
-                    ui.close();
-                }
-                if ui.button("Delete").clicked() {
-                    if let Some(entity) = selection.selected_entity {
-                        commands.entity(entity).despawn();
-                        selection.selected_entity = None;
-                    }
-                    ui.close();
-                }
-            });
-
-            ui.menu_button("GameObject", |ui| {
-                ui.menu_button("3D Object", |ui| {
-                    if ui.button("Cube").clicked() {
-                        spawn_primitive(commands, meshes, materials, PrimitiveType::Cube, "Cube", None);
-                        ui.close();
-                    }
-                    if ui.button("Sphere").clicked() {
-                        spawn_primitive(commands, meshes, materials, PrimitiveType::Sphere, "Sphere", None);
-                        ui.close();
-                    }
-                    if ui.button("Cylinder").clicked() {
-                        spawn_primitive(commands, meshes, materials, PrimitiveType::Cylinder, "Cylinder", None);
-                        ui.close();
-                    }
-                    if ui.button("Plane").clicked() {
-                        spawn_primitive(commands, meshes, materials, PrimitiveType::Plane, "Plane", None);
-                        ui.close();
-                    }
-                });
-                ui.menu_button("Light", |ui| {
-                    if ui.button("Point Light").clicked() {
-                        ui.close();
-                    }
-                    if ui.button("Spot Light").clicked() {
-                        ui.close();
-                    }
-                    if ui.button("Directional Light").clicked() {
-                        ui.close();
-                    }
-                });
-                if ui.button("Empty").clicked() {
-                    commands.spawn((
-                        Transform::default(),
-                        Visibility::default(),
-                        EditorEntity {
-                            name: "Empty".to_string(),
-                        },
-                        SceneNode,
-                    ));
-                    ui.close();
-                }
-            });
-
-            ui.menu_button("View", |ui| {
-                ui.checkbox(&mut settings.show_demo_window, "egui Demo");
-            });
-
-            ui.menu_button("Help", |ui| {
-                if ui.button("Documentation").clicked() {
-                    ui.close();
-                }
-                if ui.button("About").clicked() {
-                    ui.close();
-                }
-            });
-        });
-    });
-}
 
 pub fn render_toolbar(
     ctx: &egui::Context,
@@ -140,6 +21,12 @@ pub fn render_toolbar(
     toolbar_height: f32,
     _window_width: f32,
     plugin_host: &PluginHost,
+    registry: &NodeRegistry,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
@@ -147,12 +34,14 @@ pub fn render_toolbar(
     egui::TopBottomPanel::top("toolbar")
         .exact_height(toolbar_height)
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_centered(|ui| {
+                ui.add_space(8.0);
+
                 let button_size = Vec2::new(28.0, 24.0);
                 let active_color = Color32::from_rgb(66, 150, 250);
                 let inactive_color = Color32::from_rgb(46, 46, 56);
 
-                // Move button (Translate)
+                // === Transform Tools ===
                 let is_translate = gizmo.mode == GizmoMode::Translate;
                 let translate_resp = tool_button(ui, ARROWS_OUT_CARDINAL, button_size, is_translate, active_color, inactive_color);
                 if translate_resp.clicked() {
@@ -160,7 +49,6 @@ pub fn render_toolbar(
                 }
                 translate_resp.on_hover_text("Move (W)");
 
-                // Rotate button
                 let is_rotate = gizmo.mode == GizmoMode::Rotate;
                 let rotate_resp = tool_button(ui, ARROW_CLOCKWISE, button_size, is_rotate, active_color, inactive_color);
                 if rotate_resp.clicked() {
@@ -168,7 +56,6 @@ pub fn render_toolbar(
                 }
                 rotate_resp.on_hover_text("Rotate (E)");
 
-                // Scale button
                 let is_scale = gizmo.mode == GizmoMode::Scale;
                 let scale_resp = tool_button(ui, ARROWS_OUT, button_size, is_scale, active_color, inactive_color);
                 if scale_resp.clicked() {
@@ -176,49 +63,100 @@ pub fn render_toolbar(
                 }
                 scale_resp.on_hover_text("Scale (R)");
 
-                ui.add_space(12.0);
+                separator(ui);
 
-                // Separator
-                let rect = ui.available_rect_before_wrap();
-                ui.painter().line_segment(
-                    [Pos2::new(rect.left(), rect.top() + 4.0), Pos2::new(rect.left(), rect.bottom() - 4.0)],
-                    egui::Stroke::new(1.0, Color32::from_rgb(77, 77, 89)),
-                );
+                // === Add Object Dropdowns ===
+                let mesh_color = Color32::from_rgb(242, 166, 115);
+                let light_color = Color32::from_rgb(255, 230, 140);
+                let camera_color = Color32::from_rgb(140, 191, 242);
 
-                ui.add_space(12.0);
+                // Meshes dropdown
+                dropdown_button(ui, CUBE, "Mesh", mesh_color, inactive_color, |ui| {
+                    for def in registry.get_by_category(NodeCategory::Meshes) {
+                        if menu_item(ui, def.display_name) {
+                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                            selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+                });
 
-                // Play controls
+                // Lights dropdown
+                dropdown_button(ui, LIGHTBULB, "Light", light_color, inactive_color, |ui| {
+                    for def in registry.get_by_category(NodeCategory::Lights) {
+                        if menu_item(ui, def.display_name) {
+                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                            selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+                });
+
+                // Camera dropdown
+                dropdown_button(ui, VIDEO_CAMERA, "Camera", camera_color, inactive_color, |ui| {
+                    for def in registry.get_by_category(NodeCategory::Cameras) {
+                        if menu_item(ui, def.display_name) {
+                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                            selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+                });
+
+                // More objects dropdown
+                let more_color = Color32::from_rgb(160, 160, 175);
+                dropdown_button(ui, PLUS, "More", more_color, inactive_color, |ui| {
+                    // 3D Nodes
+                    ui.label(RichText::new("Nodes").small().color(Color32::from_rgb(120, 120, 130)));
+                    for def in registry.get_by_category(NodeCategory::Nodes3D) {
+                        if menu_item(ui, def.display_name) {
+                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                            selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+
+                    ui.separator();
+
+                    // Physics
+                    ui.label(RichText::new("Physics").small().color(Color32::from_rgb(120, 120, 130)));
+                    for def in registry.get_by_category(NodeCategory::Physics) {
+                        if menu_item(ui, def.display_name) {
+                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                            selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+
+                    ui.separator();
+
+                    // Environment
+                    ui.label(RichText::new("Environment").small().color(Color32::from_rgb(120, 120, 130)));
+                    for def in registry.get_by_category(NodeCategory::Environment) {
+                        if menu_item(ui, def.display_name) {
+                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                            selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+                });
+
+                separator(ui);
+
+                // === Play Controls ===
                 let play_color = Color32::from_rgb(64, 166, 89);
                 let play_resp = tool_button(ui, PLAY, button_size, false, play_color, inactive_color);
-                if play_resp.clicked() {
-                    // Play
-                }
                 play_resp.on_hover_text("Play");
 
                 let pause_resp = tool_button(ui, PAUSE, button_size, false, active_color, inactive_color);
-                if pause_resp.clicked() {
-                    // Pause
-                }
                 pause_resp.on_hover_text("Pause");
 
                 let stop_resp = tool_button(ui, STOP, button_size, false, Color32::from_rgb(200, 80, 80), inactive_color);
-                if stop_resp.clicked() {
-                    // Stop
-                }
                 stop_resp.on_hover_text("Stop");
 
-                // Plugin toolbar items
+                // === Plugin Toolbar Items ===
                 if !api.toolbar_items.is_empty() {
-                    ui.add_space(12.0);
-
-                    // Separator
-                    let rect = ui.available_rect_before_wrap();
-                    ui.painter().line_segment(
-                        [Pos2::new(rect.left(), rect.top() + 4.0), Pos2::new(rect.left(), rect.bottom() - 4.0)],
-                        egui::Stroke::new(1.0, Color32::from_rgb(77, 77, 89)),
-                    );
-
-                    ui.add_space(12.0);
+                    separator(ui);
 
                     for (item, _plugin_id) in &api.toolbar_items {
                         let resp = tool_button(ui, &item.icon, button_size, false, active_color, inactive_color);
@@ -229,34 +167,37 @@ pub fn render_toolbar(
                     }
                 }
 
-                // Spacer to push settings to the right
+                // === Right-aligned Settings ===
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Settings button
+                    ui.add_space(8.0);
                     let settings_resp = tool_button(ui, GEAR, button_size, settings.show_settings_window, active_color, inactive_color);
                     if settings_resp.clicked() {
                         settings.show_settings_window = !settings.show_settings_window;
                     }
-                    settings_resp.on_hover_text("Settings (Ctrl+,)");
+                    settings_resp.on_hover_text("Settings");
                 });
             });
         });
 
-    // Show demo window if enabled
-    if settings.show_demo_window {
-        egui::Window::new("egui Demo").show(ctx, |ui| {
-            ui.label("This is the egui demo window.");
-            if ui.button("Close").clicked() {
-                settings.show_demo_window = false;
-            }
-        });
-    }
+    // Keep hierarchy reference alive
+    let _ = hierarchy;
 
     events
 }
 
+fn separator(ui: &mut egui::Ui) {
+    ui.add_space(8.0);
+    let rect = ui.available_rect_before_wrap();
+    ui.painter().line_segment(
+        [Pos2::new(rect.left(), rect.top() + 6.0), Pos2::new(rect.left(), rect.bottom() - 6.0)],
+        egui::Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
+    );
+    ui.add_space(8.0);
+}
+
 fn tool_button(
     ui: &mut egui::Ui,
-    label: &str,
+    icon: &str,
     size: Vec2,
     active: bool,
     active_color: Color32,
@@ -277,11 +218,81 @@ fn tool_button(
         ui.painter().text(
             rect.center(),
             egui::Align2::CENTER_CENTER,
-            label,
+            icon,
             egui::FontId::proportional(14.0),
             Color32::WHITE,
         );
     }
 
     response
+}
+
+fn dropdown_button(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    let button_id = ui.make_persistent_id(label);
+    let size = Vec2::new(38.0, 24.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        let fill = if hovered {
+            Color32::from_rgb(56, 56, 68)
+        } else {
+            bg_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+
+        // Icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 12.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(13.0),
+            icon_color,
+        );
+
+        // Caret
+        ui.painter().text(
+            Pos2::new(rect.right() - 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            egui::FontId::proportional(10.0),
+            Color32::from_rgb(140, 140, 150),
+        );
+    }
+
+    if response.clicked() {
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(120.0);
+            ui.style_mut().spacing.item_spacing.y = 2.0;
+            add_contents(ui);
+        },
+    );
+
+    response.on_hover_text(label);
+}
+
+fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
+    let response = ui.add(
+        egui::Button::new(label)
+            .fill(Color32::TRANSPARENT)
+            .corner_radius(CornerRadius::same(2))
+            .min_size(Vec2::new(ui.available_width(), 0.0))
+    );
+    response.clicked()
 }
