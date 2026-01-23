@@ -13,7 +13,7 @@ mod viewport;
 
 pub use assets::render_assets;
 pub use hierarchy::render_hierarchy;
-pub use inspector::{render_inspector, InspectorQueries};
+pub use inspector::{render_inspector, InspectorQueries, property_row};
 pub use plugin_ui::{render_plugin_menus, render_plugin_panels, render_plugin_toolbar, render_status_bar};
 pub use scene_tabs::render_scene_tabs;
 pub use script_editor::render_script_editor;

@@ -1,6 +1,6 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, RichText, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, RichText, Rounding, TextureId, Vec2};
 
 use crate::core::{EditorEntity, SelectionState, WorldEnvironmentMarker};
 use crate::node_system::{
@@ -17,8 +17,157 @@ use crate::ui_api::{renderer::UiRenderer, UiEvent};
 use egui_phosphor::regular::{
     SLIDERS, ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
-    CUBE, ATOM,
+    CUBE, ATOM, CARET_DOWN, CARET_RIGHT,
 };
+
+/// Background colors for alternating rows
+const ROW_BG_EVEN: Color32 = Color32::from_rgb(32, 34, 38);
+const ROW_BG_ODD: Color32 = Color32::from_rgb(38, 40, 44);
+
+/// Helper to render a property row with alternating background
+pub fn property_row(ui: &mut egui::Ui, row_index: usize, add_contents: impl FnOnce(&mut egui::Ui)) {
+    let bg_color = if row_index % 2 == 0 { ROW_BG_EVEN } else { ROW_BG_ODD };
+    let available_width = ui.available_width();
+
+    egui::Frame::new()
+        .fill(bg_color)
+        .inner_margin(egui::Margin::symmetric(10, 5))
+        .show(ui, |ui| {
+            ui.set_min_width(available_width - 20.0);
+            add_contents(ui);
+        });
+}
+
+/// Category accent colors for different component types
+struct CategoryStyle {
+    accent_color: Color32,
+    header_bg: Color32,
+}
+
+impl CategoryStyle {
+    fn transform() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(99, 178, 238),   // Blue
+            header_bg: Color32::from_rgb(35, 45, 55),
+        }
+    }
+
+    fn environment() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(134, 188, 126),  // Green
+            header_bg: Color32::from_rgb(35, 48, 42),
+        }
+    }
+
+    fn light() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(247, 207, 100),  // Yellow/Gold
+            header_bg: Color32::from_rgb(50, 45, 35),
+        }
+    }
+
+    fn camera() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(178, 132, 209),  // Purple
+            header_bg: Color32::from_rgb(42, 38, 52),
+        }
+    }
+
+    fn script() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(236, 154, 120),  // Orange
+            header_bg: Color32::from_rgb(50, 40, 38),
+        }
+    }
+
+    fn physics() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(120, 200, 200),  // Cyan
+            header_bg: Color32::from_rgb(35, 48, 50),
+        }
+    }
+
+    fn plugin() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(180, 140, 180),  // Magenta
+            header_bg: Color32::from_rgb(45, 38, 45),
+        }
+    }
+}
+
+/// Renders a styled inspector category with header and content
+fn render_category(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    style: CategoryStyle,
+    id_source: &str,
+    default_open: bool,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) {
+    let id = ui.make_persistent_id(id_source);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+
+    ui.scope(|ui| {
+        // Outer frame for the entire category
+        egui::Frame::new()
+            .fill(Color32::from_rgb(30, 32, 36))
+            .corner_radius(Rounding::same(6))
+            .show(ui, |ui| {
+
+                // Header bar
+                let header_rect = ui.scope(|ui| {
+                    egui::Frame::new()
+                        .fill(style.header_bg)
+                        .corner_radius(Rounding {
+                            nw: 6,
+                            ne: 6,
+                            sw: if state.is_open() { 0 } else { 6 },
+                            se: if state.is_open() { 0 } else { 6 },
+                        })
+                        .inner_margin(egui::Margin::symmetric(8, 6))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                // Collapse indicator
+                                let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
+                                ui.label(RichText::new(caret).size(12.0).color(Color32::from_rgb(140, 142, 148)));
+
+                                // Icon
+                                ui.label(RichText::new(icon).size(15.0).color(style.accent_color));
+
+                                ui.add_space(4.0);
+
+                                // Label
+                                ui.label(RichText::new(label).size(13.0).strong().color(Color32::from_rgb(220, 222, 228)));
+
+                                // Fill remaining width
+                                ui.allocate_space(ui.available_size());
+                            });
+                        });
+                }).response.rect;
+
+                // Make header clickable
+                let header_response = ui.interact(header_rect, id.with("header"), egui::Sense::click());
+                if header_response.clicked() {
+                    state.toggle(ui);
+                }
+
+                // Content area with padding
+                if state.is_open() {
+                    ui.add_space(4.0);
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 4 })
+                        .show(ui, |ui| {
+                            add_contents(ui);
+                        });
+                }
+            });
+    });
+
+    state.store(ui.ctx());
+
+    ui.add_space(6.0);
+}
 
 /// System parameter that bundles all inspector-related queries
 #[derive(SystemParam)]
@@ -104,115 +253,154 @@ pub fn render_inspector_content(
 
                 // Transform section
                 if let Ok(mut transform) = queries.transforms.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Transform", ARROWS_OUT_CARDINAL)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        ARROWS_OUT_CARDINAL,
+                        "Transform",
+                        CategoryStyle::transform(),
+                        "inspector_transform",
+                        true,
+                        |ui| {
                             render_transform_inspector(ui, &mut transform);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // World Environment
                 if let Ok(mut world_env) = queries.world_environments.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} World Environment", GLOBE)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        GLOBE,
+                        "World Environment",
+                        CategoryStyle::environment(),
+                        "inspector_world_env",
+                        true,
+                        |ui| {
                             render_world_environment_inspector(ui, &mut world_env);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // Lights
                 if let Ok(mut point_light) = queries.point_lights.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Point Light", LIGHTBULB)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        LIGHTBULB,
+                        "Point Light",
+                        CategoryStyle::light(),
+                        "inspector_point_light",
+                        true,
+                        |ui| {
                             render_point_light_inspector(ui, &mut point_light);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 if let Ok(mut dir_light) = queries.directional_lights.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Directional Light", SUN)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        SUN,
+                        "Directional Light",
+                        CategoryStyle::light(),
+                        "inspector_dir_light",
+                        true,
+                        |ui| {
                             render_directional_light_inspector(ui, &mut dir_light);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 if let Ok(mut spot_light) = queries.spot_lights.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Spot Light", FLASHLIGHT)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        FLASHLIGHT,
+                        "Spot Light",
+                        CategoryStyle::light(),
+                        "inspector_spot_light",
+                        true,
+                        |ui| {
                             render_spot_light_inspector(ui, &mut spot_light);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // Camera component
                 if let Ok(mut camera_data) = queries.cameras.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Camera3D", VIDEO_CAMERA)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        VIDEO_CAMERA,
+                        "Camera3D",
+                        CategoryStyle::camera(),
+                        "inspector_camera",
+                        true,
+                        |ui| {
                             render_camera_inspector(ui, &mut camera_data, camera_preview_texture_id);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // Script component
                 if let Ok(mut script) = queries.scripts.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Script", CODE)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        CODE,
+                        "Script",
+                        CategoryStyle::script(),
+                        "inspector_script",
+                        true,
+                        |ui| {
                             render_script_inspector(ui, &mut script, script_registry, rhai_engine);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // Physics body
                 if let Ok(mut physics_body) = queries.physics_bodies.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Physics Body", ATOM)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        ATOM,
+                        "Physics Body",
+                        CategoryStyle::physics(),
+                        "inspector_physics_body",
+                        true,
+                        |ui| {
                             render_physics_body_inspector(ui, &mut physics_body);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // Collision shape
                 if let Ok(mut collision_shape) = queries.collision_shapes.get_mut(selected) {
-                    egui::CollapsingHeader::new(RichText::new(format!("{} Collision Shape", CUBE)))
-                        .default_open(true)
-                        .show(ui, |ui| {
+                    render_category(
+                        ui,
+                        CUBE,
+                        "Collision Shape",
+                        CategoryStyle::physics(),
+                        "inspector_collision_shape",
+                        true,
+                        |ui| {
                             render_collision_shape_inspector(ui, &mut collision_shape);
-                        });
-
-                    ui.add_space(4.0);
+                        },
+                    );
                 }
 
                 // Plugin-registered inspector sections
                 let api = plugin_host.api();
                 for (type_id, inspector_def, _plugin_id) in &api.inspectors {
                     if let Some(content) = api.inspector_contents.get(type_id) {
-                        let icon_label = format!("{} {}", PUZZLE_PIECE, inspector_def.label);
-                        egui::CollapsingHeader::new(RichText::new(icon_label))
-                            .default_open(true)
-                            .show(ui, |ui| {
+                        render_category(
+                            ui,
+                            PUZZLE_PIECE,
+                            &inspector_def.label,
+                            CategoryStyle::plugin(),
+                            &format!("inspector_plugin_{:?}", type_id),
+                            true,
+                            |ui| {
                                 for widget in content {
                                     ui_renderer.render(ui, widget);
                                 }
-                            });
-
-                        ui.add_space(4.0);
+                            },
+                        );
                     }
                 }
 

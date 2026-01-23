@@ -41,7 +41,7 @@ use panels::{
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
 };
-pub use panels::handle_window_actions;
+pub use panels::{handle_window_actions, property_row};
 use style::{apply_editor_style, init_fonts};
 
 /// Convert internal UiEvent to plugin API UiEvent
