@@ -241,3 +241,69 @@ pub fn render_plugin_toolbar(ui: &mut egui::Ui, plugin_host: &PluginHost) -> Vec
 
     events
 }
+
+/// Render the status bar at the bottom of the screen
+pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost) {
+    use crate::plugin_core::StatusBarAlign;
+
+    let api = plugin_host.api();
+
+    // Don't render if no status items
+    if api.status_bar_items.is_empty() {
+        return;
+    }
+
+    // Collect and sort items by alignment and priority
+    let mut left_items: Vec<_> = api.status_bar_items.values()
+        .filter(|item| item.align == StatusBarAlign::Left)
+        .collect();
+    let mut right_items: Vec<_> = api.status_bar_items.values()
+        .filter(|item| item.align == StatusBarAlign::Right)
+        .collect();
+
+    // Sort by priority (lower priority = closer to edge)
+    left_items.sort_by_key(|item| item.priority);
+    right_items.sort_by_key(|item| -item.priority); // Reverse for right side
+
+    egui::TopBottomPanel::bottom("status_bar")
+        .exact_height(22.0)
+        .frame(egui::Frame::NONE
+            .fill(Color32::from_rgb(30, 30, 36))
+            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(50, 50, 58))))
+        .show(ctx, |ui| {
+            ui.horizontal_centered(|ui| {
+                ui.spacing_mut().item_spacing.x = 16.0;
+
+                // Left-aligned items
+                for item in &left_items {
+                    render_status_item(ui, item);
+                }
+
+                // Spacer to push right items to the right
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.spacing_mut().item_spacing.x = 16.0;
+
+                    // Right-aligned items (reversed order for right-to-left layout)
+                    for item in right_items.iter().rev() {
+                        render_status_item(ui, item);
+                    }
+                });
+            });
+        });
+
+    fn render_status_item(ui: &mut egui::Ui, item: &crate::plugin_core::StatusBarItem) {
+        let text_color = Color32::from_rgb(180, 180, 190);
+
+        // Build display text with icon if present
+        let display_text = if let Some(icon) = &item.icon {
+            format!("{} {}", icon, item.text)
+        } else {
+            item.text.clone()
+        };
+
+        let label = ui.label(RichText::new(&display_text).size(11.0).color(text_color));
+        if let Some(tooltip) = &item.tooltip {
+            label.on_hover_text(tooltip);
+        }
+    }
+}

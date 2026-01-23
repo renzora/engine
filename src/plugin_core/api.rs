@@ -30,6 +30,7 @@ pub struct EditorApiImpl {
     pub inspector_contents: std::collections::HashMap<String, Vec<Widget>>,
     pub toolbar_items: Vec<ToolbarItem>,
     pub context_menus: Vec<(ContextMenuLocation, MenuItem)>,
+    pub status_bar_items: std::collections::HashMap<String, StatusBarItem>,
 
     // State snapshot (synced from Bevy each frame)
     pub selected_entity: Option<EntityId>,
@@ -64,6 +65,7 @@ impl EditorApiImpl {
             inspector_contents: std::collections::HashMap::new(),
             toolbar_items: Vec::new(),
             context_menus: Vec::new(),
+            status_bar_items: std::collections::HashMap::new(),
             selected_entity: None,
             entity_transforms: std::collections::HashMap::new(),
             entity_names: std::collections::HashMap::new(),
@@ -129,6 +131,14 @@ impl EditorApi for EditorApiImpl {
 
     fn register_context_menu(&mut self, context: ContextMenuLocation, item: MenuItem) {
         self.context_menus.push((context, item));
+    }
+
+    fn set_status_item(&mut self, item: StatusBarItem) {
+        self.status_bar_items.insert(item.id.clone(), item);
+    }
+
+    fn remove_status_item(&mut self, id: &str) {
+        self.status_bar_items.remove(id);
     }
 
     fn set_panel_content(&mut self, panel_id: &str, content: Vec<editor_plugin_api::ui::Widget>) {

@@ -1,8 +1,9 @@
 //! FPS Counter Plugin for the Bevy Editor
 //!
-//! Displays real-time FPS (frames per second) statistics.
+//! Displays real-time FPS (frames per second) statistics in the status bar.
 
 use editor_plugin_api::prelude::*;
+use egui_phosphor::regular::{ACTIVITY, CLOCK};
 
 /// Number of samples to average for smooth FPS display
 const FPS_SAMPLE_COUNT: usize = 60;
@@ -23,8 +24,6 @@ pub struct FpsPlugin {
     max_fps: f32,
     /// Frame counter for periodic updates
     update_counter: u32,
-    /// Whether to show detailed stats
-    show_details: bool,
 }
 
 impl FpsPlugin {
@@ -37,7 +36,6 @@ impl FpsPlugin {
             min_fps: f32::MAX,
             max_fps: 0.0,
             update_counter: 0,
-            show_details: false,
         }
     }
 
@@ -65,15 +63,6 @@ impl FpsPlugin {
         }
     }
 
-    fn fps_color(&self) -> [f32; 4] {
-        if self.cached_fps >= 55.0 {
-            [0.4, 0.8, 0.4, 1.0] // Green - good
-        } else if self.cached_fps >= 30.0 {
-            [0.9, 0.7, 0.2, 1.0] // Yellow - okay
-        } else {
-            [0.9, 0.3, 0.3, 1.0] // Red - bad
-        }
-    }
 }
 
 impl Default for FpsPlugin {
@@ -86,25 +75,17 @@ impl EditorPlugin for FpsPlugin {
     fn manifest(&self) -> PluginManifest {
         PluginManifest::new("com.bevy-editor.fps-counter", "FPS Counter", "0.1.0")
             .author("Bevy Editor Team")
-            .description("Displays real-time FPS statistics")
-            .capability(PluginCapability::Panel)
+            .description("Displays real-time FPS statistics in the status bar")
     }
 
     fn on_load(&mut self, api: &mut dyn EditorApi) -> Result<(), PluginError> {
         api.log_info("FPS Counter plugin loaded!");
-
-        // Register a small floating panel
-        api.register_panel(
-            PanelDefinition::new("fps_panel", "FPS")
-                .icon("📊")
-                .location(PanelLocation::Floating)
-                .min_size(140.0, 80.0)
-        );
-
         Ok(())
     }
 
     fn on_unload(&mut self, api: &mut dyn EditorApi) {
+        api.remove_status_item("fps");
+        api.remove_status_item("frame_time");
         api.log_info("FPS Counter plugin unloaded!");
     }
 
@@ -112,55 +93,31 @@ impl EditorPlugin for FpsPlugin {
         // Update statistics
         self.update_stats(dt);
 
-        // Build panel content
-        let mut content = vec![
-            // Main FPS display
-            Widget::Label {
-                text: format!("{:.0} FPS", self.cached_fps),
-                style: TextStyle::Heading1,
-            },
-            Widget::Label {
-                text: format!("{:.2} ms", self.cached_frame_time),
-                style: TextStyle::Caption,
-            },
-        ];
+        // Update status bar items
+        api.set_status_item(
+            StatusBarItem::new("fps", format!("{:.0} FPS", self.cached_fps))
+                .icon(ACTIVITY)
+                .tooltip(format!(
+                    "Frame Rate\nCurrent: {:.0} FPS\nMin: {:.0} FPS\nMax: {:.0} FPS",
+                    self.cached_fps,
+                    if self.min_fps < f32::MAX { self.min_fps } else { 0.0 },
+                    self.max_fps
+                ))
+                .align_right()
+                .priority(100)
+        );
 
-        // Toggle for details
-        content.push(Widget::checkbox("Details", self.show_details, UiId::new(1)));
-
-        if self.show_details {
-            content.push(Widget::Separator);
-            content.push(Widget::Label {
-                text: format!("Min: {:.0} FPS", if self.min_fps < f32::MAX { self.min_fps } else { 0.0 }),
-                style: TextStyle::Caption,
-            });
-            content.push(Widget::Label {
-                text: format!("Max: {:.0} FPS", self.max_fps),
-                style: TextStyle::Caption,
-            });
-
-            // Reset button
-            content.push(Widget::button("Reset Stats", UiId::new(2)));
-        }
-
-        api.set_panel_content("fps_panel", content);
+        api.set_status_item(
+            StatusBarItem::new("frame_time", format!("{:.2} ms", self.cached_frame_time))
+                .icon(CLOCK)
+                .tooltip("Frame Time (milliseconds)")
+                .align_right()
+                .priority(99)
+        );
     }
 
-    fn on_event(&mut self, api: &mut dyn EditorApi, event: &EditorEvent) {
-        if let EditorEvent::UiEvent(ui_event) = event {
-            match ui_event {
-                UiEvent::CheckboxToggled { id, checked } if id.0 == 1 => {
-                    self.show_details = *checked;
-                }
-                UiEvent::ButtonClicked(id) if id.0 == 2 => {
-                    // Reset stats
-                    self.min_fps = f32::MAX;
-                    self.max_fps = 0.0;
-                    api.log_info("FPS stats reset!");
-                }
-                _ => {}
-            }
-        }
+    fn on_event(&mut self, _api: &mut dyn EditorApi, _event: &EditorEvent) {
+        // No UI events to handle
     }
 }
 

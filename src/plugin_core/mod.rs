@@ -14,7 +14,7 @@ pub mod traits;
 pub use abi::*;
 pub use api::{
     ContextMenuLocation, EditorApi, EditorApiImpl, InspectorDefinition, MenuItem, MenuLocation,
-    PanelDefinition, PanelLocation, PendingOperation, ToolbarItem,
+    PanelDefinition, PanelLocation, PendingOperation, StatusBarAlign, StatusBarItem, ToolbarItem,
 };
 pub use host::PluginHost;
 pub use registry::PluginRegistry;

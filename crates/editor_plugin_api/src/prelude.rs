@@ -17,7 +17,7 @@ pub use crate::abi::{
 pub use crate::api::{
     Command, ContextMenuLocation, CustomEvent, EditorApi, EntityDefinition, EntityQuery,
     InspectorDefinition, MenuItem, MenuLocation, PanelDefinition, PanelLocation, SettingValue,
-    ToolbarItem,
+    StatusBarAlign, StatusBarItem, ToolbarItem,
 };
 
 // Event types
@@ -28,3 +28,6 @@ pub use crate::traits::{CreatePluginFn, EditorPlugin};
 
 // UI types
 pub use crate::ui::{Align, Size, Tab, TableColumn, TableRow, TextStyle, UiId, Widget};
+
+// Icons - re-export egui_phosphor for easy access
+pub use crate::egui_phosphor;

@@ -37,8 +37,8 @@ use crate::ui_api::UiEvent as InternalUiEvent;
 use panels::{
     render_assets, render_hierarchy, render_inspector, render_plugin_menus, render_plugin_panels,
     render_plugin_toolbar, render_scene_tabs, render_script_editor, render_settings_window,
-    render_splash, render_title_bar, render_toolbar, render_viewport, InspectorQueries,
-    TITLE_BAR_HEIGHT,
+    render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
+    InspectorQueries, TITLE_BAR_HEIGHT,
 };
 pub use panels::handle_window_actions;
 use style::{apply_editor_style, init_fonts};
@@ -168,6 +168,9 @@ pub fn editor_ui(
     };
 
     apply_editor_style(ctx);
+
+    // Render status bar at bottom (must be rendered early to reserve space)
+    render_status_bar(ctx, &editor.plugin_host);
 
     // Collect all UI events to forward to plugins
     let mut all_ui_events = Vec::new();

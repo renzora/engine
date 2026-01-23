@@ -6,7 +6,8 @@ description = "API for creating plugins for the Bevy Editor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-# Minimal dependencies for plugin authors
+# Icons - re-exported for plugins to use directly
+egui-phosphor = { version = "0.11", features = ["regular", "fill"] }
 
 [lib]
 # Allow usage both as rlib (for editor) and as reference for plugins

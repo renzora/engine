@@ -1,6 +1,15 @@
 //! Editor API exposed to plugins.
 //!
 //! This module defines the interface that plugins use to interact with the editor.
+//!
+//! # Icons
+//!
+//! Plugins can use icons from `egui_phosphor` which is re-exported:
+//! ```rust,ignore
+//! use editor_plugin_api::egui_phosphor::regular::*;
+//!
+//! StatusBarItem::new("cpu", "CPU 45%").icon(CPU)
+//! ```
 
 use crate::abi::{AssetHandle, AssetStatus, EntityId, PluginTransform};
 use crate::events::{EditorEventType, UiEvent};
@@ -24,6 +33,7 @@ pub struct MenuItem {
     pub id: UiId,
     pub label: String,
     pub shortcut: Option<String>,
+    /// Icon string (use egui_phosphor constants like `egui_phosphor::regular::GEAR`)
     pub icon: Option<String>,
     pub enabled: bool,
     pub children: Vec<MenuItem>,
@@ -46,6 +56,7 @@ impl MenuItem {
         self
     }
 
+    /// Set icon (use egui_phosphor constants)
     pub fn icon(mut self, icon: impl Into<String>) -> Self {
         self.icon = Some(icon.into());
         self
@@ -67,6 +78,7 @@ impl MenuItem {
 pub struct PanelDefinition {
     pub id: String,
     pub title: String,
+    /// Icon string (use egui_phosphor constants)
     pub icon: Option<String>,
     pub default_location: PanelLocation,
     pub min_size: [f32; 2],
@@ -85,6 +97,7 @@ impl PanelDefinition {
         }
     }
 
+    /// Set icon (use egui_phosphor constants)
     pub fn icon(mut self, icon: impl Into<String>) -> Self {
         self.icon = Some(icon.into());
         self
@@ -124,12 +137,14 @@ pub struct InspectorDefinition {
 #[derive(Clone, Debug)]
 pub struct ToolbarItem {
     pub id: UiId,
+    /// Icon string (use egui_phosphor constants)
     pub icon: String,
     pub tooltip: String,
     pub group: Option<String>,
 }
 
 impl ToolbarItem {
+    /// Create a toolbar item with an icon
     pub fn new(id: UiId, icon: impl Into<String>, tooltip: impl Into<String>) -> Self {
         Self {
             id,
@@ -141,6 +156,70 @@ impl ToolbarItem {
 
     pub fn group(mut self, group: impl Into<String>) -> Self {
         self.group = Some(group.into());
+        self
+    }
+}
+
+/// Status bar item alignment
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum StatusBarAlign {
+    #[default]
+    Left,
+    Right,
+}
+
+/// Status bar item definition
+#[derive(Clone, Debug)]
+pub struct StatusBarItem {
+    /// Unique identifier for this status item
+    pub id: String,
+    /// Icon string (use egui_phosphor constants, e.g. `egui_phosphor::regular::CPU`)
+    pub icon: Option<String>,
+    /// Display text
+    pub text: String,
+    /// Tooltip shown on hover
+    pub tooltip: Option<String>,
+    /// Alignment in the status bar
+    pub align: StatusBarAlign,
+    /// Priority for ordering (higher = further from edge)
+    pub priority: i32,
+}
+
+impl StatusBarItem {
+    pub fn new(id: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            id: id.into(),
+            icon: None,
+            text: text.into(),
+            tooltip: None,
+            align: StatusBarAlign::Left,
+            priority: 0,
+        }
+    }
+
+    /// Set the icon (use egui_phosphor constants)
+    pub fn icon(mut self, icon: impl Into<String>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+
+    pub fn tooltip(mut self, tooltip: impl Into<String>) -> Self {
+        self.tooltip = Some(tooltip.into());
+        self
+    }
+
+    pub fn align(mut self, align: StatusBarAlign) -> Self {
+        self.align = align;
+        self
+    }
+
+    pub fn align_right(mut self) -> Self {
+        self.align = StatusBarAlign::Right;
+        self
+    }
+
+    pub fn priority(mut self, priority: i32) -> Self {
+        self.priority = priority;
         self
     }
 }
@@ -258,6 +337,15 @@ pub trait EditorApi {
 
     /// Register a context menu item
     fn register_context_menu(&mut self, context: ContextMenuLocation, item: MenuItem);
+
+    // === Status Bar ===
+
+    /// Set or update a status bar item
+    /// If an item with this id already exists, it will be updated
+    fn set_status_item(&mut self, item: StatusBarItem);
+
+    /// Remove a status bar item
+    fn remove_status_item(&mut self, id: &str);
 
     // === UI Content ===
 

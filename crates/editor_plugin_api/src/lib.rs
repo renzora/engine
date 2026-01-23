@@ -65,6 +65,9 @@ pub mod ui;
 
 pub mod prelude;
 
+// Re-export egui-phosphor icons for plugins to use directly
+pub use egui_phosphor;
+
 // Re-export core types at crate root
 pub use abi::*;
 pub use api::*;
