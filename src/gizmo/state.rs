@@ -21,6 +21,85 @@ pub enum DragAxis {
     Free,
 }
 
+/// Snapping settings for transform operations
+#[derive(Clone, Copy, PartialEq)]
+pub struct SnapSettings {
+    /// Enable position snapping
+    pub translate_enabled: bool,
+    /// Position snap increment (in units)
+    pub translate_snap: f32,
+    /// Enable rotation snapping
+    pub rotate_enabled: bool,
+    /// Rotation snap increment (in degrees)
+    pub rotate_snap: f32,
+    /// Enable scale snapping
+    pub scale_enabled: bool,
+    /// Scale snap increment
+    pub scale_snap: f32,
+}
+
+impl Default for SnapSettings {
+    fn default() -> Self {
+        Self {
+            translate_enabled: false,
+            translate_snap: 1.0,
+            rotate_enabled: false,
+            rotate_snap: 15.0,
+            scale_enabled: false,
+            scale_snap: 0.25,
+        }
+    }
+}
+
+impl SnapSettings {
+    /// Snap a position value if snapping is enabled
+    pub fn snap_translate(&self, value: f32) -> f32 {
+        if self.translate_enabled && self.translate_snap > 0.0 {
+            (value / self.translate_snap).round() * self.translate_snap
+        } else {
+            value
+        }
+    }
+
+    /// Snap a Vec3 position if snapping is enabled
+    pub fn snap_translate_vec3(&self, value: Vec3) -> Vec3 {
+        Vec3::new(
+            self.snap_translate(value.x),
+            self.snap_translate(value.y),
+            self.snap_translate(value.z),
+        )
+    }
+
+    /// Snap a rotation value (in radians) if snapping is enabled
+    pub fn snap_rotate(&self, radians: f32) -> f32 {
+        if self.rotate_enabled && self.rotate_snap > 0.0 {
+            let degrees = radians.to_degrees();
+            let snapped = (degrees / self.rotate_snap).round() * self.rotate_snap;
+            snapped.to_radians()
+        } else {
+            radians
+        }
+    }
+
+    /// Snap a scale value if snapping is enabled
+    pub fn snap_scale(&self, value: f32) -> f32 {
+        if self.scale_enabled && self.scale_snap > 0.0 {
+            (value / self.scale_snap).round() * self.scale_snap
+        } else {
+            value
+        }
+    }
+
+    /// Snap a Vec3 scale if snapping is enabled
+    pub fn snap_scale_vec3(&self, value: Vec3) -> Vec3 {
+        Vec3::new(
+            self.snap_scale(value.x),
+            self.snap_scale(value.y),
+            self.snap_scale(value.z),
+        )
+    }
+}
+
 /// State for the gizmo system
 #[derive(Resource)]
 pub struct GizmoState {
@@ -42,6 +121,8 @@ pub struct GizmoState {
     pub drag_start_scale: Vec3,
     /// Starting distance for scale drag
     pub drag_start_distance: f32,
+    /// Snapping settings
+    pub snap: SnapSettings,
 }
 
 impl Default for GizmoState {
@@ -56,6 +137,7 @@ impl Default for GizmoState {
             drag_start_rotation: Quat::IDENTITY,
             drag_start_scale: Vec3::ONE,
             drag_start_distance: 0.0,
+            snap: SnapSettings::default(),
         }
     }
 }

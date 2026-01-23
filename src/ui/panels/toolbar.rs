@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
 use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode};
-use crate::gizmo::{GizmoMode, GizmoState};
+use crate::gizmo::{GizmoMode, GizmoState, SnapSettings};
 use crate::node_system::{NodeRegistry, NodeCategory};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
@@ -11,7 +11,7 @@ use crate::ui_api::UiEvent;
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
     CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, EYE, IMAGE, POLYGON,
-    SUN, CLOUD,
+    SUN, CLOUD, MAGNET,
 };
 
 pub fn render_toolbar(
@@ -35,10 +35,20 @@ pub fn render_toolbar(
     egui::TopBottomPanel::top("toolbar")
         .exact_height(toolbar_height)
         .show(ctx, |ui| {
-            ui.horizontal_centered(|ui| {
-                ui.add_space(8.0);
+            let available_width = ui.available_width();
 
+            ui.horizontal_centered(|ui| {
+                // Calculate approximate width of all toolbar content
+                // 3 transform + sep + 4 dropdowns + sep + 4 toggles + 1 dropdown + sep + 3 play + settings
                 let button_size = Vec2::new(28.0, 24.0);
+                let dropdown_size = 38.0;
+                let sep_size = 16.0;
+                let total_width = (3.0 * button_size.x) + sep_size + (4.0 * dropdown_size) + sep_size
+                    + (4.0 * button_size.x) + dropdown_size + sep_size + (3.0 * button_size.x) + button_size.x + 40.0;
+
+                // Center the content
+                let padding = ((available_width - total_width) / 2.0).max(8.0);
+                ui.add_space(padding);
                 let active_color = Color32::from_rgb(66, 150, 250);
                 let inactive_color = Color32::from_rgb(46, 46, 56);
 
@@ -63,6 +73,17 @@ pub fn render_toolbar(
                     gizmo.mode = GizmoMode::Scale;
                 }
                 scale_resp.on_hover_text("Scale (R)");
+
+                ui.add_space(4.0);
+
+                // === Snap Dropdown ===
+                let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled;
+                let snap_color = if any_snap_enabled {
+                    Color32::from_rgb(140, 191, 242)
+                } else {
+                    Color32::from_rgb(140, 140, 150)
+                };
+                snap_dropdown(ui, MAGNET, "Snap", snap_color, inactive_color, &mut gizmo.snap);
 
                 separator(ui);
 
@@ -237,15 +258,14 @@ pub fn render_toolbar(
                     }
                 }
 
-                // === Right-aligned Settings ===
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(8.0);
-                    let settings_resp = tool_button(ui, GEAR, button_size, settings.show_settings_window, active_color, inactive_color);
-                    if settings_resp.clicked() {
-                        settings.show_settings_window = !settings.show_settings_window;
-                    }
-                    settings_resp.on_hover_text("Settings");
-                });
+                separator(ui);
+
+                // === Settings ===
+                let settings_resp = tool_button(ui, GEAR, button_size, settings.show_settings_window, active_color, inactive_color);
+                if settings_resp.clicked() {
+                    settings.show_settings_window = !settings.show_settings_window;
+                }
+                settings_resp.on_hover_text("Settings");
             });
         });
 
@@ -365,4 +385,124 @@ fn menu_item(ui: &mut egui::Ui, label: &str) -> bool {
             .min_size(Vec2::new(ui.available_width(), 0.0))
     );
     response.clicked()
+}
+
+fn snap_dropdown(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    snap: &mut SnapSettings,
+) {
+    let button_id = ui.make_persistent_id("snap_dropdown");
+    let size = Vec2::new(38.0, 24.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        let fill = if hovered {
+            Color32::from_rgb(56, 56, 68)
+        } else {
+            bg_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+
+        // Icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 12.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(13.0),
+            icon_color,
+        );
+
+        // Caret
+        ui.painter().text(
+            Pos2::new(rect.right() - 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            egui::FontId::proportional(10.0),
+            Color32::from_rgb(140, 140, 150),
+        );
+    }
+
+    if response.clicked() {
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(180.0);
+            ui.style_mut().spacing.item_spacing.y = 4.0;
+
+            ui.label(RichText::new("Snapping").small().color(Color32::from_rgb(140, 140, 150)));
+            ui.add_space(4.0);
+
+            // Position snap
+            ui.horizontal(|ui| {
+                let pos_active = snap.translate_enabled;
+                if ui.add(
+                    egui::Button::new(RichText::new("Position").size(12.0))
+                        .fill(if pos_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
+                        .min_size(Vec2::new(70.0, 20.0))
+                ).clicked() {
+                    snap.translate_enabled = !snap.translate_enabled;
+                }
+
+                ui.add(
+                    egui::DragValue::new(&mut snap.translate_snap)
+                        .range(0.01..=100.0)
+                        .speed(0.1)
+                        .max_decimals(2)
+                );
+            });
+
+            // Rotation snap
+            ui.horizontal(|ui| {
+                let rot_active = snap.rotate_enabled;
+                if ui.add(
+                    egui::Button::new(RichText::new("Rotation").size(12.0))
+                        .fill(if rot_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
+                        .min_size(Vec2::new(70.0, 20.0))
+                ).clicked() {
+                    snap.rotate_enabled = !snap.rotate_enabled;
+                }
+
+                ui.add(
+                    egui::DragValue::new(&mut snap.rotate_snap)
+                        .range(1.0..=90.0)
+                        .speed(1.0)
+                        .max_decimals(0)
+                        .suffix("°")
+                );
+            });
+
+            // Scale snap
+            ui.horizontal(|ui| {
+                let scale_active = snap.scale_enabled;
+                if ui.add(
+                    egui::Button::new(RichText::new("Scale").size(12.0))
+                        .fill(if scale_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
+                        .min_size(Vec2::new(70.0, 20.0))
+                ).clicked() {
+                    snap.scale_enabled = !snap.scale_enabled;
+                }
+
+                ui.add(
+                    egui::DragValue::new(&mut snap.scale_snap)
+                        .range(0.01..=10.0)
+                        .speed(0.05)
+                        .max_decimals(2)
+                );
+            });
+        },
+    );
+
+    response.on_hover_text(label);
 }

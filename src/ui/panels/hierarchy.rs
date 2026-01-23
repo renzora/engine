@@ -36,13 +36,12 @@ pub fn render_hierarchy(
     materials: &mut Assets<StandardMaterial>,
     node_registry: &NodeRegistry,
     active_tab: usize,
-    _left_panel_width: f32,
-    _content_start_y: f32,
-    _content_height: f32,
+    stored_width: f32,
     plugin_host: &PluginHost,
     assets: &mut AssetBrowserState,
-) -> Vec<UiEvent> {
+) -> (Vec<UiEvent>, f32) {
     let mut ui_events = Vec::new();
+    let mut actual_width = stored_width;
 
     // Check if a scene file is being dragged
     let dragging_scene = assets.dragging_asset.as_ref()
@@ -50,9 +49,11 @@ pub fn render_hierarchy(
         .unwrap_or(false);
 
     egui::SidePanel::left("hierarchy")
-        .default_width(260.0)
+        .default_width(stored_width)
         .resizable(true)
         .show(ctx, |ui| {
+            // Get actual width from the panel
+            actual_width = ui.available_width() + 16.0; // Account for panel padding
             let events = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene);
             ui_events.extend(events);
         });
@@ -78,7 +79,7 @@ pub fn render_hierarchy(
         }
     }
 
-    ui_events
+    (ui_events, actual_width)
 }
 
 /// Render hierarchy content (for use in docking)
@@ -134,32 +135,48 @@ pub fn render_hierarchy_content(
         }
     }
 
+    // Compact tab header
     ui.horizontal(|ui| {
-        ui.label(RichText::new(TREE_STRUCTURE).size(18.0).color(Color32::from_rgb(140, 191, 242)));
-        ui.heading("Hierarchy");
-    });
+        // Tab-style header
+        let tab_rect = ui.available_rect_before_wrap();
+        let tab_height = 24.0;
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(80.0, tab_height), egui::Sense::hover());
 
-    ui.add_space(8.0);
-
-    // Only show Add Node button if there's a scene root
-    if has_scene_root {
-        let add_response = ui.add_sized(
-            Vec2::new(ui.available_width() - 8.0, 28.0),
-            egui::Button::new(RichText::new(format!("{} Add Node", PLUS)).size(13.0))
-                .fill(Color32::from_rgb(51, 115, 191)),
+        // Draw tab background
+        ui.painter().rect_filled(
+            rect,
+            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+            Color32::from_rgb(45, 47, 53),
         );
 
-        egui::Popup::from_toggle_button_response(&add_response)
-            .show(|ui| {
-                ui.set_min_width(180.0);
-                // Pass scene root as parent so all new nodes are children of it
-                render_node_menu_as_submenus(ui, node_registry, commands, meshes, materials, scene_root_entity, selection, hierarchy);
-            });
-    }
+        // Tab text
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            format!("{} Hierarchy", TREE_STRUCTURE),
+            egui::FontId::proportional(12.0),
+            Color32::from_rgb(200, 200, 210),
+        );
 
-    ui.add_space(8.0);
-    ui.separator();
-    ui.add_space(8.0);
+        // Add Node button (compact, on the right)
+        if has_scene_root {
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let add_response = ui.add(
+                    egui::Button::new(RichText::new(PLUS).size(14.0))
+                        .fill(Color32::from_rgb(51, 115, 191))
+                        .min_size(Vec2::new(24.0, 20.0)),
+                );
+
+                egui::Popup::from_toggle_button_response(&add_response)
+                    .show(|ui| {
+                        ui.set_min_width(180.0);
+                        render_node_menu_as_submenus(ui, node_registry, commands, meshes, materials, scene_root_entity, selection, hierarchy);
+                    });
+            });
+        }
+    });
+
+    ui.add_space(4.0);
 
     // Scene tree
     egui::ScrollArea::vertical().show(ui, |ui| {

@@ -375,7 +375,8 @@ pub fn object_drag_system(
                 None => current_pos,
             };
 
-            obj_transform.translation = new_pos;
+            // Apply position snapping
+            obj_transform.translation = gizmo.snap.snap_translate_vec3(new_pos);
         }
         GizmoMode::Rotate => {
             let pos = obj_transform.translation;
@@ -395,8 +396,11 @@ pub fn object_drag_system(
                 let dot = start_dir.dot(to_hit);
                 let angle = cross.dot(axis_vec).atan2(dot);
 
+                // Apply rotation snapping
+                let snapped_angle = gizmo.snap.snap_rotate(angle);
+
                 // Apply rotation relative to start rotation
-                let rotation_delta = Quat::from_axis_angle(axis_vec, angle);
+                let rotation_delta = Quat::from_axis_angle(axis_vec, snapped_angle);
                 obj_transform.rotation = rotation_delta * gizmo.drag_start_rotation;
             }
         }
@@ -410,19 +414,22 @@ pub fn object_drag_system(
                     let point = ray_to_axis_closest_point(&ray, pos, Vec3::X);
                     let current_dist = (point - pos).dot(Vec3::X).abs();
                     let scale_factor = current_dist / start_dist;
-                    obj_transform.scale.x = (start_scale.x * scale_factor).max(0.01);
+                    let new_scale = (start_scale.x * scale_factor).max(0.01);
+                    obj_transform.scale.x = gizmo.snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Y) => {
                     let point = ray_to_axis_closest_point(&ray, pos, Vec3::Y);
                     let current_dist = (point - pos).dot(Vec3::Y).abs();
                     let scale_factor = current_dist / start_dist;
-                    obj_transform.scale.y = (start_scale.y * scale_factor).max(0.01);
+                    let new_scale = (start_scale.y * scale_factor).max(0.01);
+                    obj_transform.scale.y = gizmo.snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Z) => {
                     let point = ray_to_axis_closest_point(&ray, pos, Vec3::Z);
                     let current_dist = (point - pos).dot(Vec3::Z).abs();
                     let scale_factor = current_dist / start_dist;
-                    obj_transform.scale.z = (start_scale.z * scale_factor).max(0.01);
+                    let new_scale = (start_scale.z * scale_factor).max(0.01);
+                    obj_transform.scale.z = gizmo.snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Free) => {
                     // Uniform scale - use camera plane
@@ -430,7 +437,8 @@ pub fn object_drag_system(
                     if let Some(point) = ray_plane_intersection(&ray, pos, cam_forward) {
                         let current_dist = (point - pos).length();
                         let scale_factor = current_dist / start_dist;
-                        obj_transform.scale = (start_scale * scale_factor).max(Vec3::splat(0.01));
+                        let new_scale = (start_scale * scale_factor).max(Vec3::splat(0.01));
+                        obj_transform.scale = gizmo.snap.snap_scale_vec3(new_scale);
                     }
                 }
                 _ => {}

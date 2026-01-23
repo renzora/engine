@@ -209,36 +209,37 @@ pub fn editor_ui(
     );
     all_ui_events.extend(toolbar_events);
 
+    // Use stored panel widths from viewport state
+    let stored_hierarchy_width = editor.viewport.hierarchy_width;
+    let stored_inspector_width = editor.viewport.inspector_width;
+    let stored_assets_height = editor.viewport.assets_height;
+
     // Render scene tabs
-    let left_panel_width = 260.0;
-    let right_panel_width = 320.0;
     let scene_tabs_height = render_scene_tabs(
         ctx,
         &mut editor.scene_state,
-        left_panel_width,
-        right_panel_width,
+        stored_hierarchy_width,
+        stored_inspector_width,
         TITLE_BAR_HEIGHT + toolbar_height,
     );
 
     // Render bottom panel (assets)
-    let bottom_panel_height = 200.0;
     render_assets(
         ctx,
         current_project.as_deref(),
         &mut editor.viewport,
         &mut editor.assets,
         &mut editor.scene_state,
-        260.0,
-        320.0,
-        bottom_panel_height,
+        stored_hierarchy_width,
+        stored_inspector_width,
+        stored_assets_height,
     );
 
-    // Render left panel (hierarchy)
+    // Render left panel (hierarchy) - returns actual width after resize
     let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + scene_tabs_height;
-    let viewport_height = 500.0; // Will be calculated by panels
 
     let active_tab = editor.scene_state.active_scene_tab;
-    let hierarchy_events = render_hierarchy(
+    let (hierarchy_events, actual_hierarchy_width) = render_hierarchy(
         ctx,
         &mut editor.selection,
         &mut editor.hierarchy,
@@ -248,55 +249,59 @@ pub fn editor_ui(
         &mut materials,
         &node_registry,
         active_tab,
-        left_panel_width,
-        content_start_y,
-        viewport_height,
+        stored_hierarchy_width,
         &editor.plugin_host,
         &mut editor.assets,
     );
     all_ui_events.extend(hierarchy_events);
 
-    // Render right panel (inspector)
-    let inspector_events = render_inspector(
+    // Update stored hierarchy width
+    editor.viewport.hierarchy_width = actual_hierarchy_width;
+
+    // Render right panel (inspector) - returns actual width after resize
+    let (inspector_events, actual_inspector_width) = render_inspector(
         ctx,
         &editor.selection,
         &entities_for_inspector,
         &mut inspector_queries,
         &script_registry,
         &rhai_engine,
-        right_panel_width,
+        stored_inspector_width,
         camera_preview_texture_id,
         &editor.plugin_host,
         &mut ui_renderer,
     );
     all_ui_events.extend(inspector_events);
 
+    // Update stored inspector width
+    editor.viewport.inspector_width = actual_inspector_width;
+
     // Calculate available height for central area
     let screen_rect = ctx.screen_rect();
-    let central_height = screen_rect.height() - content_start_y - editor.viewport.assets_height;
+    let central_height = screen_rect.height() - content_start_y - stored_assets_height - 24.0; // 24.0 for status bar
 
     // Render script editor if scripts are open, otherwise render viewport
     let script_editor_shown = render_script_editor(
         ctx,
         &mut editor.scene_state,
-        left_panel_width,
-        right_panel_width,
+        actual_hierarchy_width,
+        actual_inspector_width,
         content_start_y,
         central_height,
     );
 
     if !script_editor_shown {
-        // Render central viewport
+        // Render central viewport (docked between panels)
         render_viewport(
             ctx,
             &mut editor.viewport,
             &mut editor.assets,
             &editor.orbit,
-            left_panel_width,
-            right_panel_width,
+            actual_hierarchy_width,
+            actual_inspector_width,
             content_start_y,
             [1600.0, 900.0],
-            viewport_height,
+            central_height,
             viewport_texture_id,
         );
     }

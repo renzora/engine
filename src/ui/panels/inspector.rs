@@ -190,22 +190,25 @@ pub fn render_inspector(
     queries: &mut InspectorQueries,
     script_registry: &ScriptRegistry,
     rhai_engine: &RhaiScriptEngine,
-    _right_panel_width: f32,
+    stored_width: f32,
     camera_preview_texture_id: Option<TextureId>,
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
-) -> Vec<UiEvent> {
+) -> (Vec<UiEvent>, f32) {
     let mut ui_events = Vec::new();
+    let mut actual_width = stored_width;
 
     egui::SidePanel::right("inspector")
-        .default_width(320.0)
+        .default_width(stored_width)
         .resizable(true)
         .show(ctx, |ui| {
+            // Get actual width from the panel
+            actual_width = ui.available_width() + 16.0; // Account for panel padding
             let events = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
             ui_events.extend(events);
         });
 
-    ui_events
+    (ui_events, actual_width)
 }
 
 /// Render inspector content (for use in docking)
@@ -222,13 +225,29 @@ pub fn render_inspector_content(
 ) -> Vec<UiEvent> {
     let panel_width = ui.available_width();
 
+    // Compact tab header
     ui.horizontal(|ui| {
-        ui.label(RichText::new(SLIDERS).size(18.0).color(Color32::from_rgb(140, 191, 242)));
-        ui.heading("Inspector");
+        let tab_height = 24.0;
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(80.0, tab_height), egui::Sense::hover());
+
+        // Draw tab background
+        ui.painter().rect_filled(
+            rect,
+            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
+            Color32::from_rgb(45, 47, 53),
+        );
+
+        // Tab text
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            format!("{} Inspector", SLIDERS),
+            egui::FontId::proportional(12.0),
+            Color32::from_rgb(200, 200, 210),
+        );
     });
-    ui.add_space(8.0);
-    ui.separator();
-    ui.add_space(8.0);
+
+    ui.add_space(4.0);
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         if let Some(selected) = selection.selected_entity {

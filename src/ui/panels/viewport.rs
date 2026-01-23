@@ -1,5 +1,5 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, TextureId};
+use bevy_egui::egui::{self, Color32, Pos2, Rect, TextureId, Vec2};
 
 use crate::core::{ViewportState, AssetBrowserState, OrbitCameraState};
 
@@ -8,17 +8,31 @@ pub fn render_viewport(
     viewport: &mut ViewportState,
     assets: &mut AssetBrowserState,
     orbit: &OrbitCameraState,
-    _left_panel_width: f32,
-    _right_panel_width: f32,
-    _content_start_y: f32,
+    left_panel_width: f32,
+    right_panel_width: f32,
+    content_start_y: f32,
     _window_size: [f32; 2],
-    _content_height: f32,
+    content_height: f32,
     viewport_texture_id: Option<TextureId>,
 ) {
-    egui::CentralPanel::default()
-        .frame(egui::Frame::new().fill(Color32::from_rgb(20, 20, 26)))
+    let screen_rect = ctx.screen_rect();
+
+    // Calculate the viewport rect - docked between panels
+    let viewport_rect = Rect::from_min_size(
+        Pos2::new(left_panel_width, content_start_y),
+        Vec2::new(
+            screen_rect.width() - left_panel_width - right_panel_width,
+            content_height,
+        ),
+    );
+
+    // Use an Area to render the viewport content
+    egui::Area::new(egui::Id::new("viewport_area"))
+        .fixed_pos(viewport_rect.min)
+        .order(egui::Order::Background)
         .show(ctx, |ui| {
-            render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id);
+            ui.set_clip_rect(viewport_rect);
+            render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id, viewport_rect);
         });
 }
 
@@ -29,20 +43,38 @@ pub fn render_viewport_content(
     assets: &mut AssetBrowserState,
     orbit: &OrbitCameraState,
     viewport_texture_id: Option<TextureId>,
+    content_rect: Rect,
 ) {
     let ctx = ui.ctx().clone();
-    let content_rect = ui.available_rect_before_wrap();
+
+    // Update viewport state with the actual content area
     viewport.position = [content_rect.min.x, content_rect.min.y];
     viewport.size = [content_rect.width(), content_rect.height()];
     viewport.hovered = ui.rect_contains_pointer(content_rect);
 
     // Display the viewport texture if available
     if let Some(texture_id) = viewport_texture_id {
-        let image = egui::Image::new(egui::load::SizedTexture::new(
-            texture_id,
-            [content_rect.width(), content_rect.height()],
-        ));
-        ui.add(image);
+        // Allocate the space
+        let (_rect, _response) = ui.allocate_exact_size(
+            Vec2::new(content_rect.width(), content_rect.height()),
+            egui::Sense::hover(),
+        );
+
+        // Draw the image
+        let uv = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(1.0, 1.0));
+        ui.painter().image(texture_id, content_rect, uv, Color32::WHITE);
+    } else {
+        // No texture yet - draw placeholder
+        ui.painter().rect_filled(content_rect, 0.0, Color32::from_rgb(30, 30, 35));
+
+        // Draw "No Viewport" text centered
+        ui.painter().text(
+            content_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "Viewport Loading...",
+            egui::FontId::proportional(14.0),
+            Color32::from_rgb(100, 100, 110),
+        );
     }
 
     // Handle asset drag and drop from assets panel

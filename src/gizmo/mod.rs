@@ -11,7 +11,7 @@ pub use grid::draw_grid;
 pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
 pub use meshes::{setup_gizmo_meshes, update_gizmo_mesh_transforms, update_gizmo_materials, GizmoMesh, GizmoPart, GizmoRoot};
 pub use physics::draw_physics_gizmos;
-pub use state::{DragAxis, GizmoMode, GizmoState};
+pub use state::{DragAxis, GizmoMode, GizmoState, SnapSettings};
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
