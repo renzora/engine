@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::{EditorEntity, ViewportCamera, SelectionState, ViewportState};
+use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState};
 
 use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
@@ -153,6 +153,7 @@ pub fn gizmo_interaction_system(
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mesh_query: Query<(Entity, &GlobalTransform), With<EditorEntity>>,
     transforms: Query<&Transform, With<EditorEntity>>,
+    parents: Query<&ChildOf, With<SceneNode>>,
 ) {
     // Handle drag end
     if mouse_button.just_released(MouseButton::Left) {
@@ -267,10 +268,32 @@ pub fn gizmo_interaction_system(
     }
 
     if let Some(clicked) = closest_entity {
-        selection.selected_entity = Some(clicked);
+        // Check if clicked entity is a descendant of current selection
+        // If so, keep the current selection to avoid accidentally selecting children
+        let should_select = if let Some(current) = selection.selected_entity {
+            !is_descendant_of(clicked, current, &parents)
+        } else {
+            true
+        };
+
+        if should_select {
+            selection.selected_entity = Some(clicked);
+        }
     } else {
         selection.selected_entity = None;
     }
+}
+
+/// Check if an entity is a descendant of another entity
+fn is_descendant_of(entity: Entity, ancestor: Entity, parents: &Query<&ChildOf, With<SceneNode>>) -> bool {
+    let mut current = entity;
+    while let Ok(child_of) = parents.get(current) {
+        if child_of.0 == ancestor {
+            return true;
+        }
+        current = child_of.0;
+    }
+    false
 }
 
 pub fn object_drag_system(

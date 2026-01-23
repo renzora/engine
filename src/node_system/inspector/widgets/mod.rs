@@ -2,6 +2,7 @@ pub mod camera;
 pub mod environment;
 pub mod lights;
 pub mod mesh_instance;
+pub mod physics;
 pub mod script;
 pub mod transform;
 
@@ -12,5 +13,6 @@ pub use lights::{
 };
 #[allow(unused_imports)]
 pub use mesh_instance::render_mesh_instance_inspector;
+pub use physics::{render_collision_shape_inspector, render_physics_body_inspector};
 pub use script::render_script_inspector;
 pub use transform::render_transform_inspector;

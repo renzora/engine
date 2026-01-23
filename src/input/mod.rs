@@ -3,7 +3,8 @@ mod shortcuts;
 
 pub use file_drop::{
     check_mesh_instance_models, handle_asset_panel_drop, handle_file_drop,
-    spawn_loaded_gltfs, spawn_mesh_instance_models, PendingGltfLoads, PendingMeshInstanceLoads,
+    spawn_loaded_gltfs, spawn_mesh_instance_models, handle_scene_hierarchy_drop,
+    PendingGltfLoads, PendingMeshInstanceLoads,
 };
 pub use shortcuts::handle_selection;
 

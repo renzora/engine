@@ -3,7 +3,7 @@ mod components;
 mod keybindings;
 pub mod resources;
 
-pub use app_state::AppState;
+pub use app_state::{AppState, AssetLoadingProgress, TrackedAsset, format_bytes};
 pub use components::{AudioListenerMarker, EditorEntity, MainCamera, SceneNode, SceneTabId, ViewportCamera, WorldEnvironmentMarker};
 pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys, key_name};
 
@@ -38,7 +38,65 @@ impl Plugin for CorePlugin {
             .init_resource::<AssetBrowserState>()
             .init_resource::<EditorSettings>()
             .init_resource::<KeyBindings>()
-            .add_systems(Update, apply_world_environment.run_if(in_state(AppState::Editor)));
+            .init_resource::<AssetLoadingProgress>()
+            .add_systems(Update, (
+                apply_world_environment,
+                track_asset_loading,
+            ).run_if(in_state(AppState::Editor)));
+    }
+}
+
+/// System that tracks asset loading progress via AssetServer
+fn track_asset_loading(
+    asset_server: Res<AssetServer>,
+    mut loading_progress: ResMut<AssetLoadingProgress>,
+) {
+    use bevy::asset::LoadState;
+
+    if loading_progress.tracking.is_empty() {
+        loading_progress.loading = false;
+        return;
+    }
+
+    // Find assets that have finished loading this frame
+    let mut finished_ids = Vec::new();
+    let mut newly_loaded_bytes = 0u64;
+
+    for (id, info) in loading_progress.tracking.iter() {
+        match asset_server.get_load_state(*id) {
+            Some(LoadState::Loaded) => {
+                newly_loaded_bytes += info.size_bytes;
+                finished_ids.push(*id);
+            }
+            Some(LoadState::Failed(_)) => {
+                // Count failed as "loaded" for progress purposes
+                newly_loaded_bytes += info.size_bytes;
+                finished_ids.push(*id);
+            }
+            _ => {
+                // Still loading or not loaded
+            }
+        }
+    }
+
+    // Update loaded counts with newly finished assets
+    loading_progress.loaded += finished_ids.len();
+    loading_progress.loaded_bytes += newly_loaded_bytes;
+
+    // Remove finished assets from tracking
+    for id in finished_ids {
+        loading_progress.tracking.remove(&id);
+    }
+
+    // Update loading state
+    loading_progress.loading = !loading_progress.tracking.is_empty();
+
+    // Reset when done loading
+    if !loading_progress.loading {
+        loading_progress.loaded_bytes = 0;
+        loading_progress.total_bytes = 0;
+        loading_progress.loaded = 0;
+        loading_progress.total = 0;
     }
 }
 

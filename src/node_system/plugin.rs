@@ -31,6 +31,12 @@ impl Plugin for NodeSystemPlugin {
 
 /// Register all built-in node types
 fn register_builtin_nodes(registry: &mut NodeRegistry) {
+    // Scene Roots (only one should exist per scene)
+    registry.register(&nodes::SCENE3D);
+    registry.register(&nodes::SCENE2D);
+    registry.register(&nodes::UI_ROOT);
+    registry.register(&nodes::OTHER_ROOT);
+
     // 3D Nodes
     registry.register(&nodes::NODE3D);
 
@@ -45,6 +51,17 @@ fn register_builtin_nodes(registry: &mut NodeRegistry) {
     registry.register(&nodes::POINT_LIGHT);
     registry.register(&nodes::DIRECTIONAL_LIGHT);
     registry.register(&nodes::SPOT_LIGHT);
+
+    // Physics - Bodies
+    registry.register(&nodes::RIGIDBODY3D);
+    registry.register(&nodes::STATICBODY3D);
+    registry.register(&nodes::KINEMATICBODY3D);
+
+    // Physics - Collision Shapes
+    registry.register(&nodes::COLLISION_BOX);
+    registry.register(&nodes::COLLISION_SPHERE);
+    registry.register(&nodes::COLLISION_CAPSULE);
+    registry.register(&nodes::COLLISION_CYLINDER);
 
     // Environment
     registry.register(&nodes::WORLD_ENVIRONMENT);

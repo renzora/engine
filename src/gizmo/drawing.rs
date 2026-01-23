@@ -4,12 +4,12 @@ use bevy::math::Isometry3d;
 use crate::core::{EditorEntity, SelectionState};
 use crate::node_system::CameraNodeData;
 
-use super::{DragAxis, GizmoMode, GizmoState, GIZMO_CENTER_SIZE, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, GizmoMode, GizmoState, SelectionGizmoGroup, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn draw_selection_gizmo(
     selection: Res<SelectionState>,
     gizmo_state: Res<GizmoState>,
-    mut gizmos: Gizmos,
+    mut gizmos: Gizmos<SelectionGizmoGroup>,
     transforms: Query<&Transform, With<EditorEntity>>,
     cameras: Query<&CameraNodeData>,
 ) {
@@ -81,116 +81,38 @@ pub fn draw_selection_gizmo(
         z_base
     };
 
-    let center_color = if active_axis == Some(DragAxis::Free) {
-        highlight
-    } else {
-        Color::srgb(0.8, 0.8, 0.8)
-    };
-
     let gizmo_size = GIZMO_SIZE;
 
     match gizmo_state.mode {
         GizmoMode::Translate => {
-            // Helper to draw a thick line (multiple parallel lines)
-            let draw_thick_axis = |gizmos: &mut Gizmos, start: Vec3, end: Vec3, color: Color| {
-                let dir = (end - start).normalize();
-                let thickness = 0.02;
-
-                // Find perpendicular vectors
-                let perp1 = if dir.y.abs() < 0.9 {
-                    dir.cross(Vec3::Y).normalize()
-                } else {
-                    dir.cross(Vec3::X).normalize()
-                };
-                let perp2 = dir.cross(perp1).normalize();
-
-                // Draw main line and offset lines for thickness
-                gizmos.line(start, end, color);
-                gizmos.line(start + perp1 * thickness, end + perp1 * thickness, color);
-                gizmos.line(start - perp1 * thickness, end - perp1 * thickness, color);
-                gizmos.line(start + perp2 * thickness, end + perp2 * thickness, color);
-                gizmos.line(start - perp2 * thickness, end - perp2 * thickness, color);
-            };
-
-            // Helper to draw cone arrow head
-            let draw_cone = |gizmos: &mut Gizmos, tip: Vec3, dir: Vec3, color: Color| {
-                let cone_length = 0.25;
-                let cone_radius = 0.08;
-                let base = tip - dir * cone_length;
-
-                let perp1 = if dir.y.abs() < 0.9 {
-                    dir.cross(Vec3::Y).normalize()
-                } else {
-                    dir.cross(Vec3::X).normalize()
-                };
-                let perp2 = dir.cross(perp1).normalize();
-
-                // Draw cone lines
-                let segments = 8;
-                for i in 0..segments {
-                    let angle = (i as f32 / segments as f32) * std::f32::consts::TAU;
-                    let next_angle = ((i + 1) as f32 / segments as f32) * std::f32::consts::TAU;
-
-                    let p1 = base + (perp1 * angle.cos() + perp2 * angle.sin()) * cone_radius;
-                    let p2 = base + (perp1 * next_angle.cos() + perp2 * next_angle.sin()) * cone_radius;
-
-                    gizmos.line(tip, p1, color);
-                    gizmos.line(p1, p2, color);
-                }
-            };
-
-            // X axis
-            draw_thick_axis(&mut gizmos, pos, pos + Vec3::X * (gizmo_size - 0.25), x_color);
-            draw_cone(&mut gizmos, pos + Vec3::X * gizmo_size, Vec3::X, x_color);
-
-            // Y axis
-            draw_thick_axis(&mut gizmos, pos, pos + Vec3::Y * (gizmo_size - 0.25), y_color);
-            draw_cone(&mut gizmos, pos + Vec3::Y * gizmo_size, Vec3::Y, y_color);
-
-            // Z axis
-            draw_thick_axis(&mut gizmos, pos, pos + Vec3::Z * (gizmo_size - 0.25), z_color);
-            draw_cone(&mut gizmos, pos + Vec3::Z * gizmo_size, Vec3::Z, z_color);
-
-            // Center cube
-            gizmos.cuboid(
-                Transform::from_translation(pos).with_scale(Vec3::splat(GIZMO_CENTER_SIZE * 2.0)),
-                center_color,
-            );
-
-            // Plane handles (small squares)
-            let xy_color = if active_axis == Some(DragAxis::XY) { highlight } else { Color::srgba(0.9, 0.9, 0.2, 0.6) };
-            let xz_color = if active_axis == Some(DragAxis::XZ) { highlight } else { Color::srgba(0.9, 0.2, 0.9, 0.6) };
-            let yz_color = if active_axis == Some(DragAxis::YZ) { highlight } else { Color::srgba(0.2, 0.9, 0.9, 0.6) };
+            // Arrows and center cube are rendered using 3D meshes (see meshes.rs)
+            // Draw wireframe plane handles here
+            let xy_color = if active_axis == Some(DragAxis::XY) { highlight } else { Color::srgba(0.9, 0.9, 0.2, 0.9) };
+            let xz_color = if active_axis == Some(DragAxis::XZ) { highlight } else { Color::srgba(0.9, 0.2, 0.9, 0.9) };
+            let yz_color = if active_axis == Some(DragAxis::YZ) { highlight } else { Color::srgba(0.2, 0.9, 0.9, 0.9) };
 
             let plane_half = GIZMO_PLANE_SIZE * 0.5;
 
-            // XY plane handle
+            // XY plane handle (wireframe square)
             let xy_center = pos + Vec3::new(GIZMO_PLANE_OFFSET, GIZMO_PLANE_OFFSET, 0.0);
             gizmos.line(xy_center + Vec3::new(-plane_half, -plane_half, 0.0), xy_center + Vec3::new(plane_half, -plane_half, 0.0), xy_color);
             gizmos.line(xy_center + Vec3::new(plane_half, -plane_half, 0.0), xy_center + Vec3::new(plane_half, plane_half, 0.0), xy_color);
             gizmos.line(xy_center + Vec3::new(plane_half, plane_half, 0.0), xy_center + Vec3::new(-plane_half, plane_half, 0.0), xy_color);
             gizmos.line(xy_center + Vec3::new(-plane_half, plane_half, 0.0), xy_center + Vec3::new(-plane_half, -plane_half, 0.0), xy_color);
-            // Fill lines
-            gizmos.line(xy_center + Vec3::new(-plane_half, 0.0, 0.0), xy_center + Vec3::new(plane_half, 0.0, 0.0), xy_color);
-            gizmos.line(xy_center + Vec3::new(0.0, -plane_half, 0.0), xy_center + Vec3::new(0.0, plane_half, 0.0), xy_color);
 
-            // XZ plane handle
+            // XZ plane handle (wireframe square)
             let xz_center = pos + Vec3::new(GIZMO_PLANE_OFFSET, 0.0, GIZMO_PLANE_OFFSET);
             gizmos.line(xz_center + Vec3::new(-plane_half, 0.0, -plane_half), xz_center + Vec3::new(plane_half, 0.0, -plane_half), xz_color);
             gizmos.line(xz_center + Vec3::new(plane_half, 0.0, -plane_half), xz_center + Vec3::new(plane_half, 0.0, plane_half), xz_color);
             gizmos.line(xz_center + Vec3::new(plane_half, 0.0, plane_half), xz_center + Vec3::new(-plane_half, 0.0, plane_half), xz_color);
             gizmos.line(xz_center + Vec3::new(-plane_half, 0.0, plane_half), xz_center + Vec3::new(-plane_half, 0.0, -plane_half), xz_color);
-            gizmos.line(xz_center + Vec3::new(-plane_half, 0.0, 0.0), xz_center + Vec3::new(plane_half, 0.0, 0.0), xz_color);
-            gizmos.line(xz_center + Vec3::new(0.0, 0.0, -plane_half), xz_center + Vec3::new(0.0, 0.0, plane_half), xz_color);
 
-            // YZ plane handle
+            // YZ plane handle (wireframe square)
             let yz_center = pos + Vec3::new(0.0, GIZMO_PLANE_OFFSET, GIZMO_PLANE_OFFSET);
             gizmos.line(yz_center + Vec3::new(0.0, -plane_half, -plane_half), yz_center + Vec3::new(0.0, plane_half, -plane_half), yz_color);
             gizmos.line(yz_center + Vec3::new(0.0, plane_half, -plane_half), yz_center + Vec3::new(0.0, plane_half, plane_half), yz_color);
             gizmos.line(yz_center + Vec3::new(0.0, plane_half, plane_half), yz_center + Vec3::new(0.0, -plane_half, plane_half), yz_color);
             gizmos.line(yz_center + Vec3::new(0.0, -plane_half, plane_half), yz_center + Vec3::new(0.0, -plane_half, -plane_half), yz_color);
-            gizmos.line(yz_center + Vec3::new(0.0, -plane_half, 0.0), yz_center + Vec3::new(0.0, plane_half, 0.0), yz_color);
-            gizmos.line(yz_center + Vec3::new(0.0, 0.0, -plane_half), yz_center + Vec3::new(0.0, 0.0, plane_half), yz_color);
         }
         GizmoMode::Rotate => {
             let radius = gizmo_size * 0.7;
@@ -221,7 +143,7 @@ pub fn draw_selection_gizmo(
 }
 
 /// Draw a camera frustum gizmo for camera nodes
-fn draw_camera_gizmo(gizmos: &mut Gizmos, transform: &Transform, camera_data: &CameraNodeData) {
+fn draw_camera_gizmo(gizmos: &mut Gizmos<SelectionGizmoGroup>, transform: &Transform, camera_data: &CameraNodeData) {
     let pos = transform.translation;
     let rotation = transform.rotation;
 

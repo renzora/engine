@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::core::{
-    AppState, EditorEntity, KeyBindings, SceneTabId,
+    AppState, AssetLoadingProgress, EditorEntity, KeyBindings, SceneTabId,
     SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
     OrbitCameraState,
 };
@@ -26,8 +26,9 @@ pub struct EditorResources<'w> {
     pub orbit: Res<'w, OrbitCameraState>,
     pub keybindings: ResMut<'w, KeyBindings>,
     pub plugin_host: ResMut<'w, PluginHost>,
+    pub loading_progress: Res<'w, AssetLoadingProgress>,
 }
-use crate::node_system::NodeRegistry;
+use crate::node_system::{self, NodeRegistry, NodeTypeMarker};
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
@@ -129,7 +130,7 @@ pub fn editor_ui(
     mut contexts: EguiContexts,
     mut editor: EditorResources,
     mut commands: Commands,
-    entities: Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
+    entities: Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&node_system::SceneRoot>, Option<&NodeTypeMarker>)>,
     entities_for_inspector: Query<(Entity, &EditorEntity)>,
     mut inspector_queries: InspectorQueries,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -170,7 +171,7 @@ pub fn editor_ui(
     apply_editor_style(ctx);
 
     // Render status bar at bottom (must be rendered early to reserve space)
-    render_status_bar(ctx, &editor.plugin_host);
+    render_status_bar(ctx, &editor.plugin_host, &editor.loading_progress);
 
     // Collect all UI events to forward to plugins
     let mut all_ui_events = Vec::new();
@@ -245,6 +246,7 @@ pub fn editor_ui(
         content_start_y,
         viewport_height,
         &editor.plugin_host,
+        &mut editor.assets,
     );
     all_ui_events.extend(hierarchy_events);
 

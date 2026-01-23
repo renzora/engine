@@ -1,12 +1,16 @@
 mod drawing;
 mod grid;
 mod interaction;
+mod meshes;
+mod physics;
 pub mod picking;
 pub mod state;
 
 pub use drawing::draw_selection_gizmo;
 pub use grid::draw_grid;
 pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
+pub use meshes::{setup_gizmo_meshes, update_gizmo_mesh_transforms, update_gizmo_materials, GizmoMesh, GizmoPart, GizmoRoot};
+pub use physics::draw_physics_gizmos;
 pub use state::{DragAxis, GizmoMode, GizmoState};
 
 use bevy::prelude::*;
@@ -33,20 +37,46 @@ pub fn preview_camera_layers() -> RenderLayers {
     RenderLayers::layer(0)
 }
 
+/// Custom gizmo config group for the grid (normal depth testing)
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct GridGizmoGroup;
+
+/// Custom gizmo config group for selection gizmos (renders on top)
+#[derive(Default, Reflect, GizmoConfigGroup)]
+pub struct SelectionGizmoGroup;
+
 pub struct GizmoPlugin;
 
 impl Plugin for GizmoPlugin {
     fn build(&self, app: &mut App) {
         // Initialize gizmo state
         app.init_resource::<GizmoState>();
+        // Register custom gizmo config groups
+        app.init_gizmo_group::<GridGizmoGroup>();
+        app.init_gizmo_group::<SelectionGizmoGroup>();
         // Configure gizmos to render on the gizmo layer
-        app.add_systems(Startup, configure_gizmo_render_layers);
+        app.add_systems(Startup, (configure_gizmo_render_layers, meshes::setup_gizmo_meshes));
+        // Update mesh-based gizmos
+        app.add_systems(Update, (meshes::update_gizmo_mesh_transforms, meshes::update_gizmo_materials));
     }
 }
 
-/// Configure the gizmo system to render on our custom render layer
+/// Configure the gizmo system with separate config groups for grid and selection
 fn configure_gizmo_render_layers(mut config_store: ResMut<GizmoConfigStore>) {
-    // Set all gizmos to render on the gizmo layer
-    let (config, _) = config_store.config_mut::<DefaultGizmoConfigGroup>();
-    config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    // Default gizmos - normal depth (used for misc gizmos)
+    let (default_config, _) = config_store.config_mut::<DefaultGizmoConfigGroup>();
+    default_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    default_config.line.width = 2.0;
+
+    // Grid gizmos - normal depth, thinner lines
+    let (grid_config, _) = config_store.config_mut::<GridGizmoGroup>();
+    grid_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    grid_config.line.width = 1.0;
+    // No depth bias - grid renders normally behind objects
+
+    // Selection gizmos - render on top of everything
+    let (selection_config, _) = config_store.config_mut::<SelectionGizmoGroup>();
+    selection_config.render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
+    selection_config.depth_bias = -1.0;
+    selection_config.line.width = 3.0;
 }

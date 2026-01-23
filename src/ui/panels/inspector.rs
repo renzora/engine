@@ -4,9 +4,10 @@ use bevy_egui::egui::{self, Color32, RichText, TextureId, Vec2};
 
 use crate::core::{EditorEntity, SelectionState, WorldEnvironmentMarker};
 use crate::node_system::{
-    render_camera_inspector, render_directional_light_inspector, render_point_light_inspector,
-    render_script_inspector, render_spot_light_inspector, render_transform_inspector,
-    render_world_environment_inspector, CameraNodeData,
+    render_camera_inspector, render_collision_shape_inspector, render_directional_light_inspector,
+    render_physics_body_inspector, render_point_light_inspector, render_script_inspector,
+    render_spot_light_inspector, render_transform_inspector, render_world_environment_inspector,
+    CameraNodeData, CollisionShapeData, PhysicsBodyData,
 };
 use crate::plugin_core::PluginHost;
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
@@ -16,6 +17,7 @@ use crate::ui_api::{renderer::UiRenderer, UiEvent};
 use egui_phosphor::regular::{
     SLIDERS, ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
+    CUBE, ATOM,
 };
 
 /// System parameter that bundles all inspector-related queries
@@ -28,6 +30,8 @@ pub struct InspectorQueries<'w, 's> {
     pub spot_lights: Query<'w, 's, &'static mut SpotLight>,
     pub scripts: Query<'w, 's, &'static mut ScriptComponent>,
     pub cameras: Query<'w, 's, &'static mut CameraNodeData>,
+    pub physics_bodies: Query<'w, 's, &'static mut PhysicsBodyData>,
+    pub collision_shapes: Query<'w, 's, &'static mut CollisionShapeData>,
 }
 
 pub fn render_inspector(
@@ -168,6 +172,28 @@ pub fn render_inspector_content(
                         .default_open(true)
                         .show(ui, |ui| {
                             render_script_inspector(ui, &mut script, script_registry, rhai_engine);
+                        });
+
+                    ui.add_space(4.0);
+                }
+
+                // Physics body
+                if let Ok(mut physics_body) = queries.physics_bodies.get_mut(selected) {
+                    egui::CollapsingHeader::new(RichText::new(format!("{} Physics Body", ATOM)))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            render_physics_body_inspector(ui, &mut physics_body);
+                        });
+
+                    ui.add_space(4.0);
+                }
+
+                // Collision shape
+                if let Ok(mut collision_shape) = queries.collision_shapes.get_mut(selected) {
+                    egui::CollapsingHeader::new(RichText::new(format!("{} Collision Shape", CUBE)))
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            render_collision_shape_inspector(ui, &mut collision_shape);
                         });
 
                     ui.add_space(4.0);

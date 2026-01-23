@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use std::path::PathBuf;
 
-use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState};
-use crate::node_system::components::{MeshInstanceData, NodeTypeMarker};
+use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress};
+use crate::node_system::components::{MeshInstanceData, NodeTypeMarker, SceneInstanceData};
+use crate::node_system::SceneRoot;
 
 /// Resource to track pending GLB loads
 #[derive(Resource, Default)]
@@ -37,6 +38,7 @@ pub fn handle_file_drop(
     mut events: MessageReader<FileDragAndDrop>,
     asset_server: Res<AssetServer>,
     mut pending_loads: ResMut<PendingGltfLoads>,
+    mut loading_progress: ResMut<AssetLoadingProgress>,
 ) {
     for event in events.read() {
         if let FileDragAndDrop::DroppedFile { path_buf, .. } = event {
@@ -56,8 +58,16 @@ pub fn handle_file_drop(
                     .unwrap_or("Model")
                     .to_string();
 
+                // Get file size
+                let file_size = std::fs::metadata(&path_buf)
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+
                 // Load the GLTF asset
                 let handle: Handle<Gltf> = asset_server.load(path_buf.clone());
+
+                // Track for progress bar
+                loading_progress.track(&handle, name.clone(), file_size);
 
                 pending_loads.loads.push(PendingLoad {
                     handle,
@@ -75,6 +85,7 @@ pub fn handle_asset_panel_drop(
     mut assets: ResMut<AssetBrowserState>,
     asset_server: Res<AssetServer>,
     mut pending_loads: ResMut<PendingGltfLoads>,
+    mut loading_progress: ResMut<AssetLoadingProgress>,
 ) {
     if let Some((path, position)) = assets.pending_asset_drop.take() {
         let extension = path
@@ -93,11 +104,19 @@ pub fn handle_asset_panel_drop(
                 .unwrap_or("Model")
                 .to_string();
 
+            // Get file size
+            let file_size = std::fs::metadata(&path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+
             // Use absolute path for loading - asset server can handle absolute paths
             let load_path = path.clone();
 
             // Load the GLTF asset
             let handle: Handle<Gltf> = asset_server.load(load_path);
+
+            // Track for progress bar
+            loading_progress.track(&handle, name.clone(), file_size);
 
             pending_loads.loads.push(PendingLoad {
                 handle,
@@ -116,8 +135,12 @@ pub fn spawn_loaded_gltfs(
     gltf_assets: Res<Assets<Gltf>>,
     mut selection: ResMut<SelectionState>,
     mut hierarchy: ResMut<HierarchyState>,
+    scene_roots: Query<(Entity, Option<&SceneTabId>), With<SceneRoot>>,
 ) {
     let mut completed = Vec::new();
+
+    // Find the scene root to parent new meshes to (use first available for now)
+    let scene_root_entity = scene_roots.iter().next().map(|(e, _)| e);
 
     for (index, pending) in pending_loads.loads.iter().enumerate() {
         if let Some(gltf) = gltf_assets.get(&pending.handle) {
@@ -143,7 +166,7 @@ pub fn spawn_loaded_gltfs(
 
             if let Some(scene) = scene_handle {
                 // Create the MeshInstance parent node
-                let mesh_instance_entity = commands.spawn((
+                let mut mesh_instance = commands.spawn((
                     transform,
                     Visibility::default(),
                     EditorEntity {
@@ -156,11 +179,18 @@ pub fn spawn_loaded_gltfs(
                     MeshInstanceData {
                         model_path: Some(model_path_str),
                     },
-                )).id();
+                ));
+
+                // Parent to scene root if one exists
+                if let Some(root) = scene_root_entity {
+                    mesh_instance.insert(ChildOf(root));
+                }
+
+                let mesh_instance_entity = mesh_instance.id();
 
                 // Spawn the GLTF scene as a child of the MeshInstance
                 commands.spawn((
-                    SceneRoot(scene),
+                    bevy::scene::SceneRoot(scene),
                     Transform::default(),
                     Visibility::default(),
                     ChildOf(mesh_instance_entity),
@@ -170,7 +200,10 @@ pub fn spawn_loaded_gltfs(
 
                 // Auto-select the MeshInstance parent
                 selection.selected_entity = Some(mesh_instance_entity);
-                // Auto-expand the MeshInstance in hierarchy to show the model child
+                // Auto-expand the scene root and MeshInstance in hierarchy
+                if let Some(root) = scene_root_entity {
+                    hierarchy.expanded_entities.insert(root);
+                }
                 hierarchy.expanded_entities.insert(mesh_instance_entity);
             }
 
@@ -189,6 +222,7 @@ pub fn check_mesh_instance_models(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut pending_loads: ResMut<PendingMeshInstanceLoads>,
+    mut loading_progress: ResMut<AssetLoadingProgress>,
     query: Query<(Entity, &MeshInstanceData), (Without<MeshInstanceModelLoading>, Without<Children>)>,
 ) {
     for (entity, mesh_data) in query.iter() {
@@ -196,8 +230,22 @@ pub fn check_mesh_instance_models(
             // Mark this entity as having loading initiated
             commands.entity(entity).insert(MeshInstanceModelLoading);
 
+            // Get file name and size
+            let path = std::path::Path::new(model_path);
+            let name = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Model")
+                .to_string();
+            let file_size = std::fs::metadata(path)
+                .map(|m| m.len())
+                .unwrap_or(0);
+
             // Load the GLTF asset
             let handle: Handle<Gltf> = asset_server.load(model_path.clone());
+
+            // Track for progress bar
+            loading_progress.track(&handle, name, file_size);
 
             pending_loads.loads.push(PendingMeshInstanceLoad {
                 entity,
@@ -249,5 +297,55 @@ pub fn spawn_mesh_instance_models(
     // Remove completed loads (in reverse order to maintain indices)
     for index in completed.into_iter().rev() {
         pending_loads.loads.remove(index);
+    }
+}
+
+/// System to handle scene files dropped into the hierarchy
+/// Creates a SceneInstance node that references the scene file instead of expanding all nodes
+pub fn handle_scene_hierarchy_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+) {
+    if let Some((scene_path, parent_entity)) = assets.pending_scene_drop.take() {
+        info!("Creating scene instance from: {:?}", scene_path);
+
+        // Get the scene name from the file path
+        let scene_name = scene_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("Scene")
+            .to_string();
+
+        // Create a SceneInstance node that references the scene file
+        let mut scene_instance = commands.spawn((
+            Transform::default(),
+            Visibility::default(),
+            EditorEntity {
+                name: scene_name,
+            },
+            SceneNode,
+            NodeTypeMarker {
+                type_id: "scene.instance",
+            },
+            SceneInstanceData {
+                scene_path: scene_path.to_string_lossy().to_string(),
+                is_open: false,
+            },
+        ));
+
+        // Parent to the target entity if specified
+        if let Some(parent) = parent_entity {
+            scene_instance.insert(ChildOf(parent));
+            hierarchy.expanded_entities.insert(parent);
+        }
+
+        let entity = scene_instance.id();
+
+        // Select the new scene instance
+        selection.selected_entity = Some(entity);
+
+        info!("Scene instance created: {:?}", entity);
     }
 }

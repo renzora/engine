@@ -10,6 +10,12 @@ pub struct HierarchyState {
     pub drag_entity: Option<Entity>,
     /// Current drop target for hierarchy drag
     pub drop_target: Option<HierarchyDropTarget>,
+    /// Entity currently being renamed (inline editing)
+    pub renaming_entity: Option<Entity>,
+    /// Buffer for the rename text input
+    pub rename_buffer: String,
+    /// Whether we've already requested focus for the rename text edit
+    pub rename_focus_set: bool,
 }
 
 impl HierarchyState {

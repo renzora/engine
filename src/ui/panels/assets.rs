@@ -336,7 +336,7 @@ fn render_grid_view(
         ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
 
         for item in items {
-            let is_draggable = !item.is_folder && is_model_file(&item.name);
+            let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
 
             let (rect, response) = ui.allocate_exact_size(
                 Vec2::new(tile_size, tile_size + 20.0),
@@ -416,7 +416,7 @@ fn render_list_view(
     items: &[&AssetItem],
 ) {
     for item in items {
-        let is_draggable = !item.is_folder && is_model_file(&item.name);
+        let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
 
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
@@ -514,8 +514,13 @@ fn handle_item_interaction(
                     .show(ctx, |ui| {
                         egui::Frame::popup(ui.style()).show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(CUBE).color(Color32::from_rgb(242, 166, 115)));
-                                ui.label(format!("Drop: {}", item.name));
+                                let (icon, color, hint) = if is_scene_file(&item.name) {
+                                    (FILM_SCRIPT, Color32::from_rgb(115, 191, 242), "Drop in hierarchy")
+                                } else {
+                                    (CUBE, Color32::from_rgb(242, 166, 115), "Drop in viewport")
+                                };
+                                ui.label(RichText::new(icon).color(color));
+                                ui.label(format!("{}: {}", hint, item.name));
                             });
                         });
                     });
@@ -732,6 +737,15 @@ fn truncate_name(name: &str, max_len: usize) -> String {
 fn is_model_file(filename: &str) -> bool {
     let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
     matches!(ext.as_str(), "glb" | "gltf" | "obj" | "fbx")
+}
+
+fn is_scene_file(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    ext == "scene"
+}
+
+fn is_draggable_asset(filename: &str) -> bool {
+    is_model_file(filename) || is_scene_file(filename)
 }
 
 fn is_script_file(path: &PathBuf) -> bool {

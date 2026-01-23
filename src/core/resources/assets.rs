@@ -10,8 +10,10 @@ pub struct AssetBrowserState {
     pub selected_asset: Option<PathBuf>,
     /// Asset being dragged
     pub dragging_asset: Option<PathBuf>,
-    /// Pending asset drop (path, 3D position)
+    /// Pending asset drop (path, 3D position) - for viewport drops
     pub pending_asset_drop: Option<(PathBuf, Vec3)>,
+    /// Pending scene drop to hierarchy (scene path, parent entity)
+    pub pending_scene_drop: Option<(PathBuf, Option<Entity>)>,
     /// Search filter text
     pub search: String,
     /// Current view mode (grid or list)

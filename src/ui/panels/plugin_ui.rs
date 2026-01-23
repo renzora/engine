@@ -7,6 +7,7 @@
 
 use bevy_egui::egui::{self, Color32, RichText};
 
+use crate::core::{AssetLoadingProgress, format_bytes};
 use crate::plugin_core::{MenuLocation, MenuItem, PanelDefinition, PluginHost};
 use crate::ui_api::{renderer::UiRenderer, types::UiId, UiEvent, Widget};
 
@@ -243,15 +244,10 @@ pub fn render_plugin_toolbar(ui: &mut egui::Ui, plugin_host: &PluginHost) -> Vec
 }
 
 /// Render the status bar at the bottom of the screen
-pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost) {
+pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_progress: &AssetLoadingProgress) {
     use crate::plugin_core::StatusBarAlign;
 
     let api = plugin_host.api();
-
-    // Don't render if no status items
-    if api.status_bar_items.is_empty() {
-        return;
-    }
 
     // Collect and sort items by alignment and priority
     let mut left_items: Vec<_> = api.status_bar_items.values()
@@ -275,6 +271,68 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost) {
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
+
+                // Show asset loading progress if loading
+                if loading_progress.loading {
+                    // Calculate progress based on bytes (total bytes vs loaded bytes)
+                    let progress = if loading_progress.total_bytes > 0 {
+                        loading_progress.loaded_bytes as f32 / loading_progress.total_bytes as f32
+                    } else if loading_progress.total > 0 {
+                        loading_progress.loaded as f32 / loading_progress.total as f32
+                    } else {
+                        0.0
+                    };
+
+                    // Spinner icon using egui's built-in spinner
+                    ui.add(egui::Spinner::new().size(14.0).color(Color32::from_rgb(100, 160, 255)));
+
+                    // Download/loading icon
+                    ui.label(RichText::new("⬇").size(12.0).color(Color32::from_rgb(100, 160, 255)));
+
+                    // Progress text with file count and sizes
+                    let remaining = loading_progress.total.saturating_sub(loading_progress.loaded);
+                    let size_text = if loading_progress.total_bytes > 0 {
+                        format!(
+                            "Loading {} file{} ({} / {})",
+                            remaining,
+                            if remaining == 1 { "" } else { "s" },
+                            format_bytes(loading_progress.loaded_bytes),
+                            format_bytes(loading_progress.total_bytes)
+                        )
+                    } else {
+                        format!(
+                            "Loading {} file{}...",
+                            remaining,
+                            if remaining == 1 { "" } else { "s" }
+                        )
+                    };
+                    ui.label(RichText::new(size_text).size(11.0).color(Color32::from_rgb(180, 180, 190)));
+
+                    // Progress bar based on total bytes
+                    let bar_width = 120.0;
+                    let bar_height = 6.0;
+                    let (rect, _) = ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
+
+                    // Background with rounded corners
+                    ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(50, 50, 60));
+
+                    // Fill with rounded corners
+                    if progress > 0.0 {
+                        let fill_width = rect.width() * progress.clamp(0.0, 1.0);
+                        let fill_rect = egui::Rect::from_min_size(
+                            rect.min,
+                            egui::vec2(fill_width, rect.height()),
+                        );
+                        // Use a gradient-like effect with brighter color
+                        ui.painter().rect_filled(fill_rect, 3.0, Color32::from_rgb(80, 140, 230));
+                    }
+
+                    ui.add_space(8.0);
+                    ui.separator();
+
+                    // Request repaint for animation
+                    ctx.request_repaint();
+                }
 
                 // Left-aligned items
                 for item in &left_items {

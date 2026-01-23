@@ -32,6 +32,8 @@ pub enum NodeCategory {
     Meshes,
     /// Light sources (Point, Directional, Spot)
     Lights,
+    /// Physics bodies and collision shapes
+    Physics,
     /// Environment nodes (WorldEnvironment, AudioListener)
     Environment,
     /// Camera nodes
@@ -48,6 +50,7 @@ impl NodeCategory {
             NodeCategory::Nodes3D => "3D Nodes",
             NodeCategory::Meshes => "Meshes",
             NodeCategory::Lights => "Lights",
+            NodeCategory::Physics => "Physics",
             NodeCategory::Environment => "Environment",
             NodeCategory::Cameras => "Camera",
             NodeCategory::Custom => "Custom",
@@ -60,8 +63,9 @@ impl NodeCategory {
             NodeCategory::Nodes3D => 0,
             NodeCategory::Meshes => 1,
             NodeCategory::Lights => 2,
-            NodeCategory::Environment => 3,
-            NodeCategory::Cameras => 4,
+            NodeCategory::Physics => 3,
+            NodeCategory::Environment => 4,
+            NodeCategory::Cameras => 5,
             NodeCategory::Custom => 100,
         }
     }
@@ -73,6 +77,7 @@ impl NodeCategory {
             NodeCategory::Nodes3D,
             NodeCategory::Meshes,
             NodeCategory::Lights,
+            NodeCategory::Physics,
             NodeCategory::Environment,
             NodeCategory::Cameras,
             NodeCategory::Custom,

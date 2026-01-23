@@ -1,3 +1,6 @@
+// Hide console window on Windows
+#![windows_subsystem = "windows"]
+
 mod core;
 mod gizmo;
 mod input;
@@ -82,9 +85,11 @@ fn main() {
                 gizmo::gizmo_interaction_system,
                 gizmo::object_drag_system,
                 gizmo::draw_selection_gizmo,
+                gizmo::draw_physics_gizmos,
                 gizmo::draw_grid,
                 input::handle_file_drop,
                 input::handle_asset_panel_drop,
+                input::handle_scene_hierarchy_drop,
                 input::spawn_loaded_gltfs,
                 input::check_mesh_instance_models,
                 input::spawn_mesh_instance_models,
