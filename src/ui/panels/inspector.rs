@@ -8,12 +8,14 @@ use crate::node_system::{
     render_script_inspector, render_spot_light_inspector, render_transform_inspector,
     render_world_environment_inspector, CameraNodeData,
 };
+use crate::plugin_core::PluginHost;
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
+use crate::ui_api::{renderer::UiRenderer, UiEvent};
 
 // Phosphor icons for inspector
 use egui_phosphor::regular::{
     SLIDERS, ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
-    PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA,
+    PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
 };
 
 /// System parameter that bundles all inspector-related queries
@@ -37,13 +39,20 @@ pub fn render_inspector(
     rhai_engine: &RhaiScriptEngine,
     _right_panel_width: f32,
     camera_preview_texture_id: Option<TextureId>,
-) {
+    plugin_host: &PluginHost,
+    ui_renderer: &mut UiRenderer,
+) -> Vec<UiEvent> {
+    let mut ui_events = Vec::new();
+
     egui::SidePanel::right("inspector")
         .default_width(320.0)
         .resizable(true)
         .show(ctx, |ui| {
-            render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id);
+            let events = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
+            ui_events.extend(events);
         });
+
+    ui_events
 }
 
 /// Render inspector content (for use in docking)
@@ -55,7 +64,9 @@ pub fn render_inspector_content(
     script_registry: &ScriptRegistry,
     rhai_engine: &RhaiScriptEngine,
     camera_preview_texture_id: Option<TextureId>,
-) {
+    plugin_host: &PluginHost,
+    ui_renderer: &mut UiRenderer,
+) -> Vec<UiEvent> {
     let panel_width = ui.available_width();
 
     ui.horizontal(|ui| {
@@ -162,6 +173,23 @@ pub fn render_inspector_content(
                     ui.add_space(4.0);
                 }
 
+                // Plugin-registered inspector sections
+                let api = plugin_host.api();
+                for (type_id, inspector_def) in &api.inspectors {
+                    if let Some(content) = api.inspector_contents.get(type_id) {
+                        let icon_label = format!("{} {}", PUZZLE_PIECE, inspector_def.label);
+                        egui::CollapsingHeader::new(RichText::new(icon_label))
+                            .default_open(true)
+                            .show(ui, |ui| {
+                                for widget in content {
+                                    ui_renderer.render(ui, widget);
+                                }
+                            });
+
+                        ui.add_space(4.0);
+                    }
+                }
+
                 ui.add_space(16.0);
 
                 // Add Component button
@@ -184,4 +212,7 @@ pub fn render_inspector_content(
             });
         }
     });
+
+    // Collect events from ui_renderer
+    ui_renderer.drain_events().collect()
 }

@@ -3,7 +3,9 @@ use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, Cursor
 
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId};
 use crate::node_system::{NodeRegistry, render_node_menu_items};
+use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost};
 use crate::scripting::ScriptComponent;
+use crate::ui_api::UiEvent;
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{
@@ -34,12 +36,16 @@ pub fn render_hierarchy(
     _left_panel_width: f32,
     _content_start_y: f32,
     _content_height: f32,
-) {
+    plugin_host: &PluginHost,
+) -> Vec<UiEvent> {
+    let mut ui_events = Vec::new();
+
     egui::SidePanel::left("hierarchy")
         .default_width(260.0)
         .resizable(true)
         .show(ctx, |ui| {
-            render_hierarchy_content(ui, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab);
+            let events = render_hierarchy_content(ui, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host);
+            ui_events.extend(events);
         });
 
     // Show drag tooltip
@@ -62,6 +68,8 @@ pub fn render_hierarchy(
             }
         }
     }
+
+    ui_events
 }
 
 /// Render hierarchy content (for use in docking)
@@ -75,7 +83,9 @@ pub fn render_hierarchy_content(
     materials: &mut Assets<StandardMaterial>,
     node_registry: &NodeRegistry,
     active_tab: usize,
-) {
+    plugin_host: &PluginHost,
+) -> Vec<UiEvent> {
+    let mut ui_events = Vec::new();
     let ctx = ui.ctx().clone();
 
     ui.horizontal(|ui| {
@@ -122,7 +132,7 @@ pub fn render_hierarchy_content(
             let root_count = root_entities.len();
             for (i, (entity, editor_entity, _, children, _)) in root_entities.into_iter().enumerate() {
                 let is_last = i == root_count - 1;
-                render_tree_node(
+                let events = render_tree_node(
                     ui,
                     &ctx,
                     selection,
@@ -139,7 +149,9 @@ pub fn render_hierarchy_content(
                     is_last,
                     &mut Vec::new(), // No parent lines for root nodes
                     None, // No parent entity for root nodes
+                    plugin_host,
                 );
+                ui_events.extend(events);
             }
 
             // Handle drop when mouse released
@@ -162,6 +174,20 @@ pub fn render_hierarchy_content(
             }
         }
     });
+
+    // Render plugin context menu items when right-clicking
+    // Get hierarchy context menu items from plugins
+    let hierarchy_context_items: Vec<_> = plugin_host.api().context_menus.iter()
+        .filter(|(loc, _)| *loc == ContextMenuLocation::Hierarchy)
+        .map(|(_, item)| item)
+        .collect();
+
+    // These will be rendered in the tree node context menu, so we just collect them here
+    // for now and pass them through. The actual rendering happens in render_tree_node.
+    // For simplicity, we store the items in a local to be used by the tree node rendering.
+    let _ = hierarchy_context_items; // Used in tree node context menus
+
+    ui_events
 }
 
 fn render_tree_node(
@@ -181,7 +207,9 @@ fn render_tree_node(
     is_last: bool,
     parent_lines: &mut Vec<bool>, // true = draw vertical line at this depth
     _parent_entity: Option<Entity>,
-) {
+    plugin_host: &PluginHost,
+) -> Vec<UiEvent> {
+    let mut ui_events = Vec::new();
     let is_selected = selection.selected_entity == Some(entity);
     let has_children = children.map_or(false, |c| !c.is_empty());
     let is_expanded = hierarchy.expanded_entities.contains(&entity);
@@ -410,6 +438,21 @@ fn render_tree_node(
                 hierarchy.expanded_entities.remove(&entity);
                 ui.close();
             }
+
+            // Plugin context menu items
+            let hierarchy_items: Vec<_> = plugin_host.api().context_menus.iter()
+                .filter(|(loc, _)| *loc == ContextMenuLocation::Hierarchy)
+                .map(|(_, item)| item)
+                .collect();
+
+            if !hierarchy_items.is_empty() {
+                ui.separator();
+                for item in hierarchy_items {
+                    if render_plugin_context_menu_item(ui, item) {
+                        ui_events.push(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));
+                    }
+                }
+            }
         });
     });
 
@@ -426,7 +469,7 @@ fn render_tree_node(
                     // Update parent_lines for children
                     parent_lines.push(!is_last); // Continue vertical line if current node is not last
 
-                    render_tree_node(
+                    let child_events = render_tree_node(
                         ui,
                         ctx,
                         selection,
@@ -443,13 +486,51 @@ fn render_tree_node(
                         child_is_last,
                         parent_lines,
                         Some(entity),
+                        plugin_host,
                     );
+                    ui_events.extend(child_events);
 
                     parent_lines.pop();
                 }
             }
         }
     }
+
+    ui_events
+}
+
+/// Render a plugin context menu item, returns true if clicked
+fn render_plugin_context_menu_item(ui: &mut egui::Ui, item: &PluginMenuItem) -> bool {
+    if item.children.is_empty() {
+        let mut text = String::new();
+        if let Some(icon) = &item.icon {
+            text.push_str(icon);
+            text.push(' ');
+        }
+        text.push_str(&item.label);
+
+        let button = egui::Button::new(&text);
+        let response = ui.add_enabled(item.enabled, button);
+
+        if response.clicked() {
+            ui.close();
+            return true;
+        }
+    } else {
+        let label = if let Some(icon) = &item.icon {
+            format!("{} {}", icon, item.label)
+        } else {
+            item.label.clone()
+        };
+
+        ui.menu_button(label, |ui| {
+            for child in &item.children {
+                render_plugin_context_menu_item(ui, child);
+            }
+        });
+    }
+
+    false
 }
 
 /// Apply hierarchy drag and drop - reparent or reorder entity

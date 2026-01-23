@@ -25,18 +25,68 @@ pub struct EditorResources<'w> {
     pub gizmo: ResMut<'w, GizmoState>,
     pub orbit: Res<'w, OrbitCameraState>,
     pub keybindings: ResMut<'w, KeyBindings>,
+    pub plugin_host: ResMut<'w, PluginHost>,
 }
 use crate::node_system::NodeRegistry;
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
+use crate::plugin_core::PluginHost;
+use crate::ui_api::renderer::UiRenderer;
+use crate::ui_api::UiEvent as InternalUiEvent;
 use panels::{
-    render_assets, render_hierarchy, render_inspector, render_scene_tabs, render_script_editor,
-    render_settings_window, render_splash, render_title_bar, render_toolbar, render_viewport,
-    InspectorQueries, TITLE_BAR_HEIGHT,
+    render_assets, render_hierarchy, render_inspector, render_plugin_menus, render_plugin_panels,
+    render_plugin_toolbar, render_scene_tabs, render_script_editor, render_settings_window,
+    render_splash, render_title_bar, render_toolbar, render_viewport, InspectorQueries,
+    TITLE_BAR_HEIGHT,
 };
 pub use panels::handle_window_actions;
 use style::{apply_editor_style, init_fonts};
+
+/// Convert internal UiEvent to plugin API UiEvent
+fn convert_ui_event_to_api(event: InternalUiEvent) -> editor_plugin_api::events::UiEvent {
+    use editor_plugin_api::events::UiEvent as ApiUiEvent;
+    use editor_plugin_api::ui::UiId as ApiUiId;
+
+    match event {
+        InternalUiEvent::ButtonClicked(id) => ApiUiEvent::ButtonClicked(ApiUiId(id.0)),
+        InternalUiEvent::CheckboxToggled { id, checked } => ApiUiEvent::CheckboxToggled { id: ApiUiId(id.0), checked },
+        InternalUiEvent::SliderChanged { id, value } => ApiUiEvent::SliderChanged { id: ApiUiId(id.0), value },
+        InternalUiEvent::SliderIntChanged { id, value } => ApiUiEvent::SliderIntChanged { id: ApiUiId(id.0), value },
+        InternalUiEvent::TextInputChanged { id, value } => ApiUiEvent::TextInputChanged { id: ApiUiId(id.0), value },
+        InternalUiEvent::TextInputSubmitted { id, value } => ApiUiEvent::TextInputSubmitted { id: ApiUiId(id.0), value },
+        InternalUiEvent::DropdownSelected { id, index } => ApiUiEvent::DropdownSelected { id: ApiUiId(id.0), index },
+        InternalUiEvent::ColorChanged { id, color } => ApiUiEvent::ColorChanged { id: ApiUiId(id.0), color },
+        InternalUiEvent::TreeNodeToggled { id, expanded } => ApiUiEvent::TreeNodeToggled { id: ApiUiId(id.0), expanded },
+        InternalUiEvent::TreeNodeSelected(id) => ApiUiEvent::TreeNodeSelected(ApiUiId(id.0)),
+        InternalUiEvent::TabSelected { id, index } => ApiUiEvent::TabSelected { id: ApiUiId(id.0), index },
+        InternalUiEvent::TabClosed { id, index } => ApiUiEvent::TabClosed { id: ApiUiId(id.0), index },
+        InternalUiEvent::TableRowSelected { id, row } => ApiUiEvent::TableRowSelected { id: ApiUiId(id.0), row },
+        InternalUiEvent::TableSortChanged { id, column, ascending } => ApiUiEvent::TableSortChanged { id: ApiUiId(id.0), column, ascending },
+        InternalUiEvent::CustomEvent { type_id, data } => ApiUiEvent::CustomEvent { type_id, data },
+        // Events that don't have direct mapping - convert to custom event
+        InternalUiEvent::TableRowActivated { id, row } => ApiUiEvent::CustomEvent {
+            type_id: "TableRowActivated".to_string(),
+            data: format!("{}:{}", id.0, row).into_bytes(),
+        },
+        InternalUiEvent::ContextMenuRequested { id, position } => ApiUiEvent::CustomEvent {
+            type_id: "ContextMenuRequested".to_string(),
+            data: format!("{}:{}:{}", id.0, position[0], position[1]).into_bytes(),
+        },
+        InternalUiEvent::DragStarted { id } => ApiUiEvent::CustomEvent {
+            type_id: "DragStarted".to_string(),
+            data: format!("{}", id.0).into_bytes(),
+        },
+        InternalUiEvent::DragEnded { id, target } => ApiUiEvent::CustomEvent {
+            type_id: "DragEnded".to_string(),
+            data: format!("{}:{}", id.0, target.map(|t| t.0).unwrap_or(u64::MAX)).into_bytes(),
+        },
+        InternalUiEvent::ItemDropped { target_id, source_id } => ApiUiEvent::CustomEvent {
+            type_id: "ItemDropped".to_string(),
+            data: format!("{}:{}", target_id.0, source_id.0).into_bytes(),
+        },
+    }
+}
 
 pub struct UiPlugin;
 
@@ -91,6 +141,7 @@ pub fn editor_ui(
     app_state: Res<State<AppState>>,
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
+    mut ui_renderer: Local<UiRenderer>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -118,8 +169,11 @@ pub fn editor_ui(
 
     apply_editor_style(ctx);
 
+    // Collect all UI events to forward to plugins
+    let mut all_ui_events = Vec::new();
+
     // Render custom title bar (includes menu)
-    render_title_bar(
+    let title_bar_events = render_title_bar(
         ctx,
         &mut editor.window_state,
         &mut editor.selection,
@@ -128,18 +182,22 @@ pub fn editor_ui(
         &mut commands,
         &mut meshes,
         &mut materials,
+        &editor.plugin_host,
     );
+    all_ui_events.extend(title_bar_events);
 
     let toolbar_height = 36.0;
 
-    render_toolbar(
+    let toolbar_events = render_toolbar(
         ctx,
         &mut editor.gizmo,
         &mut editor.settings,
         TITLE_BAR_HEIGHT,
         toolbar_height,
         1600.0, // Default width, will be constrained by panel
+        &editor.plugin_host,
     );
+    all_ui_events.extend(toolbar_events);
 
     // Render scene tabs
     let left_panel_width = 260.0;
@@ -170,7 +228,7 @@ pub fn editor_ui(
     let viewport_height = 500.0; // Will be calculated by panels
 
     let active_tab = editor.scene_state.active_scene_tab;
-    render_hierarchy(
+    let hierarchy_events = render_hierarchy(
         ctx,
         &mut editor.selection,
         &mut editor.hierarchy,
@@ -183,10 +241,12 @@ pub fn editor_ui(
         left_panel_width,
         content_start_y,
         viewport_height,
+        &editor.plugin_host,
     );
+    all_ui_events.extend(hierarchy_events);
 
     // Render right panel (inspector)
-    render_inspector(
+    let inspector_events = render_inspector(
         ctx,
         &editor.selection,
         &entities_for_inspector,
@@ -195,7 +255,10 @@ pub fn editor_ui(
         &rhai_engine,
         right_panel_width,
         camera_preview_texture_id,
+        &editor.plugin_host,
+        &mut ui_renderer,
     );
+    all_ui_events.extend(inspector_events);
 
     // Calculate available height for central area
     let screen_rect = ctx.screen_rect();
@@ -234,4 +297,13 @@ pub fn editor_ui(
 
     // Render settings window (floating)
     render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
+
+    // Render plugin-registered panels
+    let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut ui_renderer);
+    all_ui_events.extend(plugin_events);
+
+    // Forward all UI events to plugins (convert from internal to API type)
+    for event in all_ui_events {
+        editor.plugin_host.api_mut().push_ui_event(convert_ui_event_to_api(event));
+    }
 }

@@ -51,6 +51,7 @@ fn main() {
             input::InputPlugin,
             ui::UiPlugin,
             scripting::ScriptingPlugin,
+            plugin_core::PluginCorePlugin,
         ))
         // Initialize app state
         .init_state::<AppState>()

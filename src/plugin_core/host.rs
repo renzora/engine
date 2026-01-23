@@ -211,12 +211,23 @@ impl PluginHost {
 
     /// Update all loaded plugins (called every frame)
     pub fn update(&mut self, dt: f32) {
-        // Dispatch pending events
+        // Dispatch pending editor events
         let events: Vec<_> = self.pending_events.drain(..).collect();
         for event in &events {
             for wrapper in self.plugins.values_mut() {
                 if wrapper.is_enabled() {
                     wrapper.plugin_mut().on_event(&mut self.api, event);
+                }
+            }
+        }
+
+        // Dispatch pending UI events (wrapped as EditorEvent::UiEvent)
+        let ui_events: Vec<_> = self.api.pending_ui_events.drain(..).collect();
+        for ui_event in ui_events {
+            let event = EditorEvent::UiEvent(ui_event);
+            for wrapper in self.plugins.values_mut() {
+                if wrapper.is_enabled() {
+                    wrapper.plugin_mut().on_event(&mut self.api, &event);
                 }
             }
         }

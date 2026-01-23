@@ -3,7 +3,9 @@ use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2};
 
 use crate::core::{EditorEntity, SceneNode, SelectionState, EditorSettings};
 use crate::gizmo::{GizmoMode, GizmoState};
+use crate::plugin_core::PluginHost;
 use crate::scene::{spawn_primitive, PrimitiveType};
+use crate::ui_api::UiEvent;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
@@ -137,7 +139,11 @@ pub fn render_toolbar(
     _menu_bar_height: f32,
     toolbar_height: f32,
     _window_width: f32,
-) {
+    plugin_host: &PluginHost,
+) -> Vec<UiEvent> {
+    let mut events = Vec::new();
+    let api = plugin_host.api();
+
     egui::TopBottomPanel::top("toolbar")
         .exact_height(toolbar_height)
         .show(ctx, |ui| {
@@ -201,6 +207,28 @@ pub fn render_toolbar(
                 }
                 stop_resp.on_hover_text("Stop");
 
+                // Plugin toolbar items
+                if !api.toolbar_items.is_empty() {
+                    ui.add_space(12.0);
+
+                    // Separator
+                    let rect = ui.available_rect_before_wrap();
+                    ui.painter().line_segment(
+                        [Pos2::new(rect.left(), rect.top() + 4.0), Pos2::new(rect.left(), rect.bottom() - 4.0)],
+                        egui::Stroke::new(1.0, Color32::from_rgb(77, 77, 89)),
+                    );
+
+                    ui.add_space(12.0);
+
+                    for item in &api.toolbar_items {
+                        let resp = tool_button(ui, &item.icon, button_size, false, active_color, inactive_color);
+                        if resp.clicked() {
+                            events.push(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));
+                        }
+                        resp.on_hover_text(&item.tooltip);
+                    }
+                }
+
                 // Spacer to push settings to the right
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Settings button
@@ -222,6 +250,8 @@ pub fn render_toolbar(
             }
         });
     }
+
+    events
 }
 
 fn tool_button(

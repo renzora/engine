@@ -1,313 +1,50 @@
 //! Editor API exposed to plugins.
 //!
-//! This module defines the interface that plugins use to interact with the editor.
+//! Re-exports types from editor_plugin_api and provides the implementation.
+
+// Re-export all types from the shared crate
+pub use editor_plugin_api::api::*;
+pub use editor_plugin_api::events::{EditorEventType, UiEvent};
 
 use super::abi::{AssetHandle, AssetStatus, EntityId, PluginTransform};
-use super::traits::EditorEventType;
-use crate::ui_api::{types::UiId, widgets::Widget, UiEvent};
+use crate::ui_api::Widget;
 
-/// Location for menu items
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum MenuLocation {
-    File,
-    Edit,
-    View,
-    Scene,
-    Tools,
-    Help,
-    Custom(String),
-}
-
-/// Menu item definition
+/// Pending operations that will be applied to Bevy world
 #[derive(Clone, Debug)]
-pub struct MenuItem {
-    pub id: UiId,
-    pub label: String,
-    pub shortcut: Option<String>,
-    pub icon: Option<String>,
-    pub enabled: bool,
-    pub children: Vec<MenuItem>,
-}
-
-impl MenuItem {
-    pub fn new(label: impl Into<String>, id: UiId) -> Self {
-        Self {
-            id,
-            label: label.into(),
-            shortcut: None,
-            icon: None,
-            enabled: true,
-            children: Vec::new(),
-        }
-    }
-
-    pub fn shortcut(mut self, shortcut: impl Into<String>) -> Self {
-        self.shortcut = Some(shortcut.into());
-        self
-    }
-
-    pub fn icon(mut self, icon: impl Into<String>) -> Self {
-        self.icon = Some(icon.into());
-        self
-    }
-
-    pub fn disabled(mut self) -> Self {
-        self.enabled = false;
-        self
-    }
-
-    pub fn submenu(mut self, children: Vec<MenuItem>) -> Self {
-        self.children = children;
-        self
-    }
-}
-
-/// Panel definition for dockable windows
-#[derive(Clone, Debug)]
-pub struct PanelDefinition {
-    pub id: String,
-    pub title: String,
-    pub icon: Option<String>,
-    pub default_location: PanelLocation,
-    pub min_size: [f32; 2],
-    pub closable: bool,
-}
-
-impl PanelDefinition {
-    pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            title: title.into(),
-            icon: None,
-            default_location: PanelLocation::Right,
-            min_size: [200.0, 100.0],
-            closable: true,
-        }
-    }
-
-    pub fn icon(mut self, icon: impl Into<String>) -> Self {
-        self.icon = Some(icon.into());
-        self
-    }
-
-    pub fn location(mut self, location: PanelLocation) -> Self {
-        self.default_location = location;
-        self
-    }
-
-    pub fn min_size(mut self, width: f32, height: f32) -> Self {
-        self.min_size = [width, height];
-        self
-    }
-}
-
-/// Panel location in the editor
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum PanelLocation {
-    Left,
-    #[default]
-    Right,
-    Bottom,
-    Floating,
-    Center,
-}
-
-/// Inspector section definition
-#[derive(Clone, Debug)]
-pub struct InspectorDefinition {
-    pub type_id: String,
-    pub label: String,
-    pub priority: i32,
-}
-
-/// Toolbar item definition
-#[derive(Clone, Debug)]
-pub struct ToolbarItem {
-    pub id: UiId,
-    pub icon: String,
-    pub tooltip: String,
-    pub group: Option<String>,
-}
-
-/// Context menu location
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ContextMenuLocation {
-    Hierarchy,
-    Inspector,
-    Viewport,
-    Assets,
-    SceneTab,
-}
-
-/// Settings value types
-#[derive(Clone, Debug)]
-pub enum SettingValue {
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    String(String),
-    Array(Vec<SettingValue>),
-}
-
-/// Command for undo/redo system
-#[derive(Clone, Debug)]
-pub struct Command {
-    pub name: String,
-    pub data: Vec<u8>,
-}
-
-/// Custom event for plugin-to-plugin communication
-#[derive(Clone, Debug)]
-pub struct CustomEvent {
-    pub target_plugin: Option<String>,
-    pub event_type: String,
-    pub data: Vec<u8>,
-}
-
-/// Entity query for filtering entities
-#[derive(Clone, Debug, Default)]
-pub struct EntityQuery {
-    pub component_types: Vec<String>,
-    pub name_filter: Option<String>,
-}
-
-/// Entity definition for spawning
-#[derive(Clone, Debug)]
-pub struct EntityDefinition {
-    pub name: String,
-    pub node_type: String,
-    pub transform: PluginTransform,
-    pub parent: Option<EntityId>,
-}
-
-/// The API exposed to plugins for interacting with the editor.
-///
-/// This trait provides all the functionality that plugins can use to:
-/// - Register UI elements (menus, panels, inspectors)
-/// - Query and modify scene entities
-/// - Load and access assets
-/// - Subscribe to editor events
-/// - Store persistent settings
-pub trait EditorApi {
-    // === Logging ===
-
-    /// Log an info message
-    fn log_info(&self, message: &str);
-
-    /// Log a warning message
-    fn log_warn(&self, message: &str);
-
-    /// Log an error message
-    fn log_error(&self, message: &str);
-
-    // === UI Registration ===
-
-    /// Register a menu item in the editor menu bar
-    fn register_menu_item(&mut self, menu: MenuLocation, item: MenuItem);
-
-    /// Register a panel (dockable window)
-    fn register_panel(&mut self, panel: PanelDefinition);
-
-    /// Register an inspector section for a component type
-    fn register_inspector(&mut self, type_id: &str, inspector: InspectorDefinition);
-
-    /// Register a toolbar button
-    fn register_toolbar_item(&mut self, item: ToolbarItem);
-
-    /// Register a context menu item
-    fn register_context_menu(&mut self, context: ContextMenuLocation, item: MenuItem);
-
-    // === UI Content ===
-
-    /// Set the content for a registered panel
-    fn set_panel_content(&mut self, panel_id: &str, content: Vec<Widget>);
-
-    // === UI Queries ===
-
-    /// Get pending UI events for this plugin
-    fn poll_ui_events(&mut self) -> Vec<UiEvent>;
-
-    // === Scene Access ===
-
-    /// Get currently selected entity
-    fn get_selected_entity(&self) -> Option<EntityId>;
-
-    /// Set the selected entity
-    fn set_selected_entity(&mut self, entity: Option<EntityId>);
-
-    /// Get entity transform
-    fn get_transform(&self, entity: EntityId) -> Option<PluginTransform>;
-
-    /// Set entity transform
-    fn set_transform(&mut self, entity: EntityId, transform: &PluginTransform);
-
-    /// Get entity name
-    fn get_entity_name(&self, entity: EntityId) -> Option<String>;
-
-    /// Set entity name
-    fn set_entity_name(&mut self, entity: EntityId, name: &str);
-
-    /// Spawn a new entity
-    fn spawn_entity(&mut self, def: &EntityDefinition) -> EntityId;
-
-    /// Despawn an entity
-    fn despawn_entity(&mut self, entity: EntityId);
-
-    /// Query entities by component
-    fn query_entities(&self, query: &EntityQuery) -> Vec<EntityId>;
-
-    // === Asset Access ===
-
-    /// Load an asset
-    fn load_asset(&mut self, path: &str) -> AssetHandle;
-
-    /// Get asset loading status
-    fn asset_status(&self, handle: AssetHandle) -> AssetStatus;
-
-    // === Events ===
-
-    /// Subscribe to editor events
-    fn subscribe(&mut self, event_type: EditorEventType);
-
-    /// Emit a custom event to other plugins
-    fn emit_event(&mut self, event: CustomEvent);
-
-    // === Settings ===
-
-    /// Get a plugin setting (persistent storage)
-    fn get_setting(&self, key: &str) -> Option<SettingValue>;
-
-    /// Set a plugin setting
-    fn set_setting(&mut self, key: &str, value: SettingValue);
-
-    // === Commands ===
-
-    /// Execute an undoable command
-    fn execute_command(&mut self, command: Command);
-
-    /// Undo the last command
-    fn undo(&mut self);
-
-    /// Redo the last undone command
-    fn redo(&mut self);
+pub enum PendingOperation {
+    SetSelectedEntity(Option<EntityId>),
+    SetTransform { entity: EntityId, transform: PluginTransform },
+    SetEntityName { entity: EntityId, name: String },
+    SpawnEntity(EntityDefinition),
+    DespawnEntity(EntityId),
+    LoadAsset(String),
 }
 
 /// Default implementation for internal use
 pub struct EditorApiImpl {
-    // UI state
+    // UI registrations (persistent)
     pub menu_items: Vec<(MenuLocation, MenuItem)>,
     pub panels: Vec<PanelDefinition>,
     pub panel_contents: std::collections::HashMap<String, Vec<Widget>>,
     pub inspectors: Vec<(String, InspectorDefinition)>,
+    pub inspector_contents: std::collections::HashMap<String, Vec<Widget>>,
     pub toolbar_items: Vec<ToolbarItem>,
     pub context_menus: Vec<(ContextMenuLocation, MenuItem)>,
 
+    // State snapshot (synced from Bevy each frame)
+    pub selected_entity: Option<EntityId>,
+    pub entity_transforms: std::collections::HashMap<EntityId, PluginTransform>,
+    pub entity_names: std::collections::HashMap<EntityId, String>,
+
+    // Pending operations (applied to Bevy after plugin update)
+    pub pending_operations: Vec<PendingOperation>,
+
     // Events
-    pub pending_events: Vec<UiEvent>,
+    pub pending_ui_events: Vec<UiEvent>,
     pub subscriptions: Vec<EditorEventType>,
     pub outgoing_events: Vec<CustomEvent>,
 
-    // Settings
+    // Settings (persistent)
     pub settings: std::collections::HashMap<String, SettingValue>,
 }
 
@@ -324,13 +61,40 @@ impl EditorApiImpl {
             panels: Vec::new(),
             panel_contents: std::collections::HashMap::new(),
             inspectors: Vec::new(),
+            inspector_contents: std::collections::HashMap::new(),
             toolbar_items: Vec::new(),
             context_menus: Vec::new(),
-            pending_events: Vec::new(),
+            selected_entity: None,
+            entity_transforms: std::collections::HashMap::new(),
+            entity_names: std::collections::HashMap::new(),
+            pending_operations: Vec::new(),
+            pending_ui_events: Vec::new(),
             subscriptions: Vec::new(),
             outgoing_events: Vec::new(),
             settings: std::collections::HashMap::new(),
         }
+    }
+
+    /// Take pending operations (called by sync system)
+    pub fn take_pending_operations(&mut self) -> Vec<PendingOperation> {
+        std::mem::take(&mut self.pending_operations)
+    }
+
+    /// Update state snapshot from Bevy
+    pub fn sync_from_bevy(
+        &mut self,
+        selected: Option<EntityId>,
+        transforms: std::collections::HashMap<EntityId, PluginTransform>,
+        names: std::collections::HashMap<EntityId, String>,
+    ) {
+        self.selected_entity = selected;
+        self.entity_transforms = transforms;
+        self.entity_names = names;
+    }
+
+    /// Push a UI event for plugins to receive
+    pub fn push_ui_event(&mut self, event: UiEvent) {
+        self.pending_ui_events.push(event);
     }
 }
 
@@ -367,58 +131,81 @@ impl EditorApi for EditorApiImpl {
         self.context_menus.push((context, item));
     }
 
-    fn set_panel_content(&mut self, panel_id: &str, content: Vec<Widget>) {
-        self.panel_contents.insert(panel_id.to_string(), content);
+    fn set_panel_content(&mut self, panel_id: &str, content: Vec<editor_plugin_api::ui::Widget>) {
+        // Convert from plugin API Widget to internal Widget
+        let internal_content: Vec<Widget> = content.into_iter().map(convert_widget).collect();
+        self.panel_contents.insert(panel_id.to_string(), internal_content);
+    }
+
+    fn set_inspector_content(&mut self, inspector_id: &str, content: Vec<editor_plugin_api::ui::Widget>) {
+        // Convert from plugin API Widget to internal Widget
+        let internal_content: Vec<Widget> = content.into_iter().map(convert_widget).collect();
+        self.inspector_contents.insert(inspector_id.to_string(), internal_content);
     }
 
     fn poll_ui_events(&mut self) -> Vec<UiEvent> {
-        std::mem::take(&mut self.pending_events)
+        std::mem::take(&mut self.pending_ui_events)
     }
 
     fn get_selected_entity(&self) -> Option<EntityId> {
-        // TODO: Connect to actual selection state
-        None
+        self.selected_entity
     }
 
-    fn set_selected_entity(&mut self, _entity: Option<EntityId>) {
-        // TODO: Connect to actual selection state
+    fn set_selected_entity(&mut self, entity: Option<EntityId>) {
+        self.pending_operations.push(PendingOperation::SetSelectedEntity(entity));
     }
 
-    fn get_transform(&self, _entity: EntityId) -> Option<PluginTransform> {
-        // TODO: Connect to Bevy world
-        None
+    fn get_transform(&self, entity: EntityId) -> Option<PluginTransform> {
+        self.entity_transforms.get(&entity).copied()
     }
 
-    fn set_transform(&mut self, _entity: EntityId, _transform: &PluginTransform) {
-        // TODO: Connect to Bevy world
+    fn set_transform(&mut self, entity: EntityId, transform: &PluginTransform) {
+        self.pending_operations.push(PendingOperation::SetTransform {
+            entity,
+            transform: *transform,
+        });
     }
 
-    fn get_entity_name(&self, _entity: EntityId) -> Option<String> {
-        // TODO: Connect to Bevy world
-        None
+    fn get_entity_name(&self, entity: EntityId) -> Option<String> {
+        self.entity_names.get(&entity).cloned()
     }
 
-    fn set_entity_name(&mut self, _entity: EntityId, _name: &str) {
-        // TODO: Connect to Bevy world
+    fn set_entity_name(&mut self, entity: EntityId, name: &str) {
+        self.pending_operations.push(PendingOperation::SetEntityName {
+            entity,
+            name: name.to_string(),
+        });
     }
 
-    fn spawn_entity(&mut self, _def: &EntityDefinition) -> EntityId {
-        // TODO: Connect to Bevy world
+    fn spawn_entity(&mut self, def: &EntityDefinition) -> EntityId {
+        // Queue the spawn operation - actual entity will be created by sync system
+        self.pending_operations.push(PendingOperation::SpawnEntity(def.clone()));
+        // Return invalid for now - in a real impl we'd use a placeholder ID
         EntityId::INVALID
     }
 
-    fn despawn_entity(&mut self, _entity: EntityId) {
-        // TODO: Connect to Bevy world
+    fn despawn_entity(&mut self, entity: EntityId) {
+        self.pending_operations.push(PendingOperation::DespawnEntity(entity));
     }
 
-    fn query_entities(&self, _query: &EntityQuery) -> Vec<EntityId> {
-        // TODO: Connect to Bevy world
-        Vec::new()
+    fn query_entities(&self, query: &EntityQuery) -> Vec<EntityId> {
+        // Filter entities based on query
+        let mut results = Vec::new();
+        for (id, name) in &self.entity_names {
+            let matches = query.name_filter.as_ref()
+                .map(|f| name.contains(f))
+                .unwrap_or(true);
+            if matches {
+                results.push(*id);
+            }
+        }
+        results
     }
 
-    fn load_asset(&mut self, _path: &str) -> AssetHandle {
-        // TODO: Connect to Bevy asset server
-        AssetHandle::INVALID
+    fn load_asset(&mut self, path: &str) -> AssetHandle {
+        self.pending_operations.push(PendingOperation::LoadAsset(path.to_string()));
+        // Return a placeholder handle
+        AssetHandle::new(0)
     }
 
     fn asset_status(&self, handle: AssetHandle) -> AssetStatus {
@@ -457,5 +244,172 @@ impl EditorApi for EditorApiImpl {
 
     fn redo(&mut self) {
         // TODO: Implement undo/redo system
+    }
+}
+
+/// Convert plugin API Widget to internal Widget
+fn convert_widget(w: editor_plugin_api::ui::Widget) -> Widget {
+    use editor_plugin_api::ui::Widget as ApiWidget;
+
+    match w {
+        ApiWidget::Label { text, style } => Widget::Label {
+            text,
+            style: convert_text_style(style),
+        },
+        ApiWidget::Button { label, id, enabled } => Widget::Button {
+            label,
+            id: crate::ui_api::UiId(id.0),
+            enabled,
+        },
+        ApiWidget::IconButton { icon, tooltip, id, enabled } => Widget::IconButton {
+            icon,
+            tooltip,
+            id: crate::ui_api::UiId(id.0),
+            enabled,
+        },
+        ApiWidget::TextInput { value, placeholder, id } => Widget::TextInput {
+            value,
+            placeholder,
+            id: crate::ui_api::UiId(id.0),
+        },
+        ApiWidget::TextEdit { value, id, min_lines, max_lines } => Widget::TextEdit {
+            value,
+            id: crate::ui_api::UiId(id.0),
+            min_lines,
+            max_lines: Some(max_lines),
+        },
+        ApiWidget::Checkbox { checked, label, id } => Widget::Checkbox {
+            checked,
+            label,
+            id: crate::ui_api::UiId(id.0),
+        },
+        ApiWidget::Slider { value, min, max, id, label } => Widget::Slider {
+            value,
+            min,
+            max,
+            id: crate::ui_api::UiId(id.0),
+            label,
+        },
+        ApiWidget::SliderInt { value, min, max, id, label } => Widget::SliderInt {
+            value,
+            min,
+            max,
+            id: crate::ui_api::UiId(id.0),
+            label,
+        },
+        ApiWidget::Dropdown { selected, options, id } => Widget::Dropdown {
+            selected,
+            options,
+            id: crate::ui_api::UiId(id.0),
+        },
+        ApiWidget::ColorPicker { color, id, alpha } => Widget::ColorPicker {
+            color,
+            id: crate::ui_api::UiId(id.0),
+            alpha,
+        },
+        ApiWidget::ProgressBar { progress, label } => Widget::ProgressBar {
+            progress,
+            label,
+        },
+        ApiWidget::Row { children, spacing, align } => Widget::Row {
+            children: children.into_iter().map(convert_widget).collect(),
+            spacing,
+            align: convert_align(align),
+        },
+        ApiWidget::Column { children, spacing, align } => Widget::Column {
+            children: children.into_iter().map(convert_widget).collect(),
+            spacing,
+            align: convert_align(align),
+        },
+        ApiWidget::Panel { title, children, collapsible, default_open } => Widget::Panel {
+            title,
+            children: children.into_iter().map(convert_widget).collect(),
+            collapsible,
+            default_open,
+        },
+        ApiWidget::ScrollArea { child, max_height, horizontal } => Widget::ScrollArea {
+            child: Box::new(convert_widget(*child)),
+            max_height,
+            horizontal,
+        },
+        ApiWidget::Group { children, frame } => Widget::Group {
+            children: children.into_iter().map(convert_widget).collect(),
+            frame,
+        },
+        ApiWidget::TreeNode { label, id, children, expanded, leaf } => Widget::TreeNode {
+            label,
+            id: crate::ui_api::UiId(id.0),
+            children: children.into_iter().map(convert_widget).collect(),
+            expanded,
+            leaf,
+        },
+        ApiWidget::Table { columns, rows, id, striped } => Widget::Table {
+            columns: columns.into_iter().map(|c| crate::ui_api::TableColumn {
+                header: c.header,
+                width: convert_size(c.width),
+                sortable: c.sortable,
+                resizable: c.resizable,
+            }).collect(),
+            rows: rows.into_iter().map(|r| crate::ui_api::TableRow {
+                cells: r.cells.into_iter().map(convert_widget).collect(),
+                id: crate::ui_api::UiId(r.id.0),
+            }).collect(),
+            id: crate::ui_api::UiId(id.0),
+            striped,
+        },
+        ApiWidget::Tabs { tabs, active, id } => Widget::Tabs {
+            tabs: tabs.into_iter().map(|t| crate::ui_api::Tab {
+                label: t.label,
+                icon: t.icon,
+                content: t.content.into_iter().map(convert_widget).collect(),
+                closable: t.closable,
+            }).collect(),
+            active,
+            id: crate::ui_api::UiId(id.0),
+        },
+        ApiWidget::Separator => Widget::Separator,
+        ApiWidget::Spacer { size } => Widget::Spacer {
+            size: convert_size(size),
+        },
+        ApiWidget::Image { path, size } => Widget::Image {
+            path,
+            size,
+        },
+        ApiWidget::Custom { type_id, data } => Widget::Custom {
+            type_id,
+            data,
+        },
+        ApiWidget::Empty => Widget::Empty,
+    }
+}
+
+fn convert_text_style(s: editor_plugin_api::ui::TextStyle) -> crate::ui_api::TextStyle {
+    match s {
+        editor_plugin_api::ui::TextStyle::Body => crate::ui_api::TextStyle::Body,
+        editor_plugin_api::ui::TextStyle::Heading1 => crate::ui_api::TextStyle::Heading1,
+        editor_plugin_api::ui::TextStyle::Heading2 => crate::ui_api::TextStyle::Heading2,
+        editor_plugin_api::ui::TextStyle::Heading3 => crate::ui_api::TextStyle::Heading3,
+        editor_plugin_api::ui::TextStyle::Caption => crate::ui_api::TextStyle::Caption,
+        editor_plugin_api::ui::TextStyle::Code => crate::ui_api::TextStyle::Code,
+        editor_plugin_api::ui::TextStyle::Label => crate::ui_api::TextStyle::Label,
+    }
+}
+
+fn convert_align(a: editor_plugin_api::ui::Align) -> crate::ui_api::Align {
+    match a {
+        editor_plugin_api::ui::Align::Start => crate::ui_api::Align::Start,
+        editor_plugin_api::ui::Align::Center => crate::ui_api::Align::Center,
+        editor_plugin_api::ui::Align::End => crate::ui_api::Align::End,
+        editor_plugin_api::ui::Align::Stretch => crate::ui_api::Align::Stretch,
+    }
+}
+
+fn convert_size(s: editor_plugin_api::ui::Size) -> crate::ui_api::Size {
+    match s {
+        editor_plugin_api::ui::Size::Auto => crate::ui_api::Size::Auto,
+        editor_plugin_api::ui::Size::Fixed(v) => crate::ui_api::Size::Fixed(v),
+        editor_plugin_api::ui::Size::Percent(v) => crate::ui_api::Size::Percent(v),
+        editor_plugin_api::ui::Size::Fill => crate::ui_api::Size::Fill,
+        editor_plugin_api::ui::Size::FillPortion(v) => crate::ui_api::Size::FillPortion(v),
     }
 }

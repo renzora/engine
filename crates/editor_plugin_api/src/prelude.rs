@@ -4,13 +4,27 @@
 //! use editor_plugin_api::prelude::*;
 //! ```
 
-// This prelude will re-export types from the main editor crate
-// For now, it serves as a placeholder showing what would be exported
-
+// Macro
 pub use crate::declare_plugin;
 
-// When the shared types are properly factored out, this would include:
-// pub use crate::abi::{PluginManifest, PluginCapability, PluginDependency, PluginError};
-// pub use crate::api::{EditorApi, MenuLocation, MenuItem, PanelDefinition, ...};
-// pub use crate::traits::{EditorPlugin, EditorEvent, EditorEventType};
-// pub use crate::ui::{Widget, UiEvent, UiId, ...};
+// ABI types
+pub use crate::abi::{
+    AssetHandle, AssetStatus, EntityId, PluginCapability, PluginDependency, PluginError,
+    PluginManifest, PluginTransform, EDITOR_API_VERSION,
+};
+
+// API types
+pub use crate::api::{
+    Command, ContextMenuLocation, CustomEvent, EditorApi, EntityDefinition, EntityQuery,
+    InspectorDefinition, MenuItem, MenuLocation, PanelDefinition, PanelLocation, SettingValue,
+    ToolbarItem,
+};
+
+// Event types
+pub use crate::events::{EditorEvent, EditorEventType, UiEvent};
+
+// Trait
+pub use crate::traits::{CreatePluginFn, EditorPlugin};
+
+// UI types
+pub use crate::ui::{Align, Size, Tab, TableColumn, TableRow, TextStyle, UiId, Widget};

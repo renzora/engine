@@ -7,3 +7,7 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 # Minimal dependencies for plugin authors
+
+[lib]
+# Allow usage both as rlib (for editor) and as reference for plugins
+crate-type = ["rlib"]

@@ -18,12 +18,13 @@ rhai = { version = "1.21", features = ["sync"] }
 # Plugin system dependencies
 libloading = "0.8"
 notify = "6.0"
+editor_plugin_api = { path = "crates/editor_plugin_api" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
 [workspace]
-members = ["crates/editor_plugin_api"]
+members = ["crates/editor_plugin_api", "crates/test_plugin", "crates/fps_plugin"]
 
 [profile.dev]
 opt-level = 2

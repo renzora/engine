@@ -3,7 +3,9 @@ use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::core::{EditorEntity, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
+use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::scene::{spawn_primitive, PrimitiveType};
+use crate::ui_api::UiEvent;
 
 use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR};
 
@@ -19,7 +21,9 @@ pub fn render_title_bar(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
-) {
+    plugin_host: &PluginHost,
+) -> Vec<UiEvent> {
+    let mut ui_events = Vec::new();
     let is_maximized = window_state.is_maximized;
 
     egui::TopBottomPanel::top("title_bar")
@@ -89,7 +93,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                render_menu_items(ui, selection, scene_state, settings, commands, meshes, materials);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, commands, meshes, materials, plugin_host);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -117,6 +121,8 @@ pub fn render_title_bar(
                 }
             });
         });
+
+    ui_events
 }
 
 /// System to sync window state and apply pending window actions
@@ -191,7 +197,22 @@ fn render_menu_items(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
-) {
+    plugin_host: &PluginHost,
+) -> Vec<UiEvent> {
+    let mut events = Vec::new();
+    let api = plugin_host.api();
+
+    // Get plugin menu items grouped by location
+    let file_items: Vec<_> = api.menu_items.iter()
+        .filter(|(loc, _)| *loc == MenuLocation::File)
+        .map(|(_, item)| item)
+        .collect();
+
+    let tools_items: Vec<_> = api.menu_items.iter()
+        .filter(|(loc, _)| *loc == MenuLocation::Tools)
+        .map(|(_, item)| item)
+        .collect();
+
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
     ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(50, 50, 60);
     ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::from_rgb(60, 60, 70);
@@ -214,6 +235,17 @@ fn render_menu_items(
             scene_state.save_scene_as_requested = true;
             ui.close();
         }
+
+        // Plugin File menu items
+        if !file_items.is_empty() {
+            ui.separator();
+            for item in &file_items {
+                if let Some(event) = render_plugin_menu_item(ui, item) {
+                    events.push(event);
+                }
+            }
+        }
+
         ui.separator();
         if ui.button("Exit").clicked() {
             std::process::exit(0);
@@ -293,6 +325,17 @@ fn render_menu_items(
         }
     });
 
+    // Tools menu (for plugins)
+    if !tools_items.is_empty() {
+        ui.menu_button("Tools", |ui| {
+            for item in &tools_items {
+                if let Some(event) = render_plugin_menu_item(ui, item) {
+                    events.push(event);
+                }
+            }
+        });
+    }
+
     ui.menu_button("View", |ui| {
         ui.checkbox(&mut settings.show_demo_window, "egui Demo");
     });
@@ -305,6 +348,48 @@ fn render_menu_items(
             ui.close();
         }
     });
+
+    events
+}
+
+/// Render a plugin menu item, returns UiEvent if clicked
+fn render_plugin_menu_item(ui: &mut egui::Ui, item: &MenuItem) -> Option<UiEvent> {
+    if item.children.is_empty() {
+        // Leaf item
+        let mut text = String::new();
+        if let Some(icon) = &item.icon {
+            text.push_str(icon);
+            text.push(' ');
+        }
+        text.push_str(&item.label);
+        if let Some(shortcut) = &item.shortcut {
+            text.push_str("    ");
+            text.push_str(shortcut);
+        }
+
+        let button = egui::Button::new(&text);
+        let response = ui.add_enabled(item.enabled, button);
+
+        if response.clicked() {
+            ui.close();
+            return Some(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));
+        }
+    } else {
+        // Submenu
+        let label = if let Some(icon) = &item.icon {
+            format!("{} {}", icon, item.label)
+        } else {
+            item.label.clone()
+        };
+
+        ui.menu_button(label, |ui| {
+            for child in &item.children {
+                render_plugin_menu_item(ui, child);
+            }
+        });
+    }
+
+    None
 }
 
 fn window_button(ui: &mut egui::Ui, icon: &str, hover_color: Color32, width: f32) -> egui::Response {
