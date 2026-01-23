@@ -31,7 +31,7 @@ fn main() {
             DefaultPlugins
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Bevy Editor".to_string(),
+                        title: "Renzora Engine r4".to_string(),
                         resolution: (800u32, 600u32).into(),
                         position: WindowPosition::Centered(MonitorSelection::Primary),
                         decorations: false,

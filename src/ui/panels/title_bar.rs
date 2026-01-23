@@ -38,9 +38,9 @@ pub fn render_title_bar(
             let window_buttons_width = button_width * 3.0;
 
             // Draw centered title with icon
-            let icon_text = format!("{} Renzora Engine", SQUARES_FOUR);
+            let title_text = "Renzora Engine r4".to_string();
             let title_galley = painter.layout_no_wrap(
-                icon_text.clone(),
+                title_text.clone(),
                 egui::FontId::proportional(13.0),
                 Color32::from_rgb(140, 140, 150),
             );
@@ -439,9 +439,9 @@ pub fn render_splash_title_bar(
             let window_buttons_width = button_width * 3.0;
 
             // Draw centered title with icon
-            let icon_text = format!("{} Renzora Engine", SQUARES_FOUR);
+            let title_text = "Renzora Engine r4".to_string();
             let title_galley = painter.layout_no_wrap(
-                icon_text.clone(),
+                title_text.clone(),
                 egui::FontId::proportional(13.0),
                 Color32::from_rgb(140, 140, 150),
             );
