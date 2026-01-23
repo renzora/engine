@@ -220,7 +220,7 @@ pub fn render_toolbar(
 
                     ui.add_space(12.0);
 
-                    for item in &api.toolbar_items {
+                    for (item, _plugin_id) in &api.toolbar_items {
                         let resp = tool_button(ui, &item.icon, button_size, false, active_color, inactive_color);
                         if resp.clicked() {
                             events.push(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));

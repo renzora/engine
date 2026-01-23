@@ -1,9 +1,11 @@
 //! Test Plugin for the Bevy Editor
 //!
 //! This plugin demonstrates the plugin API by creating panels, menus,
-//! and responding to user interactions.
+//! responding to user interactions, and direct Bevy World access.
 
 use editor_plugin_api::prelude::*;
+use editor_plugin_api::bevy::prelude::*;
+use editor_plugin_api::egui_phosphor::regular::{FLASK, CUBE, CROSSHAIR};
 
 /// A test plugin that demonstrates the plugin API
 pub struct TestPlugin {
@@ -19,6 +21,10 @@ pub struct TestPlugin {
     selected_entity_id: Option<EntityId>,
     /// Number of entities spawned by this plugin
     spawned_count: u32,
+    /// Entity count from direct World query
+    world_entity_count: usize,
+    /// Show debug visualization
+    show_debug_viz: bool,
 }
 
 impl TestPlugin {
@@ -30,6 +36,8 @@ impl TestPlugin {
             selected_entity_name: None,
             selected_entity_id: None,
             spawned_count: 0,
+            world_entity_count: 0,
+            show_debug_viz: false,
         }
     }
 }
@@ -56,9 +64,18 @@ impl EditorPlugin for TestPlugin {
         // Register a floating panel
         api.register_panel(
             PanelDefinition::new("test_panel", "Test Plugin")
-                .icon("🧪")
+                .icon(FLASK)
                 .location(PanelLocation::Floating)
-                .min_size(280.0, 350.0)
+                .min_size(280.0, 400.0)
+        );
+
+        // Register status bar item
+        api.set_status_item(
+            StatusBarItem::new("test_clicks", "0 clicks")
+                .icon(CROSSHAIR)
+                .tooltip("Test plugin click counter")
+                .align(StatusBarAlign::Right)
+                .priority(100),
         );
 
         // Register menu items in Tools menu
@@ -66,13 +83,11 @@ impl EditorPlugin for TestPlugin {
             MenuLocation::Tools,
             MenuItem::new("Spawn Test Entity", UiId::new(1001))
                 .shortcut("Ctrl+Shift+T")
-                .icon("➕")
         );
 
         api.register_menu_item(
             MenuLocation::Tools,
             MenuItem::new("Plugin Settings...", UiId::new(1002))
-                .icon("⚙")
         );
 
         // Register a submenu
@@ -121,7 +136,7 @@ impl EditorPlugin for TestPlugin {
 
         // Register toolbar button
         api.register_toolbar_item(
-            ToolbarItem::new(UiId::new(3001), "🧪", "Test Plugin Quick Action")
+            ToolbarItem::new(UiId::new(3001), FLASK, "Test Plugin Quick Action")
                 .group("plugins")
         );
 
@@ -135,13 +150,23 @@ impl EditorPlugin for TestPlugin {
     }
 
     fn on_unload(&mut self, api: &mut dyn EditorApi) {
+        api.remove_status_item("test_clicks");
         api.log_info("Test Plugin unloaded!");
     }
 
     fn on_update(&mut self, api: &mut dyn EditorApi, _dt: f32) {
+        // Update status bar
+        api.set_status_item(
+            StatusBarItem::new("test_clicks", format!("{} clicks", self.click_count))
+                .icon(CROSSHAIR)
+                .tooltip("Test plugin click counter")
+                .align(StatusBarAlign::Right)
+                .priority(100),
+        );
+
         // Build panel content
         let mut content = vec![
-            Widget::heading("Test Plugin Panel"),
+            Widget::heading(format!("{} Test Plugin", FLASK)),
             Widget::separator(),
 
             // Button section
@@ -171,6 +196,18 @@ impl EditorPlugin for TestPlugin {
 
             // Checkbox section
             Widget::checkbox("Enable feature", self.checkbox_checked, UiId::new(20)),
+            Widget::checkbox("Show debug visualization", self.show_debug_viz, UiId::new(21)),
+
+            Widget::separator(),
+
+            // World access section - shows data from direct World query
+            Widget::panel("World Access (Direct)", vec![
+                Widget::label(format!("{} Entities in World: {}", CUBE, self.world_entity_count)),
+                Widget::Label {
+                    text: "Data from on_world_update()".to_string(),
+                    style: TextStyle::Caption,
+                },
+            ]),
 
             Widget::separator(),
 
@@ -238,6 +275,22 @@ impl EditorPlugin for TestPlugin {
                 ]),
             ];
             api.set_inspector_content("TestComponent", inspector_content);
+        }
+    }
+
+    /// Direct World access - called every frame
+    /// This demonstrates how plugins can query Bevy ECS directly
+    fn on_world_update(&mut self, world: &mut World) {
+        // Count all entities with Transform component
+        let mut query = world.query::<&Transform>();
+        self.world_entity_count = query.iter(world).count();
+
+        // Example: Draw debug gizmos if enabled
+        if self.show_debug_viz {
+            // Get the Gizmos resource if available
+            // Note: Gizmos requires a system parameter, so we'd need to use
+            // a different approach for direct gizmo drawing from World access
+            // For now, just log when enabled
         }
     }
 
@@ -374,6 +427,9 @@ impl TestPlugin {
                 if id.0 == 20 || id.0 == 501 {
                     self.checkbox_checked = *checked;
                     api.log_info(&format!("Feature enabled: {}", checked));
+                } else if id.0 == 21 {
+                    self.show_debug_viz = *checked;
+                    api.log_info(&format!("Debug visualization: {}", checked));
                 }
             }
             _ => {}

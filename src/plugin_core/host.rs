@@ -3,14 +3,17 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::path::PathBuf;
+use std::sync::mpsc::{channel, Receiver};
+use std::sync::Mutex;
 
 use bevy::prelude::*;
 use libloading::Library;
+use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 
 use super::abi::{PluginError, PluginManifest, EDITOR_API_VERSION};
 use super::api::EditorApiImpl;
 use super::dependency::DependencyGraph;
-use super::traits::{CreatePluginFn, EditorEvent, EditorPlugin, LoadedPluginWrapper};
+use super::traits::{CreatePluginFn, EditorEvent, LoadedPluginWrapper};
 
 /// The plugin host manages the lifecycle of all loaded plugins.
 #[derive(Resource)]
@@ -21,10 +24,16 @@ pub struct PluginHost {
     libraries: Vec<Library>,
     /// Plugin instances
     plugins: HashMap<String, LoadedPluginWrapper>,
+    /// Map from plugin ID to the file path it was loaded from
+    plugin_paths: HashMap<String, PathBuf>,
     /// API implementation shared with plugins
     api: EditorApiImpl,
     /// Pending events to dispatch
     pending_events: Vec<EditorEvent>,
+    /// File watcher for hot reload (wrapped in Mutex for Sync)
+    watcher: Option<Mutex<RecommendedWatcher>>,
+    /// Receiver for file system events (wrapped in Mutex for Sync)
+    watcher_rx: Option<Mutex<Receiver<Result<Event, notify::Error>>>>,
 }
 
 impl Default for PluginHost {
@@ -44,8 +53,11 @@ impl PluginHost {
             plugin_dir,
             libraries: Vec::new(),
             plugins: HashMap::new(),
+            plugin_paths: HashMap::new(),
             api: EditorApiImpl::new(),
             pending_events: Vec::new(),
+            watcher: None,
+            watcher_rx: None,
         }
     }
 
@@ -54,6 +66,123 @@ impl PluginHost {
         Self {
             plugin_dir,
             ..Default::default()
+        }
+    }
+
+    /// Start watching the plugin directory for changes
+    pub fn start_watching(&mut self) {
+        if self.watcher.is_some() {
+            return; // Already watching
+        }
+
+        let (tx, rx) = channel();
+
+        match RecommendedWatcher::new(
+            move |res| {
+                let _ = tx.send(res);
+            },
+            Config::default(),
+        ) {
+            Ok(mut watcher) => {
+                if self.plugin_dir.exists() {
+                    if let Err(e) = watcher.watch(&self.plugin_dir, RecursiveMode::NonRecursive) {
+                        warn!("Failed to watch plugin directory: {}", e);
+                        return;
+                    }
+                    info!("Watching plugin directory: {}", self.plugin_dir.display());
+                    self.watcher = Some(Mutex::new(watcher));
+                    self.watcher_rx = Some(Mutex::new(rx));
+                }
+            }
+            Err(e) => {
+                warn!("Failed to create file watcher: {}", e);
+            }
+        }
+    }
+
+    /// Stop watching the plugin directory
+    pub fn stop_watching(&mut self) {
+        self.watcher = None;
+        self.watcher_rx = None;
+    }
+
+    /// Check for file system changes and hot reload plugins
+    pub fn check_for_changes(&mut self) {
+        let Some(rx_mutex) = &self.watcher_rx else {
+            return;
+        };
+
+        let Ok(rx) = rx_mutex.lock() else {
+            return;
+        };
+
+        let extension = if cfg!(windows) {
+            "dll"
+        } else if cfg!(target_os = "macos") {
+            "dylib"
+        } else {
+            "so"
+        };
+
+        // Collect all events
+        let mut created_files = Vec::new();
+        let mut removed_files = Vec::new();
+
+        while let Ok(result) = rx.try_recv() {
+            if let Ok(event) = result {
+                for path in event.paths {
+                    if path.extension() != Some(OsStr::new(extension)) {
+                        continue;
+                    }
+
+                    match event.kind {
+                        notify::EventKind::Create(_) => {
+                            created_files.push(path);
+                        }
+                        notify::EventKind::Remove(_) => {
+                            removed_files.push(path);
+                        }
+                        notify::EventKind::Modify(_) => {
+                            // For modifications, we'll treat it as remove + create
+                            // But on Windows we can't reload while loaded, so just log
+                            info!("Plugin modified: {} (restart to reload)", path.display());
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Drop the lock before modifying self
+        drop(rx);
+
+        // Handle removed plugins
+        for path in removed_files {
+            // Find plugin ID by path
+            let plugin_id = self
+                .plugin_paths
+                .iter()
+                .find(|(_, p)| **p == path)
+                .map(|(id, _)| id.clone());
+
+            if let Some(id) = plugin_id {
+                info!("Plugin file removed, unloading: {}", id);
+                let _ = self.unload_plugin(&id);
+            }
+        }
+
+        // Handle new plugins
+        for path in created_files {
+            // Check if already loaded
+            if self.plugin_paths.values().any(|p| *p == path) {
+                continue;
+            }
+
+            info!("New plugin detected: {}", path.display());
+            match self.load_plugin(&path) {
+                Ok(id) => info!("Hot loaded plugin: {}", id),
+                Err(e) => error!("Failed to hot load plugin: {}", e),
+            }
         }
     }
 
@@ -153,6 +282,10 @@ impl PluginHost {
         }
 
         info!("Loaded {} plugin(s)", self.plugins.len());
+
+        // Start watching for hot reload
+        self.start_watching();
+
         Ok(())
     }
 
@@ -182,16 +315,22 @@ impl PluginHost {
 
             let plugin_id = manifest.id.clone();
 
+            // Set current plugin for API tracking
+            self.api.set_current_plugin(Some(plugin_id.clone()));
+
             // Initialize the plugin
             plugin.on_load(&mut self.api)
                 .map_err(|e| PluginError::InitFailed(format!("{}", e)))?;
 
+            self.api.set_current_plugin(None);
+
             // Store the library to keep it loaded
             self.libraries.push(library);
 
-            // Store the plugin wrapper
+            // Store the plugin wrapper and path
             let wrapper = LoadedPluginWrapper::new(plugin);
             self.plugins.insert(plugin_id.clone(), wrapper);
+            self.plugin_paths.insert(plugin_id.clone(), path.clone());
 
             info!("Plugin loaded: {} v{}", manifest.name, manifest.version);
             Ok(plugin_id)
@@ -201,7 +340,15 @@ impl PluginHost {
     /// Unload a plugin by ID
     pub fn unload_plugin(&mut self, plugin_id: &str) -> Result<(), PluginError> {
         if let Some(mut wrapper) = self.plugins.remove(plugin_id) {
+            // Set current plugin for API tracking
+            self.api.set_current_plugin(Some(plugin_id.to_string()));
             wrapper.plugin_mut().on_unload(&mut self.api);
+            self.api.set_current_plugin(None);
+
+            // Remove all UI elements registered by this plugin
+            self.api.remove_plugin_elements(plugin_id);
+
+            self.plugin_paths.remove(plugin_id);
             info!("Plugin unloaded: {}", plugin_id);
             Ok(())
         } else {
@@ -209,14 +356,41 @@ impl PluginHost {
         }
     }
 
+    /// Unload all plugins (called when project changes)
+    pub fn unload_all_plugins(&mut self) {
+        // Stop watching first
+        self.stop_watching();
+
+        let plugin_ids: Vec<_> = self.plugins.keys().cloned().collect();
+        for plugin_id in plugin_ids {
+            if let Some(mut wrapper) = self.plugins.remove(&plugin_id) {
+                wrapper.plugin_mut().on_unload(&mut self.api);
+                info!("Plugin unloaded: {}", plugin_id);
+            }
+        }
+        // Clear libraries to unload the DLLs
+        self.libraries.clear();
+        // Clear plugin paths
+        self.plugin_paths.clear();
+        // Clear API state
+        self.api.clear();
+        info!("All plugins unloaded");
+    }
+
     /// Update all loaded plugins (called every frame)
     pub fn update(&mut self, dt: f32) {
+        // Get plugin IDs for iteration (need to avoid borrow issues)
+        let plugin_ids: Vec<_> = self.plugins.keys().cloned().collect();
+
         // Dispatch pending editor events
         let events: Vec<_> = self.pending_events.drain(..).collect();
         for event in &events {
-            for wrapper in self.plugins.values_mut() {
-                if wrapper.is_enabled() {
-                    wrapper.plugin_mut().on_event(&mut self.api, event);
+            for plugin_id in &plugin_ids {
+                if let Some(wrapper) = self.plugins.get_mut(plugin_id) {
+                    if wrapper.is_enabled() {
+                        self.api.set_current_plugin(Some(plugin_id.clone()));
+                        wrapper.plugin_mut().on_event(&mut self.api, event);
+                    }
                 }
             }
         }
@@ -225,17 +399,35 @@ impl PluginHost {
         let ui_events: Vec<_> = self.api.pending_ui_events.drain(..).collect();
         for ui_event in ui_events {
             let event = EditorEvent::UiEvent(ui_event);
-            for wrapper in self.plugins.values_mut() {
-                if wrapper.is_enabled() {
-                    wrapper.plugin_mut().on_event(&mut self.api, &event);
+            for plugin_id in &plugin_ids {
+                if let Some(wrapper) = self.plugins.get_mut(plugin_id) {
+                    if wrapper.is_enabled() {
+                        self.api.set_current_plugin(Some(plugin_id.clone()));
+                        wrapper.plugin_mut().on_event(&mut self.api, &event);
+                    }
                 }
             }
         }
 
         // Call update on all plugins
+        for plugin_id in &plugin_ids {
+            if let Some(wrapper) = self.plugins.get_mut(plugin_id) {
+                if wrapper.is_enabled() {
+                    self.api.set_current_plugin(Some(plugin_id.clone()));
+                    wrapper.plugin_mut().on_update(&mut self.api, dt);
+                }
+            }
+        }
+
+        self.api.set_current_plugin(None);
+    }
+
+    /// Update all plugins with direct World access (called every frame)
+    /// This allows plugins to query components, spawn entities, use gizmos, etc.
+    pub fn update_with_world(&mut self, world: &mut World) {
         for wrapper in self.plugins.values_mut() {
             if wrapper.is_enabled() {
-                wrapper.plugin_mut().on_update(&mut self.api, dt);
+                wrapper.plugin_mut().on_world_update(world);
             }
         }
     }

@@ -22,15 +22,18 @@ pub enum PendingOperation {
 
 /// Default implementation for internal use
 pub struct EditorApiImpl {
-    // UI registrations (persistent)
-    pub menu_items: Vec<(MenuLocation, MenuItem)>,
-    pub panels: Vec<PanelDefinition>,
+    // UI registrations (persistent) - now track which plugin owns each
+    pub menu_items: Vec<(MenuLocation, MenuItem, String)>,  // (location, item, plugin_id)
+    pub panels: Vec<(PanelDefinition, String)>,  // (panel, plugin_id)
     pub panel_contents: std::collections::HashMap<String, Vec<Widget>>,
-    pub inspectors: Vec<(String, InspectorDefinition)>,
+    pub inspectors: Vec<(String, InspectorDefinition, String)>,  // (type_id, inspector, plugin_id)
     pub inspector_contents: std::collections::HashMap<String, Vec<Widget>>,
-    pub toolbar_items: Vec<ToolbarItem>,
-    pub context_menus: Vec<(ContextMenuLocation, MenuItem)>,
-    pub status_bar_items: std::collections::HashMap<String, StatusBarItem>,
+    pub toolbar_items: Vec<(ToolbarItem, String)>,  // (item, plugin_id)
+    pub context_menus: Vec<(ContextMenuLocation, MenuItem, String)>,  // (location, item, plugin_id)
+    pub status_bar_items: std::collections::HashMap<String, (StatusBarItem, String)>,  // id -> (item, plugin_id)
+
+    // Currently active plugin (set during plugin callbacks)
+    pub current_plugin_id: Option<String>,
 
     // State snapshot (synced from Bevy each frame)
     pub selected_entity: Option<EntityId>,
@@ -66,6 +69,7 @@ impl EditorApiImpl {
             toolbar_items: Vec::new(),
             context_menus: Vec::new(),
             status_bar_items: std::collections::HashMap::new(),
+            current_plugin_id: None,
             selected_entity: None,
             entity_transforms: std::collections::HashMap::new(),
             entity_names: std::collections::HashMap::new(),
@@ -75,6 +79,16 @@ impl EditorApiImpl {
             outgoing_events: Vec::new(),
             settings: std::collections::HashMap::new(),
         }
+    }
+
+    /// Set the current plugin ID (called before plugin callbacks)
+    pub fn set_current_plugin(&mut self, plugin_id: Option<String>) {
+        self.current_plugin_id = plugin_id;
+    }
+
+    /// Get the current plugin ID or a default
+    fn current_plugin(&self) -> String {
+        self.current_plugin_id.clone().unwrap_or_else(|| "unknown".to_string())
     }
 
     /// Take pending operations (called by sync system)
@@ -98,6 +112,43 @@ impl EditorApiImpl {
     pub fn push_ui_event(&mut self, event: UiEvent) {
         self.pending_ui_events.push(event);
     }
+
+    /// Remove all UI elements registered by a specific plugin
+    pub fn remove_plugin_elements(&mut self, plugin_id: &str) {
+        self.menu_items.retain(|(_, _, id)| id != plugin_id);
+        self.panels.retain(|(_, id)| id != plugin_id);
+        self.inspectors.retain(|(_, _, id)| id != plugin_id);
+        self.toolbar_items.retain(|(_, id)| id != plugin_id);
+        self.context_menus.retain(|(_, _, id)| id != plugin_id);
+        self.status_bar_items.retain(|_, (_, id)| id != plugin_id);
+
+        // Remove panel contents for panels owned by this plugin
+        let panel_ids: Vec<_> = self.panels.iter()
+            .filter(|(_, id)| id == plugin_id)
+            .map(|(p, _)| p.id.clone())
+            .collect();
+        for panel_id in panel_ids {
+            self.panel_contents.remove(&panel_id);
+        }
+    }
+
+    /// Clear all registered UI elements (called when unloading all plugins)
+    pub fn clear(&mut self) {
+        self.menu_items.clear();
+        self.panels.clear();
+        self.panel_contents.clear();
+        self.inspectors.clear();
+        self.inspector_contents.clear();
+        self.toolbar_items.clear();
+        self.context_menus.clear();
+        self.status_bar_items.clear();
+        self.current_plugin_id = None;
+        self.pending_operations.clear();
+        self.pending_ui_events.clear();
+        self.subscriptions.clear();
+        self.outgoing_events.clear();
+        // Keep settings - they persist across plugin reloads
+    }
 }
 
 impl EditorApi for EditorApiImpl {
@@ -114,27 +165,33 @@ impl EditorApi for EditorApiImpl {
     }
 
     fn register_menu_item(&mut self, menu: MenuLocation, item: MenuItem) {
-        self.menu_items.push((menu, item));
+        let plugin_id = self.current_plugin();
+        self.menu_items.push((menu, item, plugin_id));
     }
 
     fn register_panel(&mut self, panel: PanelDefinition) {
-        self.panels.push(panel);
+        let plugin_id = self.current_plugin();
+        self.panels.push((panel, plugin_id));
     }
 
     fn register_inspector(&mut self, type_id: &str, inspector: InspectorDefinition) {
-        self.inspectors.push((type_id.to_string(), inspector));
+        let plugin_id = self.current_plugin();
+        self.inspectors.push((type_id.to_string(), inspector, plugin_id));
     }
 
     fn register_toolbar_item(&mut self, item: ToolbarItem) {
-        self.toolbar_items.push(item);
+        let plugin_id = self.current_plugin();
+        self.toolbar_items.push((item, plugin_id));
     }
 
     fn register_context_menu(&mut self, context: ContextMenuLocation, item: MenuItem) {
-        self.context_menus.push((context, item));
+        let plugin_id = self.current_plugin();
+        self.context_menus.push((context, item, plugin_id));
     }
 
     fn set_status_item(&mut self, item: StatusBarItem) {
-        self.status_bar_items.insert(item.id.clone(), item);
+        let plugin_id = self.current_plugin();
+        self.status_bar_items.insert(item.id.clone(), (item, plugin_id));
     }
 
     fn remove_status_item(&mut self, id: &str) {

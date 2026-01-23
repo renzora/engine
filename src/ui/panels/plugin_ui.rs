@@ -24,29 +24,29 @@ pub fn render_plugin_menus(ui: &mut egui::Ui, plugin_host: &PluginHost) -> Vec<U
     let file_items: Vec<_> = api
         .menu_items
         .iter()
-        .filter(|(loc, _)| *loc == MenuLocation::File)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == MenuLocation::File)
+        .map(|(_, item, _)| item)
         .collect();
 
     let edit_items: Vec<_> = api
         .menu_items
         .iter()
-        .filter(|(loc, _)| *loc == MenuLocation::Edit)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == MenuLocation::Edit)
+        .map(|(_, item, _)| item)
         .collect();
 
     let view_items: Vec<_> = api
         .menu_items
         .iter()
-        .filter(|(loc, _)| *loc == MenuLocation::View)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == MenuLocation::View)
+        .map(|(_, item, _)| item)
         .collect();
 
     let tools_items: Vec<_> = api
         .menu_items
         .iter()
-        .filter(|(loc, _)| *loc == MenuLocation::Tools)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == MenuLocation::Tools)
+        .map(|(_, item, _)| item)
         .collect();
 
     // Render plugin menu items in each menu
@@ -129,7 +129,7 @@ pub fn render_plugin_panels(
 ) -> Vec<UiEvent> {
     let api = plugin_host.api();
 
-    for panel in &api.panels {
+    for (panel, _plugin_id) in &api.panels {
         render_panel(ctx, panel, &api.panel_contents, renderer);
     }
 
@@ -230,7 +230,7 @@ pub fn render_plugin_toolbar(ui: &mut egui::Ui, plugin_host: &PluginHost) -> Vec
     // Add separator before plugin items
     ui.separator();
 
-    for item in &api.toolbar_items {
+    for (item, _plugin_id) in &api.toolbar_items {
         let button = egui::Button::new(&item.icon);
         let response = ui.add(button).on_hover_text(&item.tooltip);
 
@@ -255,9 +255,11 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost) {
 
     // Collect and sort items by alignment and priority
     let mut left_items: Vec<_> = api.status_bar_items.values()
+        .map(|(item, _plugin_id)| item)
         .filter(|item| item.align == StatusBarAlign::Left)
         .collect();
     let mut right_items: Vec<_> = api.status_bar_items.values()
+        .map(|(item, _plugin_id)| item)
         .filter(|item| item.align == StatusBarAlign::Right)
         .collect();
 

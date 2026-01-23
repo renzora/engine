@@ -175,7 +175,7 @@ pub fn render_inspector_content(
 
                 // Plugin-registered inspector sections
                 let api = plugin_host.api();
-                for (type_id, inspector_def) in &api.inspectors {
+                for (type_id, inspector_def, _plugin_id) in &api.inspectors {
                     if let Some(content) = api.inspector_contents.get(type_id) {
                         let icon_label = format!("{} {}", PUZZLE_PIECE, inspector_def.label);
                         egui::CollapsingHeader::new(RichText::new(icon_label))

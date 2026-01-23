@@ -204,13 +204,13 @@ fn render_menu_items(
 
     // Get plugin menu items grouped by location
     let file_items: Vec<_> = api.menu_items.iter()
-        .filter(|(loc, _)| *loc == MenuLocation::File)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == MenuLocation::File)
+        .map(|(_, item, _)| item)
         .collect();
 
     let tools_items: Vec<_> = api.menu_items.iter()
-        .filter(|(loc, _)| *loc == MenuLocation::Tools)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == MenuLocation::Tools)
+        .map(|(_, item, _)| item)
         .collect();
 
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;

@@ -6,6 +6,9 @@ description = "API for creating plugins for the Bevy Editor"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
+# Bevy - same version as editor, with dynamic_linking for shared types
+bevy = { version = "0.17", features = ["dynamic_linking"] }
+
 # Icons - re-exported for plugins to use directly
 egui-phosphor = { version = "0.11", features = ["regular", "fill"] }
 

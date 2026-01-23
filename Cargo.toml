@@ -24,7 +24,7 @@ editor_plugin_api = { path = "crates/editor_plugin_api" }
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
 [workspace]
-members = ["crates/editor_plugin_api", "crates/test_plugin", "crates/fps_plugin", "crates/system_monitor_plugin"]
+members = ["crates/editor_plugin_api", "crates/test_plugin", "crates/fps_plugin", "crates/system_monitor_plugin", "crates/debug_visualizer_plugin"]
 
 [profile.dev]
 opt-level = 2

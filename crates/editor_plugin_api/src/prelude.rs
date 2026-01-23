@@ -31,3 +31,7 @@ pub use crate::ui::{Align, Size, Tab, TableColumn, TableRow, TextStyle, UiId, Wi
 
 // Icons - re-export egui_phosphor for easy access
 pub use crate::egui_phosphor;
+
+// Bevy re-exports for direct World/App access
+pub use crate::bevy;
+pub use crate::traits::{App, World, Commands};

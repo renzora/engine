@@ -65,6 +65,9 @@ pub mod ui;
 
 pub mod prelude;
 
+// Re-export bevy for plugins to use (same version as editor)
+pub use bevy;
+
 // Re-export egui-phosphor icons for plugins to use directly
 pub use egui_phosphor;
 

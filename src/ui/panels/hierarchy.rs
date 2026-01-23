@@ -178,8 +178,8 @@ pub fn render_hierarchy_content(
     // Render plugin context menu items when right-clicking
     // Get hierarchy context menu items from plugins
     let hierarchy_context_items: Vec<_> = plugin_host.api().context_menus.iter()
-        .filter(|(loc, _)| *loc == ContextMenuLocation::Hierarchy)
-        .map(|(_, item)| item)
+        .filter(|(loc, _, _)| *loc == ContextMenuLocation::Hierarchy)
+        .map(|(_, item, _)| item)
         .collect();
 
     // These will be rendered in the tree node context menu, so we just collect them here
@@ -441,8 +441,8 @@ fn render_tree_node(
 
             // Plugin context menu items
             let hierarchy_items: Vec<_> = plugin_host.api().context_menus.iter()
-                .filter(|(loc, _)| *loc == ContextMenuLocation::Hierarchy)
-                .map(|(_, item)| item)
+                .filter(|(loc, _, _)| *loc == ContextMenuLocation::Hierarchy)
+                .map(|(_, item, _)| item)
                 .collect();
 
             if !hierarchy_items.is_empty() {

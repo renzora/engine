@@ -1,8 +1,7 @@
 //! Plugin Core System
 //!
 //! This module provides the infrastructure for loading and managing editor plugins.
-//! Plugins are loaded from DLLs at runtime and can extend the editor with new
-//! functionality like custom panels, menu items, gizmos, etc.
+//! Plugins are loaded from the project's plugins/ directory when a project is opened.
 
 pub mod abi;
 pub mod api;
@@ -22,9 +21,11 @@ pub use traits::*;
 
 use bevy::prelude::*;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use abi::{EntityIdExt, PluginTransformExt};
 use crate::core::{AppState, EditorEntity, SelectionState};
+use crate::project::CurrentProject;
 
 /// Plugin that manages the plugin host lifecycle
 pub struct PluginCorePlugin;
@@ -33,10 +34,10 @@ impl Plugin for PluginCorePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<PluginHost>()
             .init_resource::<PluginRegistry>()
-            .add_systems(Startup, initialize_plugin_host)
             .add_systems(
                 Update,
                 (
+                    check_project_plugins,
                     sync_bevy_to_plugins,
                     update_plugins,
                     apply_plugin_operations,
@@ -44,14 +45,59 @@ impl Plugin for PluginCorePlugin {
                 )
                     .chain()
                     .run_if(in_state(AppState::Editor)),
+            )
+            // Exclusive system for direct World access
+            .add_systems(
+                Update,
+                update_plugins_with_world
+                    .run_if(in_state(AppState::Editor)),
             );
     }
 }
 
-fn initialize_plugin_host(mut plugin_host: ResMut<PluginHost>) {
-    if let Err(e) = plugin_host.discover_and_load_plugins() {
-        error!("Failed to load plugins: {}", e);
+/// Check if project changed and load/unload plugins accordingly
+fn check_project_plugins(
+    mut plugin_host: ResMut<PluginHost>,
+    current_project: Option<Res<CurrentProject>>,
+    mut last_project_path: Local<Option<PathBuf>>,
+) {
+    let current_path = current_project.as_ref().map(|p| p.path.clone());
+
+    // Check if project changed
+    if *last_project_path != current_path {
+        // Unload existing plugins if any
+        if plugin_host.plugin_count() > 0 {
+            info!("Project changed, unloading plugins...");
+            plugin_host.unload_all_plugins();
+        }
+
+        // Load plugins from new project if there is one
+        if let Some(ref project_path) = current_path {
+            let plugins_dir = project_path.join("plugins");
+            plugin_host.set_plugin_dir(plugins_dir);
+
+            if let Err(e) = plugin_host.discover_and_load_plugins() {
+                error!("Failed to load project plugins: {}", e);
+            }
+        }
+
+        *last_project_path = current_path;
     }
+
+    // Check for hot reload (file changes in plugin directory)
+    plugin_host.check_for_changes();
+}
+
+/// Exclusive system that gives plugins direct World access
+fn update_plugins_with_world(world: &mut World) {
+    // Temporarily take the PluginHost out of the world to avoid borrow issues
+    let mut plugin_host = world.remove_resource::<PluginHost>().expect("PluginHost resource missing");
+
+    // Call on_world_update for all plugins
+    plugin_host.update_with_world(world);
+
+    // Put the PluginHost back
+    world.insert_resource(plugin_host);
 }
 
 /// Sync Bevy state to the plugin API before plugin update
