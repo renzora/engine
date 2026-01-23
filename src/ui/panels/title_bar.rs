@@ -318,6 +318,8 @@ fn render_menu_items(
                 Visibility::default(),
                 EditorEntity {
                     name: "Empty".to_string(),
+                    visible: true,
+                    locked: false,
                 },
                 SceneNode,
             ));

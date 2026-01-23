@@ -44,6 +44,16 @@ pub struct NodeData {
     /// Whether this node is expanded in the hierarchy tree
     #[serde(default)]
     pub expanded: bool,
+    /// Whether this node is visible in the viewport
+    #[serde(default = "default_true")]
+    pub visible: bool,
+    /// Whether this node is locked from selection/editing
+    #[serde(default)]
+    pub locked: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Transform data (matches Bevy's Transform)

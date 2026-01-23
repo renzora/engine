@@ -101,6 +101,8 @@ fn spawn_scene3d(
         Visibility::default(),
         EditorEntity {
             name: SCENE3D.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(SCENE3D.type_id),
@@ -119,6 +121,8 @@ fn spawn_scene2d(
         Visibility::default(),
         EditorEntity {
             name: SCENE2D.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(SCENE2D.type_id),
@@ -137,6 +141,8 @@ fn spawn_ui_root(
         Visibility::default(),
         EditorEntity {
             name: UI_ROOT.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(UI_ROOT.type_id),
@@ -155,6 +161,8 @@ fn spawn_other_root(
         Visibility::default(),
         EditorEntity {
             name: OTHER_ROOT.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(OTHER_ROOT.type_id),

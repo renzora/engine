@@ -28,6 +28,8 @@ fn spawn_camera(
         Visibility::default(),
         EditorEntity {
             name: CAMERA3D.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(CAMERA3D.type_id),

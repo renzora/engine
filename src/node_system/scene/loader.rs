@@ -51,11 +51,14 @@ pub fn spawn_node(
     let transform: Transform = node_data.transform.clone().into();
 
     // Spawn the base entity with common components
+    let visibility = if node_data.visible { Visibility::Inherited } else { Visibility::Hidden };
     let mut entity_commands = commands.spawn((
         transform,
-        Visibility::default(),
+        visibility,
         EditorEntity {
             name: node_data.name.clone(),
+            visible: node_data.visible,
+            locked: node_data.locked,
         },
         SceneNode,
     ));

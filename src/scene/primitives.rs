@@ -34,6 +34,8 @@ pub fn spawn_primitive(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
     ));

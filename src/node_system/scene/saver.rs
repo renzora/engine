@@ -133,5 +133,7 @@ fn entity_to_node_data(
         data,
         children: child_nodes,
         expanded,
+        visible: editor_entity.visible,
+        locked: editor_entity.locked,
     })
 }

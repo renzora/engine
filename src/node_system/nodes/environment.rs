@@ -43,6 +43,8 @@ fn spawn_world_environment(
         Visibility::default(),
         EditorEntity {
             name: WORLD_ENVIRONMENT.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(WORLD_ENVIRONMENT.type_id),
@@ -305,6 +307,8 @@ fn spawn_audio_listener(
         Visibility::default(),
         EditorEntity {
             name: AUDIO_LISTENER.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(AUDIO_LISTENER.type_id),

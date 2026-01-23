@@ -175,6 +175,8 @@ fn spawn_mesh_entity(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(type_id),
@@ -244,6 +246,8 @@ fn spawn_mesh_instance(
         Visibility::default(),
         EditorEntity {
             name: MESH_INSTANCE.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(MESH_INSTANCE.type_id),

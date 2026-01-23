@@ -4,6 +4,10 @@ use bevy::prelude::*;
 #[derive(Component)]
 pub struct EditorEntity {
     pub name: String,
+    /// Whether the entity is visible in the viewport (eye icon in hierarchy)
+    pub visible: bool,
+    /// Whether the entity is locked from selection/editing (lock icon in hierarchy)
+    pub locked: bool,
 }
 
 /// Marker for the main camera rendering to the viewport

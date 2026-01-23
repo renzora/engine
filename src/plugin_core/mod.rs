@@ -162,6 +162,8 @@ fn apply_plugin_operations(
                     transform,
                     EditorEntity {
                         name: def.name.clone(),
+                        visible: true,
+                        locked: false,
                     },
                     crate::core::SceneNode,
                 ));

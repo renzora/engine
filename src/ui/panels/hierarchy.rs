@@ -13,7 +13,7 @@ use egui_phosphor::regular::{
     VIDEO_CAMERA, GLOBE, SPEAKER_HIGH, TREE_STRUCTURE, DOTS_THREE_OUTLINE,
     PLUS, TRASH, COPY, ARROW_SQUARE_OUT, PACKAGE, CODE, ATOM,
     CARET_DOWN, CARET_RIGHT, CUBE_TRANSPARENT, FRAME_CORNERS, BROWSERS, FOLDER_SIMPLE,
-    CUBE_FOCUS, FILE_CODE,
+    CUBE_FOCUS, FILE_CODE, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN,
 };
 
 // Tree line constants
@@ -296,8 +296,8 @@ fn render_tree_node(
     let base_x = rect.min.x + 4.0;
     let center_y = rect.center().y;
 
-    // Handle drag start
-    if response.drag_started() {
+    // Handle drag start (unless locked)
+    if response.drag_started() && !editor_entity.locked {
         hierarchy.drag_entity = Some(entity);
     }
 
@@ -379,9 +379,11 @@ fn render_tree_node(
         }
     }
 
-    // Dim the row if it's being dragged
+    // Dim the row if it's being dragged or hidden
     if is_being_dragged {
         painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 120));
+    } else if !editor_entity.visible {
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(0, 0, 0, 60));
     }
 
     // Draw tree guide lines (draw before content so they appear behind)
@@ -509,6 +511,8 @@ fn render_tree_node(
                 if !new_name.is_empty() {
                     commands.entity(entity).insert(EditorEntity {
                         name: new_name,
+                        visible: editor_entity.visible,
+                        locked: editor_entity.locked,
                     });
                 }
                 hierarchy.renaming_entity = None;
@@ -555,13 +559,13 @@ fn render_tree_node(
                 text_color,
             );
 
-            // Single click to select
-            if name_response.clicked() && hierarchy.drag_entity.is_none() {
+            // Single click to select (unless locked)
+            if name_response.clicked() && hierarchy.drag_entity.is_none() && !editor_entity.locked {
                 selection.selected_entity = Some(entity);
             }
 
-            // Double click to rename
-            if name_response.double_clicked() && hierarchy.drag_entity.is_none() {
+            // Double click to rename (unless locked)
+            if name_response.double_clicked() && hierarchy.drag_entity.is_none() && !editor_entity.locked {
                 hierarchy.renaming_entity = Some(entity);
                 hierarchy.rename_buffer = editor_entity.name.clone();
                 hierarchy.rename_focus_set = false;
@@ -643,6 +647,58 @@ fn render_tree_node(
                 }
             });
         }
+
+        // Visibility and Lock icons (right-aligned)
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            // Lock icon
+            let lock_icon = if editor_entity.locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
+            let lock_color = if editor_entity.locked {
+                Color32::from_rgb(230, 180, 100)
+            } else {
+                Color32::from_rgb(90, 90, 100)
+            };
+            let lock_btn = ui.add(
+                egui::Button::new(RichText::new(lock_icon).size(13.0).color(lock_color))
+                    .frame(false)
+                    .min_size(Vec2::new(18.0, 18.0))
+            );
+            if lock_btn.clicked() {
+                commands.entity(entity).insert(EditorEntity {
+                    name: editor_entity.name.clone(),
+                    visible: editor_entity.visible,
+                    locked: !editor_entity.locked,
+                });
+            }
+            lock_btn.on_hover_text(if editor_entity.locked { "Unlock" } else { "Lock" });
+
+            // Visibility icon
+            let vis_icon = if editor_entity.visible { EYE } else { EYE_SLASH };
+            let vis_color = if editor_entity.visible {
+                Color32::from_rgb(140, 180, 220)
+            } else {
+                Color32::from_rgb(90, 90, 100)
+            };
+            let vis_btn = ui.add(
+                egui::Button::new(RichText::new(vis_icon).size(13.0).color(vis_color))
+                    .frame(false)
+                    .min_size(Vec2::new(18.0, 18.0))
+            );
+            if vis_btn.clicked() {
+                let new_visible = !editor_entity.visible;
+                commands.entity(entity).insert(EditorEntity {
+                    name: editor_entity.name.clone(),
+                    visible: new_visible,
+                    locked: editor_entity.locked,
+                });
+                // Also update the Bevy Visibility component
+                if new_visible {
+                    commands.entity(entity).insert(Visibility::Inherited);
+                } else {
+                    commands.entity(entity).insert(Visibility::Hidden);
+                }
+            }
+            vis_btn.on_hover_text(if editor_entity.visible { "Hide" } else { "Show" });
+        });
     });
 
     // Render children if expanded

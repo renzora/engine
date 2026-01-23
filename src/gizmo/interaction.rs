@@ -151,7 +151,7 @@ pub fn gizmo_interaction_system(
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
-    mesh_query: Query<(Entity, &GlobalTransform), With<EditorEntity>>,
+    mesh_query: Query<(Entity, &GlobalTransform, &EditorEntity)>,
     transforms: Query<&Transform, With<EditorEntity>>,
     parents: Query<&ChildOf, With<SceneNode>>,
 ) {
@@ -248,7 +248,12 @@ pub fn gizmo_interaction_system(
     let mut closest_entity: Option<Entity> = None;
     let mut closest_distance = f32::MAX;
 
-    for (entity, transform) in mesh_query.iter() {
+    for (entity, transform, editor_entity) in mesh_query.iter() {
+        // Skip locked entities
+        if editor_entity.locked {
+            continue;
+        }
+
         let mesh_pos = transform.translation();
         let radius = 1.0;
 

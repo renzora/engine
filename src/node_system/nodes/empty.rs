@@ -27,6 +27,8 @@ fn spawn_empty_node(
         Visibility::default(),
         EditorEntity {
             name: NODE3D.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(NODE3D.type_id),

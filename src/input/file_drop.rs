@@ -171,6 +171,8 @@ pub fn spawn_loaded_gltfs(
                     Visibility::default(),
                     EditorEntity {
                         name: pending.name.clone(),
+                        visible: true,
+                        locked: false,
                     },
                     SceneNode,
                     NodeTypeMarker {
@@ -324,6 +326,8 @@ pub fn handle_scene_hierarchy_drop(
             Visibility::default(),
             EditorEntity {
                 name: scene_name,
+                visible: true,
+                locked: false,
             },
             SceneNode,
             NodeTypeMarker {

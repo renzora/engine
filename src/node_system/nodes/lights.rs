@@ -61,6 +61,8 @@ fn spawn_point_light(
         Visibility::default(),
         EditorEntity {
             name: POINT_LIGHT.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(POINT_LIGHT.type_id),
@@ -144,6 +146,8 @@ fn spawn_directional_light(
         Visibility::default(),
         EditorEntity {
             name: DIRECTIONAL_LIGHT.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(DIRECTIONAL_LIGHT.type_id),
@@ -224,6 +228,8 @@ fn spawn_spot_light(
         Visibility::default(),
         EditorEntity {
             name: SPOT_LIGHT.default_name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(SPOT_LIGHT.type_id),

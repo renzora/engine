@@ -89,7 +89,11 @@ fn apply_script_commands(
                 commands.spawn((
                     Transform::default(),
                     Visibility::default(),
-                    EditorEntity { name: name.clone() },
+                    EditorEntity {
+                        name: name.clone(),
+                        visible: true,
+                        locked: false,
+                    },
                     SceneNode,
                 ));
             }

@@ -162,6 +162,8 @@ fn spawn_physics_body(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(type_id),
@@ -251,6 +253,8 @@ fn spawn_collision_shape(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            visible: true,
+            locked: false,
         },
         SceneNode,
         NodeTypeMarker::new(type_id),
