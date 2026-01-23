@@ -16,6 +16,11 @@ mod viewport;
 
 use bevy::asset::UnapprovedPathMode;
 use bevy::prelude::*;
+use bevy::render::{
+    render_resource::WgpuFeatures,
+    settings::{RenderCreation, WgpuSettings},
+    RenderPlugin,
+};
 use bevy::window::WindowMode;
 use bevy_egui::EguiPrimaryContextPass;
 
@@ -41,6 +46,14 @@ fn main() {
                 })
                 .set(AssetPlugin {
                     unapproved_path_mode: UnapprovedPathMode::Allow,
+                    ..default()
+                })
+                .set(RenderPlugin {
+                    render_creation: RenderCreation::Automatic(WgpuSettings {
+                        // Enable wireframe rendering (native only - DX12, Vulkan, Metal)
+                        features: WgpuFeatures::POLYGON_MODE_LINE,
+                        ..default()
+                    }),
                     ..default()
                 })
         )

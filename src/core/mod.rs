@@ -10,8 +10,8 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys, key_
 // Re-export all resources
 pub use resources::{
     AssetBrowserState, AssetViewMode, EditorSettings, HierarchyDropPosition, HierarchyDropTarget,
-    HierarchyState, OpenScript, OrbitCameraState, SceneManagerState, SceneTab, ScriptError,
-    SelectionState, TabCameraState, ViewportState, WindowState,
+    HierarchyState, OpenScript, OrbitCameraState, RenderToggles, SceneManagerState, SceneTab, ScriptError,
+    SelectionState, TabCameraState, ViewportState, VisualizationMode, WindowState,
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)

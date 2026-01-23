@@ -12,6 +12,6 @@ pub use camera::{OrbitCameraState, TabCameraState};
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use scene::{OpenScript, SceneManagerState, SceneTab, ScriptError};
 pub use selection::SelectionState;
-pub use settings::EditorSettings;
+pub use settings::{EditorSettings, RenderToggles, VisualizationMode};
 pub use viewport::ViewportState;
 pub use window::WindowState;

@@ -1,5 +1,63 @@
 use bevy::prelude::*;
 
+/// Visualization mode for debug rendering
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VisualizationMode {
+    #[default]
+    None,
+    Normals,
+    Roughness,
+    Metallic,
+    Depth,
+    UvChecker,
+}
+
+impl VisualizationMode {
+    pub fn label(&self) -> &'static str {
+        match self {
+            VisualizationMode::None => "None",
+            VisualizationMode::Normals => "Normals",
+            VisualizationMode::Roughness => "Roughness",
+            VisualizationMode::Metallic => "Metallic",
+            VisualizationMode::Depth => "Depth",
+            VisualizationMode::UvChecker => "UV Checker",
+        }
+    }
+
+    pub const ALL: &'static [VisualizationMode] = &[
+        VisualizationMode::None,
+        VisualizationMode::Normals,
+        VisualizationMode::Roughness,
+        VisualizationMode::Metallic,
+        VisualizationMode::Depth,
+        VisualizationMode::UvChecker,
+    ];
+}
+
+/// Render toggles that can be combined
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RenderToggles {
+    /// Show textures (false = solid colors only)
+    pub textures: bool,
+    /// Show wireframe overlay
+    pub wireframe: bool,
+    /// Enable lighting (false = unlit/fullbright)
+    pub lighting: bool,
+    /// Enable shadows
+    pub shadows: bool,
+}
+
+impl Default for RenderToggles {
+    fn default() -> Self {
+        Self {
+            textures: true,
+            wireframe: false,
+            lighting: true,
+            shadows: true,
+        }
+    }
+}
+
 /// Editor settings and preferences
 #[derive(Resource)]
 pub struct EditorSettings {
@@ -19,6 +77,10 @@ pub struct EditorSettings {
     pub show_demo_window: bool,
     /// Splash screen - new project name
     pub new_project_name: String,
+    /// Render toggles (textures, wireframe, lighting, shadows)
+    pub render_toggles: RenderToggles,
+    /// Debug visualization mode
+    pub visualization_mode: VisualizationMode,
 }
 
 impl Default for EditorSettings {
@@ -32,6 +94,8 @@ impl Default for EditorSettings {
             grid_color: [0.3, 0.3, 0.3],
             show_demo_window: false,
             new_project_name: String::new(),
+            render_toggles: RenderToggles::default(),
+            visualization_mode: VisualizationMode::default(),
         }
     }
 }

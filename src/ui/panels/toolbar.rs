@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
-use crate::core::{EditorSettings, SelectionState, HierarchyState};
+use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode};
 use crate::gizmo::{GizmoMode, GizmoState};
 use crate::node_system::{NodeRegistry, NodeCategory};
 use crate::plugin_core::PluginHost;
@@ -10,7 +10,8 @@ use crate::ui_api::UiEvent;
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
-    CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN,
+    CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, EYE, IMAGE, POLYGON,
+    SUN, CLOUD,
 };
 
 pub fn render_toolbar(
@@ -136,6 +137,75 @@ pub fn render_toolbar(
                         if menu_item(ui, def.display_name) {
                             let entity = (def.spawn_fn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
+                            ui.close();
+                        }
+                    }
+                });
+
+                separator(ui);
+
+                // === Render Toggles ===
+                let toggle_on_color = Color32::from_rgb(66, 150, 250);
+                let toggle_off_color = Color32::from_rgb(60, 60, 70);
+
+                // Textures toggle
+                let tex_resp = tool_button(
+                    ui, IMAGE, button_size,
+                    settings.render_toggles.textures,
+                    toggle_on_color, toggle_off_color
+                );
+                if tex_resp.clicked() {
+                    settings.render_toggles.textures = !settings.render_toggles.textures;
+                }
+                tex_resp.on_hover_text(if settings.render_toggles.textures { "Textures: ON" } else { "Textures: OFF" });
+
+                // Wireframe toggle
+                let wire_resp = tool_button(
+                    ui, POLYGON, button_size,
+                    settings.render_toggles.wireframe,
+                    toggle_on_color, toggle_off_color
+                );
+                if wire_resp.clicked() {
+                    settings.render_toggles.wireframe = !settings.render_toggles.wireframe;
+                }
+                wire_resp.on_hover_text(if settings.render_toggles.wireframe { "Wireframe: ON" } else { "Wireframe: OFF" });
+
+                // Lighting toggle
+                let light_resp = tool_button(
+                    ui, SUN, button_size,
+                    settings.render_toggles.lighting,
+                    toggle_on_color, toggle_off_color
+                );
+                if light_resp.clicked() {
+                    settings.render_toggles.lighting = !settings.render_toggles.lighting;
+                }
+                light_resp.on_hover_text(if settings.render_toggles.lighting { "Lighting: ON" } else { "Lighting: OFF" });
+
+                // Shadows toggle
+                let shadow_resp = tool_button(
+                    ui, CLOUD, button_size,
+                    settings.render_toggles.shadows,
+                    toggle_on_color, toggle_off_color
+                );
+                if shadow_resp.clicked() {
+                    settings.render_toggles.shadows = !settings.render_toggles.shadows;
+                }
+                shadow_resp.on_hover_text(if settings.render_toggles.shadows { "Shadows: ON" } else { "Shadows: OFF" });
+
+                ui.add_space(4.0);
+
+                // === Visualization Mode Dropdown ===
+                let viz_color = Color32::from_rgb(180, 180, 200);
+                dropdown_button(ui, EYE, "Visualization", viz_color, inactive_color, |ui| {
+                    for mode in VisualizationMode::ALL {
+                        let is_selected = settings.visualization_mode == *mode;
+                        let label = if is_selected {
+                            format!("• {}", mode.label())
+                        } else {
+                            format!("  {}", mode.label())
+                        };
+                        if menu_item(ui, &label) {
+                            settings.visualization_mode = *mode;
                             ui.close();
                         }
                     }

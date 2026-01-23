@@ -200,6 +200,12 @@ pub fn editor_ui(
         toolbar_height,
         1600.0, // Default width, will be constrained by panel
         &editor.plugin_host,
+        &node_registry,
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut editor.selection,
+        &mut editor.hierarchy,
     );
     all_ui_events.extend(toolbar_events);
 
