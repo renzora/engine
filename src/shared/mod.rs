@@ -9,7 +9,7 @@ pub mod spawner;
 
 // Re-export commonly used items
 pub use components::{
-    CameraNodeData, CollisionShapeData, CollisionShapeType, MeshInstanceData, MeshNodeData,
+    CameraNodeData, CameraRigData, CollisionShapeData, CollisionShapeType, MeshInstanceData, MeshNodeData,
     MeshPrimitiveType, PhysicsBodyData, PhysicsBodyType, SceneInstanceData,
 };
 pub use scene_format::{EditorCameraData, NodeData, SceneData, TransformData};

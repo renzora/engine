@@ -59,6 +59,25 @@ pub type SetTabContentFn = unsafe extern "C" fn(ctx: *mut c_void, tab_id: *const
 pub type SetActiveTabFn = unsafe extern "C" fn(ctx: *mut c_void, location: u8, tab_id: *const c_char);
 pub type GetActiveTabFn = unsafe extern "C" fn(ctx: *mut c_void, location: u8) -> FfiOwnedString;
 
+// Asset system - READ
+pub type GetAssetListFn = unsafe extern "C" fn(ctx: *mut c_void, folder: *const c_char) -> FfiAssetList;
+pub type GetAssetInfoFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char) -> FfiAssetInfo;
+pub type AssetExistsFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char) -> bool;
+pub type ReadAssetTextFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char) -> FfiOwnedString;
+pub type ReadAssetBytesFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char) -> FfiBytes;
+
+// Asset system - WRITE
+pub type WriteAssetTextFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char, content: *const c_char) -> bool;
+pub type WriteAssetBytesFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char, data: *const FfiBytes) -> bool;
+pub type CreateFolderFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char) -> bool;
+pub type DeleteAssetFn = unsafe extern "C" fn(ctx: *mut c_void, path: *const c_char) -> bool;
+pub type RenameAssetFn = unsafe extern "C" fn(ctx: *mut c_void, old_path: *const c_char, new_path: *const c_char) -> bool;
+
+// Pub/Sub system
+pub type SubscribeEventFn = unsafe extern "C" fn(ctx: *mut c_void, event_type: *const c_char);
+pub type UnsubscribeEventFn = unsafe extern "C" fn(ctx: *mut c_void, event_type: *const c_char);
+pub type PublishEventFn = unsafe extern "C" fn(ctx: *mut c_void, event_type: *const c_char, data_json: *const c_char);
+
 // Entity operations
 pub type GetEntityByNameFn = unsafe extern "C" fn(ctx: *mut c_void, name: *const c_char) -> FfiEntityId;
 pub type GetEntityTransformFn = unsafe extern "C" fn(ctx: *mut c_void, entity: FfiEntityId) -> FfiTransform;
@@ -143,6 +162,25 @@ pub struct HostApi {
     pub set_tab_content: SetTabContentFn,
     pub set_active_tab: SetActiveTabFn,
     pub get_active_tab: GetActiveTabFn,
+
+    // === Asset System - READ ===
+    pub get_asset_list: GetAssetListFn,
+    pub get_asset_info: GetAssetInfoFn,
+    pub asset_exists: AssetExistsFn,
+    pub read_asset_text: ReadAssetTextFn,
+    pub read_asset_bytes: ReadAssetBytesFn,
+
+    // === Asset System - WRITE ===
+    pub write_asset_text: WriteAssetTextFn,
+    pub write_asset_bytes: WriteAssetBytesFn,
+    pub create_folder: CreateFolderFn,
+    pub delete_asset: DeleteAssetFn,
+    pub rename_asset: RenameAssetFn,
+
+    // === Pub/Sub System ===
+    pub subscribe_event: SubscribeEventFn,
+    pub unsubscribe_event: UnsubscribeEventFn,
+    pub publish_event: PublishEventFn,
 }
 
 // ============================================================================
@@ -311,6 +349,240 @@ pub struct FfiEntityList {
     pub ptr: *mut FfiEntityId,
     pub len: usize,
     pub capacity: usize,
+}
+
+// ============================================================================
+// Asset System FFI Types
+// ============================================================================
+
+/// Asset type enum
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FfiAssetType {
+    Unknown = 0,
+    Scene = 1,
+    Model = 2,
+    Texture = 3,
+    Audio = 4,
+    Script = 5,
+    Shader = 6,
+    Material = 7,
+    Folder = 8,
+    Text = 9,      // Generic text files
+    Binary = 10,   // Generic binary files
+}
+
+impl FfiAssetType {
+    /// Determine asset type from file extension
+    pub fn from_extension(ext: &str) -> Self {
+        match ext.to_lowercase().as_str() {
+            "scene" => FfiAssetType::Scene,
+            "glb" | "gltf" | "obj" | "fbx" => FfiAssetType::Model,
+            "png" | "jpg" | "jpeg" | "bmp" | "tga" | "dds" | "hdr" => FfiAssetType::Texture,
+            "wav" | "mp3" | "ogg" | "flac" => FfiAssetType::Audio,
+            "rhai" | "lua" => FfiAssetType::Script,
+            "wgsl" | "glsl" | "vert" | "frag" => FfiAssetType::Shader,
+            "mat" | "material" => FfiAssetType::Material,
+            "txt" | "md" | "json" | "toml" | "yaml" | "yml" | "xml" | "csv" => FfiAssetType::Text,
+            _ => FfiAssetType::Binary,
+        }
+    }
+}
+
+/// Asset info returned by get_asset_info
+#[repr(C)]
+pub struct FfiAssetInfo {
+    pub path: FfiOwnedString,      // Relative path from assets folder
+    pub name: FfiOwnedString,      // File name
+    pub asset_type: FfiAssetType,
+    pub size_bytes: u64,
+    pub exists: bool,
+}
+
+impl FfiAssetInfo {
+    /// Create an empty/invalid asset info
+    pub fn empty() -> Self {
+        Self {
+            path: FfiOwnedString::empty(),
+            name: FfiOwnedString::empty(),
+            asset_type: FfiAssetType::Unknown,
+            size_bytes: 0,
+            exists: false,
+        }
+    }
+
+    /// Free the owned strings
+    /// # Safety
+    /// Must only be called once
+    pub unsafe fn free(self) {
+        let _ = self.path.into_string();
+        let _ = self.name.into_string();
+    }
+}
+
+/// Asset list returned by get_asset_list
+#[repr(C)]
+pub struct FfiAssetList {
+    pub ptr: *mut FfiAssetInfo,
+    pub len: usize,
+    pub capacity: usize,
+}
+
+impl FfiAssetList {
+    /// Create an empty list
+    pub fn empty() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+            len: 0,
+            capacity: 0,
+        }
+    }
+
+    /// Create from a Vec (takes ownership)
+    pub fn from_vec(mut vec: Vec<FfiAssetInfo>) -> Self {
+        let len = vec.len();
+        let capacity = vec.capacity();
+        let ptr = vec.as_mut_ptr();
+        std::mem::forget(vec);
+        Self { ptr, len, capacity }
+    }
+
+    /// Convert back to Vec (takes ownership)
+    /// # Safety
+    /// Must only be called once
+    pub unsafe fn into_vec(self) -> Vec<FfiAssetInfo> {
+        if self.ptr.is_null() {
+            return Vec::new();
+        }
+        Vec::from_raw_parts(self.ptr, self.len, self.capacity)
+    }
+
+    /// Free the list and all contained asset infos
+    /// # Safety
+    /// Must only be called once
+    pub unsafe fn free(self) {
+        if !self.ptr.is_null() {
+            let vec = Vec::from_raw_parts(self.ptr, self.len, self.capacity);
+            for info in vec {
+                info.free();
+            }
+        }
+    }
+}
+
+/// Binary data for reading/writing files
+#[repr(C)]
+pub struct FfiBytes {
+    pub ptr: *mut u8,
+    pub len: usize,
+    pub capacity: usize,
+}
+
+impl FfiBytes {
+    /// Create empty bytes
+    pub fn empty() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+            len: 0,
+            capacity: 0,
+        }
+    }
+
+    /// Create from a Vec (takes ownership)
+    pub fn from_vec(mut vec: Vec<u8>) -> Self {
+        let len = vec.len();
+        let capacity = vec.capacity();
+        let ptr = vec.as_mut_ptr();
+        std::mem::forget(vec);
+        Self { ptr, len, capacity }
+    }
+
+    /// Convert back to Vec (takes ownership)
+    /// # Safety
+    /// Must only be called once
+    pub unsafe fn into_vec(self) -> Vec<u8> {
+        if self.ptr.is_null() {
+            return Vec::new();
+        }
+        Vec::from_raw_parts(self.ptr, self.len, self.capacity)
+    }
+
+    /// Get as slice (borrowed)
+    /// # Safety
+    /// The FfiBytes must be valid and non-null
+    pub unsafe fn as_slice(&self) -> &[u8] {
+        if self.ptr.is_null() {
+            return &[];
+        }
+        std::slice::from_raw_parts(self.ptr, self.len)
+    }
+}
+
+/// Rust-friendly asset type enum for plugin use
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AssetType {
+    Unknown,
+    Scene,
+    Model,
+    Texture,
+    Audio,
+    Script,
+    Shader,
+    Material,
+    Folder,
+    Text,
+    Binary,
+}
+
+impl From<FfiAssetType> for AssetType {
+    fn from(ffi: FfiAssetType) -> Self {
+        match ffi {
+            FfiAssetType::Unknown => AssetType::Unknown,
+            FfiAssetType::Scene => AssetType::Scene,
+            FfiAssetType::Model => AssetType::Model,
+            FfiAssetType::Texture => AssetType::Texture,
+            FfiAssetType::Audio => AssetType::Audio,
+            FfiAssetType::Script => AssetType::Script,
+            FfiAssetType::Shader => AssetType::Shader,
+            FfiAssetType::Material => AssetType::Material,
+            FfiAssetType::Folder => AssetType::Folder,
+            FfiAssetType::Text => AssetType::Text,
+            FfiAssetType::Binary => AssetType::Binary,
+        }
+    }
+}
+
+impl From<AssetType> for FfiAssetType {
+    fn from(at: AssetType) -> Self {
+        match at {
+            AssetType::Unknown => FfiAssetType::Unknown,
+            AssetType::Scene => FfiAssetType::Scene,
+            AssetType::Model => FfiAssetType::Model,
+            AssetType::Texture => FfiAssetType::Texture,
+            AssetType::Audio => FfiAssetType::Audio,
+            AssetType::Script => FfiAssetType::Script,
+            AssetType::Shader => FfiAssetType::Shader,
+            AssetType::Material => FfiAssetType::Material,
+            AssetType::Folder => FfiAssetType::Folder,
+            AssetType::Text => FfiAssetType::Text,
+            AssetType::Binary => FfiAssetType::Binary,
+        }
+    }
+}
+
+/// Rust-friendly asset info for plugin use
+#[derive(Clone, Debug)]
+pub struct AssetInfo {
+    /// Relative path from assets folder
+    pub path: String,
+    /// File name
+    pub name: String,
+    /// Type of asset
+    pub asset_type: AssetType,
+    /// File size in bytes
+    pub size_bytes: u64,
+    /// Whether the asset exists
+    pub exists: bool,
 }
 
 impl FfiEntityList {
@@ -971,6 +1243,197 @@ impl FfiEditorApi {
             unsafe { owned.into_string() }
         } else {
             String::new()
+        }
+    }
+
+    // === Asset System - READ ===
+
+    /// Get list of assets in a folder (empty string = root assets folder)
+    pub fn get_asset_list(&self, folder: &str) -> Vec<AssetInfo> {
+        if let Some(api) = self.api() {
+            let c_folder = CString::new(folder).unwrap_or_default();
+            let list = unsafe { (api.get_asset_list)(api.ctx, c_folder.as_ptr()) };
+            let ffi_vec = unsafe { list.into_vec() };
+            ffi_vec.into_iter().map(|info| {
+                let path = unsafe { info.path.into_string() };
+                let name = unsafe { info.name.into_string() };
+                AssetInfo {
+                    path,
+                    name,
+                    asset_type: info.asset_type.into(),
+                    size_bytes: info.size_bytes,
+                    exists: info.exists,
+                }
+            }).collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Get info about a specific asset
+    pub fn get_asset_info(&self, path: &str) -> Option<AssetInfo> {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            let info = unsafe { (api.get_asset_info)(api.ctx, c_path.as_ptr()) };
+            if info.exists {
+                let path = unsafe { info.path.into_string() };
+                let name = unsafe { info.name.into_string() };
+                Some(AssetInfo {
+                    path,
+                    name,
+                    asset_type: info.asset_type.into(),
+                    size_bytes: info.size_bytes,
+                    exists: info.exists,
+                })
+            } else {
+                // Free the strings even if not exists
+                unsafe {
+                    let _ = info.path.into_string();
+                    let _ = info.name.into_string();
+                }
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Check if an asset exists
+    pub fn asset_exists(&self, path: &str) -> bool {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            unsafe { (api.asset_exists)(api.ctx, c_path.as_ptr()) }
+        } else {
+            false
+        }
+    }
+
+    /// Read a text file (shader, script, json, etc.)
+    pub fn read_asset_text(&self, path: &str) -> Option<String> {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            let owned = unsafe { (api.read_asset_text)(api.ctx, c_path.as_ptr()) };
+            let text = unsafe { owned.into_string() };
+            if text.is_empty() {
+                None
+            } else {
+                Some(text)
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Read a binary file (texture, model, etc.)
+    pub fn read_asset_bytes(&self, path: &str) -> Option<Vec<u8>> {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            let bytes = unsafe { (api.read_asset_bytes)(api.ctx, c_path.as_ptr()) };
+            let vec = unsafe { bytes.into_vec() };
+            if vec.is_empty() {
+                None
+            } else {
+                Some(vec)
+            }
+        } else {
+            None
+        }
+    }
+
+    // === Asset System - WRITE ===
+
+    /// Write a text file (creates parent folders if needed)
+    pub fn write_asset_text(&self, path: &str, content: &str) -> bool {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            let c_content = CString::new(content).unwrap_or_default();
+            unsafe { (api.write_asset_text)(api.ctx, c_path.as_ptr(), c_content.as_ptr()) }
+        } else {
+            false
+        }
+    }
+
+    /// Write a binary file (creates parent folders if needed)
+    pub fn write_asset_bytes(&self, path: &str, data: &[u8]) -> bool {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            // Create FfiBytes from the slice (borrowed, not owned)
+            let ffi_bytes = FfiBytes {
+                ptr: data.as_ptr() as *mut u8,
+                len: data.len(),
+                capacity: data.len(),
+            };
+            unsafe { (api.write_asset_bytes)(api.ctx, c_path.as_ptr(), &ffi_bytes) }
+        } else {
+            false
+        }
+    }
+
+    /// Create a folder
+    pub fn create_folder(&self, path: &str) -> bool {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            unsafe { (api.create_folder)(api.ctx, c_path.as_ptr()) }
+        } else {
+            false
+        }
+    }
+
+    /// Delete an asset or folder
+    pub fn delete_asset(&self, path: &str) -> bool {
+        if let Some(api) = self.api() {
+            let c_path = CString::new(path).unwrap_or_default();
+            unsafe { (api.delete_asset)(api.ctx, c_path.as_ptr()) }
+        } else {
+            false
+        }
+    }
+
+    /// Rename/move an asset
+    pub fn rename_asset(&self, old_path: &str, new_path: &str) -> bool {
+        if let Some(api) = self.api() {
+            let c_old = CString::new(old_path).unwrap_or_default();
+            let c_new = CString::new(new_path).unwrap_or_default();
+            unsafe { (api.rename_asset)(api.ctx, c_old.as_ptr(), c_new.as_ptr()) }
+        } else {
+            false
+        }
+    }
+
+    // === Pub/Sub System ===
+
+    /// Subscribe to an event type. Event types can be:
+    /// - "ui.*" - all UI events
+    /// - "ui.button_clicked" - button click events
+    /// - "ui.slider_changed" - slider change events
+    /// - "editor.entity_selected" - entity selection
+    /// - "editor.scene_loaded" - scene loading
+    /// - "plugin.*" - all plugin custom events
+    /// - "plugin.<plugin_id>.*" - events from specific plugin
+    /// - Custom event types published by other plugins
+    pub fn subscribe(&self, event_type: &str) {
+        if let Some(api) = self.api() {
+            let c_type = CString::new(event_type).unwrap_or_default();
+            unsafe { (api.subscribe_event)(api.ctx, c_type.as_ptr()) };
+        }
+    }
+
+    /// Unsubscribe from an event type
+    pub fn unsubscribe(&self, event_type: &str) {
+        if let Some(api) = self.api() {
+            let c_type = CString::new(event_type).unwrap_or_default();
+            unsafe { (api.unsubscribe_event)(api.ctx, c_type.as_ptr()) };
+        }
+    }
+
+    /// Publish a custom event that other plugins can receive
+    /// The event_type should be namespaced, e.g., "my_plugin.something_happened"
+    /// data_json is a JSON string containing event data
+    pub fn publish(&self, event_type: &str, data_json: &str) {
+        if let Some(api) = self.api() {
+            let c_type = CString::new(event_type).unwrap_or_default();
+            let c_data = CString::new(data_json).unwrap_or_default();
+            unsafe { (api.publish_event)(api.ctx, c_type.as_ptr(), c_data.as_ptr()) };
         }
     }
 }

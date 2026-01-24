@@ -18,7 +18,7 @@ pub use default_camera::DefaultCameraEntity;
 pub use export::{ExportLogEntry, ExportLogLevel, ExportLogger, ExportState};
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
-pub use scene::{OpenScript, SceneManagerState, SceneTab, ScriptError};
+pub use scene::{BuildError, BuildState, OpenScript, SceneManagerState, SceneTab, ScriptError};
 pub use selection::SelectionState;
 pub use settings::{EditorSettings, RenderToggles, VisualizationMode};
 pub use viewport::{BottomPanelTab, ViewportState};

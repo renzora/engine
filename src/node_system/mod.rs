@@ -36,9 +36,10 @@ pub use nodes::{SceneRoot, SceneType, is_scene_root_type};
 #[allow(unused_imports)]
 pub use definition::{NodeCategory, NodeDefinition};
 pub use inspector::{
-    render_camera_inspector, render_collision_shape_inspector, render_directional_light_inspector,
-    render_physics_body_inspector, render_point_light_inspector, render_script_inspector,
-    render_spot_light_inspector, render_transform_inspector, render_world_environment_inspector,
+    render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
+    render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
+    render_script_inspector, render_spot_light_inspector, render_transform_inspector,
+    render_world_environment_inspector,
 };
 #[allow(unused_imports)]
 pub use inspector::{InspectorRegistry, InspectorWidget};

@@ -111,9 +111,14 @@ fn sync_bevy_to_plugins(
     mut plugin_host: ResMut<PluginHost>,
     selection: Res<SelectionState>,
     command_history: Res<CommandHistory>,
+    current_project: Option<Res<CurrentProject>>,
     entities: Query<(Entity, &EditorEntity, &Transform, Option<&ChildOf>)>,
     children_query: Query<&Children>,
 ) {
+    // Sync project assets path
+    let assets_path = current_project.as_ref().map(|p| p.path.join("assets"));
+    plugin_host.api_mut().set_project_assets_path(assets_path);
+
     // Build state snapshots
     let selected = selection.selected_entity.map(EntityId::from_bevy);
 

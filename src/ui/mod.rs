@@ -333,6 +333,7 @@ pub fn editor_ui(
         let script_editor_shown = render_script_editor(
             ctx,
             &mut editor.scene_state,
+            current_project.as_deref(),
             actual_hierarchy_width,
             actual_inspector_width,
             content_start_y,

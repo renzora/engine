@@ -689,7 +689,7 @@ fn render_tree_node(
 
                 // Camera-specific options
                 if let Some(marker) = type_marker {
-                    if marker.type_id == "camera.camera3d" {
+                    if marker.type_id == "camera.camera3d" || marker.type_id == "camera.camera_rig" {
                         ui.separator();
                         if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
                             hierarchy.pending_make_default_camera = Some(entity);

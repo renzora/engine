@@ -9,7 +9,7 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 
 // Re-export all resources
 pub use resources::{
-    AssetBrowserState, AssetViewMode, BottomPanelTab, ConsoleState, DefaultCameraEntity, EditorSettings,
+    AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ConsoleState, DefaultCameraEntity, EditorSettings,
     ExportLogEntry, ExportLogLevel, ExportLogger, ExportState,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, LogEntry, LogLevel, OpenScript,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, SceneManagerState,

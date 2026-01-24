@@ -3,6 +3,25 @@ use std::path::PathBuf;
 
 use super::camera::TabCameraState;
 
+/// Build state for Rust plugins
+#[derive(Default, Clone)]
+pub enum BuildState {
+    #[default]
+    Idle,
+    Building,
+    Success(String),  // Plugin name
+    Failed(Vec<BuildError>),
+}
+
+/// A build error from cargo
+#[derive(Clone, Debug)]
+pub struct BuildError {
+    pub message: String,
+    pub file: Option<String>,
+    pub line: Option<usize>,
+    pub column: Option<usize>,
+}
+
 /// State for scene file management and tabs
 #[derive(Resource)]
 pub struct SceneManagerState {
@@ -30,6 +49,8 @@ pub struct SceneManagerState {
     pub active_script_tab: Option<usize>,
     /// Recently saved scene paths - scene instances referencing these need to reload
     pub recently_saved_scenes: Vec<PathBuf>,
+    /// Build state for Rust plugin development
+    pub build_state: BuildState,
 }
 
 impl Default for SceneManagerState {
@@ -50,6 +71,7 @@ impl Default for SceneManagerState {
             open_scripts: Vec::new(),
             active_script_tab: None,
             recently_saved_scenes: Vec::new(),
+            build_state: BuildState::default(),
         }
     }
 }

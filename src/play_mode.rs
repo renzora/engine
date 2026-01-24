@@ -7,6 +7,7 @@ use bevy::prelude::*;
 
 use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
 use crate::node_system::CameraNodeData;
+use crate::shared::CameraRigData;
 use crate::{console_info, console_success, console_warn};
 
 pub struct PlayModePlugin;
@@ -54,14 +55,15 @@ fn handle_play_mode_input(
 fn handle_play_mode_transitions(
     mut commands: Commands,
     mut play_mode: ResMut<PlayModeState>,
-    cameras: Query<(Entity, &CameraNodeData, &Transform)>,
+    cameras: Query<(Entity, &CameraNodeData, &Transform), Without<CameraRigData>>,
+    camera_rigs: Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
     play_mode_cameras: Query<Entity, With<PlayModeCamera>>,
     mut editor_camera: Query<&mut Camera, With<ViewportCamera>>,
 ) {
     // Handle request to enter play mode
     if play_mode.request_play {
         play_mode.request_play = false;
-        enter_play_mode(&mut commands, &mut play_mode, &cameras, &mut editor_camera);
+        enter_play_mode(&mut commands, &mut play_mode, &cameras, &camera_rigs, &mut editor_camera);
     }
 
     // Handle request to exit play mode
@@ -75,19 +77,26 @@ fn handle_play_mode_transitions(
 fn enter_play_mode(
     commands: &mut Commands,
     play_mode: &mut PlayModeState,
-    cameras: &Query<(Entity, &CameraNodeData, &Transform)>,
+    cameras: &Query<(Entity, &CameraNodeData, &Transform), Without<CameraRigData>>,
+    camera_rigs: &Query<(Entity, &CameraRigData, &Transform), Without<CameraNodeData>>,
     editor_camera: &mut Query<&mut Camera, With<ViewportCamera>>,
 ) {
     info!("Entering play mode");
     console_info!("Play Mode", "Starting play mode...");
 
-    // Find the default camera (is_default_camera=true) or use first camera
-    let game_camera = cameras
+    // Find the default camera (is_default_camera=true) - check both cameras and rigs
+    // First check regular cameras
+    let default_camera = cameras
         .iter()
-        .find(|(_, data, _)| data.is_default_camera)
-        .or_else(|| cameras.iter().next());
+        .find(|(_, data, _)| data.is_default_camera);
 
-    if let Some((entity, data, transform)) = game_camera {
+    // Then check camera rigs
+    let default_rig = camera_rigs
+        .iter()
+        .find(|(_, data, _)| data.is_default_camera);
+
+    // Prefer the one that's marked as default, or fall back to first available
+    if let Some((entity, data, transform)) = default_camera {
         info!(
             "Activating game camera {:?} at {:?} with fov {}",
             entity, transform.translation, data.fov
@@ -112,6 +121,88 @@ fn enter_play_mode(
         console_success!("Play Mode", "Game camera activated (FOV: {:.0}°)", data.fov);
 
         // Disable the editor camera
+        for mut camera in editor_camera.iter_mut() {
+            camera.is_active = false;
+        }
+    } else if let Some((entity, rig_data, transform)) = default_rig {
+        info!(
+            "Activating camera rig {:?} at {:?} with fov {}",
+            entity, transform.translation, rig_data.fov
+        );
+
+        // Add Camera3d component to the camera rig entity
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Camera {
+                clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                order: 1, // Render on top of editor camera
+                ..default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                fov: rig_data.fov.to_radians(),
+                ..default()
+            }),
+            PlayModeCamera,
+        ));
+
+        play_mode.active_game_camera = Some(entity);
+        console_success!("Play Mode", "Camera rig activated (FOV: {:.0}°)", rig_data.fov);
+
+        // Disable the editor camera
+        for mut camera in editor_camera.iter_mut() {
+            camera.is_active = false;
+        }
+    } else if let Some((entity, data, transform)) = cameras.iter().next() {
+        // Fall back to first regular camera
+        info!(
+            "Activating first camera {:?} at {:?} with fov {}",
+            entity, transform.translation, data.fov
+        );
+
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Camera {
+                clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                order: 1,
+                ..default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                fov: data.fov.to_radians(),
+                ..default()
+            }),
+            PlayModeCamera,
+        ));
+
+        play_mode.active_game_camera = Some(entity);
+        console_success!("Play Mode", "Game camera activated (FOV: {:.0}°)", data.fov);
+
+        for mut camera in editor_camera.iter_mut() {
+            camera.is_active = false;
+        }
+    } else if let Some((entity, rig_data, transform)) = camera_rigs.iter().next() {
+        // Fall back to first camera rig
+        info!(
+            "Activating first camera rig {:?} at {:?} with fov {}",
+            entity, transform.translation, rig_data.fov
+        );
+
+        commands.entity(entity).insert((
+            Camera3d::default(),
+            Camera {
+                clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                order: 1,
+                ..default()
+            },
+            Projection::Perspective(PerspectiveProjection {
+                fov: rig_data.fov.to_radians(),
+                ..default()
+            }),
+            PlayModeCamera,
+        ));
+
+        play_mode.active_game_camera = Some(entity);
+        console_success!("Play Mode", "Camera rig activated (FOV: {:.0}°)", rig_data.fov);
+
         for mut camera in editor_camera.iter_mut() {
             camera.is_active = false;
         }

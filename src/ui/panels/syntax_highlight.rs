@@ -218,3 +218,360 @@ fn append_token(job: &mut LayoutJob, chars: &[char], token_type: TokenType, font
         },
     );
 }
+
+// =============================================================================
+// Rust Syntax Highlighting
+// =============================================================================
+
+const RUST_KEYWORDS: &[&str] = &[
+    "as", "async", "await", "break", "const", "continue", "crate", "dyn",
+    "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in",
+    "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return",
+    "self", "Self", "static", "struct", "super", "trait", "true", "type",
+    "unsafe", "use", "where", "while", "async", "await", "try",
+];
+
+const RUST_TYPES: &[&str] = &[
+    "bool", "char", "str", "u8", "u16", "u32", "u64", "u128", "usize",
+    "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64",
+    "String", "Vec", "Option", "Result", "Box", "Rc", "Arc", "Cell",
+    "RefCell", "HashMap", "HashSet", "BTreeMap", "BTreeSet", "Path", "PathBuf",
+];
+
+const RUST_BUILTINS: &[&str] = &[
+    "Some", "None", "Ok", "Err", "Default", "Clone", "Copy", "Send", "Sync",
+    "Sized", "Drop", "Fn", "FnMut", "FnOnce", "From", "Into", "AsRef", "AsMut",
+    "Iterator", "IntoIterator", "Debug", "Display", "PartialEq", "Eq",
+    "PartialOrd", "Ord", "Hash", "Default",
+];
+
+#[derive(Clone, Copy, PartialEq)]
+enum RustTokenType {
+    Keyword,
+    Type,
+    Builtin,
+    String,
+    Char,
+    Number,
+    Comment,
+    Attribute,
+    Macro,
+    Lifetime,
+    Operator,
+    Function,
+    Normal,
+}
+
+impl RustTokenType {
+    fn color(self) -> Color32 {
+        match self {
+            RustTokenType::Keyword => Color32::from_rgb(198, 120, 221),   // Purple
+            RustTokenType::Type => Color32::from_rgb(229, 192, 123),      // Yellow
+            RustTokenType::Builtin => Color32::from_rgb(229, 192, 123),   // Yellow
+            RustTokenType::String => Color32::from_rgb(152, 195, 121),    // Green
+            RustTokenType::Char => Color32::from_rgb(152, 195, 121),      // Green
+            RustTokenType::Number => Color32::from_rgb(209, 154, 102),    // Orange
+            RustTokenType::Comment => Color32::from_rgb(92, 99, 112),     // Gray
+            RustTokenType::Attribute => Color32::from_rgb(86, 182, 194),  // Cyan
+            RustTokenType::Macro => Color32::from_rgb(97, 175, 239),      // Blue
+            RustTokenType::Lifetime => Color32::from_rgb(209, 154, 102),  // Orange
+            RustTokenType::Operator => Color32::from_rgb(86, 182, 194),   // Cyan
+            RustTokenType::Function => Color32::from_rgb(97, 175, 239),   // Blue
+            RustTokenType::Normal => Color32::from_rgb(171, 178, 191),    // Light gray
+        }
+    }
+}
+
+pub fn highlight_rust(code: &str, font_size: f32) -> LayoutJob {
+    let mut job = LayoutJob::default();
+    let font_id = FontId::new(font_size, FontFamily::Monospace);
+
+    let chars: Vec<char> = code.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        let start = i;
+        let ch = chars[i];
+
+        // Line comment
+        if ch == '/' && i + 1 < len && chars[i + 1] == '/' {
+            while i < len && chars[i] != '\n' {
+                i += 1;
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::Comment, &font_id);
+            continue;
+        }
+
+        // Block comment
+        if ch == '/' && i + 1 < len && chars[i + 1] == '*' {
+            i += 2;
+            let mut depth = 1;
+            while i + 1 < len && depth > 0 {
+                if chars[i] == '/' && chars[i + 1] == '*' {
+                    depth += 1;
+                    i += 1;
+                } else if chars[i] == '*' && chars[i + 1] == '/' {
+                    depth -= 1;
+                    i += 1;
+                }
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::Comment, &font_id);
+            continue;
+        }
+
+        // Attribute #[...] or #![...]
+        if ch == '#' && i + 1 < len && (chars[i + 1] == '[' || (chars[i + 1] == '!' && i + 2 < len && chars[i + 2] == '[')) {
+            i += 1;
+            if i < len && chars[i] == '!' {
+                i += 1;
+            }
+            if i < len && chars[i] == '[' {
+                let mut depth = 1;
+                i += 1;
+                while i < len && depth > 0 {
+                    if chars[i] == '[' {
+                        depth += 1;
+                    } else if chars[i] == ']' {
+                        depth -= 1;
+                    }
+                    i += 1;
+                }
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::Attribute, &font_id);
+            continue;
+        }
+
+        // String
+        if ch == '"' {
+            i += 1;
+            while i < len && chars[i] != '"' {
+                if chars[i] == '\\' && i + 1 < len {
+                    i += 1;
+                }
+                i += 1;
+            }
+            if i < len {
+                i += 1;
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::String, &font_id);
+            continue;
+        }
+
+        // Raw string r"..." or r#"..."#
+        if ch == 'r' && i + 1 < len && (chars[i + 1] == '"' || chars[i + 1] == '#') {
+            i += 1;
+            let mut hashes = 0;
+            while i < len && chars[i] == '#' {
+                hashes += 1;
+                i += 1;
+            }
+            if i < len && chars[i] == '"' {
+                i += 1;
+                loop {
+                    if i >= len {
+                        break;
+                    }
+                    if chars[i] == '"' {
+                        let mut end_hashes = 0;
+                        let quote_pos = i;
+                        i += 1;
+                        while i < len && chars[i] == '#' && end_hashes < hashes {
+                            end_hashes += 1;
+                            i += 1;
+                        }
+                        if end_hashes == hashes {
+                            break;
+                        }
+                        i = quote_pos + 1;
+                    } else {
+                        i += 1;
+                    }
+                }
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::String, &font_id);
+            continue;
+        }
+
+        // Char literal
+        if ch == '\'' && i + 1 < len {
+            // Check if it's a lifetime or a char
+            let peek = i + 1;
+            if chars[peek].is_alphabetic() || chars[peek] == '_' {
+                // Could be lifetime 'a or char 'x'
+                i += 1;
+                while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    i += 1;
+                }
+                if i < len && chars[i] == '\'' {
+                    // It's a char like 'a'
+                    i += 1;
+                    append_rust_token(&mut job, &chars[start..i], RustTokenType::Char, &font_id);
+                } else {
+                    // It's a lifetime
+                    append_rust_token(&mut job, &chars[start..i], RustTokenType::Lifetime, &font_id);
+                }
+                continue;
+            } else {
+                // Regular char literal
+                i += 1;
+                if i < len && chars[i] == '\\' && i + 1 < len {
+                    i += 2;
+                } else if i < len {
+                    i += 1;
+                }
+                if i < len && chars[i] == '\'' {
+                    i += 1;
+                }
+                append_rust_token(&mut job, &chars[start..i], RustTokenType::Char, &font_id);
+                continue;
+            }
+        }
+
+        // Number
+        if ch.is_ascii_digit() {
+            // Handle different number formats
+            if ch == '0' && i + 1 < len {
+                match chars[i + 1] {
+                    'x' | 'X' => {
+                        i += 2;
+                        while i < len && (chars[i].is_ascii_hexdigit() || chars[i] == '_') {
+                            i += 1;
+                        }
+                    }
+                    'o' | 'O' => {
+                        i += 2;
+                        while i < len && (chars[i].is_digit(8) || chars[i] == '_') {
+                            i += 1;
+                        }
+                    }
+                    'b' | 'B' => {
+                        i += 2;
+                        while i < len && (chars[i] == '0' || chars[i] == '1' || chars[i] == '_') {
+                            i += 1;
+                        }
+                    }
+                    _ => {
+                        parse_decimal_number(&chars, &mut i, len);
+                    }
+                }
+            } else {
+                parse_decimal_number(&chars, &mut i, len);
+            }
+            // Type suffix
+            let suffixes = ["u8", "u16", "u32", "u64", "u128", "usize", "i8", "i16", "i32", "i64", "i128", "isize", "f32", "f64"];
+            for suffix in suffixes {
+                if i + suffix.len() <= len {
+                    let potential: String = chars[i..i + suffix.len()].iter().collect();
+                    if potential == suffix {
+                        i += suffix.len();
+                        break;
+                    }
+                }
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::Number, &font_id);
+            continue;
+        }
+
+        // Identifier, keyword, type, or macro
+        if ch.is_alphabetic() || ch == '_' {
+            while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                i += 1;
+            }
+            let word: String = chars[start..i].iter().collect();
+
+            // Check if it's a macro (followed by !)
+            if i < len && chars[i] == '!' {
+                i += 1;
+                append_rust_token(&mut job, &chars[start..i], RustTokenType::Macro, &font_id);
+                continue;
+            }
+
+            // Check if followed by '(' for function detection
+            let mut peek = i;
+            while peek < len && chars[peek] == ' ' {
+                peek += 1;
+            }
+            let is_function = peek < len && chars[peek] == '(';
+
+            // Check for :: which indicates a type/module path
+            let is_type_context = peek < len && peek + 1 < len && chars[peek] == ':' && chars[peek + 1] == ':';
+
+            let token_type = if RUST_KEYWORDS.contains(&word.as_str()) {
+                RustTokenType::Keyword
+            } else if RUST_TYPES.contains(&word.as_str()) {
+                RustTokenType::Type
+            } else if RUST_BUILTINS.contains(&word.as_str()) {
+                RustTokenType::Builtin
+            } else if is_function {
+                RustTokenType::Function
+            } else if is_type_context || word.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                RustTokenType::Type
+            } else {
+                RustTokenType::Normal
+            };
+
+            append_rust_token(&mut job, &chars[start..i], token_type, &font_id);
+            continue;
+        }
+
+        // Operators
+        if is_rust_operator(ch) {
+            while i < len && is_rust_operator(chars[i]) && !is_comment_start(&chars, i) {
+                i += 1;
+            }
+            append_rust_token(&mut job, &chars[start..i], RustTokenType::Operator, &font_id);
+            continue;
+        }
+
+        // Whitespace and other characters
+        i += 1;
+        append_rust_token(&mut job, &chars[start..i], RustTokenType::Normal, &font_id);
+    }
+
+    job
+}
+
+fn parse_decimal_number(chars: &[char], i: &mut usize, len: usize) {
+    while *i < len && (chars[*i].is_ascii_digit() || chars[*i] == '_') {
+        *i += 1;
+    }
+    // Decimal part
+    if *i < len && chars[*i] == '.' && *i + 1 < len && chars[*i + 1].is_ascii_digit() {
+        *i += 1;
+        while *i < len && (chars[*i].is_ascii_digit() || chars[*i] == '_') {
+            *i += 1;
+        }
+    }
+    // Exponent
+    if *i < len && (chars[*i] == 'e' || chars[*i] == 'E') {
+        *i += 1;
+        if *i < len && (chars[*i] == '+' || chars[*i] == '-') {
+            *i += 1;
+        }
+        while *i < len && (chars[*i].is_ascii_digit() || chars[*i] == '_') {
+            *i += 1;
+        }
+    }
+}
+
+fn is_rust_operator(ch: char) -> bool {
+    matches!(ch, '+' | '-' | '*' | '/' | '%' | '=' | '!' | '<' | '>' | '&' | '|' | '^' | '~' | '?' | ':' | ';' | ',' | '.' | '@')
+}
+
+fn append_rust_token(job: &mut LayoutJob, chars: &[char], token_type: RustTokenType, font_id: &FontId) {
+    let text: String = chars.iter().collect();
+    job.append(
+        &text,
+        0.0,
+        TextFormat {
+            font_id: font_id.clone(),
+            color: token_type.color(),
+            ..Default::default()
+        },
+    );
+}

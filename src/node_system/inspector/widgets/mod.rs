@@ -6,7 +6,7 @@ pub mod physics;
 pub mod script;
 pub mod transform;
 
-pub use camera::render_camera_inspector;
+pub use camera::{render_camera_inspector, render_camera_rig_inspector};
 pub use environment::render_world_environment_inspector;
 pub use lights::{
     render_directional_light_inspector, render_point_light_inspector, render_spot_light_inspector,

@@ -81,6 +81,8 @@ pub struct EditorSettings {
     pub render_toggles: RenderToggles,
     /// Debug visualization mode
     pub visualization_mode: VisualizationMode,
+    /// Developer mode - enables plugin development tools
+    pub dev_mode: bool,
 }
 
 impl Default for EditorSettings {
@@ -96,6 +98,7 @@ impl Default for EditorSettings {
             new_project_name: String::new(),
             render_toggles: RenderToggles::default(),
             visualization_mode: VisualizationMode::default(),
+            dev_mode: false,
         }
     }
 }

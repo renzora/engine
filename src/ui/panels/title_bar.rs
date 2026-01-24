@@ -374,6 +374,44 @@ fn render_menu_items(
         ui.checkbox(&mut settings.show_demo_window, "egui Demo");
     });
 
+    // Dev menu (only visible when dev_mode is enabled)
+    if settings.dev_mode {
+        ui.menu_button("Dev", |ui| {
+            if ui.button("New Plugin...").clicked() {
+                // TODO: Show new plugin dialog
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Open Plugin Source...").clicked() {
+                // Open file dialog to select a .rs file
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Rust Source", &["rs"])
+                    .add_filter("All Files", &["*"])
+                    .set_title("Open Plugin Source")
+                    .pick_file()
+                {
+                    crate::ui::panels::open_script(scene_state, path);
+                }
+                ui.close();
+            }
+            if ui.button("Open Cargo.toml...").clicked() {
+                // Open file dialog to select Cargo.toml
+                if let Some(path) = rfd::FileDialog::new()
+                    .add_filter("Cargo.toml", &["toml"])
+                    .set_title("Open Plugin Cargo.toml")
+                    .pick_file()
+                {
+                    crate::ui::panels::open_script(scene_state, path);
+                }
+                ui.close();
+            }
+            ui.separator();
+            ui.label(egui::RichText::new("Shortcuts").color(Color32::GRAY).small());
+            ui.label(egui::RichText::new("  Ctrl+B - Build Plugin").color(Color32::GRAY).small());
+            ui.label(egui::RichText::new("  Ctrl+S - Save File").color(Color32::GRAY).small());
+        });
+    }
+
     ui.menu_button("Help", |ui| {
         if ui.button("Documentation").clicked() {
             ui.close();

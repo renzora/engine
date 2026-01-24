@@ -4,11 +4,12 @@ use bevy_egui::egui::{self, Color32, RichText, Rounding, TextureId, Vec2};
 
 use crate::core::{EditorEntity, SelectionState, WorldEnvironmentMarker};
 use crate::node_system::{
-    render_camera_inspector, render_collision_shape_inspector, render_directional_light_inspector,
-    render_physics_body_inspector, render_point_light_inspector, render_script_inspector,
-    render_spot_light_inspector, render_transform_inspector, render_world_environment_inspector,
-    CameraNodeData, CollisionShapeData, PhysicsBodyData,
+    render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
+    render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
+    render_script_inspector, render_spot_light_inspector, render_transform_inspector,
+    render_world_environment_inspector, CameraNodeData, CollisionShapeData, PhysicsBodyData,
 };
+use crate::shared::CameraRigData;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
@@ -182,6 +183,7 @@ pub struct InspectorQueries<'w, 's> {
     pub spot_lights: Query<'w, 's, &'static mut SpotLight>,
     pub scripts: Query<'w, 's, &'static mut ScriptComponent>,
     pub cameras: Query<'w, 's, &'static mut CameraNodeData>,
+    pub camera_rigs: Query<'w, 's, &'static mut CameraRigData>,
     pub physics_bodies: Query<'w, 's, &'static mut PhysicsBodyData>,
     pub collision_shapes: Query<'w, 's, &'static mut CollisionShapeData>,
 }
@@ -409,6 +411,23 @@ pub fn render_inspector_content(
                         true,
                         |ui| {
                             render_camera_inspector(ui, &mut camera_data, camera_preview_texture_id);
+                        },
+                    );
+                }
+
+                // Camera rig component
+                if let Ok(mut rig_data) = queries.camera_rigs.get_mut(selected) {
+                    render_category(
+                        ui,
+                        VIDEO_CAMERA,
+                        "Camera Rig",
+                        CategoryStyle::camera(),
+                        "inspector_camera_rig",
+                        true,
+                        |ui| {
+                            if render_camera_rig_inspector(ui, &mut rig_data, camera_preview_texture_id) {
+                                scene_changed = true;
+                            }
                         },
                     );
                 }

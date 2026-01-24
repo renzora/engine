@@ -6,7 +6,7 @@ pub mod meshes;
 pub mod physics;
 pub mod scenes;
 
-pub use cameras::CAMERA3D;
+pub use cameras::{CAMERA3D, CAMERA_RIG};
 pub use empty::NODE3D;
 pub use environment::{AUDIO_LISTENER, WORLD_ENVIRONMENT};
 pub use lights::{DIRECTIONAL_LIGHT, POINT_LIGHT, SPOT_LIGHT};

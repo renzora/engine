@@ -69,4 +69,5 @@ fn register_builtin_nodes(registry: &mut NodeRegistry) {
 
     // Cameras
     registry.register(&nodes::CAMERA3D);
+    registry.register(&nodes::CAMERA_RIG);
 }

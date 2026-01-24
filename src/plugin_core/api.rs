@@ -41,6 +41,9 @@ pub enum PendingOperation {
 
 /// Default implementation for internal use
 pub struct EditorApiImpl {
+    // Project path (for asset operations)
+    pub project_assets_path: Option<std::path::PathBuf>,
+
     // UI registrations (persistent) - now track which plugin owns each
     pub menu_items: Vec<(MenuLocation, MenuItem, String)>,  // (location, item, plugin_id)
     pub panels: Vec<(PanelDefinition, String)>,  // (panel, plugin_id)
@@ -84,6 +87,11 @@ pub struct EditorApiImpl {
     pub subscriptions: Vec<EditorEventType>,
     pub outgoing_events: Vec<CustomEvent>,
 
+    // Pub/Sub system - subscriptions per plugin
+    pub plugin_subscriptions: std::collections::HashMap<String, Vec<String>>,
+    // Pending published events (event_type, data_json, source_plugin_id)
+    pub pending_published_events: Vec<(String, String, String)>,
+
     // Settings (persistent)
     pub settings: std::collections::HashMap<String, SettingValue>,
 }
@@ -97,6 +105,7 @@ impl Default for EditorApiImpl {
 impl EditorApiImpl {
     pub fn new() -> Self {
         Self {
+            project_assets_path: None,
             menu_items: Vec::new(),
             panels: Vec::new(),
             panel_contents: std::collections::HashMap::new(),
@@ -124,6 +133,8 @@ impl EditorApiImpl {
             pending_ui_events: Vec::new(),
             subscriptions: Vec::new(),
             outgoing_events: Vec::new(),
+            plugin_subscriptions: std::collections::HashMap::new(),
+            pending_published_events: Vec::new(),
             settings: std::collections::HashMap::new(),
         }
     }
@@ -131,6 +142,16 @@ impl EditorApiImpl {
     /// Set the current plugin ID (called before plugin callbacks)
     pub fn set_current_plugin(&mut self, plugin_id: Option<String>) {
         self.current_plugin_id = plugin_id;
+    }
+
+    /// Set the project assets path (called when project is opened)
+    pub fn set_project_assets_path(&mut self, path: Option<std::path::PathBuf>) {
+        self.project_assets_path = path;
+    }
+
+    /// Get the project assets path
+    pub fn get_project_assets_path(&self) -> Option<&std::path::Path> {
+        self.project_assets_path.as_deref()
     }
 
     /// Get the current plugin ID or a default
@@ -240,6 +261,8 @@ impl EditorApiImpl {
         self.pending_ui_events.clear();
         self.subscriptions.clear();
         self.outgoing_events.clear();
+        self.plugin_subscriptions.clear();
+        self.pending_published_events.clear();
         // Keep settings - they persist across plugin reloads
     }
 
@@ -269,6 +292,63 @@ impl EditorApiImpl {
     /// Clear active tab for a location (switch back to built-in)
     pub fn clear_active_tab(&mut self, location: TabLocation) {
         self.active_tabs.remove(&location);
+    }
+
+    // === Pub/Sub System ===
+
+    /// Subscribe a plugin to an event type
+    pub fn subscribe_plugin(&mut self, plugin_id: &str, event_type: &str) {
+        let subs = self.plugin_subscriptions
+            .entry(plugin_id.to_string())
+            .or_insert_with(Vec::new);
+        if !subs.contains(&event_type.to_string()) {
+            subs.push(event_type.to_string());
+        }
+    }
+
+    /// Unsubscribe a plugin from an event type
+    pub fn unsubscribe_plugin(&mut self, plugin_id: &str, event_type: &str) {
+        if let Some(subs) = self.plugin_subscriptions.get_mut(plugin_id) {
+            subs.retain(|s| s != event_type);
+        }
+    }
+
+    /// Check if a plugin is subscribed to an event type
+    pub fn is_subscribed(&self, plugin_id: &str, event_type: &str) -> bool {
+        if let Some(subs) = self.plugin_subscriptions.get(plugin_id) {
+            // Check for exact match or wildcard match
+            for sub in subs {
+                if sub == event_type {
+                    return true;
+                }
+                // Wildcard matching: "ui.*" matches "ui.button_clicked"
+                if sub.ends_with(".*") {
+                    let prefix = &sub[..sub.len() - 1]; // Remove "*"
+                    if event_type.starts_with(prefix) {
+                        return true;
+                    }
+                }
+                // Match all: "*" matches everything
+                if sub == "*" {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Publish an event from a plugin
+    pub fn publish_event(&mut self, source_plugin: &str, event_type: &str, data_json: &str) {
+        self.pending_published_events.push((
+            event_type.to_string(),
+            data_json.to_string(),
+            source_plugin.to_string(),
+        ));
+    }
+
+    /// Take pending published events
+    pub fn take_published_events(&mut self) -> Vec<(String, String, String)> {
+        std::mem::take(&mut self.pending_published_events)
     }
 }
 

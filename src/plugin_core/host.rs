@@ -15,7 +15,7 @@ use super::abi::{PluginError, PluginManifest, EDITOR_API_VERSION, EntityId, Plug
 use super::api::{EditorApiImpl, PendingOperation};
 use super::dependency::DependencyGraph;
 use super::traits::EditorEvent;
-use editor_plugin_api::ffi::{PluginExport, PluginVTable, PluginHandle, FfiStatusBarItem, HostApi, FFI_API_VERSION, FfiEntityId, FfiTransform, FfiEntityList, FfiOwnedString, FfiPanelDefinition, FfiPanelLocation, FfiMenuItem, FfiMenuLocation, FfiTabDefinition, FfiTabLocation};
+use editor_plugin_api::ffi::{PluginExport, PluginVTable, PluginHandle, FfiStatusBarItem, HostApi, FFI_API_VERSION, FfiEntityId, FfiTransform, FfiEntityList, FfiOwnedString, FfiPanelDefinition, FfiPanelLocation, FfiMenuItem, FfiMenuLocation, FfiTabDefinition, FfiTabLocation, FfiAssetList, FfiAssetInfo, FfiAssetType, FfiBytes};
 use crate::plugin_core::{StatusBarAlign, StatusBarItem, ToolbarItem, MenuItem, MenuLocation, TabLocation, PluginTab};
 use editor_plugin_api::ui::UiId;
 use crate::core::resources::console::{console_log, LogLevel};
@@ -592,6 +592,659 @@ unsafe extern "C" fn host_get_active_tab(ctx: *mut c_void, location: u8) -> FfiO
         .unwrap_or_else(FfiOwnedString::empty)
 }
 
+// ============================================================================
+// Asset system callbacks
+// ============================================================================
+
+/// Validate an asset path - returns None if path is invalid (security check)
+fn validate_asset_path(path: &str) -> Option<std::path::PathBuf> {
+    // Reject empty paths
+    if path.is_empty() {
+        return Some(std::path::PathBuf::new());
+    }
+    // Reject absolute paths (Unix or Windows style)
+    if path.starts_with('/') || path.starts_with('\\') {
+        return None;
+    }
+    // Reject Windows drive letters
+    if path.len() >= 2 && path.chars().nth(1) == Some(':') {
+        return None;
+    }
+    // Reject parent directory traversal
+    if path.contains("..") {
+        return None;
+    }
+    // Normalize path separators
+    let normalized = path.replace('\\', "/");
+    Some(std::path::PathBuf::from(normalized))
+}
+
+unsafe extern "C" fn host_get_asset_list(ctx: *mut c_void, folder: *const c_char) -> FfiAssetList {
+    if ctx.is_null() { return FfiAssetList::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+
+    let folder_str = if folder.is_null() {
+        String::new()
+    } else {
+        CStr::from_ptr(folder).to_string_lossy().into_owned()
+    };
+
+    let Some(rel_path) = validate_asset_path(&folder_str) else {
+        warn!("Invalid asset path: {}", folder_str);
+        return FfiAssetList::empty();
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        return FfiAssetList::empty();
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    if !full_path.exists() || !full_path.is_dir() {
+        return FfiAssetList::empty();
+    }
+
+    let mut assets = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&full_path) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+
+            // Get relative path from assets folder
+            let relative_path = if rel_path.as_os_str().is_empty() {
+                file_name.clone()
+            } else {
+                format!("{}/{}", rel_path.display(), file_name)
+            };
+
+            let metadata = entry.metadata().ok();
+            let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+            let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+
+            let asset_type = if is_dir {
+                FfiAssetType::Folder
+            } else {
+                let ext = entry_path.extension()
+                    .and_then(|e| e.to_str())
+                    .unwrap_or("");
+                FfiAssetType::from_extension(ext)
+            };
+
+            assets.push(FfiAssetInfo {
+                path: FfiOwnedString::from_string(relative_path),
+                name: FfiOwnedString::from_string(file_name),
+                asset_type,
+                size_bytes: size,
+                exists: true,
+            });
+        }
+    }
+
+    FfiAssetList::from_vec(assets)
+}
+
+unsafe extern "C" fn host_get_asset_info(ctx: *mut c_void, path: *const c_char) -> FfiAssetInfo {
+    if ctx.is_null() || path.is_null() { return FfiAssetInfo::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        return FfiAssetInfo::empty();
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        return FfiAssetInfo::empty();
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    if !full_path.exists() {
+        return FfiAssetInfo::empty();
+    }
+
+    let metadata = std::fs::metadata(&full_path).ok();
+    let is_dir = metadata.as_ref().map(|m| m.is_dir()).unwrap_or(false);
+    let size = metadata.as_ref().map(|m| m.len()).unwrap_or(0);
+
+    let file_name = full_path.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+
+    let asset_type = if is_dir {
+        FfiAssetType::Folder
+    } else {
+        let ext = full_path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        FfiAssetType::from_extension(ext)
+    };
+
+    FfiAssetInfo {
+        path: FfiOwnedString::from_string(path_str),
+        name: FfiOwnedString::from_string(file_name),
+        asset_type,
+        size_bytes: size,
+        exists: true,
+    }
+}
+
+unsafe extern "C" fn host_asset_exists(ctx: *mut c_void, path: *const c_char) -> bool {
+    if ctx.is_null() || path.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        return false;
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        return false;
+    };
+
+    assets_path.join(&rel_path).exists()
+}
+
+unsafe extern "C" fn host_read_asset_text(ctx: *mut c_void, path: *const c_char) -> FfiOwnedString {
+    if ctx.is_null() || path.is_null() { return FfiOwnedString::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        warn!("Invalid asset path for read: {}", path_str);
+        return FfiOwnedString::empty();
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        return FfiOwnedString::empty();
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    match std::fs::read_to_string(&full_path) {
+        Ok(content) => FfiOwnedString::from_string(content),
+        Err(e) => {
+            warn!("Failed to read asset text '{}': {}", path_str, e);
+            FfiOwnedString::empty()
+        }
+    }
+}
+
+unsafe extern "C" fn host_read_asset_bytes(ctx: *mut c_void, path: *const c_char) -> FfiBytes {
+    if ctx.is_null() || path.is_null() { return FfiBytes::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        warn!("Invalid asset path for read: {}", path_str);
+        return FfiBytes::empty();
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        return FfiBytes::empty();
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    match std::fs::read(&full_path) {
+        Ok(content) => FfiBytes::from_vec(content),
+        Err(e) => {
+            warn!("Failed to read asset bytes '{}': {}", path_str, e);
+            FfiBytes::empty()
+        }
+    }
+}
+
+unsafe extern "C" fn host_write_asset_text(ctx: *mut c_void, path: *const c_char, content: *const c_char) -> bool {
+    if ctx.is_null() || path.is_null() || content.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+    let content_str = CStr::from_ptr(content).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        warn!("Invalid asset path for write: {}", path_str);
+        return false;
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        warn!("No project open, cannot write asset");
+        return false;
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    // Create parent directories if needed
+    if let Some(parent) = full_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            warn!("Failed to create directories for '{}': {}", path_str, e);
+            return false;
+        }
+    }
+
+    match std::fs::write(&full_path, content_str) {
+        Ok(()) => {
+            info!("Asset written: {}", path_str);
+            true
+        }
+        Err(e) => {
+            warn!("Failed to write asset '{}': {}", path_str, e);
+            false
+        }
+    }
+}
+
+unsafe extern "C" fn host_write_asset_bytes(ctx: *mut c_void, path: *const c_char, data: *const FfiBytes) -> bool {
+    if ctx.is_null() || path.is_null() || data.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+    let ffi_bytes = &*data;
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        warn!("Invalid asset path for write: {}", path_str);
+        return false;
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        warn!("No project open, cannot write asset");
+        return false;
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    // Create parent directories if needed
+    if let Some(parent) = full_path.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            warn!("Failed to create directories for '{}': {}", path_str, e);
+            return false;
+        }
+    }
+
+    // Get bytes from FfiBytes
+    let bytes = ffi_bytes.as_slice();
+
+    match std::fs::write(&full_path, bytes) {
+        Ok(()) => {
+            info!("Asset written: {} ({} bytes)", path_str, bytes.len());
+            true
+        }
+        Err(e) => {
+            warn!("Failed to write asset '{}': {}", path_str, e);
+            false
+        }
+    }
+}
+
+unsafe extern "C" fn host_create_folder(ctx: *mut c_void, path: *const c_char) -> bool {
+    if ctx.is_null() || path.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        warn!("Invalid asset path for folder creation: {}", path_str);
+        return false;
+    };
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        warn!("No project open, cannot create folder");
+        return false;
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    match std::fs::create_dir_all(&full_path) {
+        Ok(()) => {
+            info!("Folder created: {}", path_str);
+            true
+        }
+        Err(e) => {
+            warn!("Failed to create folder '{}': {}", path_str, e);
+            false
+        }
+    }
+}
+
+unsafe extern "C" fn host_delete_asset(ctx: *mut c_void, path: *const c_char) -> bool {
+    if ctx.is_null() || path.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let path_str = CStr::from_ptr(path).to_string_lossy().into_owned();
+
+    let Some(rel_path) = validate_asset_path(&path_str) else {
+        warn!("Invalid asset path for deletion: {}", path_str);
+        return false;
+    };
+
+    // Prevent deleting root assets folder
+    if rel_path.as_os_str().is_empty() {
+        warn!("Cannot delete root assets folder");
+        return false;
+    }
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        warn!("No project open, cannot delete asset");
+        return false;
+    };
+
+    let full_path = assets_path.join(&rel_path);
+
+    if !full_path.exists() {
+        return false;
+    }
+
+    let result = if full_path.is_dir() {
+        std::fs::remove_dir_all(&full_path)
+    } else {
+        std::fs::remove_file(&full_path)
+    };
+
+    match result {
+        Ok(()) => {
+            info!("Asset deleted: {}", path_str);
+            true
+        }
+        Err(e) => {
+            warn!("Failed to delete asset '{}': {}", path_str, e);
+            false
+        }
+    }
+}
+
+unsafe extern "C" fn host_rename_asset(ctx: *mut c_void, old_path: *const c_char, new_path: *const c_char) -> bool {
+    if ctx.is_null() || old_path.is_null() || new_path.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let old_str = CStr::from_ptr(old_path).to_string_lossy().into_owned();
+    let new_str = CStr::from_ptr(new_path).to_string_lossy().into_owned();
+
+    let Some(old_rel) = validate_asset_path(&old_str) else {
+        warn!("Invalid source asset path: {}", old_str);
+        return false;
+    };
+
+    let Some(new_rel) = validate_asset_path(&new_str) else {
+        warn!("Invalid destination asset path: {}", new_str);
+        return false;
+    };
+
+    // Prevent renaming root folder
+    if old_rel.as_os_str().is_empty() {
+        warn!("Cannot rename root assets folder");
+        return false;
+    }
+
+    let Some(assets_path) = api_impl.get_project_assets_path() else {
+        warn!("No project open, cannot rename asset");
+        return false;
+    };
+
+    let old_full = assets_path.join(&old_rel);
+    let new_full = assets_path.join(&new_rel);
+
+    if !old_full.exists() {
+        warn!("Source asset does not exist: {}", old_str);
+        return false;
+    }
+
+    // Create parent directories for destination if needed
+    if let Some(parent) = new_full.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            warn!("Failed to create directories for '{}': {}", new_str, e);
+            return false;
+        }
+    }
+
+    match std::fs::rename(&old_full, &new_full) {
+        Ok(()) => {
+            info!("Asset renamed: {} -> {}", old_str, new_str);
+            true
+        }
+        Err(e) => {
+            warn!("Failed to rename asset '{}' to '{}': {}", old_str, new_str, e);
+            false
+        }
+    }
+}
+
+// ============================================================================
+// Pub/Sub callbacks
+// ============================================================================
+
+unsafe extern "C" fn host_subscribe_event(ctx: *mut c_void, event_type: *const c_char) {
+    if ctx.is_null() || event_type.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let event_str = CStr::from_ptr(event_type).to_string_lossy().into_owned();
+
+    // Clone the plugin_id to avoid borrow issues
+    let plugin_id = api_impl.current_plugin_id.clone();
+    if let Some(plugin_id) = plugin_id {
+        api_impl.subscribe_plugin(&plugin_id, &event_str);
+        info!("Plugin '{}' subscribed to '{}'", plugin_id, event_str);
+    }
+}
+
+unsafe extern "C" fn host_unsubscribe_event(ctx: *mut c_void, event_type: *const c_char) {
+    if ctx.is_null() || event_type.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let event_str = CStr::from_ptr(event_type).to_string_lossy().into_owned();
+
+    // Clone the plugin_id to avoid borrow issues
+    let plugin_id = api_impl.current_plugin_id.clone();
+    if let Some(plugin_id) = plugin_id {
+        api_impl.unsubscribe_plugin(&plugin_id, &event_str);
+        info!("Plugin '{}' unsubscribed from '{}'", plugin_id, event_str);
+    }
+}
+
+unsafe extern "C" fn host_publish_event(ctx: *mut c_void, event_type: *const c_char, data_json: *const c_char) {
+    if ctx.is_null() || event_type.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let event_str = CStr::from_ptr(event_type).to_string_lossy().into_owned();
+    let data_str = if data_json.is_null() {
+        "{}".to_string()
+    } else {
+        CStr::from_ptr(data_json).to_string_lossy().into_owned()
+    };
+
+    // Clone the plugin_id to avoid borrow issues
+    let plugin_id = api_impl.current_plugin_id.clone();
+    if let Some(plugin_id) = plugin_id {
+        api_impl.publish_event(&plugin_id, &event_str, &data_str);
+        info!("Plugin '{}' published event '{}'", plugin_id, event_str);
+    }
+}
+
+// ============================================================================
+// Event serialization helpers
+// ============================================================================
+
+use editor_plugin_api::events::UiEvent;
+
+/// Serialize a UI event to JSON
+fn serialize_ui_event(event: &UiEvent) -> String {
+    let json = match event {
+        UiEvent::ButtonClicked(id) => serde_json::json!({
+            "type": "ui",
+            "event": "button_clicked",
+            "id": id.0
+        }),
+        UiEvent::CheckboxToggled { id, checked } => serde_json::json!({
+            "type": "ui",
+            "event": "checkbox_toggled",
+            "id": id.0,
+            "checked": checked
+        }),
+        UiEvent::SliderChanged { id, value } => serde_json::json!({
+            "type": "ui",
+            "event": "slider_changed",
+            "id": id.0,
+            "value": value
+        }),
+        UiEvent::SliderIntChanged { id, value } => serde_json::json!({
+            "type": "ui",
+            "event": "slider_int_changed",
+            "id": id.0,
+            "value": value
+        }),
+        UiEvent::TextInputChanged { id, value } => serde_json::json!({
+            "type": "ui",
+            "event": "text_input_changed",
+            "id": id.0,
+            "value": value
+        }),
+        UiEvent::TextInputSubmitted { id, value } => serde_json::json!({
+            "type": "ui",
+            "event": "text_input_submitted",
+            "id": id.0,
+            "value": value
+        }),
+        UiEvent::DropdownSelected { id, index } => serde_json::json!({
+            "type": "ui",
+            "event": "dropdown_selected",
+            "id": id.0,
+            "index": index
+        }),
+        UiEvent::ColorChanged { id, color } => serde_json::json!({
+            "type": "ui",
+            "event": "color_changed",
+            "id": id.0,
+            "color": color
+        }),
+        UiEvent::TreeNodeToggled { id, expanded } => serde_json::json!({
+            "type": "ui",
+            "event": "tree_node_toggled",
+            "id": id.0,
+            "expanded": expanded
+        }),
+        UiEvent::TreeNodeSelected(id) => serde_json::json!({
+            "type": "ui",
+            "event": "tree_node_selected",
+            "id": id.0
+        }),
+        UiEvent::TabSelected { id, index } => serde_json::json!({
+            "type": "ui",
+            "event": "tab_selected",
+            "id": id.0,
+            "index": index
+        }),
+        UiEvent::TabClosed { id, index } => serde_json::json!({
+            "type": "ui",
+            "event": "tab_closed",
+            "id": id.0,
+            "index": index
+        }),
+        UiEvent::TableRowSelected { id, row } => serde_json::json!({
+            "type": "ui",
+            "event": "table_row_selected",
+            "id": id.0,
+            "row": row
+        }),
+        UiEvent::TableSortChanged { id, column, ascending } => serde_json::json!({
+            "type": "ui",
+            "event": "table_sort_changed",
+            "id": id.0,
+            "column": column,
+            "ascending": ascending
+        }),
+        UiEvent::CustomEvent { type_id, data } => serde_json::json!({
+            "type": "ui",
+            "event": "custom",
+            "type_id": type_id,
+            "data": data
+        }),
+    };
+    json.to_string()
+}
+
+/// Get the event type string for a UI event
+fn get_ui_event_type(event: &UiEvent) -> String {
+    match event {
+        UiEvent::ButtonClicked(_) => "ui.button_clicked".to_string(),
+        UiEvent::CheckboxToggled { .. } => "ui.checkbox_toggled".to_string(),
+        UiEvent::SliderChanged { .. } => "ui.slider_changed".to_string(),
+        UiEvent::SliderIntChanged { .. } => "ui.slider_int_changed".to_string(),
+        UiEvent::TextInputChanged { .. } => "ui.text_input_changed".to_string(),
+        UiEvent::TextInputSubmitted { .. } => "ui.text_input_submitted".to_string(),
+        UiEvent::DropdownSelected { .. } => "ui.dropdown_selected".to_string(),
+        UiEvent::ColorChanged { .. } => "ui.color_changed".to_string(),
+        UiEvent::TreeNodeToggled { .. } => "ui.tree_node_toggled".to_string(),
+        UiEvent::TreeNodeSelected(_) => "ui.tree_node_selected".to_string(),
+        UiEvent::TabSelected { .. } => "ui.tab_selected".to_string(),
+        UiEvent::TabClosed { .. } => "ui.tab_closed".to_string(),
+        UiEvent::TableRowSelected { .. } => "ui.table_row_selected".to_string(),
+        UiEvent::TableSortChanged { .. } => "ui.table_sort_changed".to_string(),
+        UiEvent::CustomEvent { .. } => "ui.custom".to_string(),
+    }
+}
+
+/// Serialize an editor event to JSON
+fn serialize_editor_event(event: &EditorEvent) -> String {
+    let json = match event {
+        EditorEvent::EntitySelected(id) => serde_json::json!({
+            "type": "editor",
+            "event": "entity_selected",
+            "entity_id": id.0
+        }),
+        EditorEvent::EntityDeselected(id) => serde_json::json!({
+            "type": "editor",
+            "event": "entity_deselected",
+            "entity_id": id.0
+        }),
+        EditorEvent::SceneLoaded { path } => serde_json::json!({
+            "type": "editor",
+            "event": "scene_loaded",
+            "path": path
+        }),
+        EditorEvent::SceneSaved { path } => serde_json::json!({
+            "type": "editor",
+            "event": "scene_saved",
+            "path": path
+        }),
+        EditorEvent::PlayStarted => serde_json::json!({
+            "type": "editor",
+            "event": "play_started"
+        }),
+        EditorEvent::PlayStopped => serde_json::json!({
+            "type": "editor",
+            "event": "play_stopped"
+        }),
+        EditorEvent::ProjectOpened { path } => serde_json::json!({
+            "type": "editor",
+            "event": "project_opened",
+            "path": path
+        }),
+        EditorEvent::ProjectClosed => serde_json::json!({
+            "type": "editor",
+            "event": "project_closed"
+        }),
+        EditorEvent::UiEvent(ui_event) => {
+            // UI events are serialized separately
+            return serialize_ui_event(ui_event);
+        }
+        EditorEvent::CustomEvent { plugin_id, event_type, data } => serde_json::json!({
+            "type": "plugin",
+            "event": "custom",
+            "source": plugin_id,
+            "event_type": event_type,
+            "data": data
+        }),
+    };
+    json.to_string()
+}
+
+/// Get the event type string for an editor event
+fn get_event_type(event: &EditorEvent) -> String {
+    match event {
+        EditorEvent::EntitySelected(_) => "editor.entity_selected".to_string(),
+        EditorEvent::EntityDeselected(_) => "editor.entity_deselected".to_string(),
+        EditorEvent::SceneLoaded { .. } => "editor.scene_loaded".to_string(),
+        EditorEvent::SceneSaved { .. } => "editor.scene_saved".to_string(),
+        EditorEvent::PlayStarted => "editor.play_started".to_string(),
+        EditorEvent::PlayStopped => "editor.play_stopped".to_string(),
+        EditorEvent::ProjectOpened { .. } => "editor.project_opened".to_string(),
+        EditorEvent::ProjectClosed => "editor.project_closed".to_string(),
+        EditorEvent::UiEvent(ui_event) => get_ui_event_type(ui_event),
+        EditorEvent::CustomEvent { event_type, .. } => format!("plugin.{}", event_type),
+    }
+}
+
 /// FFI-safe wrapper for a loaded plugin
 pub struct FfiPluginWrapper {
     /// Plugin handle (opaque pointer to plugin state)
@@ -685,6 +1338,22 @@ impl FfiPluginWrapper {
             set_tab_content: host_set_tab_content,
             set_active_tab: host_set_active_tab,
             get_active_tab: host_get_active_tab,
+            // Asset system - READ
+            get_asset_list: host_get_asset_list,
+            get_asset_info: host_get_asset_info,
+            asset_exists: host_asset_exists,
+            read_asset_text: host_read_asset_text,
+            read_asset_bytes: host_read_asset_bytes,
+            // Asset system - WRITE
+            write_asset_text: host_write_asset_text,
+            write_asset_bytes: host_write_asset_bytes,
+            create_folder: host_create_folder,
+            delete_asset: host_delete_asset,
+            rename_asset: host_rename_asset,
+            // Pub/Sub
+            subscribe_event: host_subscribe_event,
+            unsubscribe_event: host_unsubscribe_event,
+            publish_event: host_publish_event,
         }
     }
 
@@ -716,11 +1385,11 @@ impl FfiPluginWrapper {
     }
 
     /// Call on_event via FFI (events passed as JSON)
-    pub fn on_event(&mut self, api: &mut EditorApiImpl, _event: &EditorEvent) {
+    pub fn on_event(&mut self, api: &mut EditorApiImpl, event_json: &str) {
         let host_api = Self::create_host_api(api);
         let host_api_ptr = &host_api as *const HostApi as *mut c_void;
-        // For now, pass null for event - event handling via FFI needs JSON serialization
-        unsafe { (self.vtable.on_event)(self.handle, host_api_ptr, std::ptr::null()) };
+        let c_json = std::ffi::CString::new(event_json).unwrap_or_default();
+        unsafe { (self.vtable.on_event)(self.handle, host_api_ptr, c_json.as_ptr()) };
     }
 }
 
@@ -1262,25 +1931,75 @@ impl PluginHost {
         // Dispatch pending editor events
         let events: Vec<_> = self.pending_events.drain(..).collect();
         for event in &events {
+            let event_json = serialize_editor_event(event);
+            let event_type = get_event_type(event);
+
             for plugin_id in &plugin_ids {
+                // Check if plugin is subscribed to this event type
+                if !self.api.is_subscribed(plugin_id, &event_type) {
+                    continue;
+                }
+
                 if let Some(wrapper) = self.plugins.get_mut(plugin_id) {
                     if wrapper.is_enabled() {
                         self.api.set_current_plugin(Some(plugin_id.clone()));
-                        wrapper.on_event(&mut self.api, event);
+                        wrapper.on_event(&mut self.api, &event_json);
                     }
                 }
             }
         }
 
-        // Dispatch pending UI events (wrapped as EditorEvent::UiEvent)
+        // Dispatch pending UI events
         let ui_events: Vec<_> = self.api.pending_ui_events.drain(..).collect();
         for ui_event in ui_events {
-            let event = EditorEvent::UiEvent(ui_event);
+            let event_json = serialize_ui_event(&ui_event);
+            let event_type = get_ui_event_type(&ui_event);
+
             for plugin_id in &plugin_ids {
+                // Check if plugin is subscribed to UI events
+                if !self.api.is_subscribed(plugin_id, &event_type)
+                    && !self.api.is_subscribed(plugin_id, "ui.*")
+                {
+                    continue;
+                }
+
                 if let Some(wrapper) = self.plugins.get_mut(plugin_id) {
                     if wrapper.is_enabled() {
                         self.api.set_current_plugin(Some(plugin_id.clone()));
-                        wrapper.on_event(&mut self.api, &event);
+                        wrapper.on_event(&mut self.api, &event_json);
+                    }
+                }
+            }
+        }
+
+        // Dispatch published events from plugins (pub/sub)
+        let published: Vec<_> = self.api.take_published_events();
+        for (event_type, data_json, source_plugin) in published {
+            let event_json = serde_json::json!({
+                "type": "plugin",
+                "event_type": event_type,
+                "source": source_plugin,
+                "data": serde_json::from_str::<serde_json::Value>(&data_json).unwrap_or(serde_json::Value::Null)
+            }).to_string();
+
+            for plugin_id in &plugin_ids {
+                // Don't send to self
+                if plugin_id == &source_plugin {
+                    continue;
+                }
+
+                // Check subscriptions
+                if !self.api.is_subscribed(plugin_id, &event_type)
+                    && !self.api.is_subscribed(plugin_id, "plugin.*")
+                    && !self.api.is_subscribed(plugin_id, &format!("plugin.{}.*", source_plugin))
+                {
+                    continue;
+                }
+
+                if let Some(wrapper) = self.plugins.get_mut(plugin_id) {
+                    if wrapper.is_enabled() {
+                        self.api.set_current_plugin(Some(plugin_id.clone()));
+                        wrapper.on_event(&mut self.api, &event_json);
                     }
                 }
             }

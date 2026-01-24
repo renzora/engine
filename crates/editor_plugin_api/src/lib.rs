@@ -124,11 +124,24 @@ macro_rules! declare_plugin {
 
         unsafe extern "C" fn __plugin_on_event(
             handle: $crate::ffi::PluginHandle,
-            _api: $crate::ffi::EditorApiHandle,
-            _event_json: *const std::ffi::c_char,
+            api: $crate::ffi::EditorApiHandle,
+            event_json: *const std::ffi::c_char,
         ) {
-            // Events are not yet supported via FFI
-            let _ = handle;
+            let plugin = &mut *(handle as *mut $plugin_type);
+            let ffi_api = $crate::ffi::FfiEditorApi::new(api);
+
+            // Convert C string to Rust string
+            let event_str = if event_json.is_null() {
+                ""
+            } else {
+                match std::ffi::CStr::from_ptr(event_json).to_str() {
+                    Ok(s) => s,
+                    Err(_) => return,
+                }
+            };
+
+            // Call the plugin's event handler if it exists
+            plugin.on_event_ffi(&ffi_api, event_str);
         }
 
         unsafe extern "C" fn __plugin_destroy(handle: $crate::ffi::PluginHandle) {

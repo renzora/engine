@@ -78,6 +78,17 @@ pub fn render_settings_window(
                 ui.separator();
                 ui.add_space(8.0);
 
+                // Developer Settings
+                ui.heading("Developer");
+                ui.add_space(4.0);
+
+                ui.checkbox(&mut settings.dev_mode, "Enable Developer Mode");
+                ui.label(RichText::new("Shows Dev menu for plugin development").color(Color32::GRAY).small());
+
+                ui.add_space(12.0);
+                ui.separator();
+                ui.add_space(8.0);
+
                 // Keybindings Section
                 ui.heading("Keyboard Shortcuts");
                 ui.add_space(4.0);

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 use crate::core::{SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState, DefaultCameraEntity};
 use crate::node_system::CameraNodeData;
+use crate::shared::CameraRigData;
 use crate::node_system::registry::NodeRegistry;
 use crate::project::CurrentProject;
 use crate::{console_success, console_error, console_info};
@@ -556,36 +557,59 @@ pub fn handle_make_default_camera(
     mut hierarchy: ResMut<HierarchyState>,
     mut default_camera: ResMut<DefaultCameraEntity>,
     mut cameras: Query<(Entity, &mut CameraNodeData)>,
+    mut camera_rigs: Query<(Entity, &mut CameraRigData), Without<CameraNodeData>>,
 ) {
     if let Some(target_entity) = hierarchy.pending_make_default_camera.take() {
-        // Clear is_default_camera on all cameras
+        // Clear is_default_camera on all cameras and rigs
         for (_, mut cam_data) in cameras.iter_mut() {
             cam_data.is_default_camera = false;
         }
+        for (_, mut rig_data) in camera_rigs.iter_mut() {
+            rig_data.is_default_camera = false;
+        }
 
-        // Set is_default_camera on the target camera
+        // Set is_default_camera on the target (could be camera or rig)
         if let Ok((_, mut cam_data)) = cameras.get_mut(target_entity) {
             cam_data.is_default_camera = true;
             default_camera.entity = Some(target_entity);
             info!("Set camera {:?} as default game camera", target_entity);
             console_success!("Camera", "Set as default game camera");
+        } else if let Ok((_, mut rig_data)) = camera_rigs.get_mut(target_entity) {
+            rig_data.is_default_camera = true;
+            default_camera.entity = Some(target_entity);
+            info!("Set camera rig {:?} as default game camera", target_entity);
+            console_success!("Camera Rig", "Set as default game camera");
         }
     }
 
-    // Auto-assign first camera as default if no default exists
-    let has_default = cameras.iter().any(|(_, data)| data.is_default_camera);
+    // Check if any camera or rig is set as default
+    let has_default = cameras.iter().any(|(_, data)| data.is_default_camera)
+        || camera_rigs.iter().any(|(_, data)| data.is_default_camera);
+
+    // Auto-assign first camera/rig as default if no default exists
     if !has_default {
+        // Prefer regular cameras first
         if let Some((entity, mut cam_data)) = cameras.iter_mut().next() {
             cam_data.is_default_camera = true;
             default_camera.entity = Some(entity);
             info!("Auto-assigned camera {:?} as default game camera", entity);
+        } else if let Some((entity, mut rig_data)) = camera_rigs.iter_mut().next() {
+            rig_data.is_default_camera = true;
+            default_camera.entity = Some(entity);
+            info!("Auto-assigned camera rig {:?} as default game camera", entity);
         }
     } else {
         // Update the resource to match the actual default
         for (entity, data) in cameras.iter() {
             if data.is_default_camera {
                 default_camera.entity = Some(entity);
-                break;
+                return;
+            }
+        }
+        for (entity, data) in camera_rigs.iter() {
+            if data.is_default_camera {
+                default_camera.entity = Some(entity);
+                return;
             }
         }
     }

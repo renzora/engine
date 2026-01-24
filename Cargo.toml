@@ -51,6 +51,7 @@ exclude = [
     "crates/system_monitor_plugin",
     "crates/entity_test_plugin",
     "crates/panel_test_plugin",
+    "crates/asset_demo_plugin",
 ]
 
 # Bevy recommended optimizations

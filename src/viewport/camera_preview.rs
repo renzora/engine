@@ -9,6 +9,7 @@ use crate::core::SelectionState;
 use crate::gizmo::preview_camera_layers;
 use crate::node_system::CameraNodeData;
 use crate::scene::EditorOnly;
+use crate::shared::CameraRigData;
 
 /// Resource holding the camera preview render texture
 #[derive(Resource)]
@@ -52,59 +53,93 @@ pub fn setup_camera_preview_texture(mut commands: Commands, mut images: ResMut<A
 }
 
 /// System that manages the camera preview - spawns/updates/despawns the preview camera
-/// based on whether a Camera3D node is selected
+/// based on whether a Camera3D or CameraRig node is selected
 pub fn update_camera_preview(
     mut commands: Commands,
     selection: Res<SelectionState>,
     camera_preview_image: Res<CameraPreviewImage>,
-    camera_nodes: Query<(&Transform, &CameraNodeData), Without<CameraPreviewMarker>>,
+    camera_nodes: Query<(&Transform, &CameraNodeData), (Without<CameraPreviewMarker>, Without<CameraRigData>)>,
+    camera_rigs: Query<(&Transform, &CameraRigData), (Without<CameraPreviewMarker>, Without<CameraNodeData>)>,
     mut preview_camera: Query<
         (Entity, &mut Transform, &mut Projection),
         With<CameraPreviewMarker>,
     >,
 ) {
-    // Check if a camera node is selected
+    // Check if a camera node or camera rig is selected
     let selected_camera = selection
         .selected_entity
         .and_then(|entity| camera_nodes.get(entity).ok());
 
+    let selected_rig = selection
+        .selected_entity
+        .and_then(|entity| camera_rigs.get(entity).ok());
+
     let existing_preview = preview_camera.iter_mut().next();
 
-    match (selected_camera, existing_preview) {
-        // Camera selected and preview camera exists - update it
-        (Some((camera_transform, camera_data)), Some((_, mut preview_transform, mut projection))) => {
-            *preview_transform = *camera_transform;
-            if let Projection::Perspective(ref mut persp) = *projection {
-                persp.fov = camera_data.fov.to_radians();
+    // Handle Camera3D nodes
+    if let Some((camera_transform, camera_data)) = selected_camera {
+        match existing_preview {
+            Some((_, mut preview_transform, mut projection)) => {
+                *preview_transform = *camera_transform;
+                if let Projection::Perspective(ref mut persp) = *projection {
+                    persp.fov = camera_data.fov.to_radians();
+                }
+            }
+            None => {
+                commands.spawn((
+                    Camera3d::default(),
+                    Camera {
+                        target: camera_preview_image.0.clone().into(),
+                        clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                        order: -1,
+                        ..default()
+                    },
+                    Projection::Perspective(PerspectiveProjection {
+                        fov: camera_data.fov.to_radians(),
+                        aspect_ratio: PREVIEW_WIDTH as f32 / PREVIEW_HEIGHT as f32,
+                        ..default()
+                    }),
+                    *camera_transform,
+                    CameraPreviewMarker,
+                    EditorOnly,
+                    preview_camera_layers(),
+                ));
             }
         }
-        // Camera selected but no preview camera - spawn one
-        (Some((camera_transform, camera_data)), None) => {
-            commands.spawn((
-                Camera3d::default(),
-                Camera {
-                    target: camera_preview_image.0.clone().into(),
-                    clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
-                    order: -1, // Render before main camera
-                    ..default()
-                },
-                Projection::Perspective(PerspectiveProjection {
-                    fov: camera_data.fov.to_radians(),
-                    aspect_ratio: PREVIEW_WIDTH as f32 / PREVIEW_HEIGHT as f32,
-                    ..default()
-                }),
-                *camera_transform,
-                CameraPreviewMarker,
-                EditorOnly,
-                // Only render scene layer 0, not gizmos layer 1
-                preview_camera_layers(),
-            ));
+    }
+    // Handle CameraRig nodes
+    else if let Some((rig_transform, rig_data)) = selected_rig {
+        match existing_preview {
+            Some((_, mut preview_transform, mut projection)) => {
+                *preview_transform = *rig_transform;
+                if let Projection::Perspective(ref mut persp) = *projection {
+                    persp.fov = rig_data.fov.to_radians();
+                }
+            }
+            None => {
+                commands.spawn((
+                    Camera3d::default(),
+                    Camera {
+                        target: camera_preview_image.0.clone().into(),
+                        clear_color: ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12)),
+                        order: -1,
+                        ..default()
+                    },
+                    Projection::Perspective(PerspectiveProjection {
+                        fov: rig_data.fov.to_radians(),
+                        aspect_ratio: PREVIEW_WIDTH as f32 / PREVIEW_HEIGHT as f32,
+                        ..default()
+                    }),
+                    *rig_transform,
+                    CameraPreviewMarker,
+                    EditorOnly,
+                    preview_camera_layers(),
+                ));
+            }
         }
-        // No camera selected but preview camera exists - despawn it
-        (None, Some((entity, _, _))) => {
-            commands.entity(entity).despawn();
-        }
-        // No camera selected and no preview camera - nothing to do
-        (None, None) => {}
+    }
+    // No camera selected but preview camera exists - despawn it
+    else if let Some((entity, _, _)) = existing_preview {
+        commands.entity(entity).despawn();
     }
 }

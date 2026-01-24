@@ -20,7 +20,7 @@ pub use hierarchy::render_hierarchy;
 pub use inspector::{render_inspector, InspectorQueries, property_row};
 pub use plugin_ui::{render_plugin_menus, render_plugin_panels, render_plugin_toolbar, render_status_bar};
 pub use scene_tabs::render_scene_tabs;
-pub use script_editor::render_script_editor;
+pub use script_editor::{render_script_editor, open_script};
 pub use settings::render_settings_window;
 pub use splash::render_splash;
 pub use title_bar::{render_title_bar, handle_window_actions, TITLE_BAR_HEIGHT};
