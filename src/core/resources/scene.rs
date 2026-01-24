@@ -28,6 +28,8 @@ pub struct SceneManagerState {
     pub open_scripts: Vec<OpenScript>,
     /// Active script tab index
     pub active_script_tab: Option<usize>,
+    /// Recently saved scene paths - scene instances referencing these need to reload
+    pub recently_saved_scenes: Vec<PathBuf>,
 }
 
 impl Default for SceneManagerState {
@@ -47,6 +49,7 @@ impl Default for SceneManagerState {
             pending_tab_close: None,
             open_scripts: Vec::new(),
             active_script_tab: None,
+            recently_saved_scenes: Vec::new(),
         }
     }
 }

@@ -16,6 +16,8 @@ pub struct HierarchyState {
     pub rename_buffer: String,
     /// Whether we've already requested focus for the rename text edit
     pub rename_focus_set: bool,
+    /// Pending request to make a camera the default game camera
+    pub pending_make_default_camera: Option<Entity>,
 }
 
 impl HierarchyState {

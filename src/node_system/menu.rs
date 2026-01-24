@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, RichText, Color32};
 
 use crate::core::{SelectionState, HierarchyState};
+use crate::console_success;
 use super::nodes::is_scene_root_type;
 use super::registry::NodeRegistry;
 use super::definition::NodeCategory;
@@ -95,6 +96,7 @@ pub fn render_node_menu_items(
                 if let Some(parent_entity) = parent {
                     hierarchy.expanded_entities.insert(parent_entity);
                 }
+                console_success!("Node", "Created {}", definition.display_name);
                 ui.close();
             }
         }
@@ -233,6 +235,7 @@ pub fn render_node_menu_as_submenus(
                     if let Some(parent_entity) = parent {
                         hierarchy.expanded_entities.insert(parent_entity);
                     }
+                    console_success!("Node", "Created {}", definition.display_name);
                     ui.close();
                 }
             }

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
 
-use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState};
+use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity};
 use crate::node_system::{NodeRegistry, render_node_menu_as_submenus, SceneRoot, NodeTypeMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost};
 use crate::scripting::ScriptComponent;
@@ -13,7 +13,7 @@ use egui_phosphor::regular::{
     VIDEO_CAMERA, GLOBE, SPEAKER_HIGH, TREE_STRUCTURE, DOTS_THREE_OUTLINE,
     PLUS, TRASH, COPY, ARROW_SQUARE_OUT, PACKAGE, CODE, ATOM,
     CARET_DOWN, CARET_RIGHT, CUBE_TRANSPARENT, FRAME_CORNERS, BROWSERS, FOLDER_SIMPLE,
-    CUBE_FOCUS, FILE_CODE, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN,
+    CUBE_FOCUS, FILE_CODE, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
 };
 
 // Tree line constants
@@ -22,10 +22,15 @@ const ROW_HEIGHT: f32 = 24.0;
 const TREE_LINE_COLOR: Color32 = Color32::from_rgb(60, 60, 70);
 const DROP_LINE_COLOR: Color32 = Color32::from_rgb(80, 140, 255);
 
+fn row_odd_bg() -> Color32 {
+    Color32::from_rgba_unmultiplied(255, 255, 255, 6)
+}
+
 fn drop_child_color() -> Color32 {
     Color32::from_rgba_unmultiplied(80, 140, 255, 50)
 }
 
+/// Returns (ui_events, actual_width, scene_changed)
 pub fn render_hierarchy(
     ctx: &egui::Context,
     selection: &mut SelectionState,
@@ -39,9 +44,11 @@ pub fn render_hierarchy(
     stored_width: f32,
     plugin_host: &PluginHost,
     assets: &mut AssetBrowserState,
-) -> (Vec<UiEvent>, f32) {
+    default_camera: &DefaultCameraEntity,
+) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut actual_width = stored_width;
+    let mut scene_changed = false;
 
     // Check if a scene file is being dragged
     let dragging_scene = assets.dragging_asset.as_ref()
@@ -54,8 +61,9 @@ pub fn render_hierarchy(
         .show(ctx, |ui| {
             // Get actual width from the panel
             actual_width = ui.available_width() + 16.0; // Account for panel padding
-            let events = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene);
+            let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene, default_camera);
             ui_events.extend(events);
+            scene_changed = changed;
         });
 
     // Show drag tooltip
@@ -79,10 +87,11 @@ pub fn render_hierarchy(
         }
     }
 
-    (ui_events, actual_width)
+    (ui_events, actual_width, scene_changed)
 }
 
 /// Render hierarchy content (for use in docking)
+/// Returns (ui_events, scene_changed)
 pub fn render_hierarchy_content(
     ui: &mut egui::Ui,
     outer_ctx: &egui::Context,
@@ -97,8 +106,10 @@ pub fn render_hierarchy_content(
     plugin_host: &PluginHost,
     assets: &mut AssetBrowserState,
     dragging_scene: bool,
-) -> Vec<UiEvent> {
+    default_camera: &DefaultCameraEntity,
+) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
+    let mut scene_changed = false;
     let ctx = ui.ctx().clone();
 
     // Find the scene root for current tab
@@ -196,9 +207,10 @@ pub fn render_hierarchy_content(
             hierarchy.drop_target = None;
 
             let root_count = root_entities.len();
+            let mut row_index: usize = 0;
             for (i, (entity, editor_entity, _, children, _, _, type_marker)) in root_entities.into_iter().enumerate() {
                 let is_last = i == root_count - 1;
-                let events = render_tree_node(
+                let (events, changed) = render_tree_node(
                     ui,
                     &ctx,
                     selection,
@@ -217,8 +229,13 @@ pub fn render_hierarchy_content(
                     &mut Vec::new(), // No parent lines for root nodes
                     None, // No parent entity for root nodes
                     plugin_host,
+                    &mut row_index,
+                    default_camera,
                 );
                 ui_events.extend(events);
+                if changed {
+                    scene_changed = true;
+                }
             }
 
             // Handle drop when mouse released
@@ -258,9 +275,10 @@ pub fn render_hierarchy_content(
     // For simplicity, we store the items in a local to be used by the tree node rendering.
     let _ = hierarchy_context_items; // Used in tree node context menus
 
-    ui_events
+    (ui_events, scene_changed)
 }
 
+/// Returns (ui_events, scene_changed)
 fn render_tree_node(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
@@ -280,8 +298,11 @@ fn render_tree_node(
     parent_lines: &mut Vec<bool>, // true = draw vertical line at this depth
     _parent_entity: Option<Entity>,
     plugin_host: &PluginHost,
-) -> Vec<UiEvent> {
+    row_index: &mut usize,
+    default_camera: &DefaultCameraEntity,
+) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
+    let mut scene_changed = false;
     let is_selected = selection.selected_entity == Some(entity);
     // Only count children that are EditorEntity (not internal Bevy children like mesh handles)
     let has_children = children.map_or(false, |c| {
@@ -292,6 +313,12 @@ fn render_tree_node(
 
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click_and_drag());
     let painter = ui.painter();
+
+    // Draw odd/even row background
+    if *row_index % 2 == 1 {
+        painter.rect_filled(rect, 0.0, row_odd_bg());
+    }
+    *row_index += 1;
 
     let base_x = rect.min.x + 4.0;
     let center_y = rect.center().y;
@@ -472,6 +499,11 @@ fn render_tree_node(
         let (icon, icon_color) = get_node_icon(&editor_entity.name, type_id);
         ui.label(RichText::new(icon).color(icon_color).size(15.0));
 
+        // Show default camera indicator
+        if default_camera.entity == Some(entity) {
+            ui.label(RichText::new(STAR).color(Color32::from_rgb(255, 200, 80)).size(11.0));
+        }
+
         // Check if this entity is being renamed
         let is_renaming = hierarchy.renaming_entity == Some(entity);
 
@@ -602,6 +634,17 @@ fn render_tree_node(
                     ui.close();
                 }
 
+                // Camera-specific options
+                if let Some(marker) = type_marker {
+                    if marker.type_id == "camera.camera3d" {
+                        ui.separator();
+                        if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
+                            hierarchy.pending_make_default_camera = Some(entity);
+                            ui.close();
+                        }
+                    }
+                }
+
                 ui.separator();
 
                 // Duplicate
@@ -628,6 +671,7 @@ fn render_tree_node(
                     }
                     // Remove from expanded set
                     hierarchy.expanded_entities.remove(&entity);
+                    scene_changed = true;
                     ui.close();
                 }
 
@@ -714,7 +758,7 @@ fn render_tree_node(
                     // Update parent_lines for children
                     parent_lines.push(!is_last); // Continue vertical line if current node is not last
 
-                    let child_events = render_tree_node(
+                    let (child_events, child_changed) = render_tree_node(
                         ui,
                         ctx,
                         selection,
@@ -733,8 +777,13 @@ fn render_tree_node(
                         parent_lines,
                         Some(entity),
                         plugin_host,
+                        row_index,
+                        default_camera,
                     );
                     ui_events.extend(child_events);
+                    if child_changed {
+                        scene_changed = true;
+                    }
 
                     parent_lines.pop();
                 }
@@ -742,7 +791,7 @@ fn render_tree_node(
         }
     }
 
-    ui_events
+    (ui_events, scene_changed)
 }
 
 /// Render a plugin context menu item, returns true if clicked

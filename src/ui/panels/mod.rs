@@ -1,4 +1,6 @@
 mod assets;
+mod console;
+mod export;
 mod hierarchy;
 mod inspector;
 mod plugin_ui;
@@ -12,6 +14,8 @@ mod toolbar;
 mod viewport;
 
 pub use assets::render_assets;
+pub use console::render_console_content;
+pub use export::render_export_dialog;
 pub use hierarchy::render_hierarchy;
 pub use inspector::{render_inspector, InspectorQueries, property_row};
 pub use plugin_ui::{render_plugin_menus, render_plugin_panels, render_plugin_toolbar, render_status_bar};

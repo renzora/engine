@@ -3,9 +3,11 @@ use bevy::prelude::*;
 use rfd::FileDialog;
 use std::path::PathBuf;
 
-use crate::core::{SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState};
+use crate::core::{SceneNode, SceneTabId, SceneManagerState, SelectionState, HierarchyState, OrbitCameraState, SceneTab, TabCameraState, DefaultCameraEntity};
+use crate::node_system::CameraNodeData;
 use crate::node_system::registry::NodeRegistry;
 use crate::project::CurrentProject;
+use crate::{console_success, console_error, console_info};
 
 use super::loader::{load_scene, SceneLoadResult};
 use super::saver::save_scene;
@@ -80,16 +82,34 @@ fn do_save_scene(world: &mut World, path: &PathBuf) {
         .to_string();
 
     // Use resource_scope to safely access registry while modifying world
-    world.resource_scope(|world, registry: Mut<NodeRegistry>| {
+    let save_success = world.resource_scope(|world, registry: Mut<NodeRegistry>| {
         match save_scene(path, &scene_name, world, &registry) {
             Ok(()) => {
                 info!("Scene saved to: {}", path.display());
+                console_success!("Scene", "Saved: {}", scene_name);
+                true
             }
             Err(e) => {
                 error!("Failed to save scene: {}", e);
+                console_error!("Scene", "Failed to save: {}", e);
+                false
             }
         }
     });
+
+    // Update tab name and state after successful save
+    if save_success {
+        let mut scene_state = world.resource_mut::<SceneManagerState>();
+        let current_tab = scene_state.active_scene_tab;
+        if let Some(tab) = scene_state.scene_tabs.get_mut(current_tab) {
+            tab.name = scene_name;
+            tab.path = Some(path.clone());
+            tab.is_modified = false;
+        }
+        scene_state.current_scene_path = Some(path.clone());
+        // Track this save so scene instances referencing this file can reload
+        scene_state.recently_saved_scenes.push(path.clone());
+    }
 }
 
 fn do_save_scene_as(world: &mut World) {
@@ -107,12 +127,7 @@ fn do_save_scene_as(world: &mut World) {
         .save_file();
 
     if let Some(path) = file {
-        // Update the current scene path
-        {
-            let mut scene_state = world.resource_mut::<SceneManagerState>();
-            scene_state.current_scene_path = Some(path.clone());
-        }
-
+        // do_save_scene will handle updating the tab name, path, and is_modified
         do_save_scene(world, &path);
     }
 }
@@ -146,6 +161,7 @@ fn do_new_scene(world: &mut World) {
     }
 
     info!("New scene created");
+    console_info!("Scene", "New scene created");
 }
 
 /// Clear only entities belonging to a specific tab
@@ -453,11 +469,14 @@ fn do_open_scene(world: &mut World) {
 
                     match load_scene(&path, &mut commands, &mut meshes, &mut materials, &registry) {
                         Ok(result) => {
+                            let scene_name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("scene");
                             info!("Scene loaded from: {}", path.display());
+                            console_success!("Scene", "Loaded: {}", scene_name);
                             load_result = Some(result);
                         }
                         Err(e) => {
                             error!("Failed to load scene: {}", e);
+                            console_error!("Scene", "Failed to load: {}", e);
                         }
                     }
 
@@ -529,5 +548,45 @@ pub fn handle_save_shortcut(
     // Ctrl+O = Open Scene
     if ctrl_pressed && keyboard.just_pressed(KeyCode::KeyO) {
         scene_state.open_scene_requested = true;
+    }
+}
+
+/// System to handle making a camera the default game camera
+pub fn handle_make_default_camera(
+    mut hierarchy: ResMut<HierarchyState>,
+    mut default_camera: ResMut<DefaultCameraEntity>,
+    mut cameras: Query<(Entity, &mut CameraNodeData)>,
+) {
+    if let Some(target_entity) = hierarchy.pending_make_default_camera.take() {
+        // Clear is_default_camera on all cameras
+        for (_, mut cam_data) in cameras.iter_mut() {
+            cam_data.is_default_camera = false;
+        }
+
+        // Set is_default_camera on the target camera
+        if let Ok((_, mut cam_data)) = cameras.get_mut(target_entity) {
+            cam_data.is_default_camera = true;
+            default_camera.entity = Some(target_entity);
+            info!("Set camera {:?} as default game camera", target_entity);
+            console_success!("Camera", "Set as default game camera");
+        }
+    }
+
+    // Auto-assign first camera as default if no default exists
+    let has_default = cameras.iter().any(|(_, data)| data.is_default_camera);
+    if !has_default {
+        if let Some((entity, mut cam_data)) = cameras.iter_mut().next() {
+            cam_data.is_default_camera = true;
+            default_camera.entity = Some(entity);
+            info!("Auto-assigned camera {:?} as default game camera", entity);
+        }
+    } else {
+        // Update the resource to match the actual default
+        for (entity, data) in cameras.iter() {
+            if data.is_default_camera {
+                default_camera.entity = Some(entity);
+                break;
+            }
+        }
     }
 }

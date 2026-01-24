@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState};
+use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState};
 
 use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
@@ -309,10 +309,14 @@ pub fn object_drag_system(
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
+    mut scene_state: ResMut<SceneManagerState>,
 ) {
     if !gizmo.is_dragging || !mouse_button.pressed(MouseButton::Left) {
         return;
     }
+
+    // Mark scene as modified when dragging starts
+    scene_state.mark_modified();
 
     let Some(selected) = selection.selected_entity else {
         return;

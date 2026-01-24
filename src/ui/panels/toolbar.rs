@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
-use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode};
+use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode, PlayModeState, PlayState};
 use crate::gizmo::{GizmoMode, GizmoState, SnapSettings};
 use crate::node_system::{NodeRegistry, NodeCategory};
 use crate::plugin_core::PluginHost;
@@ -28,6 +28,7 @@ pub fn render_toolbar(
     materials: &mut Assets<StandardMaterial>,
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
+    play_mode: &mut PlayModeState,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
@@ -236,14 +237,37 @@ pub fn render_toolbar(
 
                 // === Play Controls ===
                 let play_color = Color32::from_rgb(64, 166, 89);
-                let play_resp = tool_button(ui, PLAY, button_size, false, play_color, inactive_color);
-                play_resp.on_hover_text("Play");
+                let is_playing = play_mode.state == PlayState::Playing;
+                let is_paused = play_mode.state == PlayState::Paused;
+                let is_in_play_mode = play_mode.is_in_play_mode();
 
-                let pause_resp = tool_button(ui, PAUSE, button_size, false, active_color, inactive_color);
-                pause_resp.on_hover_text("Pause");
+                // Play button - green when playing
+                let play_resp = tool_button(ui, PLAY, button_size, is_playing, play_color, inactive_color);
+                if play_resp.clicked() {
+                    if is_paused {
+                        // Resume from pause
+                        play_mode.state = PlayState::Playing;
+                    } else if !is_playing {
+                        // Start playing
+                        play_mode.request_play = true;
+                    }
+                }
+                play_resp.on_hover_text(if is_paused { "Resume (F5)" } else { "Play (F5)" });
 
-                let stop_resp = tool_button(ui, STOP, button_size, false, Color32::from_rgb(200, 80, 80), inactive_color);
-                stop_resp.on_hover_text("Stop");
+                // Pause button - active when paused
+                let pause_resp = tool_button(ui, PAUSE, button_size, is_paused, active_color, inactive_color);
+                if pause_resp.clicked() && is_playing {
+                    play_mode.state = PlayState::Paused;
+                }
+                pause_resp.on_hover_text("Pause (F6)");
+
+                // Stop button - only enabled during play mode
+                let stop_color = if is_in_play_mode { Color32::from_rgb(200, 80, 80) } else { Color32::from_rgb(80, 80, 90) };
+                let stop_resp = tool_button(ui, STOP, button_size, false, stop_color, inactive_color);
+                if stop_resp.clicked() && is_in_play_mode {
+                    play_mode.request_stop = true;
+                }
+                stop_resp.on_hover_text("Stop (Escape)");
 
                 // === Plugin Toolbar Items ===
                 if !api.toolbar_items.is_empty() {

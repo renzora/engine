@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
 
-use crate::core::{EditorEntity, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
+use crate::core::{EditorEntity, ExportState, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::scene::{spawn_primitive, PrimitiveType};
 use crate::ui_api::UiEvent;
@@ -18,6 +18,7 @@ pub fn render_title_bar(
     selection: &mut SelectionState,
     scene_state: &mut SceneManagerState,
     settings: &mut EditorSettings,
+    export_state: &mut ExportState,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -93,7 +94,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, commands, meshes, materials, plugin_host);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, commands, meshes, materials, plugin_host);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -194,6 +195,7 @@ fn render_menu_items(
     selection: &mut SelectionState,
     scene_state: &mut SceneManagerState,
     settings: &mut EditorSettings,
+    export_state: &mut ExportState,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -245,6 +247,16 @@ fn render_menu_items(
                 }
             }
         }
+
+        ui.separator();
+
+        // Export submenu
+        ui.menu_button("Export", |ui| {
+            if ui.button("Export Game...").clicked() {
+                export_state.show_dialog = true;
+                ui.close();
+            }
+        });
 
         ui.separator();
         if ui.button("Exit").clicked() {

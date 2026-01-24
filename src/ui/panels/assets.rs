@@ -1,15 +1,16 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CursorIcon, RichText, Sense, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 use std::path::PathBuf;
 
-use crate::core::{AssetBrowserState, AssetViewMode, ViewportState, SceneManagerState};
+use crate::core::{AssetBrowserState, AssetViewMode, BottomPanelTab, ConsoleState, LogLevel, ViewportState, SceneManagerState};
 use crate::project::CurrentProject;
+use super::console::render_console_content;
 
 // Icon constants from phosphor
 use egui_phosphor::regular::{
     FOLDER, FILE, IMAGE, CUBE, SPEAKER_HIGH, FILE_RS, FILE_TEXT,
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
-    MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE,
+    MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
 };
 use egui_phosphor::fill::FOLDER as FOLDER_FILL;
 
@@ -18,20 +19,21 @@ const MAX_TILE_SIZE: f32 = 128.0;
 const DEFAULT_TILE_SIZE: f32 = 80.0;
 const LIST_ROW_HEIGHT: f32 = 24.0;
 
-/// Render the asset browser panel
+/// Render the bottom panel with tabs (Assets + Console)
 pub fn render_assets(
     ctx: &egui::Context,
     current_project: Option<&CurrentProject>,
     viewport: &mut ViewportState,
     assets: &mut AssetBrowserState,
     scene_state: &mut SceneManagerState,
+    console: &mut ConsoleState,
     _left_panel_width: f32,
     _right_panel_width: f32,
     _bottom_panel_height: f32,
 ) {
     let panel_height = viewport.assets_height;
 
-    egui::TopBottomPanel::bottom("assets_panel")
+    egui::TopBottomPanel::bottom("bottom_panel")
         .exact_height(panel_height)
         .show_separator_line(false)
         .show(ctx, |ui| {
@@ -58,15 +60,121 @@ pub fn render_assets(
                 viewport.assets_height = (panel_height - delta).clamp(100.0, 600.0);
             }
 
-            ui.add_space(4.0);
+            ui.add_space(2.0);
 
-            render_assets_content(ui, current_project, assets, scene_state);
+            // Tab bar
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+
+                // Assets tab
+                let assets_selected = viewport.bottom_panel_tab == BottomPanelTab::Assets;
+                if render_tab_button(ui, FOLDER_OPEN, "Assets", assets_selected) {
+                    viewport.bottom_panel_tab = BottomPanelTab::Assets;
+                }
+
+                // Console tab with error indicator
+                let console_selected = viewport.bottom_panel_tab == BottomPanelTab::Console;
+                let error_count = console.entries.iter().filter(|e| e.level == LogLevel::Error).count();
+                let warning_count = console.entries.iter().filter(|e| e.level == LogLevel::Warning).count();
+
+                if render_tab_button_with_badge(ui, TERMINAL, "Console", console_selected, error_count, warning_count) {
+                    viewport.bottom_panel_tab = BottomPanelTab::Console;
+                }
+            });
+
+            ui.add_space(2.0);
+
+            // Tab content
+            match viewport.bottom_panel_tab {
+                BottomPanelTab::Assets => {
+                    render_assets_content(ui, current_project, assets, scene_state);
+                }
+                BottomPanelTab::Console => {
+                    render_console_content(ui, console);
+                }
+            }
         });
 
-    // Dialogs
+    // Dialogs (only for assets tab)
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
     handle_import_request(assets);
+}
+
+fn render_tab_button(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> bool {
+    let bg_color = if selected {
+        Color32::from_rgb(50, 50, 60)
+    } else {
+        Color32::TRANSPARENT
+    };
+
+    let text_color = if selected {
+        Color32::WHITE
+    } else {
+        Color32::from_rgb(150, 150, 160)
+    };
+
+    let response = ui.add(
+        egui::Button::new(
+            RichText::new(format!("{} {}", icon, label))
+                .size(12.0)
+                .color(text_color)
+        )
+        .fill(bg_color)
+        .corner_radius(CornerRadius::same(4))
+    );
+
+    response.clicked()
+}
+
+fn render_tab_button_with_badge(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    selected: bool,
+    error_count: usize,
+    warning_count: usize,
+) -> bool {
+    let bg_color = if selected {
+        Color32::from_rgb(50, 50, 60)
+    } else {
+        Color32::TRANSPARENT
+    };
+
+    let text_color = if selected {
+        Color32::WHITE
+    } else {
+        Color32::from_rgb(150, 150, 160)
+    };
+
+    let mut text = format!("{} {}", icon, label);
+
+    // Add badge for errors/warnings
+    if error_count > 0 {
+        text = format!("{} ({})", text, error_count);
+    } else if warning_count > 0 {
+        text = format!("{} ({})", text, warning_count);
+    }
+
+    let badge_color = if error_count > 0 {
+        Color32::from_rgb(220, 80, 80)
+    } else if warning_count > 0 {
+        Color32::from_rgb(230, 180, 80)
+    } else {
+        text_color
+    };
+
+    let response = ui.add(
+        egui::Button::new(
+            RichText::new(text)
+                .size(12.0)
+                .color(if error_count > 0 || warning_count > 0 { badge_color } else { text_color })
+        )
+        .fill(bg_color)
+        .corner_radius(CornerRadius::same(4))
+    );
+
+    response.clicked()
 }
 
 /// Render assets content (for use in docking)

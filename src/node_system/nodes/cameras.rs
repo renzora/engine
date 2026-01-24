@@ -50,6 +50,7 @@ fn serialize_camera(entity: Entity, world: &World) -> Option<HashMap<String, ser
     let camera_data = world.get::<CameraNodeData>(entity)?;
     let mut data = HashMap::new();
     data.insert("fov".to_string(), serde_json::json!(camera_data.fov));
+    data.insert("is_default_camera".to_string(), serde_json::json!(camera_data.is_default_camera));
     Some(data)
 }
 
@@ -64,5 +65,10 @@ fn deserialize_camera(
         .and_then(|v| v.as_f64())
         .unwrap_or(45.0) as f32;
 
-    entity_commands.insert(CameraNodeData { fov });
+    let is_default_camera = data
+        .get("is_default_camera")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    entity_commands.insert(CameraNodeData { fov, is_default_camera });
 }

@@ -49,6 +49,6 @@ pub use menu::{render_add_child_menu, get_category_icon_public, get_node_icon_fo
 pub use plugin::NodeSystemPlugin;
 pub use registry::NodeRegistry;
 pub use scene::load_scene;
-pub use scene::{assign_scene_tab_ids, handle_save_shortcut, handle_scene_requests};
+pub use scene::{assign_scene_tab_ids, handle_save_shortcut, handle_scene_requests, handle_make_default_camera};
 #[allow(unused_imports)]
 pub use scene::{save_scene, NodeData, SceneData};

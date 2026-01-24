@@ -3,22 +3,39 @@ name = "bevy_imgui_editor"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["editor"]
+editor = ["dep:bevy_egui", "dep:egui-phosphor", "dep:rfd", "dep:libloading", "dep:notify", "dep:editor_plugin_api", "dep:rhai", "bevy/dynamic_linking"]
+runtime = []
+
+[[bin]]
+name = "renzora_editor"
+path = "src/main.rs"
+required-features = ["editor"]
+
+[[bin]]
+name = "renzora_runtime"
+path = "src/runtime/main.rs"
+required-features = ["runtime"]
+
 [dependencies]
-bevy = { version = "0.17", features = ["dynamic_linking", "jpeg"] }
-bevy_egui = "0.37"
-egui-phosphor = { version = "0.11", features = ["regular", "fill"] }
+bevy = { version = "0.17", features = ["jpeg"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 ron = "0.8"
 toml = "0.8"
-rfd = "0.15"
 dirs = "5.0"
-rhai = { version = "1.21", features = ["sync"] }
 
-# Plugin system dependencies
-libloading = "0.8"
-notify = "6.0"
-editor_plugin_api = { path = "crates/editor_plugin_api" }
+# Editor-only dependencies
+bevy_egui = { version = "0.37", optional = true }
+egui-phosphor = { version = "0.11", features = ["regular", "fill"], optional = true }
+rfd = { version = "0.15", optional = true }
+rhai = { version = "1.21", features = ["sync"], optional = true }
+
+# Plugin system dependencies (editor-only)
+libloading = { version = "0.8", optional = true }
+notify = { version = "6.0", optional = true }
+editor_plugin_api = { path = "crates/editor_plugin_api", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }

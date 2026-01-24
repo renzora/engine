@@ -194,9 +194,10 @@ pub fn render_inspector(
     camera_preview_texture_id: Option<TextureId>,
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
-) -> (Vec<UiEvent>, f32) {
+) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut actual_width = stored_width;
+    let mut scene_changed = false;
 
     egui::SidePanel::right("inspector")
         .default_width(stored_width)
@@ -204,14 +205,16 @@ pub fn render_inspector(
         .show(ctx, |ui| {
             // Get actual width from the panel
             actual_width = ui.available_width() + 16.0; // Account for panel padding
-            let events = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
+            let (events, changed) = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
             ui_events.extend(events);
+            scene_changed = changed;
         });
 
-    (ui_events, actual_width)
+    (ui_events, actual_width, scene_changed)
 }
 
 /// Render inspector content (for use in docking)
+/// Returns (ui_events, scene_changed)
 pub fn render_inspector_content(
     ui: &mut egui::Ui,
     selection: &SelectionState,
@@ -222,8 +225,9 @@ pub fn render_inspector_content(
     camera_preview_texture_id: Option<TextureId>,
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
-) -> Vec<UiEvent> {
+) -> (Vec<UiEvent>, bool) {
     let panel_width = ui.available_width();
+    let mut scene_changed = false;
 
     // Compact tab header
     ui.horizontal(|ui| {
@@ -280,7 +284,9 @@ pub fn render_inspector_content(
                         "inspector_transform",
                         true,
                         |ui| {
-                            render_transform_inspector(ui, &mut transform);
+                            if render_transform_inspector(ui, &mut transform) {
+                                scene_changed = true;
+                            }
                         },
                     );
                 }
@@ -447,5 +453,5 @@ pub fn render_inspector_content(
     });
 
     // Collect events from ui_renderer
-    ui_renderer.drain_events().collect()
+    (ui_renderer.drain_events().collect(), scene_changed)
 }

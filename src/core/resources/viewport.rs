@@ -1,5 +1,13 @@
 use bevy::prelude::*;
 
+/// Bottom panel tab selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BottomPanelTab {
+    #[default]
+    Assets,
+    Console,
+}
+
 /// Tracks viewport state and layout
 #[derive(Resource)]
 pub struct ViewportState {
@@ -13,6 +21,8 @@ pub struct ViewportState {
     pub hierarchy_width: f32,
     pub inspector_width: f32,
     pub assets_height: f32,
+    /// Currently selected bottom panel tab
+    pub bottom_panel_tab: BottomPanelTab,
 }
 
 impl Default for ViewportState {
@@ -24,6 +34,7 @@ impl Default for ViewportState {
             hierarchy_width: 260.0,
             inspector_width: 320.0,
             assets_height: 200.0,
+            bottom_panel_tab: BottomPanelTab::Assets,
         }
     }
 }

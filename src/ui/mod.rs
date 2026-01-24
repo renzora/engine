@@ -6,9 +6,9 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::core::{
-    AppState, AssetLoadingProgress, EditorEntity, KeyBindings, SceneTabId,
+    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, EditorEntity, ExportState, KeyBindings, SceneTabId,
     SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
-    OrbitCameraState,
+    OrbitCameraState, PlayModeState, PlayState,
 };
 use crate::gizmo::GizmoState;
 
@@ -21,12 +21,16 @@ pub struct EditorResources<'w> {
     pub scene_state: ResMut<'w, SceneManagerState>,
     pub assets: ResMut<'w, AssetBrowserState>,
     pub settings: ResMut<'w, EditorSettings>,
+    pub export_state: ResMut<'w, ExportState>,
     pub window_state: ResMut<'w, WindowState>,
     pub gizmo: ResMut<'w, GizmoState>,
     pub orbit: Res<'w, OrbitCameraState>,
     pub keybindings: ResMut<'w, KeyBindings>,
     pub plugin_host: ResMut<'w, PluginHost>,
     pub loading_progress: Res<'w, AssetLoadingProgress>,
+    pub default_camera: Res<'w, DefaultCameraEntity>,
+    pub play_mode: ResMut<'w, PlayModeState>,
+    pub console: ResMut<'w, ConsoleState>,
 }
 use crate::node_system::{self, NodeRegistry, NodeTypeMarker};
 use crate::project::{AppConfig, CurrentProject};
@@ -36,7 +40,7 @@ use crate::plugin_core::PluginHost;
 use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
 use panels::{
-    render_assets, render_hierarchy, render_inspector, render_plugin_menus, render_plugin_panels,
+    render_assets, render_export_dialog, render_hierarchy, render_inspector, render_plugin_menus, render_plugin_panels,
     render_plugin_toolbar, render_scene_tabs, render_script_editor, render_settings_window,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
@@ -170,8 +174,13 @@ pub fn editor_ui(
 
     apply_editor_style(ctx);
 
-    // Render status bar at bottom (must be rendered early to reserve space)
-    render_status_bar(ctx, &editor.plugin_host, &editor.loading_progress);
+    // Check play mode state early
+    let in_play_mode_early = editor.play_mode.is_in_play_mode();
+
+    // Render status bar at bottom (must be rendered early to reserve space) - skip in play mode
+    if !in_play_mode_early {
+        render_status_bar(ctx, &editor.plugin_host, &editor.loading_progress);
+    }
 
     // Collect all UI events to forward to plugins
     let mut all_ui_events = Vec::new();
@@ -183,6 +192,7 @@ pub fn editor_ui(
         &mut editor.selection,
         &mut editor.scene_state,
         &mut editor.settings,
+        &mut editor.export_state,
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -206,120 +216,241 @@ pub fn editor_ui(
         &mut materials,
         &mut editor.selection,
         &mut editor.hierarchy,
+        &mut editor.play_mode,
     );
     all_ui_events.extend(toolbar_events);
 
-    // Use stored panel widths from viewport state
-    let stored_hierarchy_width = editor.viewport.hierarchy_width;
-    let stored_inspector_width = editor.viewport.inspector_width;
-    let stored_assets_height = editor.viewport.assets_height;
+    // Check if we're in play mode
+    let in_play_mode = editor.play_mode.is_in_play_mode();
 
-    // Render scene tabs
-    let scene_tabs_height = render_scene_tabs(
-        ctx,
-        &mut editor.scene_state,
-        stored_hierarchy_width,
-        stored_inspector_width,
-        TITLE_BAR_HEIGHT + toolbar_height,
-    );
+    // Use stored panel widths from viewport state (or 0 in play mode)
+    let stored_hierarchy_width = if in_play_mode { 0.0 } else { editor.viewport.hierarchy_width };
+    let stored_inspector_width = if in_play_mode { 0.0 } else { editor.viewport.inspector_width };
+    let stored_assets_height = if in_play_mode { 0.0 } else { editor.viewport.assets_height };
 
-    // Render bottom panel (assets)
-    render_assets(
-        ctx,
-        current_project.as_deref(),
-        &mut editor.viewport,
-        &mut editor.assets,
-        &mut editor.scene_state,
-        stored_hierarchy_width,
-        stored_inspector_width,
-        stored_assets_height,
-    );
+    // In play mode, skip scene tabs and panels
+    let (scene_tabs_height, actual_hierarchy_width, actual_inspector_width) = if in_play_mode {
+        (0.0, 0.0, 0.0)
+    } else {
+        // Render scene tabs
+        let tabs_height = render_scene_tabs(
+            ctx,
+            &mut editor.scene_state,
+            stored_hierarchy_width,
+            stored_inspector_width,
+            TITLE_BAR_HEIGHT + toolbar_height,
+        );
 
-    // Render left panel (hierarchy) - returns actual width after resize
-    let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + scene_tabs_height;
+        // Render bottom panel (assets + console tabs)
+        render_assets(
+            ctx,
+            current_project.as_deref(),
+            &mut editor.viewport,
+            &mut editor.assets,
+            &mut editor.scene_state,
+            &mut editor.console,
+            stored_hierarchy_width,
+            stored_inspector_width,
+            stored_assets_height,
+        );
 
-    let active_tab = editor.scene_state.active_scene_tab;
-    let (hierarchy_events, actual_hierarchy_width) = render_hierarchy(
-        ctx,
-        &mut editor.selection,
-        &mut editor.hierarchy,
-        &entities,
-        &mut commands,
-        &mut meshes,
-        &mut materials,
-        &node_registry,
-        active_tab,
-        stored_hierarchy_width,
-        &editor.plugin_host,
-        &mut editor.assets,
-    );
-    all_ui_events.extend(hierarchy_events);
+        // Render left panel (hierarchy) - returns actual width after resize
+        let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + tabs_height;
 
-    // Update stored hierarchy width
-    editor.viewport.hierarchy_width = actual_hierarchy_width;
+        let active_tab = editor.scene_state.active_scene_tab;
+        let (hierarchy_events, hierarchy_width, hierarchy_changed) = render_hierarchy(
+            ctx,
+            &mut editor.selection,
+            &mut editor.hierarchy,
+            &entities,
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &node_registry,
+            active_tab,
+            stored_hierarchy_width,
+            &editor.plugin_host,
+            &mut editor.assets,
+            &editor.default_camera,
+        );
+        all_ui_events.extend(hierarchy_events);
 
-    // Render right panel (inspector) - returns actual width after resize
-    let (inspector_events, actual_inspector_width) = render_inspector(
-        ctx,
-        &editor.selection,
-        &entities_for_inspector,
-        &mut inspector_queries,
-        &script_registry,
-        &rhai_engine,
-        stored_inspector_width,
-        camera_preview_texture_id,
-        &editor.plugin_host,
-        &mut ui_renderer,
-    );
-    all_ui_events.extend(inspector_events);
+        // Mark scene as modified if hierarchy made changes
+        if hierarchy_changed {
+            editor.scene_state.mark_modified();
+        }
 
-    // Update stored inspector width
-    editor.viewport.inspector_width = actual_inspector_width;
+        // Update stored hierarchy width
+        editor.viewport.hierarchy_width = hierarchy_width;
+
+        // Render right panel (inspector) - returns actual width after resize and change flag
+        let (inspector_events, inspector_width, inspector_changed) = render_inspector(
+            ctx,
+            &editor.selection,
+            &entities_for_inspector,
+            &mut inspector_queries,
+            &script_registry,
+            &rhai_engine,
+            stored_inspector_width,
+            camera_preview_texture_id,
+            &editor.plugin_host,
+            &mut ui_renderer,
+        );
+        all_ui_events.extend(inspector_events);
+
+        // Mark scene as modified if inspector made changes
+        if inspector_changed {
+            editor.scene_state.mark_modified();
+        }
+
+        // Update stored inspector width
+        editor.viewport.inspector_width = inspector_width;
+
+        (tabs_height, hierarchy_width, inspector_width)
+    };
 
     // Calculate available height for central area
+    let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + scene_tabs_height;
     let screen_rect = ctx.screen_rect();
-    let central_height = screen_rect.height() - content_start_y - stored_assets_height - 24.0; // 24.0 for status bar
+    let status_bar_height = if in_play_mode { 0.0 } else { 24.0 };
+    let central_height = screen_rect.height() - content_start_y - stored_assets_height - status_bar_height;
 
-    // Render script editor if scripts are open, otherwise render viewport
-    let script_editor_shown = render_script_editor(
-        ctx,
-        &mut editor.scene_state,
-        actual_hierarchy_width,
-        actual_inspector_width,
-        content_start_y,
-        central_height,
-    );
+    // In play mode, skip script editor and render full viewport
+    if !in_play_mode {
+        // Render script editor if scripts are open, otherwise render viewport
+        let script_editor_shown = render_script_editor(
+            ctx,
+            &mut editor.scene_state,
+            actual_hierarchy_width,
+            actual_inspector_width,
+            content_start_y,
+            central_height,
+        );
 
-    if !script_editor_shown {
-        // Render central viewport (docked between panels)
+        if !script_editor_shown {
+            // Render central viewport (docked between panels)
+            render_viewport(
+                ctx,
+                &mut editor.viewport,
+                &mut editor.assets,
+                &editor.orbit,
+                actual_hierarchy_width,
+                actual_inspector_width,
+                content_start_y,
+                [1600.0, 900.0],
+                central_height,
+                viewport_texture_id,
+            );
+        }
+    } else {
+        // In play mode, render full-screen viewport (no panels)
         render_viewport(
             ctx,
             &mut editor.viewport,
             &mut editor.assets,
             &editor.orbit,
-            actual_hierarchy_width,
-            actual_inspector_width,
+            0.0, // No left panel
+            0.0, // No right panel
             content_start_y,
             [1600.0, 900.0],
             central_height,
             viewport_texture_id,
         );
+
+        // Render play mode overlay with info
+        render_play_mode_overlay(ctx, &mut editor.play_mode);
     }
 
-    // Ctrl+, to open settings
-    if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
-        editor.settings.show_settings_window = !editor.settings.show_settings_window;
+    // Only show settings/export dialogs in edit mode
+    if !in_play_mode {
+        // Ctrl+, to open settings
+        if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
+            editor.settings.show_settings_window = !editor.settings.show_settings_window;
+        }
+
+        // Render settings window (floating)
+        render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
+
+        // Render export dialog (floating)
+        render_export_dialog(
+            ctx,
+            &mut editor.export_state,
+            &editor.scene_state,
+            current_project.as_deref(),
+        );
+
+        // Render plugin-registered panels
+        let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut ui_renderer);
+        all_ui_events.extend(plugin_events);
     }
-
-    // Render settings window (floating)
-    render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
-
-    // Render plugin-registered panels
-    let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut ui_renderer);
-    all_ui_events.extend(plugin_events);
 
     // Forward all UI events to plugins (convert from internal to API type)
     for event in all_ui_events {
         editor.plugin_host.api_mut().push_ui_event(convert_ui_event_to_api(event));
     }
+}
+
+/// Render play mode overlay with status and stop hint
+fn render_play_mode_overlay(ctx: &bevy_egui::egui::Context, play_mode: &mut PlayModeState) {
+    use bevy_egui::egui::{self, Color32, Align2, RichText, CornerRadius, Vec2};
+
+    // Top-center status indicator
+    egui::Area::new(egui::Id::new("play_mode_status"))
+        .anchor(Align2::CENTER_TOP, Vec2::new(0.0, 80.0))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(Color32::from_rgba_unmultiplied(0, 0, 0, 180))
+                .corner_radius(CornerRadius::same(8))
+                .inner_margin(egui::Margin::symmetric(16, 8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Status icon and text
+                        let (icon, color, text) = match play_mode.state {
+                            PlayState::Playing => ("\u{f04b}", Color32::from_rgb(64, 200, 100), "Playing"),
+                            PlayState::Paused => ("\u{f04c}", Color32::from_rgb(255, 200, 80), "Paused"),
+                            PlayState::Editing => ("\u{f04d}", Color32::WHITE, "Editing"),
+                        };
+
+                        ui.label(RichText::new(icon).color(color).size(14.0));
+                        ui.label(RichText::new(text).color(Color32::WHITE).size(14.0));
+                        ui.add_space(16.0);
+                        ui.label(RichText::new("Press ESC to stop").color(Color32::from_rgb(150, 150, 160)).size(12.0));
+                    });
+                });
+        });
+
+    // Bottom-right stop button
+    egui::Area::new(egui::Id::new("play_mode_controls"))
+        .anchor(Align2::RIGHT_BOTTOM, Vec2::new(-20.0, -20.0))
+        .show(ctx, |ui| {
+            egui::Frame::NONE
+                .fill(Color32::from_rgba_unmultiplied(40, 40, 50, 220))
+                .corner_radius(CornerRadius::same(8))
+                .inner_margin(egui::Margin::same(8))
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        // Pause/Resume button
+                        if play_mode.state == PlayState::Playing {
+                            if ui.add(egui::Button::new(RichText::new("\u{f04c}").size(16.0))
+                                .fill(Color32::from_rgb(60, 60, 80))
+                                .min_size(Vec2::new(32.0, 32.0))).clicked() {
+                                play_mode.state = PlayState::Paused;
+                            }
+                        } else if play_mode.state == PlayState::Paused {
+                            if ui.add(egui::Button::new(RichText::new("\u{f04b}").size(16.0))
+                                .fill(Color32::from_rgb(50, 120, 70))
+                                .min_size(Vec2::new(32.0, 32.0))).clicked() {
+                                play_mode.state = PlayState::Playing;
+                            }
+                        }
+
+                        // Stop button
+                        if ui.add(egui::Button::new(RichText::new("\u{f04d}").size(16.0))
+                            .fill(Color32::from_rgb(180, 60, 60))
+                            .min_size(Vec2::new(32.0, 32.0))).clicked() {
+                            play_mode.request_stop = true;
+                        }
+                    });
+                });
+        });
 }

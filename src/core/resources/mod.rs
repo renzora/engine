@@ -1,6 +1,10 @@
 mod assets;
 mod camera;
+pub mod console;
+mod default_camera;
+mod export;
 mod hierarchy;
+mod play_mode;
 mod scene;
 mod selection;
 mod settings;
@@ -9,9 +13,13 @@ mod window;
 
 pub use assets::{AssetBrowserState, AssetViewMode};
 pub use camera::{OrbitCameraState, TabCameraState};
+pub use console::{ConsoleState, LogEntry, LogLevel};
+pub use default_camera::DefaultCameraEntity;
+pub use export::ExportState;
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
+pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
 pub use scene::{OpenScript, SceneManagerState, SceneTab, ScriptError};
 pub use selection::SelectionState;
 pub use settings::{EditorSettings, RenderToggles, VisualizationMode};
-pub use viewport::ViewportState;
+pub use viewport::{BottomPanelTab, ViewportState};
 pub use window::WindowState;

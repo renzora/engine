@@ -3,15 +3,15 @@ mod components;
 mod keybindings;
 pub mod resources;
 
-pub use app_state::{AppState, AssetLoadingProgress, TrackedAsset, format_bytes};
+pub use app_state::{AppState, AssetLoadingProgress, format_bytes};
 pub use components::{AudioListenerMarker, EditorEntity, MainCamera, SceneNode, SceneTabId, ViewportCamera, WorldEnvironmentMarker};
-pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys, key_name};
+pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 
 // Re-export all resources
 pub use resources::{
-    AssetBrowserState, AssetViewMode, EditorSettings, HierarchyDropPosition, HierarchyDropTarget,
-    HierarchyState, OpenScript, OrbitCameraState, RenderToggles, SceneManagerState, SceneTab, ScriptError,
-    SelectionState, TabCameraState, ViewportState, VisualizationMode, WindowState,
+    AssetBrowserState, AssetViewMode, BottomPanelTab, ConsoleState, DefaultCameraEntity, EditorSettings, ExportState, HierarchyDropPosition, HierarchyDropTarget,
+    HierarchyState, LogEntry, LogLevel, OpenScript, OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, SceneManagerState,
+    SceneTab, ScriptError, SelectionState, TabCameraState, ViewportState, VisualizationMode, WindowState,
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)
@@ -39,11 +39,24 @@ impl Plugin for CorePlugin {
             .init_resource::<EditorSettings>()
             .init_resource::<KeyBindings>()
             .init_resource::<AssetLoadingProgress>()
+            .init_resource::<ExportState>()
+            .init_resource::<DefaultCameraEntity>()
+            .init_resource::<PlayModeState>()
+            .init_resource::<ConsoleState>()
             .add_systems(Update, (
                 apply_world_environment,
                 track_asset_loading,
+                drain_console_buffer,
             ).run_if(in_state(AppState::Editor)));
     }
+}
+
+/// System to drain the global console buffer into the ConsoleState resource
+fn drain_console_buffer(
+    mut console: ResMut<ConsoleState>,
+    time: Res<Time>,
+) {
+    console.drain_shared_buffer(time.elapsed_secs_f64());
 }
 
 /// System that tracks asset loading progress via AssetServer

@@ -2,14 +2,17 @@
 #![windows_subsystem = "windows"]
 
 mod core;
+mod export;
 mod gizmo;
 mod input;
 mod node_system;
+mod play_mode;
 mod plugin_core;
 mod project;
 mod scene;
 mod scene_file;
 mod scripting;
+mod shared;
 mod ui;
 mod ui_api;
 mod viewport;
@@ -68,6 +71,7 @@ fn main() {
             ui::UiPlugin,
             scripting::ScriptingPlugin,
             plugin_core::PluginCorePlugin,
+            play_mode::PlayModePlugin,
         ))
         // Initialize app state
         .init_state::<AppState>()
@@ -107,6 +111,7 @@ fn main() {
                 input::check_mesh_instance_models,
                 input::spawn_mesh_instance_models,
                 node_system::handle_save_shortcut,
+                node_system::handle_make_default_camera,
                 node_system::assign_scene_tab_ids,
             )
                 .chain()
@@ -120,6 +125,13 @@ fn main() {
             node_system::handle_scene_requests
                 .before(viewport::camera_controller)
                 .before(node_system::assign_scene_tab_ids)
+                .run_if(in_state(AppState::Editor)),
+        )
+        // Scene instance loading exclusive system (needs &mut World for spawning)
+        .add_systems(
+            Update,
+            input::load_scene_instances
+                .after(input::handle_scene_hierarchy_drop)
                 .run_if(in_state(AppState::Editor)),
         )
         // When entering Editor state: maximize window, despawn splash camera and load scene
@@ -183,8 +195,12 @@ fn load_project_scene(
     });
 
     if let Some(project) = current_project {
+        console_info!("Project", "Opening project: {}", project.config.name);
+
         let scene_path = project.main_scene_path();
         if scene_path.exists() {
+            console_info!("Scene", "Loading scene: {}", scene_path.display());
+
             match node_system::load_scene(
                 &scene_path,
                 &mut commands,
@@ -194,6 +210,8 @@ fn load_project_scene(
             ) {
                 Ok(result) => {
                     info!("Loaded scene: {}", scene_path.display());
+                    console_success!("Scene", "Scene loaded successfully: {}", scene_path.file_name().unwrap_or_default().to_string_lossy());
+
                     // Set the current scene path so Ctrl+S knows where to save
                     scene_state.current_scene_path = Some(scene_path.clone());
 
@@ -225,8 +243,11 @@ fn load_project_scene(
                 }
                 Err(e) => {
                     error!("Failed to load scene: {}", e);
+                    console_error!("Scene", "Failed to load scene: {}", e);
                 }
             }
+        } else {
+            console_warn!("Scene", "Main scene not found: {}", scene_path.display());
         }
     }
 }
