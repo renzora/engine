@@ -152,43 +152,28 @@ fn render_panel(
     let panel_icon = panel.icon.clone();
     let min_size = panel.min_size;
 
-    match panel.default_location {
-        crate::plugin_core::PanelLocation::Left => {
-            egui::SidePanel::left(panel_id)
-                .min_width(min_size[0])
-                .show(ctx, |ui| {
-                    render_panel_content_inline(ui, &panel_title, panel_icon.as_deref(), widgets, renderer);
-                });
-        }
-        crate::plugin_core::PanelLocation::Right => {
-            egui::SidePanel::right(panel_id)
-                .min_width(min_size[0])
-                .show(ctx, |ui| {
-                    render_panel_content_inline(ui, &panel_title, panel_icon.as_deref(), widgets, renderer);
-                });
-        }
-        crate::plugin_core::PanelLocation::Bottom => {
-            egui::TopBottomPanel::bottom(panel_id)
-                .min_height(min_size[1])
-                .show(ctx, |ui| {
-                    render_panel_content_inline(ui, &panel_title, panel_icon.as_deref(), widgets, renderer);
-                });
-        }
-        crate::plugin_core::PanelLocation::Floating | crate::plugin_core::PanelLocation::Center => {
-            egui::Window::new(&panel_title)
-                .id(egui::Id::new(&panel_id))
-                .min_size(min_size)
-                .show(ctx, |ui| {
-                    if let Some(widgets) = widgets {
-                        for widget in widgets {
-                            renderer.render(ui, widget);
-                        }
-                    } else {
-                        ui.label(RichText::new("No content").color(Color32::GRAY));
-                    }
-                });
-        }
-    }
+    // For now, all plugin panels render as floating windows
+    // Docked panels (Left/Right/Bottom) would conflict with existing editor panels
+    // Future: integrate plugin panels into the existing panel layout system
+
+    let title = if let Some(icon) = &panel_icon {
+        format!("{} {}", icon, panel_title)
+    } else {
+        panel_title.clone()
+    };
+
+    egui::Window::new(&title)
+        .id(egui::Id::new(&panel_id))
+        .default_size(min_size)
+        .show(ctx, |ui| {
+            if let Some(widgets) = widgets {
+                for widget in widgets {
+                    renderer.render(ui, widget);
+                }
+            } else {
+                ui.label(RichText::new("No content").color(Color32::GRAY));
+            }
+        });
 }
 
 fn render_panel_content_inline(

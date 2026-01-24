@@ -9,3 +9,5 @@ crate-type = ["cdylib"]
 
 [dependencies]
 editor_plugin_api = { path = "../editor_plugin_api" }
+
+[workspace]

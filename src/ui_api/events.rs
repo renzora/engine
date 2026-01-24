@@ -122,6 +122,14 @@ pub enum UiEvent {
         type_id: String,
         data: Vec<u8>,
     },
+
+    /// Panel tab was selected (for plugin tabs in panel areas)
+    /// location: 0=Left, 1=Right, 2=Bottom
+    /// tab_id: empty string means built-in tab (Hierarchy/Inspector/Assets)
+    PanelTabSelected {
+        location: u8,
+        tab_id: String,
+    },
 }
 
 impl UiEvent {
@@ -148,6 +156,7 @@ impl UiEvent {
             UiEvent::DragEnded { id, .. } => Some(*id),
             UiEvent::ItemDropped { target_id, .. } => Some(*target_id),
             UiEvent::CustomEvent { .. } => None,
+            UiEvent::PanelTabSelected { .. } => None,
         }
     }
 }

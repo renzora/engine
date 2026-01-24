@@ -9,14 +9,33 @@ pub use editor_plugin_api::events::{EditorEventType, UiEvent};
 use super::abi::{AssetHandle, AssetStatus, EntityId, PluginTransform};
 use crate::ui_api::Widget;
 
+/// Tab location for docked plugin tabs
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+pub enum TabLocation {
+    Left,   // Alongside Hierarchy
+    Right,  // Alongside Inspector
+    Bottom, // Alongside Assets/Console
+}
+
+/// Plugin tab definition
+#[derive(Clone, Debug)]
+pub struct PluginTab {
+    pub id: String,
+    pub title: String,
+    pub icon: Option<String>,
+    pub location: TabLocation,
+}
+
 /// Pending operations that will be applied to Bevy world
 #[derive(Clone, Debug)]
 pub enum PendingOperation {
     SetSelectedEntity(Option<EntityId>),
     SetTransform { entity: EntityId, transform: PluginTransform },
     SetEntityName { entity: EntityId, name: String },
+    SetEntityVisible { entity: EntityId, visible: bool },
     SpawnEntity(EntityDefinition),
     DespawnEntity(EntityId),
+    ReparentEntity { entity: EntityId, new_parent: Option<EntityId> },
     LoadAsset(String),
 }
 
@@ -26,11 +45,17 @@ pub struct EditorApiImpl {
     pub menu_items: Vec<(MenuLocation, MenuItem, String)>,  // (location, item, plugin_id)
     pub panels: Vec<(PanelDefinition, String)>,  // (panel, plugin_id)
     pub panel_contents: std::collections::HashMap<String, Vec<Widget>>,
+    pub panel_visible: std::collections::HashMap<String, bool>,
     pub inspectors: Vec<(String, InspectorDefinition, String)>,  // (type_id, inspector, plugin_id)
     pub inspector_contents: std::collections::HashMap<String, Vec<Widget>>,
     pub toolbar_items: Vec<(ToolbarItem, String)>,  // (item, plugin_id)
     pub context_menus: Vec<(ContextMenuLocation, MenuItem, String)>,  // (location, item, plugin_id)
     pub status_bar_items: std::collections::HashMap<String, (StatusBarItem, String)>,  // id -> (item, plugin_id)
+
+    // Tabbed panels - plugin tabs docked alongside built-in panels
+    pub tabs: Vec<(PluginTab, String)>,  // (tab, plugin_id)
+    pub tab_contents: std::collections::HashMap<String, Vec<Widget>>,  // tab_id -> widgets
+    pub active_tabs: std::collections::HashMap<TabLocation, String>,  // location -> active tab id
 
     // Currently active plugin (set during plugin callbacks)
     pub current_plugin_id: Option<String>,
@@ -39,6 +64,9 @@ pub struct EditorApiImpl {
     pub selected_entity: Option<EntityId>,
     pub entity_transforms: std::collections::HashMap<EntityId, PluginTransform>,
     pub entity_names: std::collections::HashMap<EntityId, String>,
+    pub entity_visibility: std::collections::HashMap<EntityId, bool>,
+    pub entity_parents: std::collections::HashMap<EntityId, Option<EntityId>>,
+    pub entity_children: std::collections::HashMap<EntityId, Vec<EntityId>>,
 
     // Undo/redo state (synced from CommandHistory each frame)
     pub can_undo: bool,
@@ -72,15 +100,22 @@ impl EditorApiImpl {
             menu_items: Vec::new(),
             panels: Vec::new(),
             panel_contents: std::collections::HashMap::new(),
+            panel_visible: std::collections::HashMap::new(),
             inspectors: Vec::new(),
             inspector_contents: std::collections::HashMap::new(),
             toolbar_items: Vec::new(),
             context_menus: Vec::new(),
             status_bar_items: std::collections::HashMap::new(),
+            tabs: Vec::new(),
+            tab_contents: std::collections::HashMap::new(),
+            active_tabs: std::collections::HashMap::new(),
             current_plugin_id: None,
             selected_entity: None,
             entity_transforms: std::collections::HashMap::new(),
             entity_names: std::collections::HashMap::new(),
+            entity_visibility: std::collections::HashMap::new(),
+            entity_parents: std::collections::HashMap::new(),
+            entity_children: std::collections::HashMap::new(),
             can_undo: false,
             can_redo: false,
             pending_undo: false,
@@ -114,10 +149,38 @@ impl EditorApiImpl {
         selected: Option<EntityId>,
         transforms: std::collections::HashMap<EntityId, PluginTransform>,
         names: std::collections::HashMap<EntityId, String>,
+        visibility: std::collections::HashMap<EntityId, bool>,
+        parents: std::collections::HashMap<EntityId, Option<EntityId>>,
+        children: std::collections::HashMap<EntityId, Vec<EntityId>>,
     ) {
         self.selected_entity = selected;
         self.entity_transforms = transforms;
         self.entity_names = names;
+        self.entity_visibility = visibility;
+        self.entity_parents = parents;
+        self.entity_children = children;
+    }
+
+    /// Get entity by name (returns first match)
+    pub fn get_entity_by_name(&self, name: &str) -> Option<EntityId> {
+        self.entity_names.iter()
+            .find(|(_, n)| *n == name)
+            .map(|(id, _)| *id)
+    }
+
+    /// Get entity visibility
+    pub fn get_entity_visible(&self, entity: EntityId) -> Option<bool> {
+        self.entity_visibility.get(&entity).copied()
+    }
+
+    /// Get entity parent
+    pub fn get_entity_parent(&self, entity: EntityId) -> Option<Option<EntityId>> {
+        self.entity_parents.get(&entity).copied()
+    }
+
+    /// Get entity children
+    pub fn get_entity_children(&self, entity: EntityId) -> Option<&Vec<EntityId>> {
+        self.entity_children.get(&entity)
     }
 
     /// Push a UI event for plugins to receive
@@ -142,6 +205,16 @@ impl EditorApiImpl {
         for panel_id in panel_ids {
             self.panel_contents.remove(&panel_id);
         }
+
+        // Remove tab contents for tabs owned by this plugin
+        let tab_ids: Vec<_> = self.tabs.iter()
+            .filter(|(_, id)| id == plugin_id)
+            .map(|(t, _)| t.id.clone())
+            .collect();
+        for tab_id in tab_ids {
+            self.tab_contents.remove(&tab_id);
+        }
+        self.tabs.retain(|(_, id)| id != plugin_id);
     }
 
     /// Clear all registered UI elements (called when unloading all plugins)
@@ -149,11 +222,15 @@ impl EditorApiImpl {
         self.menu_items.clear();
         self.panels.clear();
         self.panel_contents.clear();
+        self.panel_visible.clear();
         self.inspectors.clear();
         self.inspector_contents.clear();
         self.toolbar_items.clear();
         self.context_menus.clear();
         self.status_bar_items.clear();
+        self.tabs.clear();
+        self.tab_contents.clear();
+        self.active_tabs.clear();
         self.current_plugin_id = None;
         self.can_undo = false;
         self.can_redo = false;
@@ -164,6 +241,34 @@ impl EditorApiImpl {
         self.subscriptions.clear();
         self.outgoing_events.clear();
         // Keep settings - they persist across plugin reloads
+    }
+
+    /// Get tabs for a specific location
+    pub fn get_tabs_for_location(&self, location: TabLocation) -> Vec<&PluginTab> {
+        self.tabs.iter()
+            .filter(|(tab, _)| tab.location == location)
+            .map(|(tab, _)| tab)
+            .collect()
+    }
+
+    /// Get tab content
+    pub fn get_tab_content(&self, tab_id: &str) -> Option<&Vec<Widget>> {
+        self.tab_contents.get(tab_id)
+    }
+
+    /// Get active tab for a location (returns None if built-in tab is active)
+    pub fn get_active_tab(&self, location: TabLocation) -> Option<&str> {
+        self.active_tabs.get(&location).map(|s| s.as_str())
+    }
+
+    /// Set active tab for a location
+    pub fn set_active_tab(&mut self, location: TabLocation, tab_id: String) {
+        self.active_tabs.insert(location, tab_id);
+    }
+
+    /// Clear active tab for a location (switch back to built-in)
+    pub fn clear_active_tab(&mut self, location: TabLocation) {
+        self.active_tabs.remove(&location);
     }
 }
 

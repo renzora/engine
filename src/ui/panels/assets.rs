@@ -3,7 +3,9 @@ use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, 
 use std::path::PathBuf;
 
 use crate::core::{AssetBrowserState, AssetViewMode, BottomPanelTab, ConsoleState, LogLevel, ViewportState, SceneManagerState};
+use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
+use crate::ui_api::{UiEvent, renderer::UiRenderer};
 use super::console::render_console_content;
 
 // Icon constants from phosphor
@@ -19,7 +21,7 @@ const MAX_TILE_SIZE: f32 = 128.0;
 const DEFAULT_TILE_SIZE: f32 = 80.0;
 const LIST_ROW_HEIGHT: f32 = 24.0;
 
-/// Render the bottom panel with tabs (Assets + Console)
+/// Render the bottom panel with tabs (Assets + Console + Plugin tabs)
 pub fn render_assets(
     ctx: &egui::Context,
     current_project: Option<&CurrentProject>,
@@ -30,8 +32,16 @@ pub fn render_assets(
     _left_panel_width: f32,
     _right_panel_width: f32,
     _bottom_panel_height: f32,
-) {
+    plugin_host: &PluginHost,
+    ui_renderer: &mut UiRenderer,
+) -> Vec<UiEvent> {
+    let mut ui_events = Vec::new();
     let panel_height = viewport.assets_height;
+
+    // Get plugin tabs for bottom panel
+    let api = plugin_host.api();
+    let plugin_tabs = api.get_tabs_for_location(TabLocation::Bottom);
+    let active_plugin_tab = api.get_active_tab(TabLocation::Bottom);
 
     egui::TopBottomPanel::bottom("bottom_panel")
         .exact_height(panel_height)
@@ -66,31 +76,56 @@ pub fn render_assets(
             ui.horizontal(|ui| {
                 ui.add_space(4.0);
 
-                // Assets tab
-                let assets_selected = viewport.bottom_panel_tab == BottomPanelTab::Assets;
+                // Assets tab - selected if no plugin tab is active and bottom_panel_tab is Assets
+                let assets_selected = active_plugin_tab.is_none() && viewport.bottom_panel_tab == BottomPanelTab::Assets;
                 if render_tab_button(ui, FOLDER_OPEN, "Assets", assets_selected) {
                     viewport.bottom_panel_tab = BottomPanelTab::Assets;
+                    ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
                 }
 
                 // Console tab with error indicator
-                let console_selected = viewport.bottom_panel_tab == BottomPanelTab::Console;
+                let console_selected = active_plugin_tab.is_none() && viewport.bottom_panel_tab == BottomPanelTab::Console;
                 let error_count = console.entries.iter().filter(|e| e.level == LogLevel::Error).count();
                 let warning_count = console.entries.iter().filter(|e| e.level == LogLevel::Warning).count();
 
                 if render_tab_button_with_badge(ui, TERMINAL, "Console", console_selected, error_count, warning_count) {
                     viewport.bottom_panel_tab = BottomPanelTab::Console;
+                    ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
+                }
+
+                // Plugin tabs
+                for tab in &plugin_tabs {
+                    let is_selected = active_plugin_tab == Some(tab.id.as_str());
+                    let tab_icon = tab.icon.as_deref().unwrap_or("");
+                    if render_tab_button(ui, tab_icon, &tab.title, is_selected) {
+                        ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: tab.id.clone() });
+                    }
                 }
             });
 
             ui.add_space(2.0);
 
             // Tab content
-            match viewport.bottom_panel_tab {
-                BottomPanelTab::Assets => {
-                    render_assets_content(ui, current_project, assets, scene_state);
+            if let Some(tab_id) = active_plugin_tab {
+                // Render plugin tab content
+                if let Some(widgets) = api.get_tab_content(tab_id) {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for widget in widgets {
+                            ui_renderer.render(ui, widget);
+                        }
+                    });
+                } else {
+                    ui.label(RichText::new("No content").color(Color32::GRAY));
                 }
-                BottomPanelTab::Console => {
-                    render_console_content(ui, console);
+            } else {
+                // Render built-in tabs
+                match viewport.bottom_panel_tab {
+                    BottomPanelTab::Assets => {
+                        render_assets_content(ui, current_project, assets, scene_state);
+                    }
+                    BottomPanelTab::Console => {
+                        render_console_content(ui, console);
+                    }
                 }
             }
         });
@@ -99,6 +134,8 @@ pub fn render_assets(
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
     handle_import_request(assets);
+
+    ui_events
 }
 
 fn render_tab_button(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> bool {

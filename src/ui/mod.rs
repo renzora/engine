@@ -92,6 +92,10 @@ fn convert_ui_event_to_api(event: InternalUiEvent) -> editor_plugin_api::events:
             type_id: "ItemDropped".to_string(),
             data: format!("{}:{}", target_id.0, source_id.0).into_bytes(),
         },
+        InternalUiEvent::PanelTabSelected { location, tab_id } => ApiUiEvent::CustomEvent {
+            type_id: "PanelTabSelected".to_string(),
+            data: format!("{}:{}", location, tab_id).into_bytes(),
+        },
     }
 }
 
@@ -245,7 +249,7 @@ pub fn editor_ui(
         );
 
         // Render bottom panel (assets + console tabs)
-        render_assets(
+        let bottom_events = render_assets(
             ctx,
             current_project.as_deref(),
             &mut editor.viewport,
@@ -255,7 +259,10 @@ pub fn editor_ui(
             stored_hierarchy_width,
             stored_inspector_width,
             stored_assets_height,
+            &editor.plugin_host,
+            &mut ui_renderer,
         );
+        all_ui_events.extend(bottom_events);
 
         // Render left panel (hierarchy) - returns actual width after resize
         let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + tabs_height;
@@ -276,6 +283,7 @@ pub fn editor_ui(
             &mut editor.assets,
             &editor.default_camera,
             &mut editor.command_history,
+            &mut ui_renderer,
         );
         all_ui_events.extend(hierarchy_events);
 
@@ -383,13 +391,28 @@ pub fn editor_ui(
             current_project.as_deref(),
         );
 
-        // Render plugin-registered panels
+        // Render plugin-registered panels (floating windows only for now)
         let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut ui_renderer);
         all_ui_events.extend(plugin_events);
     }
 
     // Forward all UI events to plugins (convert from internal to API type)
     for event in all_ui_events {
+        // Handle PanelTabSelected locally to switch active tabs
+        if let InternalUiEvent::PanelTabSelected { location, ref tab_id } = event {
+            use crate::plugin_core::TabLocation;
+            let loc = match location {
+                0 => TabLocation::Left,
+                1 => TabLocation::Right,
+                2 => TabLocation::Bottom,
+                _ => continue,
+            };
+            if tab_id.is_empty() {
+                editor.plugin_host.api_mut().clear_active_tab(loc);
+            } else {
+                editor.plugin_host.api_mut().set_active_tab(loc, tab_id.clone());
+            }
+        }
         editor.plugin_host.api_mut().push_ui_event(convert_ui_event_to_api(event));
     }
 }

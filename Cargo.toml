@@ -38,13 +38,20 @@ rhai = { version = "1.21", features = ["sync"], optional = true }
 # Plugin system dependencies (editor-only)
 libloading = { version = "0.8", optional = true }
 notify = { version = "6.0", optional = true }
-editor_plugin_api = { path = "crates/editor_plugin_api", optional = true }
+editor_plugin_api = { path = "crates/editor_plugin_api", features = ["bevy"], optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
 [workspace]
 members = ["crates/editor_plugin_api"]
+exclude = [
+    "crates/test_plugin",
+    "crates/fps_plugin",
+    "crates/system_monitor_plugin",
+    "crates/entity_test_plugin",
+    "crates/panel_test_plugin",
+]
 
 # Bevy recommended optimizations
 # https://bevy.org/learn/quick-start/getting-started/setup/

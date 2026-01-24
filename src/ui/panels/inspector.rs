@@ -9,9 +9,12 @@ use crate::node_system::{
     render_spot_light_inspector, render_transform_inspector, render_world_environment_inspector,
     CameraNodeData, CollisionShapeData, PhysicsBodyData,
 };
-use crate::plugin_core::PluginHost;
+use crate::plugin_core::{PluginHost, TabLocation};
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
+
+// Icon for inspector tab
+use egui_phosphor::regular::SLIDERS_HORIZONTAL;
 
 // Phosphor icons for inspector
 use egui_phosphor::regular::{
@@ -199,15 +202,61 @@ pub fn render_inspector(
     let mut actual_width = stored_width;
     let mut scene_changed = false;
 
+    // Get plugin tabs for right panel
+    let api = plugin_host.api();
+    let plugin_tabs = api.get_tabs_for_location(TabLocation::Right);
+    let active_plugin_tab = api.get_active_tab(TabLocation::Right);
+
     egui::SidePanel::right("inspector")
         .default_width(stored_width)
         .resizable(true)
         .show(ctx, |ui| {
             // Get actual width from the panel
             actual_width = ui.available_width() + 16.0; // Account for panel padding
-            let (events, changed) = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
-            ui_events.extend(events);
-            scene_changed = changed;
+
+            // Render tab bar if there are plugin tabs
+            if !plugin_tabs.is_empty() {
+                ui.horizontal(|ui| {
+                    // Built-in Inspector tab
+                    let inspector_selected = active_plugin_tab.is_none();
+                    if ui.selectable_label(inspector_selected, RichText::new(format!("{} Inspector", SLIDERS_HORIZONTAL)).size(12.0)).clicked() {
+                        ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
+                    }
+
+                    // Plugin tabs
+                    for tab in &plugin_tabs {
+                        let is_selected = active_plugin_tab == Some(tab.id.as_str());
+                        let tab_label = if let Some(icon) = &tab.icon {
+                            format!("{} {}", icon, tab.title)
+                        } else {
+                            tab.title.clone()
+                        };
+                        if ui.selectable_label(is_selected, RichText::new(&tab_label).size(12.0)).clicked() {
+                            ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: tab.id.clone() });
+                        }
+                    }
+                });
+                ui.separator();
+            }
+
+            // Render content based on active tab
+            if let Some(tab_id) = active_plugin_tab {
+                // Render plugin tab content
+                if let Some(widgets) = api.get_tab_content(tab_id) {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for widget in widgets {
+                            ui_renderer.render(ui, widget);
+                        }
+                    });
+                } else {
+                    ui.label(RichText::new("No content").color(Color32::GRAY));
+                }
+            } else {
+                // Render normal inspector
+                let (events, changed) = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
+                ui_events.extend(events);
+                scene_changed = changed;
+            }
         });
 
     (ui_events, actual_width, scene_changed)

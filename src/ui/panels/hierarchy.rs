@@ -4,9 +4,9 @@ use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, Cursor
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity};
 use crate::node_system::{NodeRegistry, render_node_menu_as_submenus, SceneRoot, NodeTypeMarker};
-use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost};
+use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
-use crate::ui_api::UiEvent;
+use crate::ui_api::{UiEvent, renderer::UiRenderer};
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{
@@ -47,6 +47,7 @@ pub fn render_hierarchy(
     assets: &mut AssetBrowserState,
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
+    ui_renderer: &mut UiRenderer,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut actual_width = stored_width;
@@ -57,15 +58,62 @@ pub fn render_hierarchy(
         .map(|p| p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase() == "scene").unwrap_or(false))
         .unwrap_or(false);
 
+    // Get plugin tabs for left panel
+    let api = plugin_host.api();
+    let plugin_tabs = api.get_tabs_for_location(TabLocation::Left);
+    let active_plugin_tab = api.get_active_tab(TabLocation::Left);
+
     egui::SidePanel::left("hierarchy")
         .default_width(stored_width)
         .resizable(true)
         .show(ctx, |ui| {
             // Get actual width from the panel
             actual_width = ui.available_width() + 16.0; // Account for panel padding
-            let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history);
-            ui_events.extend(events);
-            scene_changed = changed;
+
+            // Render tab bar if there are plugin tabs
+            if !plugin_tabs.is_empty() {
+                ui.horizontal(|ui| {
+                    // Built-in Hierarchy tab
+                    let hierarchy_selected = active_plugin_tab.is_none();
+                    if ui.selectable_label(hierarchy_selected, RichText::new(format!("{} Hierarchy", TREE_STRUCTURE)).size(12.0)).clicked() {
+                        // Clear active tab to show hierarchy
+                        ui_events.push(UiEvent::PanelTabSelected { location: 0, tab_id: String::new() });
+                    }
+
+                    // Plugin tabs
+                    for tab in &plugin_tabs {
+                        let is_selected = active_plugin_tab == Some(tab.id.as_str());
+                        let tab_label = if let Some(icon) = &tab.icon {
+                            format!("{} {}", icon, tab.title)
+                        } else {
+                            tab.title.clone()
+                        };
+                        if ui.selectable_label(is_selected, RichText::new(&tab_label).size(12.0)).clicked() {
+                            ui_events.push(UiEvent::PanelTabSelected { location: 0, tab_id: tab.id.clone() });
+                        }
+                    }
+                });
+                ui.separator();
+            }
+
+            // Render content based on active tab
+            if let Some(tab_id) = active_plugin_tab {
+                // Render plugin tab content
+                if let Some(widgets) = api.get_tab_content(tab_id) {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        for widget in widgets {
+                            ui_renderer.render(ui, widget);
+                        }
+                    });
+                } else {
+                    ui.label(RichText::new("No content").color(Color32::GRAY));
+                }
+            } else {
+                // Render normal hierarchy
+                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history);
+                ui_events.extend(events);
+                scene_changed = changed;
+            }
         });
 
     // Show drag tooltip

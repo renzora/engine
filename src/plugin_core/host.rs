@@ -11,12 +11,13 @@ use bevy::prelude::*;
 use libloading::Library;
 use notify::{Config, Event, RecommendedWatcher, RecursiveMode, Watcher};
 
-use super::abi::{PluginError, PluginManifest, EDITOR_API_VERSION};
-use super::api::EditorApiImpl;
+use super::abi::{PluginError, PluginManifest, EDITOR_API_VERSION, EntityId, PluginTransform};
+use super::api::{EditorApiImpl, PendingOperation};
 use super::dependency::DependencyGraph;
 use super::traits::EditorEvent;
-use editor_plugin_api::ffi::{PluginExport, PluginVTable, PluginHandle, FfiStatusBarItem, HostApi, FFI_API_VERSION};
-use crate::plugin_core::{StatusBarAlign, StatusBarItem};
+use editor_plugin_api::ffi::{PluginExport, PluginVTable, PluginHandle, FfiStatusBarItem, HostApi, FFI_API_VERSION, FfiEntityId, FfiTransform, FfiEntityList, FfiOwnedString, FfiPanelDefinition, FfiPanelLocation, FfiMenuItem, FfiMenuLocation, FfiTabDefinition, FfiTabLocation};
+use crate::plugin_core::{StatusBarAlign, StatusBarItem, ToolbarItem, MenuItem, MenuLocation, TabLocation, PluginTab};
+use editor_plugin_api::ui::UiId;
 use crate::core::resources::console::{console_log, LogLevel};
 
 /// Type for the FFI create_plugin function
@@ -112,6 +113,485 @@ unsafe extern "C" fn host_can_redo(ctx: *mut c_void) -> bool {
     api_impl.can_redo
 }
 
+// ============================================================================
+// Panel callbacks
+// ============================================================================
+
+unsafe extern "C" fn host_register_panel(ctx: *mut c_void, panel: *const FfiPanelDefinition) -> bool {
+    if ctx.is_null() || panel.is_null() { return false; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let ffi_panel = &*panel;
+
+    let id = ffi_panel.id.to_string();
+    let title = ffi_panel.title.to_string();
+    let icon = if ffi_panel.icon.ptr.is_null() { None } else { Some(ffi_panel.icon.to_string()) };
+
+    info!("Registering panel: id='{}', title='{}', icon={:?}", id, title, icon);
+
+    let location = match ffi_panel.location {
+        FfiPanelLocation::Left => crate::plugin_core::PanelLocation::Left,
+        FfiPanelLocation::Right => crate::plugin_core::PanelLocation::Right,
+        FfiPanelLocation::Bottom => crate::plugin_core::PanelLocation::Bottom,
+        FfiPanelLocation::Floating => crate::plugin_core::PanelLocation::Floating,
+    };
+
+    let panel_def = crate::plugin_core::PanelDefinition {
+        id: id.clone(),
+        title,
+        icon,
+        default_location: location,
+        min_size: [ffi_panel.min_width, ffi_panel.min_height],
+        closable: ffi_panel.closable,
+    };
+
+    // Check if already registered
+    if api_impl.panels.iter().any(|(p, _)| p.id == id) {
+        warn!("Panel '{}' already registered", id);
+        return false;
+    }
+
+    let plugin_id = api_impl.current_plugin_id.clone().unwrap_or_default();
+    api_impl.panels.push((panel_def, plugin_id));
+    api_impl.panel_visible.insert(id.clone(), true);
+    info!("Panel '{}' registered successfully. Total panels: {}", id, api_impl.panels.len());
+    true
+}
+
+unsafe extern "C" fn host_unregister_panel(ctx: *mut c_void, id: *const c_char) {
+    if ctx.is_null() || id.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let id_str = CStr::from_ptr(id).to_string_lossy().into_owned();
+
+    api_impl.panels.retain(|(p, _)| p.id != id_str);
+    api_impl.panel_contents.remove(&id_str);
+    api_impl.panel_visible.remove(&id_str);
+}
+
+unsafe extern "C" fn host_set_panel_content(ctx: *mut c_void, panel_id: *const c_char, widgets_json: *const c_char) {
+    if ctx.is_null() || panel_id.is_null() || widgets_json.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let id_str = CStr::from_ptr(panel_id).to_string_lossy().into_owned();
+    let json_str = CStr::from_ptr(widgets_json).to_string_lossy();
+
+    // Parse JSON to widgets
+    match serde_json::from_str::<Vec<crate::ui_api::Widget>>(&json_str) {
+        Ok(widgets) => {
+            info!("Panel '{}' content set: {} widgets", id_str, widgets.len());
+            api_impl.panel_contents.insert(id_str, widgets);
+        }
+        Err(e) => {
+            error!("Failed to parse panel content JSON for '{}': {}", id_str, e);
+            error!("JSON was: {}", &json_str[..json_str.len().min(500)]);
+        }
+    }
+}
+
+unsafe extern "C" fn host_set_panel_visible(ctx: *mut c_void, panel_id: *const c_char, visible: bool) {
+    if ctx.is_null() || panel_id.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let id_str = CStr::from_ptr(panel_id).to_string_lossy().into_owned();
+
+    api_impl.panel_visible.insert(id_str, visible);
+}
+
+unsafe extern "C" fn host_is_panel_visible(ctx: *mut c_void, panel_id: *const c_char) -> bool {
+    if ctx.is_null() || panel_id.is_null() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let id_str = CStr::from_ptr(panel_id).to_string_lossy();
+
+    api_impl.panel_visible.get(id_str.as_ref()).copied().unwrap_or(false)
+}
+
+// ============================================================================
+// Entity operation callbacks
+// ============================================================================
+
+unsafe extern "C" fn host_get_entity_by_name(ctx: *mut c_void, name: *const c_char) -> FfiEntityId {
+    if ctx.is_null() || name.is_null() { return FfiEntityId::INVALID; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let name_str = CStr::from_ptr(name).to_string_lossy();
+
+    api_impl.get_entity_by_name(&name_str)
+        .map(|id| FfiEntityId(id.0))
+        .unwrap_or(FfiEntityId::INVALID)
+}
+
+unsafe extern "C" fn host_get_entity_transform(ctx: *mut c_void, entity: FfiEntityId) -> FfiTransform {
+    if ctx.is_null() || !entity.is_valid() { return FfiTransform::default(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.entity_transforms.get(&entity_id)
+        .map(|t| FfiTransform {
+            translation: t.translation,
+            rotation: t.rotation,
+            scale: t.scale,
+        })
+        .unwrap_or_default()
+}
+
+unsafe extern "C" fn host_set_entity_transform(ctx: *mut c_void, entity: FfiEntityId, transform: *const FfiTransform) {
+    if ctx.is_null() || !entity.is_valid() || transform.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+    let t = &*transform;
+
+    let plugin_transform = PluginTransform {
+        translation: t.translation,
+        rotation: t.rotation,
+        scale: t.scale,
+    };
+
+    api_impl.pending_operations.push(PendingOperation::SetTransform {
+        entity: entity_id,
+        transform: plugin_transform,
+    });
+}
+
+unsafe extern "C" fn host_get_entity_name(ctx: *mut c_void, entity: FfiEntityId) -> FfiOwnedString {
+    if ctx.is_null() || !entity.is_valid() { return FfiOwnedString::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.entity_names.get(&entity_id)
+        .map(|n| FfiOwnedString::from_string(n.clone()))
+        .unwrap_or_else(FfiOwnedString::empty)
+}
+
+unsafe extern "C" fn host_set_entity_name(ctx: *mut c_void, entity: FfiEntityId, name: *const c_char) {
+    if ctx.is_null() || !entity.is_valid() || name.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+    let name_str = CStr::from_ptr(name).to_string_lossy().into_owned();
+
+    api_impl.pending_operations.push(PendingOperation::SetEntityName {
+        entity: entity_id,
+        name: name_str,
+    });
+}
+
+unsafe extern "C" fn host_get_entity_visible(ctx: *mut c_void, entity: FfiEntityId) -> bool {
+    if ctx.is_null() || !entity.is_valid() { return false; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.entity_visibility.get(&entity_id).copied().unwrap_or(true)
+}
+
+unsafe extern "C" fn host_set_entity_visible(ctx: *mut c_void, entity: FfiEntityId, visible: bool) {
+    if ctx.is_null() || !entity.is_valid() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.pending_operations.push(PendingOperation::SetEntityVisible {
+        entity: entity_id,
+        visible,
+    });
+}
+
+unsafe extern "C" fn host_spawn_entity(ctx: *mut c_void, name: *const c_char, transform: *const FfiTransform) -> FfiEntityId {
+    if ctx.is_null() || name.is_null() || transform.is_null() { return FfiEntityId::INVALID; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let name_str = CStr::from_ptr(name).to_string_lossy().into_owned();
+    let t = &*transform;
+
+    // Create an entity definition with basic data
+    let def = editor_plugin_api::api::EntityDefinition {
+        name: name_str,
+        node_type: String::new(), // Empty = basic node
+        transform: PluginTransform {
+            translation: t.translation,
+            rotation: t.rotation,
+            scale: t.scale,
+        },
+        parent: None,
+    };
+
+    api_impl.pending_operations.push(PendingOperation::SpawnEntity(def));
+
+    // Return INVALID for now - entity will be created by sync system
+    // In a future iteration we could return a placeholder ID
+    FfiEntityId::INVALID
+}
+
+unsafe extern "C" fn host_despawn_entity(ctx: *mut c_void, entity: FfiEntityId) {
+    if ctx.is_null() || !entity.is_valid() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.pending_operations.push(PendingOperation::DespawnEntity(entity_id));
+}
+
+unsafe extern "C" fn host_get_entity_parent(ctx: *mut c_void, entity: FfiEntityId) -> FfiEntityId {
+    if ctx.is_null() || !entity.is_valid() { return FfiEntityId::INVALID; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.entity_parents.get(&entity_id)
+        .and_then(|opt| *opt)
+        .map(|id| FfiEntityId(id.0))
+        .unwrap_or(FfiEntityId::INVALID)
+}
+
+unsafe extern "C" fn host_get_entity_children(ctx: *mut c_void, entity: FfiEntityId) -> FfiEntityList {
+    if ctx.is_null() || !entity.is_valid() { return FfiEntityList::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+
+    api_impl.entity_children.get(&entity_id)
+        .map(|children| {
+            let ffi_children: Vec<FfiEntityId> = children.iter()
+                .map(|id| FfiEntityId(id.0))
+                .collect();
+            FfiEntityList::from_vec(ffi_children)
+        })
+        .unwrap_or_else(FfiEntityList::empty)
+}
+
+unsafe extern "C" fn host_reparent_entity(ctx: *mut c_void, entity: FfiEntityId, new_parent: FfiEntityId) {
+    if ctx.is_null() || !entity.is_valid() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let entity_id = EntityId(entity.0);
+    let parent_id = if new_parent.is_valid() { Some(EntityId(new_parent.0)) } else { None };
+
+    api_impl.pending_operations.push(PendingOperation::ReparentEntity {
+        entity: entity_id,
+        new_parent: parent_id,
+    });
+}
+
+// ============================================================================
+// Selection callbacks
+// ============================================================================
+
+unsafe extern "C" fn host_get_selected_entity(ctx: *mut c_void) -> FfiEntityId {
+    if ctx.is_null() { return FfiEntityId::INVALID; }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+
+    api_impl.selected_entity
+        .map(|id| FfiEntityId(id.0))
+        .unwrap_or(FfiEntityId::INVALID)
+}
+
+unsafe extern "C" fn host_set_selected_entity(ctx: *mut c_void, entity: FfiEntityId) {
+    if ctx.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+
+    let entity_id = if entity.is_valid() { Some(EntityId(entity.0)) } else { None };
+    api_impl.pending_operations.push(PendingOperation::SetSelectedEntity(entity_id));
+}
+
+unsafe extern "C" fn host_clear_selection(ctx: *mut c_void) {
+    if ctx.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+
+    api_impl.pending_operations.push(PendingOperation::SetSelectedEntity(None));
+}
+
+// ============================================================================
+// Toolbar callbacks
+// ============================================================================
+
+unsafe extern "C" fn host_add_toolbar_button(ctx: *mut c_void, id: u64, icon: *const c_char, tooltip: *const c_char) {
+    if ctx.is_null() || icon.is_null() || tooltip.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+
+    let icon_str = CStr::from_ptr(icon).to_string_lossy().into_owned();
+    let tooltip_str = CStr::from_ptr(tooltip).to_string_lossy().into_owned();
+
+    let item = ToolbarItem {
+        id: UiId(id),
+        icon: icon_str,
+        tooltip: tooltip_str,
+        group: None,
+    };
+
+    let plugin_id = api_impl.current_plugin_id.clone().unwrap_or_default();
+    api_impl.toolbar_items.push((item, plugin_id));
+    info!("Toolbar button added: id={}", id);
+}
+
+unsafe extern "C" fn host_remove_toolbar_item(ctx: *mut c_void, id: u64) {
+    if ctx.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+
+    api_impl.toolbar_items.retain(|(item, _)| item.id.0 != id);
+    info!("Toolbar item removed: id={}", id);
+}
+
+// ============================================================================
+// Menu callbacks
+// ============================================================================
+
+unsafe extern "C" fn host_add_menu_item(ctx: *mut c_void, menu: u8, item: *const FfiMenuItem) {
+    if ctx.is_null() || item.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let ffi_item = &*item;
+
+    // Convert menu location
+    let location = match menu {
+        0 => MenuLocation::File,
+        1 => MenuLocation::Edit,
+        2 => MenuLocation::View,
+        3 => MenuLocation::Scene,
+        4 => MenuLocation::Tools,
+        5 => MenuLocation::Help,
+        _ => MenuLocation::Tools,
+    };
+
+    // Skip if separator
+    if ffi_item.is_separator {
+        // For separators, we could add a special separator item, but for now skip
+        return;
+    }
+
+    let label = ffi_item.label.to_string();
+    let shortcut = if ffi_item.shortcut.ptr.is_null() { None } else { Some(ffi_item.shortcut.to_string()) };
+    let icon = if ffi_item.icon.ptr.is_null() { None } else { Some(ffi_item.icon.to_string()) };
+
+    let mut menu_item = MenuItem::new(&label, UiId(ffi_item.id));
+    if let Some(s) = shortcut {
+        menu_item = menu_item.shortcut(s);
+    }
+    if let Some(i) = icon {
+        menu_item = menu_item.icon(i);
+    }
+    if !ffi_item.enabled {
+        menu_item.enabled = false;
+    }
+
+    let plugin_id = api_impl.current_plugin_id.clone().unwrap_or_default();
+    info!("Menu item added: '{}' to {:?}", label, location);
+    api_impl.menu_items.push((location, menu_item, plugin_id));
+}
+
+unsafe extern "C" fn host_remove_menu_item(ctx: *mut c_void, id: u64) {
+    if ctx.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+
+    api_impl.menu_items.retain(|(_, item, _)| item.id.0 != id);
+    info!("Menu item removed: id={}", id);
+}
+
+unsafe extern "C" fn host_set_menu_item_enabled(ctx: *mut c_void, id: u64, enabled: bool) {
+    if ctx.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+
+    for (_, item, _) in &mut api_impl.menu_items {
+        if item.id.0 == id {
+            item.enabled = enabled;
+            break;
+        }
+    }
+}
+
+unsafe extern "C" fn host_set_menu_item_checked(ctx: *mut c_void, _id: u64, _checked: bool) {
+    if ctx.is_null() { return; }
+    // MenuItem doesn't have a checked field currently
+    // This would need to be added to MenuItem if needed
+    warn!("set_menu_item_checked not implemented: MenuItem doesn't support checked state");
+}
+
+// ============================================================================
+// Tab callbacks (docked tabs in panel areas)
+// ============================================================================
+
+unsafe extern "C" fn host_register_tab(ctx: *mut c_void, tab: *const FfiTabDefinition) -> bool {
+    if ctx.is_null() || tab.is_null() { return false; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let ffi_tab = &*tab;
+
+    let id = ffi_tab.id.to_string();
+    let title = ffi_tab.title.to_string();
+    let icon = if ffi_tab.icon.ptr.is_null() { None } else { Some(ffi_tab.icon.to_string()) };
+
+    let location = match ffi_tab.location {
+        FfiTabLocation::Left => TabLocation::Left,
+        FfiTabLocation::Right => TabLocation::Right,
+        FfiTabLocation::Bottom => TabLocation::Bottom,
+    };
+
+    // Check if already registered
+    if api_impl.tabs.iter().any(|(t, _)| t.id == id) {
+        warn!("Tab '{}' already registered", id);
+        return false;
+    }
+
+    let plugin_tab = PluginTab {
+        id: id.clone(),
+        title,
+        icon,
+        location,
+    };
+
+    let plugin_id = api_impl.current_plugin_id.clone().unwrap_or_default();
+    info!("Tab '{}' registered at {:?}", id, location);
+    api_impl.tabs.push((plugin_tab, plugin_id));
+    true
+}
+
+unsafe extern "C" fn host_unregister_tab(ctx: *mut c_void, id: *const c_char) {
+    if ctx.is_null() || id.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let id_str = CStr::from_ptr(id).to_string_lossy().into_owned();
+
+    api_impl.tabs.retain(|(t, _)| t.id != id_str);
+    api_impl.tab_contents.remove(&id_str);
+    info!("Tab '{}' unregistered", id_str);
+}
+
+unsafe extern "C" fn host_set_tab_content(ctx: *mut c_void, tab_id: *const c_char, widgets_json: *const c_char) {
+    if ctx.is_null() || tab_id.is_null() || widgets_json.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let id_str = CStr::from_ptr(tab_id).to_string_lossy().into_owned();
+    let json_str = CStr::from_ptr(widgets_json).to_string_lossy();
+
+    // Parse JSON to widgets
+    match serde_json::from_str::<Vec<crate::ui_api::Widget>>(&json_str) {
+        Ok(widgets) => {
+            api_impl.tab_contents.insert(id_str, widgets);
+        }
+        Err(e) => {
+            error!("Failed to parse tab content JSON: {}", e);
+        }
+    }
+}
+
+unsafe extern "C" fn host_set_active_tab(ctx: *mut c_void, location: u8, tab_id: *const c_char) {
+    if ctx.is_null() || tab_id.is_null() { return; }
+    let api_impl = &mut *(ctx as *mut EditorApiImpl);
+    let id_str = CStr::from_ptr(tab_id).to_string_lossy().into_owned();
+
+    let loc = match location {
+        0 => TabLocation::Left,
+        1 => TabLocation::Right,
+        2 => TabLocation::Bottom,
+        _ => return,
+    };
+
+    if id_str.is_empty() {
+        api_impl.clear_active_tab(loc);
+    } else {
+        api_impl.set_active_tab(loc, id_str);
+    }
+}
+
+unsafe extern "C" fn host_get_active_tab(ctx: *mut c_void, location: u8) -> FfiOwnedString {
+    if ctx.is_null() { return FfiOwnedString::empty(); }
+    let api_impl = &*(ctx as *const EditorApiImpl);
+
+    let loc = match location {
+        0 => TabLocation::Left,
+        1 => TabLocation::Right,
+        2 => TabLocation::Bottom,
+        _ => return FfiOwnedString::empty(),
+    };
+
+    api_impl.get_active_tab(loc)
+        .map(|s| FfiOwnedString::from_string(s.to_string()))
+        .unwrap_or_else(FfiOwnedString::empty)
+}
+
 /// FFI-safe wrapper for a loaded plugin
 pub struct FfiPluginWrapper {
     /// Plugin handle (opaque pointer to plugin state)
@@ -168,6 +648,43 @@ impl FfiPluginWrapper {
             redo: host_redo,
             can_undo: host_can_undo,
             can_redo: host_can_redo,
+            // Panel system
+            register_panel: host_register_panel,
+            unregister_panel: host_unregister_panel,
+            set_panel_content: host_set_panel_content,
+            set_panel_visible: host_set_panel_visible,
+            is_panel_visible: host_is_panel_visible,
+            // Entity operations
+            get_entity_by_name: host_get_entity_by_name,
+            get_entity_transform: host_get_entity_transform,
+            set_entity_transform: host_set_entity_transform,
+            get_entity_name: host_get_entity_name,
+            set_entity_name: host_set_entity_name,
+            get_entity_visible: host_get_entity_visible,
+            set_entity_visible: host_set_entity_visible,
+            spawn_entity: host_spawn_entity,
+            despawn_entity: host_despawn_entity,
+            get_entity_parent: host_get_entity_parent,
+            get_entity_children: host_get_entity_children,
+            reparent_entity: host_reparent_entity,
+            // Selection
+            get_selected_entity: host_get_selected_entity,
+            set_selected_entity: host_set_selected_entity,
+            clear_selection: host_clear_selection,
+            // Toolbar
+            add_toolbar_button: host_add_toolbar_button,
+            remove_toolbar_item: host_remove_toolbar_item,
+            // Menu
+            add_menu_item: host_add_menu_item,
+            remove_menu_item: host_remove_menu_item,
+            set_menu_item_enabled: host_set_menu_item_enabled,
+            set_menu_item_checked: host_set_menu_item_checked,
+            // Tabs
+            register_tab: host_register_tab,
+            unregister_tab: host_unregister_tab,
+            set_tab_content: host_set_tab_content,
+            set_active_tab: host_set_active_tab,
+            get_active_tab: host_get_active_tab,
         }
     }
 

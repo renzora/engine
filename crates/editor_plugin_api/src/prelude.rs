@@ -14,7 +14,12 @@ pub use crate::abi::{
 };
 
 // FFI types
-pub use crate::ffi::{FFI_API_VERSION, FfiResult, FfiManifest, FfiStatusBarItem, PluginExport, PluginVTable, FfiEditorApi};
+pub use crate::ffi::{
+    FFI_API_VERSION, FfiResult, FfiManifest, FfiStatusBarItem, PluginExport, PluginVTable,
+    FfiEditorApi, FfiEntityId, FfiTransform, FfiEntityList, FfiString, FfiOwnedString,
+    FfiPanelDefinition, FfiPanelLocation, FfiMenuLocation, FfiMenuItem,
+    FfiTabLocation, FfiTabDefinition,
+};
 
 // API types (for reference, but plugins should use FfiEditorApi)
 pub use crate::api::{StatusBarAlign, StatusBarItem};

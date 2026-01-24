@@ -3,11 +3,13 @@
 //! Plugins define their UIs using these widget types. The editor's internal
 //! renderer translates these to actual egui widgets.
 
+use serde::{Deserialize, Serialize};
+
 use super::types::{Align, Size, TextStyle, UiId};
 
 /// All UI widgets plugins can create.
 /// This enum represents the complete set of widgets available to plugins.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Widget {
     // === Basic Widgets ===
     /// Text label
@@ -184,7 +186,7 @@ impl Default for Widget {
 }
 
 /// Tab definition for tab containers
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Tab {
     pub label: String,
     pub icon: Option<String>,
@@ -193,7 +195,7 @@ pub struct Tab {
 }
 
 /// Table column definition
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TableColumn {
     pub header: String,
     pub width: Size,
@@ -213,7 +215,7 @@ impl Default for TableColumn {
 }
 
 /// Table row definition
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TableRow {
     pub cells: Vec<Widget>,
     pub id: UiId,

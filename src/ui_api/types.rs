@@ -1,8 +1,10 @@
 //! Core UI types for the plugin API.
 
+use serde::{Deserialize, Serialize};
+
 /// Unique identifier for UI elements.
 /// Used for event routing and widget identification.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default, Serialize, Deserialize)]
 #[repr(C)]
 pub struct UiId(pub u64);
 
@@ -43,7 +45,7 @@ pub enum SemanticColor {
 
 /// Semantic text styles.
 /// The editor applies appropriate fonts and sizes from the current theme.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum TextStyle {
     #[default]
@@ -66,7 +68,7 @@ pub enum Direction {
 }
 
 /// Size specification for widgets and layout.
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Size {
     /// Automatically size based on content
     Auto,
@@ -87,7 +89,7 @@ impl Default for Size {
 }
 
 /// Alignment for widgets within containers.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 #[repr(u8)]
 pub enum Align {
     #[default]

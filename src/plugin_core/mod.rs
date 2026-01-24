@@ -14,6 +14,7 @@ pub use abi::*;
 pub use api::{
     ContextMenuLocation, EditorApi, EditorApiImpl, InspectorDefinition, MenuItem, MenuLocation,
     PanelDefinition, PanelLocation, PendingOperation, StatusBarAlign, StatusBarItem, ToolbarItem,
+    TabLocation, PluginTab,
 };
 pub use host::PluginHost;
 pub use registry::PluginRegistry;
@@ -110,23 +111,42 @@ fn sync_bevy_to_plugins(
     mut plugin_host: ResMut<PluginHost>,
     selection: Res<SelectionState>,
     command_history: Res<CommandHistory>,
-    entities: Query<(Entity, &EditorEntity, &Transform)>,
+    entities: Query<(Entity, &EditorEntity, &Transform, Option<&ChildOf>)>,
+    children_query: Query<&Children>,
 ) {
     // Build state snapshots
     let selected = selection.selected_entity.map(EntityId::from_bevy);
 
     let mut transforms = HashMap::new();
     let mut names = HashMap::new();
+    let mut visibility = HashMap::new();
+    let mut parents = HashMap::new();
+    let mut children_map: HashMap<EntityId, Vec<EntityId>> = HashMap::new();
 
-    for (entity, editor_entity, transform) in entities.iter() {
+    for (entity, editor_entity, transform, child_of) in entities.iter() {
         let id = EntityId::from_bevy(entity);
         transforms.insert(id, PluginTransform::from_bevy(*transform));
         names.insert(id, editor_entity.name.clone());
+        visibility.insert(id, editor_entity.visible);
+
+        // Get parent
+        let parent_id = child_of.map(|c| EntityId::from_bevy(c.0));
+        parents.insert(id, parent_id);
+
+        // Get children
+        if let Ok(children) = children_query.get(entity) {
+            let child_ids: Vec<EntityId> = children.iter()
+                .map(|c| EntityId::from_bevy(c))
+                .collect();
+            children_map.insert(id, child_ids);
+        } else {
+            children_map.insert(id, Vec::new());
+        }
     }
 
     // Sync to plugin API
     let api = plugin_host.api_mut();
-    api.sync_from_bevy(selected, transforms, names);
+    api.sync_from_bevy(selected, transforms, names, visibility, parents, children_map);
 
     // Sync undo/redo state
     api.can_undo = command_history.can_undo();
@@ -167,6 +187,13 @@ fn apply_plugin_operations(
                     }
                 }
             }
+            PendingOperation::SetEntityVisible { entity, visible } => {
+                if let Some(bevy_entity) = entity.to_bevy() {
+                    if let Ok(mut editor_entity) = editor_entities.get_mut(bevy_entity) {
+                        editor_entity.visible = visible;
+                    }
+                }
+            }
             PendingOperation::SpawnEntity(def) => {
                 let transform: Transform = def.transform.to_bevy();
                 let mut entity_commands = commands.spawn((
@@ -191,6 +218,19 @@ fn apply_plugin_operations(
                 if let Some(bevy_entity) = entity_id.to_bevy() {
                     commands.entity(bevy_entity).despawn();
                     info!("Plugin despawned entity: {:?}", entity_id);
+                }
+            }
+            PendingOperation::ReparentEntity { entity, new_parent } => {
+                if let Some(bevy_entity) = entity.to_bevy() {
+                    if let Some(parent_entity) = new_parent.and_then(|id| id.to_bevy()) {
+                        // Reparent to new parent
+                        commands.entity(bevy_entity).insert(ChildOf(parent_entity));
+                        info!("Plugin reparented entity to {:?}", new_parent);
+                    } else {
+                        // Remove parent (make root)
+                        commands.entity(bevy_entity).remove::<ChildOf>();
+                        info!("Plugin moved entity to root");
+                    }
                 }
             }
             PendingOperation::LoadAsset(path) => {

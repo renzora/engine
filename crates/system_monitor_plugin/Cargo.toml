@@ -10,3 +10,5 @@ crate-type = ["cdylib"]
 editor_plugin_api = { path = "../editor_plugin_api" }
 sysinfo = "0.32"
 nvml-wrapper = "0.10"
+
+[workspace]
