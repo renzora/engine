@@ -1,6 +1,7 @@
 // Hide console window on Windows
 #![windows_subsystem = "windows"]
 
+mod commands;
 mod core;
 mod export;
 mod gizmo;
@@ -63,6 +64,7 @@ fn main() {
         .add_plugins(bevy_egui::EguiPlugin::default())
         .add_plugins((
             core::CorePlugin,
+            commands::CommandPlugin,
             project::ProjectPlugin,
             node_system::NodeSystemPlugin,
             viewport::ViewportPlugin,

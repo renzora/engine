@@ -40,6 +40,14 @@ pub struct EditorApiImpl {
     pub entity_transforms: std::collections::HashMap<EntityId, PluginTransform>,
     pub entity_names: std::collections::HashMap<EntityId, String>,
 
+    // Undo/redo state (synced from CommandHistory each frame)
+    pub can_undo: bool,
+    pub can_redo: bool,
+
+    // Pending undo/redo requests (processed by exclusive system)
+    pub pending_undo: bool,
+    pub pending_redo: bool,
+
     // Pending operations (applied to Bevy after plugin update)
     pub pending_operations: Vec<PendingOperation>,
 
@@ -73,6 +81,10 @@ impl EditorApiImpl {
             selected_entity: None,
             entity_transforms: std::collections::HashMap::new(),
             entity_names: std::collections::HashMap::new(),
+            can_undo: false,
+            can_redo: false,
+            pending_undo: false,
+            pending_redo: false,
             pending_operations: Vec::new(),
             pending_ui_events: Vec::new(),
             subscriptions: Vec::new(),
@@ -143,6 +155,10 @@ impl EditorApiImpl {
         self.context_menus.clear();
         self.status_bar_items.clear();
         self.current_plugin_id = None;
+        self.can_undo = false;
+        self.can_redo = false;
+        self.pending_undo = false;
+        self.pending_redo = false;
         self.pending_operations.clear();
         self.pending_ui_events.clear();
         self.subscriptions.clear();
@@ -302,15 +318,15 @@ impl EditorApi for EditorApiImpl {
     }
 
     fn execute_command(&mut self, _command: Command) {
-        // TODO: Implement undo/redo system
+        // TODO: Implement command execution via pending operations
     }
 
     fn undo(&mut self) {
-        // TODO: Implement undo/redo system
+        self.pending_undo = true;
     }
 
     fn redo(&mut self) {
-        // TODO: Implement undo/redo system
+        self.pending_redo = true;
     }
 }
 

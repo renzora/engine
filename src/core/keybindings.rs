@@ -23,6 +23,10 @@ pub enum EditorAction {
     Delete,
     Deselect,
 
+    // Edit operations
+    Undo,
+    Redo,
+
     // File operations
     SaveScene,
     SaveSceneAs,
@@ -47,6 +51,8 @@ impl EditorAction {
             EditorAction::GizmoScale => "Scale Mode",
             EditorAction::Delete => "Delete",
             EditorAction::Deselect => "Deselect",
+            EditorAction::Undo => "Undo",
+            EditorAction::Redo => "Redo",
             EditorAction::SaveScene => "Save Scene",
             EditorAction::SaveSceneAs => "Save Scene As",
             EditorAction::OpenScene => "Open Scene",
@@ -71,6 +77,8 @@ impl EditorAction {
             | EditorAction::GizmoScale => "Gizmo",
 
             EditorAction::Delete | EditorAction::Deselect => "Selection",
+
+            EditorAction::Undo | EditorAction::Redo => "Edit",
 
             EditorAction::SaveScene
             | EditorAction::SaveSceneAs
@@ -99,6 +107,9 @@ impl EditorAction {
             // Selection
             EditorAction::Delete,
             EditorAction::Deselect,
+            // Edit
+            EditorAction::Undo,
+            EditorAction::Redo,
             // File
             EditorAction::SaveScene,
             EditorAction::SaveSceneAs,
@@ -189,6 +200,10 @@ impl Default for KeyBindings {
         // Selection defaults
         bindings.insert(EditorAction::Delete, KeyBinding::new(KeyCode::Delete));
         bindings.insert(EditorAction::Deselect, KeyBinding::new(KeyCode::Escape));
+
+        // Edit defaults
+        bindings.insert(EditorAction::Undo, KeyBinding::new(KeyCode::KeyZ).ctrl());
+        bindings.insert(EditorAction::Redo, KeyBinding::new(KeyCode::KeyY).ctrl());
 
         // File defaults
         bindings.insert(EditorAction::SaveScene, KeyBinding::new(KeyCode::KeyS).ctrl());

@@ -5,6 +5,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiTextureHandle};
 
+use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, EditorEntity, ExportState, KeyBindings, SceneTabId,
     SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
@@ -31,6 +32,7 @@ pub struct EditorResources<'w> {
     pub default_camera: Res<'w, DefaultCameraEntity>,
     pub play_mode: ResMut<'w, PlayModeState>,
     pub console: ResMut<'w, ConsoleState>,
+    pub command_history: ResMut<'w, CommandHistory>,
 }
 use crate::node_system::{self, NodeRegistry, NodeTypeMarker};
 use crate::project::{AppConfig, CurrentProject};
@@ -197,6 +199,7 @@ pub fn editor_ui(
         &mut meshes,
         &mut materials,
         &editor.plugin_host,
+        &mut editor.command_history,
     );
     all_ui_events.extend(title_bar_events);
 
@@ -272,6 +275,7 @@ pub fn editor_ui(
             &editor.plugin_host,
             &mut editor.assets,
             &editor.default_camera,
+            &mut editor.command_history,
         );
         all_ui_events.extend(hierarchy_events);
 

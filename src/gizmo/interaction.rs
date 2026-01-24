@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 
+use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState};
 
 use super::picking::{
@@ -154,11 +155,27 @@ pub fn gizmo_interaction_system(
     mesh_query: Query<(Entity, &GlobalTransform, &EditorEntity)>,
     transforms: Query<&Transform, With<EditorEntity>>,
     parents: Query<&ChildOf, With<SceneNode>>,
+    mut command_history: ResMut<CommandHistory>,
 ) {
-    // Handle drag end
+    // Handle drag end - create undo command for transform change
     if mouse_button.just_released(MouseButton::Left) {
+        if gizmo.is_dragging {
+            // Create undo command for the transform change
+            if let (Some(entity), Some(start_transform)) = (gizmo.drag_entity, gizmo.drag_start_transform) {
+                if let Ok(current_transform) = transforms.get(entity) {
+                    // Only create command if transform actually changed
+                    if *current_transform != start_transform {
+                        let mut cmd = SetTransformCommand::new(entity, *current_transform);
+                        cmd.old_transform = Some(start_transform);
+                        queue_command(&mut command_history, Box::new(cmd));
+                    }
+                }
+            }
+        }
         gizmo.is_dragging = false;
         gizmo.drag_axis = None;
+        gizmo.drag_start_transform = None;
+        gizmo.drag_entity = None;
         return;
     }
 
@@ -231,6 +248,10 @@ pub fn gizmo_interaction_system(
                             gizmo.drag_start_offset = drag_point - pos;
                         }
                     }
+
+                    // Store original transform for undo
+                    gizmo.drag_start_transform = Some(*obj_transform);
+                    gizmo.drag_entity = Some(selected);
                 }
             }
         }

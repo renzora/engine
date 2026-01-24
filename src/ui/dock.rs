@@ -179,18 +179,8 @@ impl<'a> TabViewer for EditorTabViewer<'a> {
 
 impl<'a> EditorTabViewer<'a> {
     fn render_hierarchy_content(&mut self, ui: &mut egui::Ui) {
-        let active_tab = self.ctx.scene_state.active_scene_tab;
-        super::panels::hierarchy::render_hierarchy_content(
-            ui,
-            self.ctx.selection,
-            self.ctx.hierarchy,
-            self.ctx.entities,
-            self.ctx.commands,
-            self.ctx.meshes,
-            self.ctx.materials,
-            self.ctx.node_registry,
-            active_tab,
-        );
+        // TODO: This dock system is incomplete and needs all hierarchy parameters
+        ui.label("Hierarchy (dock view not implemented)");
     }
 
     fn render_inspector_content(&mut self, ui: &mut egui::Ui) {

@@ -13,25 +13,17 @@ pub use crate::abi::{
     PluginManifest, PluginTransform, EDITOR_API_VERSION,
 };
 
-// API types
-pub use crate::api::{
-    Command, ContextMenuLocation, CustomEvent, EditorApi, EntityDefinition, EntityQuery,
-    InspectorDefinition, MenuItem, MenuLocation, PanelDefinition, PanelLocation, SettingValue,
-    StatusBarAlign, StatusBarItem, ToolbarItem,
-};
+// FFI types
+pub use crate::ffi::{FFI_API_VERSION, FfiResult, FfiManifest, FfiStatusBarItem, PluginExport, PluginVTable, FfiEditorApi};
+
+// API types (for reference, but plugins should use FfiEditorApi)
+pub use crate::api::{StatusBarAlign, StatusBarItem};
 
 // Event types
 pub use crate::events::{EditorEvent, EditorEventType, UiEvent};
-
-// Trait
-pub use crate::traits::{CreatePluginFn, EditorPlugin};
 
 // UI types
 pub use crate::ui::{Align, Size, Tab, TableColumn, TableRow, TextStyle, UiId, Widget};
 
 // Icons - re-export egui_phosphor for easy access
 pub use crate::egui_phosphor;
-
-// Bevy re-exports for direct World/App access
-pub use crate::bevy;
-pub use crate::traits::{App, World, Commands};

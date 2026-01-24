@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
 
+use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{EditorEntity, ExportState, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::scene::{spawn_primitive, PrimitiveType};
@@ -23,6 +24,7 @@ pub fn render_title_bar(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     plugin_host: &PluginHost,
+    command_history: &mut CommandHistory,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let is_maximized = window_state.is_maximized;
@@ -94,7 +96,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, commands, meshes, materials, plugin_host);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, commands, meshes, materials, plugin_host, command_history);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -200,6 +202,7 @@ fn render_menu_items(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     plugin_host: &PluginHost,
+    command_history: &mut CommandHistory,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
@@ -265,12 +268,30 @@ fn render_menu_items(
     });
 
     ui.menu_button("Edit", |ui| {
-        if ui.button("Undo").clicked() {
-            ui.close();
-        }
-        if ui.button("Redo").clicked() {
-            ui.close();
-        }
+        // Undo with shortcut hint and disabled state
+        let can_undo = command_history.can_undo();
+        let undo_text = if can_undo {
+            format!("Undo                    Ctrl+Z")
+        } else {
+            format!("Undo                    Ctrl+Z")
+        };
+        ui.add_enabled_ui(can_undo, |ui| {
+            if ui.button(undo_text).clicked() {
+                command_history.pending_undo = true;
+                ui.close();
+            }
+        });
+
+        // Redo with shortcut hint and disabled state
+        let can_redo = command_history.can_redo();
+        let redo_text = format!("Redo                    Ctrl+Y");
+        ui.add_enabled_ui(can_redo, |ui| {
+            if ui.button(redo_text).clicked() {
+                command_history.pending_redo = true;
+                ui.close();
+            }
+        });
+
         ui.separator();
         if ui.button("Cut").clicked() {
             ui.close();
@@ -287,8 +308,7 @@ fn render_menu_items(
         }
         if ui.button("Delete").clicked() {
             if let Some(entity) = selection.selected_entity {
-                commands.entity(entity).despawn();
-                selection.selected_entity = None;
+                queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
             }
             ui.close();
         }

@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
 
+use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity};
 use crate::node_system::{NodeRegistry, render_node_menu_as_submenus, SceneRoot, NodeTypeMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost};
@@ -45,6 +46,7 @@ pub fn render_hierarchy(
     plugin_host: &PluginHost,
     assets: &mut AssetBrowserState,
     default_camera: &DefaultCameraEntity,
+    command_history: &mut CommandHistory,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut actual_width = stored_width;
@@ -61,7 +63,7 @@ pub fn render_hierarchy(
         .show(ctx, |ui| {
             // Get actual width from the panel
             actual_width = ui.available_width() + 16.0; // Account for panel padding
-            let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene, default_camera);
+            let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history);
             ui_events.extend(events);
             scene_changed = changed;
         });
@@ -107,6 +109,7 @@ pub fn render_hierarchy_content(
     assets: &mut AssetBrowserState,
     dragging_scene: bool,
     default_camera: &DefaultCameraEntity,
+    command_history: &mut CommandHistory,
 ) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
@@ -231,6 +234,7 @@ pub fn render_hierarchy_content(
                     plugin_host,
                     &mut row_index,
                     default_camera,
+                    command_history,
                 );
                 ui_events.extend(events);
                 if changed {
@@ -300,6 +304,7 @@ fn render_tree_node(
     plugin_host: &PluginHost,
     row_index: &mut usize,
     default_camera: &DefaultCameraEntity,
+    command_history: &mut CommandHistory,
 ) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
@@ -663,12 +668,8 @@ fn render_tree_node(
 
                 // Delete
                 if ui.button(RichText::new(format!("{} Delete", TRASH)).color(Color32::from_rgb(230, 100, 100))).clicked() {
-                    // Despawn entity and its children
-                    commands.entity(entity).despawn();
-                    // Clear selection if this was selected
-                    if selection.selected_entity == Some(entity) {
-                        selection.selected_entity = None;
-                    }
+                    // Queue delete command for undo support
+                    queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
                     // Remove from expanded set
                     hierarchy.expanded_entities.remove(&entity);
                     scene_changed = true;
@@ -779,6 +780,7 @@ fn render_tree_node(
                         plugin_host,
                         row_index,
                         default_camera,
+                        command_history,
                     );
                     ui_events.extend(child_events);
                     if child_changed {

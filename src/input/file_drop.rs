@@ -2,6 +2,7 @@ use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
 use std::path::PathBuf;
 
+use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress};
 use crate::node_system::components::{MeshInstanceData, NodeTypeMarker, SceneInstanceData};
 use crate::node_system::registry::NodeRegistry;
@@ -187,6 +188,7 @@ pub fn spawn_loaded_gltfs(
     mut hierarchy: ResMut<HierarchyState>,
     scene_roots: Query<(Entity, Option<&SceneTabId>), With<SceneRoot>>,
     current_project: Option<Res<CurrentProject>>,
+    mut command_history: ResMut<CommandHistory>,
 ) {
     let mut completed = Vec::new();
 
@@ -235,7 +237,7 @@ pub fn spawn_loaded_gltfs(
                         type_id: "mesh.instance",
                     },
                     MeshInstanceData {
-                        model_path: Some(model_path_str),
+                        model_path: Some(model_path_str.clone()),
                     },
                 ));
 
@@ -255,6 +257,18 @@ pub fn spawn_loaded_gltfs(
                 ));
 
                 info!("Spawned MeshInstance '{}' with model as child", pending.name);
+
+                // Create undo command for the spawn
+                queue_command(
+                    &mut command_history,
+                    Box::new(SpawnMeshInstanceCommand::new(
+                        mesh_instance_entity,
+                        pending.name.clone(),
+                        transform,
+                        Some(model_path_str),
+                        scene_root_entity,
+                    )),
+                );
 
                 // Auto-select the MeshInstance parent
                 selection.selected_entity = Some(mesh_instance_entity);

@@ -123,6 +123,10 @@ pub struct GizmoState {
     pub drag_start_distance: f32,
     /// Snapping settings
     pub snap: SnapSettings,
+    /// Transform before drag started (for undo support)
+    pub drag_start_transform: Option<Transform>,
+    /// Entity being dragged (for undo command)
+    pub drag_entity: Option<Entity>,
 }
 
 impl Default for GizmoState {
@@ -138,6 +142,8 @@ impl Default for GizmoState {
             drag_start_scale: Vec3::ONE,
             drag_start_distance: 0.0,
             snap: SnapSettings::default(),
+            drag_start_transform: None,
+            drag_entity: None,
         }
     }
 }

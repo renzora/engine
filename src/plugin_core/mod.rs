@@ -24,6 +24,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use abi::{EntityIdExt, PluginTransformExt};
+use crate::commands::CommandHistory;
 use crate::core::{AppState, EditorEntity, SelectionState};
 use crate::project::CurrentProject;
 
@@ -49,7 +50,11 @@ impl Plugin for PluginCorePlugin {
             // Exclusive system for direct World access
             .add_systems(
                 Update,
-                update_plugins_with_world
+                (
+                    update_plugins_with_world,
+                    process_plugin_undo_redo,
+                )
+                    .chain()
                     .run_if(in_state(AppState::Editor)),
             );
     }
@@ -104,6 +109,7 @@ fn update_plugins_with_world(world: &mut World) {
 fn sync_bevy_to_plugins(
     mut plugin_host: ResMut<PluginHost>,
     selection: Res<SelectionState>,
+    command_history: Res<CommandHistory>,
     entities: Query<(Entity, &EditorEntity, &Transform)>,
 ) {
     // Build state snapshots
@@ -119,7 +125,12 @@ fn sync_bevy_to_plugins(
     }
 
     // Sync to plugin API
-    plugin_host.api_mut().sync_from_bevy(selected, transforms, names);
+    let api = plugin_host.api_mut();
+    api.sync_from_bevy(selected, transforms, names);
+
+    // Sync undo/redo state
+    api.can_undo = command_history.can_undo();
+    api.can_redo = command_history.can_redo();
 }
 
 /// Update all plugins (called every frame)
@@ -207,5 +218,34 @@ fn dispatch_selection_events(
             plugin_host.queue_event(EditorEvent::EntitySelected(EntityId::from_bevy(new)));
         }
         *last_selection = current;
+    }
+}
+
+/// Exclusive system to process undo/redo operations from plugins
+fn process_plugin_undo_redo(world: &mut World) {
+    // Check for pending undo/redo requests from plugins
+    let (do_undo, do_redo) = {
+        let mut plugin_host = world.resource_mut::<PluginHost>();
+        let api = plugin_host.api_mut();
+        let undo = api.pending_undo;
+        let redo = api.pending_redo;
+        // Clear the flags
+        api.pending_undo = false;
+        api.pending_redo = false;
+        (undo, redo)
+    };
+
+    // Process undo request
+    if do_undo {
+        if crate::commands::undo(world) {
+            info!("Plugin triggered undo");
+        }
+    }
+
+    // Process redo request
+    if do_redo {
+        if crate::commands::redo(world) {
+            info!("Plugin triggered redo");
+        }
     }
 }
