@@ -2,6 +2,7 @@
 name = "bevy_imgui_editor"
 version = "0.1.0"
 edition = "2021"
+default-run = "renzora_editor"
 
 [features]
 default = ["editor"]
@@ -25,6 +26,8 @@ serde_json = "1.0"
 ron = "0.8"
 toml = "0.8"
 dirs = "5.0"
+zstd = "0.13"
+gltf = "1.4"
 
 # Editor-only dependencies
 bevy_egui = { version = "0.37", optional = true }
@@ -43,8 +46,14 @@ windows-sys = { version = "0.59", features = ["Win32_UI_WindowsAndMessaging", "W
 [workspace]
 members = ["crates/editor_plugin_api"]
 
+# Bevy recommended optimizations
+# https://bevy.org/learn/quick-start/getting-started/setup/
+
 [profile.dev]
-opt-level = 2
+opt-level = 1
 
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+lto = "thin"

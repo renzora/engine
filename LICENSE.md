@@ -1,4 +1,4 @@
-Copyright 2025 [Nixi LTD]
+Copyright 2025 [Nixi Studios]
 
 Apache License
 Version 2.0, January 2004

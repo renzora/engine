@@ -3,11 +3,13 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2};
 
-use crate::core::{ExportState, SceneManagerState};
-use crate::export::{ExportConfig, run_export, is_target_installed, ExportTarget};
+use crate::core::{ExportLogLevel, ExportState, SceneManagerState};
+use crate::export::{is_target_installed, run_export, ExportConfig, ExportTarget};
 use crate::project::CurrentProject;
 
-use egui_phosphor::regular::{EXPORT, WINDOWS_LOGO, LINUX_LOGO, APPLE_LOGO, FOLDER_OPEN, CHECK, X};
+use egui_phosphor::regular::{
+    APPLE_LOGO, CHECK, EXPORT, FOLDER_OPEN, LINUX_LOGO, TERMINAL, WINDOWS_LOGO, X,
+};
 
 /// Render the export dialog window
 pub fn render_export_dialog(
@@ -126,29 +128,64 @@ pub fn render_export_dialog(
 
             // Status/Progress
             if export_state.exporting {
+                let (progress, step) = export_state.logger.get_progress();
                 ui.horizontal(|ui| {
                     ui.spinner();
-                    ui.label(&export_state.status_message);
+                    ui.label(&step);
                 });
-
-                if export_state.progress >= 0.0 {
-                    ui.add(egui::ProgressBar::new(export_state.progress).show_percentage());
-                }
+                ui.add(egui::ProgressBar::new(progress).show_percentage());
             } else if !export_state.status_message.is_empty() {
-                ui.label(&export_state.status_message);
+                // Show final status with appropriate color
+                let color = if export_state.errors.is_empty() {
+                    Color32::from_rgb(100, 200, 100) // Green for success
+                } else if export_state.errors.len() == export_state.errors.len() {
+                    Color32::from_rgb(200, 100, 100) // Red for failure
+                } else {
+                    Color32::from_rgb(200, 180, 100) // Yellow for warnings
+                };
+                ui.label(RichText::new(&export_state.status_message).color(color));
             }
 
-            // Errors
-            if !export_state.errors.is_empty() {
-                ui.separator();
-                ui.label(RichText::new("Errors:").color(Color32::RED));
-                egui::ScrollArea::vertical()
-                    .max_height(100.0)
-                    .show(ui, |ui| {
-                        for error in &export_state.errors {
-                            ui.label(RichText::new(error).color(Color32::RED).small());
-                        }
-                    });
+            // Console Log Toggle & Display
+            ui.horizontal(|ui| {
+                ui.checkbox(&mut export_state.show_console, "");
+                ui.label(RichText::new(TERMINAL).size(14.0));
+                ui.label("Show Console");
+
+                if ui.small_button("Clear").clicked() {
+                    export_state.logger.clear();
+                }
+            });
+
+            if export_state.show_console {
+                let logs = export_state.logger.get_logs();
+                if !logs.is_empty() {
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(20, 20, 25))
+                        .corner_radius(4.0)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .max_height(150.0)
+                                .stick_to_bottom(true)
+                                .show(ui, |ui| {
+                                    for entry in &logs {
+                                        let (prefix, color) = match entry.level {
+                                            ExportLogLevel::Info => ("", Color32::from_rgb(180, 180, 180)),
+                                            ExportLogLevel::Success => ("✓ ", Color32::from_rgb(100, 200, 100)),
+                                            ExportLogLevel::Warning => ("⚠ ", Color32::from_rgb(220, 180, 80)),
+                                            ExportLogLevel::Error => ("✗ ", Color32::from_rgb(220, 80, 80)),
+                                        };
+                                        ui.label(
+                                            RichText::new(format!("{}{}", prefix, entry.message))
+                                                .color(color)
+                                                .family(egui::FontFamily::Monospace)
+                                                .size(11.0),
+                                        );
+                                    }
+                                });
+                        });
+                }
             }
 
             ui.separator();
@@ -181,12 +218,15 @@ pub fn render_export_dialog(
                             copy_all_assets: export_state.copy_all_assets,
                         };
 
+                        // Clear previous logs and start fresh
+                        export_state.logger.clear();
                         export_state.exporting = true;
-                        export_state.status_message = "Starting export...".to_string();
+                        export_state.status_message.clear();
                         export_state.errors.clear();
+                        export_state.show_console = true; // Auto-show console on export
 
-                        // Run export (this blocks - in a real implementation, use async)
-                        let result = run_export(&config);
+                        // Run export with logger (this blocks - in a real implementation, use async)
+                        let result = run_export(&config, &export_state.logger);
 
                         export_state.exporting = false;
                         export_state.status_message = result.message;

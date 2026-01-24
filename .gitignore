@@ -14,6 +14,3 @@ Thumbs.db
 
 # Claude
 .claude/
-
-# Built runtimes (generated during export)
-/runtimes/

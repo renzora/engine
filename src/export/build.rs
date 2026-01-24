@@ -4,9 +4,9 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use super::assets::{copy_all_assets, copy_scene_files, create_project_toml};
+use super::assets::{copy_all_assets, copy_scene_files, create_project_toml, discover_assets, copy_assets_to_folder};
+use crate::core::ExportLogger;
 
 /// Target platform for export
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,8 +98,8 @@ pub struct ExportResult {
     pub errors: Vec<String>,
 }
 
-/// Run the export process
-pub fn run_export(config: &ExportConfig) -> ExportResult {
+/// Run the export process with logging
+pub fn run_export(config: &ExportConfig, logger: &ExportLogger) -> ExportResult {
     let mut result = ExportResult {
         success: true,
         message: String::new(),
@@ -107,21 +107,42 @@ pub fn run_export(config: &ExportConfig) -> ExportResult {
         errors: Vec::new(),
     };
 
-    // Validate configuration
+    let total_steps = 5 + config.targets.len(); // validate, output dir, discover, copy, project.toml, + per-target
+    let mut current_step = 0;
+
+    // Helper to update progress
+    let update_progress = |step: usize, msg: &str| {
+        let progress = step as f32 / total_steps as f32;
+        logger.set_progress(progress, msg);
+    };
+
+    // Step 1: Validate configuration
+    update_progress(current_step, "Validating configuration...");
+    logger.info("Starting export process...");
+    logger.info(format!("Game: {}", config.game_name));
+    logger.info(format!("Targets: {}", config.targets.iter().map(|t| t.display_name()).collect::<Vec<_>>().join(", ")));
+
     if !config.main_scene.exists() {
+        logger.error(format!("Main scene not found: {:?}", config.main_scene));
         result.success = false;
         result.message = format!("Main scene not found: {:?}", config.main_scene);
         return result;
     }
+    logger.success(format!("Main scene: {:?}", config.main_scene));
 
     if config.targets.is_empty() {
+        logger.error("No target platforms selected");
         result.success = false;
         result.message = "No target platforms selected".to_string();
         return result;
     }
+    current_step += 1;
 
-    // Create output directory
+    // Step 2: Create output directory
+    update_progress(current_step, "Creating output directory...");
+    logger.info(format!("Output directory: {:?}", config.output_dir));
     if let Err(e) = fs::create_dir_all(&config.output_dir) {
+        logger.error(format!("Failed to create output directory: {}", e));
         result.success = false;
         result.message = format!("Failed to create output directory: {}", e);
         return result;
@@ -130,24 +151,64 @@ pub fn run_export(config: &ExportConfig) -> ExportResult {
     // Create a staging directory for assets
     let staging_dir = config.output_dir.join("_staging");
     if let Err(e) = fs::create_dir_all(&staging_dir) {
+        logger.error(format!("Failed to create staging directory: {}", e));
         result.success = false;
         result.message = format!("Failed to create staging directory: {}", e);
         return result;
     }
+    logger.success("Created staging directory");
+    current_step += 1;
 
-    // Copy assets to staging directory
+    // Step 3: Discover and copy assets
+    update_progress(current_step, "Discovering assets...");
+
     if config.copy_all_assets {
+        logger.info("Copying all project assets...");
         if let Err(e) = copy_all_assets(&config.project_dir, &staging_dir) {
+            logger.warning(format!("Failed to copy assets: {}", e));
             result.errors.push(format!("Failed to copy assets: {}", e));
+        } else {
+            logger.success("Copied all assets");
         }
     } else {
-        // Copy only referenced assets
-        if let Err(e) = copy_scene_files(&config.main_scene, &config.project_dir, &staging_dir) {
-            result.errors.push(format!("Failed to copy scene files: {}", e));
+        // Discover only referenced assets
+        logger.info("Discovering referenced assets...");
+        match discover_assets(&config.main_scene, &config.project_dir) {
+            Ok(assets) => {
+                logger.success(format!("Found {} referenced assets", assets.len()));
+                for asset in &assets {
+                    logger.info(format!("  Asset: {}", asset.display()));
+                }
+
+                // Copy discovered assets
+                if let Err(e) = copy_assets_to_folder(&assets, &config.project_dir, &staging_dir) {
+                    logger.warning(format!("Failed to copy discovered assets: {}", e));
+                    result.errors.push(format!("Failed to copy assets: {}", e));
+                } else {
+                    logger.success("Copied discovered assets");
+                }
+            }
+            Err(e) => {
+                logger.warning(format!("Failed to discover assets: {}", e));
+                result.errors.push(format!("Failed to discover assets: {}", e));
+            }
         }
     }
+    current_step += 1;
 
-    // Create project.toml in staging
+    // Step 4: Copy scene files
+    update_progress(current_step, "Copying scene files...");
+    logger.info("Copying scene files...");
+    if let Err(e) = copy_scene_files(&config.main_scene, &config.project_dir, &staging_dir) {
+        logger.warning(format!("Failed to copy scene files: {}", e));
+        result.errors.push(format!("Failed to copy scene files: {}", e));
+    } else {
+        logger.success("Copied scene files");
+    }
+    current_step += 1;
+
+    // Step 5: Create project.toml
+    update_progress(current_step, "Creating project manifest...");
     let main_scene_rel = config
         .main_scene
         .strip_prefix(&config.project_dir)
@@ -155,21 +216,34 @@ pub fn run_export(config: &ExportConfig) -> ExportResult {
         .to_string_lossy()
         .replace('\\', "/");
 
+    logger.info(format!("Creating project.toml (main_scene: {})", main_scene_rel));
     if let Err(e) = create_project_toml(&config.game_name, &main_scene_rel, &staging_dir) {
+        logger.warning(format!("Failed to create project.toml: {}", e));
         result.errors.push(format!("Failed to create project.toml: {}", e));
+    } else {
+        logger.success("Created project.toml");
     }
+    current_step += 1;
 
     // Build for each target platform
     for target in &config.targets {
+        update_progress(current_step, &format!("Building for {}...", target.display_name()));
+        logger.info(format!("Building for {}...", target.display_name()));
+
         // Get the pre-built runtime binary
         let runtime_binary = match get_runtime_binary(target) {
-            Ok(path) => path,
+            Ok(path) => {
+                logger.info(format!("  Runtime: {:?}", path));
+                path
+            }
             Err(e) => {
+                logger.error(format!("Failed to find runtime for {}: {}", target.display_name(), e));
                 result.errors.push(format!(
                     "Failed to find runtime for {}: {}",
                     target.display_name(),
                     e
                 ));
+                current_step += 1;
                 continue;
             }
         };
@@ -177,13 +251,17 @@ pub fn run_export(config: &ExportConfig) -> ExportResult {
         // Create the output exe name
         let exe_name = format!("{}{}", config.game_name, target.exe_extension());
         let output_exe = config.output_dir.join(&exe_name);
+        logger.info(format!("  Output: {:?}", output_exe));
 
         // Create packed executable (runtime + assets in single file)
-        match super::pack::create_packed_exe(&runtime_binary, &staging_dir, &output_exe) {
+        logger.info("  Packing assets with zstd compression...");
+        match super::pack::create_packed_exe(&runtime_binary, &staging_dir, &output_exe, logger) {
             Ok(()) => {
+                logger.success(format!("Created {}", exe_name));
                 result.output_paths.push(output_exe);
             }
             Err(e) => {
+                logger.error(format!("Failed to create packed exe for {}: {}", target.display_name(), e));
                 result.errors.push(format!(
                     "Failed to create packed exe for {}: {}",
                     target.display_name(),
@@ -191,28 +269,37 @@ pub fn run_export(config: &ExportConfig) -> ExportResult {
                 ));
             }
         }
+        current_step += 1;
     }
 
     // Clean up staging directory
+    logger.info("Cleaning up staging directory...");
     let _ = fs::remove_dir_all(&staging_dir);
+    logger.success("Cleanup complete");
+
+    // Set final progress
+    logger.set_progress(1.0, "Export complete");
 
     // Set result message
     if result.errors.is_empty() {
-        result.message = format!(
+        let msg = format!(
             "Export completed successfully for {} platform(s)",
             config.targets.len()
         );
+        logger.success(&msg);
+        result.message = msg;
     } else if result.output_paths.is_empty() {
         result.success = false;
-        result.message = format!(
-            "Export failed with {} error(s)",
-            result.errors.len()
-        );
+        let msg = format!("Export failed with {} error(s)", result.errors.len());
+        logger.error(&msg);
+        result.message = msg;
     } else {
-        result.message = format!(
+        let msg = format!(
             "Export completed with {} warning(s)",
             result.errors.len()
         );
+        logger.warning(&msg);
+        result.message = msg;
     }
 
     result
@@ -280,7 +367,7 @@ fn get_runtime_binary(target: &ExportTarget) -> Result<PathBuf, String> {
         Ok(binary_path)
     } else {
         Err(format!(
-            "Pre-built runtime for {} not found at {:?}. Please build the runtime for this platform.",
+            "Pre-built runtime for {} not found at {:?}",
             target.display_name(),
             binary_path
         ))

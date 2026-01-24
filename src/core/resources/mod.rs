@@ -15,7 +15,7 @@ pub use assets::{AssetBrowserState, AssetViewMode};
 pub use camera::{OrbitCameraState, TabCameraState};
 pub use console::{ConsoleState, LogEntry, LogLevel};
 pub use default_camera::DefaultCameraEntity;
-pub use export::ExportState;
+pub use export::{ExportLogEntry, ExportLogLevel, ExportLogger, ExportState};
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
 pub use scene::{OpenScript, SceneManagerState, SceneTab, ScriptError};

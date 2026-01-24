@@ -5,6 +5,7 @@
 
 pub mod components;
 pub mod scene_format;
+pub mod spawner;
 
 // Re-export commonly used items
 pub use components::{
@@ -12,3 +13,4 @@ pub use components::{
     MeshPrimitiveType, PhysicsBodyData, PhysicsBodyType, SceneInstanceData,
 };
 pub use scene_format::{EditorCameraData, NodeData, SceneData, TransformData};
+pub use spawner::{spawn_node_components, SpawnConfig};
