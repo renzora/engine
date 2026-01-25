@@ -26,7 +26,7 @@ pub struct EditorResources<'w> {
     pub export_state: ResMut<'w, ExportState>,
     pub window_state: ResMut<'w, WindowState>,
     pub gizmo: ResMut<'w, GizmoState>,
-    pub orbit: Res<'w, OrbitCameraState>,
+    pub orbit: ResMut<'w, OrbitCameraState>,
     pub camera2d_state: Res<'w, Camera2DState>,
     pub keybindings: ResMut<'w, KeyBindings>,
     pub plugin_host: ResMut<'w, PluginHost>,
@@ -348,7 +348,7 @@ pub fn editor_ui(
                 ctx,
                 &mut editor.viewport,
                 &mut editor.assets,
-                &editor.orbit,
+                &mut editor.orbit,
                 &editor.camera2d_state,
                 actual_hierarchy_width,
                 actual_inspector_width,
@@ -364,7 +364,7 @@ pub fn editor_ui(
             ctx,
             &mut editor.viewport,
             &mut editor.assets,
-            &editor.orbit,
+            &mut editor.orbit,
             &editor.camera2d_state,
             0.0, // No left panel
             0.0, // No right panel

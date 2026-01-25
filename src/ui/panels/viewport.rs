@@ -8,12 +8,16 @@ use crate::viewport::Camera2DState;
 const VIEWPORT_TABS_HEIGHT: f32 = 24.0;
 /// Width of rulers in 2D mode
 const RULER_SIZE: f32 = 20.0;
+/// Size of the axis gizmo
+const AXIS_GIZMO_SIZE: f32 = 100.0;
+/// Margin from viewport edge
+const AXIS_GIZMO_MARGIN: f32 = 10.0;
 
 pub fn render_viewport(
     ctx: &egui::Context,
     viewport: &mut ViewportState,
     assets: &mut AssetBrowserState,
-    orbit: &OrbitCameraState,
+    orbit: &mut OrbitCameraState,
     camera2d_state: &Camera2DState,
     left_panel_width: f32,
     right_panel_width: f32,
@@ -309,7 +313,7 @@ pub fn render_viewport_content(
     ui: &mut egui::Ui,
     viewport: &mut ViewportState,
     assets: &mut AssetBrowserState,
-    orbit: &OrbitCameraState,
+    orbit: &mut OrbitCameraState,
     viewport_texture_id: Option<TextureId>,
     content_rect: Rect,
 ) {
@@ -343,6 +347,11 @@ pub fn render_viewport_content(
             egui::FontId::proportional(14.0),
             Color32::from_rgb(100, 100, 110),
         );
+    }
+
+    // Render axis orientation gizmo in 3D mode
+    if viewport.viewport_mode == ViewportMode::Mode3D {
+        render_axis_gizmo(&ctx, orbit, content_rect);
     }
 
     // Handle asset drag and drop from assets panel
@@ -417,4 +426,132 @@ fn calculate_camera_position(focus: Vec3, distance: f32, yaw: f32, pitch: f32) -
     let y = focus.y + distance * pitch.sin();
     let z = focus.z + distance * pitch.cos() * yaw.cos();
     Vec3::new(x, y, z)
+}
+
+/// Render the axis orientation gizmo in the top right corner of the 3D viewport (Blender-style)
+fn render_axis_gizmo(ctx: &egui::Context, orbit: &mut OrbitCameraState, content_rect: Rect) {
+    // Center of the gizmo (top right corner with margin)
+    let center = Pos2::new(
+        content_rect.max.x - AXIS_GIZMO_SIZE / 2.0 - AXIS_GIZMO_MARGIN,
+        content_rect.min.y + AXIS_GIZMO_SIZE / 2.0 + AXIS_GIZMO_MARGIN,
+    );
+
+    // Calculate camera view matrix components
+    let cos_yaw = orbit.yaw.cos();
+    let sin_yaw = orbit.yaw.sin();
+    let cos_pitch = orbit.pitch.cos();
+    let sin_pitch = orbit.pitch.sin();
+
+    // Define world axes with their colors and view directions (yaw, pitch)
+    // Positive axes
+    let axes = [
+        (Vec3::X, Color32::from_rgb(237, 76, 92), "X", std::f32::consts::FRAC_PI_2, 0.0),      // +X: look from +X toward origin
+        (Vec3::Y, Color32::from_rgb(139, 201, 63), "Y", 0.0, std::f32::consts::FRAC_PI_2),     // +Y: look from top
+        (Vec3::Z, Color32::from_rgb(68, 138, 255), "Z", 0.0, 0.0),                              // +Z: look from +Z toward origin
+        (-Vec3::X, Color32::from_rgb(150, 50, 60), "-X", -std::f32::consts::FRAC_PI_2, 0.0),   // -X
+        (-Vec3::Y, Color32::from_rgb(80, 120, 40), "-Y", 0.0, -std::f32::consts::FRAC_PI_2),   // -Y: look from bottom
+        (-Vec3::Z, Color32::from_rgb(40, 80, 150), "-Z", std::f32::consts::PI, 0.0),           // -Z
+    ];
+
+    let axis_length = AXIS_GIZMO_SIZE / 2.0 - 12.0;
+    let click_radius = 12.0;
+
+    // Project each axis to screen space
+    let mut projected_axes: Vec<(f32, Vec2, Color32, &str, f32, f32, bool)> = axes
+        .iter()
+        .map(|(world_axis, color, label, target_yaw, target_pitch)| {
+            // Transform world axis to view space
+            let rotated_yaw = Vec3::new(
+                world_axis.x * cos_yaw + world_axis.z * sin_yaw,
+                world_axis.y,
+                -world_axis.x * sin_yaw + world_axis.z * cos_yaw,
+            );
+
+            let view_axis = Vec3::new(
+                rotated_yaw.x,
+                rotated_yaw.y * cos_pitch + rotated_yaw.z * sin_pitch,
+                -rotated_yaw.y * sin_pitch + rotated_yaw.z * cos_pitch,
+            );
+
+            let screen_offset = Vec2::new(view_axis.x * axis_length, -view_axis.y * axis_length);
+            let is_positive = world_axis.x > 0.0 || world_axis.y > 0.0 || world_axis.z > 0.0;
+
+            (view_axis.z, screen_offset, *color, *label, *target_yaw, *target_pitch, is_positive)
+        })
+        .collect();
+
+    // Sort by depth (back to front)
+    projected_axes.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    // Check for mouse interaction
+    let mouse_pos = ctx.pointer_hover_pos();
+    let clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+
+    // Use an area for the gizmo overlay
+    egui::Area::new(egui::Id::new("axis_gizmo"))
+        .fixed_pos(Pos2::new(center.x - AXIS_GIZMO_SIZE / 2.0, center.y - AXIS_GIZMO_SIZE / 2.0))
+        .order(egui::Order::Foreground)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let painter = ui.painter();
+
+            // Draw axes
+            for (depth, offset, color, label, target_yaw, target_pitch, is_positive) in &projected_axes {
+                let end_pos = Pos2::new(center.x + offset.x, center.y + offset.y);
+
+                // Check if mouse is hovering over this axis end
+                let is_hovered = mouse_pos.map_or(false, |mp| {
+                    let dist = ((mp.x - end_pos.x).powi(2) + (mp.y - end_pos.y).powi(2)).sqrt();
+                    dist < click_radius
+                });
+
+                // Handle click
+                if is_hovered && clicked {
+                    orbit.yaw = *target_yaw;
+                    orbit.pitch = *target_pitch;
+                }
+
+                // Fade axes that point away from camera
+                let base_alpha = if *depth < -0.1 { 100 } else { 255 };
+                let alpha = if is_hovered { 255 } else { base_alpha };
+                let axis_color = Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+
+                // Draw axis line - thicker for positive axes
+                let line_width = if *is_positive {
+                    if *depth < -0.1 { 2.0 } else { 3.0 }
+                } else {
+                    if *depth < -0.1 { 1.0 } else { 1.5 }
+                };
+
+                // Only draw lines for positive axes (negative ones just have end caps)
+                if *is_positive {
+                    painter.line_segment([center, end_pos], Stroke::new(line_width, axis_color));
+                }
+
+                // Draw axis end cap - filled circle for positive, ring for negative
+                let cap_size = if is_hovered {
+                    if *is_positive { 11.0 } else { 8.0 }
+                } else {
+                    if *is_positive { 9.0 } else { 6.0 }
+                };
+
+                if *is_positive {
+                    painter.circle_filled(end_pos, cap_size, axis_color);
+                    // Draw label on the cap
+                    painter.text(
+                        end_pos,
+                        egui::Align2::CENTER_CENTER,
+                        *label,
+                        FontId::proportional(11.0),
+                        Color32::WHITE,
+                    );
+                } else {
+                    // Negative axis - smaller hollow circle
+                    painter.circle_stroke(end_pos, cap_size, Stroke::new(2.0, axis_color));
+                }
+            }
+
+            // Draw center dot
+            painter.circle_filled(center, 3.0, Color32::from_rgb(180, 180, 180));
+        });
 }
