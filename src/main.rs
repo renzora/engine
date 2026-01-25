@@ -164,8 +164,13 @@ fn main() {
                 .after(input::handle_scene_hierarchy_drop)
                 .run_if(in_state(AppState::Editor)),
         )
-        // When entering Editor state: maximize window, despawn splash camera and load scene
-        .add_systems(OnEnter(AppState::Editor), (maximize_window, despawn_splash_camera, load_project_scene).chain())
+        // When entering Editor state: maximize window, despawn splash camera, load scene, and load editor state
+        .add_systems(OnEnter(AppState::Editor), (maximize_window, despawn_splash_camera, load_project_scene, load_editor_state).chain())
+        // Save editor state periodically (every 5 seconds if dirty)
+        .add_systems(Update, save_editor_state_periodic.run_if(in_state(AppState::Editor)))
+        // Initialize editor state tracking resources
+        .init_resource::<project::EditorStateDirty>()
+        .init_resource::<project::LoadedEditorState>()
         .run();
 }
 
@@ -284,4 +289,132 @@ fn load_project_scene(
             console_warn!("Scene", "Main scene not found: {}", scene_path.display());
         }
     }
+}
+
+/// System to load and apply editor state when entering Editor state
+fn load_editor_state(
+    current_project: Option<Res<project::CurrentProject>>,
+    mut viewport: ResMut<core::ViewportState>,
+    mut settings: ResMut<core::EditorSettings>,
+    mut assets: ResMut<core::AssetBrowserState>,
+    mut loaded_state: ResMut<project::LoadedEditorState>,
+) {
+    let Some(project) = current_project else { return };
+
+    // Load editor state from project
+    let state = project::EditorStateConfig::load(&project.path);
+
+    // Apply layout settings (clamp to safe maximums to prevent crashes)
+    viewport.hierarchy_width = state.layout.hierarchy_width.clamp(100.0, 500.0);
+    viewport.inspector_width = state.layout.inspector_width.clamp(100.0, 500.0);
+    viewport.assets_height = state.layout.assets_height.clamp(100.0, 400.0);
+    viewport.bottom_panel_tab = match state.layout.bottom_panel_tab.as_str() {
+        "console" => core::BottomPanelTab::Console,
+        _ => core::BottomPanelTab::Assets,
+    };
+    viewport.viewport_mode = match state.viewport.mode.as_str() {
+        "2d" => viewport::ViewportMode::Mode2D,
+        _ => viewport::ViewportMode::Mode3D,
+    };
+
+    // Apply editor settings
+    settings.dev_mode = state.settings.dev_mode;
+    settings.camera_move_speed = state.settings.camera_move_speed;
+    settings.show_grid = state.settings.show_grid;
+    settings.grid_size = state.settings.grid_size;
+    settings.grid_divisions = state.settings.grid_divisions;
+    settings.grid_color = state.settings.grid_color;
+    settings.render_toggles.textures = state.settings.render.textures;
+    settings.render_toggles.wireframe = state.settings.render.wireframe;
+    settings.render_toggles.lighting = state.settings.render.lighting;
+    settings.render_toggles.shadows = state.settings.render.shadows;
+
+    // Apply asset browser settings
+    assets.zoom = state.asset_browser.zoom;
+    assets.view_mode = match state.asset_browser.view_mode.as_str() {
+        "list" => core::AssetViewMode::List,
+        _ => core::AssetViewMode::Grid,
+    };
+
+    // Store loaded state for saving back
+    loaded_state.0 = Some(state);
+
+    console_info!("Editor", "Loaded editor state from project");
+}
+
+/// Timer for periodic editor state saving
+#[derive(Resource)]
+struct EditorStateSaveTimer(Timer);
+
+impl Default for EditorStateSaveTimer {
+    fn default() -> Self {
+        Self(Timer::from_seconds(5.0, TimerMode::Repeating))
+    }
+}
+
+/// System to periodically save editor state if dirty
+fn save_editor_state_periodic(
+    time: Res<Time>,
+    mut timer: Local<EditorStateSaveTimer>,
+    current_project: Option<Res<project::CurrentProject>>,
+    viewport: Res<core::ViewportState>,
+    settings: Res<core::EditorSettings>,
+    assets: Res<core::AssetBrowserState>,
+    mut dirty: ResMut<project::EditorStateDirty>,
+) {
+    timer.0.tick(time.delta());
+
+    if !timer.0.just_finished() {
+        return;
+    }
+
+    let Some(project) = current_project else { return };
+
+    // Collect current state
+    let state = project::EditorStateConfig {
+        layout: project::editor_state::LayoutConfig {
+            hierarchy_width: viewport.hierarchy_width,
+            inspector_width: viewport.inspector_width,
+            assets_height: viewport.assets_height,
+            bottom_panel_tab: match viewport.bottom_panel_tab {
+                core::BottomPanelTab::Console => "console".to_string(),
+                core::BottomPanelTab::Assets => "assets".to_string(),
+            },
+        },
+        settings: project::editor_state::SettingsConfig {
+            dev_mode: settings.dev_mode,
+            camera_move_speed: settings.camera_move_speed,
+            show_grid: settings.show_grid,
+            grid_size: settings.grid_size,
+            grid_divisions: settings.grid_divisions,
+            grid_color: settings.grid_color,
+            render: project::editor_state::RenderConfig {
+                textures: settings.render_toggles.textures,
+                wireframe: settings.render_toggles.wireframe,
+                lighting: settings.render_toggles.lighting,
+                shadows: settings.render_toggles.shadows,
+            },
+        },
+        asset_browser: project::editor_state::AssetBrowserConfig {
+            zoom: assets.zoom,
+            view_mode: match assets.view_mode {
+                core::AssetViewMode::List => "list".to_string(),
+                core::AssetViewMode::Grid => "grid".to_string(),
+            },
+        },
+        viewport: project::editor_state::ViewportConfig {
+            mode: match viewport.viewport_mode {
+                viewport::ViewportMode::Mode2D => "2d".to_string(),
+                viewport::ViewportMode::Mode3D => "3d".to_string(),
+            },
+        },
+    };
+
+    // Save to disk
+    if let Err(e) = state.save(&project.path) {
+        error!("Failed to save editor state: {}", e);
+    }
+
+    // Clear dirty flag
+    dirty.0 = false;
 }

@@ -233,6 +233,9 @@ pub fn editor_ui(
     let in_play_mode = editor.play_mode.is_in_play_mode();
 
     // Use stored panel widths from viewport state (or 0 in play mode)
+    // Don't clamp here - let the panels handle their own clamping to preserve loaded values
+    let screen_rect = ctx.screen_rect();
+
     let stored_hierarchy_width = if in_play_mode { 0.0 } else { editor.viewport.hierarchy_width };
     let stored_inspector_width = if in_play_mode { 0.0 } else { editor.viewport.inspector_width };
     let stored_assets_height = if in_play_mode { 0.0 } else { editor.viewport.assets_height };
@@ -250,23 +253,7 @@ pub fn editor_ui(
             TITLE_BAR_HEIGHT + toolbar_height,
         );
 
-        // Render bottom panel (assets + console tabs)
-        let bottom_events = render_assets(
-            ctx,
-            current_project.as_deref(),
-            &mut editor.viewport,
-            &mut editor.assets,
-            &mut editor.scene_state,
-            &mut editor.console,
-            stored_hierarchy_width,
-            stored_inspector_width,
-            stored_assets_height,
-            &editor.plugin_host,
-            &mut ui_renderer,
-        );
-        all_ui_events.extend(bottom_events);
-
-        // Render left panel (hierarchy) - returns actual width after resize
+        // Render left panel (hierarchy) first - returns actual width after resize
         let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + tabs_height;
 
         let active_tab = editor.scene_state.active_scene_tab;
@@ -320,14 +307,30 @@ pub fn editor_ui(
         // Update stored inspector width
         editor.viewport.inspector_width = inspector_width;
 
+        // Render bottom panel (assets + console tabs) AFTER side panels
+        // This makes it only span the area between the side panels
+        let bottom_events = render_assets(
+            ctx,
+            current_project.as_deref(),
+            &mut editor.viewport,
+            &mut editor.assets,
+            &mut editor.scene_state,
+            &mut editor.console,
+            stored_hierarchy_width,
+            stored_inspector_width,
+            stored_assets_height,
+            &editor.plugin_host,
+            &mut ui_renderer,
+        );
+        all_ui_events.extend(bottom_events);
+
         (tabs_height, hierarchy_width, inspector_width)
     };
 
     // Calculate available height for central area
     let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + scene_tabs_height;
-    let screen_rect = ctx.screen_rect();
     let status_bar_height = if in_play_mode { 0.0 } else { 24.0 };
-    let central_height = screen_rect.height() - content_start_y - stored_assets_height - status_bar_height;
+    let central_height = (screen_rect.height() - content_start_y - stored_assets_height - status_bar_height).max(100.0);
 
     // In play mode, skip script editor and render full viewport
     if !in_play_mode {

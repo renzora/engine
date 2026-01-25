@@ -242,12 +242,17 @@ pub fn render_inspector(
     let plugin_tabs = api.get_tabs_for_location(TabLocation::Right);
     let active_plugin_tab = api.get_active_tab(TabLocation::Right);
 
+    // Calculate max width based on screen size (max 500px to match load-time clamping)
+    let screen_width = ctx.screen_rect().width();
+    let min_viewport_width = 200.0;
+    let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
+    let display_width = stored_width.clamp(100.0, max_width);
+    actual_width = display_width;
+
     egui::SidePanel::right("inspector")
-        .default_width(stored_width)
-        .resizable(true)
+        .exact_width(display_width)
+        .resizable(false)
         .show(ctx, |ui| {
-            // Get actual width from the panel
-            actual_width = ui.available_width() + 16.0; // Account for panel padding
 
             // Render tab bar if there are plugin tabs
             if !plugin_tabs.is_empty() {
@@ -292,6 +297,34 @@ pub fn render_inspector(
                 ui_events.extend(events);
                 scene_changed = changed;
             }
+        });
+
+    // Custom resize handle at the left edge of the panel (full height)
+    let resize_x = screen_width - display_width - 4.0;
+    let resize_height = ctx.screen_rect().height();
+
+    egui::Area::new(egui::Id::new("inspector_resize"))
+        .fixed_pos(egui::Pos2::new(resize_x, 0.0))
+        .order(egui::Order::Foreground)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let (resize_rect, resize_response) = ui.allocate_exact_size(
+                Vec2::new(6.0, resize_height),
+                egui::Sense::drag(),
+            );
+
+            if resize_response.hovered() || resize_response.dragged() {
+                ctx.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+            }
+
+            if resize_response.dragged() {
+                let delta = resize_response.drag_delta().x;
+                // Only update actual_width when user resizes
+                actual_width = (display_width - delta).clamp(100.0, max_width);
+            }
+
+            // Invisible resize handle - just show cursor change
+            let _ = resize_rect; // Still need the rect for interaction
         });
 
     (ui_events, actual_width, scene_changed)

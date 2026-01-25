@@ -37,6 +37,9 @@ pub fn render_assets(
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let panel_height = viewport.assets_height;
+    let screen_height = ctx.screen_rect().height();
+    // Ensure bottom panel doesn't exceed safe limits (leave 300px min for viewport + toolbar)
+    let max_height = ((screen_height - 300.0) * 0.5).max(100.0).min(400.0);
 
     // Get plugin tabs for bottom panel
     let api = plugin_host.api();
@@ -67,7 +70,7 @@ pub fn render_assets(
 
             if resize_response.dragged() {
                 let delta = resize_response.drag_delta().y;
-                viewport.assets_height = (panel_height - delta).clamp(100.0, 600.0);
+                viewport.assets_height = (panel_height - delta).clamp(100.0, max_height);
             }
 
             ui.add_space(2.0);

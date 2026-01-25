@@ -63,12 +63,17 @@ pub fn render_hierarchy(
     let plugin_tabs = api.get_tabs_for_location(TabLocation::Left);
     let active_plugin_tab = api.get_active_tab(TabLocation::Left);
 
+    // Calculate max width based on screen size (max 500px to match load-time clamping)
+    let screen_width = ctx.screen_rect().width();
+    let min_viewport_width = 200.0;
+    let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
+    let display_width = stored_width.clamp(100.0, max_width);
+    actual_width = display_width;
+
     egui::SidePanel::left("hierarchy")
-        .default_width(stored_width)
-        .resizable(true)
+        .exact_width(display_width)
+        .resizable(false)
         .show(ctx, |ui| {
-            // Get actual width from the panel
-            actual_width = ui.available_width() + 16.0; // Account for panel padding
 
             // Render tab bar if there are plugin tabs
             if !plugin_tabs.is_empty() {
@@ -114,6 +119,34 @@ pub fn render_hierarchy(
                 ui_events.extend(events);
                 scene_changed = changed;
             }
+        });
+
+    // Custom resize handle at the right edge of the panel (full height)
+    let resize_x = display_width - 2.0;
+    let resize_height = ctx.screen_rect().height();
+
+    egui::Area::new(egui::Id::new("hierarchy_resize"))
+        .fixed_pos(Pos2::new(resize_x, 0.0))
+        .order(egui::Order::Foreground)
+        .interactable(true)
+        .show(ctx, |ui| {
+            let (resize_rect, resize_response) = ui.allocate_exact_size(
+                Vec2::new(6.0, resize_height),
+                Sense::drag(),
+            );
+
+            if resize_response.hovered() || resize_response.dragged() {
+                ctx.set_cursor_icon(CursorIcon::ResizeHorizontal);
+            }
+
+            if resize_response.dragged() {
+                let delta = resize_response.drag_delta().x;
+                // Only update actual_width when user resizes
+                actual_width = (display_width + delta).clamp(100.0, max_width);
+            }
+
+            // Invisible resize handle - just show cursor change
+            let _ = resize_rect; // Still need the rect for interaction
         });
 
     // Show drag tooltip
@@ -381,6 +414,11 @@ fn render_tree_node(
         hierarchy.drag_entity = Some(entity);
     }
 
+    // Click anywhere on row to select (unless locked or dragging)
+    if response.clicked() && hierarchy.drag_entity.is_none() && !editor_entity.locked {
+        selection.selected_entity = Some(entity);
+    }
+
     // Show drag cursor when dragging
     if hierarchy.drag_entity.is_some() && response.hovered() {
         ctx.set_cursor_icon(CursorIcon::Grabbing);
@@ -390,35 +428,30 @@ fn render_tree_node(
     let mut current_drop_target: Option<HierarchyDropPosition> = None;
 
     if let Some(drag_entity) = hierarchy.drag_entity {
-        if drag_entity != entity && response.hovered() {
-            if let Some(pointer_pos) = ctx.pointer_hover_pos() {
-                let relative_y = pointer_pos.y - rect.min.y;
-                let drop_zone_size = ROW_HEIGHT / 4.0;
+        // Check if pointer is over this row (don't rely on response.hovered() during drag)
+        if let Some(pointer_pos) = ctx.pointer_hover_pos() {
+            let is_pointer_over_row = rect.contains(pointer_pos);
 
-                if relative_y < drop_zone_size {
-                    // Top zone - insert before
+            if drag_entity != entity && is_pointer_over_row {
+                let relative_y = pointer_pos.y - rect.min.y;
+                let edge_zone = ROW_HEIGHT / 3.0; // Top and bottom third for line dividers
+
+                if relative_y < edge_zone {
+                    // Top zone - insert before (show line)
                     current_drop_target = Some(HierarchyDropPosition::Before);
                     hierarchy.drop_target = Some(HierarchyDropTarget {
                         entity,
                         position: HierarchyDropPosition::Before,
                     });
-                } else if relative_y > ROW_HEIGHT - drop_zone_size {
-                    // Bottom zone - insert after (or as first child if has children and expanded)
-                    if has_children && is_expanded {
-                        current_drop_target = Some(HierarchyDropPosition::AsChild);
-                        hierarchy.drop_target = Some(HierarchyDropTarget {
-                            entity,
-                            position: HierarchyDropPosition::AsChild,
-                        });
-                    } else {
-                        current_drop_target = Some(HierarchyDropPosition::After);
-                        hierarchy.drop_target = Some(HierarchyDropTarget {
-                            entity,
-                            position: HierarchyDropPosition::After,
-                        });
-                    }
+                } else if relative_y > ROW_HEIGHT - edge_zone {
+                    // Bottom zone - insert after (show line)
+                    current_drop_target = Some(HierarchyDropPosition::After);
+                    hierarchy.drop_target = Some(HierarchyDropTarget {
+                        entity,
+                        position: HierarchyDropPosition::After,
+                    });
                 } else {
-                    // Middle zone - insert as child
+                    // Middle zone - insert as child (highlight parent)
                     current_drop_target = Some(HierarchyDropPosition::AsChild);
                     hierarchy.drop_target = Some(HierarchyDropTarget {
                         entity,
@@ -429,35 +462,39 @@ fn render_tree_node(
         }
     }
 
-    // Draw drop indicators
+    // Draw drop indicators on foreground layer so they appear on top of content
+    // (AsChild border is drawn after children are rendered, so it encompasses the whole group)
     if let Some(drop_pos) = current_drop_target {
-        let indent_x = base_x + (depth as f32 * INDENT_SIZE);
+        let fg_painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("hierarchy_drop_indicator")));
         match drop_pos {
             HierarchyDropPosition::Before => {
-                // Horizontal line at top with circle indicator
-                let y = rect.min.y;
-                painter.circle_filled(Pos2::new(indent_x, y), 3.0, DROP_LINE_COLOR);
-                painter.line_segment(
-                    [Pos2::new(indent_x, y), Pos2::new(rect.max.x - 4.0, y)],
-                    Stroke::new(2.0, DROP_LINE_COLOR),
+                // Full-width horizontal line at top
+                let y = rect.min.y + 1.0;
+                fg_painter.line_segment(
+                    [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
+                    Stroke::new(3.0, DROP_LINE_COLOR),
                 );
             }
             HierarchyDropPosition::After => {
-                // Horizontal line at bottom with circle indicator
-                let y = rect.max.y;
-                painter.circle_filled(Pos2::new(indent_x, y), 3.0, DROP_LINE_COLOR);
-                painter.line_segment(
-                    [Pos2::new(indent_x, y), Pos2::new(rect.max.x - 4.0, y)],
-                    Stroke::new(2.0, DROP_LINE_COLOR),
+                // Full-width horizontal line at bottom
+                let y = rect.max.y - 1.0;
+                fg_painter.line_segment(
+                    [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
+                    Stroke::new(3.0, DROP_LINE_COLOR),
                 );
             }
             HierarchyDropPosition::AsChild => {
-                // Highlight entire row with border
-                painter.rect_filled(rect, 3.0, drop_child_color());
-                painter.rect_stroke(rect, 3.0, Stroke::new(1.5, DROP_LINE_COLOR), egui::StrokeKind::Outside);
+                // Border will be drawn after children - just store the top position
             }
         }
     }
+
+    // Remember the top of this row if it's an AsChild target (for group border)
+    let group_top = if current_drop_target == Some(HierarchyDropPosition::AsChild) {
+        Some(rect.min.y)
+    } else {
+        None
+    };
 
     // Dim the row if it's being dragged or hidden
     if is_being_dragged {
@@ -794,6 +831,9 @@ fn render_tree_node(
         });
     });
 
+    // Track the bottom of the group for AsChild border
+    let mut group_bottom = rect.max.y;
+
     // Render children if expanded
     if has_children && is_expanded {
         if let Some(children) = children {
@@ -838,7 +878,20 @@ fn render_tree_node(
                     parent_lines.pop();
                 }
             }
+
+            // Update group bottom to current cursor position (after all children)
+            group_bottom = ui.cursor().top();
         }
+    }
+
+    // Draw AsChild group border after children are rendered (so it encompasses the whole group)
+    if let Some(top) = group_top {
+        let fg_painter = ctx.layer_painter(egui::LayerId::new(egui::Order::Foreground, egui::Id::new("hierarchy_drop_indicator")));
+        let group_rect = egui::Rect::from_min_max(
+            Pos2::new(rect.min.x, top),
+            Pos2::new(rect.max.x, group_bottom),
+        );
+        fg_painter.rect_stroke(group_rect, 2.0, Stroke::new(2.0, DROP_LINE_COLOR), egui::StrokeKind::Inside);
     }
 
     (ui_events, scene_changed)
