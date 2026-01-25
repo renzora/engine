@@ -14,7 +14,8 @@ pub enum EditorAction {
     CameraMoveFaster,
     FocusSelected,
 
-    // Gizmo modes
+    // Tool modes
+    ToolSelect,
     GizmoTranslate,
     GizmoRotate,
     GizmoScale,
@@ -46,6 +47,7 @@ impl EditorAction {
             EditorAction::CameraMoveDown => "Move Down",
             EditorAction::CameraMoveFaster => "Move Faster (Hold)",
             EditorAction::FocusSelected => "Focus Selected",
+            EditorAction::ToolSelect => "Select Mode",
             EditorAction::GizmoTranslate => "Translate Mode",
             EditorAction::GizmoRotate => "Rotate Mode",
             EditorAction::GizmoScale => "Scale Mode",
@@ -72,9 +74,10 @@ impl EditorAction {
             | EditorAction::CameraMoveFaster
             | EditorAction::FocusSelected => "Camera",
 
-            EditorAction::GizmoTranslate
+            EditorAction::ToolSelect
+            | EditorAction::GizmoTranslate
             | EditorAction::GizmoRotate
-            | EditorAction::GizmoScale => "Gizmo",
+            | EditorAction::GizmoScale => "Tools",
 
             EditorAction::Delete | EditorAction::Deselect => "Selection",
 
@@ -100,7 +103,8 @@ impl EditorAction {
             EditorAction::CameraMoveDown,
             EditorAction::CameraMoveFaster,
             EditorAction::FocusSelected,
-            // Gizmo
+            // Tools
+            EditorAction::ToolSelect,
             EditorAction::GizmoTranslate,
             EditorAction::GizmoRotate,
             EditorAction::GizmoScale,
@@ -192,7 +196,8 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::CameraMoveFaster, KeyBinding::new(KeyCode::ShiftLeft));
         bindings.insert(EditorAction::FocusSelected, KeyBinding::new(KeyCode::KeyF));
 
-        // Gizmo defaults
+        // Tool defaults
+        bindings.insert(EditorAction::ToolSelect, KeyBinding::new(KeyCode::KeyQ));
         bindings.insert(EditorAction::GizmoTranslate, KeyBinding::new(KeyCode::KeyW));
         bindings.insert(EditorAction::GizmoRotate, KeyBinding::new(KeyCode::KeyE));
         bindings.insert(EditorAction::GizmoScale, KeyBinding::new(KeyCode::KeyR));

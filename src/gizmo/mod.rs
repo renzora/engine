@@ -16,7 +16,7 @@ pub use grid::draw_grid;
 pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
 pub use meshes::{setup_gizmo_meshes, update_gizmo_mesh_transforms, update_gizmo_materials, GizmoMesh, GizmoPart, GizmoRoot};
 pub use physics::draw_physics_gizmos;
-pub use state::{DragAxis, GizmoMode, GizmoState, SnapSettings};
+pub use state::{BoxSelectionState, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings};
 
 // 2D gizmo exports
 pub use gizmo_2d::draw_selection_gizmo_2d;

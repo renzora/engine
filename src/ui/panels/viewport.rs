@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState};
 use crate::viewport::Camera2DState;
 
 /// Height of the viewport mode tabs bar
@@ -19,6 +19,7 @@ pub fn render_viewport(
     assets: &mut AssetBrowserState,
     orbit: &mut OrbitCameraState,
     camera2d_state: &Camera2DState,
+    gizmo: &GizmoState,
     left_panel_width: f32,
     right_panel_width: f32,
     content_start_y: f32,
@@ -65,6 +66,11 @@ pub fn render_viewport(
             ui.set_clip_rect(content_rect);
             render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id, content_rect);
         });
+
+    // Render box selection rectangle (if active)
+    if gizmo.box_selection.active && gizmo.box_selection.is_drag() {
+        render_box_selection(ctx, gizmo);
+    }
 }
 
 /// Render the 3D/2D mode tabs at the top of the viewport
@@ -553,5 +559,38 @@ fn render_axis_gizmo(ctx: &egui::Context, orbit: &mut OrbitCameraState, content_
 
             // Draw center dot
             painter.circle_filled(center, 3.0, Color32::from_rgb(180, 180, 180));
+        });
+}
+
+/// Render the box selection rectangle
+fn render_box_selection(ctx: &egui::Context, gizmo: &GizmoState) {
+    let (min_x, min_y, max_x, max_y) = gizmo.box_selection.get_rect();
+
+    let rect = Rect::from_min_max(
+        Pos2::new(min_x, min_y),
+        Pos2::new(max_x, max_y),
+    );
+
+    egui::Area::new(egui::Id::new("box_selection"))
+        .fixed_pos(rect.min)
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let painter = ui.painter();
+
+            // Fill with semi-transparent blue
+            painter.rect_filled(
+                rect,
+                0.0,
+                Color32::from_rgba_unmultiplied(66, 150, 250, 40),
+            );
+
+            // Draw border
+            painter.rect_stroke(
+                rect,
+                0.0,
+                Stroke::new(1.0, Color32::from_rgb(66, 150, 250)),
+                egui::StrokeKind::Outside,
+            );
         });
 }

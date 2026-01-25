@@ -353,6 +353,7 @@ pub fn editor_ui(
                 &mut editor.assets,
                 &mut editor.orbit,
                 &editor.camera2d_state,
+                &editor.gizmo,
                 actual_hierarchy_width,
                 actual_inspector_width,
                 content_start_y,
@@ -369,6 +370,7 @@ pub fn editor_ui(
             &mut editor.assets,
             &mut editor.orbit,
             &editor.camera2d_state,
+            &editor.gizmo,
             0.0, // No left panel
             0.0, // No right panel
             content_start_y,

@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{KeyBindings, EditorAction, SelectionState};
-use crate::gizmo::{GizmoMode, GizmoState};
+use crate::gizmo::{EditorTool, GizmoMode, GizmoState};
 
 pub fn handle_selection(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -29,14 +29,20 @@ pub fn handle_selection(
         selection.clear();
     }
 
-    // Gizmo mode hotkeys
+    // Tool mode hotkeys
+    if keybindings.just_pressed(EditorAction::ToolSelect, &keyboard) {
+        gizmo.tool = EditorTool::Select;
+    }
     if keybindings.just_pressed(EditorAction::GizmoTranslate, &keyboard) {
+        gizmo.tool = EditorTool::Transform;
         gizmo.mode = GizmoMode::Translate;
     }
     if keybindings.just_pressed(EditorAction::GizmoRotate, &keyboard) {
+        gizmo.tool = EditorTool::Transform;
         gizmo.mode = GizmoMode::Rotate;
     }
     if keybindings.just_pressed(EditorAction::GizmoScale, &keyboard) {
+        gizmo.tool = EditorTool::Transform;
         gizmo.mode = GizmoMode::Scale;
     }
 }

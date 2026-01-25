@@ -1,5 +1,15 @@
 use bevy::prelude::*;
 
+/// Current editor tool mode
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum EditorTool {
+    /// Select mode - click to select, drag for box selection
+    #[default]
+    Select,
+    /// Transform mode - shows gizmo for active transform operation
+    Transform,
+}
+
 /// Current gizmo transformation mode
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 pub enum GizmoMode {
@@ -100,9 +110,40 @@ impl SnapSettings {
     }
 }
 
+/// State for box selection (drag to select multiple objects)
+#[derive(Default, Clone, Copy)]
+pub struct BoxSelectionState {
+    /// Whether box selection is currently active
+    pub active: bool,
+    /// Start position in screen coordinates
+    pub start_pos: [f32; 2],
+    /// Current position in screen coordinates
+    pub current_pos: [f32; 2],
+}
+
+impl BoxSelectionState {
+    /// Get the selection rectangle (min_x, min_y, max_x, max_y)
+    pub fn get_rect(&self) -> (f32, f32, f32, f32) {
+        let min_x = self.start_pos[0].min(self.current_pos[0]);
+        let max_x = self.start_pos[0].max(self.current_pos[0]);
+        let min_y = self.start_pos[1].min(self.current_pos[1]);
+        let max_y = self.start_pos[1].max(self.current_pos[1]);
+        (min_x, min_y, max_x, max_y)
+    }
+
+    /// Check if the box is large enough to be considered a drag (not just a click)
+    pub fn is_drag(&self) -> bool {
+        let dx = (self.current_pos[0] - self.start_pos[0]).abs();
+        let dy = (self.current_pos[1] - self.start_pos[1]).abs();
+        dx > 5.0 || dy > 5.0
+    }
+}
+
 /// State for the gizmo system
 #[derive(Resource)]
 pub struct GizmoState {
+    /// Current editor tool (Select or Transform)
+    pub tool: EditorTool,
     /// Current gizmo mode (translate, rotate, scale)
     pub mode: GizmoMode,
     /// Currently hovered axis (for highlighting)
@@ -127,11 +168,14 @@ pub struct GizmoState {
     pub drag_start_transform: Option<Transform>,
     /// Entity being dragged (for undo command)
     pub drag_entity: Option<Entity>,
+    /// Box selection state
+    pub box_selection: BoxSelectionState,
 }
 
 impl Default for GizmoState {
     fn default() -> Self {
         Self {
+            tool: EditorTool::default(),
             mode: GizmoMode::Translate,
             hovered_axis: None,
             is_dragging: false,
@@ -144,6 +188,7 @@ impl Default for GizmoState {
             snap: SnapSettings::default(),
             drag_start_transform: None,
             drag_entity: None,
+            box_selection: BoxSelectionState::default(),
         }
     }
 }

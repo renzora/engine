@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
 use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode, PlayModeState, PlayState};
-use crate::gizmo::{GizmoMode, GizmoState, SnapSettings};
+use crate::gizmo::{EditorTool, GizmoMode, GizmoState, SnapSettings};
 use crate::node_system::{NodeRegistry, NodeCategory};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
@@ -11,7 +11,7 @@ use crate::ui_api::UiEvent;
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
     CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, EYE, IMAGE, POLYGON,
-    SUN, CLOUD, MAGNET,
+    SUN, CLOUD, MAGNET, CURSOR,
 };
 
 pub fn render_toolbar(
@@ -53,24 +53,37 @@ pub fn render_toolbar(
                 let active_color = Color32::from_rgb(66, 150, 250);
                 let inactive_color = Color32::from_rgb(46, 46, 56);
 
+                // === Select Tool ===
+                let is_select = gizmo.tool == EditorTool::Select;
+                let select_resp = tool_button(ui, CURSOR, button_size, is_select, active_color, inactive_color);
+                if select_resp.clicked() {
+                    gizmo.tool = EditorTool::Select;
+                }
+                select_resp.on_hover_text("Select (Q)");
+
+                separator(ui);
+
                 // === Transform Tools ===
-                let is_translate = gizmo.mode == GizmoMode::Translate;
+                let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
                 let translate_resp = tool_button(ui, ARROWS_OUT_CARDINAL, button_size, is_translate, active_color, inactive_color);
                 if translate_resp.clicked() {
+                    gizmo.tool = EditorTool::Transform;
                     gizmo.mode = GizmoMode::Translate;
                 }
                 translate_resp.on_hover_text("Move (W)");
 
-                let is_rotate = gizmo.mode == GizmoMode::Rotate;
+                let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
                 let rotate_resp = tool_button(ui, ARROW_CLOCKWISE, button_size, is_rotate, active_color, inactive_color);
                 if rotate_resp.clicked() {
+                    gizmo.tool = EditorTool::Transform;
                     gizmo.mode = GizmoMode::Rotate;
                 }
                 rotate_resp.on_hover_text("Rotate (E)");
 
-                let is_scale = gizmo.mode == GizmoMode::Scale;
+                let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
                 let scale_resp = tool_button(ui, ARROWS_OUT, button_size, is_scale, active_color, inactive_color);
                 if scale_resp.clicked() {
+                    gizmo.tool = EditorTool::Transform;
                     gizmo.mode = GizmoMode::Scale;
                 }
                 scale_resp.on_hover_text("Scale (R)");

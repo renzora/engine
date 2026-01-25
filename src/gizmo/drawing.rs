@@ -5,7 +5,7 @@ use crate::core::{EditorEntity, SelectionState};
 use crate::node_system::CameraNodeData;
 use crate::shared::CameraRigData;
 
-use super::{DragAxis, GizmoMode, GizmoState, SelectionGizmoGroup, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn draw_selection_gizmo(
     selection: Res<SelectionState>,
@@ -16,6 +16,68 @@ pub fn draw_selection_gizmo(
     camera_rigs: Query<(&CameraRigData, Option<&ChildOf>)>,
     parent_transforms: Query<&Transform, Without<CameraRigData>>,
 ) {
+    // Draw selection boxes for all selected entities
+    let all_selected = selection.get_all_selected();
+    if all_selected.is_empty() {
+        return;
+    }
+
+    // Primary selection color (orange) and secondary selection color (lighter orange)
+    let primary_box_color = Color::srgb(1.0, 0.6, 0.0);
+    let secondary_box_color = Color::srgba(1.0, 0.6, 0.0, 0.6);
+
+    for entity in &all_selected {
+        let Ok(transform) = transforms.get(*entity) else {
+            continue;
+        };
+
+        let is_primary = selection.selected_entity == Some(*entity);
+        let box_color = if is_primary { primary_box_color } else { secondary_box_color };
+
+        // Check if this is a camera node - draw camera gizmo in addition to selection box
+        if is_primary {
+            if let Ok(camera_data) = cameras.get(*entity) {
+                draw_camera_gizmo(&mut gizmos, transform, camera_data);
+            }
+
+            // Check if this is a camera rig - draw camera rig gizmo
+            if let Ok((rig_data, parent)) = camera_rigs.get(*entity) {
+                let parent_pos = parent
+                    .and_then(|p| parent_transforms.get(p.0).ok())
+                    .map(|t| t.translation)
+                    .unwrap_or(Vec3::ZERO);
+                draw_camera_rig_gizmo(&mut gizmos, transform, rig_data, parent_pos);
+            }
+        }
+
+        let pos = transform.translation;
+        let scale = transform.scale;
+        let half = (scale * 0.6).max(Vec3::splat(0.3));
+
+        // Draw selection box outline (centered on object) - skip for cameras
+        let is_camera = cameras.get(*entity).is_ok();
+        if !is_camera {
+            // Bottom square
+            gizmos.line(pos + Vec3::new(-half.x, -half.y, -half.z), pos + Vec3::new(half.x, -half.y, -half.z), box_color);
+            gizmos.line(pos + Vec3::new(half.x, -half.y, -half.z), pos + Vec3::new(half.x, -half.y, half.z), box_color);
+            gizmos.line(pos + Vec3::new(half.x, -half.y, half.z), pos + Vec3::new(-half.x, -half.y, half.z), box_color);
+            gizmos.line(pos + Vec3::new(-half.x, -half.y, half.z), pos + Vec3::new(-half.x, -half.y, -half.z), box_color);
+
+            // Top square
+            gizmos.line(pos + Vec3::new(-half.x, half.y, -half.z), pos + Vec3::new(half.x, half.y, -half.z), box_color);
+            gizmos.line(pos + Vec3::new(half.x, half.y, -half.z), pos + Vec3::new(half.x, half.y, half.z), box_color);
+            gizmos.line(pos + Vec3::new(half.x, half.y, half.z), pos + Vec3::new(-half.x, half.y, half.z), box_color);
+            gizmos.line(pos + Vec3::new(-half.x, half.y, half.z), pos + Vec3::new(-half.x, half.y, -half.z), box_color);
+
+            // Vertical lines
+            gizmos.line(pos + Vec3::new(-half.x, -half.y, -half.z), pos + Vec3::new(-half.x, half.y, -half.z), box_color);
+            gizmos.line(pos + Vec3::new(half.x, -half.y, -half.z), pos + Vec3::new(half.x, half.y, -half.z), box_color);
+            gizmos.line(pos + Vec3::new(half.x, -half.y, half.z), pos + Vec3::new(half.x, half.y, half.z), box_color);
+            gizmos.line(pos + Vec3::new(-half.x, -half.y, half.z), pos + Vec3::new(-half.x, half.y, half.z), box_color);
+        }
+    }
+
+    // Only draw transform gizmo in Transform tool mode and if there's a primary selection
     let Some(selected) = selection.selected_entity else {
         return;
     };
@@ -24,48 +86,11 @@ pub fn draw_selection_gizmo(
         return;
     };
 
-    // Check if this is a camera node - draw camera gizmo in addition to transform gizmo
-    if let Ok(camera_data) = cameras.get(selected) {
-        draw_camera_gizmo(&mut gizmos, transform, camera_data);
-        // Continue to draw transform gizmo as well
-    }
-
-    // Check if this is a camera rig - draw camera rig gizmo
-    if let Ok((rig_data, parent)) = camera_rigs.get(selected) {
-        let parent_pos = parent
-            .and_then(|p| parent_transforms.get(p.0).ok())
-            .map(|t| t.translation)
-            .unwrap_or(Vec3::ZERO);
-        draw_camera_rig_gizmo(&mut gizmos, transform, rig_data, parent_pos);
+    if gizmo_state.tool != EditorTool::Transform {
+        return;
     }
 
     let pos = transform.translation;
-    let scale = transform.scale;
-    let half = (scale * 0.6).max(Vec3::splat(0.3));
-
-    // Draw selection box outline (centered on object) - skip for cameras
-    let is_camera = cameras.get(selected).is_ok();
-    if !is_camera {
-        let box_color = Color::srgb(1.0, 0.6, 0.0);
-
-        // Bottom square
-        gizmos.line(pos + Vec3::new(-half.x, -half.y, -half.z), pos + Vec3::new(half.x, -half.y, -half.z), box_color);
-        gizmos.line(pos + Vec3::new(half.x, -half.y, -half.z), pos + Vec3::new(half.x, -half.y, half.z), box_color);
-        gizmos.line(pos + Vec3::new(half.x, -half.y, half.z), pos + Vec3::new(-half.x, -half.y, half.z), box_color);
-        gizmos.line(pos + Vec3::new(-half.x, -half.y, half.z), pos + Vec3::new(-half.x, -half.y, -half.z), box_color);
-
-        // Top square
-        gizmos.line(pos + Vec3::new(-half.x, half.y, -half.z), pos + Vec3::new(half.x, half.y, -half.z), box_color);
-        gizmos.line(pos + Vec3::new(half.x, half.y, -half.z), pos + Vec3::new(half.x, half.y, half.z), box_color);
-        gizmos.line(pos + Vec3::new(half.x, half.y, half.z), pos + Vec3::new(-half.x, half.y, half.z), box_color);
-        gizmos.line(pos + Vec3::new(-half.x, half.y, half.z), pos + Vec3::new(-half.x, half.y, -half.z), box_color);
-
-        // Vertical lines
-        gizmos.line(pos + Vec3::new(-half.x, -half.y, -half.z), pos + Vec3::new(-half.x, half.y, -half.z), box_color);
-        gizmos.line(pos + Vec3::new(half.x, -half.y, -half.z), pos + Vec3::new(half.x, half.y, -half.z), box_color);
-        gizmos.line(pos + Vec3::new(half.x, -half.y, half.z), pos + Vec3::new(half.x, half.y, half.z), box_color);
-        gizmos.line(pos + Vec3::new(-half.x, -half.y, half.z), pos + Vec3::new(-half.x, half.y, half.z), box_color);
-    }
 
     // Determine axis colors based on hover/drag state
     let active_axis = gizmo_state.drag_axis.or(gizmo_state.hovered_axis);

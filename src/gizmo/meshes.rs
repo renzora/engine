@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
 
-use super::{DragAxis, GizmoMode, GizmoState, GIZMO_RENDER_LAYER, GIZMO_SIZE};
+use super::{DragAxis, EditorTool, GizmoMode, GizmoState, GIZMO_RENDER_LAYER, GIZMO_SIZE};
 use crate::core::SelectionState;
 
 /// Marker component for gizmo mesh entities
@@ -336,7 +336,9 @@ pub fn update_gizmo_mesh_transforms(
 ) {
     let Ok((mut root_transform, mut root_visibility)) = gizmo_root.single_mut() else { return };
 
-    let show_gizmos = selection.selected_entity.is_some() && gizmo_state.mode == GizmoMode::Translate;
+    let show_gizmos = selection.selected_entity.is_some()
+        && gizmo_state.tool == EditorTool::Transform
+        && gizmo_state.mode == GizmoMode::Translate;
     *root_visibility = if show_gizmos { Visibility::Visible } else { Visibility::Hidden };
 
     if let Some(selected) = selection.selected_entity {

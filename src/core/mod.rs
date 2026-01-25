@@ -17,7 +17,7 @@ pub use resources::{
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)
-pub use crate::gizmo::{DragAxis, GizmoMode, GizmoState};
+pub use crate::gizmo::{BoxSelectionState, DragAxis, EditorTool, GizmoMode, GizmoState};
 
 use bevy::prelude::*;
 use crate::scene_file::SkyMode;
