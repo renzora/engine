@@ -22,4 +22,5 @@ pub use scene::{BuildError, BuildState, OpenScript, SceneManagerState, SceneTab,
 pub use selection::SelectionState;
 pub use settings::{EditorSettings, RenderToggles, VisualizationMode};
 pub use viewport::{BottomPanelTab, ViewportState};
+pub use crate::viewport::ViewportMode;
 pub use window::WindowState;

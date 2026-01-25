@@ -1,5 +1,7 @@
 use bevy::prelude::*;
 
+use crate::viewport::ViewportMode;
+
 /// Bottom panel tab selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum BottomPanelTab {
@@ -23,6 +25,8 @@ pub struct ViewportState {
     pub assets_height: f32,
     /// Currently selected bottom panel tab
     pub bottom_panel_tab: BottomPanelTab,
+    /// Current viewport mode (2D or 3D)
+    pub viewport_mode: ViewportMode,
 }
 
 impl Default for ViewportState {
@@ -35,6 +39,7 @@ impl Default for ViewportState {
             inspector_width: 320.0,
             assets_height: 200.0,
             bottom_panel_tab: BottomPanelTab::Assets,
+            viewport_mode: ViewportMode::default(),
         }
     }
 }

@@ -92,7 +92,7 @@ fn main() {
         )
         // Window actions system - runs in same schedule as egui to handle drag immediately
         .add_systems(EguiPrimaryContextPass, ui::handle_window_actions.after(ui::editor_ui))
-        // Editor non-UI systems (run when in Editor state)
+        // Editor non-UI systems (run when in Editor state) - split into multiple groups
         .add_systems(
             Update,
             (
@@ -100,12 +100,40 @@ fn main() {
                 viewport::update_camera_preview,
                 input::handle_selection,
                 viewport::camera_controller,
+                viewport::camera2d_controller,
+                viewport::toggle_viewport_cameras,
+            )
+                .chain()
+                .run_if(in_state(AppState::Editor)),
+        )
+        .add_systems(
+            Update,
+            (
+                // 3D gizmo systems
                 gizmo::gizmo_hover_system,
                 gizmo::gizmo_interaction_system,
                 gizmo::object_drag_system,
                 gizmo::draw_selection_gizmo,
+                // 2D gizmo systems
+                gizmo::gizmo_2d_hover_system,
+                gizmo::gizmo_2d_interaction_system,
+                gizmo::gizmo_2d_drag_system,
+                gizmo::draw_selection_gizmo_2d,
+                gizmo::handle_2d_picking,
+            )
+                .chain()
+                .run_if(in_state(AppState::Editor)),
+        )
+        .add_systems(
+            Update,
+            (
                 gizmo::draw_physics_gizmos,
                 gizmo::draw_grid,
+                viewport::draw_grid_2d,
+                // 2D/UI visual rendering
+                viewport::update_2d_visuals,
+                viewport::cleanup_2d_visuals,
+                // Input handling
                 input::handle_file_drop,
                 input::handle_asset_panel_drop,
                 input::handle_scene_hierarchy_drop,
@@ -181,13 +209,17 @@ fn load_project_scene(
     viewport_image: Res<viewport::ViewportImage>,
     mut orbit: ResMut<core::OrbitCameraState>,
     viewport: Res<core::ViewportState>,
+    camera2d_state: Res<viewport::Camera2DState>,
     mut scene_state: ResMut<core::SceneManagerState>,
     mut hierarchy: ResMut<core::HierarchyState>,
     current_project: Option<Res<project::CurrentProject>>,
     node_registry: Res<node_system::NodeRegistry>,
 ) {
-    // Always set up the editor camera for the viewport
+    // Always set up the editor camera for the viewport (3D)
     scene::setup_editor_camera(&mut commands, &mut meshes, &mut materials, &viewport_image, &orbit, &viewport);
+
+    // Set up the 2D editor camera
+    viewport::setup_editor_camera_2d(&mut commands, &viewport_image, &viewport, &camera2d_state);
 
     // Add ambient light
     commands.insert_resource(AmbientLight {

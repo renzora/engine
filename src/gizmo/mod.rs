@@ -6,12 +6,22 @@ mod physics;
 pub mod picking;
 pub mod state;
 
+// 2D viewport modules
+pub mod gizmo_2d;
+pub mod interaction_2d;
+pub mod picking_2d;
+
 pub use drawing::draw_selection_gizmo;
 pub use grid::draw_grid;
 pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
 pub use meshes::{setup_gizmo_meshes, update_gizmo_mesh_transforms, update_gizmo_materials, GizmoMesh, GizmoPart, GizmoRoot};
 pub use physics::draw_physics_gizmos;
 pub use state::{DragAxis, GizmoMode, GizmoState, SnapSettings};
+
+// 2D gizmo exports
+pub use gizmo_2d::draw_selection_gizmo_2d;
+pub use interaction_2d::{gizmo_2d_hover_system, gizmo_2d_interaction_system, gizmo_2d_drag_system};
+pub use picking_2d::handle_2d_picking;
 
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;

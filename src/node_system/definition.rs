@@ -38,6 +38,10 @@ pub enum NodeCategory {
     Environment,
     /// Camera nodes
     Cameras,
+    /// 2D nodes (Sprite, Node2D, etc.)
+    Nodes2D,
+    /// UI nodes (Panel, Label, Button, etc.)
+    UI,
     /// Custom user-defined nodes (kept for future extensibility)
     #[allow(dead_code)]
     Custom,
@@ -53,6 +57,8 @@ impl NodeCategory {
             NodeCategory::Physics => "Physics",
             NodeCategory::Environment => "Environment",
             NodeCategory::Cameras => "Camera",
+            NodeCategory::Nodes2D => "2D Nodes",
+            NodeCategory::UI => "UI",
             NodeCategory::Custom => "Custom",
         }
     }
@@ -66,6 +72,8 @@ impl NodeCategory {
             NodeCategory::Physics => 3,
             NodeCategory::Environment => 4,
             NodeCategory::Cameras => 5,
+            NodeCategory::Nodes2D => 6,
+            NodeCategory::UI => 7,
             NodeCategory::Custom => 100,
         }
     }
@@ -80,6 +88,8 @@ impl NodeCategory {
             NodeCategory::Physics,
             NodeCategory::Environment,
             NodeCategory::Cameras,
+            NodeCategory::Nodes2D,
+            NodeCategory::UI,
             NodeCategory::Custom,
         ]
     }

@@ -13,7 +13,7 @@ pub use resources::{
     ExportLogEntry, ExportLogLevel, ExportLogger, ExportState,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, LogEntry, LogLevel, OpenScript,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, SceneManagerState,
-    SceneTab, ScriptError, SelectionState, TabCameraState, ViewportState, VisualizationMode, WindowState,
+    SceneTab, ScriptError, SelectionState, TabCameraState, ViewportMode, ViewportState, VisualizationMode, WindowState,
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)

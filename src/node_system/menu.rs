@@ -11,7 +11,7 @@ use super::definition::NodeCategory;
 use egui_phosphor::regular::{
     CUBE, SPHERE, CYLINDER, SQUARE, LIGHTBULB, SUN, FLASHLIGHT,
     VIDEO_CAMERA, GLOBE, SPEAKER_HIGH, DOTS_THREE_OUTLINE, PACKAGE, ATOM,
-    TREE_STRUCTURE,
+    TREE_STRUCTURE, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
 };
 
 /// Render the add node popup menu using the node registry
@@ -112,6 +112,8 @@ fn get_category_icon(category: NodeCategory) -> (&'static str, Color32) {
         NodeCategory::Physics => (ATOM, Color32::from_rgb(166, 242, 200)),
         NodeCategory::Environment => (GLOBE, Color32::from_rgb(140, 217, 191)),
         NodeCategory::Cameras => (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242)),
+        NodeCategory::Nodes2D => (IMAGE, Color32::from_rgb(242, 140, 191)),
+        NodeCategory::UI => (STACK, Color32::from_rgb(191, 166, 242)),
         NodeCategory::Custom => (DOTS_THREE_OUTLINE, Color32::from_rgb(180, 180, 190)),
     }
 }
@@ -145,7 +147,8 @@ fn get_node_icon_for_type(type_id: &str) -> (&'static str, Color32) {
         "env.audio_listener" => (SPEAKER_HIGH, Color32::from_rgb(217, 140, 217)),
 
         // Cameras
-        "camera.3d" => (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242)),
+        "camera.camera3d" => (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242)),
+        "camera.camera_rig" => (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242)),
 
         // Physics Bodies
         "physics.rigidbody3d" => (ATOM, Color32::from_rgb(166, 242, 200)),
@@ -157,6 +160,17 @@ fn get_node_icon_for_type(type_id: &str) -> (&'static str, Color32) {
         "physics.collision_sphere" => (SPHERE, Color32::from_rgb(166, 242, 200)),
         "physics.collision_capsule" => (CYLINDER, Color32::from_rgb(166, 242, 200)),
         "physics.collision_cylinder" => (CYLINDER, Color32::from_rgb(166, 242, 200)),
+
+        // 2D Nodes
+        "2d.node2d" => (DOTS_THREE_OUTLINE, Color32::from_rgb(242, 140, 191)),
+        "2d.sprite2d" => (IMAGE, Color32::from_rgb(242, 140, 191)),
+        "2d.camera2d" => (VIDEO_CAMERA, Color32::from_rgb(242, 140, 191)),
+
+        // UI Nodes
+        "ui.panel" => (STACK, Color32::from_rgb(191, 166, 242)),
+        "ui.label" => (TEXTBOX, Color32::from_rgb(191, 166, 242)),
+        "ui.button" => (CURSOR_CLICK, Color32::from_rgb(191, 166, 242)),
+        "ui.image" => (IMAGE, Color32::from_rgb(191, 166, 242)),
 
         // Default
         _ => (DOTS_THREE_OUTLINE, Color32::from_rgb(180, 180, 190)),

@@ -1,13 +1,20 @@
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, Pos2, Rect, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportState, AssetBrowserState, OrbitCameraState};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState};
+use crate::viewport::Camera2DState;
+
+/// Height of the viewport mode tabs bar
+const VIEWPORT_TABS_HEIGHT: f32 = 24.0;
+/// Width of rulers in 2D mode
+const RULER_SIZE: f32 = 20.0;
 
 pub fn render_viewport(
     ctx: &egui::Context,
     viewport: &mut ViewportState,
     assets: &mut AssetBrowserState,
     orbit: &OrbitCameraState,
+    camera2d_state: &Camera2DState,
     left_panel_width: f32,
     right_panel_width: f32,
     content_start_y: f32,
@@ -17,8 +24,8 @@ pub fn render_viewport(
 ) {
     let screen_rect = ctx.screen_rect();
 
-    // Calculate the viewport rect - docked between panels
-    let viewport_rect = Rect::from_min_size(
+    // Calculate the full viewport area
+    let full_viewport_rect = Rect::from_min_size(
         Pos2::new(left_panel_width, content_start_y),
         Vec2::new(
             screen_rect.width() - left_panel_width - right_panel_width,
@@ -26,14 +33,275 @@ pub fn render_viewport(
         ),
     );
 
+    // Render viewport mode tabs at the top
+    render_viewport_tabs(ctx, viewport, full_viewport_rect);
+
+    // Calculate content rect (below tabs, accounting for rulers in 2D mode)
+    let tabs_offset = VIEWPORT_TABS_HEIGHT;
+    let ruler_offset = if viewport.viewport_mode == ViewportMode::Mode2D { RULER_SIZE } else { 0.0 };
+
+    let content_rect = Rect::from_min_size(
+        Pos2::new(full_viewport_rect.min.x + ruler_offset, full_viewport_rect.min.y + tabs_offset + ruler_offset),
+        Vec2::new(
+            full_viewport_rect.width() - ruler_offset,
+            full_viewport_rect.height() - tabs_offset - ruler_offset,
+        ),
+    );
+
+    // Render rulers in 2D mode
+    if viewport.viewport_mode == ViewportMode::Mode2D {
+        render_rulers(ctx, viewport, camera2d_state, full_viewport_rect, tabs_offset);
+    }
+
     // Use an Area to render the viewport content
     egui::Area::new(egui::Id::new("viewport_area"))
-        .fixed_pos(viewport_rect.min)
+        .fixed_pos(content_rect.min)
         .order(egui::Order::Background)
         .show(ctx, |ui| {
-            ui.set_clip_rect(viewport_rect);
-            render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id, viewport_rect);
+            ui.set_clip_rect(content_rect);
+            render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id, content_rect);
         });
+}
+
+/// Render the 3D/2D mode tabs at the top of the viewport
+fn render_viewport_tabs(ctx: &egui::Context, viewport: &mut ViewportState, full_rect: Rect) {
+    let tabs_rect = Rect::from_min_size(
+        full_rect.min,
+        Vec2::new(full_rect.width(), VIEWPORT_TABS_HEIGHT),
+    );
+
+    egui::Area::new(egui::Id::new("viewport_tabs"))
+        .fixed_pos(tabs_rect.min)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            ui.set_clip_rect(tabs_rect);
+
+            // Background
+            ui.painter().rect_filled(tabs_rect, 0.0, Color32::from_rgb(35, 35, 40));
+
+            // Tab buttons
+            let tab_width = 50.0;
+            let tab_height = VIEWPORT_TABS_HEIGHT - 4.0;
+            let tab_y = tabs_rect.min.y + 2.0;
+
+            // 3D tab
+            let tab_3d_rect = Rect::from_min_size(
+                Pos2::new(tabs_rect.min.x + 4.0, tab_y),
+                Vec2::new(tab_width, tab_height),
+            );
+            let is_3d_active = viewport.viewport_mode == ViewportMode::Mode3D;
+            let tab_3d_color = if is_3d_active {
+                Color32::from_rgb(60, 60, 70)
+            } else {
+                Color32::from_rgb(45, 45, 50)
+            };
+            ui.painter().rect_filled(tab_3d_rect, 3.0, tab_3d_color);
+            ui.painter().text(
+                tab_3d_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "3D",
+                FontId::proportional(12.0),
+                if is_3d_active { Color32::WHITE } else { Color32::from_rgb(150, 150, 160) },
+            );
+
+            // 2D tab
+            let tab_2d_rect = Rect::from_min_size(
+                Pos2::new(tabs_rect.min.x + 4.0 + tab_width + 4.0, tab_y),
+                Vec2::new(tab_width, tab_height),
+            );
+            let is_2d_active = viewport.viewport_mode == ViewportMode::Mode2D;
+            let tab_2d_color = if is_2d_active {
+                Color32::from_rgb(60, 60, 70)
+            } else {
+                Color32::from_rgb(45, 45, 50)
+            };
+            ui.painter().rect_filled(tab_2d_rect, 3.0, tab_2d_color);
+            ui.painter().text(
+                tab_2d_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "2D",
+                FontId::proportional(12.0),
+                if is_2d_active { Color32::WHITE } else { Color32::from_rgb(150, 150, 160) },
+            );
+
+            // Handle clicks
+            if ui.ctx().input(|i| i.pointer.any_click()) {
+                if let Some(pos) = ui.ctx().pointer_hover_pos() {
+                    if tab_3d_rect.contains(pos) {
+                        viewport.viewport_mode = ViewportMode::Mode3D;
+                    } else if tab_2d_rect.contains(pos) {
+                        viewport.viewport_mode = ViewportMode::Mode2D;
+                    }
+                }
+            }
+        });
+}
+
+/// Render rulers for 2D mode
+fn render_rulers(
+    ctx: &egui::Context,
+    viewport: &ViewportState,
+    camera2d_state: &Camera2DState,
+    full_rect: Rect,
+    tabs_offset: f32,
+) {
+    let ruler_bg = Color32::from_rgb(40, 40, 45);
+    let ruler_tick = Color32::from_rgb(100, 100, 110);
+    let ruler_text = Color32::from_rgb(140, 140, 150);
+    let ruler_major_tick = Color32::from_rgb(150, 150, 160);
+
+    // Horizontal ruler (top)
+    let h_ruler_rect = Rect::from_min_size(
+        Pos2::new(full_rect.min.x + RULER_SIZE, full_rect.min.y + tabs_offset),
+        Vec2::new(full_rect.width() - RULER_SIZE, RULER_SIZE),
+    );
+
+    egui::Area::new(egui::Id::new("h_ruler"))
+        .fixed_pos(h_ruler_rect.min)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            ui.set_clip_rect(h_ruler_rect);
+            ui.painter().rect_filled(h_ruler_rect, 0.0, ruler_bg);
+
+            // Calculate tick spacing based on zoom
+            let tick_spacing = calculate_ruler_tick_spacing(camera2d_state.zoom);
+            let world_left = camera2d_state.pan_offset.x - (viewport.size[0] / camera2d_state.zoom / 2.0);
+            let world_right = camera2d_state.pan_offset.x + (viewport.size[0] / camera2d_state.zoom / 2.0);
+
+            // Draw tick marks
+            let start_tick = (world_left / tick_spacing).floor() as i32;
+            let end_tick = (world_right / tick_spacing).ceil() as i32;
+
+            for i in start_tick..=end_tick {
+                let world_x = i as f32 * tick_spacing;
+                let screen_x = world_to_screen_x(world_x, camera2d_state, viewport);
+                let local_x = screen_x - full_rect.min.x;
+
+                if local_x < RULER_SIZE || local_x > full_rect.width() {
+                    continue;
+                }
+
+                let is_major = i % 10 == 0;
+                let tick_height = if is_major { RULER_SIZE * 0.6 } else { RULER_SIZE * 0.3 };
+                let tick_y = h_ruler_rect.max.y - tick_height;
+
+                ui.painter().line_segment(
+                    [Pos2::new(screen_x, tick_y), Pos2::new(screen_x, h_ruler_rect.max.y)],
+                    Stroke::new(1.0, if is_major { ruler_major_tick } else { ruler_tick }),
+                );
+
+                // Draw label for major ticks
+                if is_major {
+                    ui.painter().text(
+                        Pos2::new(screen_x + 2.0, h_ruler_rect.min.y + 2.0),
+                        egui::Align2::LEFT_TOP,
+                        format!("{}", world_x as i32),
+                        FontId::proportional(9.0),
+                        ruler_text,
+                    );
+                }
+            }
+        });
+
+    // Vertical ruler (left)
+    let v_ruler_rect = Rect::from_min_size(
+        Pos2::new(full_rect.min.x, full_rect.min.y + tabs_offset + RULER_SIZE),
+        Vec2::new(RULER_SIZE, full_rect.height() - tabs_offset - RULER_SIZE),
+    );
+
+    egui::Area::new(egui::Id::new("v_ruler"))
+        .fixed_pos(v_ruler_rect.min)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            ui.set_clip_rect(v_ruler_rect);
+            ui.painter().rect_filled(v_ruler_rect, 0.0, ruler_bg);
+
+            // Calculate tick spacing based on zoom
+            let tick_spacing = calculate_ruler_tick_spacing(camera2d_state.zoom);
+            let world_bottom = camera2d_state.pan_offset.y - (viewport.size[1] / camera2d_state.zoom / 2.0);
+            let world_top = camera2d_state.pan_offset.y + (viewport.size[1] / camera2d_state.zoom / 2.0);
+
+            // Draw tick marks
+            let start_tick = (world_bottom / tick_spacing).floor() as i32;
+            let end_tick = (world_top / tick_spacing).ceil() as i32;
+
+            for i in start_tick..=end_tick {
+                let world_y = i as f32 * tick_spacing;
+                let screen_y = world_to_screen_y(world_y, camera2d_state, viewport);
+                let local_y = screen_y - full_rect.min.y - tabs_offset;
+
+                if local_y < RULER_SIZE || local_y > full_rect.height() - tabs_offset {
+                    continue;
+                }
+
+                let is_major = i % 10 == 0;
+                let tick_width = if is_major { RULER_SIZE * 0.6 } else { RULER_SIZE * 0.3 };
+                let tick_x = v_ruler_rect.max.x - tick_width;
+
+                ui.painter().line_segment(
+                    [Pos2::new(tick_x, screen_y), Pos2::new(v_ruler_rect.max.x, screen_y)],
+                    Stroke::new(1.0, if is_major { ruler_major_tick } else { ruler_tick }),
+                );
+
+                // Draw label for major ticks
+                if is_major {
+                    ui.painter().text(
+                        Pos2::new(v_ruler_rect.min.x + 2.0, screen_y - 8.0),
+                        egui::Align2::LEFT_TOP,
+                        format!("{}", world_y as i32),
+                        FontId::proportional(9.0),
+                        ruler_text,
+                    );
+                }
+            }
+        });
+
+    // Corner square (top-left)
+    let corner_rect = Rect::from_min_size(
+        Pos2::new(full_rect.min.x, full_rect.min.y + tabs_offset),
+        Vec2::new(RULER_SIZE, RULER_SIZE),
+    );
+    egui::Area::new(egui::Id::new("ruler_corner"))
+        .fixed_pos(corner_rect.min)
+        .order(egui::Order::Middle)
+        .show(ctx, |ui| {
+            ui.painter().rect_filled(corner_rect, 0.0, ruler_bg);
+        });
+}
+
+/// Calculate tick spacing for rulers based on zoom level
+fn calculate_ruler_tick_spacing(zoom: f32) -> f32 {
+    // Target spacing in screen pixels
+    let target_spacing = 50.0;
+    let ideal_world_spacing = target_spacing / zoom;
+
+    // Round to a nice number
+    let nice_numbers = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0];
+    let mut best = nice_numbers[0];
+    let mut best_diff = (ideal_world_spacing - best).abs();
+
+    for &nice in &nice_numbers {
+        let diff = (ideal_world_spacing - nice).abs();
+        if diff < best_diff {
+            best_diff = diff;
+            best = nice;
+        }
+    }
+    best
+}
+
+/// Convert world X coordinate to screen X coordinate
+fn world_to_screen_x(world_x: f32, camera2d_state: &Camera2DState, viewport: &ViewportState) -> f32 {
+    let relative_x = world_x - camera2d_state.pan_offset.x;
+    let screen_relative = relative_x * camera2d_state.zoom;
+    viewport.position[0] + RULER_SIZE + viewport.size[0] / 2.0 + screen_relative
+}
+
+/// Convert world Y coordinate to screen Y coordinate
+fn world_to_screen_y(world_y: f32, camera2d_state: &Camera2DState, viewport: &ViewportState) -> f32 {
+    let relative_y = world_y - camera2d_state.pan_offset.y;
+    let screen_relative = -relative_y * camera2d_state.zoom; // Y is inverted in screen coords
+    viewport.position[1] + VIEWPORT_TABS_HEIGHT + RULER_SIZE + viewport.size[1] / 2.0 + screen_relative
 }
 
 /// Render viewport content (for use in docking)

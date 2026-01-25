@@ -12,6 +12,7 @@ use crate::core::{
     OrbitCameraState, PlayModeState, PlayState,
 };
 use crate::gizmo::GizmoState;
+use crate::viewport::Camera2DState;
 
 /// Bundled editor state resources for system parameter limits
 #[derive(SystemParam)]
@@ -26,6 +27,7 @@ pub struct EditorResources<'w> {
     pub window_state: ResMut<'w, WindowState>,
     pub gizmo: ResMut<'w, GizmoState>,
     pub orbit: Res<'w, OrbitCameraState>,
+    pub camera2d_state: Res<'w, Camera2DState>,
     pub keybindings: ResMut<'w, KeyBindings>,
     pub plugin_host: ResMut<'w, PluginHost>,
     pub loading_progress: Res<'w, AssetLoadingProgress>,
@@ -347,6 +349,7 @@ pub fn editor_ui(
                 &mut editor.viewport,
                 &mut editor.assets,
                 &editor.orbit,
+                &editor.camera2d_state,
                 actual_hierarchy_width,
                 actual_inspector_width,
                 content_start_y,
@@ -362,6 +365,7 @@ pub fn editor_ui(
             &mut editor.viewport,
             &mut editor.assets,
             &editor.orbit,
+            &editor.camera2d_state,
             0.0, // No left panel
             0.0, // No right panel
             content_start_y,

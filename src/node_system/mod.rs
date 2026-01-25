@@ -40,6 +40,10 @@ pub use inspector::{
     render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
     render_script_inspector, render_spot_light_inspector, render_transform_inspector,
     render_world_environment_inspector,
+    // 2D inspectors
+    render_sprite2d_inspector, render_camera2d_inspector,
+    // UI inspectors
+    render_ui_panel_inspector, render_ui_label_inspector, render_ui_button_inspector, render_ui_image_inspector,
 };
 #[allow(unused_imports)]
 pub use inspector::{InspectorRegistry, InspectorWidget};

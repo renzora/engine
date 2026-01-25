@@ -7,9 +7,20 @@ use crate::node_system::{
     render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
     render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
     render_script_inspector, render_spot_light_inspector, render_transform_inspector,
-    render_world_environment_inspector, CameraNodeData, CollisionShapeData, PhysicsBodyData,
+    render_world_environment_inspector,
+    // 2D inspectors
+    render_sprite2d_inspector, render_camera2d_inspector,
+    // UI inspectors
+    render_ui_panel_inspector, render_ui_label_inspector, render_ui_button_inspector, render_ui_image_inspector,
+    CameraNodeData, CollisionShapeData, PhysicsBodyData,
 };
-use crate::shared::CameraRigData;
+use crate::shared::{
+    CameraRigData,
+    // 2D components
+    Sprite2DData, Camera2DData,
+    // UI components
+    UIPanelData, UILabelData, UIButtonData, UIImageData,
+};
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
@@ -21,7 +32,7 @@ use egui_phosphor::regular::SLIDERS_HORIZONTAL;
 use egui_phosphor::regular::{
     SLIDERS, ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
-    CUBE, ATOM, CARET_DOWN, CARET_RIGHT,
+    CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
 };
 
 /// Background colors for alternating rows
@@ -95,6 +106,20 @@ impl CategoryStyle {
         Self {
             accent_color: Color32::from_rgb(180, 140, 180),  // Magenta
             header_bg: Color32::from_rgb(45, 38, 45),
+        }
+    }
+
+    fn nodes2d() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(242, 140, 191),  // Pink
+            header_bg: Color32::from_rgb(50, 38, 45),
+        }
+    }
+
+    fn ui() -> Self {
+        Self {
+            accent_color: Color32::from_rgb(191, 166, 242),  // Light purple
+            header_bg: Color32::from_rgb(42, 40, 52),
         }
     }
 }
@@ -186,6 +211,14 @@ pub struct InspectorQueries<'w, 's> {
     pub camera_rigs: Query<'w, 's, &'static mut CameraRigData>,
     pub physics_bodies: Query<'w, 's, &'static mut PhysicsBodyData>,
     pub collision_shapes: Query<'w, 's, &'static mut CollisionShapeData>,
+    // 2D components
+    pub sprites2d: Query<'w, 's, &'static mut Sprite2DData>,
+    pub cameras2d: Query<'w, 's, &'static mut Camera2DData>,
+    // UI components
+    pub ui_panels: Query<'w, 's, &'static mut UIPanelData>,
+    pub ui_labels: Query<'w, 's, &'static mut UILabelData>,
+    pub ui_buttons: Query<'w, 's, &'static mut UIButtonData>,
+    pub ui_images: Query<'w, 's, &'static mut UIImageData>,
 }
 
 pub fn render_inspector(
@@ -473,6 +506,108 @@ pub fn render_inspector_content(
                         true,
                         |ui| {
                             render_collision_shape_inspector(ui, &mut collision_shape);
+                        },
+                    );
+                }
+
+                // 2D Sprite
+                if let Ok(mut sprite_data) = queries.sprites2d.get_mut(selected) {
+                    render_category(
+                        ui,
+                        IMAGE,
+                        "Sprite2D",
+                        CategoryStyle::nodes2d(),
+                        "inspector_sprite2d",
+                        true,
+                        |ui| {
+                            if render_sprite2d_inspector(ui, &mut sprite_data) {
+                                scene_changed = true;
+                            }
+                        },
+                    );
+                }
+
+                // 2D Camera
+                if let Ok(mut camera_data) = queries.cameras2d.get_mut(selected) {
+                    render_category(
+                        ui,
+                        VIDEO_CAMERA,
+                        "Camera2D",
+                        CategoryStyle::nodes2d(),
+                        "inspector_camera2d",
+                        true,
+                        |ui| {
+                            if render_camera2d_inspector(ui, &mut camera_data) {
+                                scene_changed = true;
+                            }
+                        },
+                    );
+                }
+
+                // UI Panel
+                if let Ok(mut panel_data) = queries.ui_panels.get_mut(selected) {
+                    render_category(
+                        ui,
+                        STACK,
+                        "UI Panel",
+                        CategoryStyle::ui(),
+                        "inspector_ui_panel",
+                        true,
+                        |ui| {
+                            if render_ui_panel_inspector(ui, &mut panel_data) {
+                                scene_changed = true;
+                            }
+                        },
+                    );
+                }
+
+                // UI Label
+                if let Ok(mut label_data) = queries.ui_labels.get_mut(selected) {
+                    render_category(
+                        ui,
+                        TEXTBOX,
+                        "UI Label",
+                        CategoryStyle::ui(),
+                        "inspector_ui_label",
+                        true,
+                        |ui| {
+                            if render_ui_label_inspector(ui, &mut label_data) {
+                                scene_changed = true;
+                            }
+                        },
+                    );
+                }
+
+                // UI Button
+                if let Ok(mut button_data) = queries.ui_buttons.get_mut(selected) {
+                    render_category(
+                        ui,
+                        CURSOR_CLICK,
+                        "UI Button",
+                        CategoryStyle::ui(),
+                        "inspector_ui_button",
+                        true,
+                        |ui| {
+                            if render_ui_button_inspector(ui, &mut button_data) {
+                                scene_changed = true;
+                            }
+                        },
+                    );
+                }
+
+                // UI Image
+                if let Ok(mut image_data) = queries.ui_images.get_mut(selected) {
+                    render_category(
+                        ui,
+                        IMAGE,
+                        "UI Image",
+                        CategoryStyle::ui(),
+                        "inspector_ui_image",
+                        true,
+                        |ui| {
+                            if render_ui_image_inspector(ui, &mut image_data) {
+                                scene_changed = true;
+                            }
                         },
                     );
                 }

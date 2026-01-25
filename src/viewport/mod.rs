@@ -1,18 +1,64 @@
 mod camera;
 mod camera_preview;
+pub mod camera2d;
+pub mod grid2d;
+pub mod render_2d;
 mod texture;
 
 pub use camera::camera_controller;
 pub use camera_preview::{
     setup_camera_preview_texture, update_camera_preview, CameraPreviewImage,
 };
+pub use camera2d::{
+    camera2d_controller, setup_editor_camera_2d, toggle_viewport_cameras, Editor2DCamera,
+};
+pub use grid2d::draw_grid_2d;
+pub use render_2d::{cleanup_2d_visuals, update_2d_visuals, Editor2DVisual};
 pub use texture::{resize_viewport_texture, setup_viewport_texture};
 
 use bevy::prelude::*;
 use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use std::collections::HashMap;
 
-use crate::core::{AppState, EditorSettings, RenderToggles, VisualizationMode};
+use crate::core::{AppState, EditorSettings, RenderToggles, SelectionState, ViewportState, VisualizationMode};
+use crate::node_system::{NodeTypeMarker, SceneRoot, SceneType};
+use crate::shared::{
+    Camera2DData, CameraNodeData, CameraRigData, CollisionShapeData, MeshInstanceData,
+    MeshNodeData, PhysicsBodyData, Sprite2DData, UIButtonData, UIImageData, UILabelData,
+    UIPanelData,
+};
+
+/// Current viewport mode (2D or 3D view)
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum ViewportMode {
+    #[default]
+    Mode3D,
+    Mode2D,
+}
+
+/// State for the 2D camera controller
+#[derive(Resource)]
+pub struct Camera2DState {
+    /// Pan offset in world units
+    pub pan_offset: Vec2,
+    /// Zoom level (1.0 = 100%, 0.5 = 50%, 2.0 = 200%)
+    pub zoom: f32,
+    /// Whether the camera is currently panning
+    pub is_panning: bool,
+    /// Last mouse position for delta calculation
+    pub last_mouse_pos: Vec2,
+}
+
+impl Default for Camera2DState {
+    fn default() -> Self {
+        Self {
+            pan_offset: Vec2::ZERO,
+            zoom: 1.0,
+            is_panning: false,
+            last_mouse_pos: Vec2::ZERO,
+        }
+    }
+}
 
 #[derive(Resource)]
 pub struct ViewportImage(pub Handle<Image>);
@@ -55,11 +101,102 @@ impl Plugin for ViewportPlugin {
             })
             .init_resource::<OriginalMaterialStates>()
             .init_resource::<LastRenderState>()
+            .init_resource::<Camera2DState>()
             .add_systems(Startup, (setup_viewport_texture, setup_camera_preview_texture))
             .add_systems(
                 Update,
                 (update_render_toggles, update_shadow_settings).run_if(in_state(AppState::Editor)),
+            )
+            .add_systems(
+                Update,
+                auto_switch_viewport_mode.run_if(in_state(AppState::Editor)),
             );
+    }
+}
+
+/// System to automatically switch viewport mode based on selected entity type
+fn auto_switch_viewport_mode(
+    selection: Res<SelectionState>,
+    mut viewport: ResMut<ViewportState>,
+    // 2D/UI entities (data components)
+    entities_2d: Query<
+        (),
+        Or<(
+            With<Sprite2DData>,
+            With<Camera2DData>,
+            With<UIPanelData>,
+            With<UILabelData>,
+            With<UIButtonData>,
+            With<UIImageData>,
+        )>,
+    >,
+    // 3D entities (data components)
+    entities_3d: Query<
+        (),
+        Or<(
+            With<MeshNodeData>,
+            With<MeshInstanceData>,
+            With<CameraNodeData>,
+            With<CameraRigData>,
+            With<PointLight>,
+            With<DirectionalLight>,
+            With<SpotLight>,
+            With<PhysicsBodyData>,
+            With<CollisionShapeData>,
+        )>,
+    >,
+    // SceneRoot query to check scene type
+    scene_roots: Query<&SceneRoot>,
+    // NodeTypeMarker query to check type_id prefix
+    node_markers: Query<&NodeTypeMarker>,
+) {
+    // Only check when selection changes
+    if !selection.is_changed() {
+        return;
+    }
+
+    let Some(entity) = selection.selected_entity else {
+        return;
+    };
+
+    // Check for SceneRoot first - it determines the scene type
+    if let Ok(scene_root) = scene_roots.get(entity) {
+        match scene_root.scene_type {
+            SceneType::Scene2D | SceneType::UI => {
+                if viewport.viewport_mode != ViewportMode::Mode2D {
+                    viewport.viewport_mode = ViewportMode::Mode2D;
+                }
+            }
+            SceneType::Scene3D | SceneType::Other => {
+                if viewport.viewport_mode != ViewportMode::Mode3D {
+                    viewport.viewport_mode = ViewportMode::Mode3D;
+                }
+            }
+        }
+        return;
+    }
+
+    // Check NodeTypeMarker for 2D nodes (Node2D, etc.)
+    if let Ok(marker) = node_markers.get(entity) {
+        if marker.type_id.starts_with("2d.") {
+            if viewport.viewport_mode != ViewportMode::Mode2D {
+                viewport.viewport_mode = ViewportMode::Mode2D;
+            }
+            return;
+        }
+    }
+
+    // Check for 2D/UI data components
+    let is_2d = entities_2d.get(entity).is_ok();
+
+    // Check for 3D data components
+    let is_3d = entities_3d.get(entity).is_ok();
+
+    // Switch viewport mode based on entity type
+    if is_2d && viewport.viewport_mode != ViewportMode::Mode2D {
+        viewport.viewport_mode = ViewportMode::Mode2D;
+    } else if is_3d && viewport.viewport_mode != ViewportMode::Mode3D {
+        viewport.viewport_mode = ViewportMode::Mode3D;
     }
 }
 

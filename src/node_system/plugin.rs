@@ -70,4 +70,15 @@ fn register_builtin_nodes(registry: &mut NodeRegistry) {
     // Cameras
     registry.register(&nodes::CAMERA3D);
     registry.register(&nodes::CAMERA_RIG);
+
+    // 2D Nodes
+    registry.register(&nodes::NODE2D);
+    registry.register(&nodes::SPRITE2D);
+    registry.register(&nodes::CAMERA2D);
+
+    // UI Nodes
+    registry.register(&nodes::UI_PANEL);
+    registry.register(&nodes::UI_LABEL);
+    registry.register(&nodes::UI_BUTTON);
+    registry.register(&nodes::UI_IMAGE);
 }

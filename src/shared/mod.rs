@@ -11,6 +11,10 @@ pub mod spawner;
 pub use components::{
     CameraNodeData, CameraRigData, CollisionShapeData, CollisionShapeType, MeshInstanceData, MeshNodeData,
     MeshPrimitiveType, PhysicsBodyData, PhysicsBodyType, SceneInstanceData,
+    // 2D components
+    Sprite2DData, Camera2DData,
+    // UI components
+    UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 pub use scene_format::{EditorCameraData, NodeData, SceneData, TransformData};
 pub use spawner::{spawn_node_components, SpawnConfig};
