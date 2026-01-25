@@ -17,14 +17,16 @@ pub fn handle_selection(
     }
 
     if keybindings.just_pressed(EditorAction::Delete, &keyboard) {
-        if let Some(entity) = selection.selected_entity {
+        // Delete all selected entities
+        let entities_to_delete: Vec<_> = selection.get_all_selected();
+        for entity in entities_to_delete {
             // Queue delete command for undo support
             queue_command(&mut command_history, Box::new(DeleteEntityCommand::new(entity)));
         }
     }
 
     if keybindings.just_pressed(EditorAction::Deselect, &keyboard) {
-        selection.selected_entity = None;
+        selection.clear();
     }
 
     // Gizmo mode hotkeys

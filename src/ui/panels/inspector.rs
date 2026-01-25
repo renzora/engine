@@ -373,6 +373,16 @@ pub fn render_inspector_content(
     egui::ScrollArea::vertical().show(ui, |ui| {
         if let Some(selected) = selection.selected_entity {
             if let Ok((_, editor_entity)) = entities.get(selected) {
+                // Show multi-selection indicator if applicable
+                let multi_count = selection.multi_selection.len();
+                if multi_count > 1 {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(format!("{} items selected", multi_count))
+                            .color(Color32::from_rgb(140, 191, 242)));
+                    });
+                    ui.add_space(4.0);
+                }
+
                 // Entity name with accent bar
                 ui.horizontal(|ui| {
                     // Accent bar

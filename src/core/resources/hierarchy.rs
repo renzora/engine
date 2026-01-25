@@ -6,8 +6,10 @@ use std::collections::HashSet;
 pub struct HierarchyState {
     /// Entities that should be expanded in the hierarchy tree
     pub expanded_entities: HashSet<Entity>,
-    /// Entity being dragged in the hierarchy
+    /// Entity being dragged in the hierarchy (primary drag entity)
     pub drag_entity: Option<Entity>,
+    /// All entities being dragged (for multi-selection drag)
+    pub drag_entities: Vec<Entity>,
     /// Current drop target for hierarchy drag
     pub drop_target: Option<HierarchyDropTarget>,
     /// Entity currently being renamed (inline editing)
@@ -18,6 +20,11 @@ pub struct HierarchyState {
     pub rename_focus_set: bool,
     /// Pending request to make a camera the default game camera
     pub pending_make_default_camera: Option<Entity>,
+    /// Visible entities in order (for Shift+click range selection)
+    /// This is the order from the PREVIOUS frame, used for click handling
+    pub visible_entity_order: Vec<Entity>,
+    /// New visible entity order being built during current frame
+    pub building_entity_order: Vec<Entity>,
 }
 
 impl HierarchyState {
@@ -45,15 +52,24 @@ impl HierarchyState {
         self.expanded_entities.remove(&entity);
     }
 
-    /// Start dragging an entity
-    pub fn start_drag(&mut self, entity: Entity) {
-        self.drag_entity = Some(entity);
+    /// Start dragging entities (supports multi-selection)
+    pub fn start_drag(&mut self, entities: Vec<Entity>) {
+        if let Some(&first) = entities.first() {
+            self.drag_entity = Some(first);
+            self.drag_entities = entities;
+        }
     }
 
     /// Clear drag state
     pub fn clear_drag(&mut self) {
         self.drag_entity = None;
+        self.drag_entities.clear();
         self.drop_target = None;
+    }
+
+    /// Check if an entity is being dragged
+    pub fn is_being_dragged(&self, entity: Entity) -> bool {
+        self.drag_entities.contains(&entity)
     }
 }
 

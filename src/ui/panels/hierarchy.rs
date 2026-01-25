@@ -150,23 +150,33 @@ pub fn render_hierarchy(
         });
 
     // Show drag tooltip
-    if let Some(drag_entity) = hierarchy.drag_entity {
-        if let Ok((_, editor_entity, _, _, _, _, _)) = entities.get(drag_entity) {
-            if let Some(pos) = ctx.pointer_hover_pos() {
-                egui::Area::new(egui::Id::new("hierarchy_drag_tooltip"))
-                    .fixed_pos(pos + Vec2::new(10.0, 10.0))
-                    .interactable(false)
-                    .order(egui::Order::Tooltip)
-                    .show(ctx, |ui| {
-                        egui::Frame::popup(ui.style()).show(ui, |ui| {
-                            let (icon, color) = get_node_icon(&editor_entity.name, None);
+    if !hierarchy.drag_entities.is_empty() {
+        if let Some(pos) = ctx.pointer_hover_pos() {
+            egui::Area::new(egui::Id::new("hierarchy_drag_tooltip"))
+                .fixed_pos(pos + Vec2::new(10.0, 10.0))
+                .interactable(false)
+                .order(egui::Order::Tooltip)
+                .show(ctx, |ui| {
+                    egui::Frame::popup(ui.style()).show(ui, |ui| {
+                        let drag_count = hierarchy.drag_entities.len();
+                        if drag_count == 1 {
+                            // Single entity drag
+                            if let Ok((_, editor_entity, _, _, _, _, _)) = entities.get(hierarchy.drag_entities[0]) {
+                                let (icon, color) = get_node_icon(&editor_entity.name, None);
+                                ui.horizontal(|ui| {
+                                    ui.label(RichText::new(icon).color(color));
+                                    ui.label(&editor_entity.name);
+                                });
+                            }
+                        } else {
+                            // Multi entity drag
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(icon).color(color));
-                                ui.label(&editor_entity.name);
+                                ui.label(RichText::new(CUBE).color(Color32::from_rgb(140, 191, 242)));
+                                ui.label(format!("{} items", drag_count));
                             });
-                        });
+                        }
                     });
-            }
+                });
         }
     }
 
@@ -290,6 +300,9 @@ pub fn render_hierarchy_content(
             // Clear drop target at start of frame
             hierarchy.drop_target = None;
 
+            // Clear the building order for this frame (we'll swap at the end)
+            hierarchy.building_entity_order.clear();
+
             let root_count = root_entities.len();
             let mut row_index: usize = 0;
             for (i, (entity, editor_entity, _, children, _, _, type_marker)) in root_entities.into_iter().enumerate() {
@@ -325,16 +338,47 @@ pub fn render_hierarchy_content(
 
             // Handle drop when mouse released
             if ctx.input(|i| i.pointer.any_released()) {
-                if let (Some(drag_entity), Some(drop_target)) = (
-                    hierarchy.drag_entity.take(),
-                    hierarchy.drop_target.take(),
-                ) {
-                    // Don't drop onto self
-                    if drag_entity != drop_target.entity {
-                        // Apply the drop and get entity to expand (if any)
-                        if let Some(expand_entity) = apply_hierarchy_drop(commands, drag_entity, drop_target, entities) {
-                            // Auto-expand parent when dropping as child
-                            hierarchy.expanded_entities.insert(expand_entity);
+                let drag_entities = std::mem::take(&mut hierarchy.drag_entities);
+                let drop_target = hierarchy.drop_target.take();
+
+                if !drag_entities.is_empty() {
+                    if let Some(drop_target) = drop_target {
+                        // Build a set of all dragged entities for quick lookup
+                        let drag_set: std::collections::HashSet<Entity> = drag_entities.iter().copied().collect();
+
+                        // Check if drop target is a descendant of any dragged entity (would create cycle)
+                        let is_descendant_of_drag = is_descendant_of_any(drop_target.entity, &drag_set, entities);
+
+                        if !is_descendant_of_drag {
+                            // Find "root" entities in the selection - those whose parent is NOT also selected
+                            // This preserves parent-child relationships within the selection
+                            let root_drags: Vec<_> = drag_entities
+                                .into_iter()
+                                .filter(|&e| {
+                                    // Don't drop onto self
+                                    if e == drop_target.entity {
+                                        return false;
+                                    }
+                                    // Check if this entity's parent is also being dragged
+                                    if let Ok((_, _, parent, _, _, _, _)) = entities.get(e) {
+                                        if let Some(parent) = parent {
+                                            // If parent is in the drag set, this is not a root
+                                            if drag_set.contains(&parent.0) {
+                                                return false;
+                                            }
+                                        }
+                                    }
+                                    true
+                                })
+                                .collect();
+
+                            for drag_entity in root_drags {
+                                // Apply the drop and get entity to expand (if any)
+                                if let Some(expand_entity) = apply_hierarchy_drop(commands, drag_entity, drop_target, entities) {
+                                    // Auto-expand parent when dropping as child
+                                    hierarchy.expanded_entities.insert(expand_entity);
+                                }
+                            }
                         }
                     }
                 }
@@ -342,11 +386,13 @@ pub fn render_hierarchy_content(
 
             // Clear drag if released without valid target
             if ctx.input(|i| i.pointer.any_released()) {
-                hierarchy.drag_entity = None;
-                hierarchy.drop_target = None;
+                hierarchy.clear_drag();
             }
         }
     });
+
+    // Swap the building order to visible order for next frame's click handling
+    std::mem::swap(&mut hierarchy.visible_entity_order, &mut hierarchy.building_entity_order);
 
     // Render plugin context menu items when right-clicking
     // Get hierarchy context menu items from plugins
@@ -389,13 +435,16 @@ fn render_tree_node(
 ) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
-    let is_selected = selection.selected_entity == Some(entity);
+    let is_selected = selection.is_selected(entity);
     // Only count children that are EditorEntity (not internal Bevy children like mesh handles)
     let has_children = children.map_or(false, |c| {
         c.iter().any(|child| entities.get(child).is_ok())
     });
     let is_expanded = hierarchy.expanded_entities.contains(&entity);
-    let is_being_dragged = hierarchy.drag_entity == Some(entity);
+    let is_being_dragged = hierarchy.is_being_dragged(entity);
+
+    // Track visible entity order for Shift+click range selection (building for next frame)
+    hierarchy.building_entity_order.push(entity);
 
     let (rect, response) = ui.allocate_exact_size(Vec2::new(ui.available_width(), ROW_HEIGHT), Sense::click_and_drag());
     let painter = ui.painter();
@@ -409,30 +458,54 @@ fn render_tree_node(
     let base_x = rect.min.x + 4.0;
     let center_y = rect.center().y;
 
+    // Get modifier states
+    let ctrl_held = ctx.input(|i| i.modifiers.ctrl || i.modifiers.command);
+    let shift_held = ctx.input(|i| i.modifiers.shift);
+
     // Handle drag start (unless locked)
     if response.drag_started() && !editor_entity.locked {
-        hierarchy.drag_entity = Some(entity);
+        // If the entity is already selected and part of multi-selection, drag all selected
+        if selection.is_selected(entity) && selection.has_multi_selection() {
+            hierarchy.start_drag(selection.get_all_selected());
+        } else {
+            // Otherwise, select this entity and start dragging just it
+            if !ctrl_held && !shift_held {
+                selection.select(entity);
+            }
+            hierarchy.start_drag(vec![entity]);
+        }
     }
 
     // Click anywhere on row to select (unless locked or dragging)
-    if response.clicked() && hierarchy.drag_entity.is_none() && !editor_entity.locked {
-        selection.selected_entity = Some(entity);
+    if response.clicked() && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
+        if ctrl_held {
+            // Ctrl+click: toggle selection
+            selection.toggle_selection(entity);
+        } else if shift_held {
+            // Shift+click: select range from anchor to this entity
+            let visible_order = hierarchy.visible_entity_order.clone();
+            selection.select_range(entity, &visible_order);
+        } else {
+            // Regular click: select single entity
+            selection.select(entity);
+        }
     }
 
     // Show drag cursor when dragging
-    if hierarchy.drag_entity.is_some() && response.hovered() {
+    if !hierarchy.drag_entities.is_empty() && response.hovered() {
         ctx.set_cursor_icon(CursorIcon::Grabbing);
     }
 
     // Determine drop target based on mouse position
     let mut current_drop_target: Option<HierarchyDropPosition> = None;
 
-    if let Some(drag_entity) = hierarchy.drag_entity {
+    if !hierarchy.drag_entities.is_empty() {
         // Check if pointer is over this row (don't rely on response.hovered() during drag)
         if let Some(pointer_pos) = ctx.pointer_hover_pos() {
             let is_pointer_over_row = rect.contains(pointer_pos);
+            let is_self_being_dragged = hierarchy.is_being_dragged(entity);
 
-            if drag_entity != entity && is_pointer_over_row {
+            if !is_self_being_dragged && is_pointer_over_row {
                 let relative_y = pointer_pos.y - rect.min.y;
                 let edge_zone = ROW_HEIGHT / 3.0; // Top and bottom third for line dividers
 
@@ -682,12 +755,22 @@ fn render_tree_node(
             );
 
             // Single click to select (unless locked)
-            if name_response.clicked() && hierarchy.drag_entity.is_none() && !editor_entity.locked {
-                selection.selected_entity = Some(entity);
+            if name_response.clicked() && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
+                if ctrl_held {
+                    // Ctrl+click: toggle selection
+                    selection.toggle_selection(entity);
+                } else if shift_held {
+                    // Shift+click: select range from anchor to this entity
+                    let visible_order = hierarchy.visible_entity_order.clone();
+                    selection.select_range(entity, &visible_order);
+                } else {
+                    // Regular click: select single entity
+                    selection.select(entity);
+                }
             }
 
             // Double click to rename (unless locked)
-            if name_response.double_clicked() && hierarchy.drag_entity.is_none() && !editor_entity.locked {
+            if name_response.double_clicked() && hierarchy.drag_entities.is_empty() && !editor_entity.locked {
                 hierarchy.renaming_entity = Some(entity);
                 hierarchy.rename_buffer = editor_entity.name.clone();
                 hierarchy.rename_focus_set = false;
@@ -928,6 +1011,28 @@ fn render_plugin_context_menu_item(ui: &mut egui::Ui, item: &PluginMenuItem) -> 
         });
     }
 
+    false
+}
+
+/// Check if an entity is a descendant of any entity in the given set
+/// Used to prevent creating cycles when dragging (can't drop parent onto child)
+fn is_descendant_of_any(
+    entity: Entity,
+    ancestors: &std::collections::HashSet<Entity>,
+    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&SceneRoot>, Option<&NodeTypeMarker>)>,
+) -> bool {
+    // Walk up the parent chain and check if any parent is in the ancestors set
+    let mut current = entity;
+    while let Ok((_, _, parent, _, _, _, _)) = entities.get(current) {
+        if let Some(parent) = parent {
+            if ancestors.contains(&parent.0) {
+                return true;
+            }
+            current = parent.0;
+        } else {
+            break;
+        }
+    }
     false
 }
 
