@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
-use crate::core::{KeyBindings, EditorAction, SelectionState};
+use crate::core::{KeyBindings, EditorAction, InputFocusState, SelectionState};
 use crate::gizmo::{EditorTool, GizmoMode, GizmoState, ModalTransformState};
 
 pub fn handle_selection(
@@ -11,6 +11,7 @@ pub fn handle_selection(
     mut gizmo: ResMut<GizmoState>,
     mut command_history: ResMut<CommandHistory>,
     modal: Res<ModalTransformState>,
+    input_focus: Res<InputFocusState>,
 ) {
     // Don't process keybindings while rebinding
     if keybindings.rebinding.is_some() {
@@ -19,6 +20,11 @@ pub fn handle_selection(
 
     // Don't process shortcuts while modal transform is active
     if modal.active {
+        return;
+    }
+
+    // Don't process shortcuts when a text input is focused
+    if input_focus.egui_wants_keyboard {
         return;
     }
 

@@ -13,7 +13,7 @@ pub use resources::{
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
     CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DockingState, EditorSettings,
     ExportLogLevel, ExportLogger, ExportState,
-    HierarchyDropPosition, HierarchyDropTarget, HierarchyState, LogEntry, LogLevel, MeshHandling,
+    HierarchyDropPosition, HierarchyDropTarget, HierarchyState, InputFocusState, LogEntry, LogLevel, MeshHandling,
     NormalImportMethod, OpenScript, PendingImageDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, RightPanelTab, SceneManagerState,
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TangentImportMethod,
@@ -52,6 +52,7 @@ impl Plugin for CorePlugin {
             .init_resource::<ConsoleState>()
             .init_resource::<ThumbnailCache>()
             .init_resource::<DockingState>()
+            .init_resource::<InputFocusState>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (
                 apply_world_environment,

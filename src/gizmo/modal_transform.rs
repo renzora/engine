@@ -12,7 +12,7 @@ use bevy::prelude::*;
 use bevy::window::CursorOptions;
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
-use crate::core::{SelectionState, ViewportState, OrbitCameraState, KeyBindings, EditorAction};
+use crate::core::{InputFocusState, SelectionState, ViewportState, OrbitCameraState, KeyBindings, EditorAction};
 
 /// Modal transform mode
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -216,6 +216,7 @@ pub fn modal_transform_input_system(
     transforms: Query<&Transform>,
     windows: Query<&Window>,
     mut cursor_options: Query<&mut CursorOptions>,
+    input_focus: Res<InputFocusState>,
 ) {
     // Don't start new modal if one is active
     if modal.active {
@@ -224,6 +225,11 @@ pub fn modal_transform_input_system(
 
     // Don't process while rebinding keys
     if keybindings.rebinding.is_some() {
+        return;
+    }
+
+    // Don't process when a text input is focused
+    if input_focus.egui_wants_keyboard {
         return;
     }
 

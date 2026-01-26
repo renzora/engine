@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 
-use crate::core::{EditorEntity, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings};
+use crate::core::{EditorEntity, InputFocusState, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings};
 use crate::gizmo::ModalTransformState;
 
 pub fn camera_controller(
@@ -18,6 +18,7 @@ pub fn camera_controller(
     mut camera_query: Query<&mut Transform, With<ViewportCamera>>,
     entity_query: Query<&Transform, (With<EditorEntity>, Without<ViewportCamera>)>,
     modal: Res<ModalTransformState>,
+    input_focus: Res<InputFocusState>,
 ) {
     let Ok(mut transform) = camera_query.single_mut() else {
         return;
@@ -30,8 +31,12 @@ pub fn camera_controller(
         return;
     }
 
+    // Don't process keyboard shortcuts when a text input is focused
+    // (mouse controls still work)
+    let keyboard_enabled = !input_focus.egui_wants_keyboard;
+
     // Focus on selected entity (works even when not hovering viewport)
-    if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
+    if keyboard_enabled && keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {
         if let Some(selected) = selection.selected_entity {
             if let Ok(target_transform) = entity_query.get(selected) {
                 orbit.focus = target_transform.translation;
@@ -65,45 +70,47 @@ pub fn camera_controller(
         return;
     }
 
-    // WASD navigation - move the orbit focus point
-    let mut move_delta = Vec3::ZERO;
+    // WASD navigation - move the orbit focus point (only when keyboard not captured by UI)
+    if keyboard_enabled {
+        let mut move_delta = Vec3::ZERO;
 
-    // Get camera forward/right on XZ plane
-    let forward = Vec3::new(
-        orbit.yaw.sin(),
-        0.0,
-        orbit.yaw.cos(),
-    ).normalize();
-    let right_dir = Vec3::new(forward.z, 0.0, -forward.x);
+        // Get camera forward/right on XZ plane
+        let forward = Vec3::new(
+            orbit.yaw.sin(),
+            0.0,
+            orbit.yaw.cos(),
+        ).normalize();
+        let right_dir = Vec3::new(forward.z, 0.0, -forward.x);
 
-    // Forward/backward
-    if keybindings.pressed(EditorAction::CameraMoveForward, &keyboard) {
-        move_delta -= forward;
-    }
-    if keybindings.pressed(EditorAction::CameraMoveBackward, &keyboard) {
-        move_delta += forward;
-    }
+        // Forward/backward
+        if keybindings.pressed(EditorAction::CameraMoveForward, &keyboard) {
+            move_delta -= forward;
+        }
+        if keybindings.pressed(EditorAction::CameraMoveBackward, &keyboard) {
+            move_delta += forward;
+        }
 
-    // Left/right
-    if keybindings.pressed(EditorAction::CameraMoveLeft, &keyboard) {
-        move_delta -= right_dir;
-    }
-    if keybindings.pressed(EditorAction::CameraMoveRight, &keyboard) {
-        move_delta += right_dir;
-    }
+        // Left/right
+        if keybindings.pressed(EditorAction::CameraMoveLeft, &keyboard) {
+            move_delta -= right_dir;
+        }
+        if keybindings.pressed(EditorAction::CameraMoveRight, &keyboard) {
+            move_delta += right_dir;
+        }
 
-    // Down/up
-    if keybindings.pressed(EditorAction::CameraMoveDown, &keyboard) {
-        move_delta -= Vec3::Y;
-    }
-    if keybindings.pressed(EditorAction::CameraMoveUp, &keyboard) {
-        move_delta += Vec3::Y;
-    }
+        // Down/up
+        if keybindings.pressed(EditorAction::CameraMoveDown, &keyboard) {
+            move_delta -= Vec3::Y;
+        }
+        if keybindings.pressed(EditorAction::CameraMoveUp, &keyboard) {
+            move_delta += Vec3::Y;
+        }
 
-    // Apply movement (faster with modifier)
-    if move_delta.length_squared() > 0.0 {
-        let speed_mult = if keybindings.pressed(EditorAction::CameraMoveFaster, &keyboard) { 2.0 } else { 1.0 };
-        orbit.focus += move_delta.normalize() * move_speed * speed_mult * delta;
+        // Apply movement (faster with modifier)
+        if move_delta.length_squared() > 0.0 {
+            let speed_mult = if keybindings.pressed(EditorAction::CameraMoveFaster, &keyboard) { 2.0 } else { 1.0 };
+            orbit.focus += move_delta.normalize() * move_speed * speed_mult * delta;
+        }
     }
 
     // Scroll wheel - zoom

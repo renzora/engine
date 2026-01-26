@@ -10,7 +10,7 @@ use bevy_egui::{EguiContexts, EguiTextureHandle};
 use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DockingState,
-    EditorEntity, ExportState, KeyBindings, SelectionState, HierarchyState, ViewportState,
+    EditorEntity, ExportState, InputFocusState, KeyBindings, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
 };
@@ -175,6 +175,7 @@ pub fn editor_ui(
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     mut ui_renderer: Local<UiRenderer>,
+    mut input_focus: ResMut<InputFocusState>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -199,6 +200,9 @@ pub fn editor_ui(
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
+
+    // Update input focus state - this lets other systems know if egui has keyboard focus
+    input_focus.egui_wants_keyboard = ctx.wants_keyboard_input();
 
     apply_editor_style(ctx);
 
