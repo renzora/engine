@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::camera::visibility::RenderLayers;
 
+use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, GIZMO_RENDER_LAYER, GIZMO_SIZE};
 use crate::core::SelectionState;
 
@@ -331,15 +332,18 @@ pub struct GizmoRoot;
 pub fn update_gizmo_mesh_transforms(
     selection: Res<SelectionState>,
     gizmo_state: Res<GizmoState>,
+    modal: Res<ModalTransformState>,
     transforms: Query<&Transform, (Without<GizmoMesh>, Without<GizmoRoot>)>,
     mut gizmo_root: Query<(&mut Transform, &mut Visibility), With<GizmoRoot>>,
 ) {
     let Ok((mut root_transform, mut root_visibility)) = gizmo_root.single_mut() else { return };
 
+    // Hide gizmo during modal transform (G/R/S mode)
     let show_gizmos = selection.selected_entity.is_some()
         && gizmo_state.tool == EditorTool::Transform
         && gizmo_state.mode == GizmoMode::Translate
-        && !gizmo_state.collider_edit.is_active();
+        && !gizmo_state.collider_edit.is_active()
+        && !modal.active;
     *root_visibility = if show_gizmos { Visibility::Visible } else { Visibility::Hidden };
 
     if let Some(selected) = selection.selected_entity {

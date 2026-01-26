@@ -2,6 +2,7 @@ mod drawing;
 mod grid;
 mod interaction;
 mod meshes;
+pub mod modal_transform;
 mod physics;
 pub mod picking;
 pub mod state;
@@ -19,6 +20,11 @@ pub use physics::{
     collider_edit_hover_system, collider_edit_interaction_system, collider_edit_drag_system,
 };
 pub use state::{ColliderEditHandle, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings};
+pub use modal_transform::{
+    ModalTransformState, AxisConstraint,
+    modal_transform_input_system, modal_transform_keyboard_system,
+    modal_transform_apply_system, modal_transform_overlay_system,
+};
 
 // 2D gizmo exports
 pub use gizmo_2d::draw_selection_gizmo_2d;

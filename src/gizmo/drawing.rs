@@ -5,17 +5,24 @@ use crate::core::{EditorEntity, SelectionState};
 use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
 
+use super::modal_transform::ModalTransformState;
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn draw_selection_gizmo(
     selection: Res<SelectionState>,
     gizmo_state: Res<GizmoState>,
+    modal: Res<ModalTransformState>,
     mut gizmos: Gizmos<SelectionGizmoGroup>,
     transforms: Query<&Transform, With<EditorEntity>>,
     cameras: Query<&CameraNodeData>,
     camera_rigs: Query<(&CameraRigData, Option<&ChildOf>)>,
     parent_transforms: Query<&Transform, Without<CameraRigData>>,
 ) {
+    // Don't draw gizmo during modal transform (G/R/S mode)
+    if modal.active {
+        return;
+    }
+
     // Don't draw selection visuals when in collider edit mode
     if gizmo_state.collider_edit.is_active() {
         return;

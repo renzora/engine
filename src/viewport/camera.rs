@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy::input::mouse::{MouseMotion, MouseWheel};
 
 use crate::core::{EditorEntity, ViewportCamera, KeyBindings, EditorAction, SelectionState, ViewportState, OrbitCameraState, EditorSettings};
+use crate::gizmo::ModalTransformState;
 
 pub fn camera_controller(
     selection: Res<SelectionState>,
@@ -16,10 +17,18 @@ pub fn camera_controller(
     mut scroll_events: MessageReader<MouseWheel>,
     mut camera_query: Query<&mut Transform, With<ViewportCamera>>,
     entity_query: Query<&Transform, (With<EditorEntity>, Without<ViewportCamera>)>,
+    modal: Res<ModalTransformState>,
 ) {
     let Ok(mut transform) = camera_query.single_mut() else {
         return;
     };
+
+    // Disable camera movement during modal transform
+    if modal.active {
+        mouse_motion.clear();
+        scroll_events.clear();
+        return;
+    }
 
     // Focus on selected entity (works even when not hovering viewport)
     if keybindings.just_pressed(EditorAction::FocusSelected, &keyboard) {

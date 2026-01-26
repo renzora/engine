@@ -20,6 +20,11 @@ pub enum EditorAction {
     GizmoRotate,
     GizmoScale,
 
+    // Modal transforms (Blender-style)
+    ModalGrab,
+    ModalRotate,
+    ModalScale,
+
     // Selection
     Delete,
     Deselect,
@@ -54,6 +59,9 @@ impl EditorAction {
             EditorAction::GizmoTranslate => "Translate Mode",
             EditorAction::GizmoRotate => "Rotate Mode",
             EditorAction::GizmoScale => "Scale Mode",
+            EditorAction::ModalGrab => "Grab (Move)",
+            EditorAction::ModalRotate => "Rotate",
+            EditorAction::ModalScale => "Scale",
             EditorAction::Delete => "Delete",
             EditorAction::Deselect => "Deselect",
             EditorAction::Undo => "Undo",
@@ -82,6 +90,10 @@ impl EditorAction {
             | EditorAction::GizmoTranslate
             | EditorAction::GizmoRotate
             | EditorAction::GizmoScale => "Tools",
+
+            EditorAction::ModalGrab
+            | EditorAction::ModalRotate
+            | EditorAction::ModalScale => "Transform",
 
             EditorAction::Delete | EditorAction::Deselect => "Selection",
 
@@ -114,6 +126,10 @@ impl EditorAction {
             EditorAction::GizmoTranslate,
             EditorAction::GizmoRotate,
             EditorAction::GizmoScale,
+            // Transform (modal)
+            EditorAction::ModalGrab,
+            EditorAction::ModalRotate,
+            EditorAction::ModalScale,
             // Selection
             EditorAction::Delete,
             EditorAction::Deselect,
@@ -209,6 +225,11 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::GizmoTranslate, KeyBinding::new(KeyCode::KeyW));
         bindings.insert(EditorAction::GizmoRotate, KeyBinding::new(KeyCode::KeyE));
         bindings.insert(EditorAction::GizmoScale, KeyBinding::new(KeyCode::KeyR));
+
+        // Modal transform defaults (Blender-style)
+        bindings.insert(EditorAction::ModalGrab, KeyBinding::new(KeyCode::KeyG));
+        bindings.insert(EditorAction::ModalRotate, KeyBinding::new(KeyCode::KeyR));
+        bindings.insert(EditorAction::ModalScale, KeyBinding::new(KeyCode::KeyS));
 
         // Selection defaults
         bindings.insert(EditorAction::Delete, KeyBinding::new(KeyCode::Delete));

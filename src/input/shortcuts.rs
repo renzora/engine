@@ -2,7 +2,7 @@ use bevy::prelude::*;
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{KeyBindings, EditorAction, SelectionState};
-use crate::gizmo::{EditorTool, GizmoMode, GizmoState};
+use crate::gizmo::{EditorTool, GizmoMode, GizmoState, ModalTransformState};
 
 pub fn handle_selection(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -10,9 +10,15 @@ pub fn handle_selection(
     mut selection: ResMut<SelectionState>,
     mut gizmo: ResMut<GizmoState>,
     mut command_history: ResMut<CommandHistory>,
+    modal: Res<ModalTransformState>,
 ) {
     // Don't process keybindings while rebinding
     if keybindings.rebinding.is_some() {
+        return;
+    }
+
+    // Don't process shortcuts while modal transform is active
+    if modal.active {
         return;
     }
 

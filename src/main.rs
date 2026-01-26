@@ -164,6 +164,19 @@ fn main() {
                 .chain()
                 .run_if(in_state(AppState::Editor)),
         )
+        // Modal transform systems (Blender-style G/R/S shortcuts)
+        .add_systems(
+            Update,
+            (
+                gizmo::modal_transform_input_system,
+                gizmo::modal_transform_keyboard_system,
+                gizmo::modal_transform_apply_system,
+                gizmo::modal_transform_overlay_system,
+            )
+                .chain()
+                .before(gizmo::gizmo_hover_system)
+                .run_if(in_state(AppState::Editor)),
+        )
         .add_systems(
             Update,
             (
@@ -236,6 +249,8 @@ fn main() {
         // Initialize editor state tracking resources
         .init_resource::<project::EditorStateDirty>()
         .init_resource::<project::LoadedEditorState>()
+        // Initialize modal transform state
+        .init_resource::<gizmo::ModalTransformState>()
         .run();
 }
 

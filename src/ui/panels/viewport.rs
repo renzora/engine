@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, TextureId, Vec2};
 
 use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop};
+use crate::gizmo::{ModalTransformState, AxisConstraint};
 use crate::viewport::Camera2DState;
 
 /// Height of the viewport mode tabs bar
@@ -20,6 +21,7 @@ pub fn render_viewport(
     orbit: &mut OrbitCameraState,
     camera2d_state: &Camera2DState,
     gizmo: &GizmoState,
+    modal_transform: &ModalTransformState,
     left_panel_width: f32,
     right_panel_width: f32,
     content_start_y: f32,
@@ -70,6 +72,11 @@ pub fn render_viewport(
     // Render box selection rectangle (if active)
     if gizmo.box_selection.active && gizmo.box_selection.is_drag() {
         render_box_selection(ctx, gizmo);
+    }
+
+    // Render modal transform HUD (if active)
+    if modal_transform.active {
+        render_modal_transform_hud(ctx, modal_transform, content_rect);
     }
 }
 
@@ -632,4 +639,95 @@ fn render_box_selection(ctx: &egui::Context, gizmo: &GizmoState) {
                 egui::StrokeKind::Outside,
             );
         });
+}
+
+/// Render the modal transform HUD overlay
+fn render_modal_transform_hud(ctx: &egui::Context, modal: &ModalTransformState, viewport_rect: Rect) {
+    let Some(mode) = &modal.mode else { return };
+
+    // Position HUD at bottom of viewport
+    let hud_height = 60.0;
+    let hud_width = 300.0;
+    let hud_rect = Rect::from_min_size(
+        Pos2::new(
+            viewport_rect.center().x - hud_width / 2.0,
+            viewport_rect.max.y - hud_height - 10.0,
+        ),
+        Vec2::new(hud_width, hud_height),
+    );
+
+    egui::Area::new(egui::Id::new("modal_transform_hud"))
+        .fixed_pos(hud_rect.min)
+        .order(egui::Order::Foreground)
+        .interactable(false)
+        .show(ctx, |ui| {
+            let painter = ui.painter();
+
+            // Background
+            painter.rect_filled(
+                hud_rect,
+                8.0,
+                Color32::from_rgba_unmultiplied(30, 30, 35, 230),
+            );
+            painter.rect_stroke(
+                hud_rect,
+                8.0,
+                Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
+                egui::StrokeKind::Outside,
+            );
+
+            // Mode text (large, centered at top)
+            let mode_text = mode.display_name();
+            painter.text(
+                Pos2::new(hud_rect.center().x, hud_rect.min.y + 16.0),
+                egui::Align2::CENTER_CENTER,
+                mode_text,
+                FontId::proportional(16.0),
+                Color32::WHITE,
+            );
+
+            // Axis constraint (with color)
+            let axis_text = modal.axis_constraint.display_name();
+            if !axis_text.is_empty() {
+                let axis_color = axis_constraint_to_color32(modal.axis_constraint);
+                painter.text(
+                    Pos2::new(hud_rect.center().x, hud_rect.min.y + 32.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("Axis: {}", axis_text),
+                    FontId::proportional(12.0),
+                    axis_color,
+                );
+            }
+
+            // Numeric input display
+            let numeric_display = modal.numeric_input.display();
+            if !numeric_display.is_empty() {
+                painter.text(
+                    Pos2::new(hud_rect.center().x, hud_rect.min.y + 44.0),
+                    egui::Align2::CENTER_CENTER,
+                    format!("Value: {}", numeric_display),
+                    FontId::proportional(12.0),
+                    Color32::from_rgb(100, 200, 255),
+                );
+            }
+
+            // Help text at bottom
+            painter.text(
+                Pos2::new(hud_rect.center().x, hud_rect.max.y - 8.0),
+                egui::Align2::CENTER_CENTER,
+                "X/Y/Z axis | Enter confirm | Esc cancel",
+                FontId::proportional(10.0),
+                Color32::from_rgb(120, 120, 130),
+            );
+        });
+}
+
+/// Convert AxisConstraint to egui Color32
+fn axis_constraint_to_color32(axis: AxisConstraint) -> Color32 {
+    match axis {
+        AxisConstraint::None => Color32::WHITE,
+        AxisConstraint::X | AxisConstraint::PlaneYZ => Color32::from_rgb(237, 76, 92),   // Red
+        AxisConstraint::Y | AxisConstraint::PlaneXZ => Color32::from_rgb(139, 201, 63),  // Green
+        AxisConstraint::Z | AxisConstraint::PlaneXY => Color32::from_rgb(68, 138, 255),  // Blue
+    }
 }

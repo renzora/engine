@@ -5,6 +5,7 @@ use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState};
 use crate::console_info;
 
+use super::modal_transform::ModalTransformState;
 use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
     ray_quad_intersection, ray_to_axis_closest_point, ray_to_axis_distance, ray_to_circle_distance,
@@ -15,10 +16,17 @@ pub fn gizmo_hover_system(
     mut gizmo: ResMut<GizmoState>,
     selection: Res<SelectionState>,
     viewport: Res<ViewportState>,
+    modal: Res<ModalTransformState>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     transforms: Query<&Transform, With<EditorEntity>>,
 ) {
+    // Disable gizmo during modal transform
+    if modal.active {
+        gizmo.hovered_axis = None;
+        return;
+    }
+
     // Don't update hover while dragging
     if gizmo.is_dragging {
         return;
@@ -156,6 +164,7 @@ pub fn gizmo_interaction_system(
     mut gizmo: ResMut<GizmoState>,
     mut selection: ResMut<SelectionState>,
     viewport: Res<ViewportState>,
+    modal: Res<ModalTransformState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
@@ -167,6 +176,11 @@ pub fn gizmo_interaction_system(
     mut mesh_ray_cast: MeshRayCast,
     mut command_history: ResMut<CommandHistory>,
 ) {
+    // Disable gizmo interaction during modal transform
+    if modal.active {
+        return;
+    }
+
     let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
     let ctrl_held = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
 
@@ -477,12 +491,18 @@ pub fn object_drag_system(
     gizmo: Res<GizmoState>,
     selection: Res<SelectionState>,
     viewport: Res<ViewportState>,
+    modal: Res<ModalTransformState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
     mut scene_state: ResMut<SceneManagerState>,
 ) {
+    // Disable gizmo drag during modal transform
+    if modal.active {
+        return;
+    }
+
     if !gizmo.is_dragging || !mouse_button.pressed(MouseButton::Left) {
         return;
     }
