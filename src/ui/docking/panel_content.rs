@@ -123,6 +123,8 @@ pub fn get_panel_min_size(panel_id: &PanelId) -> Vec2 {
         PanelId::Animation => Vec2::new(200.0, 80.0),
         PanelId::ScriptEditor => Vec2::new(300.0, 200.0),
         PanelId::History => Vec2::new(150.0, 100.0),
+        PanelId::Blueprint => Vec2::new(400.0, 300.0),
+        PanelId::NodeLibrary => Vec2::new(180.0, 200.0),
         PanelId::Plugin(_) => Vec2::new(100.0, 100.0),
     }
 }

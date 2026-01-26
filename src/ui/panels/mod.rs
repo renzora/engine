@@ -1,9 +1,11 @@
 mod assets;
+mod blueprint;
 mod console;
 mod document_tabs;
 mod export;
 mod hierarchy;
 mod inspector;
+mod node_library;
 mod plugin_ui;
 mod script_editor;
 mod settings;
@@ -14,6 +16,8 @@ mod toolbar;
 mod viewport;
 
 pub use assets::{render_assets_content, render_assets_dialogs};
+pub use blueprint::render_blueprint_panel;
+pub use node_library::render_node_library_panel;
 pub use console::render_console_content;
 pub use document_tabs::render_document_tabs;
 pub use export::render_export_dialog;

@@ -520,10 +520,6 @@ fn render_menu_items(
         });
     }
 
-    ui.menu_button("View", |ui| {
-        ui.checkbox(&mut settings.show_demo_window, "egui Demo");
-    });
-
     // Helper to apply layout and sync viewport state
     let apply_layout = |name: &str, docking: &mut DockingState, viewport: &mut ViewportState| {
         if docking.switch_layout(name) {

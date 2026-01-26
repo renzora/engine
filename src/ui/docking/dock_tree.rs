@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use egui_phosphor::regular::{
     TREE_STRUCTURE, SLIDERS_HORIZONTAL, FOLDER_OPEN, TERMINAL,
     MONITOR, FILM_STRIP, CODE, CLOCK_COUNTER_CLOCKWISE, PUZZLE_PIECE,
+    GRAPH, LIST_BULLETS,
 };
 
 /// Direction of a split in the dock tree
@@ -27,6 +28,8 @@ pub enum PanelId {
     Animation,
     ScriptEditor,
     History,
+    Blueprint,
+    NodeLibrary,
     /// Custom plugin-provided panel
     Plugin(String),
 }
@@ -43,6 +46,8 @@ impl PanelId {
             PanelId::Animation => "Animation",
             PanelId::ScriptEditor => "Script Editor",
             PanelId::History => "History",
+            PanelId::Blueprint => "Blueprint",
+            PanelId::NodeLibrary => "Node Library",
             PanelId::Plugin(name) => name,
         }
     }
@@ -58,6 +63,8 @@ impl PanelId {
             PanelId::Animation => FILM_STRIP,
             PanelId::ScriptEditor => CODE,
             PanelId::History => CLOCK_COUNTER_CLOCKWISE,
+            PanelId::Blueprint => GRAPH,
+            PanelId::NodeLibrary => LIST_BULLETS,
             PanelId::Plugin(_) => PUZZLE_PIECE,
         }
     }

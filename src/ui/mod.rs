@@ -44,6 +44,9 @@ pub struct EditorResources<'w> {
     pub add_component_popup: ResMut<'w, AddComponentPopupState>,
     pub keyboard: Res<'w, ButtonInput<KeyCode>>,
     pub docking: ResMut<'w, DockingState>,
+    pub blueprint_editor: ResMut<'w, BlueprintEditorState>,
+    pub blueprint_canvas: ResMut<'w, BlueprintCanvasState>,
+    pub blueprint_nodes: Res<'w, BlueprintNodeRegistry>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -51,6 +54,7 @@ use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
 use crate::plugin_core::PluginHost;
+use crate::blueprint::{BlueprintEditorState, BlueprintCanvasState, nodes::NodeRegistry as BlueprintNodeRegistry};
 use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
 use docking::{
@@ -244,6 +248,7 @@ pub fn editor_ui(
         &mut editor.selection,
         &mut editor.hierarchy,
         &mut editor.play_mode,
+        &mut editor.docking,
     );
     all_ui_events.extend(toolbar_events);
 
@@ -550,6 +555,30 @@ pub fn editor_ui(
                             ctx,
                             &mut editor.scene_state,
                             current_project.as_deref(),
+                        );
+                    });
+                }
+
+                PanelId::Blueprint => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        panels::render_blueprint_panel(
+                            ui,
+                            ctx,
+                            &mut editor.blueprint_editor,
+                            &mut editor.blueprint_canvas,
+                            &editor.blueprint_nodes,
+                            current_project.as_deref(),
+                        );
+                    });
+                }
+
+                PanelId::NodeLibrary => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        panels::render_node_library_panel(
+                            ui,
+                            &mut editor.blueprint_editor,
+                            &editor.blueprint_canvas,
+                            &editor.blueprint_nodes,
                         );
                     });
                 }

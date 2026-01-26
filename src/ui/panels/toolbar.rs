@@ -1,17 +1,18 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
-use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode, PlayModeState, PlayState};
+use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode, PlayModeState, PlayState, DockingState};
 use crate::gizmo::{EditorTool, GizmoMode, GizmoState, SnapSettings};
 use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
+use crate::ui::docking::builtin_layouts;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, PLAY, PAUSE, STOP, GEAR,
     CUBE, LIGHTBULB, VIDEO_CAMERA, PLUS, CARET_DOWN, EYE, IMAGE, POLYGON,
-    SUN, CLOUD, MAGNET, CURSOR,
+    SUN, CLOUD, MAGNET, CURSOR, LAYOUT,
 };
 
 pub fn render_toolbar(
@@ -28,6 +29,7 @@ pub fn render_toolbar(
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
     play_mode: &mut PlayModeState,
+    docking_state: &mut DockingState,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
@@ -302,6 +304,13 @@ pub fn render_toolbar(
                     settings.show_settings_window = !settings.show_settings_window;
                 }
                 settings_resp.on_hover_text("Settings");
+
+                ui.add_space(4.0);
+
+                // === Layout Dropdown ===
+                let layout_color = Color32::from_rgb(160, 160, 180);
+                let current_layout = docking_state.active_layout.clone();
+                layout_dropdown(ui, LAYOUT, &current_layout, layout_color, inactive_color, docking_state);
             });
         });
 
@@ -545,4 +554,98 @@ fn snap_dropdown(
     );
 
     response.on_hover_text(label);
+}
+
+fn layout_dropdown(
+    ui: &mut egui::Ui,
+    icon: &str,
+    current_layout: &str,
+    icon_color: Color32,
+    bg_color: Color32,
+    docking_state: &mut DockingState,
+) {
+    let button_id = ui.make_persistent_id("layout_dropdown");
+    let size = Vec2::new(90.0, 24.0);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click());
+
+    if ui.is_rect_visible(rect) {
+        let hovered = response.hovered();
+        let fill = if hovered {
+            Color32::from_rgb(56, 56, 68)
+        } else {
+            bg_color
+        };
+
+        ui.painter().rect_filled(rect, CornerRadius::same(4), fill);
+
+        // Icon
+        ui.painter().text(
+            Pos2::new(rect.left() + 12.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            icon,
+            egui::FontId::proportional(13.0),
+            icon_color,
+        );
+
+        // Layout name (truncated if needed)
+        let text = if current_layout.len() > 8 {
+            format!("{}...", &current_layout[..6])
+        } else {
+            current_layout.to_string()
+        };
+        ui.painter().text(
+            Pos2::new(rect.left() + 26.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            text,
+            egui::FontId::proportional(11.0),
+            Color32::from_rgb(200, 200, 210),
+        );
+
+        // Caret
+        ui.painter().text(
+            Pos2::new(rect.right() - 10.0, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            CARET_DOWN,
+            egui::FontId::proportional(10.0),
+            Color32::from_rgb(140, 140, 150),
+        );
+    }
+
+    if response.clicked() {
+        #[allow(deprecated)]
+        ui.memory_mut(|mem| mem.toggle_popup(button_id));
+    }
+
+    #[allow(deprecated)]
+    egui::popup_below_widget(
+        ui,
+        button_id,
+        &response,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(140.0);
+            ui.style_mut().spacing.item_spacing.y = 2.0;
+
+            for layout in builtin_layouts() {
+                let is_selected = docking_state.active_layout == layout.name;
+                let label = if is_selected {
+                    format!("• {}", layout.name)
+                } else {
+                    format!("  {}", layout.name)
+                };
+
+                if ui.add(
+                    egui::Button::new(&label)
+                        .fill(Color32::TRANSPARENT)
+                        .corner_radius(CornerRadius::same(2))
+                        .min_size(Vec2::new(ui.available_width(), 0.0))
+                ).clicked() {
+                    docking_state.switch_layout(&layout.name);
+                    ui.close();
+                }
+            }
+        },
+    );
+
+    response.on_hover_text("Layout");
 }

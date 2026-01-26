@@ -179,37 +179,30 @@ pub fn debug_layout() -> DockTree {
     )
 }
 
-/// Blueprints layout: Visual scripting focused with large script editor
+/// Blueprints layout: Visual scripting focused with large blueprint editor
 ///
 /// ```text
-/// ┌─────────┬──────────────────────────────────┐
-/// │         │                                  │
-/// │Hierarchy│         Script Editor            │
-/// │         │                                  │
-/// ├─────────┼────────────────────┬─────────────┤
-/// │ Assets  │     Viewport       │  Inspector  │
-/// └─────────┴────────────────────┴─────────────┘
+/// ┌───────────┬──────────────────────┬───────────┐
+/// │           │                      │           │
+/// │   Node    │   Blueprint Editor   │           │
+/// │  Library  │                      │  Assets   │
+/// │           ├──────────────────────┤           │
+/// │           │      Viewport        │           │
+/// └───────────┴──────────────────────┴───────────┘
 /// ```
 pub fn blueprints_layout() -> DockTree {
-    DockTree::vertical(
+    DockTree::horizontal(
+        DockTree::leaf(PanelId::NodeLibrary),
         DockTree::horizontal(
-            DockTree::leaf(PanelId::Hierarchy),
-            DockTree::leaf(PanelId::ScriptEditor),
-            0.15,
-        ),
-        DockTree::horizontal(
-            DockTree::leaf(PanelId::Assets),
-            DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Blueprint),
                 DockTree::leaf(PanelId::Viewport),
-                DockTree::Leaf {
-                    tabs: vec![PanelId::Inspector, PanelId::Console],
-                    active_tab: 0,
-                },
-                0.7,
+                0.6,
             ),
-            0.15,
+            DockTree::leaf(PanelId::Assets),
+            0.8,
         ),
-        0.55,
+        0.10,
     )
 }
 

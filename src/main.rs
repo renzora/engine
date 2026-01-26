@@ -1,6 +1,7 @@
 // Hide console window on Windows
 #![windows_subsystem = "windows"]
 
+mod blueprint;
 mod commands;
 mod component_system;
 mod core;
@@ -123,6 +124,7 @@ fn main() {
             scripting::ScriptingPlugin,
             plugin_core::PluginCorePlugin,
             play_mode::PlayModePlugin,
+            blueprint::BlueprintPlugin,
         ))
         // Observer for Bevy scene loading completion
         .add_observer(scene::on_bevy_scene_ready)
