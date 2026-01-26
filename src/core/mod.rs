@@ -127,13 +127,13 @@ fn track_asset_loading(
 /// System that applies WorldEnvironment settings to Bevy resources
 fn apply_world_environment(
     mut commands: Commands,
-    world_envs: Query<&WorldEnvironmentMarker>,
+    world_envs: Query<(&WorldEnvironmentMarker, &EditorEntity)>,
     mut ambient_light: ResMut<AmbientLight>,
     mut cameras: Query<&mut Camera, With<ViewportCamera>>,
     mut sun_query: Query<(Entity, &mut DirectionalLight, &mut Transform), With<ProceduralSkySun>>,
 ) {
-    // Find the first WorldEnvironment in the scene and apply its settings
-    if let Some(world_env) = world_envs.iter().next() {
+    // Find the first visible WorldEnvironment in the scene and apply its settings
+    if let Some((world_env, _)) = world_envs.iter().find(|(_, editor)| editor.visible) {
         let data = &world_env.data;
 
         // Apply ambient light settings

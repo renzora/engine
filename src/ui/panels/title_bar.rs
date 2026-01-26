@@ -45,7 +45,7 @@ pub fn render_title_bar(
             let window_buttons_width = button_width * 3.0;
 
             // Draw centered title with icon
-            let title_text = "Renzora Engine r4".to_string();
+            let title_text = "Renzora Engine r1".to_string();
             let title_galley = painter.layout_no_wrap(
                 title_text.clone(),
                 egui::FontId::proportional(13.0),
@@ -793,7 +793,7 @@ pub fn render_splash_title_bar(
             let window_buttons_width = button_width * 3.0;
 
             // Draw centered title with icon
-            let title_text = "Renzora Engine r4".to_string();
+            let title_text = "Renzora Engine r1".to_string();
             let title_galley = painter.layout_no_wrap(
                 title_text.clone(),
                 egui::FontId::proportional(13.0),

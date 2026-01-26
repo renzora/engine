@@ -98,6 +98,7 @@ fn main() {
         .register_type::<core::EditorEntity>()
         .register_type::<core::SceneNode>()
         .register_type::<core::SceneTabId>()
+        .register_type::<core::WorldEnvironmentMarker>()
         // Scene roots
         .register_type::<spawn::EditorSceneRoot>()
         .register_type::<spawn::SceneType>()

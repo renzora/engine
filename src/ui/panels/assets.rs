@@ -26,7 +26,7 @@ use egui_phosphor::fill::FOLDER as FOLDER_FILL;
 const MIN_TILE_SIZE: f32 = 64.0;
 const MAX_TILE_SIZE: f32 = 128.0;
 const DEFAULT_TILE_SIZE: f32 = 80.0;
-const LIST_ROW_HEIGHT: f32 = 24.0;
+const LIST_ROW_HEIGHT: f32 = 20.0;
 
 /// Render the bottom panel with tabs (Assets + Console + Plugin tabs)
 pub fn render_assets(
@@ -867,6 +867,9 @@ fn render_list_view(
     thumbnail_cache: &mut ThumbnailCache,
     project: &CurrentProject,
 ) {
+    // Remove vertical spacing between rows
+    ui.style_mut().spacing.item_spacing.y = 0.0;
+
     // For tree view, start from current folder or project root
     let root_folder = assets.current_folder.clone().unwrap_or_else(|| project.path.clone());
     render_tree_node(ui, ctx, assets, scene_state, &root_folder, 0, thumbnail_cache);
@@ -881,8 +884,8 @@ fn render_tree_node(
     depth: usize,
     thumbnail_cache: &mut ThumbnailCache,
 ) {
-    let indent = depth as f32 * 16.0;
-    let thumbnail_size = 16.0;
+    let indent = depth as f32 * 14.0;
+    let thumbnail_size = 14.0;
 
     // Read directory contents
     let Ok(entries) = std::fs::read_dir(folder_path) else {
@@ -962,7 +965,7 @@ fn render_tree_node(
 
         let arrow_rect = egui::Rect::from_center_size(
             egui::pos2(arrow_x, rect.center().y),
-            Vec2::splat(16.0),
+            Vec2::splat(14.0),
         );
         let arrow_response = ui.interact(arrow_rect, ui.id().with(("arrow", &folder_path)), Sense::click());
 
@@ -970,26 +973,26 @@ fn render_tree_node(
             egui::pos2(arrow_x, rect.center().y),
             egui::Align2::CENTER_CENTER,
             arrow_icon,
-            egui::FontId::proportional(10.0),
+            egui::FontId::proportional(9.0),
             if arrow_response.hovered() { Color32::WHITE } else { Color32::from_rgb(120, 120, 130) },
         );
 
         // Folder icon
-        let icon_x = arrow_x + 14.0;
+        let icon_x = arrow_x + 12.0;
         ui.painter().text(
             egui::pos2(icon_x, rect.center().y),
             egui::Align2::LEFT_CENTER,
             if is_expanded { FOLDER_OPEN } else { icon },
-            egui::FontId::proportional(14.0),
+            egui::FontId::proportional(12.0),
             color,
         );
 
         // Folder name
         ui.painter().text(
-            egui::pos2(icon_x + 20.0, rect.center().y),
+            egui::pos2(icon_x + 16.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             name,
-            egui::FontId::proportional(12.0),
+            egui::FontId::proportional(11.0),
             Color32::from_rgb(200, 200, 210),
         );
 
@@ -1044,7 +1047,7 @@ fn render_tree_node(
         }
 
         // Icon position (indented, no arrow space needed for files but align with folder names)
-        let icon_x = rect.min.x + indent + 22.0;
+        let icon_x = rect.min.x + indent + 20.0;
 
         // Icon or small thumbnail
         let mut thumbnail_shown = false;
@@ -1052,7 +1055,7 @@ fn render_tree_node(
         if has_thumbnail {
             if let Some(texture_id) = thumbnail_cache.get_texture_id(&file_path) {
                 let thumb_rect = egui::Rect::from_center_size(
-                    egui::pos2(icon_x + 7.0, rect.center().y),
+                    egui::pos2(icon_x + 6.0, rect.center().y),
                     Vec2::splat(thumbnail_size),
                 );
                 ui.painter().image(
@@ -1072,27 +1075,27 @@ fn render_tree_node(
                 egui::pos2(icon_x, rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 icon,
-                egui::FontId::proportional(14.0),
+                egui::FontId::proportional(12.0),
                 color,
             );
         }
 
         // File name
         ui.painter().text(
-            egui::pos2(icon_x + 20.0, rect.center().y),
+            egui::pos2(icon_x + 16.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             name,
-            egui::FontId::proportional(12.0),
+            egui::FontId::proportional(11.0),
             Color32::from_rgb(200, 200, 210),
         );
 
         // File extension on the right
         if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
             ui.painter().text(
-                egui::pos2(rect.max.x - 8.0, rect.center().y),
+                egui::pos2(rect.max.x - 6.0, rect.center().y),
                 egui::Align2::RIGHT_CENTER,
                 ext.to_uppercase(),
-                egui::FontId::proportional(10.0),
+                egui::FontId::proportional(9.0),
                 Color32::from_rgb(100, 100, 110),
             );
         }

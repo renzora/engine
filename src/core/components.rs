@@ -43,7 +43,8 @@ pub struct SceneNode;
 pub struct SceneTabId(pub usize);
 
 /// Marker for world environment node (ambient light, fog, clear color)
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 pub struct WorldEnvironmentMarker {
     pub data: crate::shared::WorldEnvironmentData,
 }

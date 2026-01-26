@@ -81,7 +81,7 @@ pub fn default_layout() -> DockTree {
             },
             0.78,
         ),
-        0.18,
+        0.15,
     )
 }
 

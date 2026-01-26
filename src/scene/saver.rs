@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use bevy::scene::DynamicSceneBuilder;
 use std::path::Path;
 
-use crate::core::{EditorEntity, SceneNode, SceneTabId, SceneManagerState, HierarchyState, OrbitCameraState};
+use crate::core::{EditorEntity, SceneNode, SceneTabId, SceneManagerState, HierarchyState, OrbitCameraState, WorldEnvironmentMarker};
 use crate::shared::{
     MeshNodeData, CameraNodeData, CameraRigData, MeshInstanceData, SceneInstanceData,
     PhysicsBodyData, CollisionShapeData, Sprite2DData, Camera2DData,
@@ -86,6 +86,8 @@ pub fn save_scene_bevy(
         .allow_component::<UIImageData>()
         // Scripting
         .allow_component::<ScriptComponent>()
+        // Environment
+        .allow_component::<WorldEnvironmentMarker>()
         // Lights (Bevy built-in)
         .allow_component::<PointLight>()
         .allow_component::<DirectionalLight>()

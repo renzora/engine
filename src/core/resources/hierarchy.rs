@@ -27,6 +27,8 @@ pub struct HierarchyState {
     pub visible_entity_order: Vec<Entity>,
     /// New visible entity order being built during current frame
     pub building_entity_order: Vec<Entity>,
+    /// Search filter for hierarchy
+    pub search: String,
 }
 
 impl HierarchyState {

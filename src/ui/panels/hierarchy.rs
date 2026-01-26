@@ -5,11 +5,12 @@ use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, Cursor
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::component_system::{ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset};
-use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity};
+use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity, WorldEnvironmentMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
 use crate::shared::{
-    CameraNodeData, CameraRigData, MeshNodeData, Sprite2DData, Camera2DData,
+    CameraNodeData, CameraRigData, MeshNodeData, MeshInstanceData, SceneInstanceData,
+    Sprite2DData, Camera2DData,
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
@@ -22,6 +23,7 @@ use egui_phosphor::regular::{
     CARET_DOWN, CARET_RIGHT, CUBE_TRANSPARENT, FRAME_CORNERS, BROWSERS, FOLDER_SIMPLE,
     EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
     IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
+    GLOBE, PACKAGE, MAGNIFYING_GLASS,
 };
 
 /// Queries for component-based icon inference in hierarchy
@@ -34,6 +36,9 @@ pub struct HierarchyComponentQueries<'w, 's> {
     pub cameras: Query<'w, 's, Entity, With<CameraNodeData>>,
     pub camera_rigs: Query<'w, 's, Entity, With<CameraRigData>>,
     pub mesh_data: Query<'w, 's, &'static MeshNodeData>,
+    pub mesh_instances: Query<'w, 's, Entity, With<MeshInstanceData>>,
+    pub scene_instances: Query<'w, 's, Entity, With<SceneInstanceData>>,
+    pub world_environments: Query<'w, 's, Entity, With<WorldEnvironmentMarker>>,
     pub sprites: Query<'w, 's, Entity, With<Sprite2DData>>,
     pub cameras_2d: Query<'w, 's, Entity, With<Camera2DData>>,
     pub ui_panels: Query<'w, 's, Entity, With<UIPanelData>>,
@@ -50,8 +55,8 @@ pub struct HierarchyQueries<'w, 's> {
 }
 
 // Tree line constants
-const INDENT_SIZE: f32 = 20.0;
-const ROW_HEIGHT: f32 = 24.0;
+const INDENT_SIZE: f32 = 18.0;
+const ROW_HEIGHT: f32 = 20.0;
 const TREE_LINE_COLOR: Color32 = Color32::from_rgb(60, 60, 70);
 const DROP_LINE_COLOR: Color32 = Color32::from_rgb(80, 140, 255);
 
@@ -266,40 +271,65 @@ pub fn render_hierarchy_content(
         }
     }
 
-    // Panel bar with add menu button
-    egui::Frame::new()
-        .fill(Color32::from_rgb(38, 40, 46))
-        .show(ui, |ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(8.0);
-                ui.label(RichText::new(format!("{} Hierarchy", TREE_STRUCTURE)).color(Color32::from_rgb(180, 182, 190)));
+    // Panel bar with search and add button
+    ui.horizontal(|ui| {
+        ui.add_space(4.0);
 
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.add_space(8.0);
-                    ui.menu_button(RichText::new(PLUS).color(Color32::from_rgb(100, 180, 255)), |ui| {
-                        ui.set_min_width(180.0);
-                        render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
-                    });
-                });
-            });
-        });
+        // Search bar
+        let search_width = (ui.available_width() - 60.0).max(40.0);
+        ui.add_sized(
+            [search_width, 20.0],
+            egui::TextEdit::singleline(&mut hierarchy.search)
+                .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
+        );
+
+        // Add button with centered dropdown menu
+        ui.menu_button(
+            RichText::new(format!("{} Add", PLUS)).color(Color32::from_rgb(100, 180, 255)),
+            |ui| {
+                ui.set_min_width(180.0);
+                render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
+            }
+        );
+
+        ui.add_space(4.0);
+    });
 
     ui.add_space(2.0);
 
     // Content area with padding
     egui::Frame::new()
-        .inner_margin(egui::Margin::symmetric(4, 4))
+        .inner_margin(egui::Margin::symmetric(0, 2))
         .show(ui, |ui| {
+        ui.style_mut().spacing.item_spacing.y = 0.0;
 
     // Scene tree
     egui::ScrollArea::vertical().show(ui, |ui| {
+        // Remove vertical spacing between rows
+        ui.style_mut().spacing.item_spacing.y = 0.0;
+
         // Collect root entities for current tab (only show entities with matching SceneTabId)
-        let root_entities: Vec<_> = hierarchy_queries.entities
+        let search_lower = hierarchy.search.to_lowercase();
+        let has_search = !hierarchy.search.is_empty();
+
+        let mut root_entities: Vec<_> = hierarchy_queries.entities
             .iter()
-            .filter(|(_, _, parent, _, tab_id)| {
-                parent.is_none() && tab_id.map_or(false, |t| t.0 == active_tab)
+            .filter(|(_, editor_entity, parent, _, tab_id)| {
+                let in_tab = parent.is_none() && tab_id.map_or(false, |t| t.0 == active_tab);
+                if !in_tab {
+                    return false;
+                }
+                // If searching, only show if name matches
+                if has_search {
+                    editor_entity.name.to_lowercase().contains(&search_lower)
+                } else {
+                    true
+                }
             })
             .collect();
+
+        // Sort by entity ID to maintain stable order (older entities first)
+        root_entities.sort_by_key(|(entity, _, _, _, _)| *entity);
 
         if root_entities.is_empty() {
             // Empty scene - show add entity prompt
@@ -468,6 +498,13 @@ fn render_tree_node(
     }
     *row_index += 1;
 
+    // Draw full-row selection highlight
+    if is_selected {
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(51, 115, 191, 80));
+    } else if response.hovered() && hierarchy.drag_entities.is_empty() {
+        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(255, 255, 255, 15));
+    }
+
     let base_x = rect.min.x + 4.0;
     let center_y = rect.center().y;
 
@@ -635,15 +672,18 @@ fn render_tree_node(
     // Content starts after tree lines
     let content_x = base_x + (depth as f32 * INDENT_SIZE);
 
-    // Create a child ui for the content
+    // Create a child ui for the content - vertically centered
     let content_rect = egui::Rect::from_min_max(
         Pos2::new(content_x, rect.min.y),
         rect.max,
     );
 
     let mut child_ui = ui.new_child(egui::UiBuilder::new().max_rect(content_rect));
+    child_ui.style_mut().spacing.item_spacing = Vec2::new(2.0, 0.0);
 
-    child_ui.horizontal(|ui| {
+    child_ui.horizontal_centered(|ui| {
+        ui.style_mut().spacing.item_spacing = Vec2::new(2.0, 0.0);
+
         // Expand/collapse button
         if has_children {
             let (icon, icon_color) = if is_expanded {
@@ -653,9 +693,9 @@ fn render_tree_node(
             };
 
             let expand_btn = ui.add(
-                egui::Button::new(RichText::new(icon).size(11.0).color(icon_color))
+                egui::Button::new(RichText::new(icon).size(10.0).color(icon_color))
                     .frame(false)
-                    .min_size(Vec2::new(18.0, 18.0))
+                    .min_size(Vec2::new(16.0, ROW_HEIGHT))
             );
 
             if expand_btn.clicked() {
@@ -667,16 +707,66 @@ fn render_tree_node(
             }
         } else {
             // Empty space for alignment
-            ui.add_space(20.0);
+            ui.add_space(16.0);
         }
+
+        // Visibility icon (left side)
+        let vis_icon = if editor_entity.visible { EYE } else { EYE_SLASH };
+        let vis_color = if editor_entity.visible {
+            Color32::from_rgb(140, 180, 220)
+        } else {
+            Color32::from_rgb(90, 90, 100)
+        };
+        let vis_btn = ui.add(
+            egui::Button::new(RichText::new(vis_icon).size(10.0).color(vis_color))
+                .frame(false)
+                .min_size(Vec2::new(14.0, ROW_HEIGHT))
+        );
+        if vis_btn.clicked() {
+            let new_visible = !editor_entity.visible;
+            commands.entity(entity).insert(EditorEntity {
+                name: editor_entity.name.clone(),
+                tag: editor_entity.tag.clone(),
+                visible: new_visible,
+                locked: editor_entity.locked,
+            });
+            if new_visible {
+                commands.entity(entity).insert(Visibility::Inherited);
+            } else {
+                commands.entity(entity).insert(Visibility::Hidden);
+            }
+        }
+        vis_btn.on_hover_text(if editor_entity.visible { "Hide" } else { "Show" });
+
+        // Lock icon (left side)
+        let lock_icon = if editor_entity.locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
+        let lock_color = if editor_entity.locked {
+            Color32::from_rgb(230, 180, 100)
+        } else {
+            Color32::from_rgb(90, 90, 100)
+        };
+        let lock_btn = ui.add(
+            egui::Button::new(RichText::new(lock_icon).size(10.0).color(lock_color))
+                .frame(false)
+                .min_size(Vec2::new(14.0, ROW_HEIGHT))
+        );
+        if lock_btn.clicked() {
+            commands.entity(entity).insert(EditorEntity {
+                name: editor_entity.name.clone(),
+                tag: editor_entity.tag.clone(),
+                visible: editor_entity.visible,
+                locked: !editor_entity.locked,
+            });
+        }
+        lock_btn.on_hover_text(if editor_entity.locked { "Unlock" } else { "Lock" });
 
         // Icon based on components
         let (icon, icon_color) = get_entity_icon(entity, &editor_entity.name, &hierarchy_queries.components);
-        ui.label(RichText::new(icon).color(icon_color).size(15.0));
+        ui.label(RichText::new(icon).color(icon_color).size(13.0));
 
         // Show default camera indicator
         if default_camera.entity == Some(entity) {
-            ui.label(RichText::new(STAR).color(Color32::from_rgb(255, 200, 80)).size(11.0));
+            ui.label(RichText::new(STAR).color(Color32::from_rgb(255, 200, 80)).size(10.0));
         }
 
         // Check if this entity is being renamed
@@ -733,37 +823,32 @@ fn render_tree_node(
             }
         } else {
             // Allocate space for the name and handle interactions manually
-            let _text = RichText::new(&editor_entity.name).size(13.5);
+            let font_size = 12.0;
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 editor_entity.name.clone(),
-                egui::FontId::proportional(13.5),
+                egui::FontId::proportional(font_size),
                 Color32::WHITE,
             ));
 
-            let desired_size = galley.size() + egui::vec2(8.0, 4.0); // padding
+            let desired_size = Vec2::new(galley.size().x + 4.0, ROW_HEIGHT);
             let (rect, name_response) = ui.allocate_exact_size(desired_size, Sense::click());
 
-            // Determine colors based on state
-            let (bg_color, text_color) = if is_selected {
-                (Color32::from_rgb(51, 115, 191), Color32::WHITE)
+            // Determine text color based on state (row background handles selection highlight)
+            let text_color = if is_selected {
+                Color32::WHITE
             } else if name_response.hovered() {
-                (Color32::from_rgba_unmultiplied(255, 255, 255, 20), Color32::from_rgb(218, 218, 225))
+                Color32::from_rgb(240, 240, 245)
             } else {
-                (Color32::TRANSPARENT, Color32::from_rgb(218, 218, 225))
+                Color32::from_rgb(218, 218, 225)
             };
 
-            // Draw background
-            if bg_color != Color32::TRANSPARENT {
-                ui.painter().rect_filled(rect, 2.0, bg_color);
-            }
-
-            // Draw text
-            let text_pos = rect.min + egui::vec2(4.0, 2.0);
+            // Draw text centered vertically
+            let text_pos = Pos2::new(rect.min.x + 2.0, rect.center().y - galley.size().y / 2.0);
             ui.painter().text(
                 text_pos,
                 egui::Align2::LEFT_TOP,
                 &editor_entity.name,
-                egui::FontId::proportional(13.5),
+                egui::FontId::proportional(font_size),
                 text_color,
             );
 
@@ -789,145 +874,119 @@ fn render_tree_node(
                 hierarchy.rename_focus_set = false;
             }
 
-            // Right-click context menu (only when not renaming)
+            // Right-click context menu on name
             name_response.context_menu(|ui| {
-                ui.set_min_width(180.0);
-
-                // Rename option
-                if ui.button("✏ Rename").clicked() {
-                    hierarchy.renaming_entity = Some(entity);
-                    hierarchy.rename_buffer = editor_entity.name.clone();
-                    hierarchy.rename_focus_set = false;
-                    ui.close();
-                }
-
-                ui.separator();
-
-                // Add Child submenu with categories
-                ui.menu_button(RichText::new(format!("{} Add Child", PLUS)), |ui| {
-                    render_preset_menu(ui, commands, meshes, materials, component_registry, Some(entity), selection, hierarchy);
-                });
-
-                // Add Script
-                if ui.button(format!("{} Add Script", CODE)).clicked() {
-                    commands.entity(entity).insert(ScriptComponent {
-                        script_id: String::new(),
-                        script_path: None,
-                        enabled: true,
-                        variables: Default::default(),
-                        runtime_state: Default::default(),
-                    });
-                    ui.close();
-                }
-
-                // Camera-specific options
-                let is_camera = hierarchy_queries.components.cameras.get(entity).is_ok()
-                    || hierarchy_queries.components.camera_rigs.get(entity).is_ok();
-                if is_camera {
-                    ui.separator();
-                    if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
-                        hierarchy.pending_make_default_camera = Some(entity);
-                        ui.close();
-                    }
-                }
-
-                ui.separator();
-
-                // Duplicate
-                if ui.button(format!("{} Duplicate", COPY)).clicked() {
-                    // TODO: Implement duplicate
-                    ui.close();
-                }
-
-                // Reparent to root
-                if ui.button(format!("{} Unparent", ARROW_SQUARE_OUT)).clicked() {
-                    commands.entity(entity).remove::<ChildOf>();
-                    ui.close();
-                }
-
-                ui.separator();
-
-                // Delete
-                if ui.button(RichText::new(format!("{} Delete", TRASH)).color(Color32::from_rgb(230, 100, 100))).clicked() {
-                    // Queue delete command for undo support
-                    queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
-                    // Remove from expanded set
-                    hierarchy.expanded_entities.remove(&entity);
-                    scene_changed = true;
-                    ui.close();
-                }
-
-                // Plugin context menu items
-                let hierarchy_items: Vec<_> = plugin_host.api().context_menus.iter()
-                    .filter(|(loc, _, _)| *loc == ContextMenuLocation::Hierarchy)
-                    .map(|(_, item, _)| item)
-                    .collect();
-
-                if !hierarchy_items.is_empty() {
-                    ui.separator();
-                    for item in hierarchy_items {
-                        if render_plugin_context_menu_item(ui, item) {
-                            ui_events.push(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));
-                        }
-                    }
-                }
+                render_hierarchy_context_menu(ui, entity, editor_entity, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, selection, plugin_host, &mut ui_events, &mut scene_changed, command_history);
             });
         }
 
-        // Visibility and Lock icons (right-aligned)
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Lock icon
-            let lock_icon = if editor_entity.locked { LOCK_SIMPLE } else { LOCK_SIMPLE_OPEN };
-            let lock_color = if editor_entity.locked {
-                Color32::from_rgb(230, 180, 100)
-            } else {
-                Color32::from_rgb(90, 90, 100)
-            };
-            let lock_btn = ui.add(
-                egui::Button::new(RichText::new(lock_icon).size(13.0).color(lock_color))
-                    .frame(false)
-                    .min_size(Vec2::new(18.0, 18.0))
-            );
-            if lock_btn.clicked() {
-                commands.entity(entity).insert(EditorEntity {
-                    name: editor_entity.name.clone(),
-                    tag: editor_entity.tag.clone(),
-                    visible: editor_entity.visible,
-                    locked: !editor_entity.locked,
-                });
-            }
-            lock_btn.on_hover_text(if editor_entity.locked { "Unlock" } else { "Lock" });
+    });
 
-            // Visibility icon
-            let vis_icon = if editor_entity.visible { EYE } else { EYE_SLASH };
-            let vis_color = if editor_entity.visible {
-                Color32::from_rgb(140, 180, 220)
-            } else {
-                Color32::from_rgb(90, 90, 100)
-            };
-            let vis_btn = ui.add(
-                egui::Button::new(RichText::new(vis_icon).size(13.0).color(vis_color))
-                    .frame(false)
-                    .min_size(Vec2::new(18.0, 18.0))
-            );
-            if vis_btn.clicked() {
-                let new_visible = !editor_entity.visible;
-                commands.entity(entity).insert(EditorEntity {
-                    name: editor_entity.name.clone(),
-                    tag: editor_entity.tag.clone(),
-                    visible: new_visible,
-                    locked: editor_entity.locked,
-                });
-                // Also update the Bevy Visibility component
-                if new_visible {
-                    commands.entity(entity).insert(Visibility::Inherited);
-                } else {
-                    commands.entity(entity).insert(Visibility::Hidden);
+    // Right-click context menu on row background (only when not renaming)
+    if hierarchy.renaming_entity != Some(entity) {
+        response.context_menu(|ui| {
+            render_hierarchy_context_menu(ui, entity, editor_entity, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, selection, plugin_host, &mut ui_events, &mut scene_changed, command_history);
+        });
+    }
+
+    // Placeholder for the actual context menu - moved to a separate function
+    fn render_hierarchy_context_menu(
+        ui: &mut egui::Ui,
+        entity: Entity,
+        editor_entity: &EditorEntity,
+        hierarchy: &mut HierarchyState,
+        hierarchy_queries: &HierarchyQueries,
+        commands: &mut Commands,
+        meshes: &mut Assets<Mesh>,
+        materials: &mut Assets<StandardMaterial>,
+        component_registry: &ComponentRegistry,
+        selection: &mut SelectionState,
+        plugin_host: &PluginHost,
+        ui_events: &mut Vec<UiEvent>,
+        scene_changed: &mut bool,
+        command_history: &mut CommandHistory,
+    ) {
+        ui.set_min_width(180.0);
+
+        // Rename option
+        if ui.button("✏ Rename").clicked() {
+            hierarchy.renaming_entity = Some(entity);
+            hierarchy.rename_buffer = editor_entity.name.clone();
+            hierarchy.rename_focus_set = false;
+            ui.close();
+        }
+
+        ui.separator();
+
+        // Add Child Entity submenu with categories
+        ui.menu_button(RichText::new(format!("{} Add Child Entity", PLUS)), |ui| {
+            render_preset_menu(ui, commands, meshes, materials, component_registry, Some(entity), selection, hierarchy);
+        });
+
+        // Add Script
+        if ui.button(format!("{} Add Script", CODE)).clicked() {
+            commands.entity(entity).insert(ScriptComponent {
+                script_id: String::new(),
+                script_path: None,
+                enabled: true,
+                variables: Default::default(),
+                runtime_state: Default::default(),
+            });
+            ui.close();
+        }
+
+        // Camera-specific options
+        let is_camera = hierarchy_queries.components.cameras.get(entity).is_ok()
+            || hierarchy_queries.components.camera_rigs.get(entity).is_ok();
+        if is_camera {
+            ui.separator();
+            if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
+                hierarchy.pending_make_default_camera = Some(entity);
+                ui.close();
+            }
+        }
+
+        ui.separator();
+
+        // Duplicate
+        if ui.button(format!("{} Duplicate", COPY)).clicked() {
+            // TODO: Implement duplicate
+            ui.close();
+        }
+
+        // Reparent to root
+        if ui.button(format!("{} Unparent", ARROW_SQUARE_OUT)).clicked() {
+            commands.entity(entity).remove::<ChildOf>();
+            ui.close();
+        }
+
+        ui.separator();
+
+        // Delete
+        if ui.button(RichText::new(format!("{} Delete", TRASH)).color(Color32::from_rgb(230, 100, 100))).clicked() {
+            // Queue delete command for undo support
+            queue_command(command_history, Box::new(DeleteEntityCommand::new(entity)));
+            // Remove from expanded set
+            hierarchy.expanded_entities.remove(&entity);
+            *scene_changed = true;
+            ui.close();
+        }
+
+        // Plugin context menu items
+        let hierarchy_items: Vec<_> = plugin_host.api().context_menus.iter()
+            .filter(|(loc, _, _)| *loc == ContextMenuLocation::Hierarchy)
+            .map(|(_, item, _)| item)
+            .collect();
+
+        if !hierarchy_items.is_empty() {
+            ui.separator();
+            for item in hierarchy_items {
+                if render_plugin_context_menu_item(ui, item) {
+                    ui_events.push(UiEvent::ButtonClicked(crate::ui_api::UiId(item.id.0)));
                 }
             }
-            vis_btn.on_hover_text(if editor_entity.visible { "Hide" } else { "Show" });
-        });
-    });
+        }
+    }
 
     // Track the bottom of the group for AsChild border
     let mut group_bottom = rect.max.y;
@@ -935,7 +994,9 @@ fn render_tree_node(
     // Render children if expanded
     if has_children && is_expanded {
         if let Some(children) = children {
-            let child_entities: Vec<_> = children.iter().collect();
+            let mut child_entities: Vec<_> = children.iter().collect();
+            // Sort children by entity ID to maintain stable order
+            child_entities.sort();
             let child_count = child_entities.len();
 
             for (i, child_entity) in child_entities.into_iter().enumerate() {
@@ -1111,6 +1172,11 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
         return (FLASHLIGHT, Color32::from_rgb(255, 230, 140));
     }
 
+    // World Environment
+    if queries.world_environments.get(entity).is_ok() {
+        return (GLOBE, Color32::from_rgb(140, 220, 200));
+    }
+
     // 3D Meshes - check mesh data for specific type
     if queries.meshes.get(entity).is_ok() {
         if let Ok(mesh_data) = queries.mesh_data.get(entity) {
@@ -1123,6 +1189,14 @@ fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueri
             };
         }
         return (CUBE, Color32::from_rgb(242, 166, 115));
+    }
+
+    // Mesh and Scene Instances (imported GLB/GLTF)
+    if queries.mesh_instances.get(entity).is_ok() {
+        return (PACKAGE, Color32::from_rgb(200, 180, 140));
+    }
+    if queries.scene_instances.get(entity).is_ok() {
+        return (PACKAGE, Color32::from_rgb(200, 180, 140));
     }
 
     // 2D Sprites
@@ -1222,6 +1296,69 @@ fn render_preset_menu(
             if let Some(parent_entity) = parent {
                 hierarchy.expanded_entities.insert(parent_entity);
             }
+            ui.close();
+        }
+    }
+}
+
+/// Render the Create menu with presets organized by category (with close signal for custom popups)
+fn render_preset_menu_with_close(
+    ui: &mut egui::Ui,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    registry: &ComponentRegistry,
+    parent: Option<Entity>,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
+    close_menu: &mut bool,
+) {
+    for category in PresetCategory::all_in_order() {
+        if *category == PresetCategory::Empty {
+            continue;
+        }
+
+        let presets = get_presets_by_category(*category);
+        if presets.is_empty() {
+            continue;
+        }
+
+        let cat_icon = category.icon();
+        let cat_color = get_category_color(*category);
+        let label = format!("{} {}", cat_icon, category.display_name());
+
+        ui.menu_button(RichText::new(label).color(cat_color), |ui| {
+            ui.set_min_width(160.0);
+
+            for preset in presets {
+                let item_label = format!("{} {}", preset.icon, preset.display_name);
+
+                if ui.button(RichText::new(item_label).color(Color32::from_rgb(220, 220, 230))).clicked() {
+                    let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
+                    selection.selected_entity = Some(entity);
+                    if let Some(parent_entity) = parent {
+                        hierarchy.expanded_entities.insert(parent_entity);
+                    }
+                    *close_menu = true;
+                    ui.close();
+                }
+            }
+        });
+    }
+
+    ui.separator();
+
+    let empty_presets = get_presets_by_category(PresetCategory::Empty);
+    for preset in empty_presets {
+        let item_label = format!("{} {}", preset.icon, preset.display_name);
+
+        if ui.button(RichText::new(item_label).color(Color32::from_rgb(180, 180, 190))).clicked() {
+            let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
+            selection.selected_entity = Some(entity);
+            if let Some(parent_entity) = parent {
+                hierarchy.expanded_entities.insert(parent_entity);
+            }
+            *close_menu = true;
             ui.close();
         }
     }
