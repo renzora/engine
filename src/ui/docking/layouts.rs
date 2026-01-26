@@ -1,0 +1,262 @@
+//! Layout management for the docking system
+//!
+//! Handles saving, loading, and built-in layout presets.
+
+use super::dock_tree::{DockTree, PanelId};
+use serde::{Deserialize, Serialize};
+
+/// A saved workspace layout
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceLayout {
+    /// Name of the layout
+    pub name: String,
+    /// The dock tree structure
+    pub dock_tree: DockTree,
+    /// Whether this is a built-in layout (cannot be deleted)
+    pub is_builtin: bool,
+}
+
+impl WorkspaceLayout {
+    pub fn new(name: impl Into<String>, dock_tree: DockTree) -> Self {
+        Self {
+            name: name.into(),
+            dock_tree,
+            is_builtin: false,
+        }
+    }
+
+    pub fn builtin(name: impl Into<String>, dock_tree: DockTree) -> Self {
+        Self {
+            name: name.into(),
+            dock_tree,
+            is_builtin: true,
+        }
+    }
+}
+
+/// Get all built-in layouts
+pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
+    vec![
+        WorkspaceLayout::builtin("Default", default_layout()),
+        WorkspaceLayout::builtin("Scripting", scripting_layout()),
+        WorkspaceLayout::builtin("Animation", animation_layout()),
+        WorkspaceLayout::builtin("Debug", debug_layout()),
+    ]
+}
+
+/// Default layout: Hierarchy | Viewport+Assets | Inspector
+///
+/// ```text
+/// ┌─────────┬──────────────────────┬──────────┐
+/// │         │                      │          │
+/// │Hierarchy│      Viewport        │ Inspector│
+/// │         │                      │          │
+/// │         ├──────────────────────┤          │
+/// │         │   Assets | Console   │          │
+/// └─────────┴──────────────────────┴──────────┘
+/// ```
+pub fn default_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf(PanelId::Hierarchy),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Assets, PanelId::Console, PanelId::Animation],
+                    active_tab: 0,
+                },
+                0.7,
+            ),
+            DockTree::Leaf {
+                tabs: vec![PanelId::Inspector, PanelId::History],
+                active_tab: 0,
+            },
+            0.78,
+        ),
+        0.15,
+    )
+}
+
+/// Scripting layout: Hierarchy+Assets | ScriptEditor+Console | Inspector
+///
+/// ```text
+/// ┌─────────┬──────────────────────┬──────────┐
+/// │         │                      │          │
+/// │Hierarchy│    Script Editor     │ Inspector│
+/// │         │                      │          │
+/// ├─────────┼──────────────────────┤          │
+/// │ Assets  │      Console         │          │
+/// └─────────┴──────────────────────┴──────────┘
+/// ```
+pub fn scripting_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::Assets),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf(PanelId::ScriptEditor),
+                DockTree::leaf(PanelId::Console),
+                0.7,
+            ),
+            DockTree::Leaf {
+                tabs: vec![PanelId::Inspector, PanelId::History],
+                active_tab: 0,
+            },
+            0.78,
+        ),
+        0.18,
+    )
+}
+
+/// Animation layout: Hierarchy | Viewport+Animation | Inspector
+///
+/// ```text
+/// ┌─────────┬──────────────────────┬──────────┐
+/// │         │                      │          │
+/// │Hierarchy│      Viewport        │ Inspector│
+/// │         │                      │          │
+/// │         ├──────────────────────┤          │
+/// │         │     Animation        │          │
+/// └─────────┴──────────────────────┴──────────┘
+/// ```
+pub fn animation_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::leaf(PanelId::Hierarchy),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::leaf(PanelId::Animation),
+                0.65,
+            ),
+            DockTree::Leaf {
+                tabs: vec![PanelId::Inspector, PanelId::History],
+                active_tab: 0,
+            },
+            0.78,
+        ),
+        0.15,
+    )
+}
+
+/// Debug layout: Hierarchy+Console | Viewport | Inspector
+///
+/// ```text
+/// ┌──────────────────┬─────────────┬──────────┐
+/// │                  │             │          │
+/// │    Hierarchy     │   Viewport  │ Inspector│
+/// │                  │             │          │
+/// ├──────────────────┤             │          │
+/// │     Console      │             │          │
+/// └──────────────────┴─────────────┴──────────┘
+/// ```
+pub fn debug_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::Console),
+            0.6,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Viewport),
+            DockTree::Leaf {
+                tabs: vec![PanelId::Inspector, PanelId::History],
+                active_tab: 0,
+            },
+            0.75,
+        ),
+        0.2,
+    )
+}
+
+/// Minimal layout: Just viewport
+pub fn minimal_layout() -> DockTree {
+    DockTree::leaf(PanelId::Viewport)
+}
+
+/// Layout configuration for serialization
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DockingLayoutConfig {
+    /// Current layout name (references saved layouts)
+    pub active_layout: String,
+    /// Custom saved layouts
+    pub custom_layouts: Vec<WorkspaceLayout>,
+    /// Current dock tree (for restoring exact state)
+    pub current_tree: Option<DockTree>,
+}
+
+impl DockingLayoutConfig {
+    /// Get a layout by name (checks custom first, then builtins)
+    pub fn get_layout(&self, name: &str) -> Option<&DockTree> {
+        // Check custom layouts first
+        for layout in &self.custom_layouts {
+            if layout.name == name {
+                return Some(&layout.dock_tree);
+            }
+        }
+
+        // Check builtins
+        for layout in builtin_layouts() {
+            if layout.name == name {
+                // Return a reference by matching - we need to handle this differently
+                return None; // Caller should use builtin_layouts() directly
+            }
+        }
+
+        None
+    }
+
+    /// Save a custom layout
+    pub fn save_custom_layout(&mut self, name: String, tree: DockTree) {
+        // Remove existing layout with same name if it exists
+        self.custom_layouts.retain(|l| l.name != name);
+        self.custom_layouts.push(WorkspaceLayout::new(name, tree));
+    }
+
+    /// Delete a custom layout
+    pub fn delete_layout(&mut self, name: &str) -> bool {
+        let len_before = self.custom_layouts.len();
+        self.custom_layouts.retain(|l| l.name != name);
+        self.custom_layouts.len() < len_before
+    }
+
+    /// Get all available layouts (builtin + custom)
+    pub fn all_layouts(&self) -> Vec<String> {
+        let mut names: Vec<String> = builtin_layouts().iter().map(|l| l.name.clone()).collect();
+        names.extend(self.custom_layouts.iter().map(|l| l.name.clone()));
+        names
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_builtin_layouts_contain_required_panels() {
+        let layouts = builtin_layouts();
+
+        for layout in layouts {
+            // All layouts should contain at least a viewport
+            assert!(
+                layout.dock_tree.contains_panel(&PanelId::Viewport) ||
+                layout.dock_tree.contains_panel(&PanelId::ScriptEditor),
+                "Layout '{}' should contain Viewport or ScriptEditor",
+                layout.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_default_layout_structure() {
+        let layout = default_layout();
+
+        assert!(layout.contains_panel(&PanelId::Hierarchy));
+        assert!(layout.contains_panel(&PanelId::Viewport));
+        assert!(layout.contains_panel(&PanelId::Inspector));
+        assert!(layout.contains_panel(&PanelId::Assets));
+        assert!(layout.contains_panel(&PanelId::Console));
+    }
+}

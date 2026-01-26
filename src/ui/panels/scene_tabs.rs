@@ -35,6 +35,7 @@ pub fn render_scene_tabs(
 
     egui::Area::new(egui::Id::new("scene_tabs_area"))
         .fixed_pos(tab_bar_rect.min)
+        .order(egui::Order::Foreground)
         .show(ctx, |ui| {
             // Draw background
             ui.painter().rect_filled(tab_bar_rect, CornerRadius::ZERO, bg_color);

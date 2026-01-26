@@ -1,5 +1,6 @@
 mod panels;
 mod style;
+pub mod docking;
 pub mod inspectors;
 
 use bevy::ecs::system::SystemParam;
@@ -8,7 +9,7 @@ use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::commands::CommandHistory;
 use crate::core::{
-    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity,
+    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, DockingState,
     EditorEntity, ExportState, KeyBindings, SelectionState, HierarchyState, ViewportState,
     SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
     PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
@@ -42,6 +43,7 @@ pub struct EditorResources<'w> {
     pub component_registry: Res<'w, ComponentRegistry>,
     pub add_component_popup: ResMut<'w, AddComponentPopupState>,
     pub keyboard: Res<'w, ButtonInput<KeyCode>>,
+    pub docking: ResMut<'w, DockingState>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -51,11 +53,18 @@ use crate::viewport::{CameraPreviewImage, ViewportImage};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
+use docking::{
+    get_legacy_layout_values, render_dock_tree, render_panel_frame,
+    calculate_panel_rects, DockedPanelContext, PanelId, DropZone, SplitDirection,
+};
+use bevy_egui::egui::{Rect, Pos2};
 use panels::{
-    render_assets, render_export_dialog, render_hierarchy, render_inspector, render_plugin_panels,
-    render_scene_tabs, render_script_editor, render_settings_window,
+    render_export_dialog, render_plugin_panels,
+    render_scene_tabs, render_script_editor, render_script_editor_content, render_settings_window,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
+    render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
+    render_console_content, render_history_content,
 };
 pub use panels::{handle_window_actions, property_row};
 use style::{apply_editor_style, init_fonts};
@@ -214,6 +223,8 @@ pub fn editor_ui(
         &mut materials,
         &editor.plugin_host,
         &mut editor.command_history,
+        &mut editor.docking,
+        &mut editor.viewport,
     );
     all_ui_events.extend(title_bar_events);
 
@@ -239,155 +250,18 @@ pub fn editor_ui(
     // Check if we're in play mode
     let in_play_mode = editor.play_mode.is_in_play_mode();
 
-    // Use stored panel widths from viewport state (or 0 in play mode)
-    // Don't clamp here - let the panels handle their own clamping to preserve loaded values
     let screen_rect = ctx.screen_rect();
-
-    let stored_hierarchy_width = if in_play_mode { 0.0 } else { editor.viewport.hierarchy_width };
-    let stored_inspector_width = if in_play_mode { 0.0 } else { editor.viewport.inspector_width };
-    // Use actual panel height based on minimized state (bar height is 24px)
-    let stored_assets_height = if in_play_mode {
-        0.0
-    } else if editor.viewport.bottom_panel_minimized {
-        24.0
-    } else {
-        editor.viewport.assets_height
-    };
-
-    // In play mode, skip scene tabs and panels
-    let (scene_tabs_height, actual_hierarchy_width, actual_inspector_width) = if in_play_mode {
-        (0.0, 0.0, 0.0)
-    } else {
-        // Render scene tabs
-        let tabs_height = render_scene_tabs(
-            ctx,
-            &mut editor.scene_state,
-            stored_hierarchy_width,
-            stored_inspector_width,
-            TITLE_BAR_HEIGHT + toolbar_height,
-        );
-
-        // Render left panel (hierarchy) first - returns actual width after resize
-        let _content_start_y = TITLE_BAR_HEIGHT + toolbar_height + tabs_height;
-
-        let active_tab = editor.scene_state.active_scene_tab;
-        let (hierarchy_events, hierarchy_width, hierarchy_changed) = render_hierarchy(
-            ctx,
-            &mut editor.selection,
-            &mut editor.hierarchy,
-            &hierarchy_queries,
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &editor.component_registry,
-            active_tab,
-            stored_hierarchy_width,
-            &editor.plugin_host,
-            &mut editor.assets,
-            &editor.default_camera,
-            &mut editor.command_history,
-            &mut ui_renderer,
-        );
-        all_ui_events.extend(hierarchy_events);
-
-        // Mark scene as modified if hierarchy made changes
-        if hierarchy_changed {
-            editor.scene_state.mark_modified();
-        }
-
-        // Update stored hierarchy width
-        editor.viewport.hierarchy_width = hierarchy_width;
-
-        // Render right panel (inspector) - returns actual width after resize and change flag
-        let (inspector_events, inspector_width, inspector_changed) = render_inspector(
-            ctx,
-            &editor.selection,
-            &entities_for_inspector,
-            &mut inspector_queries,
-            &script_registry,
-            &rhai_engine,
-            stored_inspector_width,
-            camera_preview_texture_id,
-            &editor.plugin_host,
-            &mut ui_renderer,
-            &editor.component_registry,
-            &mut editor.add_component_popup,
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut editor.gizmo,
-            &mut editor.command_history,
-            &mut editor.viewport.right_panel_tab,
-        );
-        all_ui_events.extend(inspector_events);
-
-        // Mark scene as modified if inspector made changes
-        if inspector_changed {
-            editor.scene_state.mark_modified();
-        }
-
-        // Update stored inspector width
-        editor.viewport.inspector_width = inspector_width;
-
-        // Render bottom panel (assets + console tabs) AFTER side panels
-        // This makes it only span the area between the side panels
-        let bottom_events = render_assets(
-            ctx,
-            current_project.as_deref(),
-            &mut editor.viewport,
-            &mut editor.assets,
-            &mut editor.scene_state,
-            &mut editor.console,
-            stored_hierarchy_width,
-            stored_inspector_width,
-            stored_assets_height,
-            &editor.plugin_host,
-            &mut ui_renderer,
-            &mut editor.thumbnail_cache,
-        );
-        all_ui_events.extend(bottom_events);
-
-        (tabs_height, hierarchy_width, inspector_width)
-    };
-
-    // Calculate available height for central area
-    let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + scene_tabs_height;
     let status_bar_height = if in_play_mode { 0.0 } else { 24.0 };
-    let central_height = (screen_rect.height() - content_start_y - stored_assets_height - status_bar_height).max(100.0);
 
-    // In play mode, skip script editor and render full viewport
-    if !in_play_mode {
-        // Render script editor if scripts are open, otherwise render viewport
-        let script_editor_shown = render_script_editor(
-            ctx,
-            &mut editor.scene_state,
-            current_project.as_deref(),
-            actual_hierarchy_width,
-            actual_inspector_width,
-            content_start_y,
-            central_height,
-        );
+    // Suppress unused import warning
+    let _ = get_legacy_layout_values;
 
-        if !script_editor_shown {
-            // Render central viewport (docked between panels)
-            render_viewport(
-                ctx,
-                &mut editor.viewport,
-                &mut editor.assets,
-                &mut editor.orbit,
-                &editor.camera2d_state,
-                &editor.gizmo,
-                &editor.modal_transform,
-                actual_hierarchy_width,
-                actual_inspector_width,
-                content_start_y,
-                [1600.0, 900.0],
-                central_height,
-                viewport_texture_id,
-            );
-        }
-    } else {
-        // In play mode, render full-screen viewport (no panels)
+    // In play mode, skip docking and render full viewport
+    let content_start_y = TITLE_BAR_HEIGHT + toolbar_height;
+
+    if in_play_mode {
+        // Full-screen viewport in play mode
+        let central_height = (screen_rect.height() - content_start_y - status_bar_height).max(100.0);
         render_viewport(
             ctx,
             &mut editor.viewport,
@@ -396,8 +270,8 @@ pub fn editor_ui(
             &editor.camera2d_state,
             &editor.gizmo,
             &editor.modal_transform,
-            0.0, // No left panel
-            0.0, // No right panel
+            0.0,
+            0.0,
             content_start_y,
             [1600.0, 900.0],
             central_height,
@@ -406,6 +280,286 @@ pub fn editor_ui(
 
         // Render play mode overlay with info
         render_play_mode_overlay(ctx, &mut editor.play_mode);
+    } else {
+        // DOCKING SYSTEM - Render dock tree with draggable panels
+
+        // Render scene tabs bar (for scene/script tabs with + button)
+        let scene_tabs_height = render_scene_tabs(
+            ctx,
+            &mut editor.scene_state,
+            0.0,  // No left margin - spans full width
+            0.0,  // No right margin
+            content_start_y,
+        );
+
+        // Calculate dock area (below scene tabs, above status bar)
+        let dock_start_y = content_start_y + scene_tabs_height;
+        let dock_rect = Rect::from_min_max(
+            Pos2::new(0.0, dock_start_y),
+            Pos2::new(screen_rect.width(), screen_rect.height() - status_bar_height),
+        );
+
+        // Clone drag state for rendering (avoid borrow issues)
+        let drag_state = editor.docking.drag_state.clone();
+
+        // Render dock tree structure (tabs, resize handles, backgrounds)
+        // Use Order::Background so panel content at Order::Middle can receive input
+        let dock_result = bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("dock_tree_area"))
+            .fixed_pos(dock_rect.min)
+            .order(bevy_egui::egui::Order::Background)
+            .show(ctx, |ui| {
+                ui.set_clip_rect(dock_rect);
+                ui.set_min_size(dock_rect.size());
+                ui.set_max_size(dock_rect.size());
+                render_dock_tree(
+                    ui,
+                    &editor.docking.dock_tree,
+                    dock_rect,
+                    drag_state.as_ref(),
+                    bevy_egui::egui::Id::new("dock_tree"),
+                )
+            }).inner;
+
+        // Calculate panel rects BEFORE processing events that modify the tree
+        // This ensures panel content renders at the same positions as the dock tree structure
+        let panel_rects = calculate_panel_rects(&editor.docking.dock_tree, dock_rect);
+
+        // Process dock tree events
+        // Handle drag start
+        if let Some(panel) = dock_result.drag_started {
+            if let Some(pos) = ctx.pointer_hover_pos() {
+                editor.docking.start_drag(panel, pos);
+            }
+        }
+
+        // Handle tab close
+        if let Some(panel) = dock_result.panel_to_close {
+            editor.docking.close_panel(&panel);
+        }
+
+        // Handle active tab change
+        if let Some((_, new_active)) = dock_result.new_active_tab {
+            editor.docking.dock_tree.set_active_tab(&new_active);
+        }
+
+        // Handle ratio update (resize) - applied AFTER panel_rects is calculated
+        // so it takes effect next frame
+        if let Some((path, new_ratio)) = dock_result.ratio_update {
+            editor.docking.dock_tree.update_ratio(&path, new_ratio);
+            editor.docking.mark_modified();
+        }
+
+        // Handle drop completion
+        if ctx.input(|i| i.pointer.any_released()) && editor.docking.drag_state.is_some() {
+            if let Some(drop_target) = &dock_result.drop_completed {
+                let drag_panel = editor.docking.drag_state.as_ref().map(|d| d.panel.clone());
+                if let Some(panel) = drag_panel {
+                    // Don't drop on self
+                    if panel != drop_target.target_panel {
+                        // First remove from current location
+                        editor.docking.dock_tree.remove_panel(&panel);
+
+                        // Then add to new location based on drop zone
+                        match drop_target.zone {
+                            DropZone::Tab => {
+                                editor.docking.dock_tree.add_tab(&drop_target.target_panel, panel);
+                            }
+                            DropZone::Left => {
+                                editor.docking.dock_tree.split_at(&drop_target.target_panel, panel, SplitDirection::Horizontal, true);
+                            }
+                            DropZone::Right => {
+                                editor.docking.dock_tree.split_at(&drop_target.target_panel, panel, SplitDirection::Horizontal, false);
+                            }
+                            DropZone::Top => {
+                                editor.docking.dock_tree.split_at(&drop_target.target_panel, panel, SplitDirection::Vertical, true);
+                            }
+                            DropZone::Bottom => {
+                                editor.docking.dock_tree.split_at(&drop_target.target_panel, panel, SplitDirection::Vertical, false);
+                            }
+                        }
+                        editor.docking.mark_modified();
+                    }
+                }
+            }
+            editor.docking.end_drag();
+        }
+
+        // Draw drag preview if dragging
+        if let Some(drag) = &editor.docking.drag_state {
+            if let Some(pos) = ctx.pointer_hover_pos() {
+                bevy_egui::egui::Area::new(bevy_egui::egui::Id::new("drag_preview_area"))
+                    .fixed_pos(pos + bevy_egui::egui::Vec2::new(10.0, 10.0))
+                    .order(bevy_egui::egui::Order::Tooltip)
+                    .interactable(false)
+                    .show(ctx, |ui| {
+                        bevy_egui::egui::Frame::popup(ui.style())
+                            .fill(bevy_egui::egui::Color32::from_rgba_unmultiplied(50, 55, 65, 230))
+                            .show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(bevy_egui::egui::RichText::new(drag.panel.icon()).size(14.0));
+                                    ui.label(bevy_egui::egui::RichText::new(drag.panel.title()).size(13.0));
+                                });
+                            });
+                    });
+            }
+        }
+
+        for (panel_id, panel_rect, is_active) in panel_rects {
+            if !is_active {
+                continue; // Only render active tabs
+            }
+
+            let panel_ctx = DockedPanelContext::new(panel_rect, panel_id.clone(), is_active);
+
+            match panel_id {
+                PanelId::Hierarchy => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        // Check if a scene file is being dragged
+                        let dragging_scene = editor.assets.dragging_asset.as_ref()
+                            .map(|p| p.to_string_lossy().to_lowercase().ends_with(".ron"))
+                            .unwrap_or(false);
+
+                        let active_tab = editor.scene_state.active_scene_tab;
+                        let (events, changed) = render_hierarchy_content(
+                            ui,
+                            ctx,
+                            &mut editor.selection,
+                            &mut editor.hierarchy,
+                            &hierarchy_queries,
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            &editor.component_registry,
+                            active_tab,
+                            &editor.plugin_host,
+                            &mut editor.assets,
+                            dragging_scene,
+                            &editor.default_camera,
+                            &mut editor.command_history,
+                        );
+                        all_ui_events.extend(events);
+                        if changed {
+                            editor.scene_state.mark_modified();
+                        }
+                    });
+                }
+
+                PanelId::Inspector => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        let (events, changed) = render_inspector_content(
+                            ui,
+                            &editor.selection,
+                            &entities_for_inspector,
+                            &mut inspector_queries,
+                            &script_registry,
+                            &rhai_engine,
+                            camera_preview_texture_id,
+                            &editor.plugin_host,
+                            &mut ui_renderer,
+                            &editor.component_registry,
+                            &mut editor.add_component_popup,
+                            &mut commands,
+                            &mut meshes,
+                            &mut materials,
+                            &mut editor.gizmo,
+                        );
+                        all_ui_events.extend(events);
+                        if changed {
+                            editor.scene_state.mark_modified();
+                        }
+                    });
+                }
+
+                PanelId::Assets => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        render_assets_content(
+                            ui,
+                            current_project.as_deref(),
+                            &mut editor.assets,
+                            &mut editor.scene_state,
+                            &mut editor.thumbnail_cache,
+                        );
+                    });
+                }
+
+                PanelId::Console => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        render_console_content(ui, &mut editor.console);
+                    });
+                }
+
+                PanelId::History => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        render_history_content(ui, &mut editor.command_history);
+                    });
+                }
+
+                PanelId::Viewport => {
+                    // Viewport needs special handling - render into the content rect
+                    let content_rect = panel_ctx.content_rect;
+                    editor.viewport.position = [content_rect.min.x, content_rect.min.y];
+                    editor.viewport.size = [content_rect.width(), content_rect.height()];
+
+                    // Check if script editor should be shown instead
+                    let script_editor_shown = render_script_editor(
+                        ctx,
+                        &mut editor.scene_state,
+                        current_project.as_deref(),
+                        content_rect.min.x,
+                        screen_rect.width() - content_rect.max.x,
+                        content_rect.min.y,
+                        content_rect.height(),
+                    );
+
+                    if !script_editor_shown {
+                        render_viewport(
+                            ctx,
+                            &mut editor.viewport,
+                            &mut editor.assets,
+                            &mut editor.orbit,
+                            &editor.camera2d_state,
+                            &editor.gizmo,
+                            &editor.modal_transform,
+                            content_rect.min.x,
+                            screen_rect.width() - content_rect.max.x,
+                            content_rect.min.y,
+                            [content_rect.width(), content_rect.height()],
+                            content_rect.height(),
+                            viewport_texture_id,
+                        );
+                    }
+                }
+
+                PanelId::Animation => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(20.0);
+                            ui.label(bevy_egui::egui::RichText::new("\u{f008}").size(32.0).color(bevy_egui::egui::Color32::from_gray(80)));
+                            ui.add_space(8.0);
+                            ui.label(bevy_egui::egui::RichText::new("Animation").size(14.0).color(bevy_egui::egui::Color32::from_gray(100)));
+                            ui.label(bevy_egui::egui::RichText::new("Coming soon").size(12.0).weak());
+                        });
+                    });
+                }
+
+                PanelId::ScriptEditor => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        render_script_editor_content(
+                            ui,
+                            ctx,
+                            &mut editor.scene_state,
+                            current_project.as_deref(),
+                        );
+                    });
+                }
+
+                PanelId::Plugin(name) => {
+                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                        ui.label(format!("Plugin: {}", name));
+                    });
+                }
+            }
+        }
     }
 
     // Only show settings/export dialogs in edit mode
@@ -414,6 +568,52 @@ pub fn editor_ui(
         if ctx.input(|i| i.modifiers.ctrl && i.key_pressed(bevy_egui::egui::Key::Comma)) {
             editor.settings.show_settings_window = !editor.settings.show_settings_window;
         }
+
+        // Layout switching shortcuts (Ctrl+1/2/3/4)
+        ctx.input(|i| {
+            if i.modifiers.ctrl && !i.modifiers.shift && !i.modifiers.alt {
+                let layout_name = if i.key_pressed(bevy_egui::egui::Key::Num1) {
+                    Some("Default")
+                } else if i.key_pressed(bevy_egui::egui::Key::Num2) {
+                    Some("Scripting")
+                } else if i.key_pressed(bevy_egui::egui::Key::Num3) {
+                    Some("Animation")
+                } else if i.key_pressed(bevy_egui::egui::Key::Num4) {
+                    Some("Debug")
+                } else {
+                    None
+                };
+
+                if let Some(name) = layout_name {
+                    if editor.docking.switch_layout(name) {
+                        // Sync viewport state with layout
+                        match name {
+                            "Default" => {
+                                editor.viewport.hierarchy_width = 260.0;
+                                editor.viewport.inspector_width = 320.0;
+                                editor.viewport.assets_height = 200.0;
+                            }
+                            "Scripting" => {
+                                editor.viewport.hierarchy_width = 220.0;
+                                editor.viewport.inspector_width = 300.0;
+                                editor.viewport.assets_height = 180.0;
+                            }
+                            "Animation" => {
+                                editor.viewport.hierarchy_width = 260.0;
+                                editor.viewport.inspector_width = 320.0;
+                                editor.viewport.assets_height = 250.0;
+                            }
+                            "Debug" => {
+                                editor.viewport.hierarchy_width = 300.0;
+                                editor.viewport.inspector_width = 280.0;
+                                editor.viewport.assets_height = 200.0;
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        });
 
         // Handle toggle bottom panel shortcut (only if not rebinding)
         if editor.keybindings.rebinding.is_none() {
@@ -433,6 +633,9 @@ pub fn editor_ui(
 
         // Render settings window (floating)
         render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
+
+        // Render assets dialogs (create script, create folder, import)
+        render_assets_dialogs(ctx, &mut editor.assets);
 
         // Render export dialog (floating)
         render_export_dialog(

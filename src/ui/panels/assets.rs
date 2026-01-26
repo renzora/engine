@@ -344,6 +344,16 @@ pub fn render_assets(
     ui_events
 }
 
+/// Render asset dialogs (create script, create folder, import)
+/// Call this after render_assets_content to ensure dialogs work
+pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    render_create_script_dialog(ctx, assets);
+    render_create_folder_dialog(ctx, assets);
+    render_import_dialog(ctx, assets);
+    handle_import_request(assets);
+    process_pending_file_imports(assets);
+}
+
 /// Render assets content (for use in docking)
 pub fn render_assets_content(
     ui: &mut egui::Ui,
@@ -353,47 +363,108 @@ pub fn render_assets_content(
     thumbnail_cache: &mut ThumbnailCache,
 ) {
     let ctx = ui.ctx().clone();
+    let available_width = ui.available_width();
+    let is_compact = available_width < 250.0;
 
-    // Toolbar with breadcrumb, search, view toggle, and zoom
+    // Toolbar with breadcrumb and import
     render_toolbar(ui, &ctx, assets, current_project);
 
-    ui.add_space(4.0);
+    ui.add_space(2.0);
+
+    // Search bar
+    ui.horizontal(|ui| {
+        let search_width = (available_width - 8.0).min(300.0).max(60.0);
+        ui.add_sized(
+            [search_width, 20.0],
+            egui::TextEdit::singleline(&mut assets.search)
+                .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
+        );
+    });
+
+    ui.add_space(2.0);
     ui.separator();
-    ui.add_space(4.0);
+    ui.add_space(2.0);
 
     // Update thumbnail cache folder tracking
     thumbnail_cache.clear_for_folder_change(assets.current_folder.clone());
 
-    // Main content area
-    egui::ScrollArea::vertical().show(ui, |ui| {
-        if let Some(project) = current_project {
-            let items = collect_items(assets, project);
-            let filtered_items = filter_items(&items, &assets.search);
+    // Calculate space for bottom bar
+    let bottom_bar_height = 24.0;
+    let available_height = ui.available_height() - bottom_bar_height - 4.0;
 
-            match assets.view_mode {
-                AssetViewMode::Grid => {
-                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache);
+    // Main content area with fixed height to leave room for bottom bar
+    egui::ScrollArea::vertical()
+        .max_height(available_height.max(50.0))
+        .show(ui, |ui| {
+            if let Some(project) = current_project {
+                let items = collect_items(assets, project);
+                let filtered_items = filter_items(&items, &assets.search);
+
+                match assets.view_mode {
+                    AssetViewMode::Grid => {
+                        render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache);
+                    }
+                    AssetViewMode::List => {
+                        render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, project);
+                    }
                 }
-                AssetViewMode::List => {
-                    render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache);
+
+                // Context menu (only when inside a folder)
+                if assets.current_folder.is_some() {
+                    ui.allocate_response(ui.available_size(), Sense::click())
+                        .context_menu(|ui| {
+                            render_context_menu(ui, assets);
+                        });
                 }
+            } else {
+                ui.add_space(20.0);
+                ui.vertical_centered(|ui| {
+                    ui.label(RichText::new(FOLDER).size(32.0).color(Color32::from_rgb(80, 80, 90)));
+                    ui.add_space(4.0);
+                    ui.label(RichText::new("No project loaded").size(11.0).color(Color32::from_rgb(120, 120, 130)));
+                });
+            }
+        });
+
+    // Bottom bar with view controls
+    ui.add_space(2.0);
+    ui.horizontal(|ui| {
+        // Right-aligned controls
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.spacing_mut().item_spacing.x = 4.0;
+
+            // Zoom slider (only in grid mode and if wide enough)
+            if assets.view_mode == AssetViewMode::Grid && !is_compact {
+                ui.spacing_mut().slider_width = if available_width < 350.0 { 40.0 } else { 60.0 };
+                ui.add(egui::Slider::new(&mut assets.zoom, 0.5..=1.5).show_value(false));
+                ui.separator();
             }
 
-            // Context menu (only when inside a folder)
-            if assets.current_folder.is_some() {
-                ui.allocate_response(ui.available_size(), Sense::click())
-                    .context_menu(|ui| {
-                        render_context_menu(ui, assets);
-                    });
+            // View mode toggle
+            let grid_color = if assets.view_mode == AssetViewMode::Grid {
+                Color32::WHITE
+            } else {
+                Color32::from_rgb(100, 100, 110)
+            };
+            let list_color = if assets.view_mode == AssetViewMode::List {
+                Color32::WHITE
+            } else {
+                Color32::from_rgb(100, 100, 110)
+            };
+
+            if ui.small_button(RichText::new(LIST).size(14.0).color(list_color))
+                .on_hover_text("Tree view")
+                .clicked()
+            {
+                assets.view_mode = AssetViewMode::List;
             }
-        } else {
-            ui.add_space(40.0);
-            ui.vertical_centered(|ui| {
-                ui.label(RichText::new(FOLDER).size(48.0).color(Color32::from_rgb(80, 80, 90)));
-                ui.add_space(8.0);
-                ui.label(RichText::new("No project loaded").color(Color32::from_rgb(120, 120, 130)));
-            });
-        }
+            if ui.small_button(RichText::new(SQUARES_FOUR).size(14.0).color(grid_color))
+                .on_hover_text("Grid view")
+                .clicked()
+            {
+                assets.view_mode = AssetViewMode::Grid;
+            }
+        });
     });
 }
 
@@ -403,135 +474,137 @@ fn render_toolbar(
     assets: &mut AssetBrowserState,
     current_project: Option<&CurrentProject>,
 ) {
-    ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 4.0;
+    let available_width = ui.available_width();
 
-        // Back button
-        let can_go_back = assets.current_folder.is_some();
-        ui.add_enabled_ui(can_go_back, |ui| {
-            if ui.button(RichText::new(ARROW_LEFT).size(16.0)).clicked() {
-                if let Some(ref current) = assets.current_folder {
-                    if let Some(project) = current_project {
-                        if current == &project.path {
-                            // Already at project root, can't go back
-                        } else if let Some(parent) = current.parent() {
-                            if parent >= project.path.as_path() {
-                                assets.current_folder = Some(parent.to_path_buf());
+    // Responsive breakpoints
+    let is_compact = available_width < 300.0;
+    let is_medium = available_width < 450.0;
+    let is_narrow = available_width < 200.0;
+
+    // In list/tree view, navigation buttons aren't needed
+    let is_grid_view = assets.view_mode == AssetViewMode::Grid;
+
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = if is_compact { 2.0 } else { 4.0 };
+
+        // Back and Home buttons only in grid view
+        if is_grid_view {
+            // Back button
+            let can_go_back = assets.current_folder.is_some();
+            ui.add_enabled_ui(can_go_back, |ui| {
+                if ui.small_button(RichText::new(ARROW_LEFT).size(14.0)).clicked() {
+                    if let Some(ref current) = assets.current_folder {
+                        if let Some(project) = current_project {
+                            if current == &project.path {
+                                // Already at project root, can't go back
+                            } else if let Some(parent) = current.parent() {
+                                if parent >= project.path.as_path() {
+                                    assets.current_folder = Some(parent.to_path_buf());
+                                }
                             }
                         }
                     }
                 }
-            }
-        });
+            });
 
-        // Home button
-        if ui.button(RichText::new(HOUSE).size(16.0)).on_hover_text("Go to project root").clicked() {
-            if let Some(project) = current_project {
-                assets.current_folder = Some(project.path.clone());
+            // Home button
+            if ui.small_button(RichText::new(HOUSE).size(14.0)).on_hover_text("Go to project root").clicked() {
+                if let Some(project) = current_project {
+                    assets.current_folder = Some(project.path.clone());
+                }
             }
         }
 
-        ui.separator();
+        // Only show breadcrumb if not too narrow
+        if !is_narrow {
+            ui.separator();
 
-        // Breadcrumb path
-        ui.label(RichText::new(FOLDER_FILL).size(14.0).color(Color32::from_rgb(217, 191, 115)));
+            // Breadcrumb path (simplified for narrow widths)
+            if let Some(project) = current_project {
+                let project_name = project.path.file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("Project");
 
-        if let Some(project) = current_project {
-            let project_name = project.path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Project");
+                if let Some(ref current_folder) = assets.current_folder {
+                    // Build breadcrumb parts
+                    let mut parts: Vec<(String, PathBuf)> = vec![];
+                    parts.push((project_name.to_string(), project.path.clone()));
 
-            if let Some(ref current_folder) = assets.current_folder {
-                // Build breadcrumb parts
-                let mut parts: Vec<(String, PathBuf)> = vec![];
-
-                // Start with project root
-                parts.push((project_name.to_string(), project.path.clone()));
-
-                // Add path components
-                if let Ok(relative) = current_folder.strip_prefix(&project.path) {
-                    let mut accumulated = project.path.clone();
-                    for component in relative.components() {
-                        if let std::path::Component::Normal(name) = component {
-                            accumulated = accumulated.join(name);
-                            if let Some(name_str) = name.to_str() {
-                                parts.push((name_str.to_string(), accumulated.clone()));
+                    if let Ok(relative) = current_folder.strip_prefix(&project.path) {
+                        let mut accumulated = project.path.clone();
+                        for component in relative.components() {
+                            if let std::path::Component::Normal(name) = component {
+                                accumulated = accumulated.join(name);
+                                if let Some(name_str) = name.to_str() {
+                                    parts.push((name_str.to_string(), accumulated.clone()));
+                                }
                             }
                         }
                     }
-                }
 
-                // Render breadcrumb
-                for (i, (name, path)) in parts.iter().enumerate() {
-                    if i > 0 {
-                        ui.label(RichText::new(CARET_RIGHT).size(12.0).color(Color32::from_rgb(100, 100, 110)));
-                    }
-
-                    let is_current = Some(path) == assets.current_folder.as_ref();
-                    let text_color = if is_current {
-                        Color32::WHITE
+                    // For compact view, only show last 1-2 parts
+                    let display_parts = if is_compact && parts.len() > 2 {
+                        let last = parts.last().cloned();
+                        vec![("...".to_string(), project.path.clone())]
+                            .into_iter()
+                            .chain(last)
+                            .collect::<Vec<_>>()
+                    } else if is_medium && parts.len() > 3 {
+                        let first = parts.first().cloned();
+                        let last = parts.last().cloned();
+                        vec![first, Some(("...".to_string(), project.path.clone())), last]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<_>>()
                     } else {
-                        Color32::from_rgb(150, 150, 160)
+                        parts
                     };
 
-                    if ui.link(RichText::new(name).color(text_color).size(13.0)).clicked() {
-                        assets.current_folder = Some(path.clone());
+                    for (i, (name, path)) in display_parts.iter().enumerate() {
+                        if i > 0 {
+                            ui.label(RichText::new(CARET_RIGHT).size(10.0).color(Color32::from_rgb(100, 100, 110)));
+                        }
+
+                        if name == "..." {
+                            ui.label(RichText::new("...").size(11.0).color(Color32::from_rgb(100, 100, 110)));
+                        } else {
+                            let is_current = Some(path) == assets.current_folder.as_ref();
+                            let text_color = if is_current {
+                                Color32::WHITE
+                            } else {
+                                Color32::from_rgb(150, 150, 160)
+                            };
+
+                            let display_name = if is_compact && name.len() > 8 {
+                                format!("{}...", &name[..6])
+                            } else if is_medium && name.len() > 12 {
+                                format!("{}...", &name[..10])
+                            } else {
+                                name.clone()
+                            };
+
+                            if ui.link(RichText::new(&display_name).color(text_color).size(11.0)).clicked() {
+                                assets.current_folder = Some(path.clone());
+                            }
+                        }
                     }
+                } else {
+                    ui.label(RichText::new(project_name).size(11.0).color(Color32::from_rgb(150, 150, 160)));
                 }
-            } else {
-                // Not in any folder yet
-                ui.label(RichText::new(project_name).color(Color32::from_rgb(150, 150, 160)));
             }
         }
 
-        // Right-aligned controls
+        // Right-aligned import button only
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            // Zoom slider
-            ui.spacing_mut().slider_width = 80.0;
-            ui.add(egui::Slider::new(&mut assets.zoom, 0.5..=1.5).show_value(false));
-
-            ui.separator();
-
-            // View mode toggle
-            let grid_color = if assets.view_mode == AssetViewMode::Grid {
-                Color32::WHITE
-            } else {
-                Color32::from_rgb(120, 120, 130)
-            };
-            let list_color = if assets.view_mode == AssetViewMode::List {
-                Color32::WHITE
-            } else {
-                Color32::from_rgb(120, 120, 130)
-            };
-
-            if ui.button(RichText::new(LIST).size(16.0).color(list_color)).clicked() {
-                assets.view_mode = AssetViewMode::List;
-            }
-            if ui.button(RichText::new(SQUARES_FOUR).size(16.0).color(grid_color)).clicked() {
-                assets.view_mode = AssetViewMode::Grid;
-            }
-
-            ui.separator();
-
-            // Import button
             let import_enabled = assets.current_folder.is_some();
             ui.add_enabled_ui(import_enabled, |ui| {
-                if ui.button(RichText::new(format!("{} Import", PLUS)).size(12.0))
-                    .on_hover_text("Import assets into current folder")
+                if ui.small_button(RichText::new(PLUS).size(14.0))
+                    .on_hover_text("Import assets")
                     .clicked()
                 {
                     open_import_file_dialog(assets);
                 }
             });
-
-            ui.separator();
-
-            // Search input
-            ui.add_sized(
-                [150.0, 20.0],
-                egui::TextEdit::singleline(&mut assets.search)
-                    .hint_text(format!("{} Search...", MAGNIFYING_GLASS))
-            );
         });
     });
 }
@@ -622,12 +695,26 @@ fn render_grid_view(
     items: &[&AssetItem],
     thumbnail_cache: &mut ThumbnailCache,
 ) {
-    let tile_size = DEFAULT_TILE_SIZE * assets.zoom;
-    let icon_size = (tile_size * 0.45).max(24.0);
-    let thumbnail_size = tile_size - 16.0; // Leave padding around thumbnail
+    let available_width = ui.available_width();
+
+    // Responsive tile sizing
+    let base_tile_size = if available_width < 150.0 {
+        50.0  // Very small - compact tiles
+    } else if available_width < 250.0 {
+        60.0  // Small panel
+    } else if available_width < 400.0 {
+        70.0  // Medium panel
+    } else {
+        DEFAULT_TILE_SIZE  // Normal size
+    };
+
+    let tile_size = base_tile_size * assets.zoom;
+    let icon_size = (tile_size * 0.45).max(20.0);
+    let thumbnail_size = tile_size - 12.0;
+    let spacing = if available_width < 200.0 { 3.0 } else { 6.0 };
 
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+        ui.spacing_mut().item_spacing = Vec2::new(spacing, spacing);
 
         for item in items {
             let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
@@ -719,19 +806,23 @@ fn render_grid_view(
                 }
             }
 
-            // Label
+            // Label - responsive font size
+            let font_size = if tile_size < 55.0 { 9.0 } else if tile_size < 70.0 { 10.0 } else { 11.0 };
+            let label_height = if tile_size < 55.0 { 12.0 } else { 16.0 };
+
             let label_rect = egui::Rect::from_min_size(
-                egui::pos2(rect.min.x + 4.0, rect.max.y - 18.0),
-                Vec2::new(tile_size - 8.0, 16.0),
+                egui::pos2(rect.min.x + 2.0, rect.max.y - label_height - 2.0),
+                Vec2::new(tile_size - 4.0, label_height),
             );
 
-            let max_chars = ((tile_size - 8.0) / 7.0) as usize;
-            let truncated_name = truncate_name(&item.name, max_chars.max(6));
+            let char_width = if tile_size < 55.0 { 5.0 } else { 6.0 };
+            let max_chars = ((tile_size - 4.0) / char_width) as usize;
+            let truncated_name = truncate_name(&item.name, max_chars.max(4));
             ui.painter().text(
                 label_rect.center(),
                 egui::Align2::CENTER_CENTER,
                 &truncated_name,
-                egui::FontId::proportional(11.0),
+                egui::FontId::proportional(font_size),
                 Color32::from_rgb(200, 200, 210),
             );
 
@@ -772,22 +863,85 @@ fn render_list_view(
     ctx: &egui::Context,
     assets: &mut AssetBrowserState,
     scene_state: &mut SceneManagerState,
-    items: &[&AssetItem],
+    _items: &[&AssetItem],
+    thumbnail_cache: &mut ThumbnailCache,
+    project: &CurrentProject,
+) {
+    // For tree view, start from current folder or project root
+    let root_folder = assets.current_folder.clone().unwrap_or_else(|| project.path.clone());
+    render_tree_node(ui, ctx, assets, scene_state, &root_folder, 0, thumbnail_cache);
+}
+
+fn render_tree_node(
+    ui: &mut egui::Ui,
+    ctx: &egui::Context,
+    assets: &mut AssetBrowserState,
+    scene_state: &mut SceneManagerState,
+    folder_path: &PathBuf,
+    depth: usize,
     thumbnail_cache: &mut ThumbnailCache,
 ) {
-    let thumbnail_size = 18.0; // Small thumbnail for list view
+    let indent = depth as f32 * 16.0;
+    let thumbnail_size = 16.0;
 
-    for item in items {
-        let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
-        let has_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
+    // Read directory contents
+    let Ok(entries) = std::fs::read_dir(folder_path) else {
+        return;
+    };
+
+    let mut folders: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<PathBuf> = Vec::new();
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        // Skip hidden files/folders
+        if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+            if name.starts_with('.') || name == "target" || name == "Cargo.lock" {
+                continue;
+            }
+        }
+
+        // Apply search filter
+        if !assets.search.is_empty() {
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if !name.to_lowercase().contains(&assets.search.to_lowercase()) {
+                    // For folders, check if any children match
+                    if path.is_dir() && !folder_contains_match(&path, &assets.search) {
+                        continue;
+                    } else if !path.is_dir() {
+                        continue;
+                    }
+                }
+            }
+        }
+
+        if path.is_dir() {
+            folders.push(path);
+        } else {
+            files.push(path);
+        }
+    }
+
+    folders.sort();
+    files.sort();
+
+    // Render folders first
+    for folder_path in folders {
+        let Some(name) = folder_path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        let is_expanded = assets.expanded_folders.contains(&folder_path);
+        let is_selected = assets.selected_asset.as_ref() == Some(&folder_path);
+
+        let (icon, color) = get_folder_icon_and_color(name);
 
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
-            if is_draggable { Sense::click_and_drag() } else { Sense::click() },
+            Sense::click(),
         );
 
         let is_hovered = response.hovered();
-        let is_selected = assets.selected_asset.as_ref() == Some(&item.path);
 
         // Background
         let bg_color = if is_selected {
@@ -802,14 +956,103 @@ fn render_list_view(
             ui.painter().rect_filled(rect, 2.0, bg_color);
         }
 
+        // Expand/collapse arrow
+        let arrow_x = rect.min.x + indent + 8.0;
+        let arrow_icon = if is_expanded { CARET_DOWN } else { CARET_RIGHT };
+
+        let arrow_rect = egui::Rect::from_center_size(
+            egui::pos2(arrow_x, rect.center().y),
+            Vec2::splat(16.0),
+        );
+        let arrow_response = ui.interact(arrow_rect, ui.id().with(("arrow", &folder_path)), Sense::click());
+
+        ui.painter().text(
+            egui::pos2(arrow_x, rect.center().y),
+            egui::Align2::CENTER_CENTER,
+            arrow_icon,
+            egui::FontId::proportional(10.0),
+            if arrow_response.hovered() { Color32::WHITE } else { Color32::from_rgb(120, 120, 130) },
+        );
+
+        // Folder icon
+        let icon_x = arrow_x + 14.0;
+        ui.painter().text(
+            egui::pos2(icon_x, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            if is_expanded { FOLDER_OPEN } else { icon },
+            egui::FontId::proportional(14.0),
+            color,
+        );
+
+        // Folder name
+        ui.painter().text(
+            egui::pos2(icon_x + 20.0, rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            name,
+            egui::FontId::proportional(12.0),
+            Color32::from_rgb(200, 200, 210),
+        );
+
+        // Handle interactions
+        if arrow_response.clicked() || response.double_clicked() {
+            if is_expanded {
+                assets.expanded_folders.remove(&folder_path);
+            } else {
+                assets.expanded_folders.insert(folder_path.clone());
+            }
+        }
+
+        if response.clicked() {
+            assets.selected_asset = Some(folder_path.clone());
+        }
+
+        // Render children if expanded
+        if is_expanded {
+            render_tree_node(ui, ctx, assets, scene_state, &folder_path, depth + 1, thumbnail_cache);
+        }
+    }
+
+    // Render files
+    for file_path in files {
+        let Some(name) = file_path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        let (icon, color) = get_file_icon_and_color(name);
+        let is_draggable = is_draggable_asset(name);
+        let has_thumbnail = supports_thumbnail(name);
+        let is_selected = assets.selected_asset.as_ref() == Some(&file_path);
+
+        let (rect, response) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
+            if is_draggable { Sense::click_and_drag() } else { Sense::click() },
+        );
+
+        let is_hovered = response.hovered();
+
+        // Background
+        let bg_color = if is_selected {
+            Color32::from_rgb(60, 90, 140)
+        } else if is_hovered {
+            Color32::from_rgb(45, 45, 55)
+        } else {
+            Color32::TRANSPARENT
+        };
+
+        if bg_color != Color32::TRANSPARENT {
+            ui.painter().rect_filled(rect, 2.0, bg_color);
+        }
+
+        // Icon position (indented, no arrow space needed for files but align with folder names)
+        let icon_x = rect.min.x + indent + 22.0;
+
         // Icon or small thumbnail
         let mut thumbnail_shown = false;
-        let icon_center = egui::pos2(rect.min.x + 12.0, rect.center().y);
 
         if has_thumbnail {
-            if let Some(texture_id) = thumbnail_cache.get_texture_id(&item.path) {
+            if let Some(texture_id) = thumbnail_cache.get_texture_id(&file_path) {
                 let thumb_rect = egui::Rect::from_center_size(
-                    icon_center,
+                    egui::pos2(icon_x + 7.0, rect.center().y),
                     Vec2::splat(thumbnail_size),
                 );
                 ui.painter().image(
@@ -819,46 +1062,72 @@ fn render_list_view(
                     Color32::WHITE,
                 );
                 thumbnail_shown = true;
-            } else if !thumbnail_cache.is_loading(&item.path) && !thumbnail_cache.has_failed(&item.path) {
-                thumbnail_cache.request_load(item.path.clone());
+            } else if !thumbnail_cache.is_loading(&file_path) && !thumbnail_cache.has_failed(&file_path) {
+                thumbnail_cache.request_load(file_path.clone());
             }
         }
 
         if !thumbnail_shown {
             ui.painter().text(
-                icon_center,
+                egui::pos2(icon_x, rect.center().y),
                 egui::Align2::LEFT_CENTER,
-                item.icon,
-                egui::FontId::proportional(16.0),
-                item.color,
+                icon,
+                egui::FontId::proportional(14.0),
+                color,
             );
         }
 
-        // Name (offset slightly more if thumbnail is shown)
-        let name_offset = if thumbnail_shown { 34.0 } else { 32.0 };
+        // File name
         ui.painter().text(
-            egui::pos2(rect.min.x + name_offset, rect.center().y),
+            egui::pos2(icon_x + 20.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
-            &item.name,
+            name,
             egui::FontId::proportional(12.0),
             Color32::from_rgb(200, 200, 210),
         );
 
         // File extension on the right
-        if !item.is_folder {
-            if let Some(ext) = item.path.extension().and_then(|e| e.to_str()) {
-                ui.painter().text(
-                    egui::pos2(rect.max.x - 8.0, rect.center().y),
-                    egui::Align2::RIGHT_CENTER,
-                    ext.to_uppercase(),
-                    egui::FontId::proportional(10.0),
-                    Color32::from_rgb(100, 100, 110),
-                );
-            }
+        if let Some(ext) = file_path.extension().and_then(|e| e.to_str()) {
+            ui.painter().text(
+                egui::pos2(rect.max.x - 8.0, rect.center().y),
+                egui::Align2::RIGHT_CENTER,
+                ext.to_uppercase(),
+                egui::FontId::proportional(10.0),
+                Color32::from_rgb(100, 100, 110),
+            );
         }
 
-        handle_item_interaction(ctx, assets, scene_state, item, &response, is_draggable);
+        // Create a temporary AssetItem for handle_item_interaction
+        let item = AssetItem {
+            name: name.to_string(),
+            path: file_path.clone(),
+            is_folder: false,
+            icon,
+            color,
+        };
+
+        handle_item_interaction(ctx, assets, scene_state, &item, &response, is_draggable);
     }
+}
+
+/// Check if a folder contains any files matching the search
+fn folder_contains_match(folder: &PathBuf, search: &str) -> bool {
+    let search_lower = search.to_lowercase();
+
+    if let Ok(entries) = std::fs::read_dir(folder) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                if name.to_lowercase().contains(&search_lower) {
+                    return true;
+                }
+                if path.is_dir() && folder_contains_match(&path, search) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
 }
 
 fn handle_item_interaction(

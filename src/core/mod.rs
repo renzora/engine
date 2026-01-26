@@ -11,7 +11,7 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 pub use resources::{
     AnimationTimelineState,
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
-    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, EditorSettings,
+    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, DockingState, EditorSettings,
     ExportLogLevel, ExportLogger, ExportState,
     HierarchyDropPosition, HierarchyDropTarget, HierarchyState, LogEntry, LogLevel, MeshHandling,
     NormalImportMethod, OpenScript, PendingImageDrop,
@@ -51,6 +51,7 @@ impl Plugin for CorePlugin {
             .init_resource::<PlayModeState>()
             .init_resource::<ConsoleState>()
             .init_resource::<ThumbnailCache>()
+            .init_resource::<DockingState>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (
                 apply_world_environment,

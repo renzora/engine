@@ -61,9 +61,10 @@ pub fn render_viewport(
     }
 
     // Use an Area to render the viewport content
+    // Use Order::Middle so it can receive input (positioned below tab bar so doesn't overlap)
     egui::Area::new(egui::Id::new("viewport_area"))
         .fixed_pos(content_rect.min)
-        .order(egui::Order::Background)
+        .order(egui::Order::Middle)
         .show(ctx, |ui| {
             ui.set_clip_rect(content_rect);
             render_viewport_content(ui, viewport, assets, orbit, viewport_texture_id, content_rect);

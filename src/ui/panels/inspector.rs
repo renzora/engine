@@ -996,7 +996,7 @@ pub fn render_inspector_content(
 }
 
 /// Render the history panel content
-fn render_history_content(
+pub fn render_history_content(
     ui: &mut egui::Ui,
     command_history: &mut CommandHistory,
 ) {

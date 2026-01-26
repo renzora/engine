@@ -3,9 +3,10 @@ use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
-use crate::core::{AssetBrowserState, EditorEntity, ExportState, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
+use crate::core::{AssetBrowserState, DockingState, EditorEntity, ExportState, SceneNode, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::scene::{spawn_primitive, PrimitiveType};
+use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
 
 use egui_phosphor::regular::{MINUS, SQUARE, X, SQUARES_FOUR};
@@ -26,6 +27,8 @@ pub fn render_title_bar(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     plugin_host: &PluginHost,
     command_history: &mut CommandHistory,
+    docking_state: &mut DockingState,
+    viewport_state: &mut ViewportState,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let is_maximized = window_state.is_maximized;
@@ -97,7 +100,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, commands, meshes, materials, plugin_host, command_history);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, commands, meshes, materials, plugin_host, command_history, docking_state, viewport_state);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -293,6 +296,8 @@ fn render_menu_items(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     plugin_host: &PluginHost,
     command_history: &mut CommandHistory,
+    docking_state: &mut DockingState,
+    viewport_state: &mut ViewportState,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
@@ -516,6 +521,142 @@ fn render_menu_items(
 
     ui.menu_button("View", |ui| {
         ui.checkbox(&mut settings.show_demo_window, "egui Demo");
+    });
+
+    // Helper to apply layout and sync viewport state
+    let apply_layout = |name: &str, docking: &mut DockingState, viewport: &mut ViewportState| {
+        if docking.switch_layout(name) {
+            // Set default viewport state based on layout name
+            match name {
+                "Default" => {
+                    viewport.hierarchy_width = 260.0;
+                    viewport.inspector_width = 320.0;
+                    viewport.assets_height = 200.0;
+                }
+                "Scripting" => {
+                    viewport.hierarchy_width = 220.0;
+                    viewport.inspector_width = 300.0;
+                    viewport.assets_height = 180.0;
+                }
+                "Animation" => {
+                    viewport.hierarchy_width = 260.0;
+                    viewport.inspector_width = 320.0;
+                    viewport.assets_height = 250.0;
+                }
+                "Debug" => {
+                    viewport.hierarchy_width = 300.0;
+                    viewport.inspector_width = 280.0;
+                    viewport.assets_height = 200.0;
+                }
+                _ => {}
+            }
+        }
+    };
+
+    // Window menu for layout management
+    ui.menu_button("Window", |ui| {
+        // Layouts submenu
+        ui.menu_button("Layouts", |ui| {
+            // Built-in layouts
+            for layout in builtin_layouts() {
+                let is_active = docking_state.active_layout == layout.name;
+                let label = if is_active {
+                    format!("\u{f00c} {}", layout.name) // checkmark
+                } else {
+                    format!("   {}", layout.name)
+                };
+
+                if ui.button(label).clicked() {
+                    apply_layout(&layout.name, docking_state, viewport_state);
+                    ui.close();
+                }
+            }
+
+            // Custom layouts
+            let custom_layouts: Vec<String> = docking_state.config.custom_layouts
+                .iter()
+                .map(|l| l.name.clone())
+                .collect();
+
+            if !custom_layouts.is_empty() {
+                ui.separator();
+                for name in custom_layouts {
+                    let is_active = docking_state.active_layout == name;
+                    let label = if is_active {
+                        format!("\u{f00c} {}", name)
+                    } else {
+                        format!("   {}", name)
+                    };
+
+                    if ui.button(label).clicked() {
+                        apply_layout(&name, docking_state, viewport_state);
+                        ui.close();
+                    }
+                }
+            }
+        });
+
+        ui.separator();
+
+        // Quick layout shortcuts
+        ui.label(egui::RichText::new("Quick Switch").color(Color32::GRAY).small());
+        if ui.button("Default             Ctrl+1").clicked() {
+            apply_layout("Default", docking_state, viewport_state);
+            ui.close();
+        }
+        if ui.button("Scripting           Ctrl+2").clicked() {
+            apply_layout("Scripting", docking_state, viewport_state);
+            ui.close();
+        }
+        if ui.button("Animation           Ctrl+3").clicked() {
+            apply_layout("Animation", docking_state, viewport_state);
+            ui.close();
+        }
+        if ui.button("Debug               Ctrl+4").clicked() {
+            apply_layout("Debug", docking_state, viewport_state);
+            ui.close();
+        }
+
+        ui.separator();
+
+        // Save layout
+        if ui.button("Save Layout As...").clicked() {
+            // TODO: Show save layout dialog
+            ui.close();
+        }
+
+        if ui.button("Reset Layout").clicked() {
+            apply_layout("Default", docking_state, viewport_state);
+            ui.close();
+        }
+
+        ui.separator();
+
+        // Panel visibility toggles
+        ui.menu_button("Panels", |ui| {
+            let all_panels = vec![
+                PanelId::Hierarchy,
+                PanelId::Inspector,
+                PanelId::Assets,
+                PanelId::Console,
+                PanelId::Animation,
+                PanelId::History,
+            ];
+
+            for panel in all_panels {
+                let is_visible = docking_state.is_panel_visible(&panel);
+                let label = format!("{} {}", panel.icon(), panel.title());
+
+                let mut visible = is_visible;
+                if ui.checkbox(&mut visible, label).changed() {
+                    if visible {
+                        docking_state.open_panel(panel);
+                    } else {
+                        docking_state.close_panel(&panel);
+                    }
+                }
+            }
+        });
     });
 
     // Dev menu (only visible when dev_mode is enabled)

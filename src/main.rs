@@ -350,6 +350,7 @@ fn load_editor_state(
     mut viewport: ResMut<core::ViewportState>,
     mut settings: ResMut<core::EditorSettings>,
     mut assets: ResMut<core::AssetBrowserState>,
+    mut docking: ResMut<core::DockingState>,
     mut loaded_state: ResMut<project::LoadedEditorState>,
 ) {
     let Some(project) = current_project else { return };
@@ -389,6 +390,9 @@ fn load_editor_state(
         _ => core::AssetViewMode::Grid,
     };
 
+    // Apply docking/layout settings
+    docking.load_from_config(state.docking.clone());
+
     // Store loaded state for saving back
     loaded_state.0 = Some(state);
 
@@ -413,6 +417,7 @@ fn save_editor_state_periodic(
     viewport: Res<core::ViewportState>,
     settings: Res<core::EditorSettings>,
     assets: Res<core::AssetBrowserState>,
+    docking: Res<core::DockingState>,
     mut dirty: ResMut<project::EditorStateDirty>,
 ) {
     timer.0.tick(time.delta());
@@ -462,6 +467,7 @@ fn save_editor_state_periodic(
                 viewport::ViewportMode::Mode3D => "3d".to_string(),
             },
         },
+        docking: docking.save_to_config(),
     };
 
     // Save to disk

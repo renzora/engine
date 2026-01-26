@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use bevy::prelude::*;
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 /// State for the asset browser panel
@@ -46,6 +47,8 @@ pub struct AssetBrowserState {
     pub import_settings: ModelImportSettings,
     /// Files pending import (selected via file dialog)
     pub pending_import_files: Vec<PathBuf>,
+    /// Expanded folders in tree view
+    pub expanded_folders: HashSet<PathBuf>,
 }
 
 /// Pending image drop information

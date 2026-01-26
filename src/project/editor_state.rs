@@ -2,6 +2,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+use crate::ui::docking::DockingLayoutConfig;
+
 /// Editor state configuration saved per-project
 /// Stored in .editor/state.toml within the project directory
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -21,6 +23,10 @@ pub struct EditorStateConfig {
     /// Viewport settings
     #[serde(default)]
     pub viewport: ViewportConfig,
+
+    /// Docking/window layout settings
+    #[serde(default)]
+    pub docking: DockingLayoutConfig,
 }
 
 impl Default for EditorStateConfig {
@@ -30,6 +36,7 @@ impl Default for EditorStateConfig {
             settings: SettingsConfig::default(),
             asset_browser: AssetBrowserConfig::default(),
             viewport: ViewportConfig::default(),
+            docking: DockingLayoutConfig::default(),
         }
     }
 }
