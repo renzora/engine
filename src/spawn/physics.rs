@@ -58,6 +58,7 @@ fn spawn_physics_body(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -121,6 +122,7 @@ fn spawn_collision_shape(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

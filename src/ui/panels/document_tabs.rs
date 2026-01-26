@@ -1,16 +1,60 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
 
-use crate::core::{SceneManagerState, SceneTab};
+use crate::core::{DockingState, SceneManagerState, SceneTab};
 
-use egui_phosphor::regular::{FILM_SCRIPT, SCROLL};
+use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE};
 
 const TAB_HEIGHT: f32 = 28.0;
 const TAB_PADDING: f32 = 12.0;
 const TAB_GAP: f32 = 2.0;
 
-pub fn render_scene_tabs(
+/// Types of documents that can be created
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NewDocumentType {
+    Scene,
+    Blueprint,
+    Script,
+    Material,
+    Shader,
+}
+
+impl NewDocumentType {
+    pub fn label(&self) -> &'static str {
+        match self {
+            NewDocumentType::Scene => "Scene",
+            NewDocumentType::Blueprint => "Blueprint",
+            NewDocumentType::Script => "Script",
+            NewDocumentType::Material => "Material",
+            NewDocumentType::Shader => "Shader",
+        }
+    }
+
+    pub fn icon(&self) -> &'static str {
+        match self {
+            NewDocumentType::Scene => FILM_SCRIPT,
+            NewDocumentType::Blueprint => TREE_STRUCTURE,
+            NewDocumentType::Script => SCROLL,
+            NewDocumentType::Material => CUBE,
+            NewDocumentType::Shader => CODE,
+        }
+    }
+
+    /// Layout to switch to when this document type is activated
+    pub fn layout(&self) -> &'static str {
+        match self {
+            NewDocumentType::Scene => "Default",
+            NewDocumentType::Blueprint => "Blueprints",
+            NewDocumentType::Script => "Scripting",
+            NewDocumentType::Material => "Materials",
+            NewDocumentType::Shader => "Scripting",
+        }
+    }
+}
+
+pub fn render_document_tabs(
     ctx: &egui::Context,
     scene_state: &mut SceneManagerState,
+    docking_state: &mut DockingState,
     left_panel_width: f32,
     right_panel_width: f32,
     top_y: f32,
@@ -33,7 +77,10 @@ pub fn render_scene_tabs(
     let scene_accent_color = Color32::from_rgb(100, 160, 255);
     let script_accent_color = Color32::from_rgb(140, 217, 191);
 
-    egui::Area::new(egui::Id::new("scene_tabs_area"))
+    let mut layout_to_switch: Option<&'static str> = None;
+
+
+    egui::Area::new(egui::Id::new("document_tabs_area"))
         .fixed_pos(tab_bar_rect.min)
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
@@ -167,58 +214,68 @@ pub fn render_scene_tabs(
                     scene_tab_to_close = Some(idx);
                 } else if tab_response.clicked() {
                     scene_tab_to_activate = Some(idx);
+                    // Switch to Default layout when clicking a scene tab
+                    layout_to_switch = Some("Default");
                 }
 
                 x_offset += tab_width + TAB_GAP;
             }
 
-            // Add scene tab button (+)
-            let add_btn_rect = egui::Rect::from_min_size(
-                Pos2::new(x_offset, top_y + 4.0),
-                Vec2::new(24.0, 22.0),
-            );
+            // Add document button (+) with dropdown - use a sub-area for the menu
+            let add_btn_pos = Pos2::new(x_offset, top_y + 4.0);
+            let add_btn_size = Vec2::new(24.0, 22.0);
 
-            let add_response = ui.allocate_rect(add_btn_rect, egui::Sense::click());
-            let add_hovered = add_response.hovered();
+            // Create a small UI area for the menu button
+            let _menu_area = ui.allocate_ui_at_rect(
+                egui::Rect::from_min_size(add_btn_pos, add_btn_size),
+                |ui| {
+                    ui.style_mut().visuals.widgets.inactive.weak_bg_fill = tab_bg;
+                    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = tab_hover_bg;
+                    ui.style_mut().visuals.widgets.active.weak_bg_fill = tab_hover_bg;
 
-            let add_bg = if add_hovered { tab_hover_bg } else { tab_bg };
-            ui.painter().rect(
-                add_btn_rect,
-                CornerRadius::same(4),
-                add_bg,
-                Stroke::NONE,
-                StrokeKind::Outside,
-            );
+                    let _menu_response = egui::menu::menu_button(ui, "+", |ui| {
+                        ui.set_min_width(140.0);
 
-            // Draw +
-            let plus_color = if add_hovered { text_active_color } else { text_color };
-            let plus_center = add_btn_rect.center();
-            let plus_size = 5.0;
-            ui.painter().line_segment(
-                [
-                    Pos2::new(plus_center.x - plus_size, plus_center.y),
-                    Pos2::new(plus_center.x + plus_size, plus_center.y),
-                ],
-                Stroke::new(1.5, plus_color),
-            );
-            ui.painter().line_segment(
-                [
-                    Pos2::new(plus_center.x, plus_center.y - plus_size),
-                    Pos2::new(plus_center.x, plus_center.y + plus_size),
-                ],
-                Stroke::new(1.5, plus_color),
-            );
+                        let doc_types = [
+                            NewDocumentType::Scene,
+                            NewDocumentType::Blueprint,
+                            NewDocumentType::Script,
+                            NewDocumentType::Material,
+                            NewDocumentType::Shader,
+                        ];
 
-            if add_response.clicked() {
-                // Add new tab
-                let new_tab_num = scene_state.scene_tabs.len() + 1;
-                scene_state.scene_tabs.push(SceneTab {
-                    name: format!("Untitled {}", new_tab_num),
-                    ..Default::default()
-                });
-                // Request switch to the new tab (this will save current scene first)
-                scene_state.pending_tab_switch = Some(scene_state.scene_tabs.len() - 1);
-            }
+                        for doc_type in doc_types {
+                            let label = format!("{} {}", doc_type.icon(), doc_type.label());
+                            if ui.button(label).clicked() {
+                                match doc_type {
+                                    NewDocumentType::Scene => {
+                                        let new_tab_num = scene_state.scene_tabs.len() + 1;
+                                        scene_state.scene_tabs.push(SceneTab {
+                                            name: format!("Untitled {}", new_tab_num),
+                                            ..Default::default()
+                                        });
+                                        scene_state.pending_tab_switch = Some(scene_state.scene_tabs.len() - 1);
+                                        layout_to_switch = Some("Default");
+                                    }
+                                    NewDocumentType::Blueprint => {
+                                        layout_to_switch = Some("Blueprints");
+                                    }
+                                    NewDocumentType::Script => {
+                                        layout_to_switch = Some("Scripting");
+                                    }
+                                    NewDocumentType::Material => {
+                                        layout_to_switch = Some("Materials");
+                                    }
+                                    NewDocumentType::Shader => {
+                                        layout_to_switch = Some("Scripting");
+                                    }
+                                }
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                },
+            );
 
             x_offset += 24.0 + TAB_GAP;
 
@@ -340,6 +397,8 @@ pub fn render_scene_tabs(
                     script_tab_to_close = Some(idx);
                 } else if tab_response.clicked() {
                     script_tab_to_activate = Some(idx);
+                    // Switch to Scripting layout when clicking a script tab
+                    layout_to_switch = Some("Scripting");
                 }
 
                 x_offset += tab_width + TAB_GAP;
@@ -368,6 +427,11 @@ pub fn render_scene_tabs(
                 scene_state.active_script_tab = Some(idx);
             }
         });
+
+    // Switch layout if requested
+    if let Some(layout_name) = layout_to_switch {
+        docking_state.switch_layout(layout_name);
+    }
 
     TAB_HEIGHT
 }

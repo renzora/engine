@@ -96,6 +96,7 @@ impl Command for CreateEntityCommand {
             Visibility::Inherited,
             EditorEntity {
                 name: self.name.clone(),
+                tag: String::new(),
                 visible: true,
                 locked: false,
             },
@@ -157,6 +158,7 @@ impl Command for CreateEntityCommand {
 #[derive(Clone)]
 struct DeletedEntityData {
     name: String,
+    tag: String,
     visible: bool,
     locked: bool,
     transform: Transform,
@@ -205,6 +207,7 @@ impl DeleteEntityCommand {
 
         Some(DeletedEntityData {
             name: editor_entity.name.clone(),
+            tag: editor_entity.tag.clone(),
             visible: editor_entity.visible,
             locked: editor_entity.locked,
             transform,
@@ -222,6 +225,7 @@ impl DeleteEntityCommand {
             visibility,
             EditorEntity {
                 name: data.name.clone(),
+                tag: data.tag.clone(),
                 visible: data.visible,
                 locked: data.locked,
             },
@@ -824,6 +828,7 @@ impl Command for SpawnMeshInstanceCommand {
             Visibility::default(),
             EditorEntity {
                 name: self.name.clone(),
+                tag: String::new(),
                 visible: true,
                 locked: false,
             },

@@ -40,6 +40,7 @@ use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
     CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK, X,
+    TAG, PENCIL_SIMPLE,
 };
 
 /// Background colors for alternating rows
@@ -582,9 +583,7 @@ pub fn render_inspector_content(
     materials: &mut Assets<StandardMaterial>,
     gizmo_state: &mut GizmoState,
 ) -> (Vec<UiEvent>, bool) {
-    let panel_width = ui.available_width();
     let mut scene_changed = false;
-    let mut component_to_add: Option<&'static str> = None;
     let mut component_to_remove: Option<&'static str> = None;
 
     // Content area with padding
@@ -605,19 +604,108 @@ pub fn render_inspector_content(
                     ui.add_space(4.0);
                 }
 
-                // Entity name with accent bar
+                // Clone editor entity data upfront to avoid borrow issues
+                let mut current_name = editor_entity.name.clone();
+                let mut current_tag = editor_entity.tag.clone();
+                let current_visible = editor_entity.visible;
+                let current_locked = editor_entity.locked;
+
+                // Entity header with editable name
+                let mut name_changed = false;
+                let mut tag_changed = false;
+
                 ui.horizontal(|ui| {
                     // Accent bar
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(4.0, 20.0), egui::Sense::hover());
                     ui.painter().rect_filled(rect, 0.0, Color32::from_rgb(66, 150, 250));
 
-                    ui.label(RichText::new(&editor_entity.name).size(16.0).strong());
+                    ui.label(RichText::new(PENCIL_SIMPLE).size(14.0).color(Color32::from_rgb(140, 142, 148)));
+
+                    // Editable entity name
+                    let name_response = ui.add(
+                        egui::TextEdit::singleline(&mut current_name)
+                            .desired_width(ui.available_width() - 80.0)
+                            .font(egui::TextStyle::Heading)
+                    );
+                    if name_response.changed() && !current_name.is_empty() {
+                        name_changed = true;
+                    }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        // Active indicator
                         ui.label(RichText::new(CHECK_CIRCLE).color(Color32::from_rgb(89, 191, 115)));
-                        ui.label(RichText::new("Active").color(Color32::from_rgb(89, 191, 115)));
                     });
                 });
+
+                ui.add_space(4.0);
+
+                // Tag input
+                ui.horizontal(|ui| {
+                    ui.add_space(8.0);
+                    ui.label(RichText::new(TAG).size(14.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(RichText::new("Tag").size(12.0).color(Color32::from_rgb(140, 142, 148)));
+
+                    let tag_response = ui.add(
+                        egui::TextEdit::singleline(&mut current_tag)
+                            .desired_width(ui.available_width() - 10.0)
+                            .hint_text("Untagged")
+                    );
+                    if tag_response.changed() {
+                        tag_changed = true;
+                    }
+                });
+
+                // Apply changes after UI code completes
+                if name_changed || tag_changed {
+                    commands.entity(selected).insert(EditorEntity {
+                        name: current_name,
+                        tag: current_tag,
+                        visible: current_visible,
+                        locked: current_locked,
+                    });
+                    scene_changed = true;
+                }
+
+                ui.add_space(8.0);
+
+                // Add Component dropdown button (full width)
+                egui::Frame::default()
+                    .fill(Color32::from_rgb(40, 45, 55))
+                    .corner_radius(CornerRadius::same(4))
+                    .show(ui, |ui| {
+                        ui.set_min_width(ui.available_width() - 12.0);
+                        ui.menu_button(
+                            RichText::new(format!("{} Add Component", PLUS)).color(Color32::from_rgb(100, 180, 255)),
+                            |ui| {
+                                ui.set_min_width(220.0);
+
+                                for category in ComponentCategory::all_in_order() {
+                                    let in_category: Vec<_> = component_registry
+                                        .all()
+                                        .filter(|d| d.category == *category)
+                                        .collect();
+
+                                    if !in_category.is_empty() {
+                                        let (accent, _header_bg) = get_category_style(*category);
+                                        let label = format!("{} {}", category.icon(), category.display_name());
+
+                                        ui.menu_button(RichText::new(label).color(accent), |ui| {
+                                            ui.set_min_width(180.0);
+
+                                            for def in in_category {
+                                                let item_label = format!("{} {}", def.icon, def.display_name);
+                                                if ui.button(RichText::new(item_label)).clicked() {
+                                                    (def.add_fn)(commands, selected, meshes, materials);
+                                                    scene_changed = true;
+                                                    ui.close();
+                                                }
+                                            }
+                                        });
+                                    }
+                                }
+                            },
+                        );
+                    });
 
                 ui.add_space(8.0);
                 ui.separator();
@@ -946,16 +1034,6 @@ pub fn render_inspector_content(
                     }
                 }
 
-                ui.add_space(16.0);
-
-                // Add Component button and popup
-                component_to_add = render_add_component_popup(
-                    ui,
-                    selected,
-                    component_registry,
-                    add_component_popup,
-                    panel_width,
-                );
             }
         } else {
             // Close popup when nothing is selected
@@ -974,14 +1052,6 @@ pub fn render_inspector_content(
     });
 
     }); // End content frame
-
-    // Handle component addition
-    if let (Some(type_id), Some(selected)) = (component_to_add, selection.selected_entity) {
-        if let Some(def) = component_registry.get(type_id) {
-            (def.add_fn)(commands, selected, meshes, materials);
-            scene_changed = true;
-        }
-    }
 
     // Handle component removal
     if let (Some(type_id), Some(selected)) = (component_to_remove, selection.selected_entity) {
@@ -1184,130 +1254,6 @@ pub fn render_history_content(
                 });
             });
         });
-}
-
-/// Render the Add Component button and popup
-fn render_add_component_popup(
-    ui: &mut egui::Ui,
-    _entity: Entity,
-    registry: &ComponentRegistry,
-    popup_state: &mut AddComponentPopupState,
-    panel_width: f32,
-) -> Option<&'static str> {
-    let mut component_to_add: Option<&'static str> = None;
-
-    // Add Component button
-    if ui
-        .add_sized(
-            Vec2::new(panel_width - 20.0, 28.0),
-            egui::Button::new(RichText::new(format!("{} Add Component", PLUS)).color(Color32::WHITE))
-                .fill(Color32::from_rgb(50, 70, 100)),
-        )
-        .clicked()
-    {
-        popup_state.is_open = !popup_state.is_open;
-        popup_state.search_text.clear();
-        popup_state.selected_category = None;
-    }
-
-    // Popup
-    if popup_state.is_open {
-        ui.add_space(4.0);
-
-        egui::Frame::new()
-            .fill(Color32::from_rgb(35, 37, 42))
-            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(55, 57, 62)))
-            .corner_radius(egui::CornerRadius::same(6))
-            .inner_margin(egui::Margin::same(8))
-            .show(ui, |ui| {
-                // Search bar
-                ui.horizontal(|ui| {
-                    ui.label(RichText::new(MAGNIFYING_GLASS).color(Color32::GRAY));
-                    ui.add(
-                        egui::TextEdit::singleline(&mut popup_state.search_text)
-                            .hint_text("Search components...")
-                            .desired_width(ui.available_width() - 40.0),
-                    );
-                    if ui
-                        .add(egui::Button::new(RichText::new(X).color(Color32::GRAY)).frame(false))
-                        .clicked()
-                    {
-                        popup_state.is_open = false;
-                    }
-                });
-
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(8.0);
-
-                // Filter by search text
-                let search_lower = popup_state.search_text.to_lowercase();
-
-                // Get all available components
-                let all_components: Vec<_> = registry.all().collect();
-
-                // Filter
-                let filtered: Vec<_> = if search_lower.is_empty() {
-                    all_components.clone()
-                } else {
-                    all_components
-                        .iter()
-                        .filter(|def| {
-                            def.display_name.to_lowercase().contains(&search_lower)
-                                || def.type_id.contains(&search_lower)
-                        })
-                        .copied()
-                        .collect()
-                };
-
-                // Show by category or flat list if searching
-                if search_lower.is_empty() {
-                    // Show categorized view
-                    for category in ComponentCategory::all_in_order() {
-                        let in_category: Vec<_> = filtered
-                            .iter()
-                            .filter(|d| d.category == *category)
-                            .copied()
-                            .collect();
-
-                        if !in_category.is_empty() {
-                            let (accent, _header_bg) = get_category_style(*category);
-                            egui::CollapsingHeader::new(
-                                RichText::new(format!("{} {}", category.icon(), category.display_name()))
-                                    .color(accent),
-                            )
-                            .default_open(false)
-                            .show(ui, |ui| {
-                                for def in in_category {
-                                    if render_component_menu_item(ui, def) {
-                                        component_to_add = Some(def.type_id);
-                                        popup_state.is_open = false;
-                                    }
-                                }
-                            });
-                        }
-                    }
-                } else {
-                    // Flat search results
-                    if filtered.is_empty() {
-                        ui.label(
-                            RichText::new("No matching components")
-                                .color(Color32::GRAY)
-                                .italics(),
-                        );
-                    } else {
-                        for def in &filtered {
-                            if render_component_menu_item(ui, def) {
-                                component_to_add = Some(def.type_id);
-                                popup_state.is_open = false;
-                            }
-                        }
-                    }
-                }
-            });
-    }
-
-    component_to_add
 }
 
 /// Render a single component item in the Add Component popup

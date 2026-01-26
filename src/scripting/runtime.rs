@@ -91,6 +91,7 @@ fn apply_script_commands(
                     Visibility::default(),
                     EditorEntity {
                         name: name.clone(),
+                        tag: String::new(),
                         visible: true,
                         locked: false,
                     },

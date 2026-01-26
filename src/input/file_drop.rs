@@ -192,6 +192,7 @@ pub fn handle_image_panel_drop(
             Visibility::default(),
             EditorEntity {
                 name: name.clone(),
+                tag: String::new(),
                 visible: true,
                 locked: false,
             },
@@ -243,6 +244,7 @@ pub fn handle_image_panel_drop(
             Visibility::default(),
             EditorEntity {
                 name: name.clone(),
+                tag: String::new(),
                 visible: true,
                 locked: false,
             },
@@ -402,6 +404,7 @@ pub fn spawn_loaded_gltfs(
                     Visibility::default(),
                     EditorEntity {
                         name: pending.name.clone(),
+                        tag: String::new(),
                         visible: true,
                         locked: false,
                     },
@@ -633,6 +636,7 @@ pub fn handle_scene_hierarchy_drop(
             Visibility::default(),
             EditorEntity {
                 name: scene_name,
+                tag: String::new(),
                 visible: true,
                 locked: false,
             },

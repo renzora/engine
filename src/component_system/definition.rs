@@ -5,6 +5,10 @@
 use bevy::prelude::*;
 use bevy_egui::egui;
 
+use egui_phosphor::regular::{
+    CUBE, LIGHTBULB, ATOM, VIDEO_CAMERA, SPEAKER_HIGH, CODE, SQUARES_FOUR, SPARKLE, GAME_CONTROLLER,
+};
+
 /// Function signature for adding a component to an entity
 pub type AddComponentFn = fn(&mut Commands, Entity, &mut Assets<Mesh>, &mut Assets<StandardMaterial>);
 
@@ -52,6 +56,10 @@ pub enum ComponentCategory {
     Scripting,
     /// UI elements
     UI,
+    /// Visual effects (particles, trails, etc.)
+    Effects,
+    /// Gameplay mechanics (health, triggers, etc.)
+    Gameplay,
 }
 
 impl ComponentCategory {
@@ -65,19 +73,23 @@ impl ComponentCategory {
             ComponentCategory::Audio => "Audio",
             ComponentCategory::Scripting => "Scripting",
             ComponentCategory::UI => "UI",
+            ComponentCategory::Effects => "Effects",
+            ComponentCategory::Gameplay => "Gameplay",
         }
     }
 
     /// Get icon for the category
     pub fn icon(&self) -> &'static str {
         match self {
-            ComponentCategory::Rendering => "\u{e9a2}", // Cube
-            ComponentCategory::Lighting => "\u{e90f}",  // Lightbulb
-            ComponentCategory::Physics => "\u{e9d9}",   // Atom/physics
-            ComponentCategory::Camera => "\u{e918}",    // Camera
-            ComponentCategory::Audio => "\u{e9ce}",     // Volume
-            ComponentCategory::Scripting => "\u{ea0c}", // Code
-            ComponentCategory::UI => "\u{e922}",        // Layout
+            ComponentCategory::Rendering => CUBE,
+            ComponentCategory::Lighting => LIGHTBULB,
+            ComponentCategory::Physics => ATOM,
+            ComponentCategory::Camera => VIDEO_CAMERA,
+            ComponentCategory::Audio => SPEAKER_HIGH,
+            ComponentCategory::Scripting => CODE,
+            ComponentCategory::UI => SQUARES_FOUR,
+            ComponentCategory::Effects => SPARKLE,
+            ComponentCategory::Gameplay => GAME_CONTROLLER,
         }
     }
 
@@ -89,6 +101,8 @@ impl ComponentCategory {
             ComponentCategory::Camera,
             ComponentCategory::Physics,
             ComponentCategory::Audio,
+            ComponentCategory::Effects,
+            ComponentCategory::Gameplay,
             ComponentCategory::Scripting,
             ComponentCategory::UI,
         ]

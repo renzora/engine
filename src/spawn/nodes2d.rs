@@ -23,6 +23,7 @@ pub fn spawn_node2d(
         Visibility::default(),
         EditorEntity {
             name: "Node2D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -47,6 +48,7 @@ pub fn spawn_sprite2d(
         Visibility::default(),
         EditorEntity {
             name: "Sprite2D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -72,6 +74,7 @@ pub fn spawn_camera2d(
         Visibility::default(),
         EditorEntity {
             name: "Camera2D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

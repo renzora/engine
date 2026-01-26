@@ -221,5 +221,13 @@ pub fn get_category_style(category: ComponentCategory) -> (Color32, Color32) {
             Color32::from_rgb(191, 166, 242),
             Color32::from_rgb(42, 40, 52),
         ),
+        ComponentCategory::Effects => (
+            Color32::from_rgb(255, 180, 220),  // Pink/magenta
+            Color32::from_rgb(50, 38, 45),
+        ),
+        ComponentCategory::Gameplay => (
+            Color32::from_rgb(255, 150, 150),  // Red/coral
+            Color32::from_rgb(50, 38, 38),
+        ),
     }
 }

@@ -8,6 +8,8 @@ use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentR
 use crate::shared::{Camera2DData, CameraNodeData, CameraRigData};
 use crate::ui::property_row;
 
+use egui_phosphor::regular::{VIDEO_CAMERA, APERTURE};
+
 // ============================================================================
 // Component Definitions
 // ============================================================================
@@ -16,7 +18,7 @@ pub static CAMERA_3D: ComponentDefinition = ComponentDefinition {
     type_id: "camera_3d",
     display_name: "Camera 3D",
     category: ComponentCategory::Camera,
-    icon: "\u{e918}", // Camera
+    icon: VIDEO_CAMERA,
     priority: 0,
     add_fn: add_camera_3d,
     remove_fn: remove_camera_3d,
@@ -32,7 +34,7 @@ pub static CAMERA_2D: ComponentDefinition = ComponentDefinition {
     type_id: "camera_2d",
     display_name: "Camera 2D",
     category: ComponentCategory::Camera,
-    icon: "\u{e918}", // Camera
+    icon: APERTURE,
     priority: 1,
     add_fn: add_camera_2d,
     remove_fn: remove_camera_2d,
@@ -48,7 +50,7 @@ pub static CAMERA_RIG: ComponentDefinition = ComponentDefinition {
     type_id: "camera_rig",
     display_name: "Camera Rig",
     category: ComponentCategory::Camera,
-    icon: "\u{e918}", // Camera
+    icon: VIDEO_CAMERA,
     priority: 2,
     add_fn: add_camera_rig,
     remove_fn: remove_camera_rig,

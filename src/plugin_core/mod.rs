@@ -205,6 +205,7 @@ fn apply_plugin_operations(
                     transform,
                     EditorEntity {
                         name: def.name.clone(),
+                        tag: String::new(),
                         visible: true,
                         locked: false,
                     },

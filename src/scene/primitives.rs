@@ -34,6 +34,7 @@ pub fn spawn_primitive(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

@@ -8,11 +8,13 @@ use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentR
 use crate::scripting::ScriptComponent;
 use crate::ui::property_row;
 
+use egui_phosphor::regular::CODE;
+
 pub static SCRIPT: ComponentDefinition = ComponentDefinition {
     type_id: "script",
     display_name: "Script",
     category: ComponentCategory::Scripting,
-    icon: "\u{ea0c}", // Code icon
+    icon: CODE,
     priority: 0,
     add_fn: add_script,
     remove_fn: remove_script,

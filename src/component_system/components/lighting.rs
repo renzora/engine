@@ -7,6 +7,8 @@ use serde_json::json;
 use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentRegistry};
 use crate::ui::property_row;
 
+use egui_phosphor::regular::{LIGHTBULB, SUN, FLASHLIGHT};
+
 // ============================================================================
 // Component Definitions
 // ============================================================================
@@ -15,7 +17,7 @@ pub static POINT_LIGHT: ComponentDefinition = ComponentDefinition {
     type_id: "point_light",
     display_name: "Point Light",
     category: ComponentCategory::Lighting,
-    icon: "\u{e90f}", // Lightbulb
+    icon: LIGHTBULB,
     priority: 0,
     add_fn: add_point_light,
     remove_fn: remove_point_light,
@@ -31,7 +33,7 @@ pub static DIRECTIONAL_LIGHT: ComponentDefinition = ComponentDefinition {
     type_id: "directional_light",
     display_name: "Directional Light",
     category: ComponentCategory::Lighting,
-    icon: "\u{e9b3}", // Sun
+    icon: SUN,
     priority: 1,
     add_fn: add_directional_light,
     remove_fn: remove_directional_light,
@@ -47,7 +49,7 @@ pub static SPOT_LIGHT: ComponentDefinition = ComponentDefinition {
     type_id: "spot_light",
     display_name: "Spot Light",
     category: ComponentCategory::Lighting,
-    icon: "\u{e91a}", // Flashlight
+    icon: FLASHLIGHT,
     priority: 2,
     add_fn: add_spot_light,
     remove_fn: remove_spot_light,

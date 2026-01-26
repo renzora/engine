@@ -22,6 +22,7 @@ pub fn spawn_world_environment(
         Visibility::default(),
         EditorEntity {
             name: "World Environment".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -49,6 +50,7 @@ pub fn spawn_audio_listener(
         Visibility::default(),
         EditorEntity {
             name: "Audio Listener".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

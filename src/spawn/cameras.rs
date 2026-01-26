@@ -22,6 +22,7 @@ pub fn spawn_camera3d(
         Visibility::default(),
         EditorEntity {
             name: "Camera3D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -50,6 +51,7 @@ pub fn spawn_camera_rig(
         Visibility::default(),
         EditorEntity {
             name: "CameraRig".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

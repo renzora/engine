@@ -1,10 +1,10 @@
 mod assets;
 mod console;
+mod document_tabs;
 mod export;
 mod hierarchy;
 mod inspector;
 mod plugin_ui;
-mod scene_tabs;
 mod script_editor;
 mod settings;
 mod splash;
@@ -15,6 +15,7 @@ mod viewport;
 
 pub use assets::{render_assets_content, render_assets_dialogs};
 pub use console::render_console_content;
+pub use document_tabs::render_document_tabs;
 pub use export::render_export_dialog;
 pub use hierarchy::HierarchyQueries;
 pub use hierarchy::render_hierarchy_content;
@@ -22,7 +23,6 @@ pub use inspector::{InspectorQueries, property_row};
 pub use inspector::render_inspector_content;
 pub use inspector::render_history_content;
 pub use plugin_ui::{render_plugin_panels, render_status_bar};
-pub use scene_tabs::render_scene_tabs;
 pub(crate) use script_editor::render_script_editor;
 pub use script_editor::render_script_editor_content;
 pub use script_editor::open_script;

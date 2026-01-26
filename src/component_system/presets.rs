@@ -9,6 +9,13 @@ use bevy::prelude::*;
 
 use super::ComponentRegistry;
 
+// Phosphor icons
+use egui_phosphor::regular::{
+    CUBE, SPHERE, CYLINDER, SQUARE, LIGHTBULB, SUN, FLASHLIGHT,
+    VIDEO_CAMERA, ATOM, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
+    GLOBE, SPEAKER_HIGH, CIRCLE,
+};
+
 /// Categories for the Create menu
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PresetCategory {
@@ -26,6 +33,8 @@ pub enum PresetCategory {
     Objects2D,
     /// UI elements
     UI,
+    /// Environment settings
+    Environment,
 }
 
 impl PresetCategory {
@@ -38,18 +47,20 @@ impl PresetCategory {
             PresetCategory::Physics => "Physics",
             PresetCategory::Objects2D => "2D Objects",
             PresetCategory::UI => "UI",
+            PresetCategory::Environment => "Environment",
         }
     }
 
     pub fn icon(&self) -> &'static str {
         match self {
-            PresetCategory::Empty => "\u{e9a2}", // Circle
-            PresetCategory::Objects3D => "\u{e9a2}", // Cube
-            PresetCategory::Lights => "\u{e90f}",   // Lightbulb
-            PresetCategory::Cameras => "\u{e918}",  // Camera
-            PresetCategory::Physics => "\u{e9d9}", // Atom
-            PresetCategory::Objects2D => "\u{e9ce}", // Image
-            PresetCategory::UI => "\u{e922}",      // Layout
+            PresetCategory::Empty => CIRCLE,
+            PresetCategory::Objects3D => CUBE,
+            PresetCategory::Lights => LIGHTBULB,
+            PresetCategory::Cameras => VIDEO_CAMERA,
+            PresetCategory::Physics => ATOM,
+            PresetCategory::Objects2D => IMAGE,
+            PresetCategory::UI => STACK,
+            PresetCategory::Environment => GLOBE,
         }
     }
 
@@ -63,6 +74,7 @@ impl PresetCategory {
             PresetCategory::Physics,
             PresetCategory::Objects2D,
             PresetCategory::UI,
+            PresetCategory::Environment,
         ]
     }
 }
@@ -92,7 +104,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "empty",
         display_name: "Empty Entity",
         category: PresetCategory::Empty,
-        icon: "\u{e9a2}",
+        icon: CIRCLE,
         default_name: "Entity",
         components: &[],
         priority: 0,
@@ -102,7 +114,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "cube",
         display_name: "Cube",
         category: PresetCategory::Objects3D,
-        icon: "\u{e9a2}",
+        icon: CUBE,
         default_name: "Cube",
         components: &["mesh_renderer"], // Will add with Cube mesh type
         priority: 0,
@@ -111,7 +123,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "sphere",
         display_name: "Sphere",
         category: PresetCategory::Objects3D,
-        icon: "\u{e9a2}",
+        icon: SPHERE,
         default_name: "Sphere",
         components: &["mesh_renderer"], // Will add with Sphere mesh type
         priority: 1,
@@ -120,7 +132,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "cylinder",
         display_name: "Cylinder",
         category: PresetCategory::Objects3D,
-        icon: "\u{e9a2}",
+        icon: CYLINDER,
         default_name: "Cylinder",
         components: &["mesh_renderer"], // Will add with Cylinder mesh type
         priority: 2,
@@ -129,7 +141,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "plane",
         display_name: "Plane",
         category: PresetCategory::Objects3D,
-        icon: "\u{e9a2}",
+        icon: SQUARE,
         default_name: "Plane",
         components: &["mesh_renderer"], // Will add with Plane mesh type
         priority: 3,
@@ -139,7 +151,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "point_light",
         display_name: "Point Light",
         category: PresetCategory::Lights,
-        icon: "\u{e90f}",
+        icon: LIGHTBULB,
         default_name: "Point Light",
         components: &["point_light"],
         priority: 0,
@@ -148,7 +160,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "directional_light",
         display_name: "Directional Light",
         category: PresetCategory::Lights,
-        icon: "\u{e9b3}",
+        icon: SUN,
         default_name: "Directional Light",
         components: &["directional_light"],
         priority: 1,
@@ -157,7 +169,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "spot_light",
         display_name: "Spot Light",
         category: PresetCategory::Lights,
-        icon: "\u{e91a}",
+        icon: FLASHLIGHT,
         default_name: "Spot Light",
         components: &["spot_light"],
         priority: 2,
@@ -167,7 +179,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "camera_3d",
         display_name: "Camera 3D",
         category: PresetCategory::Cameras,
-        icon: "\u{e918}",
+        icon: VIDEO_CAMERA,
         default_name: "Camera",
         components: &["camera_3d"],
         priority: 0,
@@ -176,7 +188,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "camera_rig",
         display_name: "Camera Rig",
         category: PresetCategory::Cameras,
-        icon: "\u{e918}",
+        icon: VIDEO_CAMERA,
         default_name: "Camera Rig",
         components: &["camera_rig"],
         priority: 1,
@@ -185,36 +197,17 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "camera_2d",
         display_name: "Camera 2D",
         category: PresetCategory::Cameras,
-        icon: "\u{e918}",
+        icon: VIDEO_CAMERA,
         default_name: "Camera 2D",
         components: &["camera_2d"],
         priority: 2,
-    },
-    // Physics
-    EntityPreset {
-        id: "rigid_body",
-        display_name: "Rigid Body",
-        category: PresetCategory::Physics,
-        icon: "\u{e9d9}",
-        default_name: "Rigid Body",
-        components: &["rigid_body", "box_collider"],
-        priority: 0,
-    },
-    EntityPreset {
-        id: "static_body",
-        display_name: "Static Body",
-        category: PresetCategory::Physics,
-        icon: "\u{e9d9}",
-        default_name: "Static Body",
-        components: &["rigid_body", "box_collider"], // Will configure as static
-        priority: 1,
     },
     // 2D Objects
     EntityPreset {
         id: "sprite_2d",
         display_name: "Sprite",
         category: PresetCategory::Objects2D,
-        icon: "\u{e9ce}",
+        icon: IMAGE,
         default_name: "Sprite",
         components: &["sprite_2d"],
         priority: 0,
@@ -224,7 +217,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "ui_panel",
         display_name: "Panel",
         category: PresetCategory::UI,
-        icon: "\u{e922}",
+        icon: STACK,
         default_name: "Panel",
         components: &["ui_panel"],
         priority: 0,
@@ -233,7 +226,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "ui_label",
         display_name: "Label",
         category: PresetCategory::UI,
-        icon: "\u{e8ed}",
+        icon: TEXTBOX,
         default_name: "Label",
         components: &["ui_label"],
         priority: 1,
@@ -242,7 +235,7 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "ui_button",
         display_name: "Button",
         category: PresetCategory::UI,
-        icon: "\u{e9ca}",
+        icon: CURSOR_CLICK,
         default_name: "Button",
         components: &["ui_button"],
         priority: 2,
@@ -251,10 +244,29 @@ pub static PRESETS: &[EntityPreset] = &[
         id: "ui_image",
         display_name: "Image",
         category: PresetCategory::UI,
-        icon: "\u{e9ce}",
+        icon: IMAGE,
         default_name: "Image",
         components: &["ui_image"],
         priority: 3,
+    },
+    // Environment
+    EntityPreset {
+        id: "world_environment",
+        display_name: "World Environment",
+        category: PresetCategory::Environment,
+        icon: GLOBE,
+        default_name: "World Environment",
+        components: &["world_environment"],
+        priority: 0,
+    },
+    EntityPreset {
+        id: "audio_listener",
+        display_name: "Audio Listener",
+        category: PresetCategory::Environment,
+        icon: SPEAKER_HIGH,
+        default_name: "Audio Listener",
+        components: &["audio_listener"],
+        priority: 1,
     },
 ];
 
@@ -290,6 +302,7 @@ pub fn spawn_preset(
         Visibility::default(),
         EditorEntity {
             name: preset.default_name.to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

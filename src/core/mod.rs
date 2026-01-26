@@ -215,5 +215,19 @@ fn apply_world_environment(
                 }
             }
         }
+    } else {
+        // No WorldEnvironment - reset to defaults
+        ambient_light.color = Color::WHITE;
+        ambient_light.brightness = 200.0;
+
+        // Reset camera clear color to default dark gray
+        for mut camera in cameras.iter_mut() {
+            camera.clear_color = ClearColorConfig::Custom(Color::srgb(0.1, 0.1, 0.12));
+        }
+
+        // Remove procedural sun if exists
+        for (entity, _, _) in sun_query.iter() {
+            commands.entity(entity).despawn();
+        }
     }
 }

@@ -82,6 +82,7 @@ fn spawn_mesh_entity(
         Visibility::default(),
         EditorEntity {
             name: name.to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -107,6 +108,7 @@ pub fn spawn_mesh_instance(
         Visibility::default(),
         EditorEntity {
             name: "MeshInstance".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -132,6 +134,7 @@ pub fn spawn_node3d(
         Visibility::default(),
         EditorEntity {
             name: "Node3D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

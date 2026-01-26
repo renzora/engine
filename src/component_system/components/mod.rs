@@ -2,6 +2,9 @@
 
 mod audio;
 mod camera;
+mod effects;
+mod environment;
+mod gameplay;
 mod lighting;
 mod physics;
 mod rendering;
@@ -19,4 +22,7 @@ pub fn register_all_components(registry: &mut ComponentRegistry) {
     audio::register(registry);
     scripting::register(registry);
     ui::register(registry);
+    environment::register(registry);
+    effects::register(registry);
+    gameplay::register(registry);
 }

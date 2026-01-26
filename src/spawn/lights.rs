@@ -29,6 +29,7 @@ pub fn spawn_point_light(
         Visibility::default(),
         EditorEntity {
             name: "Point Light".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -58,6 +59,7 @@ pub fn spawn_directional_light(
         Visibility::default(),
         EditorEntity {
             name: "Directional Light".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -91,6 +93,7 @@ pub fn spawn_spot_light(
         Visibility::default(),
         EditorEntity {
             name: "Spot Light".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

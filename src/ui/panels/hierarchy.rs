@@ -13,7 +13,6 @@ use crate::shared::{
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
-use super::render_panel_bar_with_action;
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{
@@ -267,27 +266,25 @@ pub fn render_hierarchy_content(
         }
     }
 
-    // Panel bar with add button
-    let (bar_response, add_clicked) = render_panel_bar_with_action(
-        ui,
-        TREE_STRUCTURE,
-        "Hierarchy",
-        PLUS,
-        Color32::from_rgb(100, 180, 255),
-    );
+    // Panel bar with add menu button
+    egui::Frame::new()
+        .fill(Color32::from_rgb(38, 40, 46))
+        .show(ui, |ui| {
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
+                ui.label(RichText::new(format!("{} Hierarchy", TREE_STRUCTURE)).color(Color32::from_rgb(180, 182, 190)));
 
-    // Show add menu popup when button is clicked
-    let popup_id = ui.id().with("hierarchy_add_popup");
-    if add_clicked {
-        #[allow(deprecated)]
-        ui.memory_mut(|mem| mem.toggle_popup(popup_id));
-    }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add_space(8.0);
+                    ui.menu_button(RichText::new(PLUS).color(Color32::from_rgb(100, 180, 255)), |ui| {
+                        ui.set_min_width(180.0);
+                        render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
+                    });
+                });
+            });
+        });
 
-    #[allow(deprecated)]
-    egui::popup_below_widget(ui, popup_id, &bar_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
-        ui.set_min_width(180.0);
-        render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
-    });
+    ui.add_space(2.0);
 
     // Content area with padding
     egui::Frame::new()
@@ -721,6 +718,7 @@ fn render_tree_node(
                 if !new_name.is_empty() {
                     commands.entity(entity).insert(EditorEntity {
                         name: new_name,
+                        tag: editor_entity.tag.clone(),
                         visible: editor_entity.visible,
                         locked: editor_entity.locked,
                     });
@@ -893,6 +891,7 @@ fn render_tree_node(
             if lock_btn.clicked() {
                 commands.entity(entity).insert(EditorEntity {
                     name: editor_entity.name.clone(),
+                    tag: editor_entity.tag.clone(),
                     visible: editor_entity.visible,
                     locked: !editor_entity.locked,
                 });
@@ -915,6 +914,7 @@ fn render_tree_node(
                 let new_visible = !editor_entity.visible;
                 commands.entity(entity).insert(EditorEntity {
                     name: editor_entity.name.clone(),
+                    tag: editor_entity.tag.clone(),
                     visible: new_visible,
                     locked: editor_entity.locked,
                 });
@@ -1197,7 +1197,7 @@ fn render_preset_menu(
             for preset in presets {
                 let item_label = format!("{} {}", preset.icon, preset.display_name);
 
-                if ui.selectable_label(false, RichText::new(item_label).color(Color32::from_rgb(220, 220, 230))).clicked() {
+                if ui.button(RichText::new(item_label).color(Color32::from_rgb(220, 220, 230))).clicked() {
                     let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
                     selection.selected_entity = Some(entity);
                     if let Some(parent_entity) = parent {
@@ -1216,7 +1216,7 @@ fn render_preset_menu(
     for preset in empty_presets {
         let item_label = format!("{} {}", preset.icon, preset.display_name);
 
-        if ui.selectable_label(false, RichText::new(item_label).color(Color32::from_rgb(180, 180, 190))).clicked() {
+        if ui.button(RichText::new(item_label).color(Color32::from_rgb(180, 180, 190))).clicked() {
             let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
             selection.selected_entity = Some(entity);
             if let Some(parent_entity) = parent {
@@ -1237,5 +1237,6 @@ fn get_category_color(category: PresetCategory) -> Color32 {
         PresetCategory::Physics => Color32::from_rgb(166, 242, 200),
         PresetCategory::Objects2D => Color32::from_rgb(242, 140, 191),
         PresetCategory::UI => Color32::from_rgb(191, 166, 242),
+        PresetCategory::Environment => Color32::from_rgb(140, 220, 180),
     }
 }

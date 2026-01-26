@@ -8,6 +8,8 @@ use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentR
 use crate::shared::{CollisionShapeData, CollisionShapeType, PhysicsBodyData, PhysicsBodyType};
 use crate::ui::property_row;
 
+use egui_phosphor::regular::{ATOM, CUBE, GLOBE, PILL};
+
 // ============================================================================
 // Component Definitions
 // ============================================================================
@@ -16,7 +18,7 @@ pub static RIGID_BODY: ComponentDefinition = ComponentDefinition {
     type_id: "rigid_body",
     display_name: "Rigid Body",
     category: ComponentCategory::Physics,
-    icon: "\u{e9d9}", // Atom
+    icon: ATOM,
     priority: 0,
     add_fn: add_rigid_body,
     remove_fn: remove_rigid_body,
@@ -32,7 +34,7 @@ pub static BOX_COLLIDER: ComponentDefinition = ComponentDefinition {
     type_id: "box_collider",
     display_name: "Box Collider",
     category: ComponentCategory::Physics,
-    icon: "\u{e9a2}", // Cube
+    icon: CUBE,
     priority: 1,
     add_fn: add_box_collider,
     remove_fn: remove_box_collider,
@@ -48,7 +50,7 @@ pub static SPHERE_COLLIDER: ComponentDefinition = ComponentDefinition {
     type_id: "sphere_collider",
     display_name: "Sphere Collider",
     category: ComponentCategory::Physics,
-    icon: "\u{e9a2}", // Cube (using same icon for now)
+    icon: GLOBE,
     priority: 2,
     add_fn: add_sphere_collider,
     remove_fn: remove_sphere_collider,
@@ -64,7 +66,7 @@ pub static CAPSULE_COLLIDER: ComponentDefinition = ComponentDefinition {
     type_id: "capsule_collider",
     display_name: "Capsule Collider",
     category: ComponentCategory::Physics,
-    icon: "\u{e9a2}", // Cube (using same icon for now)
+    icon: PILL,
     priority: 3,
     add_fn: add_capsule_collider,
     remove_fn: remove_capsule_collider,

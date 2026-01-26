@@ -8,6 +8,8 @@ use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentR
 use crate::shared::{MeshNodeData, MeshPrimitiveType, Sprite2DData};
 use crate::ui::property_row;
 
+use egui_phosphor::regular::{CUBE, IMAGE};
+
 // ============================================================================
 // Component Definitions
 // ============================================================================
@@ -16,7 +18,7 @@ pub static MESH_RENDERER: ComponentDefinition = ComponentDefinition {
     type_id: "mesh_renderer",
     display_name: "Mesh Renderer",
     category: ComponentCategory::Rendering,
-    icon: "\u{e9a2}", // Cube
+    icon: CUBE,
     priority: 0,
     add_fn: add_mesh_renderer,
     remove_fn: remove_mesh_renderer,
@@ -32,7 +34,7 @@ pub static SPRITE_2D: ComponentDefinition = ComponentDefinition {
     type_id: "sprite_2d",
     display_name: "Sprite 2D",
     category: ComponentCategory::Rendering,
-    icon: "\u{e9ce}", // Image
+    icon: IMAGE,
     priority: 1,
     add_fn: add_sprite_2d,
     remove_fn: remove_sprite_2d,

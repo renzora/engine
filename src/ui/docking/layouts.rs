@@ -41,28 +41,36 @@ pub fn builtin_layouts() -> Vec<WorkspaceLayout> {
         WorkspaceLayout::builtin("Scripting", scripting_layout()),
         WorkspaceLayout::builtin("Animation", animation_layout()),
         WorkspaceLayout::builtin("Debug", debug_layout()),
+        WorkspaceLayout::builtin("Blueprints", blueprints_layout()),
+        WorkspaceLayout::builtin("Level Design", level_design_layout()),
+        WorkspaceLayout::builtin("Materials", materials_layout()),
+        WorkspaceLayout::builtin("Terrain", terrain_layout()),
     ]
 }
 
-/// Default layout: Hierarchy | Viewport+Assets | Inspector
+/// Default layout: Hierarchy+Assets | Viewport+Console | Inspector
 ///
 /// ```text
 /// ┌─────────┬──────────────────────┬──────────┐
 /// │         │                      │          │
 /// │Hierarchy│      Viewport        │ Inspector│
 /// │         │                      │          │
-/// │         ├──────────────────────┤          │
-/// │         │   Assets | Console   │          │
+/// ├─────────┼──────────────────────┤          │
+/// │ Assets  │  Console | Animation │          │
 /// └─────────┴──────────────────────┴──────────┘
 /// ```
 pub fn default_layout() -> DockTree {
     DockTree::horizontal(
-        DockTree::leaf(PanelId::Hierarchy),
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::Assets),
+            0.6,
+        ),
         DockTree::horizontal(
             DockTree::vertical(
                 DockTree::leaf(PanelId::Viewport),
                 DockTree::Leaf {
-                    tabs: vec![PanelId::Assets, PanelId::Console, PanelId::Animation],
+                    tabs: vec![PanelId::Console, PanelId::Animation],
                     active_tab: 0,
                 },
                 0.7,
@@ -73,7 +81,7 @@ pub fn default_layout() -> DockTree {
             },
             0.78,
         ),
-        0.15,
+        0.18,
     )
 }
 
@@ -168,6 +176,137 @@ pub fn debug_layout() -> DockTree {
             0.75,
         ),
         0.2,
+    )
+}
+
+/// Blueprints layout: Visual scripting focused with large script editor
+///
+/// ```text
+/// ┌─────────┬──────────────────────────────────┐
+/// │         │                                  │
+/// │Hierarchy│         Script Editor            │
+/// │         │                                  │
+/// ├─────────┼────────────────────┬─────────────┤
+/// │ Assets  │     Viewport       │  Inspector  │
+/// └─────────┴────────────────────┴─────────────┘
+/// ```
+pub fn blueprints_layout() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Hierarchy),
+            DockTree::leaf(PanelId::ScriptEditor),
+            0.15,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Assets),
+            DockTree::horizontal(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::Leaf {
+                    tabs: vec![PanelId::Inspector, PanelId::Console],
+                    active_tab: 0,
+                },
+                0.7,
+            ),
+            0.15,
+        ),
+        0.55,
+    )
+}
+
+/// Level Design layout: Maximized viewport with quick access to hierarchy and assets
+///
+/// ```text
+/// ┌─────────────────────────────────┬──────────┐
+/// │                                 │          │
+/// │            Viewport             │ Hierarchy│
+/// │                                 │          │
+/// │                                 ├──────────┤
+/// │                                 │  Assets  │
+/// ├─────────────────────────────────┼──────────┤
+/// │            Console              │ Inspector│
+/// └─────────────────────────────────┴──────────┘
+/// ```
+pub fn level_design_layout() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Viewport),
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Hierarchy),
+                DockTree::leaf(PanelId::Assets),
+                0.5,
+            ),
+            0.8,
+        ),
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Console),
+            DockTree::leaf(PanelId::Inspector),
+            0.75,
+        ),
+        0.75,
+    )
+}
+
+/// Materials layout: Inspector-focused for editing material properties
+///
+/// ```text
+/// ┌─────────┬──────────────────────┬───────────┐
+/// │         │                      │           │
+/// │ Assets  │      Viewport        │ Inspector │
+/// │         │                      │           │
+/// │         │                      │           │
+/// │         │                      │           │
+/// ├─────────┼──────────────────────┤           │
+/// │Hierarchy│      Console         │           │
+/// └─────────┴──────────────────────┴───────────┘
+/// ```
+pub fn materials_layout() -> DockTree {
+    DockTree::horizontal(
+        DockTree::vertical(
+            DockTree::leaf(PanelId::Assets),
+            DockTree::leaf(PanelId::Hierarchy),
+            0.65,
+        ),
+        DockTree::horizontal(
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Viewport),
+                DockTree::leaf(PanelId::Console),
+                0.75,
+            ),
+            DockTree::leaf(PanelId::Inspector),
+            0.65,
+        ),
+        0.18,
+    )
+}
+
+/// Terrain layout: Large viewport with assets and inspector for terrain editing
+///
+/// ```text
+/// ┌──────────────────────────────────┬──────────┐
+/// │                                  │ Inspector│
+/// │            Viewport              │          │
+/// │                                  ├──────────┤
+/// │                                  │ Hierarchy│
+/// ├──────────────────────────────────┴──────────┤
+/// │                   Assets                    │
+/// └─────────────────────────────────────────────┘
+/// ```
+pub fn terrain_layout() -> DockTree {
+    DockTree::vertical(
+        DockTree::horizontal(
+            DockTree::leaf(PanelId::Viewport),
+            DockTree::vertical(
+                DockTree::leaf(PanelId::Inspector),
+                DockTree::leaf(PanelId::Hierarchy),
+                0.6,
+            ),
+            0.8,
+        ),
+        DockTree::Leaf {
+            tabs: vec![PanelId::Assets, PanelId::Console],
+            active_tab: 0,
+        },
+        0.75,
     )
 }
 

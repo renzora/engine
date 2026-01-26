@@ -62,6 +62,7 @@ pub fn spawn_scene3d(
         Visibility::default(),
         EditorEntity {
             name: "Scene3D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -81,6 +82,7 @@ pub fn spawn_scene2d(
         Visibility::default(),
         EditorEntity {
             name: "Scene2D".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -100,6 +102,7 @@ pub fn spawn_ui_root(
         Visibility::default(),
         EditorEntity {
             name: "UI".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -119,6 +122,7 @@ pub fn spawn_other_root(
         Visibility::default(),
         EditorEntity {
             name: "Root".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

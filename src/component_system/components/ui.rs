@@ -8,6 +8,8 @@ use crate::component_system::{ComponentCategory, ComponentDefinition, ComponentR
 use crate::shared::{UIButtonData, UIImageData, UILabelData, UIPanelData};
 use crate::ui::property_row;
 
+use egui_phosphor::regular::{SQUARES_FOUR, TEXT_T, CURSOR_CLICK, IMAGE};
+
 // ============================================================================
 // Component Definitions
 // ============================================================================
@@ -16,7 +18,7 @@ pub static UI_PANEL: ComponentDefinition = ComponentDefinition {
     type_id: "ui_panel",
     display_name: "UI Panel",
     category: ComponentCategory::UI,
-    icon: "\u{e922}", // Layout icon
+    icon: SQUARES_FOUR,
     priority: 0,
     add_fn: add_ui_panel,
     remove_fn: remove_ui_panel,
@@ -32,7 +34,7 @@ pub static UI_LABEL: ComponentDefinition = ComponentDefinition {
     type_id: "ui_label",
     display_name: "UI Label",
     category: ComponentCategory::UI,
-    icon: "\u{e8ed}", // Text icon
+    icon: TEXT_T,
     priority: 1,
     add_fn: add_ui_label,
     remove_fn: remove_ui_label,
@@ -48,7 +50,7 @@ pub static UI_BUTTON: ComponentDefinition = ComponentDefinition {
     type_id: "ui_button",
     display_name: "UI Button",
     category: ComponentCategory::UI,
-    icon: "\u{e9ca}", // Button icon
+    icon: CURSOR_CLICK,
     priority: 2,
     add_fn: add_ui_button,
     remove_fn: remove_ui_button,
@@ -64,7 +66,7 @@ pub static UI_IMAGE: ComponentDefinition = ComponentDefinition {
     type_id: "ui_image",
     display_name: "UI Image",
     category: ComponentCategory::UI,
-    icon: "\u{e9ce}", // Image icon
+    icon: IMAGE,
     priority: 3,
     add_fn: add_ui_image,
     remove_fn: remove_ui_image,

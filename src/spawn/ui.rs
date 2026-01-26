@@ -24,6 +24,7 @@ pub fn spawn_ui_panel(
         Visibility::default(),
         EditorEntity {
             name: "Panel".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -49,6 +50,7 @@ pub fn spawn_ui_label(
         Visibility::default(),
         EditorEntity {
             name: "Label".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -74,6 +76,7 @@ pub fn spawn_ui_button(
         Visibility::default(),
         EditorEntity {
             name: "Button".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },
@@ -99,6 +102,7 @@ pub fn spawn_ui_image(
         Visibility::default(),
         EditorEntity {
             name: "Image".to_string(),
+            tag: String::new(),
             visible: true,
             locked: false,
         },

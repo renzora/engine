@@ -60,7 +60,7 @@ use docking::{
 use bevy_egui::egui::{Rect, Pos2};
 use panels::{
     render_export_dialog, render_plugin_panels,
-    render_scene_tabs, render_script_editor, render_script_editor_content, render_settings_window,
+    render_document_tabs, render_script_editor, render_script_editor_content, render_settings_window,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
     render_hierarchy_content, render_inspector_content, render_assets_content, render_assets_dialogs,
@@ -283,17 +283,18 @@ pub fn editor_ui(
     } else {
         // DOCKING SYSTEM - Render dock tree with draggable panels
 
-        // Render scene tabs bar (for scene/script tabs with + button)
-        let scene_tabs_height = render_scene_tabs(
+        // Render document tabs bar (for scene/script tabs with + button)
+        let document_tabs_height = render_document_tabs(
             ctx,
             &mut editor.scene_state,
+            &mut editor.docking,
             0.0,  // No left margin - spans full width
             0.0,  // No right margin
             content_start_y,
         );
 
         // Calculate dock area (below scene tabs, above status bar)
-        let dock_start_y = content_start_y + scene_tabs_height;
+        let dock_start_y = content_start_y + document_tabs_height;
         let dock_rect = Rect::from_min_max(
             Pos2::new(0.0, dock_start_y),
             Pos2::new(screen_rect.width(), screen_rect.height() - status_bar_height),
