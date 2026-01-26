@@ -266,10 +266,6 @@ fn setup_splash_camera(mut commands: Commands) {
     ));
 }
 
-/// Marker component for the UI camera in editor mode
-#[derive(Component)]
-struct UiCamera;
-
 /// Keep the splash camera for egui UI rendering in editor mode
 fn despawn_splash_camera(mut query: Query<&mut Camera, With<SplashCamera>>) {
     for mut camera in query.iter_mut() {
@@ -436,6 +432,7 @@ fn save_editor_state_periodic(
             bottom_panel_tab: match viewport.bottom_panel_tab {
                 core::BottomPanelTab::Console => "console".to_string(),
                 core::BottomPanelTab::Assets => "assets".to_string(),
+                core::BottomPanelTab::Animation => "animation".to_string(),
             },
         },
         settings: project::editor_state::SettingsConfig {

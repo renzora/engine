@@ -1,5 +1,7 @@
 //! Plugin registry for tracking registered plugin components.
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 
 use bevy::prelude::*;

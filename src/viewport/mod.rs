@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod camera;
 mod camera_preview;
 pub mod camera2d;

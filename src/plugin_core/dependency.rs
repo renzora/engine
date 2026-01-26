@@ -2,6 +2,8 @@
 //!
 //! This module provides topological sorting of plugins based on their dependencies.
 
+#![allow(dead_code)]
+
 use std::collections::{HashMap, HashSet};
 
 use super::abi::{PluginError, PluginManifest};

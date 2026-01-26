@@ -23,8 +23,6 @@ pub struct PlayModeState {
     pub active_game_camera: Option<Entity>,
     /// Whether to request entering play mode this frame
     pub request_play: bool,
-    /// Whether to request pausing this frame
-    pub request_pause: bool,
     /// Whether to request stopping this frame
     pub request_stop: bool,
 }

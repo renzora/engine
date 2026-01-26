@@ -2,6 +2,8 @@
 //!
 //! This module contains all the inspector UI widgets for editing entity components.
 
+#![allow(dead_code)]
+
 pub mod camera;
 pub mod environment;
 pub mod lights;

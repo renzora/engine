@@ -1,5 +1,7 @@
 //! Rhai scripting engine integration
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use rhai::{Dynamic, Engine, AST, Scope, Map, ImmutableString};
 use std::collections::HashMap;

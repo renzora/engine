@@ -1,5 +1,7 @@
 //! Script registry - stores all registered scripts
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use std::collections::HashMap;
 

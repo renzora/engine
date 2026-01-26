@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 
 use crate::core::{MainCamera, ViewportCamera, OrbitCameraState, ViewportState};

@@ -3,6 +3,8 @@
 //! Presets are templates for creating common entity configurations.
 //! Each preset creates an entity with a specific set of components.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 
 use super::ComponentRegistry;

@@ -13,7 +13,6 @@ pub enum AppState {
 /// Information about an asset being tracked
 #[derive(Clone)]
 pub struct TrackedAsset {
-    pub name: String,
     pub size_bytes: u64,
 }
 
@@ -23,7 +22,6 @@ pub struct AssetLoadingProgress {
     pub loading: bool,
     pub loaded: usize,
     pub total: usize,
-    pub message: String,
     /// Total bytes of all tracked assets
     pub total_bytes: u64,
     /// Bytes loaded so far
@@ -34,8 +32,8 @@ pub struct AssetLoadingProgress {
 
 impl AssetLoadingProgress {
     /// Start tracking an asset for loading progress
-    pub fn track<T: Asset>(&mut self, handle: &Handle<T>, name: String, size_bytes: u64) {
-        let info = TrackedAsset { name, size_bytes };
+    pub fn track<T: Asset>(&mut self, handle: &Handle<T>, size_bytes: u64) {
+        let info = TrackedAsset { size_bytes };
         self.tracking.insert(handle.id().untyped(), info);
         self.total = self.tracking.len();
         self.total_bytes = self.tracking.values().map(|a| a.size_bytes).sum();

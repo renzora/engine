@@ -1,5 +1,7 @@
 //! Script component that can be attached to entities
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy::scene::DynamicSceneRoot;
 use std::path::PathBuf;
@@ -88,7 +90,7 @@ pub fn handle_file_drop(
             let handle: Handle<Gltf> = asset_server.load(path_buf.clone());
 
             // Track for progress bar
-            loading_progress.track(&handle, name.clone(), file_size);
+            loading_progress.track(&handle, file_size);
 
             pending_loads.loads.push(PendingLoad {
                 handle,
@@ -136,7 +138,7 @@ pub fn handle_asset_panel_drop(
             let handle: Handle<Gltf> = asset_server.load(load_path);
 
             // Track for progress bar
-            loading_progress.track(&handle, name.clone(), file_size);
+            loading_progress.track(&handle, file_size);
 
             pending_loads.loads.push(PendingLoad {
                 handle,
@@ -505,7 +507,7 @@ pub fn check_mesh_instance_models(
             console_info!("Asset", "Loading model: {}", name);
 
             // Track for progress bar
-            loading_progress.track(&handle, name.clone(), file_size);
+            loading_progress.track(&handle, file_size);
 
             pending_loads.loads.push(PendingMeshInstanceLoad {
                 entity,

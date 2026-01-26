@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::egui::TextureId;
 use std::collections::{HashMap, HashSet};

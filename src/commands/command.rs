@@ -1,5 +1,7 @@
 //! Core command trait and types for the undo/redo system.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use std::any::Any;
 

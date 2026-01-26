@@ -15,11 +15,14 @@ mod viewport;
 
 pub use assets::render_assets;
 pub use export::render_export_dialog;
-pub use hierarchy::{render_hierarchy, HierarchyQueries};
-pub use inspector::{render_inspector, InspectorQueries, property_row};
+pub use hierarchy::HierarchyQueries;
+pub(crate) use hierarchy::render_hierarchy;
+pub use inspector::{InspectorQueries, property_row};
+pub(crate) use inspector::render_inspector;
 pub use plugin_ui::{render_plugin_panels, render_status_bar};
 pub use scene_tabs::render_scene_tabs;
-pub use script_editor::{render_script_editor, open_script};
+pub(crate) use script_editor::render_script_editor;
+pub use script_editor::open_script;
 pub use settings::render_settings_window;
 pub use splash::render_splash;
 pub use title_bar::{render_title_bar, handle_window_actions, TITLE_BAR_HEIGHT};
@@ -30,48 +33,6 @@ use bevy_egui::egui::{self, Color32, Vec2};
 
 /// Panel bar height constant
 pub const PANEL_BAR_HEIGHT: f32 = 24.0;
-
-/// Renders a consistent panel bar/header with icon and title
-/// Returns the response for the bar area (can be used for drag, etc.)
-pub fn render_panel_bar(
-    ui: &mut egui::Ui,
-    icon: &str,
-    title: &str,
-) -> egui::Response {
-    let available_width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(available_width, PANEL_BAR_HEIGHT),
-        egui::Sense::hover(),
-    );
-
-    // Draw bar background
-    ui.painter().rect_filled(
-        rect,
-        egui::CornerRadius::ZERO,
-        Color32::from_rgb(38, 40, 46),
-    );
-
-    // Draw bottom border
-    ui.painter().line_segment(
-        [
-            egui::pos2(rect.min.x, rect.max.y),
-            egui::pos2(rect.max.x, rect.max.y),
-        ],
-        egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
-    );
-
-    // Draw icon and title
-    let text = format!("{} {}", icon, title);
-    ui.painter().text(
-        egui::pos2(rect.min.x + 10.0, rect.center().y),
-        egui::Align2::LEFT_CENTER,
-        text,
-        egui::FontId::proportional(12.0),
-        Color32::from_rgb(180, 182, 190),
-    );
-
-    response
-}
 
 /// Renders a panel bar with an action button on the right side
 pub fn render_panel_bar_with_action(

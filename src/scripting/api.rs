@@ -2,6 +2,8 @@
 //!
 //! This module provides the types and functions available to game scripts.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy::input::gamepad::{Gamepad, GamepadAxis, GamepadButton};
 use std::collections::HashMap;

@@ -1,5 +1,7 @@
 //! Command history for undo/redo functionality.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use super::command::Command;
 

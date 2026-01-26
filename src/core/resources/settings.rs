@@ -128,9 +128,3 @@ impl Default for EditorSettings {
     }
 }
 
-impl EditorSettings {
-    /// Get grid color as a Color
-    pub fn grid_color_as_color(&self) -> Color {
-        Color::srgb(self.grid_color[0], self.grid_color[1], self.grid_color[2])
-    }
-}

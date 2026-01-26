@@ -3,6 +3,8 @@
 //! All scene modifications should go through this system to be undoable.
 //! Commands encapsulate both the action and the data needed to reverse it.
 
+#![allow(dead_code)]
+
 mod command;
 mod history;
 mod entity_commands;

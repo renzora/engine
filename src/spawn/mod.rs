@@ -3,6 +3,8 @@
 //! This module provides templates and spawn functions for creating various
 //! entity types (meshes, lights, cameras, etc.) from the editor UI.
 
+#![allow(dead_code)]
+
 pub mod meshes;
 pub mod lights;
 pub mod cameras;

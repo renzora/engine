@@ -8,6 +8,8 @@
 //!   Header size: u32 (4 bytes) - for forward compatibility
 //!   Flags: u32 (4 bytes) - pack-level flags (reserved)
 //!   File count: u32 (4 bytes)
+
+#![allow(dead_code)]
 //!   Data offset: u64 (8 bytes) - offset from pack start to data section
 //!
 //! FILE TABLE (repeated for each file):

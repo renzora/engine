@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 use std::path::PathBuf;
@@ -312,6 +314,12 @@ pub fn render_assets(
                     }
                     BottomPanelTab::Console => {
                         render_console_content(ui, console);
+                    }
+                    BottomPanelTab::Animation => {
+                        // Animation tab placeholder - content is rendered separately
+                        ui.centered_and_justified(|ui| {
+                            ui.label(RichText::new("Animation timeline coming soon").color(Color32::GRAY));
+                        });
                     }
                 }
             }

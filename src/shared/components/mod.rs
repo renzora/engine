@@ -4,6 +4,7 @@
 //! They are stored as components on entities and serialized to scene files
 //! via Bevy's DynamicScene and reflection system.
 
+pub mod animation;
 mod camera;
 mod environment;
 mod instances;

@@ -1,5 +1,7 @@
 //! Component definition types
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::egui;
 

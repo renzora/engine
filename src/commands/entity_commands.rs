@@ -1,5 +1,7 @@
 //! Entity-related undoable commands.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode, SelectionState};

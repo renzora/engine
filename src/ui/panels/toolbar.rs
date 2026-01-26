@@ -395,9 +395,11 @@ fn dropdown_button(
     }
 
     if response.clicked() {
+        #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(button_id));
     }
 
+    #[allow(deprecated)]
     egui::popup_below_widget(
         ui,
         button_id,
@@ -465,9 +467,11 @@ fn snap_dropdown(
     }
 
     if response.clicked() {
+        #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(button_id));
     }
 
+    #[allow(deprecated)]
     egui::popup_below_widget(
         ui,
         button_id,

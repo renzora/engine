@@ -1,5 +1,7 @@
 //! Component registry for storing and looking up component definitions
 
+#![allow(dead_code)]
+
 use super::definition::{ComponentCategory, ComponentDefinition};
 use bevy::prelude::*;
 use std::collections::HashMap;

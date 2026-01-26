@@ -2,6 +2,8 @@
 //!
 //! Handles selection of 2D entities in the viewport using bounding box checks.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, ViewportMode, ViewportState};

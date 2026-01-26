@@ -5,6 +5,8 @@
 //! - Panels
 //! - Toolbar items
 
+#![allow(dead_code)]
+
 use bevy_egui::egui::{self, Color32, RichText};
 
 use crate::core::{AssetLoadingProgress, format_bytes};

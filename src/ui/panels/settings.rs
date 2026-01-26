@@ -72,6 +72,7 @@ pub fn render_settings_window(
             );
 
             // Content area
+            #[allow(deprecated)]
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(modal_rect), |ui| {
                 ui.set_clip_rect(modal_rect);
 
@@ -84,6 +85,7 @@ pub fn render_settings_window(
                     Vec2::new(modal_width, modal_height - 56.0),
                 );
 
+                #[allow(deprecated)]
                 ui.allocate_new_ui(egui::UiBuilder::new().max_rect(content_rect), |ui| {
                     render_tabs(ui, settings, modal_width);
 
@@ -93,6 +95,7 @@ pub fn render_settings_window(
                         Vec2::new(modal_width - 48.0, modal_height - 56.0 - 52.0 - 24.0),
                     );
 
+                    #[allow(deprecated)]
                     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(tab_content_rect), |ui| {
                         match settings.settings_tab {
                             SettingsTab::General => render_general_tab(ui, settings),

@@ -4,6 +4,8 @@
 //! their user interfaces without depending on egui directly. The editor's
 //! internal renderer translates these abstract widgets to egui.
 
+#![allow(dead_code)]
+
 pub mod events;
 pub mod layout;
 pub mod renderer;

@@ -280,6 +280,7 @@ fn render_splash_window(
                 StrokeKind::Outside,
             );
 
+            #[allow(deprecated)]
             ui.allocate_new_ui(egui::UiBuilder::new().max_rect(panel_rect.shrink(24.0)), |ui| {
                 ui.vertical(|ui| {
                     // Header

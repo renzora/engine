@@ -13,7 +13,7 @@ mod thumbnails;
 mod viewport;
 mod window;
 
-pub use animation_timeline::{AnimationTimelineState, KeyframeSelection, TimelinePlayState, TrackFilter};
+pub use animation_timeline::AnimationTimelineState;
 pub use assets::{
     AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, MeshHandling,
     NormalImportMethod, PendingImageDrop, TangentImportMethod,

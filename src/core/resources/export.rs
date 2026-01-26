@@ -1,5 +1,7 @@
 //! Export dialog state resource
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};

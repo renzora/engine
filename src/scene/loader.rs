@@ -1,5 +1,7 @@
 //! Scene loading using Bevy's DynamicScene system
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy::scene::{DynamicSceneRoot, SceneInstanceReady};
 use std::path::Path;

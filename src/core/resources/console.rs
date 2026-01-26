@@ -1,5 +1,7 @@
 //! Console system for displaying logs in the editor
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
 
@@ -81,7 +83,6 @@ pub fn render_hierarchy(
     ui_renderer: &mut UiRenderer,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
-    let mut actual_width = stored_width;
     let mut scene_changed = false;
 
     // Check if a scene file is being dragged (.ron format)
@@ -99,7 +100,7 @@ pub fn render_hierarchy(
     let min_viewport_width = 200.0;
     let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
     let display_width = stored_width.clamp(100.0, max_width);
-    actual_width = display_width;
+    let mut actual_width = display_width;
 
     egui::SidePanel::left("hierarchy")
         .exact_width(display_width)
@@ -278,9 +279,11 @@ pub fn render_hierarchy_content(
     // Show add menu popup when button is clicked
     let popup_id = ui.id().with("hierarchy_add_popup");
     if add_clicked {
+        #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(popup_id));
     }
 
+    #[allow(deprecated)]
     egui::popup_below_widget(ui, popup_id, &bar_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
         ui.set_min_width(180.0);
         render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);

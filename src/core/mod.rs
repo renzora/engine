@@ -9,7 +9,7 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 
 // Re-export all resources
 pub use resources::{
-    AnimationTimelineState, KeyframeSelection, TimelinePlayState, TrackFilter,
+    AnimationTimelineState,
     AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
     CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, EditorSettings,
     ExportLogLevel, ExportLogger, ExportState,

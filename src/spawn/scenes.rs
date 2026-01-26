@@ -2,6 +2,8 @@
 //!
 //! Scene roots are the top-level containers for different types of scene content.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode};

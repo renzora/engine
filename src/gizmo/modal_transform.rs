@@ -6,6 +6,8 @@
 //! Type numbers for precise values.
 //! Enter/Left-click confirms, Escape/Right-click cancels.
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy::window::CursorOptions;
 

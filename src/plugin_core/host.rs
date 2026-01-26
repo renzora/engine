@@ -1,5 +1,7 @@
 //! Plugin host for discovering, loading, and managing plugins.
 
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::ffi::{c_char, c_void, CStr, OsStr};
 use std::panic::{catch_unwind, AssertUnwindSafe};

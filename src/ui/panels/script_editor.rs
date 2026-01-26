@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, Sense, Vec2, TextEdit, FontId, FontFamily, TextBuffer};
 use std::path::PathBuf;

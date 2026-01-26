@@ -2,6 +2,8 @@
 //!
 //! Handles compiling the runtime binary for target platforms.
 
+#![allow(dead_code)]
+
 use std::fs;
 use std::path::PathBuf;
 

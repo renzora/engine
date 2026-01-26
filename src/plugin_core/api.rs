@@ -2,6 +2,8 @@
 //!
 //! Re-exports types from editor_plugin_api and provides the implementation.
 
+#![allow(dead_code)]
+
 // Re-export all types from the shared crate
 pub use editor_plugin_api::api::*;
 pub use editor_plugin_api::events::{EditorEventType, UiEvent};

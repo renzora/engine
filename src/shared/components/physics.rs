@@ -1,5 +1,7 @@
 //! Physics-related component data types
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 

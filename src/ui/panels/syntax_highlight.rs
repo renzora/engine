@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy_egui::egui::{Color32, FontId, FontFamily, text::LayoutJob, TextFormat};
 
 #[derive(Clone, Copy, PartialEq)]

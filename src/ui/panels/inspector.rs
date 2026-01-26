@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Sense, TextureId, Vec2};
@@ -29,14 +31,13 @@ use crate::shared::{
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
-use super::render_panel_bar;
 
 // Icon for inspector tab
 use egui_phosphor::regular::{SLIDERS_HORIZONTAL, CLOCK_COUNTER_CLOCKWISE};
 
 // Phosphor icons for inspector
 use egui_phosphor::regular::{
-    SLIDERS, ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
+    ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
     CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK, X,
 };
@@ -339,7 +340,6 @@ pub fn render_inspector(
     right_panel_tab: &mut RightPanelTab,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
-    let mut actual_width = stored_width;
     let mut scene_changed = false;
 
     // Get plugin tabs for right panel
@@ -352,7 +352,7 @@ pub fn render_inspector(
     let min_viewport_width = 200.0;
     let max_width = ((screen_width - min_viewport_width) / 2.0).max(100.0).min(500.0);
     let display_width = stored_width.clamp(100.0, max_width);
-    actual_width = display_width;
+    let mut actual_width = display_width;
 
     egui::SidePanel::right("inspector")
         .exact_width(display_width)

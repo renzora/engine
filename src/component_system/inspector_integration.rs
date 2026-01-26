@@ -1,5 +1,7 @@
 //! Integration between ComponentRegistry and the inspector UI
 
+#![allow(dead_code)]
+
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2};
 
