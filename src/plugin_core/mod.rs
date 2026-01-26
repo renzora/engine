@@ -269,28 +269,34 @@ fn dispatch_selection_events(
 /// Exclusive system to process undo/redo operations from plugins
 fn process_plugin_undo_redo(world: &mut World) {
     // Check for pending undo/redo requests from plugins
-    let (do_undo, do_redo) = {
+    let (undo_count, redo_count) = {
         let mut plugin_host = world.resource_mut::<PluginHost>();
         let api = plugin_host.api_mut();
         let undo = api.pending_undo;
         let redo = api.pending_redo;
-        // Clear the flags
-        api.pending_undo = false;
-        api.pending_redo = false;
+        // Clear the counts
+        api.pending_undo = 0;
+        api.pending_redo = 0;
         (undo, redo)
     };
 
-    // Process undo request
-    if do_undo {
-        if crate::commands::undo(world) {
-            info!("Plugin triggered undo");
+    // Process undo requests
+    if undo_count > 0 {
+        for _ in 0..undo_count {
+            if !crate::commands::undo(world) {
+                break;
+            }
         }
+        info!("Plugin triggered undo x{}", undo_count);
     }
 
-    // Process redo request
-    if do_redo {
-        if crate::commands::redo(world) {
-            info!("Plugin triggered redo");
+    // Process redo requests
+    if redo_count > 0 {
+        for _ in 0..redo_count {
+            if !crate::commands::redo(world) {
+                break;
+            }
         }
+        info!("Plugin triggered redo x{}", redo_count);
     }
 }

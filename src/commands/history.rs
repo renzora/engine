@@ -19,10 +19,10 @@ pub struct CommandHistory {
     in_undo_redo: bool,
     /// If set, commands will be grouped together until end_group is called
     active_group: Option<super::command::CommandGroup>,
-    /// Pending undo request (from menu or other UI)
-    pub pending_undo: bool,
-    /// Pending redo request (from menu or other UI)
-    pub pending_redo: bool,
+    /// Pending undo count (from menu or other UI) - number of undos to perform
+    pub pending_undo: usize,
+    /// Pending redo count (from menu or other UI) - number of redos to perform
+    pub pending_redo: usize,
 }
 
 impl CommandHistory {
@@ -81,6 +81,16 @@ impl CommandHistory {
     /// Get the number of commands in the redo stack
     pub fn redo_count(&self) -> usize {
         self.redo_stack.len()
+    }
+
+    /// Get all undo descriptions (oldest to newest)
+    pub fn undo_descriptions(&self) -> Vec<String> {
+        self.undo_stack.iter().map(|c| c.description()).collect()
+    }
+
+    /// Get all redo descriptions (oldest to newest, so newest undone first)
+    pub fn redo_descriptions(&self) -> Vec<String> {
+        self.redo_stack.iter().map(|c| c.description()).collect()
     }
 
     /// Pop command from undo stack for undoing

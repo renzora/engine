@@ -8,6 +8,15 @@ pub enum BottomPanelTab {
     #[default]
     Assets,
     Console,
+    Animation,
+}
+
+/// Right panel tab selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RightPanelTab {
+    #[default]
+    Inspector,
+    History,
 }
 
 /// Tracks viewport state and layout
@@ -25,6 +34,8 @@ pub struct ViewportState {
     pub assets_height: f32,
     /// Currently selected bottom panel tab
     pub bottom_panel_tab: BottomPanelTab,
+    /// Currently selected right panel tab
+    pub right_panel_tab: RightPanelTab,
     /// Current viewport mode (2D or 3D)
     pub viewport_mode: ViewportMode,
     /// Whether the bottom panel is minimized (showing only the bar)
@@ -43,6 +54,7 @@ impl Default for ViewportState {
             inspector_width: 320.0,
             assets_height: 200.0,
             bottom_panel_tab: BottomPanelTab::Assets,
+            right_panel_tab: RightPanelTab::Inspector,
             viewport_mode: ViewportMode::default(),
             bottom_panel_minimized: false,
             bottom_panel_prev_height: 200.0,

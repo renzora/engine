@@ -1,12 +1,13 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, CornerRadius, RichText, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Sense, TextureId, Vec2};
 
 use crate::component_system::{
     AddComponentPopupState, ComponentCategory, ComponentRegistry,
     get_category_style,
 };
-use crate::core::{EditorEntity, SelectionState, WorldEnvironmentMarker};
+use crate::commands::CommandHistory;
+use crate::core::{EditorEntity, RightPanelTab, SelectionState, WorldEnvironmentMarker};
 use crate::gizmo::GizmoState;
 use crate::ui::inspectors::{
     render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
@@ -31,7 +32,7 @@ use crate::ui_api::{renderer::UiRenderer, UiEvent};
 use super::render_panel_bar;
 
 // Icon for inspector tab
-use egui_phosphor::regular::SLIDERS_HORIZONTAL;
+use egui_phosphor::regular::{SLIDERS_HORIZONTAL, CLOCK_COUNTER_CLOCKWISE};
 
 // Phosphor icons for inspector
 use egui_phosphor::regular::{
@@ -334,6 +335,8 @@ pub fn render_inspector(
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
     gizmo_state: &mut GizmoState,
+    command_history: &mut CommandHistory,
+    right_panel_tab: &mut RightPanelTab,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut actual_width = stored_width;
@@ -357,30 +360,147 @@ pub fn render_inspector(
         .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
 
-            // Render tab bar if there are plugin tabs
-            if !plugin_tabs.is_empty() {
-                ui.horizontal(|ui| {
-                    // Built-in Inspector tab
-                    let inspector_selected = active_plugin_tab.is_none();
-                    if ui.selectable_label(inspector_selected, RichText::new(format!("{} Inspector", SLIDERS_HORIZONTAL)).size(12.0)).clicked() {
-                        ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
-                    }
+            // Tab bar styled like bottom panel
+            let bar_height = 24.0;
+            let available_width = ui.available_width();
+            let (bar_rect, _) = ui.allocate_exact_size(
+                Vec2::new(available_width, bar_height),
+                Sense::hover(),
+            );
 
-                    // Plugin tabs
-                    for tab in &plugin_tabs {
-                        let is_selected = active_plugin_tab == Some(tab.id.as_str());
-                        let tab_label = if let Some(icon) = &tab.icon {
-                            format!("{} {}", icon, tab.title)
-                        } else {
-                            tab.title.clone()
-                        };
-                        if ui.selectable_label(is_selected, RichText::new(&tab_label).size(12.0)).clicked() {
-                            ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: tab.id.clone() });
-                        }
-                    }
-                });
-                ui.separator();
+            // Draw bar background
+            ui.painter().rect_filled(
+                bar_rect,
+                CornerRadius::ZERO,
+                Color32::from_rgb(38, 40, 46),
+            );
+
+            // Draw bottom border
+            ui.painter().line_segment(
+                [
+                    egui::pos2(bar_rect.min.x, bar_rect.max.y),
+                    egui::pos2(bar_rect.max.x, bar_rect.max.y),
+                ],
+                egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+            );
+
+            // Draw tabs inside the bar
+            let mut tab_x = bar_rect.min.x + 8.0;
+            let tab_y = bar_rect.min.y;
+            let tab_height = bar_height;
+
+            // Inspector tab
+            let inspector_selected = *right_panel_tab == RightPanelTab::Inspector && active_plugin_tab.is_none();
+            let inspector_text = format!("{} Inspector", SLIDERS_HORIZONTAL);
+            let inspector_width = 80.0;
+            let inspector_rect = egui::Rect::from_min_size(
+                egui::pos2(tab_x, tab_y),
+                Vec2::new(inspector_width, tab_height),
+            );
+
+            let inspector_response = ui.interact(inspector_rect, ui.id().with("inspector_tab"), Sense::click());
+            if inspector_response.clicked() {
+                *right_panel_tab = RightPanelTab::Inspector;
+                ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
             }
+
+            let inspector_bg = if inspector_selected {
+                Color32::from_rgb(50, 52, 60)
+            } else if inspector_response.hovered() {
+                Color32::from_rgb(45, 47, 55)
+            } else {
+                Color32::TRANSPARENT
+            };
+            if inspector_bg != Color32::TRANSPARENT {
+                ui.painter().rect_filled(inspector_rect, 0.0, inspector_bg);
+            }
+            ui.painter().text(
+                inspector_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &inspector_text,
+                egui::FontId::proportional(12.0),
+                if inspector_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+            );
+
+            tab_x += inspector_width + 4.0;
+
+            // History tab
+            let history_selected = *right_panel_tab == RightPanelTab::History && active_plugin_tab.is_none();
+            let undo_count = command_history.undo_count();
+            let history_text = if undo_count > 0 {
+                format!("{} History ({})", CLOCK_COUNTER_CLOCKWISE, undo_count)
+            } else {
+                format!("{} History", CLOCK_COUNTER_CLOCKWISE)
+            };
+            let history_width = if undo_count > 0 { 90.0 } else { 70.0 };
+            let history_rect = egui::Rect::from_min_size(
+                egui::pos2(tab_x, tab_y),
+                Vec2::new(history_width, tab_height),
+            );
+
+            let history_response = ui.interact(history_rect, ui.id().with("history_tab"), Sense::click());
+            if history_response.clicked() {
+                *right_panel_tab = RightPanelTab::History;
+                ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: String::new() });
+            }
+
+            let history_bg = if history_selected {
+                Color32::from_rgb(50, 52, 60)
+            } else if history_response.hovered() {
+                Color32::from_rgb(45, 47, 55)
+            } else {
+                Color32::TRANSPARENT
+            };
+            if history_bg != Color32::TRANSPARENT {
+                ui.painter().rect_filled(history_rect, 0.0, history_bg);
+            }
+            ui.painter().text(
+                history_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &history_text,
+                egui::FontId::proportional(12.0),
+                if history_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+            );
+
+            tab_x += history_width + 4.0;
+
+            // Plugin tabs
+            for tab in &plugin_tabs {
+                let is_selected = active_plugin_tab == Some(tab.id.as_str());
+                let tab_icon = tab.icon.as_deref().unwrap_or("");
+                let tab_text = format!("{} {}", tab_icon, tab.title);
+                let plugin_tab_width = 80.0;
+                let plugin_rect = egui::Rect::from_min_size(
+                    egui::pos2(tab_x, tab_y),
+                    Vec2::new(plugin_tab_width, tab_height),
+                );
+
+                let plugin_response = ui.interact(plugin_rect, ui.id().with(&tab.id), Sense::click());
+                if plugin_response.clicked() {
+                    ui_events.push(UiEvent::PanelTabSelected { location: 1, tab_id: tab.id.clone() });
+                }
+
+                let plugin_bg = if is_selected {
+                    Color32::from_rgb(50, 52, 60)
+                } else if plugin_response.hovered() {
+                    Color32::from_rgb(45, 47, 55)
+                } else {
+                    Color32::TRANSPARENT
+                };
+                if plugin_bg != Color32::TRANSPARENT {
+                    ui.painter().rect_filled(plugin_rect, 0.0, plugin_bg);
+                }
+                ui.painter().text(
+                    plugin_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &tab_text,
+                    egui::FontId::proportional(12.0),
+                    if is_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                );
+
+                tab_x += plugin_tab_width + 4.0;
+            }
+            let _ = tab_x; // Suppress unused warning
 
             // Render content based on active tab
             if let Some(tab_id) = active_plugin_tab {
@@ -394,6 +514,9 @@ pub fn render_inspector(
                 } else {
                     ui.label(RichText::new("No content").color(Color32::GRAY));
                 }
+            } else if *right_panel_tab == RightPanelTab::History {
+                // Render history tab
+                render_history_content(ui, command_history);
             } else {
                 // Render normal inspector
                 let (events, changed) = render_inspector_content(
@@ -463,9 +586,6 @@ pub fn render_inspector_content(
     let mut scene_changed = false;
     let mut component_to_add: Option<&'static str> = None;
     let mut component_to_remove: Option<&'static str> = None;
-
-    // Panel bar
-    render_panel_bar(ui, SLIDERS, "Inspector");
 
     // Content area with padding
     egui::Frame::new()
@@ -873,6 +993,197 @@ pub fn render_inspector_content(
 
     // Collect events from ui_renderer
     (ui_renderer.drain_events().collect(), scene_changed)
+}
+
+/// Render the history panel content
+fn render_history_content(
+    ui: &mut egui::Ui,
+    command_history: &mut CommandHistory,
+) {
+    use egui_phosphor::regular::{ARROW_U_UP_LEFT, ARROW_U_UP_RIGHT, CIRCLE};
+
+    // Content area with padding
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
+            egui::ScrollArea::vertical().show(ui, |ui| {
+                let undo_descriptions = command_history.undo_descriptions();
+                let redo_descriptions = command_history.redo_descriptions();
+                let undo_count = undo_descriptions.len();
+                let redo_count = redo_descriptions.len();
+
+                if undo_descriptions.is_empty() && redo_descriptions.is_empty() {
+                    ui.add_space(20.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(RichText::new(CLOCK_COUNTER_CLOCKWISE).size(32.0).color(Color32::from_rgb(80, 80, 90)));
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("No History").weak());
+                        ui.add_space(8.0);
+                        ui.label(RichText::new("Actions you perform will\nappear here.").weak());
+                    });
+                    return;
+                }
+
+                // Show redo stack (future actions) - displayed at top, grayed out
+                // Clicking on a redo item will redo all actions up to and including that item
+                if !redo_descriptions.is_empty() {
+                    ui.label(RichText::new("Redo Stack").size(11.0).color(Color32::from_rgb(100, 100, 110)));
+                    ui.add_space(4.0);
+
+                    // Show redo items in reverse order (most recent undone at top)
+                    // Index 0 in reversed = last item in original = furthest from current state
+                    for (display_i, desc) in redo_descriptions.iter().rev().enumerate() {
+                        // Number of redos needed: redo_count - display_i (to reach this state)
+                        let redos_needed = redo_count - display_i;
+
+                        let row_id = ui.id().with(("redo", display_i));
+                        let available_width = ui.available_width();
+                        let (row_rect, row_response) = ui.allocate_exact_size(
+                            Vec2::new(available_width, 24.0),
+                            Sense::click(),
+                        );
+
+                        let is_hovered = row_response.hovered();
+                        let bg_color = if is_hovered {
+                            Color32::from_rgb(50, 55, 65)
+                        } else if display_i % 2 == 0 {
+                            ROW_BG_EVEN
+                        } else {
+                            ROW_BG_ODD
+                        };
+
+                        ui.painter().rect_filled(row_rect, 3.0, bg_color);
+
+                        // Draw icon and text
+                        let icon_pos = egui::pos2(row_rect.min.x + 8.0, row_rect.center().y);
+                        let text_pos = egui::pos2(row_rect.min.x + 26.0, row_rect.center().y);
+
+                        ui.painter().text(
+                            icon_pos,
+                            egui::Align2::LEFT_CENTER,
+                            ARROW_U_UP_RIGHT,
+                            egui::FontId::proportional(12.0),
+                            if is_hovered { Color32::from_rgb(120, 120, 130) } else { Color32::from_rgb(80, 80, 90) },
+                        );
+                        ui.painter().text(
+                            text_pos,
+                            egui::Align2::LEFT_CENTER,
+                            desc,
+                            egui::FontId::proportional(12.0),
+                            if is_hovered { Color32::from_rgb(140, 140, 150) } else { Color32::from_rgb(100, 100, 110) },
+                        );
+
+                        if row_response.clicked() {
+                            command_history.pending_redo = redos_needed;
+                        }
+
+                        if is_hovered {
+                            row_response.on_hover_text(format!("Click to redo {} action(s)", redos_needed));
+                        }
+
+                        ui.add_space(1.0);
+                        let _ = row_id;
+                    }
+                    ui.add_space(8.0);
+                }
+
+                // Current state indicator
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(CIRCLE).size(10.0).color(Color32::from_rgb(89, 191, 115)));
+                    ui.label(RichText::new("Current State").size(11.0).color(Color32::from_rgb(89, 191, 115)));
+                });
+                ui.add_space(8.0);
+
+                // Show undo stack (past actions) - displayed below current state
+                // Clicking on an undo item will undo all actions back to that point
+                if !undo_descriptions.is_empty() {
+                    ui.label(RichText::new("Undo Stack").size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.add_space(4.0);
+
+                    // Show undo items in reverse order (most recent at top)
+                    // Index 0 in reversed = last item in original = most recent = 1 undo
+                    for (display_i, desc) in undo_descriptions.iter().rev().enumerate() {
+                        // Number of undos needed: display_i + 1 (to reach the state BEFORE this action)
+                        let undos_needed = display_i + 1;
+                        let is_next = display_i == 0;
+
+                        let row_id = ui.id().with(("undo", display_i));
+                        let available_width = ui.available_width();
+                        let (row_rect, row_response) = ui.allocate_exact_size(
+                            Vec2::new(available_width, 24.0),
+                            Sense::click(),
+                        );
+
+                        let is_hovered = row_response.hovered();
+                        let bg_color = if is_hovered {
+                            Color32::from_rgb(50, 55, 65)
+                        } else if display_i % 2 == 0 {
+                            ROW_BG_EVEN
+                        } else {
+                            ROW_BG_ODD
+                        };
+
+                        ui.painter().rect_filled(row_rect, 3.0, bg_color);
+
+                        // Draw icon and text
+                        let icon_pos = egui::pos2(row_rect.min.x + 8.0, row_rect.center().y);
+                        let text_pos = egui::pos2(row_rect.min.x + 26.0, row_rect.center().y);
+
+                        let icon_color = if is_hovered {
+                            Color32::from_rgb(130, 200, 255)
+                        } else if is_next {
+                            Color32::from_rgb(99, 178, 238)
+                        } else {
+                            Color32::from_rgb(140, 142, 148)
+                        };
+                        let text_color = if is_hovered {
+                            Color32::WHITE
+                        } else if is_next {
+                            Color32::from_rgb(220, 222, 228)
+                        } else {
+                            Color32::from_rgb(160, 162, 168)
+                        };
+
+                        ui.painter().text(
+                            icon_pos,
+                            egui::Align2::LEFT_CENTER,
+                            ARROW_U_UP_LEFT,
+                            egui::FontId::proportional(12.0),
+                            icon_color,
+                        );
+                        ui.painter().text(
+                            text_pos,
+                            egui::Align2::LEFT_CENTER,
+                            desc,
+                            egui::FontId::proportional(12.0),
+                            text_color,
+                        );
+
+                        if row_response.clicked() {
+                            command_history.pending_undo = undos_needed;
+                        }
+
+                        if is_hovered {
+                            row_response.on_hover_text(format!("Click to undo {} action(s)", undos_needed));
+                        }
+
+                        ui.add_space(1.0);
+                        let _ = row_id;
+                    }
+                }
+
+                ui.add_space(16.0);
+
+                // Stats
+                ui.separator();
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("Undo: {}", undo_count)).size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                    ui.label(RichText::new("|").size(11.0).color(Color32::from_rgb(60, 62, 68)));
+                    ui.label(RichText::new(format!("Redo: {}", redo_count)).size(11.0).color(Color32::from_rgb(140, 142, 148)));
+                });
+            });
+        });
 }
 
 /// Render the Add Component button and popup

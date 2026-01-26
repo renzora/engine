@@ -8,10 +8,12 @@ use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::commands::CommandHistory;
 use crate::core::{
-    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, EditorEntity, ExportState, KeyBindings,
-    SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
-    OrbitCameraState, PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
+    AnimationTimelineState, AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity,
+    EditorEntity, ExportState, KeyBindings, SelectionState, HierarchyState, ViewportState,
+    SceneManagerState, AssetBrowserState, EditorSettings, WindowState, OrbitCameraState,
+    PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
 };
+use crate::shared::AnimationData;
 use crate::gizmo::{GizmoState, ModalTransformState};
 use crate::viewport::Camera2DState;
 
@@ -40,9 +42,17 @@ pub struct EditorResources<'w> {
     pub thumbnail_cache: ResMut<'w, ThumbnailCache>,
     pub component_registry: Res<'w, ComponentRegistry>,
     pub add_component_popup: ResMut<'w, AddComponentPopupState>,
+    pub animation_timeline: ResMut<'w, AnimationTimelineState>,
+    pub keyboard: Res<'w, ButtonInput<KeyCode>>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
+
+/// Animation-related queries bundled to reduce system parameter count
+#[derive(SystemParam)]
+pub struct AnimationQueries<'w, 's> {
+    pub animation_data: Query<'w, 's, (Entity, &'static EditorEntity, &'static mut AnimationData)>,
+}
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
@@ -160,7 +170,7 @@ pub fn editor_ui(
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     mut ui_renderer: Local<UiRenderer>,
-    keyboard: Res<ButtonInput<KeyCode>>,
+    mut animation_queries: AnimationQueries,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -315,6 +325,8 @@ pub fn editor_ui(
             &mut meshes,
             &mut materials,
             &mut editor.gizmo,
+            &mut editor.command_history,
+            &mut editor.viewport.right_panel_tab,
         );
         all_ui_events.extend(inspector_events);
 
@@ -341,6 +353,11 @@ pub fn editor_ui(
             &editor.plugin_host,
             &mut ui_renderer,
             &mut editor.thumbnail_cache,
+            // Animation parameters
+            &editor.selection,
+            &mut editor.animation_timeline,
+            &mut animation_queries.animation_data,
+            &inspector_queries.transforms,
         );
         all_ui_events.extend(bottom_events);
 
@@ -415,7 +432,7 @@ pub fn editor_ui(
         // Handle toggle bottom panel shortcut (only if not rebinding)
         if editor.keybindings.rebinding.is_none() {
             use crate::core::EditorAction;
-            if editor.keybindings.just_pressed(EditorAction::ToggleBottomPanel, &keyboard) {
+            if editor.keybindings.just_pressed(EditorAction::ToggleBottomPanel, &editor.keyboard) {
                 if editor.viewport.bottom_panel_minimized {
                     // Restore
                     editor.viewport.bottom_panel_minimized = false;

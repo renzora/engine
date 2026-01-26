@@ -76,8 +76,8 @@ pub struct EditorApiImpl {
     pub can_redo: bool,
 
     // Pending undo/redo requests (processed by exclusive system)
-    pub pending_undo: bool,
-    pub pending_redo: bool,
+    pub pending_undo: usize,
+    pub pending_redo: usize,
 
     // Pending operations (applied to Bevy after plugin update)
     pub pending_operations: Vec<PendingOperation>,
@@ -127,8 +127,8 @@ impl EditorApiImpl {
             entity_children: std::collections::HashMap::new(),
             can_undo: false,
             can_redo: false,
-            pending_undo: false,
-            pending_redo: false,
+            pending_undo: 0,
+            pending_redo: 0,
             pending_operations: Vec::new(),
             pending_ui_events: Vec::new(),
             subscriptions: Vec::new(),
@@ -255,8 +255,8 @@ impl EditorApiImpl {
         self.current_plugin_id = None;
         self.can_undo = false;
         self.can_redo = false;
-        self.pending_undo = false;
-        self.pending_redo = false;
+        self.pending_undo = 0;
+        self.pending_redo = 0;
         self.pending_operations.clear();
         self.pending_ui_events.clear();
         self.subscriptions.clear();
@@ -507,11 +507,11 @@ impl EditorApi for EditorApiImpl {
     }
 
     fn undo(&mut self) {
-        self.pending_undo = true;
+        self.pending_undo = 1;
     }
 
     fn redo(&mut self) {
-        self.pending_redo = true;
+        self.pending_redo = 1;
     }
 }
 

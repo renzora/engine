@@ -83,7 +83,7 @@ unsafe extern "C" fn host_undo(ctx: *mut c_void) -> bool {
     if ctx.is_null() { return false; }
     let api_impl = &mut *(ctx as *mut EditorApiImpl);
     if api_impl.can_undo {
-        api_impl.pending_undo = true;
+        api_impl.pending_undo = 1;
         true
     } else {
         false
@@ -94,7 +94,7 @@ unsafe extern "C" fn host_redo(ctx: *mut c_void) -> bool {
     if ctx.is_null() { return false; }
     let api_impl = &mut *(ctx as *mut EditorApiImpl);
     if api_impl.can_redo {
-        api_impl.pending_redo = true;
+        api_impl.pending_redo = 1;
         true
     } else {
         false

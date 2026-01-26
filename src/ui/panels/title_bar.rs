@@ -421,7 +421,7 @@ fn render_menu_items(
         };
         ui.add_enabled_ui(can_undo, |ui| {
             if ui.button(undo_text).clicked() {
-                command_history.pending_undo = true;
+                command_history.pending_undo = 1;
                 ui.close();
             }
         });
@@ -431,7 +431,7 @@ fn render_menu_items(
         let redo_text = format!("Redo                    Ctrl+Y");
         ui.add_enabled_ui(can_redo, |ui| {
             if ui.button(redo_text).clicked() {
-                command_history.pending_redo = true;
+                command_history.pending_redo = 1;
                 ui.close();
             }
         });

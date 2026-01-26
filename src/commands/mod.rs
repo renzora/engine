@@ -36,13 +36,13 @@ impl Plugin for CommandPlugin {
 /// System that handles undo/redo keyboard shortcuts and pending requests
 fn handle_undo_redo_shortcuts(world: &mut World) {
     // First, check for pending requests from menu (needs mutable borrow)
-    let (pending_undo, pending_redo) = {
+    let (pending_undo_count, pending_redo_count) = {
         let mut history = world.resource_mut::<CommandHistory>();
-        let undo = history.pending_undo;
-        let redo = history.pending_redo;
-        history.pending_undo = false;
-        history.pending_redo = false;
-        (undo, redo)
+        let undo_count = history.pending_undo;
+        let redo_count = history.pending_redo;
+        history.pending_undo = 0;
+        history.pending_redo = 0;
+        (undo_count, redo_count)
     };
 
     // Then check keyboard shortcuts (needs immutable borrows)
@@ -61,18 +61,35 @@ fn handle_undo_redo_shortcuts(world: &mut World) {
         }
     };
 
-    let should_undo = pending_undo || keyboard_undo;
-    let should_redo = pending_redo || keyboard_redo;
+    // Calculate total undo/redo operations
+    let undo_count = pending_undo_count + if keyboard_undo { 1 } else { 0 };
+    let redo_count = pending_redo_count + if keyboard_redo { 1 } else { 0 };
 
-    if should_undo {
-        if undo(world) {
+    // Process undos
+    if undo_count > 0 {
+        for _ in 0..undo_count {
+            if !undo(world) {
+                break;
+            }
+        }
+        if undo_count > 1 {
+            info!("Undo x{}", undo_count);
+        } else {
             info!("Undo");
         }
         return; // Don't process redo in the same frame
     }
 
-    if should_redo {
-        if redo(world) {
+    // Process redos
+    if redo_count > 0 {
+        for _ in 0..redo_count {
+            if !redo(world) {
+                break;
+            }
+        }
+        if redo_count > 1 {
+            info!("Redo x{}", redo_count);
+        } else {
             info!("Redo");
         }
     }
