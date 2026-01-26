@@ -15,7 +15,7 @@ impl Default for ProjectConfig {
         Self {
             name: "New Project".to_string(),
             version: "0.1.0".to_string(),
-            main_scene: "scenes/main.scene".to_string(),
+            main_scene: "scenes/main.ron".to_string(),
         }
     }
 }
@@ -53,7 +53,7 @@ pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn
     let config = ProjectConfig {
         name: name.to_string(),
         version: "0.1.0".to_string(),
-        main_scene: "scenes/main.scene".to_string(),
+        main_scene: "scenes/main.ron".to_string(),
     };
 
     // Write project.toml
@@ -61,19 +61,14 @@ pub fn create_project(path: &Path, name: &str) -> Result<CurrentProject, Box<dyn
     let config_content = toml::to_string_pretty(&config)?;
     std::fs::write(&config_path, config_content)?;
 
-    // Create empty main scene - user will add root node
-    let scene_content = r#"SceneData(
-    name: "Main Scene",
-    root_nodes: [],
-    editor_camera: (
-        orbit_focus: (0.0, 0.0, 0.0),
-        orbit_distance: 10.0,
-        orbit_yaw: 0.3,
-        orbit_pitch: 0.4,
-    ),
+    // Create empty main scene using Bevy DynamicScene format
+    // Editor metadata will be added when the user first saves the scene
+    let scene_content = r#"(
+  resources: {},
+  entities: {},
 )
 "#;
-    let scene_path = path.join("scenes").join("main.scene");
+    let scene_path = path.join("scenes").join("main.ron");
     std::fs::write(&scene_path, scene_content)?;
 
     Ok(CurrentProject {

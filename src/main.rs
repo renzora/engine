@@ -2,18 +2,18 @@
 #![windows_subsystem = "windows"]
 
 mod commands;
+mod component_system;
 mod core;
 mod export;
 mod gizmo;
 mod input;
-mod node_system;
 mod play_mode;
 mod plugin_core;
 mod project;
 mod scene;
-mod scene_file;
 mod scripting;
 mod shared;
+mod spawn;
 mod ui;
 mod ui_api;
 mod viewport;
@@ -62,11 +62,54 @@ fn main() {
                 })
         )
         .add_plugins(bevy_egui::EguiPlugin::default())
+        .add_plugins(bevy::picking::mesh_picking::MeshPickingPlugin)
+        // Register types for Bevy's scene system
+        // Shared components
+        .register_type::<shared::MeshNodeData>()
+        .register_type::<shared::MeshPrimitiveType>()
+        .register_type::<shared::CameraNodeData>()
+        .register_type::<shared::CameraRigData>()
+        .register_type::<shared::MeshInstanceData>()
+        .register_type::<shared::SceneInstanceData>()
+        .register_type::<shared::PhysicsBodyData>()
+        .register_type::<shared::PhysicsBodyType>()
+        .register_type::<shared::CollisionShapeData>()
+        .register_type::<shared::CollisionShapeType>()
+        .register_type::<shared::Sprite2DData>()
+        .register_type::<shared::Camera2DData>()
+        .register_type::<shared::UIPanelData>()
+        .register_type::<shared::UILabelData>()
+        .register_type::<shared::UIButtonData>()
+        .register_type::<shared::UIImageData>()
+        // Environment components
+        .register_type::<shared::WorldEnvironmentData>()
+        .register_type::<shared::SkyMode>()
+        .register_type::<shared::ProceduralSkyData>()
+        .register_type::<shared::PanoramaSkyData>()
+        .register_type::<shared::TonemappingMode>()
+        // Core components
+        .register_type::<core::EditorEntity>()
+        .register_type::<core::SceneNode>()
+        .register_type::<core::SceneTabId>()
+        // Scene roots
+        .register_type::<spawn::EditorSceneRoot>()
+        .register_type::<spawn::SceneType>()
+        // Scripting components
+        .register_type::<scripting::ScriptComponent>()
+        .register_type::<scripting::ScriptVariables>()
+        .register_type::<scripting::ScriptValue>()
+        // Scene metadata (editor-only, stripped during export)
+        .register_type::<scene::EditorSceneMetadata>()
+        // Generic types used by components
+        .register_type::<Option<String>>()
+        .register_type::<std::path::PathBuf>()
+        .register_type::<Option<std::path::PathBuf>>()
+        .register_type::<std::collections::HashMap<String, scripting::ScriptValue>>()
         .add_plugins((
             core::CorePlugin,
             commands::CommandPlugin,
             project::ProjectPlugin,
-            node_system::NodeSystemPlugin,
+            component_system::ComponentSystemPlugin,
             viewport::ViewportPlugin,
             gizmo::GizmoPlugin,
             input::InputPlugin,
@@ -75,6 +118,8 @@ fn main() {
             plugin_core::PluginCorePlugin,
             play_mode::PlayModePlugin,
         ))
+        // Observer for Bevy scene loading completion
+        .add_observer(scene::on_bevy_scene_ready)
         // Initialize app state
         .init_state::<AppState>()
         // Setup splash camera on startup
@@ -89,6 +134,13 @@ fn main() {
         .add_systems(
             EguiPrimaryContextPass,
             ui::editor_ui,
+        )
+        // Thumbnail loading system - loads and registers asset preview thumbnails
+        .add_systems(
+            EguiPrimaryContextPass,
+            ui::thumbnail_loading_system
+                .after(ui::editor_ui)
+                .run_if(in_state(AppState::Editor)),
         )
         // Window actions system - runs in same schedule as egui to handle drag immediately
         .add_systems(EguiPrimaryContextPass, ui::handle_window_actions.after(ui::editor_ui))
@@ -120,6 +172,11 @@ fn main() {
                 gizmo::gizmo_2d_drag_system,
                 gizmo::draw_selection_gizmo_2d,
                 gizmo::handle_2d_picking,
+                // Collider edit systems
+                gizmo::collider_edit_selection_sync,
+                gizmo::collider_edit_hover_system,
+                gizmo::collider_edit_interaction_system,
+                gizmo::collider_edit_drag_system,
             )
                 .chain()
                 .run_if(in_state(AppState::Editor)),
@@ -128,6 +185,7 @@ fn main() {
             Update,
             (
                 gizmo::draw_physics_gizmos,
+                gizmo::draw_collider_edit_handles,
                 gizmo::draw_grid,
                 viewport::draw_grid_2d,
                 // 2D/UI visual rendering
@@ -136,13 +194,14 @@ fn main() {
                 // Input handling
                 input::handle_file_drop,
                 input::handle_asset_panel_drop,
+                input::handle_image_panel_drop,
                 input::handle_scene_hierarchy_drop,
                 input::spawn_loaded_gltfs,
                 input::check_mesh_instance_models,
                 input::spawn_mesh_instance_models,
-                node_system::handle_save_shortcut,
-                node_system::handle_make_default_camera,
-                node_system::assign_scene_tab_ids,
+                scene::handle_save_shortcut,
+                scene::handle_make_default_camera,
+                scene::assign_scene_tab_ids,
             )
                 .chain()
                 .run_if(in_state(AppState::Editor)),
@@ -152,9 +211,9 @@ fn main() {
         // Must run before assign_scene_tab_ids so newly loaded entities get tab IDs assigned
         .add_systems(
             Update,
-            node_system::handle_scene_requests
+            scene::handle_scene_requests
                 .before(viewport::camera_controller)
-                .before(node_system::assign_scene_tab_ids)
+                .before(scene::assign_scene_tab_ids)
                 .run_if(in_state(AppState::Editor)),
         )
         // Scene instance loading exclusive system (needs &mut World for spawning)
@@ -211,14 +270,13 @@ fn load_project_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
     viewport_image: Res<viewport::ViewportImage>,
-    mut orbit: ResMut<core::OrbitCameraState>,
+    orbit: Res<core::OrbitCameraState>,
     viewport: Res<core::ViewportState>,
     camera2d_state: Res<viewport::Camera2DState>,
     mut scene_state: ResMut<core::SceneManagerState>,
-    mut hierarchy: ResMut<core::HierarchyState>,
     current_project: Option<Res<project::CurrentProject>>,
-    node_registry: Res<node_system::NodeRegistry>,
 ) {
     // Always set up the editor camera for the viewport (3D)
     scene::setup_editor_camera(&mut commands, &mut meshes, &mut materials, &viewport_image, &orbit, &viewport);
@@ -236,55 +294,33 @@ fn load_project_scene(
     if let Some(project) = current_project {
         console_info!("Project", "Opening project: {}", project.config.name);
 
+        // Scene path from project config (already has .ron extension)
         let scene_path = project.main_scene_path();
+
         if scene_path.exists() {
             console_info!("Scene", "Loading scene: {}", scene_path.display());
 
-            match node_system::load_scene(
-                &scene_path,
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                &node_registry,
-            ) {
-                Ok(result) => {
-                    info!("Loaded scene: {}", scene_path.display());
-                    console_success!("Scene", "Scene loaded successfully: {}", scene_path.file_name().unwrap_or_default().to_string_lossy());
+            // Load using Bevy's DynamicScene system (async)
+            // Editor metadata (camera state, expanded entities) is embedded in the scene
+            // and will be applied automatically by on_bevy_scene_ready
+            let _result = scene::load_scene_bevy(&mut commands, &asset_server, &scene_path, 0);
 
-                    // Set the current scene path so Ctrl+S knows where to save
-                    scene_state.current_scene_path = Some(scene_path.clone());
+            // Set the current scene path so Ctrl+S knows where to save
+            scene_state.current_scene_path = Some(scene_path.clone());
 
-                    // Update the first tab with the loaded scene info
-                    let scene_name = scene_path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("main")
-                        .to_string();
-                    if let Some(tab) = scene_state.scene_tabs.get_mut(0) {
-                        tab.name = scene_name;
-                        tab.path = Some(scene_path);
-                    }
-
-                    // Apply camera state
-                    orbit.focus = Vec3::new(
-                        result.editor_camera.orbit_focus[0],
-                        result.editor_camera.orbit_focus[1],
-                        result.editor_camera.orbit_focus[2],
-                    );
-                    orbit.distance = result.editor_camera.orbit_distance;
-                    orbit.yaw = result.editor_camera.orbit_yaw;
-                    orbit.pitch = result.editor_camera.orbit_pitch;
-
-                    // Restore expanded entities in hierarchy
-                    for entity in result.expanded_entities {
-                        hierarchy.expanded_entities.insert(entity);
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to load scene: {}", e);
-                    console_error!("Scene", "Failed to load scene: {}", e);
-                }
+            // Update the first tab with the loaded scene info
+            let scene_name = scene_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("main")
+                .to_string();
+            if let Some(tab) = scene_state.scene_tabs.get_mut(0) {
+                tab.name = scene_name.clone();
+                tab.path = Some(scene_path.clone());
             }
+
+            info!("Loading scene: {}", scene_path.display());
+            console_success!("Scene", "Loading: {}", scene_name);
         } else {
             console_warn!("Scene", "Main scene not found: {}", scene_path.display());
         }

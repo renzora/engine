@@ -15,7 +15,7 @@ use super::abi::{PluginError, PluginManifest, EDITOR_API_VERSION, EntityId, Plug
 use super::api::{EditorApiImpl, PendingOperation};
 use super::dependency::DependencyGraph;
 use super::traits::EditorEvent;
-use editor_plugin_api::ffi::{PluginExport, PluginVTable, PluginHandle, FfiStatusBarItem, HostApi, FFI_API_VERSION, FfiEntityId, FfiTransform, FfiEntityList, FfiOwnedString, FfiPanelDefinition, FfiPanelLocation, FfiMenuItem, FfiMenuLocation, FfiTabDefinition, FfiTabLocation, FfiAssetList, FfiAssetInfo, FfiAssetType, FfiBytes};
+use editor_plugin_api::ffi::{PluginExport, PluginVTable, PluginHandle, FfiStatusBarItem, HostApi, FFI_API_VERSION, FfiEntityId, FfiTransform, FfiEntityList, FfiOwnedString, FfiPanelDefinition, FfiPanelLocation, FfiMenuItem, FfiTabDefinition, FfiTabLocation, FfiAssetList, FfiAssetInfo, FfiAssetType, FfiBytes};
 use crate::plugin_core::{StatusBarAlign, StatusBarItem, ToolbarItem, MenuItem, MenuLocation, TabLocation, PluginTab};
 use editor_plugin_api::ui::UiId;
 use crate::core::resources::console::{console_log, LogLevel};

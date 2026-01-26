@@ -3,7 +3,6 @@
 use bevy::prelude::*;
 
 use crate::core::{EditorEntity, SceneNode, SelectionState};
-use crate::node_system::NodeTypeMarker;
 
 use super::command::{Command, CommandContext, CommandResult};
 
@@ -160,7 +159,6 @@ struct DeletedEntityData {
     locked: bool,
     transform: Transform,
     parent: Option<Entity>,
-    node_type: Option<String>,
     // Children are stored as their own DeletedEntityData recursively
     children: Vec<DeletedEntityData>,
 }
@@ -192,7 +190,6 @@ impl DeleteEntityCommand {
         let editor_entity = world.get::<EditorEntity>(entity)?;
         let transform = world.get::<Transform>(entity).copied().unwrap_or_default();
         let parent = world.get::<ChildOf>(entity).map(|c| c.0);
-        let node_type = world.get::<NodeTypeMarker>(entity).map(|m| m.type_id.to_string());
 
         // Capture children
         let mut children = Vec::new();
@@ -210,7 +207,6 @@ impl DeleteEntityCommand {
             locked: editor_entity.locked,
             transform,
             parent,
-            node_type,
             children,
         })
     }
@@ -735,7 +731,7 @@ impl Command for SetLockedCommand {
 // Spawn Mesh Instance Command (for undo of asset drops)
 // ============================================================================
 
-use crate::node_system::components::MeshInstanceData;
+use crate::shared::MeshInstanceData;
 
 /// Command to track a spawned mesh instance (for undo support)
 /// This is created AFTER the entity is spawned, so execute() is a no-op.
@@ -830,9 +826,6 @@ impl Command for SpawnMeshInstanceCommand {
                 locked: false,
             },
             SceneNode,
-            NodeTypeMarker {
-                type_id: "mesh.instance",
-            },
             MeshInstanceData {
                 model_path: self.model_path.clone(),
             },

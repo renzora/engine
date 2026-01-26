@@ -1,16 +1,12 @@
 //! Asset discovery and bundling for game export
 //!
 //! Handles finding all assets referenced by scenes and copying them
-//! to the export folder. Discovers assets by:
-//! 1. Scanning all node data fields for asset path strings
-//! 2. Parsing GLTF files to find external texture/buffer dependencies
-//! 3. Recursively following scene references
+//! to the export folder. Discovers assets by scanning the assets folder
+//! and following GLTF dependencies.
 
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-
-use crate::shared::{NodeData, SceneData};
 
 /// Known asset file extensions (lowercase)
 const ASSET_EXTENSIONS: &[&str] = &[
@@ -22,224 +18,69 @@ const ASSET_EXTENSIONS: &[&str] = &[
     "mp3", "ogg", "wav", "flac", "aac",
     // Fonts
     "ttf", "otf", "woff", "woff2",
-    // Scenes
-    "scene",
+    // Scenes (Bevy format)
+    "ron",
     // Other
-    "ron", "json", "toml",
+    "json", "toml",
 ];
 
-/// Recursively discover all assets referenced by a scene
-pub fn discover_assets(scene_path: &Path, project_path: &Path) -> Result<HashSet<PathBuf>, String> {
+/// Recursively discover all assets in the project's assets folder
+pub fn discover_assets(project_path: &Path) -> Result<HashSet<PathBuf>, String> {
     let mut assets = HashSet::new();
-    let mut visited_scenes = HashSet::new();
     let mut visited_gltfs = HashSet::new();
 
-    discover_assets_recursive(
-        scene_path,
-        project_path,
-        &mut assets,
-        &mut visited_scenes,
-        &mut visited_gltfs,
-    )?;
+    let assets_dir = project_path.join("assets");
+    if assets_dir.exists() && assets_dir.is_dir() {
+        discover_assets_in_dir(&assets_dir, &assets_dir, &mut assets, &mut visited_gltfs)?;
+    }
 
     Ok(assets)
 }
 
-fn discover_assets_recursive(
-    scene_path: &Path,
-    project_path: &Path,
+fn discover_assets_in_dir(
+    dir: &Path,
+    assets_root: &Path,
     assets: &mut HashSet<PathBuf>,
-    visited_scenes: &mut HashSet<PathBuf>,
     visited_gltfs: &mut HashSet<PathBuf>,
 ) -> Result<(), String> {
-    // Avoid infinite recursion with circular scene references
-    if visited_scenes.contains(scene_path) {
-        return Ok(());
-    }
-    visited_scenes.insert(scene_path.to_path_buf());
+    let entries = fs::read_dir(dir)
+        .map_err(|e| format!("Failed to read directory {:?}: {}", dir, e))?;
 
-    // Read and parse the scene file (RON format)
-    let content = fs::read_to_string(scene_path)
-        .map_err(|e| format!("Failed to read scene file {:?}: {}", scene_path, e))?;
-    let scene: SceneData = ron::from_str(&content)
-        .map_err(|e| format!("Failed to parse scene file {:?}: {}", scene_path, e))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+        let path = entry.path();
 
-    // Process all nodes in the scene
-    for node in &scene.root_nodes {
-        discover_node_assets(node, project_path, assets, visited_scenes, visited_gltfs)?;
-    }
+        if path.is_dir() {
+            discover_assets_in_dir(&path, assets_root, assets, visited_gltfs)?;
+        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if is_asset_extension(ext) {
+                // Get relative path from assets root
+                if let Ok(rel_path) = path.strip_prefix(assets_root) {
+                    let rel_path = PathBuf::from(rel_path.to_string_lossy().replace('\\', "/"));
+                    assets.insert(rel_path.clone());
 
-    Ok(())
-}
-
-fn discover_node_assets(
-    node: &NodeData,
-    project_path: &Path,
-    assets: &mut HashSet<PathBuf>,
-    visited_scenes: &mut HashSet<PathBuf>,
-    visited_gltfs: &mut HashSet<PathBuf>,
-) -> Result<(), String> {
-    // Scan ALL data fields for asset paths
-    for (_key, value) in &node.data {
-        discover_assets_in_json_value(value, project_path, assets, visited_scenes, visited_gltfs)?;
-    }
-
-    // Process child nodes recursively
-    for child in &node.children {
-        discover_node_assets(child, project_path, assets, visited_scenes, visited_gltfs)?;
-    }
-
-    Ok(())
-}
-
-/// Check if a string looks like an asset path
-fn is_asset_path(s: &str) -> bool {
-    if s.is_empty() || s.len() > 500 {
-        return false;
-    }
-
-    // Must have an extension
-    let path = Path::new(s);
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        ASSET_EXTENSIONS.contains(&ext.to_lowercase().as_str())
-    } else {
-        false
-    }
-}
-
-/// Recursively scan a JSON value for asset paths
-fn discover_assets_in_json_value(
-    value: &serde_json::Value,
-    project_path: &Path,
-    assets: &mut HashSet<PathBuf>,
-    visited_scenes: &mut HashSet<PathBuf>,
-    visited_gltfs: &mut HashSet<PathBuf>,
-) -> Result<(), String> {
-    match value {
-        serde_json::Value::String(s) => {
-            if is_asset_path(s) {
-                add_asset_with_dependencies(
-                    s,
-                    project_path,
-                    assets,
-                    visited_scenes,
-                    visited_gltfs,
-                )?;
+                    // Check for GLTF dependencies
+                    if ext.to_lowercase() == "gltf" {
+                        discover_gltf_dependencies(&path, &rel_path, assets_root, assets, visited_gltfs)?;
+                    }
+                }
             }
         }
-        serde_json::Value::Array(arr) => {
-            for item in arr {
-                discover_assets_in_json_value(
-                    item,
-                    project_path,
-                    assets,
-                    visited_scenes,
-                    visited_gltfs,
-                )?;
-            }
-        }
-        serde_json::Value::Object(obj) => {
-            for (_k, v) in obj {
-                discover_assets_in_json_value(
-                    v,
-                    project_path,
-                    assets,
-                    visited_scenes,
-                    visited_gltfs,
-                )?;
-            }
-        }
-        _ => {}
-    }
-    Ok(())
-}
-
-/// Add an asset and discover its dependencies
-fn add_asset_with_dependencies(
-    asset_path_str: &str,
-    project_path: &Path,
-    assets: &mut HashSet<PathBuf>,
-    visited_scenes: &mut HashSet<PathBuf>,
-    visited_gltfs: &mut HashSet<PathBuf>,
-) -> Result<(), String> {
-    let asset_path = PathBuf::from(asset_path_str.replace('\\', "/"));
-
-    // Try to find the asset file
-    let full_path = resolve_asset_path(&asset_path, project_path);
-    if full_path.is_none() {
-        // Asset not found, skip it (might be optional or missing)
-        return Ok(());
-    }
-    let full_path = full_path.unwrap();
-
-    // Add the asset itself
-    assets.insert(asset_path.clone());
-
-    // Check for dependencies based on file type
-    let ext = asset_path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_lowercase());
-
-    match ext.as_deref() {
-        // Scene files - recursively discover assets
-        Some("scene") => {
-            discover_assets_recursive(
-                &full_path,
-                project_path,
-                assets,
-                visited_scenes,
-                visited_gltfs,
-            )?;
-        }
-        // GLTF files - parse for external dependencies
-        Some("gltf") => {
-            discover_gltf_dependencies(
-                &full_path,
-                &asset_path,
-                project_path,
-                assets,
-                visited_gltfs,
-            )?;
-        }
-        // GLB files are self-contained, no external deps
-        Some("glb") => {}
-        _ => {}
     }
 
     Ok(())
 }
 
-/// Resolve an asset path to a full filesystem path
-fn resolve_asset_path(asset_path: &Path, project_path: &Path) -> Option<PathBuf> {
-    // Try with assets/ prefix
-    let with_assets = project_path.join("assets").join(asset_path);
-    if with_assets.exists() {
-        return Some(with_assets);
-    }
-
-    // Try as-is from project root
-    let from_root = project_path.join(asset_path);
-    if from_root.exists() {
-        return Some(from_root);
-    }
-
-    // Try stripping assets/ prefix if present
-    if let Ok(stripped) = asset_path.strip_prefix("assets/") {
-        let stripped_path = project_path.join("assets").join(stripped);
-        if stripped_path.exists() {
-            return Some(stripped_path);
-        }
-    }
-
-    None
+/// Check if a file extension is a known asset type
+fn is_asset_extension(ext: &str) -> bool {
+    ASSET_EXTENSIONS.contains(&ext.to_lowercase().as_str())
 }
 
 /// Parse a GLTF file and discover external texture/buffer dependencies
 fn discover_gltf_dependencies(
     gltf_path: &Path,
     asset_rel_path: &Path,
-    project_path: &Path,
+    assets_root: &Path,
     assets: &mut HashSet<PathBuf>,
     visited_gltfs: &mut HashSet<PathBuf>,
 ) -> Result<(), String> {
@@ -263,7 +104,8 @@ fn discover_gltf_dependencies(
             if !uri.starts_with("data:") {
                 let buffer_path = gltf_dir.join(uri);
                 let normalized = PathBuf::from(buffer_path.to_string_lossy().replace('\\', "/"));
-                if resolve_asset_path(&normalized, project_path).is_some() {
+                let full_path = assets_root.join(&normalized);
+                if full_path.exists() {
                     assets.insert(normalized);
                 }
             }
@@ -277,7 +119,8 @@ fn discover_gltf_dependencies(
             if !uri.starts_with("data:") {
                 let image_path = gltf_dir.join(uri);
                 let normalized = PathBuf::from(image_path.to_string_lossy().replace('\\', "/"));
-                if resolve_asset_path(&normalized, project_path).is_some() {
+                let full_path = assets_root.join(&normalized);
+                if full_path.exists() {
                     assets.insert(normalized);
                 }
             }
@@ -293,10 +136,11 @@ pub fn copy_assets_to_folder(
     project_path: &Path,
     export_path: &Path,
 ) -> Result<(), String> {
+    let assets_src = project_path.join("assets");
     let assets_dest = export_path.join("assets");
 
     for asset_path in assets {
-        let src = project_path.join("assets").join(asset_path);
+        let src = assets_src.join(asset_path);
         let dest = assets_dest.join(asset_path);
 
         // Create parent directories if they don't exist
@@ -309,13 +153,6 @@ pub fn copy_assets_to_folder(
         if src.exists() {
             fs::copy(&src, &dest)
                 .map_err(|e| format!("Failed to copy {:?} to {:?}: {}", src, dest, e))?;
-        } else {
-            // Try without assets/ prefix
-            let alt_src = project_path.join(asset_path);
-            if alt_src.exists() {
-                fs::copy(&alt_src, &dest)
-                    .map_err(|e| format!("Failed to copy {:?} to {:?}: {}", alt_src, dest, e))?;
-            }
         }
     }
 
@@ -357,44 +194,121 @@ fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Copy scene files needed for the game
+/// Copy scene files needed for the game, stripping editor metadata
 pub fn copy_scene_files(
     main_scene_path: &Path,
     project_path: &Path,
     export_path: &Path,
 ) -> Result<(), String> {
-    // Copy the main scene
-    let scene_name = main_scene_path
-        .file_name()
-        .ok_or_else(|| "Invalid scene path".to_string())?;
     let dest_scenes_dir = export_path.join("scenes");
     fs::create_dir_all(&dest_scenes_dir)
         .map_err(|e| format!("Failed to create scenes directory: {}", e))?;
 
+    // Copy the main scene (with editor metadata stripped)
+    let scene_name = main_scene_path
+        .file_name()
+        .ok_or_else(|| "Invalid scene path".to_string())?;
     let dest_scene = dest_scenes_dir.join(scene_name);
-    fs::copy(main_scene_path, &dest_scene)
-        .map_err(|e| format!("Failed to copy main scene: {}", e))?;
+    copy_scene_stripped(main_scene_path, &dest_scene)?;
 
-    // Copy any nested scenes (discovered through asset discovery)
-    let assets = discover_assets(main_scene_path, project_path)?;
-    for asset_path in assets {
-        if asset_path.extension().and_then(|e| e.to_str()) == Some("scene") {
-            let src = project_path.join(&asset_path);
-            let dest = export_path.join(&asset_path);
-
-            if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create directory: {}", e))?;
-            }
-
-            if src.exists() {
-                fs::copy(&src, &dest)
-                    .map_err(|e| format!("Failed to copy scene {:?}: {}", src, e))?;
+    // Copy any other scenes in the scenes directory
+    let scenes_src = project_path.join("scenes");
+    if scenes_src.exists() && scenes_src.is_dir() {
+        for entry in fs::read_dir(&scenes_src)
+            .map_err(|e| format!("Failed to read scenes directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext == "ron" {
+                    let file_name = path.file_name().unwrap();
+                    let dest = dest_scenes_dir.join(file_name);
+                    if !dest.exists() {
+                        copy_scene_stripped(&path, &dest)?;
+                    }
+                }
             }
         }
     }
 
     Ok(())
+}
+
+/// Copy a scene file, stripping the EditorSceneMetadata resource
+fn copy_scene_stripped(src: &Path, dest: &Path) -> Result<(), String> {
+    let content = fs::read_to_string(src)
+        .map_err(|e| format!("Failed to read scene {:?}: {}", src, e))?;
+
+    // Strip the EditorSceneMetadata resource from the scene
+    // The resource appears in the RON file as:
+    //   "bevy_imgui_editor::scene::saver::EditorSceneMetadata": ( ... ),
+    let stripped = strip_editor_metadata(&content);
+
+    fs::write(dest, stripped)
+        .map_err(|e| format!("Failed to write scene {:?}: {}", dest, e))?;
+
+    Ok(())
+}
+
+/// Strip EditorSceneMetadata from a scene's RON content
+fn strip_editor_metadata(content: &str) -> String {
+    // Find and remove the EditorSceneMetadata resource entry
+    // Pattern: "...EditorSceneMetadata": ( ... ),
+    // This is a simple text-based approach that handles nested parentheses
+
+    let marker = "EditorSceneMetadata";
+    if let Some(start_idx) = content.find(marker) {
+        // Find the start of this resource entry (the opening quote)
+        let entry_start = content[..start_idx].rfind('"').unwrap_or(start_idx);
+
+        // Find the matching closing parenthesis for the value
+        let after_marker = &content[start_idx..];
+        if let Some(paren_start) = after_marker.find('(') {
+            let value_start = start_idx + paren_start;
+            let mut depth = 0;
+            let mut value_end = value_start;
+
+            for (i, c) in content[value_start..].char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            value_end = value_start + i + 1;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Find the trailing comma (if any)
+            let trailing = &content[value_end..];
+            let entry_end = if trailing.trim_start().starts_with(',') {
+                value_end + trailing.find(',').unwrap() + 1
+            } else {
+                value_end
+            };
+
+            // Also handle leading comma if this wasn't the first entry
+            let before_entry = &content[..entry_start];
+            let actual_start = if before_entry.trim_end().ends_with(',') {
+                before_entry.rfind(',').unwrap()
+            } else {
+                entry_start
+            };
+
+            // Reconstruct without the metadata entry
+            let mut result = String::new();
+            result.push_str(&content[..actual_start]);
+            result.push_str(&content[entry_end..]);
+            return result;
+        }
+    }
+
+    // No metadata found, return as-is
+    content.to_string()
 }
 
 /// Create the project.toml file for the exported game

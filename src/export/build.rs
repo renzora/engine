@@ -3,7 +3,7 @@
 //! Handles compiling the runtime binary for target platforms.
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::assets::{copy_all_assets, copy_scene_files, create_project_toml, discover_assets, copy_assets_to_folder};
 use crate::core::ExportLogger;
@@ -171,9 +171,9 @@ pub fn run_export(config: &ExportConfig, logger: &ExportLogger) -> ExportResult 
             logger.success("Copied all assets");
         }
     } else {
-        // Discover only referenced assets
-        logger.info("Discovering referenced assets...");
-        match discover_assets(&config.main_scene, &config.project_dir) {
+        // Discover all assets in the project
+        logger.info("Discovering assets...");
+        match discover_assets(&config.project_dir) {
             Ok(assets) => {
                 logger.success(format!("Found {} referenced assets", assets.len()));
                 for asset in &assets {

@@ -7,8 +7,8 @@ mod command;
 mod history;
 mod entity_commands;
 
-pub use command::{Command, CommandContext, CommandResult, CommandGroup};
-pub use history::{CommandHistory, MAX_UNDO_HISTORY, undo, redo};
+pub use command::{Command, CommandContext, CommandResult};
+pub use history::{CommandHistory, undo, redo};
 pub use entity_commands::*;
 
 use bevy::prelude::*;

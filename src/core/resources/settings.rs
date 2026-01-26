@@ -58,11 +58,32 @@ impl Default for RenderToggles {
     }
 }
 
+/// Collision gizmo visibility mode
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CollisionGizmoVisibility {
+    /// Only show collision gizmos for selected entities
+    #[default]
+    SelectedOnly,
+    /// Always show all collision gizmos
+    Always,
+}
+
+/// Currently selected settings tab
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SettingsTab {
+    #[default]
+    General,
+    Viewport,
+    Shortcuts,
+}
+
 /// Editor settings and preferences
 #[derive(Resource)]
 pub struct EditorSettings {
     /// Show the settings window
     pub show_settings_window: bool,
+    /// Currently selected settings tab
+    pub settings_tab: SettingsTab,
     /// Camera movement speed
     pub camera_move_speed: f32,
     /// Whether to show the grid
@@ -73,6 +94,8 @@ pub struct EditorSettings {
     pub grid_divisions: u32,
     /// Color of the grid lines
     pub grid_color: [f32; 3],
+    /// Collision gizmo visibility mode
+    pub collision_gizmo_visibility: CollisionGizmoVisibility,
     /// Show demo window (debug)
     pub show_demo_window: bool,
     /// Splash screen - new project name
@@ -89,11 +112,13 @@ impl Default for EditorSettings {
     fn default() -> Self {
         Self {
             show_settings_window: false,
+            settings_tab: SettingsTab::default(),
             camera_move_speed: 10.0,
             show_grid: true,
             grid_size: 10.0,
             grid_divisions: 10,
             grid_color: [0.3, 0.3, 0.3],
+            collision_gizmo_visibility: CollisionGizmoVisibility::default(),
             show_demo_window: false,
             new_project_name: String::new(),
             render_toggles: RenderToggles::default(),

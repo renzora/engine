@@ -1,6 +1,6 @@
 //! Console panel for displaying logs
 
-use bevy_egui::egui::{self, Color32, RichText, ScrollArea, Vec2};
+use bevy_egui::egui::{self, Color32, RichText, ScrollArea};
 
 use crate::core::{ConsoleState, LogLevel};
 

@@ -1,9 +1,14 @@
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
-use bevy_egui::egui::{self, Color32, RichText, Rounding, TextureId, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, RichText, TextureId, Vec2};
 
+use crate::component_system::{
+    AddComponentPopupState, ComponentCategory, ComponentRegistry,
+    get_category_style,
+};
 use crate::core::{EditorEntity, SelectionState, WorldEnvironmentMarker};
-use crate::node_system::{
+use crate::gizmo::GizmoState;
+use crate::ui::inspectors::{
     render_camera_inspector, render_camera_rig_inspector, render_collision_shape_inspector,
     render_directional_light_inspector, render_physics_body_inspector, render_point_light_inspector,
     render_script_inspector, render_spot_light_inspector, render_transform_inspector,
@@ -12,10 +17,9 @@ use crate::node_system::{
     render_sprite2d_inspector, render_camera2d_inspector,
     // UI inspectors
     render_ui_panel_inspector, render_ui_label_inspector, render_ui_button_inspector, render_ui_image_inspector,
-    CameraNodeData, CollisionShapeData, PhysicsBodyData,
 };
 use crate::shared::{
-    CameraRigData,
+    CameraNodeData, CameraRigData, CollisionShapeData, PhysicsBodyData,
     // 2D components
     Sprite2DData, Camera2DData,
     // UI components
@@ -32,7 +36,7 @@ use egui_phosphor::regular::SLIDERS_HORIZONTAL;
 use egui_phosphor::regular::{
     SLIDERS, ARROWS_OUT_CARDINAL, GLOBE, LIGHTBULB, SUN, FLASHLIGHT,
     PLUS, MAGNIFYING_GLASS, CHECK_CIRCLE, CODE, VIDEO_CAMERA, PUZZLE_PIECE,
-    CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
+    CUBE, ATOM, CARET_DOWN, CARET_RIGHT, IMAGE, STACK, TEXTBOX, CURSOR_CLICK, X,
 };
 
 /// Background colors for alternating rows
@@ -141,14 +145,14 @@ fn render_category(
         // Outer frame for the entire category
         egui::Frame::new()
             .fill(Color32::from_rgb(30, 32, 36))
-            .corner_radius(Rounding::same(6))
+            .corner_radius(CornerRadius::same(6))
             .show(ui, |ui| {
 
                 // Header bar
                 let header_rect = ui.scope(|ui| {
                     egui::Frame::new()
                         .fill(style.header_bg)
-                        .corner_radius(Rounding {
+                        .corner_radius(CornerRadius {
                             nw: 6,
                             ne: 6,
                             sw: if state.is_open() { 0 } else { 6 },
@@ -198,6 +202,97 @@ fn render_category(
     ui.add_space(6.0);
 }
 
+/// Renders a styled inspector category with header, content, and optional remove button
+/// Returns true if the remove button was clicked
+fn render_category_removable(
+    ui: &mut egui::Ui,
+    icon: &str,
+    label: &str,
+    style: CategoryStyle,
+    id_source: &str,
+    default_open: bool,
+    can_remove: bool,
+    add_contents: impl FnOnce(&mut egui::Ui),
+) -> bool {
+    let id = ui.make_persistent_id(id_source);
+    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, default_open);
+    let mut remove_clicked = false;
+
+    ui.scope(|ui| {
+        // Outer frame for the entire category
+        egui::Frame::new()
+            .fill(Color32::from_rgb(30, 32, 36))
+            .corner_radius(CornerRadius::same(6))
+            .show(ui, |ui| {
+
+                // Header bar
+                let header_rect = ui.scope(|ui| {
+                    egui::Frame::new()
+                        .fill(style.header_bg)
+                        .corner_radius(CornerRadius {
+                            nw: 6,
+                            ne: 6,
+                            sw: if state.is_open() { 0 } else { 6 },
+                            se: if state.is_open() { 0 } else { 6 },
+                        })
+                        .inner_margin(egui::Margin::symmetric(8, 6))
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                // Collapse indicator
+                                let caret = if state.is_open() { CARET_DOWN } else { CARET_RIGHT };
+                                ui.label(RichText::new(caret).size(12.0).color(Color32::from_rgb(140, 142, 148)));
+
+                                // Icon
+                                ui.label(RichText::new(icon).size(15.0).color(style.accent_color));
+
+                                ui.add_space(4.0);
+
+                                // Label
+                                ui.label(RichText::new(label).size(13.0).strong().color(Color32::from_rgb(220, 222, 228)));
+
+                                // Remove button on the right
+                                if can_remove {
+                                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                        if ui.add(
+                                            egui::Button::new(RichText::new(X).size(11.0).color(Color32::from_rgb(180, 100, 100)))
+                                                .frame(false)
+                                        ).on_hover_text("Remove component").clicked() {
+                                            remove_clicked = true;
+                                        }
+                                    });
+                                } else {
+                                    // Fill remaining width
+                                    ui.allocate_space(ui.available_size());
+                                }
+                            });
+                        });
+                }).response.rect;
+
+                // Make header clickable (but not the remove button area)
+                let header_response = ui.interact(header_rect, id.with("header"), egui::Sense::click());
+                if header_response.clicked() && !remove_clicked {
+                    state.toggle(ui);
+                }
+
+                // Content area with padding
+                if state.is_open() {
+                    ui.add_space(4.0);
+                    egui::Frame::new()
+                        .inner_margin(egui::Margin { left: 4, right: 4, top: 0, bottom: 4 })
+                        .show(ui, |ui| {
+                            add_contents(ui);
+                        });
+                }
+            });
+    });
+
+    state.store(ui.ctx());
+
+    ui.add_space(6.0);
+
+    remove_clicked
+}
+
 /// System parameter that bundles all inspector-related queries
 #[derive(SystemParam)]
 pub struct InspectorQueries<'w, 's> {
@@ -232,6 +327,12 @@ pub fn render_inspector(
     camera_preview_texture_id: Option<TextureId>,
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
+    component_registry: &ComponentRegistry,
+    add_component_popup: &mut AddComponentPopupState,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    gizmo_state: &mut GizmoState,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut actual_width = stored_width;
@@ -293,7 +394,12 @@ pub fn render_inspector(
                 }
             } else {
                 // Render normal inspector
-                let (events, changed) = render_inspector_content(ui, selection, entities, queries, script_registry, rhai_engine, camera_preview_texture_id, plugin_host, ui_renderer);
+                let (events, changed) = render_inspector_content(
+                    ui, selection, entities, queries, script_registry, rhai_engine,
+                    camera_preview_texture_id, plugin_host, ui_renderer,
+                    component_registry, add_component_popup, commands, meshes, materials,
+                    gizmo_state,
+                );
                 ui_events.extend(events);
                 scene_changed = changed;
             }
@@ -342,9 +448,17 @@ pub fn render_inspector_content(
     camera_preview_texture_id: Option<TextureId>,
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
+    component_registry: &ComponentRegistry,
+    add_component_popup: &mut AddComponentPopupState,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    gizmo_state: &mut GizmoState,
 ) -> (Vec<UiEvent>, bool) {
     let panel_width = ui.available_width();
     let mut scene_changed = false;
+    let mut component_to_add: Option<&'static str> = None;
+    let mut component_to_remove: Option<&'static str> = None;
 
     // Compact tab header
     ui.horizontal(|ui| {
@@ -433,226 +547,275 @@ pub fn render_inspector_content(
                     );
                 }
 
-                // Lights
+                // Lights (with remove buttons)
                 if let Ok(mut point_light) = queries.point_lights.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         LIGHTBULB,
                         "Point Light",
                         CategoryStyle::light(),
                         "inspector_point_light",
                         true,
+                        true, // can_remove
                         |ui| {
                             render_point_light_inspector(ui, &mut point_light);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("point_light");
+                    }
                 }
 
                 if let Ok(mut dir_light) = queries.directional_lights.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         SUN,
                         "Directional Light",
                         CategoryStyle::light(),
                         "inspector_dir_light",
                         true,
+                        true, // can_remove
                         |ui| {
                             render_directional_light_inspector(ui, &mut dir_light);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("directional_light");
+                    }
                 }
 
                 if let Ok(mut spot_light) = queries.spot_lights.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         FLASHLIGHT,
                         "Spot Light",
                         CategoryStyle::light(),
                         "inspector_spot_light",
                         true,
+                        true, // can_remove
                         |ui| {
                             render_spot_light_inspector(ui, &mut spot_light);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("spot_light");
+                    }
                 }
 
-                // Camera component
+                // Camera component (with remove button)
                 if let Ok(mut camera_data) = queries.cameras.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         VIDEO_CAMERA,
                         "Camera3D",
                         CategoryStyle::camera(),
                         "inspector_camera",
                         true,
+                        true, // can_remove
                         |ui| {
                             render_camera_inspector(ui, &mut camera_data, camera_preview_texture_id);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("camera_3d");
+                    }
                 }
 
-                // Camera rig component
+                // Camera rig component (with remove button)
                 if let Ok(mut rig_data) = queries.camera_rigs.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         VIDEO_CAMERA,
                         "Camera Rig",
                         CategoryStyle::camera(),
                         "inspector_camera_rig",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_camera_rig_inspector(ui, &mut rig_data, camera_preview_texture_id) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("camera_rig");
+                    }
                 }
 
-                // Script component
+                // Script component (with remove button)
                 if let Ok(mut script) = queries.scripts.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         CODE,
                         "Script",
                         CategoryStyle::script(),
                         "inspector_script",
                         true,
+                        true, // can_remove
                         |ui| {
                             render_script_inspector(ui, &mut script, script_registry, rhai_engine);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("script");
+                    }
                 }
 
-                // Physics body
+                // Physics body (with remove button)
                 if let Ok(mut physics_body) = queries.physics_bodies.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         ATOM,
-                        "Physics Body",
+                        "Rigid Body",
                         CategoryStyle::physics(),
                         "inspector_physics_body",
                         true,
+                        true, // can_remove
                         |ui| {
                             render_physics_body_inspector(ui, &mut physics_body);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("rigid_body");
+                    }
                 }
 
-                // Collision shape
+                // Collision shape (with remove button)
                 if let Ok(mut collision_shape) = queries.collision_shapes.get_mut(selected) {
-                    render_category(
+                    // Determine which collider type to remove based on shape_type
+                    let collider_type = match collision_shape.shape_type {
+                        crate::shared::CollisionShapeType::Box => "box_collider",
+                        crate::shared::CollisionShapeType::Sphere => "sphere_collider",
+                        crate::shared::CollisionShapeType::Capsule => "capsule_collider",
+                        crate::shared::CollisionShapeType::Cylinder => "box_collider", // fallback
+                    };
+                    if render_category_removable(
                         ui,
                         CUBE,
-                        "Collision Shape",
+                        "Collider",
                         CategoryStyle::physics(),
                         "inspector_collision_shape",
                         true,
+                        true, // can_remove
                         |ui| {
-                            render_collision_shape_inspector(ui, &mut collision_shape);
+                            render_collision_shape_inspector(ui, &mut collision_shape, selected, gizmo_state);
                         },
-                    );
+                    ) {
+                        component_to_remove = Some(collider_type);
+                    }
                 }
 
-                // 2D Sprite
+                // 2D Sprite (with remove button)
                 if let Ok(mut sprite_data) = queries.sprites2d.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         IMAGE,
                         "Sprite2D",
                         CategoryStyle::nodes2d(),
                         "inspector_sprite2d",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_sprite2d_inspector(ui, &mut sprite_data) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("sprite_2d");
+                    }
                 }
 
-                // 2D Camera
+                // 2D Camera (with remove button)
                 if let Ok(mut camera_data) = queries.cameras2d.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         VIDEO_CAMERA,
                         "Camera2D",
                         CategoryStyle::nodes2d(),
                         "inspector_camera2d",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_camera2d_inspector(ui, &mut camera_data) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("camera_2d");
+                    }
                 }
 
-                // UI Panel
+                // UI Panel (with remove button)
                 if let Ok(mut panel_data) = queries.ui_panels.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         STACK,
                         "UI Panel",
                         CategoryStyle::ui(),
                         "inspector_ui_panel",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_ui_panel_inspector(ui, &mut panel_data) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("ui_panel");
+                    }
                 }
 
-                // UI Label
+                // UI Label (with remove button)
                 if let Ok(mut label_data) = queries.ui_labels.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         TEXTBOX,
                         "UI Label",
                         CategoryStyle::ui(),
                         "inspector_ui_label",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_ui_label_inspector(ui, &mut label_data) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("ui_label");
+                    }
                 }
 
-                // UI Button
+                // UI Button (with remove button)
                 if let Ok(mut button_data) = queries.ui_buttons.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         CURSOR_CLICK,
                         "UI Button",
                         CategoryStyle::ui(),
                         "inspector_ui_button",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_ui_button_inspector(ui, &mut button_data) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("ui_button");
+                    }
                 }
 
-                // UI Image
+                // UI Image (with remove button)
                 if let Ok(mut image_data) = queries.ui_images.get_mut(selected) {
-                    render_category(
+                    if render_category_removable(
                         ui,
                         IMAGE,
                         "UI Image",
                         CategoryStyle::ui(),
                         "inspector_ui_image",
                         true,
+                        true, // can_remove
                         |ui| {
                             if render_ui_image_inspector(ui, &mut image_data) {
                                 scene_changed = true;
                             }
                         },
-                    );
+                    ) {
+                        component_to_remove = Some("ui_image");
+                    }
                 }
 
                 // Plugin-registered inspector sections
@@ -677,15 +840,19 @@ pub fn render_inspector_content(
 
                 ui.add_space(16.0);
 
-                // Add Component button
-                if ui.add_sized(
-                    Vec2::new(panel_width - 20.0, 28.0),
-                    egui::Button::new(format!("{} Add Component", PLUS)),
-                ).clicked() {
-                    // TODO: Add component popup
-                }
+                // Add Component button and popup
+                component_to_add = render_add_component_popup(
+                    ui,
+                    selected,
+                    component_registry,
+                    add_component_popup,
+                    panel_width,
+                );
             }
         } else {
+            // Close popup when nothing is selected
+            add_component_popup.is_open = false;
+
             // No selection state
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
@@ -698,6 +865,172 @@ pub fn render_inspector_content(
         }
     });
 
+    // Handle component addition
+    if let (Some(type_id), Some(selected)) = (component_to_add, selection.selected_entity) {
+        if let Some(def) = component_registry.get(type_id) {
+            (def.add_fn)(commands, selected, meshes, materials);
+            scene_changed = true;
+        }
+    }
+
+    // Handle component removal
+    if let (Some(type_id), Some(selected)) = (component_to_remove, selection.selected_entity) {
+        if let Some(def) = component_registry.get(type_id) {
+            (def.remove_fn)(commands, selected);
+            scene_changed = true;
+        }
+    }
+
     // Collect events from ui_renderer
     (ui_renderer.drain_events().collect(), scene_changed)
+}
+
+/// Render the Add Component button and popup
+fn render_add_component_popup(
+    ui: &mut egui::Ui,
+    _entity: Entity,
+    registry: &ComponentRegistry,
+    popup_state: &mut AddComponentPopupState,
+    panel_width: f32,
+) -> Option<&'static str> {
+    let mut component_to_add: Option<&'static str> = None;
+
+    // Add Component button
+    if ui
+        .add_sized(
+            Vec2::new(panel_width - 20.0, 28.0),
+            egui::Button::new(RichText::new(format!("{} Add Component", PLUS)).color(Color32::WHITE))
+                .fill(Color32::from_rgb(50, 70, 100)),
+        )
+        .clicked()
+    {
+        popup_state.is_open = !popup_state.is_open;
+        popup_state.search_text.clear();
+        popup_state.selected_category = None;
+    }
+
+    // Popup
+    if popup_state.is_open {
+        ui.add_space(4.0);
+
+        egui::Frame::new()
+            .fill(Color32::from_rgb(35, 37, 42))
+            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(55, 57, 62)))
+            .corner_radius(egui::CornerRadius::same(6))
+            .inner_margin(egui::Margin::same(8))
+            .show(ui, |ui| {
+                // Search bar
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(MAGNIFYING_GLASS).color(Color32::GRAY));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut popup_state.search_text)
+                            .hint_text("Search components...")
+                            .desired_width(ui.available_width() - 40.0),
+                    );
+                    if ui
+                        .add(egui::Button::new(RichText::new(X).color(Color32::GRAY)).frame(false))
+                        .clicked()
+                    {
+                        popup_state.is_open = false;
+                    }
+                });
+
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(8.0);
+
+                // Filter by search text
+                let search_lower = popup_state.search_text.to_lowercase();
+
+                // Get all available components
+                let all_components: Vec<_> = registry.all().collect();
+
+                // Filter
+                let filtered: Vec<_> = if search_lower.is_empty() {
+                    all_components.clone()
+                } else {
+                    all_components
+                        .iter()
+                        .filter(|def| {
+                            def.display_name.to_lowercase().contains(&search_lower)
+                                || def.type_id.contains(&search_lower)
+                        })
+                        .copied()
+                        .collect()
+                };
+
+                // Show by category or flat list if searching
+                if search_lower.is_empty() {
+                    // Show categorized view
+                    for category in ComponentCategory::all_in_order() {
+                        let in_category: Vec<_> = filtered
+                            .iter()
+                            .filter(|d| d.category == *category)
+                            .copied()
+                            .collect();
+
+                        if !in_category.is_empty() {
+                            let (accent, _header_bg) = get_category_style(*category);
+                            egui::CollapsingHeader::new(
+                                RichText::new(format!("{} {}", category.icon(), category.display_name()))
+                                    .color(accent),
+                            )
+                            .default_open(false)
+                            .show(ui, |ui| {
+                                for def in in_category {
+                                    if render_component_menu_item(ui, def) {
+                                        component_to_add = Some(def.type_id);
+                                        popup_state.is_open = false;
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } else {
+                    // Flat search results
+                    if filtered.is_empty() {
+                        ui.label(
+                            RichText::new("No matching components")
+                                .color(Color32::GRAY)
+                                .italics(),
+                        );
+                    } else {
+                        for def in &filtered {
+                            if render_component_menu_item(ui, def) {
+                                component_to_add = Some(def.type_id);
+                                popup_state.is_open = false;
+                            }
+                        }
+                    }
+                }
+            });
+    }
+
+    component_to_add
+}
+
+/// Render a single component item in the Add Component popup
+fn render_component_menu_item(
+    ui: &mut egui::Ui,
+    def: &crate::component_system::ComponentDefinition,
+) -> bool {
+    let response = ui.add_sized(
+        Vec2::new(ui.available_width(), 24.0),
+        egui::Button::new(
+            RichText::new(format!("{} {}", def.icon, def.display_name))
+                .color(Color32::from_rgb(200, 200, 210)),
+        )
+        .fill(Color32::TRANSPARENT)
+        .frame(false),
+    );
+
+    if response.hovered() {
+        ui.painter().rect_filled(
+            response.rect,
+            3.0,
+            Color32::from_rgb(55, 60, 70),
+        );
+    }
+
+    response.clicked()
 }

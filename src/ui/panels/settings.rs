@@ -1,9 +1,23 @@
 use bevy::prelude::KeyCode;
-use bevy_egui::egui::{self, Color32, RichText, Vec2};
+use bevy_egui::egui::{self, Color32, CornerRadius, RichText, Stroke, StrokeKind, Vec2};
 
-use crate::core::{EditorSettings, EditorAction, KeyBinding, KeyBindings, bindable_keys};
+use crate::core::{CollisionGizmoVisibility, EditorSettings, EditorAction, KeyBinding, KeyBindings, SettingsTab, bindable_keys};
 
-/// Render the settings window
+// Colors matching the splash screen aesthetic
+const PANEL_BG: Color32 = Color32::from_rgb(28, 28, 35);
+const OVERLAY_BG: Color32 = Color32::from_rgba_premultiplied(0, 0, 0, 180);
+const ACCENT_COLOR: Color32 = Color32::from_rgb(100, 160, 255);
+const TEXT_PRIMARY: Color32 = Color32::from_rgb(230, 230, 240);
+const TEXT_MUTED: Color32 = Color32::from_rgb(140, 140, 155);
+const TEXT_HEADING: Color32 = Color32::from_rgb(180, 180, 195);
+const BORDER_COLOR: Color32 = Color32::from_rgb(50, 50, 60);
+const ITEM_BG: Color32 = Color32::from_rgb(35, 35, 45);
+const ITEM_HOVER: Color32 = Color32::from_rgb(45, 45, 58);
+const TAB_ACTIVE: Color32 = Color32::from_rgb(45, 45, 58);
+const TAB_INACTIVE: Color32 = Color32::from_rgb(28, 28, 35);
+const CLOSE_HOVER: Color32 = Color32::from_rgb(200, 60, 60);
+
+/// Render the settings window as a centered modal overlay
 pub fn render_settings_window(
     ctx: &egui::Context,
     settings: &mut EditorSettings,
@@ -18,134 +32,371 @@ pub fn render_settings_window(
         capture_key_for_rebind(ctx, keybindings, action);
     }
 
-    egui::Window::new("Settings")
-        .collapsible(false)
-        .resizable(true)
-        .default_size(Vec2::new(450.0, 550.0))
+    // Darkened overlay behind the modal
+    egui::Area::new(egui::Id::new("settings_overlay"))
+        .fixed_pos(egui::pos2(0.0, 0.0))
+        .order(egui::Order::Background)
         .show(ctx, |ui| {
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                // Camera Settings
-                ui.heading("Camera");
-                ui.add_space(4.0);
+            let screen_rect = ctx.screen_rect();
+            ui.painter().rect_filled(screen_rect, 0.0, OVERLAY_BG);
 
-                ui.horizontal(|ui| {
-                    ui.label("Move Speed:");
-                    ui.add(egui::DragValue::new(&mut settings.camera_move_speed)
-                        .range(1.0..=50.0)
-                        .speed(0.1));
-                });
+            // Make overlay clickable to close
+            let response = ui.allocate_rect(screen_rect, egui::Sense::click());
+            if response.clicked() {
+                settings.show_settings_window = false;
+            }
+        });
 
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(8.0);
+    // Modal window
+    let screen_rect = ctx.screen_rect();
+    let modal_width = 550.0;
+    let modal_height = 580.0;
+    let modal_pos = egui::pos2(
+        (screen_rect.width() - modal_width) / 2.0,
+        (screen_rect.height() - modal_height) / 2.0,
+    );
 
-                // Grid Settings
-                ui.heading("Grid");
-                ui.add_space(4.0);
+    egui::Area::new(egui::Id::new("settings_modal"))
+        .fixed_pos(modal_pos)
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            let modal_rect = egui::Rect::from_min_size(modal_pos, Vec2::new(modal_width, modal_height));
 
-                ui.checkbox(&mut settings.show_grid, "Show Grid");
+            // Draw modal background
+            ui.painter().rect(
+                modal_rect,
+                CornerRadius::same(12),
+                PANEL_BG,
+                Stroke::new(1.0, BORDER_COLOR),
+                StrokeKind::Outside,
+            );
 
-                ui.horizontal(|ui| {
-                    ui.label("Grid Size:");
-                    ui.add(egui::DragValue::new(&mut settings.grid_size)
-                        .range(1.0..=100.0)
-                        .speed(0.5));
-                });
+            // Content area
+            ui.allocate_new_ui(egui::UiBuilder::new().max_rect(modal_rect), |ui| {
+                ui.set_clip_rect(modal_rect);
 
-                ui.horizontal(|ui| {
-                    ui.label("Divisions:");
-                    ui.add(egui::DragValue::new(&mut settings.grid_divisions)
-                        .range(1..=50));
-                });
+                // Header with title and close button
+                render_header(ui, settings, modal_width);
 
-                ui.horizontal(|ui| {
-                    ui.label("Grid Color:");
-                    let mut color = [
-                        (settings.grid_color[0] * 255.0) as u8,
-                        (settings.grid_color[1] * 255.0) as u8,
-                        (settings.grid_color[2] * 255.0) as u8,
-                    ];
-                    if ui.color_edit_button_srgb(&mut color).changed() {
-                        settings.grid_color = [
-                            color[0] as f32 / 255.0,
-                            color[1] as f32 / 255.0,
-                            color[2] as f32 / 255.0,
-                        ];
-                    }
-                });
+                // Tab bar
+                let content_rect = egui::Rect::from_min_size(
+                    modal_rect.min + Vec2::new(0.0, 56.0),
+                    Vec2::new(modal_width, modal_height - 56.0),
+                );
 
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(8.0);
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(content_rect), |ui| {
+                    render_tabs(ui, settings, modal_width);
 
-                // Developer Settings
-                ui.heading("Developer");
-                ui.add_space(4.0);
+                    // Tab content
+                    let tab_content_rect = egui::Rect::from_min_size(
+                        content_rect.min + Vec2::new(24.0, 52.0),
+                        Vec2::new(modal_width - 48.0, modal_height - 56.0 - 52.0 - 24.0),
+                    );
 
-                ui.checkbox(&mut settings.dev_mode, "Enable Developer Mode");
-                ui.label(RichText::new("Shows Dev menu for plugin development").color(Color32::GRAY).small());
-
-                ui.add_space(12.0);
-                ui.separator();
-                ui.add_space(8.0);
-
-                // Keybindings Section
-                ui.heading("Keyboard Shortcuts");
-                ui.add_space(4.0);
-                ui.label(RichText::new("Click on a key to rebind it").color(Color32::GRAY).small());
-                ui.add_space(8.0);
-
-                let mut current_category = "";
-
-                for action in EditorAction::all() {
-                    let category = action.category();
-                    if category != current_category {
-                        if !current_category.is_empty() {
-                            ui.add_space(8.0);
+                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(tab_content_rect), |ui| {
+                        match settings.settings_tab {
+                            SettingsTab::General => render_general_tab(ui, settings),
+                            SettingsTab::Viewport => render_viewport_tab(ui, settings),
+                            SettingsTab::Shortcuts => render_shortcuts_tab(ui, keybindings),
                         }
-                        ui.label(RichText::new(category).strong().color(Color32::from_rgb(150, 150, 170)));
-                        ui.add_space(4.0);
-                        current_category = category;
-                    }
-
-                    render_keybinding_row(ui, keybindings, action);
-                }
-
-                ui.add_space(12.0);
-
-                // Reset to defaults button
-                if ui.button("Reset to Defaults").clicked() {
-                    *keybindings = KeyBindings::default();
-                }
-
-                ui.add_space(16.0);
-
-                // Close button
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                    if ui.button("Close").clicked() {
-                        settings.show_settings_window = false;
-                    }
+                    });
                 });
             });
         });
 }
 
+fn render_header(ui: &mut egui::Ui, settings: &mut EditorSettings, modal_width: f32) {
+    let header_rect = egui::Rect::from_min_size(
+        ui.max_rect().min,
+        Vec2::new(modal_width, 56.0),
+    );
+
+    // Title
+    let title_pos = header_rect.min + Vec2::new(24.0, 18.0);
+    ui.painter().text(
+        title_pos,
+        egui::Align2::LEFT_TOP,
+        "Settings",
+        egui::FontId::proportional(20.0),
+        TEXT_PRIMARY,
+    );
+
+    // Close button (X)
+    let close_size = 32.0;
+    let close_rect = egui::Rect::from_min_size(
+        header_rect.right_top() + Vec2::new(-close_size - 16.0, 12.0),
+        Vec2::new(close_size, close_size),
+    );
+
+    let close_response = ui.allocate_rect(close_rect, egui::Sense::click());
+    let close_color = if close_response.hovered() { CLOSE_HOVER } else { TEXT_MUTED };
+
+    // Draw X
+    let center = close_rect.center();
+    let half = 8.0;
+    ui.painter().line_segment(
+        [center + Vec2::new(-half, -half), center + Vec2::new(half, half)],
+        Stroke::new(2.0, close_color),
+    );
+    ui.painter().line_segment(
+        [center + Vec2::new(half, -half), center + Vec2::new(-half, half)],
+        Stroke::new(2.0, close_color),
+    );
+
+    if close_response.clicked() {
+        settings.show_settings_window = false;
+    }
+
+    // Header separator
+    let sep_y = header_rect.max.y;
+    ui.painter().line_segment(
+        [egui::pos2(header_rect.min.x, sep_y), egui::pos2(header_rect.max.x, sep_y)],
+        Stroke::new(1.0, BORDER_COLOR),
+    );
+}
+
+fn render_tabs(ui: &mut egui::Ui, settings: &mut EditorSettings, modal_width: f32) {
+    let tabs = [
+        (SettingsTab::General, "General"),
+        (SettingsTab::Viewport, "Viewport"),
+        (SettingsTab::Shortcuts, "Shortcuts"),
+    ];
+
+    let tab_width = (modal_width - 48.0) / tabs.len() as f32;
+    let tab_height = 36.0;
+    let start_x = ui.max_rect().min.x + 24.0;
+    let start_y = ui.max_rect().min.y + 8.0;
+
+    for (i, (tab, label)) in tabs.iter().enumerate() {
+        let tab_rect = egui::Rect::from_min_size(
+            egui::pos2(start_x + i as f32 * tab_width, start_y),
+            Vec2::new(tab_width, tab_height),
+        );
+
+        let response = ui.allocate_rect(tab_rect, egui::Sense::click());
+        let is_active = settings.settings_tab == *tab;
+        let is_hovered = response.hovered();
+
+        // Tab background
+        let bg_color = if is_active {
+            TAB_ACTIVE
+        } else if is_hovered {
+            ITEM_HOVER
+        } else {
+            TAB_INACTIVE
+        };
+
+        let corner_radius = if i == 0 {
+            CornerRadius { nw: 8, ne: 0, sw: 0, se: 0 }
+        } else if i == tabs.len() - 1 {
+            CornerRadius { nw: 0, ne: 8, sw: 0, se: 0 }
+        } else {
+            CornerRadius::ZERO
+        };
+
+        ui.painter().rect(
+            tab_rect,
+            corner_radius,
+            bg_color,
+            Stroke::NONE,
+            StrokeKind::Outside,
+        );
+
+        // Active indicator
+        if is_active {
+            let indicator_rect = egui::Rect::from_min_size(
+                egui::pos2(tab_rect.min.x, tab_rect.max.y - 2.0),
+                Vec2::new(tab_width, 2.0),
+            );
+            ui.painter().rect_filled(indicator_rect, 0.0, ACCENT_COLOR);
+        }
+
+        // Tab text
+        let text_color = if is_active { TEXT_PRIMARY } else { TEXT_MUTED };
+        ui.painter().text(
+            tab_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            egui::FontId::proportional(13.0),
+            text_color,
+        );
+
+        if response.clicked() {
+            settings.settings_tab = *tab;
+        }
+    }
+
+    // Tab bar bottom border
+    let border_y = start_y + tab_height;
+    ui.painter().line_segment(
+        [egui::pos2(ui.max_rect().min.x, border_y), egui::pos2(ui.max_rect().max.x, border_y)],
+        Stroke::new(1.0, BORDER_COLOR),
+    );
+}
+
+fn render_general_tab(ui: &mut egui::Ui, settings: &mut EditorSettings) {
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+
+        // Camera Section
+        render_section_header(ui, "Camera");
+        ui.add_space(8.0);
+
+        render_setting_row(ui, "Move Speed", |ui| {
+            ui.add(egui::DragValue::new(&mut settings.camera_move_speed)
+                .range(1.0..=50.0)
+                .speed(0.1));
+        });
+
+        ui.add_space(16.0);
+
+        // Developer Section
+        render_section_header(ui, "Developer");
+        ui.add_space(8.0);
+
+        render_setting_row(ui, "Developer Mode", |ui| {
+            ui.checkbox(&mut settings.dev_mode, "");
+        });
+        ui.label(RichText::new("Enables Dev menu for plugin development").size(11.0).color(TEXT_MUTED));
+    });
+}
+
+fn render_viewport_tab(ui: &mut egui::Ui, settings: &mut EditorSettings) {
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+
+        // Grid Section
+        render_section_header(ui, "Grid");
+        ui.add_space(8.0);
+
+        render_setting_row(ui, "Show Grid", |ui| {
+            ui.checkbox(&mut settings.show_grid, "");
+        });
+
+        render_setting_row(ui, "Grid Size", |ui| {
+            ui.add(egui::DragValue::new(&mut settings.grid_size)
+                .range(1.0..=100.0)
+                .speed(0.5));
+        });
+
+        render_setting_row(ui, "Grid Divisions", |ui| {
+            ui.add(egui::DragValue::new(&mut settings.grid_divisions)
+                .range(1..=50));
+        });
+
+        render_setting_row(ui, "Grid Color", |ui| {
+            let mut color = [
+                (settings.grid_color[0] * 255.0) as u8,
+                (settings.grid_color[1] * 255.0) as u8,
+                (settings.grid_color[2] * 255.0) as u8,
+            ];
+            if ui.color_edit_button_srgb(&mut color).changed() {
+                settings.grid_color = [
+                    color[0] as f32 / 255.0,
+                    color[1] as f32 / 255.0,
+                    color[2] as f32 / 255.0,
+                ];
+            }
+        });
+
+        ui.add_space(16.0);
+
+        // Gizmos Section
+        render_section_header(ui, "Gizmos");
+        ui.add_space(8.0);
+
+        render_setting_row(ui, "Collision Gizmos", |ui| {
+            egui::ComboBox::from_id_salt("collision_gizmo_visibility")
+                .selected_text(match settings.collision_gizmo_visibility {
+                    CollisionGizmoVisibility::SelectedOnly => "Selected Only",
+                    CollisionGizmoVisibility::Always => "Always Visible",
+                })
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut settings.collision_gizmo_visibility,
+                        CollisionGizmoVisibility::SelectedOnly,
+                        "Selected Only",
+                    );
+                    ui.selectable_value(
+                        &mut settings.collision_gizmo_visibility,
+                        CollisionGizmoVisibility::Always,
+                        "Always Visible",
+                    );
+                });
+        });
+        ui.label(RichText::new("Controls when collision shape gizmos are displayed").size(11.0).color(TEXT_MUTED));
+    });
+}
+
+fn render_shortcuts_tab(ui: &mut egui::Ui, keybindings: &mut KeyBindings) {
+    egui::ScrollArea::vertical().show(ui, |ui| {
+        ui.set_width(ui.available_width());
+
+        ui.label(RichText::new("Click on a key to rebind it").size(12.0).color(TEXT_MUTED));
+        ui.add_space(12.0);
+
+        let mut current_category = "";
+
+        for action in EditorAction::all() {
+            let category = action.category();
+            if category != current_category {
+                if !current_category.is_empty() {
+                    ui.add_space(12.0);
+                }
+                render_section_header(ui, category);
+                ui.add_space(8.0);
+                current_category = category;
+            }
+
+            render_keybinding_row(ui, keybindings, action);
+        }
+
+        ui.add_space(16.0);
+
+        // Reset to defaults button
+        let btn = egui::Button::new(RichText::new("Reset to Defaults").color(TEXT_PRIMARY))
+            .fill(ITEM_BG)
+            .stroke(Stroke::new(1.0, BORDER_COLOR))
+            .corner_radius(CornerRadius::same(6))
+            .min_size(Vec2::new(140.0, 32.0));
+
+        if ui.add(btn).clicked() {
+            *keybindings = KeyBindings::default();
+        }
+    });
+}
+
+fn render_section_header(ui: &mut egui::Ui, label: &str) {
+    ui.label(RichText::new(label.to_uppercase()).size(11.0).color(TEXT_HEADING).strong());
+}
+
+fn render_setting_row(ui: &mut egui::Ui, label: &str, add_control: impl FnOnce(&mut egui::Ui)) {
+    ui.horizontal(|ui| {
+        ui.label(RichText::new(label).color(TEXT_PRIMARY));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), add_control);
+    });
+    ui.add_space(4.0);
+}
+
 fn render_keybinding_row(ui: &mut egui::Ui, keybindings: &mut KeyBindings, action: EditorAction) {
     ui.horizontal(|ui| {
-        ui.label(action.display_name());
+        ui.label(RichText::new(action.display_name()).color(TEXT_PRIMARY));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             let is_rebinding = keybindings.rebinding == Some(action);
 
             let button_text = if is_rebinding {
-                RichText::new("Press a key...").color(Color32::YELLOW)
+                RichText::new("Press a key...").color(Color32::from_rgb(255, 220, 100))
             } else if let Some(binding) = keybindings.get(action) {
-                RichText::new(binding.display()).color(Color32::from_rgb(150, 200, 255)).monospace()
+                RichText::new(binding.display()).color(ACCENT_COLOR).monospace()
             } else {
-                RichText::new("Unbound").color(Color32::GRAY)
+                RichText::new("Unbound").color(TEXT_MUTED)
             };
 
             let button = egui::Button::new(button_text)
-                .min_size(Vec2::new(120.0, 20.0));
+                .fill(if is_rebinding { Color32::from_rgb(60, 50, 30) } else { ITEM_BG })
+                .stroke(Stroke::new(1.0, if is_rebinding { Color32::from_rgb(255, 220, 100) } else { BORDER_COLOR }))
+                .corner_radius(CornerRadius::same(4))
+                .min_size(Vec2::new(120.0, 24.0));
 
             if ui.add(button).clicked() {
                 if is_rebinding {
@@ -156,6 +407,7 @@ fn render_keybinding_row(ui: &mut egui::Ui, keybindings: &mut KeyBindings, actio
             }
         });
     });
+    ui.add_space(2.0);
 }
 
 fn capture_key_for_rebind(ctx: &egui::Context, keybindings: &mut KeyBindings, action: EditorAction) {

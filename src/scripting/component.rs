@@ -4,7 +4,8 @@ use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 
 /// Component that marks an entity as having a script attached
-#[derive(Component, Clone)]
+#[derive(Component, Clone, Reflect)]
+#[reflect(Component)]
 pub struct ScriptComponent {
     /// The script identifier (registered name) - for built-in scripts
     pub script_id: String,
@@ -16,6 +17,7 @@ pub struct ScriptComponent {
     pub variables: ScriptVariables,
     /// Runtime state (not persisted)
     #[allow(dead_code)]
+    #[reflect(ignore)]
     pub runtime_state: ScriptRuntimeState,
 }
 
@@ -52,7 +54,7 @@ impl ScriptComponent {
 }
 
 /// Script-local variables that can be set from the inspector
-#[derive(Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Reflect, Serialize, Deserialize)]
 pub struct ScriptVariables {
     values: std::collections::HashMap<String, ScriptValue>,
 }
@@ -119,7 +121,7 @@ impl ScriptVariables {
 }
 
 /// Value types that can be stored in script variables
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Reflect, Serialize, Deserialize)]
 pub enum ScriptValue {
     Float(f32),
     Int(i32),

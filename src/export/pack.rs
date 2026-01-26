@@ -29,7 +29,7 @@
 //! the footer, then seeks to the pack start offset to read the header.
 
 use std::fs::{self, File};
-use std::io::{BufWriter, Read, Seek, SeekFrom, Write};
+use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use crate::core::ExportLogger;

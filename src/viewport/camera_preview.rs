@@ -7,7 +7,7 @@ use bevy::render::render_resource::{
 
 use crate::core::SelectionState;
 use crate::gizmo::preview_camera_layers;
-use crate::node_system::CameraNodeData;
+use crate::shared::CameraNodeData;
 use crate::scene::EditorOnly;
 use crate::shared::CameraRigData;
 

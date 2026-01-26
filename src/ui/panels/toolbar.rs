@@ -3,7 +3,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Sense, Vec2, RichText};
 
 use crate::core::{EditorSettings, SelectionState, HierarchyState, VisualizationMode, PlayModeState, PlayState};
 use crate::gizmo::{EditorTool, GizmoMode, GizmoState, SnapSettings};
-use crate::node_system::{NodeRegistry, NodeCategory};
+use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
 
@@ -22,7 +22,6 @@ pub fn render_toolbar(
     toolbar_height: f32,
     _window_width: f32,
     plugin_host: &PluginHost,
-    registry: &NodeRegistry,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
@@ -108,9 +107,9 @@ pub fn render_toolbar(
 
                 // Meshes dropdown
                 dropdown_button(ui, CUBE, "Mesh", mesh_color, inactive_color, |ui| {
-                    for def in registry.get_by_category(NodeCategory::Meshes) {
-                        if menu_item(ui, def.display_name) {
-                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                    for template in spawn::templates_by_category(Category::Mesh) {
+                        if menu_item(ui, template.name) {
+                            let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
                             ui.close();
                         }
@@ -119,9 +118,9 @@ pub fn render_toolbar(
 
                 // Lights dropdown
                 dropdown_button(ui, LIGHTBULB, "Light", light_color, inactive_color, |ui| {
-                    for def in registry.get_by_category(NodeCategory::Lights) {
-                        if menu_item(ui, def.display_name) {
-                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                    for template in spawn::templates_by_category(Category::Light) {
+                        if menu_item(ui, template.name) {
+                            let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
                             ui.close();
                         }
@@ -130,9 +129,9 @@ pub fn render_toolbar(
 
                 // Camera dropdown
                 dropdown_button(ui, VIDEO_CAMERA, "Camera", camera_color, inactive_color, |ui| {
-                    for def in registry.get_by_category(NodeCategory::Cameras) {
-                        if menu_item(ui, def.display_name) {
-                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                    for template in spawn::templates_by_category(Category::Camera) {
+                        if menu_item(ui, template.name) {
+                            let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
                             ui.close();
                         }
@@ -144,9 +143,9 @@ pub fn render_toolbar(
                 dropdown_button(ui, PLUS, "More", more_color, inactive_color, |ui| {
                     // 3D Nodes
                     ui.label(RichText::new("Nodes").small().color(Color32::from_rgb(120, 120, 130)));
-                    for def in registry.get_by_category(NodeCategory::Nodes3D) {
-                        if menu_item(ui, def.display_name) {
-                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                    for template in spawn::templates_by_category(Category::Nodes3D) {
+                        if menu_item(ui, template.name) {
+                            let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
                             ui.close();
                         }
@@ -156,9 +155,9 @@ pub fn render_toolbar(
 
                     // Physics
                     ui.label(RichText::new("Physics").small().color(Color32::from_rgb(120, 120, 130)));
-                    for def in registry.get_by_category(NodeCategory::Physics) {
-                        if menu_item(ui, def.display_name) {
-                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                    for template in spawn::templates_by_category(Category::Physics) {
+                        if menu_item(ui, template.name) {
+                            let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
                             ui.close();
                         }
@@ -168,9 +167,9 @@ pub fn render_toolbar(
 
                     // Environment
                     ui.label(RichText::new("Environment").small().color(Color32::from_rgb(120, 120, 130)));
-                    for def in registry.get_by_category(NodeCategory::Environment) {
-                        if menu_item(ui, def.display_name) {
-                            let entity = (def.spawn_fn)(commands, meshes, materials, None);
+                    for template in spawn::templates_by_category(Category::Environment) {
+                        if menu_item(ui, template.name) {
+                            let entity = (template.spawn)(commands, meshes, materials, None);
                             selection.selected_entity = Some(entity);
                             ui.close();
                         }

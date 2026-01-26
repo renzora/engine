@@ -139,6 +139,57 @@ impl BoxSelectionState {
     }
 }
 
+/// What part of a collider is being edited
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ColliderEditHandle {
+    /// Center handle - moves the offset
+    Center,
+    /// Face handles - resize the collider
+    PosX, NegX,
+    PosY, NegY,
+    PosZ, NegZ,
+}
+
+/// State for collider edit mode
+#[derive(Default, Clone)]
+pub struct ColliderEditState {
+    /// Entity whose collider is being edited
+    pub entity: Option<Entity>,
+    /// Currently hovered handle
+    pub hovered_handle: Option<ColliderEditHandle>,
+    /// Whether dragging a handle
+    pub is_dragging: bool,
+    /// Handle being dragged
+    pub drag_handle: Option<ColliderEditHandle>,
+    /// Starting offset when drag began
+    pub drag_start_offset: Vec3,
+    /// Starting size when drag began (half_extents, radius, or half_height)
+    pub drag_start_size: Vec3,
+}
+
+impl ColliderEditState {
+    /// Check if we're currently editing a collider
+    pub fn is_active(&self) -> bool {
+        self.entity.is_some()
+    }
+
+    /// Start editing a collider
+    pub fn start_editing(&mut self, entity: Entity) {
+        self.entity = Some(entity);
+        self.hovered_handle = None;
+        self.is_dragging = false;
+        self.drag_handle = None;
+    }
+
+    /// Stop editing
+    pub fn stop_editing(&mut self) {
+        self.entity = None;
+        self.hovered_handle = None;
+        self.is_dragging = false;
+        self.drag_handle = None;
+    }
+}
+
 /// State for the gizmo system
 #[derive(Resource)]
 pub struct GizmoState {
@@ -170,6 +221,8 @@ pub struct GizmoState {
     pub drag_entity: Option<Entity>,
     /// Box selection state
     pub box_selection: BoxSelectionState,
+    /// Collider edit mode state
+    pub collider_edit: ColliderEditState,
 }
 
 impl Default for GizmoState {
@@ -189,6 +242,7 @@ impl Default for GizmoState {
             drag_start_transform: None,
             drag_entity: None,
             box_selection: BoxSelectionState::default(),
+            collider_edit: ColliderEditState::default(),
         }
     }
 }

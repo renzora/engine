@@ -4,7 +4,7 @@
 
 use bevy::prelude::*;
 
-use super::shared::CameraNodeData;
+use crate::shared::CameraNodeData;
 
 /// Plugin to handle runtime camera activation
 pub struct RuntimeCameraPlugin;

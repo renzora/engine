@@ -338,7 +338,8 @@ pub fn update_gizmo_mesh_transforms(
 
     let show_gizmos = selection.selected_entity.is_some()
         && gizmo_state.tool == EditorTool::Transform
-        && gizmo_state.mode == GizmoMode::Translate;
+        && gizmo_state.mode == GizmoMode::Translate
+        && !gizmo_state.collider_edit.is_active();
     *root_visibility = if show_gizmos { Visibility::Visible } else { Visibility::Hidden };
 
     if let Some(selected) = selection.selected_entity {

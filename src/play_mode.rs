@@ -6,7 +6,7 @@
 use bevy::prelude::*;
 
 use crate::core::{AppState, PlayModeCamera, PlayModeState, PlayState, ViewportCamera};
-use crate::node_system::CameraNodeData;
+use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
 use crate::{console_info, console_success, console_warn};
 

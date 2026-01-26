@@ -3,7 +3,7 @@ use bevy::window::{WindowMode, WindowPosition};
 use bevy_egui::egui::{self, Color32, CornerRadius, Id, Pos2, Sense, Stroke, Vec2};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
-use crate::core::{EditorEntity, ExportState, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
+use crate::core::{AssetBrowserState, EditorEntity, ExportState, SceneNode, SelectionState, WindowState, SceneManagerState, EditorSettings};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::scene::{spawn_primitive, PrimitiveType};
 use crate::ui_api::UiEvent;
@@ -20,6 +20,7 @@ pub fn render_title_bar(
     scene_state: &mut SceneManagerState,
     settings: &mut EditorSettings,
     export_state: &mut ExportState,
+    assets: &mut AssetBrowserState,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -96,7 +97,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, commands, meshes, materials, plugin_host, command_history);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, commands, meshes, materials, plugin_host, command_history);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -198,6 +199,7 @@ fn render_menu_items(
     scene_state: &mut SceneManagerState,
     settings: &mut EditorSettings,
     export_state: &mut ExportState,
+    assets: &mut AssetBrowserState,
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
@@ -252,6 +254,60 @@ fn render_menu_items(
         }
 
         ui.separator();
+
+        // Import submenu
+        ui.menu_button("Import", |ui| {
+            if ui.button("Import Assets...").clicked() {
+                assets.import_asset_requested = true;
+                ui.close();
+            }
+            ui.separator();
+            if ui.button("Import 3D Model...").clicked() {
+                // Open file dialog specifically for 3D models
+                if let Some(paths) = rfd::FileDialog::new()
+                    .add_filter("3D Models", &["glb", "gltf", "obj", "fbx"])
+                    .pick_files()
+                {
+                    if !paths.is_empty() {
+                        assets.pending_import_files = paths;
+                        assets.show_import_dialog = true;
+                    }
+                }
+                ui.close();
+            }
+            if ui.button("Import Image...").clicked() {
+                if let Some(paths) = rfd::FileDialog::new()
+                    .add_filter("Images", &["png", "jpg", "jpeg", "bmp", "tga", "hdr", "exr"])
+                    .pick_files()
+                {
+                    if let Some(target_folder) = assets.current_folder.clone() {
+                        for source_path in paths {
+                            if let Some(file_name) = source_path.file_name() {
+                                let dest_path = target_folder.join(file_name);
+                                let _ = std::fs::copy(&source_path, &dest_path);
+                            }
+                        }
+                    }
+                }
+                ui.close();
+            }
+            if ui.button("Import Audio...").clicked() {
+                if let Some(paths) = rfd::FileDialog::new()
+                    .add_filter("Audio", &["wav", "ogg", "mp3", "flac"])
+                    .pick_files()
+                {
+                    if let Some(target_folder) = assets.current_folder.clone() {
+                        for source_path in paths {
+                            if let Some(file_name) = source_path.file_name() {
+                                let dest_path = target_folder.join(file_name);
+                                let _ = std::fs::copy(&source_path, &dest_path);
+                            }
+                        }
+                    }
+                }
+                ui.close();
+            }
+        });
 
         // Export submenu
         ui.menu_button("Export", |ui| {

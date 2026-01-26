@@ -8,19 +8,24 @@ mod play_mode;
 mod scene;
 mod selection;
 mod settings;
+mod thumbnails;
 mod viewport;
 mod window;
 
-pub use assets::{AssetBrowserState, AssetViewMode};
+pub use assets::{
+    AssetBrowserState, AssetViewMode, ColliderImportType, ConvertAxes, MeshHandling,
+    NormalImportMethod, PendingImageDrop, TangentImportMethod,
+};
 pub use camera::{OrbitCameraState, TabCameraState};
 pub use console::{ConsoleState, LogEntry, LogLevel};
 pub use default_camera::DefaultCameraEntity;
-pub use export::{ExportLogEntry, ExportLogLevel, ExportLogger, ExportState};
+pub use export::{ExportLogLevel, ExportLogger, ExportState};
 pub use hierarchy::{HierarchyDropPosition, HierarchyDropTarget, HierarchyState};
 pub use play_mode::{PlayModeCamera, PlayModeState, PlayState};
 pub use scene::{BuildError, BuildState, OpenScript, SceneManagerState, SceneTab, ScriptError};
 pub use selection::SelectionState;
-pub use settings::{EditorSettings, RenderToggles, VisualizationMode};
+pub use settings::{CollisionGizmoVisibility, EditorSettings, RenderToggles, SettingsTab, VisualizationMode};
+pub use thumbnails::{ThumbnailCache, supports_thumbnail};
 pub use viewport::{BottomPanelTab, ViewportState};
 pub use crate::viewport::ViewportMode;
 pub use window::WindowState;

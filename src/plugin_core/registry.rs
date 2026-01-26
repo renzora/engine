@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use bevy::prelude::*;
 
 use super::api::{ContextMenuLocation, InspectorDefinition, MenuItem, MenuLocation, PanelDefinition, ToolbarItem};
-use crate::ui_api::types::UiId;
 use crate::ui_api::widgets::Widget;
 
 /// Registry for all plugin-registered UI elements

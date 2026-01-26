@@ -2,7 +2,11 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, CornerRadius, CursorIcon, RichText, Sense, Vec2};
 use std::path::PathBuf;
 
-use crate::core::{AssetBrowserState, AssetViewMode, BottomPanelTab, ConsoleState, LogLevel, ViewportState, SceneManagerState};
+use crate::core::{
+    AssetBrowserState, AssetViewMode, BottomPanelTab, ColliderImportType, ConsoleState,
+    ConvertAxes, LogLevel, MeshHandling, NormalImportMethod, TangentImportMethod,
+    ViewportState, SceneManagerState, ThumbnailCache, supports_thumbnail,
+};
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
@@ -13,6 +17,7 @@ use egui_phosphor::regular::{
     FOLDER, FILE, IMAGE, CUBE, SPEAKER_HIGH, FILE_RS, FILE_TEXT,
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
+    PLUS, X, CHECK,
 };
 use egui_phosphor::fill::FOLDER as FOLDER_FILL;
 
@@ -34,6 +39,7 @@ pub fn render_assets(
     _bottom_panel_height: f32,
     plugin_host: &PluginHost,
     ui_renderer: &mut UiRenderer,
+    thumbnail_cache: &mut ThumbnailCache,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let panel_height = viewport.assets_height;
@@ -46,7 +52,7 @@ pub fn render_assets(
     let plugin_tabs = api.get_tabs_for_location(TabLocation::Bottom);
     let active_plugin_tab = api.get_active_tab(TabLocation::Bottom);
 
-    egui::TopBottomPanel::bottom("bottom_panel")
+    let panel_response = egui::TopBottomPanel::bottom("bottom_panel")
         .exact_height(panel_height)
         .show_separator_line(false)
         .show(ctx, |ui| {
@@ -124,7 +130,7 @@ pub fn render_assets(
                 // Render built-in tabs
                 match viewport.bottom_panel_tab {
                     BottomPanelTab::Assets => {
-                        render_assets_content(ui, current_project, assets, scene_state);
+                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache);
                     }
                     BottomPanelTab::Console => {
                         render_console_content(ui, console);
@@ -133,10 +139,18 @@ pub fn render_assets(
             }
         });
 
+    // Store the panel bounds for global file drop detection (in mod.rs)
+    let panel_rect = panel_response.response.rect;
+    assets.panel_bounds = [panel_rect.min.x, panel_rect.min.y, panel_rect.width(), panel_rect.height()];
+
     // Dialogs (only for assets tab)
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
+    render_import_dialog(ctx, assets);
     handle_import_request(assets);
+
+    // Process any pending file imports (files dropped into assets panel)
+    process_pending_file_imports(assets);
 
     ui_events
 }
@@ -223,6 +237,7 @@ pub fn render_assets_content(
     current_project: Option<&CurrentProject>,
     assets: &mut AssetBrowserState,
     scene_state: &mut SceneManagerState,
+    thumbnail_cache: &mut ThumbnailCache,
 ) {
     let ctx = ui.ctx().clone();
 
@@ -233,6 +248,9 @@ pub fn render_assets_content(
     ui.separator();
     ui.add_space(4.0);
 
+    // Update thumbnail cache folder tracking
+    thumbnail_cache.clear_for_folder_change(assets.current_folder.clone());
+
     // Main content area
     egui::ScrollArea::vertical().show(ui, |ui| {
         if let Some(project) = current_project {
@@ -241,10 +259,10 @@ pub fn render_assets_content(
 
             match assets.view_mode {
                 AssetViewMode::Grid => {
-                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items);
+                    render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache);
                 }
                 AssetViewMode::List => {
-                    render_list_view(ui, &ctx, assets, scene_state, &filtered_items);
+                    render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache);
                 }
             }
 
@@ -382,6 +400,19 @@ fn render_toolbar(
 
             ui.separator();
 
+            // Import button
+            let import_enabled = assets.current_folder.is_some();
+            ui.add_enabled_ui(import_enabled, |ui| {
+                if ui.button(RichText::new(format!("{} Import", PLUS)).size(12.0))
+                    .on_hover_text("Import assets into current folder")
+                    .clicked()
+                {
+                    open_import_file_dialog(assets);
+                }
+            });
+
+            ui.separator();
+
             // Search input
             ui.add_sized(
                 [150.0, 20.0],
@@ -476,15 +507,18 @@ fn render_grid_view(
     assets: &mut AssetBrowserState,
     scene_state: &mut SceneManagerState,
     items: &[&AssetItem],
+    thumbnail_cache: &mut ThumbnailCache,
 ) {
     let tile_size = DEFAULT_TILE_SIZE * assets.zoom;
     let icon_size = (tile_size * 0.45).max(24.0);
+    let thumbnail_size = tile_size - 16.0; // Leave padding around thumbnail
 
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
 
         for item in items {
             let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
+            let has_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
 
             let (rect, response) = ui.allocate_exact_size(
                 Vec2::new(tile_size, tile_size + 20.0),
@@ -515,19 +549,62 @@ fn render_grid_view(
                 );
             }
 
-            // Icon
+            // Icon or Thumbnail
             let icon_rect = egui::Rect::from_center_size(
                 egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0 - 8.0),
                 Vec2::splat(icon_size),
             );
 
-            ui.painter().text(
-                icon_rect.center(),
-                egui::Align2::CENTER_CENTER,
-                item.icon,
-                egui::FontId::proportional(icon_size),
-                item.color,
-            );
+            let mut thumbnail_shown = false;
+
+            if has_thumbnail {
+                // Try to get cached thumbnail texture ID
+                if let Some(texture_id) = thumbnail_cache.get_texture_id(&item.path) {
+                    // Draw the thumbnail image
+                    let thumb_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.center().x, rect.min.y + tile_size / 2.0 - 8.0),
+                        Vec2::splat(thumbnail_size),
+                    );
+
+                    // Draw checkerboard background for images with transparency
+                    draw_checkerboard(ui.painter(), thumb_rect);
+
+                    ui.painter().image(
+                        texture_id,
+                        thumb_rect,
+                        egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                        Color32::WHITE,
+                    );
+                    thumbnail_shown = true;
+                } else if !thumbnail_cache.is_loading(&item.path) && !thumbnail_cache.has_failed(&item.path) {
+                    // Request thumbnail load
+                    thumbnail_cache.request_load(item.path.clone());
+                }
+            }
+
+            // Fall back to icon if no thumbnail
+            if !thumbnail_shown {
+                ui.painter().text(
+                    icon_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    item.icon,
+                    egui::FontId::proportional(icon_size),
+                    item.color,
+                );
+
+                // Show loading indicator for images being loaded
+                if has_thumbnail && thumbnail_cache.is_loading(&item.path) {
+                    let spinner_rect = egui::Rect::from_center_size(
+                        egui::pos2(rect.max.x - 12.0, rect.min.y + 12.0),
+                        Vec2::splat(8.0),
+                    );
+                    ui.painter().circle_stroke(
+                        spinner_rect.center(),
+                        4.0,
+                        egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 220)),
+                    );
+                }
+            }
 
             // Label
             let label_rect = egui::Rect::from_min_size(
@@ -556,15 +633,40 @@ fn render_grid_view(
     });
 }
 
+/// Draw a checkerboard pattern for transparent image backgrounds
+fn draw_checkerboard(painter: &egui::Painter, rect: egui::Rect) {
+    let check_size = 8.0;
+    let light = Color32::from_rgb(60, 60, 65);
+    let dark = Color32::from_rgb(45, 45, 50);
+
+    let cols = (rect.width() / check_size).ceil() as i32;
+    let rows = (rect.height() / check_size).ceil() as i32;
+
+    for row in 0..rows {
+        for col in 0..cols {
+            let color = if (row + col) % 2 == 0 { light } else { dark };
+            let check_rect = egui::Rect::from_min_size(
+                egui::pos2(rect.min.x + col as f32 * check_size, rect.min.y + row as f32 * check_size),
+                Vec2::splat(check_size),
+            ).intersect(rect);
+            painter.rect_filled(check_rect, 0.0, color);
+        }
+    }
+}
+
 fn render_list_view(
     ui: &mut egui::Ui,
     ctx: &egui::Context,
     assets: &mut AssetBrowserState,
     scene_state: &mut SceneManagerState,
     items: &[&AssetItem],
+    thumbnail_cache: &mut ThumbnailCache,
 ) {
+    let thumbnail_size = 18.0; // Small thumbnail for list view
+
     for item in items {
         let is_draggable = !item.is_folder && is_draggable_asset(&item.name);
+        let has_thumbnail = !item.is_folder && supports_thumbnail(&item.name);
 
         let (rect, response) = ui.allocate_exact_size(
             Vec2::new(ui.available_width(), LIST_ROW_HEIGHT),
@@ -587,18 +689,42 @@ fn render_list_view(
             ui.painter().rect_filled(rect, 2.0, bg_color);
         }
 
-        // Icon
-        ui.painter().text(
-            egui::pos2(rect.min.x + 12.0, rect.center().y),
-            egui::Align2::LEFT_CENTER,
-            item.icon,
-            egui::FontId::proportional(16.0),
-            item.color,
-        );
+        // Icon or small thumbnail
+        let mut thumbnail_shown = false;
+        let icon_center = egui::pos2(rect.min.x + 12.0, rect.center().y);
 
-        // Name
+        if has_thumbnail {
+            if let Some(texture_id) = thumbnail_cache.get_texture_id(&item.path) {
+                let thumb_rect = egui::Rect::from_center_size(
+                    icon_center,
+                    Vec2::splat(thumbnail_size),
+                );
+                ui.painter().image(
+                    texture_id,
+                    thumb_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+                thumbnail_shown = true;
+            } else if !thumbnail_cache.is_loading(&item.path) && !thumbnail_cache.has_failed(&item.path) {
+                thumbnail_cache.request_load(item.path.clone());
+            }
+        }
+
+        if !thumbnail_shown {
+            ui.painter().text(
+                icon_center,
+                egui::Align2::LEFT_CENTER,
+                item.icon,
+                egui::FontId::proportional(16.0),
+                item.color,
+            );
+        }
+
+        // Name (offset slightly more if thumbnail is shown)
+        let name_offset = if thumbnail_shown { 34.0 } else { 32.0 };
         ui.painter().text(
-            egui::pos2(rect.min.x + 32.0, rect.center().y),
+            egui::pos2(rect.min.x + name_offset, rect.center().y),
             egui::Align2::LEFT_CENTER,
             &item.name,
             egui::FontId::proportional(12.0),
@@ -664,6 +790,8 @@ fn handle_item_interaction(
                             ui.horizontal(|ui| {
                                 let (icon, color, hint) = if is_scene_file(&item.name) {
                                     (FILM_SCRIPT, Color32::from_rgb(115, 191, 242), "Drop in hierarchy")
+                                } else if is_image_file(&item.name) {
+                                    (IMAGE, Color32::from_rgb(166, 217, 140), "Drop in viewport (3D: Plane, 2D: Sprite)")
                                 } else {
                                     (CUBE, Color32::from_rgb(242, 166, 115), "Drop in viewport")
                                 };
@@ -802,17 +930,8 @@ fn render_create_folder_dialog(ctx: &egui::Context, assets: &mut AssetBrowserSta
     }
 }
 
-fn handle_import_request(assets: &mut AssetBrowserState) {
-    if !assets.import_asset_requested {
-        return;
-    }
-
-    assets.import_asset_requested = false;
-
-    let Some(target_folder) = assets.current_folder.clone() else {
-        return;
-    };
-
+/// Opens the file dialog to select files for import
+fn open_import_file_dialog(assets: &mut AssetBrowserState) {
     if let Some(paths) = rfd::FileDialog::new()
         .add_filter("All Assets", &["glb", "gltf", "obj", "fbx", "png", "jpg", "jpeg", "wav", "ogg", "mp3", "rhai"])
         .add_filter("3D Models", &["glb", "gltf", "obj", "fbx"])
@@ -821,16 +940,480 @@ fn handle_import_request(assets: &mut AssetBrowserState) {
         .add_filter("Scripts", &["rhai"])
         .pick_files()
     {
-        let _ = std::fs::create_dir_all(&target_folder);
+        // Check if any models are selected - if so, show the import settings dialog
+        let has_models = paths.iter().any(|p| is_model_file(p.file_name().and_then(|n| n.to_str()).unwrap_or("")));
 
-        for source_path in paths {
-            if let Some(file_name) = source_path.file_name() {
-                let dest_path = target_folder.join(file_name);
-                if let Err(e) = std::fs::copy(&source_path, &dest_path) {
-                    error!("Failed to import {}: {}", source_path.display(), e);
-                } else {
-                    info!("Imported: {}", dest_path.display());
+        if has_models {
+            assets.pending_import_files = paths;
+            assets.show_import_dialog = true;
+        } else {
+            // For non-model files, import directly
+            if let Some(target_folder) = assets.current_folder.clone() {
+                import_files_directly(&paths, &target_folder);
+            }
+        }
+    }
+}
+
+/// Import files directly without showing settings dialog (for non-model files)
+fn import_files_directly(paths: &[PathBuf], target_folder: &PathBuf) {
+    let _ = std::fs::create_dir_all(target_folder);
+
+    for source_path in paths {
+        if let Some(file_name) = source_path.file_name() {
+            let dest_path = target_folder.join(file_name);
+            if let Err(e) = std::fs::copy(source_path, &dest_path) {
+                error!("Failed to import {}: {}", source_path.display(), e);
+            } else {
+                info!("Imported: {}", dest_path.display());
+            }
+        }
+    }
+}
+
+/// Render the model import settings dialog
+fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+    if !assets.show_import_dialog {
+        return;
+    }
+
+    let mut open = true;
+    let mut should_import = false;
+
+    egui::Window::new(format!("{} Import Settings", DOWNLOAD))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(true)
+        .default_width(500.0)
+        .default_height(600.0)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            ui.spacing_mut().item_spacing.y = 4.0;
+
+            // Show files being imported
+            egui::CollapsingHeader::new(RichText::new("Files to Import").strong())
+                .default_open(true)
+                .show(ui, |ui| {
+                    egui::Frame::new()
+                        .fill(Color32::from_rgb(30, 30, 38))
+                        .corner_radius(4.0)
+                        .inner_margin(8.0)
+                        .show(ui, |ui| {
+                            egui::ScrollArea::vertical()
+                                .max_height(60.0)
+                                .show(ui, |ui| {
+                                    for path in &assets.pending_import_files {
+                                        let filename = path.file_name()
+                                            .and_then(|n| n.to_str())
+                                            .unwrap_or("Unknown");
+                                        let is_model = is_model_file(filename);
+                                        let icon = if is_model { CUBE } else { FILE };
+                                        let color = if is_model {
+                                            Color32::from_rgb(242, 166, 115)
+                                        } else {
+                                            Color32::from_rgb(150, 150, 160)
+                                        };
+                                        ui.horizontal(|ui| {
+                                            ui.label(RichText::new(icon).color(color));
+                                            ui.label(filename);
+                                        });
+                                    }
+                                });
+                        });
+                });
+
+            ui.add_space(4.0);
+
+            egui::ScrollArea::vertical()
+                .max_height(450.0)
+                .show(ui, |ui| {
+                    // === TRANSFORM SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Transform").strong())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Scale:");
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.scale)
+                                    .range(0.001..=1000.0)
+                                    .speed(0.01)
+                                    .prefix("x"));
+                                if ui.small_button("Reset").clicked() {
+                                    assets.import_settings.scale = 1.0;
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Rotation:");
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.0)
+                                    .range(-360.0..=360.0).speed(1.0).prefix("X: ").suffix("°"));
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.1)
+                                    .range(-360.0..=360.0).speed(1.0).prefix("Y: ").suffix("°"));
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.rotation_offset.2)
+                                    .range(-360.0..=360.0).speed(1.0).prefix("Z: ").suffix("°"));
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Translation:");
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.0)
+                                    .speed(0.1).prefix("X: "));
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.1)
+                                    .speed(0.1).prefix("Y: "));
+                                ui.add(egui::DragValue::new(&mut assets.import_settings.translation_offset.2)
+                                    .speed(0.1).prefix("Z: "));
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Convert Axes:");
+                                egui::ComboBox::from_id_salt("convert_axes")
+                                    .selected_text(match assets.import_settings.convert_axes {
+                                        ConvertAxes::None => "None",
+                                        ConvertAxes::ZUpToYUp => "Z-Up to Y-Up (Blender)",
+                                        ConvertAxes::YUpToZUp => "Y-Up to Z-Up",
+                                        ConvertAxes::FlipX => "Flip X",
+                                        ConvertAxes::FlipZ => "Flip Z",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::None, "None");
+                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::ZUpToYUp, "Z-Up to Y-Up (Blender)");
+                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::YUpToZUp, "Y-Up to Z-Up");
+                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::FlipX, "Flip X");
+                                        ui.selectable_value(&mut assets.import_settings.convert_axes, ConvertAxes::FlipZ, "Flip Z");
+                                    });
+                            });
+                        });
+
+                    // === MESH SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Mesh").strong())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Mesh Handling:");
+                                egui::ComboBox::from_id_salt("mesh_handling")
+                                    .selected_text(match assets.import_settings.mesh_handling {
+                                        MeshHandling::KeepHierarchy => "Keep Hierarchy",
+                                        MeshHandling::ExtractMeshes => "Extract Meshes",
+                                        MeshHandling::FlattenHierarchy => "Flatten Hierarchy",
+                                        MeshHandling::CombineAll => "Combine All",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::KeepHierarchy, "Keep Hierarchy");
+                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::ExtractMeshes, "Extract Meshes");
+                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::FlattenHierarchy, "Flatten Hierarchy");
+                                        ui.selectable_value(&mut assets.import_settings.mesh_handling, MeshHandling::CombineAll, "Combine All");
+                                    });
+                            });
+
+                            if assets.import_settings.mesh_handling == MeshHandling::ExtractMeshes {
+                                ui.label(RichText::new("  Each mesh will be saved as a separate .glb file").color(Color32::GRAY).small());
+                            }
+
+                            ui.checkbox(&mut assets.import_settings.combine_meshes, "Combine meshes with same material");
+
+                            ui.add_space(4.0);
+                            ui.checkbox(&mut assets.import_settings.generate_lods, "Generate LODs");
+                            ui.add_enabled_ui(assets.import_settings.generate_lods, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("LOD Levels:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.lod_count, 1..=6));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("Reduction %:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.lod_reduction, 10.0..=90.0).suffix("%"));
+                                });
+                            });
+                        });
+
+                    // === NORMALS & TANGENTS SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Normals & Tangents").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Normals:");
+                                egui::ComboBox::from_id_salt("normal_import")
+                                    .selected_text(match assets.import_settings.normal_import {
+                                        NormalImportMethod::Import => "Import from File",
+                                        NormalImportMethod::ComputeSmooth => "Compute (Smooth)",
+                                        NormalImportMethod::ComputeFlat => "Compute (Flat)",
+                                        NormalImportMethod::ImportAndRecompute => "Import & Recompute Tangents",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::Import, "Import from File");
+                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ComputeSmooth, "Compute (Smooth)");
+                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ComputeFlat, "Compute (Flat)");
+                                        ui.selectable_value(&mut assets.import_settings.normal_import, NormalImportMethod::ImportAndRecompute, "Import & Recompute Tangents");
+                                    });
+                            });
+
+                            let show_smoothing = matches!(assets.import_settings.normal_import,
+                                NormalImportMethod::ComputeSmooth | NormalImportMethod::ImportAndRecompute);
+                            ui.add_enabled_ui(show_smoothing, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("Smoothing Angle:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.smoothing_angle, 0.0..=180.0).suffix("°"));
+                                });
+                            });
+
+                            ui.horizontal(|ui| {
+                                ui.label("Tangents:");
+                                egui::ComboBox::from_id_salt("tangent_import")
+                                    .selected_text(match assets.import_settings.tangent_import {
+                                        TangentImportMethod::Import => "Import from File",
+                                        TangentImportMethod::ComputeMikkTSpace => "Compute (MikkTSpace)",
+                                        TangentImportMethod::None => "Don't Import",
+                                    })
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::Import, "Import from File");
+                                        ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::ComputeMikkTSpace, "Compute (MikkTSpace)");
+                                        ui.selectable_value(&mut assets.import_settings.tangent_import, TangentImportMethod::None, "Don't Import");
+                                    });
+                            });
+                        });
+
+                    // === MATERIALS & TEXTURES SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Materials & Textures").strong())
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.checkbox(&mut assets.import_settings.import_materials, "Import Materials");
+                            ui.checkbox(&mut assets.import_settings.import_vertex_colors, "Import Vertex Colors");
+
+                            ui.add_space(4.0);
+                            ui.checkbox(&mut assets.import_settings.extract_textures, "Extract Textures");
+                            ui.add_enabled_ui(assets.import_settings.extract_textures, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("Subfolder:");
+                                    ui.text_edit_singleline(&mut assets.import_settings.texture_subfolder);
+                                });
+                                ui.label(RichText::new("  Embedded textures will be extracted to this subfolder").color(Color32::GRAY).small());
+                            });
+                        });
+
+                    // === ANIMATION SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Animation & Skeleton").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.checkbox(&mut assets.import_settings.import_animations, "Import Animations");
+                            ui.checkbox(&mut assets.import_settings.import_skeleton, "Import Skeleton/Bones");
+                            ui.checkbox(&mut assets.import_settings.import_as_skeletal, "Import as Skeletal Mesh");
+
+                            if assets.import_settings.import_as_skeletal {
+                                ui.label(RichText::new("  Mesh will be set up for skeletal animation").color(Color32::GRAY).small());
+                            }
+                        });
+
+                    // === COMPRESSION SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Compression (Draco)").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.checkbox(&mut assets.import_settings.draco_compression, "Enable Draco Compression");
+                            ui.label(RichText::new("Draco compresses mesh geometry for smaller file sizes (glTF/glb)").color(Color32::GRAY).small());
+
+                            ui.add_enabled_ui(assets.import_settings.draco_compression, |ui| {
+                                ui.add_space(4.0);
+                                ui.horizontal(|ui| {
+                                    ui.label("Compression Level:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_compression_level, 0..=10));
+                                });
+                                ui.label(RichText::new("  Higher = smaller file, slower encoding").color(Color32::GRAY).small());
+
+                                ui.add_space(4.0);
+                                ui.label("Quantization Bits (higher = better quality):");
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("Positions:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_position_bits, 8..=16));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("Normals:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_normal_bits, 8..=16));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.add_space(20.0);
+                                    ui.label("UVs:");
+                                    ui.add(egui::Slider::new(&mut assets.import_settings.draco_uv_bits, 8..=16));
+                                });
+                            });
+                        });
+
+                    // === PHYSICS / COLLISION SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Physics & Collision").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.checkbox(&mut assets.import_settings.generate_colliders, "Generate Collision Shapes");
+
+                            ui.add_enabled_ui(assets.import_settings.generate_colliders, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label("Collider Type:");
+                                    egui::ComboBox::from_id_salt("collider_type")
+                                        .selected_text(match assets.import_settings.collider_type {
+                                            ColliderImportType::ConvexHull => "Convex Hull",
+                                            ColliderImportType::Trimesh => "Triangle Mesh",
+                                            ColliderImportType::AABB => "Bounding Box (AABB)",
+                                            ColliderImportType::OBB => "Oriented Box (OBB)",
+                                            ColliderImportType::Capsule => "Capsule (Auto-fit)",
+                                            ColliderImportType::Sphere => "Sphere (Auto-fit)",
+                                            ColliderImportType::Decomposed => "Decomposed (V-HACD)",
+                                            ColliderImportType::SimplifiedMesh => "Simplified Mesh",
+                                        })
+                                        .show_ui(ui, |ui| {
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::ConvexHull, "Convex Hull");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Trimesh, "Triangle Mesh");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::AABB, "Bounding Box (AABB)");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::OBB, "Oriented Box (OBB)");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Capsule, "Capsule (Auto-fit)");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Sphere, "Sphere (Auto-fit)");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::Decomposed, "Decomposed (V-HACD)");
+                                            ui.selectable_value(&mut assets.import_settings.collider_type, ColliderImportType::SimplifiedMesh, "Simplified Mesh");
+                                        });
+                                });
+
+                                ui.checkbox(&mut assets.import_settings.simplify_collision, "Simplify Collision Mesh");
+                                ui.add_enabled_ui(assets.import_settings.simplify_collision, |ui| {
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(20.0);
+                                        ui.label("Simplification:");
+                                        ui.add(egui::Slider::new(&mut assets.import_settings.collision_simplification, 0.1..=1.0)
+                                            .custom_formatter(|v, _| format!("{:.0}%", v * 100.0)));
+                                    });
+                                });
+                            });
+                        });
+
+                    // === LIGHTMAPPING SECTION ===
+                    egui::CollapsingHeader::new(RichText::new("Lightmapping").strong())
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.checkbox(&mut assets.import_settings.generate_lightmap_uvs, "Generate Lightmap UVs");
+
+                            ui.add_enabled_ui(assets.import_settings.generate_lightmap_uvs, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label("UV Channel:");
+                                    ui.add(egui::DragValue::new(&mut assets.import_settings.lightmap_uv_channel)
+                                        .range(0..=7));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Min Resolution:");
+                                    egui::ComboBox::from_id_salt("lightmap_res")
+                                        .selected_text(format!("{}", assets.import_settings.lightmap_resolution))
+                                        .show_ui(ui, |ui| {
+                                            for res in [32, 64, 128, 256, 512, 1024] {
+                                                ui.selectable_value(&mut assets.import_settings.lightmap_resolution, res, format!("{}", res));
+                                            }
+                                        });
+                                });
+                            });
+                        });
+                });
+
+            ui.add_space(8.0);
+            ui.separator();
+            ui.add_space(4.0);
+
+            // Buttons
+            ui.horizontal(|ui| {
+                if ui.button(RichText::new(format!("{} Import", CHECK)).strong()).clicked() {
+                    should_import = true;
                 }
+
+                if ui.button(RichText::new(format!("{} Import All", CHECK))).clicked() {
+                    should_import = true;
+                }
+
+                if ui.button(RichText::new(format!("{} Cancel", X))).clicked() {
+                    assets.show_import_dialog = false;
+                    assets.pending_import_files.clear();
+                }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.small_button("Reset to Defaults").clicked() {
+                        assets.import_settings = Default::default();
+                    }
+                });
+            });
+        });
+
+    if !open {
+        assets.show_import_dialog = false;
+        assets.pending_import_files.clear();
+    }
+
+    if should_import {
+        // Perform the import
+        if let Some(target_folder) = assets.current_folder.clone() {
+            perform_model_import(assets, &target_folder);
+        }
+        assets.show_import_dialog = false;
+        assets.pending_import_files.clear();
+    }
+}
+
+/// Perform the actual import with the configured settings
+fn perform_model_import(assets: &AssetBrowserState, target_folder: &PathBuf) {
+    let _ = std::fs::create_dir_all(target_folder);
+
+    for source_path in &assets.pending_import_files {
+        if let Some(file_name) = source_path.file_name() {
+            let dest_path = target_folder.join(file_name);
+
+            // For now, just copy the file
+            // In a full implementation, you would apply the import settings here
+            // (e.g., scale, coordinate flip, etc. would be stored as metadata
+            // or applied during scene loading)
+            if let Err(e) = std::fs::copy(source_path, &dest_path) {
+                error!("Failed to import {}: {}", source_path.display(), e);
+            } else {
+                info!("Imported: {} (scale: {}, colliders: {})",
+                    dest_path.display(),
+                    assets.import_settings.scale,
+                    assets.import_settings.generate_colliders
+                );
+
+                // TODO: Save import settings as a .meta file alongside the asset
+                // This would allow the settings to be reapplied when the asset is loaded
+            }
+        }
+    }
+}
+
+fn handle_import_request(assets: &mut AssetBrowserState) {
+    if !assets.import_asset_requested {
+        return;
+    }
+
+    assets.import_asset_requested = false;
+
+    // Use the new import flow
+    open_import_file_dialog(assets);
+}
+
+/// Process files that were dropped into the assets panel (import without spawning)
+fn process_pending_file_imports(assets: &mut AssetBrowserState) {
+    if assets.pending_file_imports.is_empty() {
+        return;
+    }
+
+    let Some(target_folder) = assets.current_folder.clone() else {
+        // No folder selected, can't import
+        assets.pending_file_imports.clear();
+        return;
+    };
+
+    let files_to_import = std::mem::take(&mut assets.pending_file_imports);
+
+    for source_path in files_to_import {
+        let file_name = source_path.file_name().unwrap_or_default();
+        let dest_path = target_folder.join(file_name);
+
+        match std::fs::copy(&source_path, &dest_path) {
+            Ok(_) => {
+                info!("Imported to assets: {}", dest_path.display());
+            }
+            Err(e) => {
+                error!("Failed to import {}: {}", source_path.display(), e);
             }
         }
     }
@@ -888,12 +1471,17 @@ fn is_model_file(filename: &str) -> bool {
 }
 
 fn is_scene_file(filename: &str) -> bool {
-    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
-    ext == "scene"
+    // Check for .ron (Bevy scene format)
+    filename.to_lowercase().ends_with(".ron")
 }
 
 fn is_draggable_asset(filename: &str) -> bool {
-    is_model_file(filename) || is_scene_file(filename)
+    is_model_file(filename) || is_scene_file(filename) || is_image_file(filename)
+}
+
+fn is_image_file(filename: &str) -> bool {
+    let ext = filename.rsplit('.').next().unwrap_or("").to_lowercase();
+    matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp")
 }
 
 fn is_script_file(path: &PathBuf) -> bool {
@@ -921,10 +1509,15 @@ fn get_folder_icon_and_color(name: &str) -> (&'static str, Color32) {
 
 /// Get icon and color for a file based on its extension
 fn get_file_icon_and_color(filename: &str) -> (&'static str, Color32) {
+    // Check for Bevy scene files first (.ron)
+    if filename.to_lowercase().ends_with(".ron") {
+        return (FILM_SCRIPT, Color32::from_rgb(115, 191, 242));
+    }
+
     let ext = filename.rsplit('.').next().unwrap_or("");
     match ext.to_lowercase().as_str() {
-        // Scene files
-        "scene" => (FILM_SCRIPT, Color32::from_rgb(115, 191, 242)),
+        // JSON files
+        "json" => (GEAR, Color32::from_rgb(179, 179, 191)),
         // Config files
         "toml" => (GEAR, Color32::from_rgb(179, 179, 191)),
         // Images
@@ -940,7 +1533,7 @@ fn get_file_icon_and_color(filename: &str) -> (&'static str, Color32) {
         // Text/docs
         "txt" | "md" => (FILE_TEXT, Color32::from_rgb(191, 191, 204)),
         // Data files
-        "json" | "ron" | "yaml" | "yml" => (FILE_CODE, Color32::from_rgb(179, 179, 191)),
+        "ron" | "yaml" | "yml" => (FILE_CODE, Color32::from_rgb(179, 179, 191)),
         // Materials (custom extension)
         "mat" | "material" => (GEAR, Color32::from_rgb(217, 140, 191)),
         // Default

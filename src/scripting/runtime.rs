@@ -139,7 +139,7 @@ pub fn run_rhai_scripts(
     let mut parent_changes: HashMap<Entity, TransformChange> = HashMap::new();
     let mut child_changes: HashMap<Entity, TransformChange> = HashMap::new();
 
-    for (entity, mut script_comp, mut transform, parent_ref, children_ref) in scripts.iter_mut() {
+    for (_entity, mut script_comp, mut transform, parent_ref, children_ref) in scripts.iter_mut() {
         if !script_comp.enabled {
             continue;
         }

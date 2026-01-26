@@ -14,9 +14,11 @@ pub mod picking_2d;
 pub use drawing::draw_selection_gizmo;
 pub use grid::draw_grid;
 pub use interaction::{gizmo_hover_system, gizmo_interaction_system, object_drag_system};
-pub use meshes::{setup_gizmo_meshes, update_gizmo_mesh_transforms, update_gizmo_materials, GizmoMesh, GizmoPart, GizmoRoot};
-pub use physics::draw_physics_gizmos;
-pub use state::{BoxSelectionState, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings};
+pub use physics::{
+    draw_physics_gizmos, draw_collider_edit_handles, collider_edit_selection_sync,
+    collider_edit_hover_system, collider_edit_interaction_system, collider_edit_drag_system,
+};
+pub use state::{ColliderEditHandle, DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings};
 
 // 2D gizmo exports
 pub use gizmo_2d::draw_selection_gizmo_2d;

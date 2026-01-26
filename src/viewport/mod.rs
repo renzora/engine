@@ -10,10 +10,10 @@ pub use camera_preview::{
     setup_camera_preview_texture, update_camera_preview, CameraPreviewImage,
 };
 pub use camera2d::{
-    camera2d_controller, setup_editor_camera_2d, toggle_viewport_cameras, Editor2DCamera,
+    camera2d_controller, setup_editor_camera_2d, toggle_viewport_cameras,
 };
 pub use grid2d::draw_grid_2d;
-pub use render_2d::{cleanup_2d_visuals, update_2d_visuals, Editor2DVisual};
+pub use render_2d::{cleanup_2d_visuals, update_2d_visuals};
 pub use texture::{resize_viewport_texture, setup_viewport_texture};
 
 use bevy::prelude::*;
@@ -21,7 +21,7 @@ use bevy::pbr::wireframe::{WireframeConfig, WireframePlugin};
 use std::collections::HashMap;
 
 use crate::core::{AppState, EditorSettings, RenderToggles, SelectionState, ViewportState, VisualizationMode};
-use crate::node_system::{NodeTypeMarker, SceneRoot, SceneType};
+use crate::spawn::{EditorSceneRoot, SceneType};
 use crate::shared::{
     Camera2DData, CameraNodeData, CameraRigData, CollisionShapeData, MeshInstanceData,
     MeshNodeData, PhysicsBodyData, Sprite2DData, UIButtonData, UIImageData, UILabelData,
@@ -145,10 +145,8 @@ fn auto_switch_viewport_mode(
             With<CollisionShapeData>,
         )>,
     >,
-    // SceneRoot query to check scene type
-    scene_roots: Query<&SceneRoot>,
-    // NodeTypeMarker query to check type_id prefix
-    node_markers: Query<&NodeTypeMarker>,
+    // EditorSceneRoot query to check scene type
+    scene_roots: Query<&EditorSceneRoot>,
 ) {
     // Only check when selection changes
     if !selection.is_changed() {
@@ -176,16 +174,6 @@ fn auto_switch_viewport_mode(
         return;
     }
 
-    // Check NodeTypeMarker for 2D nodes (Node2D, etc.)
-    if let Ok(marker) = node_markers.get(entity) {
-        if marker.type_id.starts_with("2d.") {
-            if viewport.viewport_mode != ViewportMode::Mode2D {
-                viewport.viewport_mode = ViewportMode::Mode2D;
-            }
-            return;
-        }
-    }
-
     // Check for 2D/UI data components
     let is_2d = entities_2d.get(entity).is_ok();
 
@@ -207,7 +195,7 @@ fn update_render_toggles(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut original_states: ResMut<OriginalMaterialStates>,
     mut last_state: ResMut<LastRenderState>,
-    mut material_events: EventReader<AssetEvent<StandardMaterial>>,
+    mut material_events: MessageReader<AssetEvent<StandardMaterial>>,
 ) {
     let current_toggles = settings.render_toggles;
     let current_viz = settings.visualization_mode;

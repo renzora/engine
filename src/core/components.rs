@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 /// Marker component for entities visible in the editor hierarchy
-#[derive(Component)]
+#[derive(Component, Reflect)]
+#[reflect(Component)]
 pub struct EditorEntity {
     pub name: String,
     /// Whether the entity is visible in the viewport (eye icon in hierarchy)
@@ -19,17 +20,19 @@ pub struct MainCamera;
 pub struct ViewportCamera;
 
 /// Marker for entities that are part of the scene (saveable)
-#[derive(Component)]
+#[derive(Component, Reflect, Default)]
+#[reflect(Component)]
 pub struct SceneNode;
 
 /// Marks which scene tab an entity belongs to
-#[derive(Component, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub struct SceneTabId(pub usize);
 
 /// Marker for world environment node (ambient light, fog, clear color)
 #[derive(Component)]
 pub struct WorldEnvironmentMarker {
-    pub data: crate::scene_file::WorldEnvironmentData,
+    pub data: crate::shared::WorldEnvironmentData,
 }
 
 /// Marker for audio listener node

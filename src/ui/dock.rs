@@ -6,7 +6,6 @@ use crate::core::{
     EditorEntity, KeyBindings, SceneTabId,
     SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, OrbitCameraState,
 };
-use crate::node_system::NodeRegistry;
 use crate::project::CurrentProject;
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 
@@ -124,7 +123,6 @@ pub struct DockContext<'a> {
     pub meshes: &'a mut Assets<Mesh>,
     pub materials: &'a mut Assets<StandardMaterial>,
     pub current_project: Option<&'a CurrentProject>,
-    pub node_registry: &'a NodeRegistry,
     pub script_registry: &'a ScriptRegistry,
     pub rhai_engine: &'a RhaiScriptEngine,
     pub viewport_texture_id: Option<TextureId>,

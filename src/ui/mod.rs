@@ -1,5 +1,6 @@
 mod panels;
 mod style;
+pub mod inspectors;
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -7,9 +8,9 @@ use bevy_egui::{EguiContexts, EguiTextureHandle};
 
 use crate::commands::CommandHistory;
 use crate::core::{
-    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, EditorEntity, ExportState, KeyBindings, SceneTabId,
+    AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, EditorEntity, ExportState, KeyBindings,
     SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
-    OrbitCameraState, PlayModeState, PlayState,
+    OrbitCameraState, PlayModeState, PlayState, ThumbnailCache,
 };
 use crate::gizmo::GizmoState;
 use crate::viewport::Camera2DState;
@@ -35,8 +36,12 @@ pub struct EditorResources<'w> {
     pub play_mode: ResMut<'w, PlayModeState>,
     pub console: ResMut<'w, ConsoleState>,
     pub command_history: ResMut<'w, CommandHistory>,
+    pub thumbnail_cache: ResMut<'w, ThumbnailCache>,
+    pub component_registry: Res<'w, ComponentRegistry>,
+    pub add_component_popup: ResMut<'w, AddComponentPopupState>,
 }
-use crate::node_system::{self, NodeRegistry, NodeTypeMarker};
+use crate::component_system::{ComponentRegistry, AddComponentPopupState};
+use panels::HierarchyQueries;
 use crate::project::{AppConfig, CurrentProject};
 use crate::scripting::{ScriptRegistry, RhaiScriptEngine};
 use crate::viewport::{CameraPreviewImage, ViewportImage};
@@ -44,8 +49,8 @@ use crate::plugin_core::PluginHost;
 use crate::ui_api::renderer::UiRenderer;
 use crate::ui_api::UiEvent as InternalUiEvent;
 use panels::{
-    render_assets, render_export_dialog, render_hierarchy, render_inspector, render_plugin_menus, render_plugin_panels,
-    render_plugin_toolbar, render_scene_tabs, render_script_editor, render_settings_window,
+    render_assets, render_export_dialog, render_hierarchy, render_inspector, render_plugin_panels,
+    render_scene_tabs, render_script_editor, render_settings_window,
     render_splash, render_status_bar, render_title_bar, render_toolbar, render_viewport,
     InspectorQueries, TITLE_BAR_HEIGHT,
 };
@@ -142,13 +147,12 @@ pub fn editor_ui(
     mut contexts: EguiContexts,
     mut editor: EditorResources,
     mut commands: Commands,
-    entities: Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&node_system::SceneRoot>, Option<&NodeTypeMarker>)>,
+    hierarchy_queries: HierarchyQueries,
     entities_for_inspector: Query<(Entity, &EditorEntity)>,
     mut inspector_queries: InspectorQueries,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     current_project: Option<Res<CurrentProject>>,
-    node_registry: Res<NodeRegistry>,
     script_registry: Res<ScriptRegistry>,
     rhai_engine: Res<RhaiScriptEngine>,
     app_state: Res<State<AppState>>,
@@ -201,6 +205,7 @@ pub fn editor_ui(
         &mut editor.scene_state,
         &mut editor.settings,
         &mut editor.export_state,
+        &mut editor.assets,
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -219,7 +224,6 @@ pub fn editor_ui(
         toolbar_height,
         1600.0, // Default width, will be constrained by panel
         &editor.plugin_host,
-        &node_registry,
         &mut commands,
         &mut meshes,
         &mut materials,
@@ -254,18 +258,18 @@ pub fn editor_ui(
         );
 
         // Render left panel (hierarchy) first - returns actual width after resize
-        let content_start_y = TITLE_BAR_HEIGHT + toolbar_height + tabs_height;
+        let _content_start_y = TITLE_BAR_HEIGHT + toolbar_height + tabs_height;
 
         let active_tab = editor.scene_state.active_scene_tab;
         let (hierarchy_events, hierarchy_width, hierarchy_changed) = render_hierarchy(
             ctx,
             &mut editor.selection,
             &mut editor.hierarchy,
-            &entities,
+            &hierarchy_queries,
             &mut commands,
             &mut meshes,
             &mut materials,
-            &node_registry,
+            &editor.component_registry,
             active_tab,
             stored_hierarchy_width,
             &editor.plugin_host,
@@ -296,6 +300,12 @@ pub fn editor_ui(
             camera_preview_texture_id,
             &editor.plugin_host,
             &mut ui_renderer,
+            &editor.component_registry,
+            &mut editor.add_component_popup,
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut editor.gizmo,
         );
         all_ui_events.extend(inspector_events);
 
@@ -321,6 +331,7 @@ pub fn editor_ui(
             stored_assets_height,
             &editor.plugin_host,
             &mut ui_renderer,
+            &mut editor.thumbnail_cache,
         );
         all_ui_events.extend(bottom_events);
 
@@ -406,6 +417,9 @@ pub fn editor_ui(
         all_ui_events.extend(plugin_events);
     }
 
+    // Handle file drops globally - route to assets panel (import) or viewport (spawn)
+    handle_global_file_drops(ctx, &mut editor.assets, &editor.viewport);
+
     // Forward all UI events to plugins (convert from internal to API type)
     for event in all_ui_events {
         // Handle PanelTabSelected locally to switch active tabs
@@ -490,4 +504,125 @@ fn render_play_mode_overlay(ctx: &bevy_egui::egui::Context, play_mode: &mut Play
                     });
                 });
         });
+}
+
+/// Maximum number of thumbnails to load concurrently
+const MAX_CONCURRENT_THUMBNAIL_LOADS: usize = 8;
+
+/// System to load and register asset thumbnails
+pub fn thumbnail_loading_system(
+    mut contexts: EguiContexts,
+    mut thumbnail_cache: ResMut<ThumbnailCache>,
+    asset_server: Res<AssetServer>,
+    images: Res<Assets<Image>>,
+) {
+    use bevy::asset::LoadState;
+    use std::path::PathBuf;
+
+    // Get the egui context early - if unavailable, skip this frame
+    let Ok(_ctx) = contexts.ctx_mut() else {
+        return;
+    };
+
+    // Count how many are currently loading (have handles but no texture_id yet)
+    let currently_loading = thumbnail_cache
+        .image_handles
+        .keys()
+        .filter(|path| !thumbnail_cache.texture_ids.contains_key(*path))
+        .count();
+
+    // Collect paths that need handles created (limit by max concurrent)
+    let paths_needing_handles: Vec<PathBuf> = thumbnail_cache
+        .loading
+        .iter()
+        .filter(|path| !thumbnail_cache.image_handles.contains_key(*path))
+        .take(MAX_CONCURRENT_THUMBNAIL_LOADS.saturating_sub(currently_loading))
+        .cloned()
+        .collect();
+
+    // Start loading new images
+    for path in paths_needing_handles {
+        let handle: Handle<Image> = asset_server.load(path.clone());
+        thumbnail_cache.image_handles.insert(path, handle);
+    }
+
+    // Check loading status and register textures
+    let handles_to_check: Vec<(PathBuf, Handle<Image>)> = thumbnail_cache
+        .image_handles
+        .iter()
+        .filter(|(path, _)| !thumbnail_cache.texture_ids.contains_key(*path))
+        .map(|(path, handle)| (path.clone(), handle.clone()))
+        .collect();
+
+    for (path, handle) in handles_to_check {
+        match asset_server.get_load_state(&handle) {
+            Some(LoadState::Loaded) => {
+                // Image is loaded, verify it exists in the assets collection
+                if images.contains(&handle) {
+                    // Register with egui
+                    let texture_id = contexts.add_image(EguiTextureHandle::Weak(handle.id()));
+                    thumbnail_cache.texture_ids.insert(path.clone(), texture_id);
+                    thumbnail_cache.loading.remove(&path);
+                }
+            }
+            Some(LoadState::Failed(_)) => {
+                // Failed to load - remove from loading and mark as failed
+                thumbnail_cache.loading.remove(&path);
+                thumbnail_cache.image_handles.remove(&path);
+                thumbnail_cache.failed.insert(path);
+            }
+            _ => {
+                // Still loading, do nothing
+            }
+        }
+    }
+}
+
+/// Handle file drops globally - route to assets panel (import) or viewport (spawn)
+fn handle_global_file_drops(
+    ctx: &bevy_egui::egui::Context,
+    assets: &mut AssetBrowserState,
+    viewport: &ViewportState,
+) {
+    use bevy_egui::egui::{Pos2, Rect};
+
+    // Check if there are any dropped files
+    let dropped_files: Vec<std::path::PathBuf> = ctx.input(|i| {
+        i.raw.dropped_files.iter()
+            .filter_map(|f| f.path.clone())
+            .collect()
+    });
+
+    if dropped_files.is_empty() {
+        return;
+    }
+
+    // Get cursor position when files were dropped
+    let hover_pos = ctx.input(|i| i.pointer.hover_pos());
+    let Some(pos) = hover_pos else {
+        return;
+    };
+
+    // Build assets panel rect from stored bounds
+    let [px, py, pw, ph] = assets.panel_bounds;
+    let assets_rect = Rect::from_min_size(Pos2::new(px, py), bevy_egui::egui::Vec2::new(pw, ph));
+
+    // Build viewport rect
+    let viewport_rect = Rect::from_min_size(
+        Pos2::new(viewport.position[0], viewport.position[1]),
+        bevy_egui::egui::Vec2::new(viewport.size[0], viewport.size[1]),
+    );
+
+    for path in dropped_files {
+        if assets_rect.contains(pos) && assets.current_folder.is_some() {
+            // Dropped in assets panel - queue for import (copy to folder)
+            info!("File dropped in assets panel, importing: {:?}", path);
+            assets.pending_file_imports.push(path);
+        } else if viewport_rect.contains(pos) {
+            // Dropped in viewport - queue for spawning
+            info!("File dropped in viewport, spawning: {:?}", path);
+            assets.files_to_spawn.push(path);
+        }
+        // If dropped elsewhere, ignore
+    }
 }

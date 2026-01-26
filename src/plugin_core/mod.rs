@@ -12,7 +12,7 @@ pub mod traits;
 
 pub use abi::*;
 pub use api::{
-    ContextMenuLocation, EditorApi, EditorApiImpl, InspectorDefinition, MenuItem, MenuLocation,
+    ContextMenuLocation, MenuItem, MenuLocation,
     PanelDefinition, PanelLocation, PendingOperation, StatusBarAlign, StatusBarItem, ToolbarItem,
     TabLocation, PluginTab,
 };

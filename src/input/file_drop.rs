@@ -1,15 +1,13 @@
-use bevy::ecs::world::CommandQueue;
 use bevy::prelude::*;
+use bevy::scene::DynamicSceneRoot;
 use std::path::PathBuf;
 
 use crate::commands::{CommandHistory, SpawnMeshInstanceCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, SelectionState, HierarchyState, AssetBrowserState, SceneTabId, AssetLoadingProgress};
-use crate::node_system::components::{MeshInstanceData, NodeTypeMarker, SceneInstanceData};
-use crate::node_system::registry::NodeRegistry;
-use crate::node_system::scene::loader::spawn_node;
-use crate::node_system::scene::format::SceneData;
-use crate::node_system::SceneRoot;
+use crate::shared::{MeshInstanceData, SceneInstanceData};
+use crate::spawn::EditorSceneRoot;
 use crate::project::CurrentProject;
+use crate::shared::Sprite2DData;
 
 /// Resource to track pending GLB loads
 #[derive(Resource, Default)]
@@ -54,49 +52,50 @@ fn collect_descendants(world: &World, entity: Entity, result: &mut Vec<Entity>) 
     }
 }
 
-/// System to handle file drop events
+/// System to handle file drop events (processes files queued by egui UI)
 pub fn handle_file_drop(
-    mut events: MessageReader<FileDragAndDrop>,
     asset_server: Res<AssetServer>,
     mut pending_loads: ResMut<PendingGltfLoads>,
     mut loading_progress: ResMut<AssetLoadingProgress>,
+    mut assets: ResMut<AssetBrowserState>,
 ) {
-    for event in events.read() {
-        if let FileDragAndDrop::DroppedFile { path_buf, .. } = event {
-            let extension = path_buf
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("")
-                .to_lowercase();
+    // Process files that were dropped in the viewport (queued by egui)
+    let files_to_spawn = std::mem::take(&mut assets.files_to_spawn);
 
-            if extension == "glb" || extension == "gltf" {
-                info!("Loading dropped file: {:?}", path_buf);
+    for path_buf in files_to_spawn {
+        let extension = path_buf
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
 
-                // Get the file name for the entity name
-                let name = path_buf
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("Model")
-                    .to_string();
+        if extension == "glb" || extension == "gltf" {
+            info!("Loading dropped file: {:?}", path_buf);
 
-                // Get file size
-                let file_size = std::fs::metadata(&path_buf)
-                    .map(|m| m.len())
-                    .unwrap_or(0);
+            // Get the file name for the entity name
+            let name = path_buf
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("Model")
+                .to_string();
 
-                // Load the GLTF asset
-                let handle: Handle<Gltf> = asset_server.load(path_buf.clone());
+            // Get file size
+            let file_size = std::fs::metadata(&path_buf)
+                .map(|m| m.len())
+                .unwrap_or(0);
 
-                // Track for progress bar
-                loading_progress.track(&handle, name.clone(), file_size);
+            // Load the GLTF asset
+            let handle: Handle<Gltf> = asset_server.load(path_buf.clone());
 
-                pending_loads.loads.push(PendingLoad {
-                    handle,
-                    name,
-                    path: path_buf.clone(),
-                    spawn_position: None, // Regular file drop spawns at origin
-                });
-            }
+            // Track for progress bar
+            loading_progress.track(&handle, name.clone(), file_size);
+
+            pending_loads.loads.push(PendingLoad {
+                handle,
+                name,
+                path: path_buf.clone(),
+                spawn_position: None, // Regular file drop spawns at origin
+            });
         }
     }
 }
@@ -149,6 +148,178 @@ pub fn handle_asset_panel_drop(
     }
 }
 
+/// System to handle image drops from the assets panel to viewport
+/// Creates a Sprite2D in 2D mode or a textured plane in 3D mode
+pub fn handle_image_panel_drop(
+    mut commands: Commands,
+    mut assets: ResMut<AssetBrowserState>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+    asset_server: Res<AssetServer>,
+    mut selection: ResMut<SelectionState>,
+    mut hierarchy: ResMut<HierarchyState>,
+    scene_roots: Query<(Entity, Option<&SceneTabId>), With<EditorSceneRoot>>,
+    current_project: Option<Res<CurrentProject>>,
+) {
+    let Some(image_drop) = assets.pending_image_drop.take() else {
+        return;
+    };
+
+    // Get the file name for the entity name
+    let name = image_drop.path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("Image")
+        .to_string();
+
+    // Copy to project assets folder and get relative path
+    let texture_path = if let Some(rel_path) = copy_image_to_project_assets(&image_drop.path, current_project.as_deref()) {
+        rel_path
+    } else {
+        // Fallback to absolute path if no project or copy failed
+        image_drop.path.to_string_lossy().to_string()
+    };
+
+    // Find the scene root to parent new entities to
+    let scene_root_entity = scene_roots.iter().next().map(|(e, _)| e);
+
+    if image_drop.is_2d_mode {
+        // Create a Sprite2D node
+        let mut sprite_entity = commands.spawn((
+            Transform::from_translation(image_drop.position),
+            Visibility::default(),
+            EditorEntity {
+                name: name.clone(),
+                visible: true,
+                locked: false,
+            },
+            SceneNode,
+            Sprite2DData {
+                texture_path,
+                color: Vec4::ONE,
+                flip_x: false,
+                flip_y: false,
+                anchor: Vec2::new(0.5, 0.5),
+            },
+        ));
+
+        // Parent to scene root if one exists
+        if let Some(root) = scene_root_entity {
+            sprite_entity.insert(ChildOf(root));
+        }
+
+        let entity = sprite_entity.id();
+
+        info!("Spawned Sprite2D '{}' with texture", name);
+
+        // Auto-select the new entity
+        selection.selected_entity = Some(entity);
+        if let Some(root) = scene_root_entity {
+            hierarchy.expanded_entities.insert(root);
+        }
+    } else {
+        // Create a textured plane in 3D mode
+        // Load the texture
+        let texture_handle: Handle<Image> = asset_server.load(image_drop.path.clone());
+
+        // Create a plane mesh (default 1x1, lying on the ground facing up)
+        let plane_mesh = meshes.add(Plane3d::default().mesh().size(1.0, 1.0));
+
+        // Create a material with the texture
+        let plane_material = materials.add(StandardMaterial {
+            base_color_texture: Some(texture_handle),
+            alpha_mode: AlphaMode::Blend, // Support transparent images
+            unlit: false,
+            double_sided: true,
+            cull_mode: None,
+            ..default()
+        });
+
+        // Create the plane entity
+        let mut plane_entity = commands.spawn((
+            Transform::from_translation(image_drop.position),
+            Visibility::default(),
+            EditorEntity {
+                name: name.clone(),
+                visible: true,
+                locked: false,
+            },
+            SceneNode,
+            TexturedPlaneData {
+                texture_path,
+                width: 1.0,
+                height: 1.0,
+            },
+        ));
+
+        // Parent to scene root if one exists
+        if let Some(root) = scene_root_entity {
+            plane_entity.insert(ChildOf(root));
+        }
+
+        let parent_entity = plane_entity.id();
+
+        // Spawn the actual mesh as a child
+        commands.spawn((
+            Mesh3d(plane_mesh),
+            MeshMaterial3d(plane_material),
+            Transform::default(),
+            Visibility::default(),
+            ChildOf(parent_entity),
+        ));
+
+        info!("Spawned textured plane '{}' with image", name);
+
+        // Auto-select the new entity
+        selection.selected_entity = Some(parent_entity);
+        if let Some(root) = scene_root_entity {
+            hierarchy.expanded_entities.insert(root);
+        }
+        hierarchy.expanded_entities.insert(parent_entity);
+    }
+}
+
+/// Copy an image file to the project's assets folder and return the relative path
+fn copy_image_to_project_assets(source_path: &PathBuf, project: Option<&CurrentProject>) -> Option<String> {
+    let project = project?;
+
+    // Get the file name
+    let file_name = source_path.file_name()?;
+
+    // Create the assets/textures directory if it doesn't exist
+    let textures_dir = project.path.join("assets").join("textures");
+    if let Err(e) = std::fs::create_dir_all(&textures_dir) {
+        error!("Failed to create textures directory: {}", e);
+        return None;
+    }
+
+    // Destination path
+    let dest_path = textures_dir.join(file_name);
+
+    // Copy the file if it's not already in the project
+    if !dest_path.exists() || source_path.canonicalize().ok() != dest_path.canonicalize().ok() {
+        if let Err(e) = std::fs::copy(source_path, &dest_path) {
+            error!("Failed to copy image to project: {}", e);
+            return None;
+        }
+        info!("Copied image to project: {:?}", dest_path);
+    }
+
+    // Return relative path from project root (using forward slashes for cross-platform)
+    Some(format!("assets/textures/{}", file_name.to_string_lossy()))
+}
+
+/// Data component for textured plane nodes
+#[derive(Component, Clone, Debug)]
+pub struct TexturedPlaneData {
+    /// Path to the texture file (relative to assets folder)
+    pub texture_path: String,
+    /// Plane width
+    pub width: f32,
+    /// Plane height
+    pub height: f32,
+}
+
 /// Copy a file to the project's assets folder and return the relative path
 fn copy_to_project_assets(source_path: &PathBuf, project: Option<&CurrentProject>) -> Option<String> {
     let project = project?;
@@ -186,7 +357,7 @@ pub fn spawn_loaded_gltfs(
     gltf_assets: Res<Assets<Gltf>>,
     mut selection: ResMut<SelectionState>,
     mut hierarchy: ResMut<HierarchyState>,
-    scene_roots: Query<(Entity, Option<&SceneTabId>), With<SceneRoot>>,
+    scene_roots: Query<(Entity, Option<&SceneTabId>), With<EditorSceneRoot>>,
     current_project: Option<Res<CurrentProject>>,
     mut command_history: ResMut<CommandHistory>,
 ) {
@@ -233,9 +404,6 @@ pub fn spawn_loaded_gltfs(
                         locked: false,
                     },
                     SceneNode,
-                    NodeTypeMarker {
-                        type_id: "mesh.instance",
-                    },
                     MeshInstanceData {
                         model_path: Some(model_path_str.clone()),
                     },
@@ -467,9 +635,6 @@ pub fn handle_scene_hierarchy_drop(
                 locked: false,
             },
             SceneNode,
-            NodeTypeMarker {
-                type_id: "scene.instance",
-            },
             SceneInstanceData {
                 scene_path: scene_path.to_string_lossy().to_string(),
                 is_open: false,
@@ -491,8 +656,8 @@ pub fn handle_scene_hierarchy_drop(
     }
 }
 
-/// Exclusive system to load scene instance contents
-/// This runs as an exclusive system because it needs to spawn entities and access the registry
+/// Exclusive system to load scene instance contents using Bevy's DynamicScene format
+/// This runs as an exclusive system because it needs to spawn entities
 /// Also handles reloading scene instances when their source scene file is saved
 pub fn load_scene_instances(world: &mut World) {
     // First, check for recently saved scenes and mark affected instances for reload
@@ -570,57 +735,41 @@ pub fn load_scene_instances(world: &mut World) {
         return;
     }
 
-    for (instance_entity, scene_path) in instances_to_load {
-        // Mark as loaded immediately to prevent re-processing
-        if let Ok(mut entity_mut) = world.get_entity_mut(instance_entity) {
-            entity_mut.insert(SceneInstanceLoaded);
-        }
-
-        // Load and parse the scene file
-        let scene_data = match std::fs::read_to_string(&scene_path) {
-            Ok(content) => {
-                match ron::from_str::<SceneData>(&content) {
-                    Ok(data) => data,
-                    Err(e) => {
-                        error!("Failed to parse scene file {}: {}", scene_path, e);
-                        continue;
-                    }
-                }
+    // Load scene instances using Bevy's DynamicScene system
+    world.resource_scope(|world, asset_server: Mut<AssetServer>| {
+        for (instance_entity, scene_path) in instances_to_load {
+            // Mark as loaded immediately to prevent re-processing
+            if let Ok(mut entity_mut) = world.get_entity_mut(instance_entity) {
+                entity_mut.insert(SceneInstanceLoaded);
             }
-            Err(e) => {
-                error!("Failed to read scene file {}: {}", scene_path, e);
+
+            // Convert scene_path to .ron format path
+            let scene_file_path = PathBuf::from(&scene_path);
+            let load_path = if scene_file_path.extension().map_or(false, |e| e == "ron") {
+                scene_file_path.clone()
+            } else {
+                scene_file_path.with_extension("ron")
+            };
+
+            // Check if file exists
+            if !load_path.exists() {
+                error!("Scene file not found for instance: {:?}", load_path);
                 continue;
             }
-        };
 
-        // Spawn the scene contents as children of the instance
-        world.resource_scope(|world, registry: Mut<NodeRegistry>| {
-            world.resource_scope(|world, mut meshes: Mut<Assets<Mesh>>| {
-                world.resource_scope(|world, mut materials: Mut<Assets<StandardMaterial>>| {
-                    let mut command_queue = CommandQueue::default();
-                    let mut commands = Commands::new(&mut command_queue, world);
+            // Load the scene using asset server
+            let scene_handle: Handle<DynamicScene> = asset_server.load(load_path.clone());
 
-                    let mut expanded_entities = Vec::new();
+            // Spawn a DynamicSceneRoot as a child of the instance entity
+            // When the scene loads, its contents will become children of this root
+            world.spawn((
+                DynamicSceneRoot(scene_handle),
+                Transform::default(),
+                Visibility::default(),
+                ChildOf(instance_entity),
+            ));
 
-                    // Spawn all root nodes from the scene as children of the instance
-                    for node_data in &scene_data.root_nodes {
-                        spawn_node(
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            &registry,
-                            node_data,
-                            Some(instance_entity),
-                            &mut expanded_entities,
-                        );
-                    }
-
-                    command_queue.apply(world);
-
-                    info!("Loaded scene instance contents from: {} ({} root nodes)",
-                          scene_path, scene_data.root_nodes.len());
-                });
-            });
-        });
-    }
+            info!("Loading scene instance from: {}", load_path.display());
+        }
+    });
 }

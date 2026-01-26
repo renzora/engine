@@ -2,7 +2,7 @@ use bevy::prelude::*;
 use bevy::math::Isometry3d;
 
 use crate::core::{EditorEntity, SelectionState};
-use crate::node_system::CameraNodeData;
+use crate::shared::CameraNodeData;
 use crate::shared::CameraRigData;
 
 use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SelectionGizmoGroup, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
@@ -16,6 +16,11 @@ pub fn draw_selection_gizmo(
     camera_rigs: Query<(&CameraRigData, Option<&ChildOf>)>,
     parent_transforms: Query<&Transform, Without<CameraRigData>>,
 ) {
+    // Don't draw selection visuals when in collider edit mode
+    if gizmo_state.collider_edit.is_active() {
+        return;
+    }
+
     // Draw selection boxes for all selected entities
     let all_selected = selection.get_all_selected();
     if all_selected.is_empty() {
@@ -51,29 +56,16 @@ pub fn draw_selection_gizmo(
         }
 
         let pos = transform.translation;
-        let scale = transform.scale;
-        let half = (scale * 0.6).max(Vec3::splat(0.3));
 
-        // Draw selection box outline (centered on object) - skip for cameras
+        // Draw a small cross indicator at the object's position instead of a box
+        // This is less distracting than a bounding box that doesn't match the mesh
         let is_camera = cameras.get(*entity).is_ok();
         if !is_camera {
-            // Bottom square
-            gizmos.line(pos + Vec3::new(-half.x, -half.y, -half.z), pos + Vec3::new(half.x, -half.y, -half.z), box_color);
-            gizmos.line(pos + Vec3::new(half.x, -half.y, -half.z), pos + Vec3::new(half.x, -half.y, half.z), box_color);
-            gizmos.line(pos + Vec3::new(half.x, -half.y, half.z), pos + Vec3::new(-half.x, -half.y, half.z), box_color);
-            gizmos.line(pos + Vec3::new(-half.x, -half.y, half.z), pos + Vec3::new(-half.x, -half.y, -half.z), box_color);
-
-            // Top square
-            gizmos.line(pos + Vec3::new(-half.x, half.y, -half.z), pos + Vec3::new(half.x, half.y, -half.z), box_color);
-            gizmos.line(pos + Vec3::new(half.x, half.y, -half.z), pos + Vec3::new(half.x, half.y, half.z), box_color);
-            gizmos.line(pos + Vec3::new(half.x, half.y, half.z), pos + Vec3::new(-half.x, half.y, half.z), box_color);
-            gizmos.line(pos + Vec3::new(-half.x, half.y, half.z), pos + Vec3::new(-half.x, half.y, -half.z), box_color);
-
-            // Vertical lines
-            gizmos.line(pos + Vec3::new(-half.x, -half.y, -half.z), pos + Vec3::new(-half.x, half.y, -half.z), box_color);
-            gizmos.line(pos + Vec3::new(half.x, -half.y, -half.z), pos + Vec3::new(half.x, half.y, -half.z), box_color);
-            gizmos.line(pos + Vec3::new(half.x, -half.y, half.z), pos + Vec3::new(half.x, half.y, half.z), box_color);
-            gizmos.line(pos + Vec3::new(-half.x, -half.y, half.z), pos + Vec3::new(-half.x, half.y, half.z), box_color);
+            let indicator_size = 0.15;
+            // Small corner brackets to indicate selection without being too prominent
+            gizmos.line(pos + Vec3::new(-indicator_size, 0.0, 0.0), pos + Vec3::new(indicator_size, 0.0, 0.0), box_color);
+            gizmos.line(pos + Vec3::new(0.0, -indicator_size, 0.0), pos + Vec3::new(0.0, indicator_size, 0.0), box_color);
+            gizmos.line(pos + Vec3::new(0.0, 0.0, -indicator_size), pos + Vec3::new(0.0, 0.0, indicator_size), box_color);
         }
     }
 
@@ -86,7 +78,8 @@ pub fn draw_selection_gizmo(
         return;
     };
 
-    if gizmo_state.tool != EditorTool::Transform {
+    // Don't show transform gizmo in collider edit mode or if not in transform tool
+    if gizmo_state.tool != EditorTool::Transform || gizmo_state.collider_edit.is_active() {
         return;
     }
 
@@ -409,7 +402,7 @@ fn draw_camera_rig_gizmo(
 
     // Draw simplified view frustum
     let fov_rad = rig_data.fov.to_radians();
-    let near = 0.3;
+    let _near = 0.3;
     let far = 2.0;
     let aspect = 16.0 / 9.0;
 

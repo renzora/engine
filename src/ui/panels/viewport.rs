@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, FontId, Pos2, Rect, Stroke, TextureId, Vec2};
 
-use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState};
+use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop};
 use crate::viewport::Camera2DState;
 
 /// Height of the viewport mode tabs bar
@@ -374,49 +374,77 @@ pub fn render_viewport_content(
                     let norm_x = local_x / content_rect.width();
                     let norm_y = local_y / content_rect.height();
 
-                    // Calculate ground plane intersection
-                    let camera_pos = calculate_camera_position(
-                        orbit.focus,
-                        orbit.distance,
-                        orbit.yaw,
-                        orbit.pitch,
-                    );
+                    // Check if this is an image file
+                    let is_image = is_image_file(&asset_path);
+                    let is_2d_mode = viewport.viewport_mode == ViewportMode::Mode2D;
 
-                    let fov = std::f32::consts::FRAC_PI_4;
-                    let aspect = content_rect.width() / content_rect.height();
+                    if is_2d_mode {
+                        // In 2D mode, calculate position based on 2D camera
+                        // For simplicity, use viewport center as origin with offset based on mouse position
+                        let pos_x = (norm_x - 0.5) * content_rect.width();
+                        let pos_y = (0.5 - norm_y) * content_rect.height(); // Invert Y for screen coords
 
-                    let ndc_x = norm_x * 2.0 - 1.0;
-                    let ndc_y = 1.0 - norm_y * 2.0;
+                        if is_image {
+                            assets.pending_image_drop = Some(PendingImageDrop {
+                                path: asset_path,
+                                position: Vec3::new(pos_x, pos_y, 0.0),
+                                is_2d_mode: true,
+                            });
+                        }
+                        // Note: Models in 2D mode not supported yet
+                    } else {
+                        // 3D mode - calculate ground plane intersection
+                        let camera_pos = calculate_camera_position(
+                            orbit.focus,
+                            orbit.distance,
+                            orbit.yaw,
+                            orbit.pitch,
+                        );
 
-                    let tan_fov = (fov / 2.0).tan();
-                    let ray_view = Vec3::new(
-                        ndc_x * tan_fov * aspect,
-                        ndc_y * tan_fov,
-                        -1.0,
-                    )
-                    .normalize();
+                        let fov = std::f32::consts::FRAC_PI_4;
+                        let aspect = content_rect.width() / content_rect.height();
 
-                    let camera_forward = (orbit.focus - camera_pos).normalize();
-                    let camera_right = camera_forward.cross(Vec3::Y).normalize();
-                    let camera_up = camera_right.cross(camera_forward).normalize();
+                        let ndc_x = norm_x * 2.0 - 1.0;
+                        let ndc_y = 1.0 - norm_y * 2.0;
 
-                    let ray_world = (camera_right * ray_view.x
-                        + camera_up * ray_view.y
-                        - camera_forward * ray_view.z)
+                        let tan_fov = (fov / 2.0).tan();
+                        let ray_view = Vec3::new(
+                            ndc_x * tan_fov * aspect,
+                            ndc_y * tan_fov,
+                            -1.0,
+                        )
                         .normalize();
 
-                    let ground_point = if ray_world.y.abs() > 0.0001 {
-                        let t = -camera_pos.y / ray_world.y;
-                        if t > 0.0 {
-                            camera_pos + ray_world * t
+                        let camera_forward = (orbit.focus - camera_pos).normalize();
+                        let camera_right = camera_forward.cross(Vec3::Y).normalize();
+                        let camera_up = camera_right.cross(camera_forward).normalize();
+
+                        let ray_world = (camera_right * ray_view.x
+                            + camera_up * ray_view.y
+                            - camera_forward * ray_view.z)
+                            .normalize();
+
+                        let ground_point = if ray_world.y.abs() > 0.0001 {
+                            let t = -camera_pos.y / ray_world.y;
+                            if t > 0.0 {
+                                camera_pos + ray_world * t
+                            } else {
+                                Vec3::ZERO
+                            }
                         } else {
                             Vec3::ZERO
-                        }
-                    } else {
-                        Vec3::ZERO
-                    };
+                        };
 
-                    assets.pending_asset_drop = Some((asset_path, ground_point));
+                        if is_image {
+                            assets.pending_image_drop = Some(PendingImageDrop {
+                                path: asset_path,
+                                position: ground_point,
+                                is_2d_mode: false,
+                            });
+                        } else {
+                            assets.pending_asset_drop = Some((asset_path, ground_point));
+                        }
+                    }
                 }
             }
         } else {
@@ -424,6 +452,17 @@ pub fn render_viewport_content(
             assets.dragging_asset = None;
         }
     }
+}
+
+/// Check if a file is an image based on extension
+fn is_image_file(path: &std::path::Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|ext| {
+            let ext_lower = ext.to_lowercase();
+            matches!(ext_lower.as_str(), "png" | "jpg" | "jpeg" | "bmp" | "tga" | "webp")
+        })
+        .unwrap_or(false)
 }
 
 /// Calculate camera position from orbit parameters

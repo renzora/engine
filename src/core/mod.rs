@@ -9,18 +9,22 @@ pub use keybindings::{EditorAction, KeyBinding, KeyBindings, bindable_keys};
 
 // Re-export all resources
 pub use resources::{
-    AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ConsoleState, DefaultCameraEntity, EditorSettings,
-    ExportLogEntry, ExportLogLevel, ExportLogger, ExportState,
-    HierarchyDropPosition, HierarchyDropTarget, HierarchyState, LogEntry, LogLevel, OpenScript,
+    AssetBrowserState, AssetViewMode, BottomPanelTab, BuildError, BuildState, ColliderImportType,
+    CollisionGizmoVisibility, ConsoleState, ConvertAxes, DefaultCameraEntity, EditorSettings,
+    ExportLogLevel, ExportLogger, ExportState,
+    HierarchyDropPosition, HierarchyDropTarget, HierarchyState, LogEntry, LogLevel, MeshHandling,
+    NormalImportMethod, OpenScript, PendingImageDrop,
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, SceneManagerState,
-    SceneTab, ScriptError, SelectionState, TabCameraState, ViewportMode, ViewportState, VisualizationMode, WindowState,
+    SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TangentImportMethod,
+    ThumbnailCache, supports_thumbnail,
+    ViewportMode, ViewportState, VisualizationMode, WindowState,
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)
-pub use crate::gizmo::{BoxSelectionState, DragAxis, EditorTool, GizmoMode, GizmoState};
+pub use crate::gizmo::GizmoState;
 
 use bevy::prelude::*;
-use crate::scene_file::SkyMode;
+use crate::shared::SkyMode;
 
 /// Marker for the procedural sky sun light
 #[derive(Component)]
@@ -45,6 +49,7 @@ impl Plugin for CorePlugin {
             .init_resource::<DefaultCameraEntity>()
             .init_resource::<PlayModeState>()
             .init_resource::<ConsoleState>()
+            .init_resource::<ThumbnailCache>()
             .add_systems(Update, (
                 apply_world_environment,
                 track_asset_loading,

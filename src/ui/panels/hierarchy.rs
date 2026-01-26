@@ -2,20 +2,50 @@ use bevy::prelude::*;
 use bevy_egui::egui::{self, Color32, RichText, Vec2, Pos2, Stroke, Sense, CursorIcon};
 
 use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
+use crate::component_system::{ComponentRegistry, PresetCategory, get_presets_by_category, spawn_preset};
 use crate::core::{EditorEntity, SelectionState, HierarchyState, HierarchyDropPosition, HierarchyDropTarget, SceneTabId, AssetBrowserState, DefaultCameraEntity};
-use crate::node_system::{NodeRegistry, render_node_menu_as_submenus, SceneRoot, NodeTypeMarker};
 use crate::plugin_core::{ContextMenuLocation, MenuItem as PluginMenuItem, PluginHost, TabLocation};
 use crate::scripting::ScriptComponent;
+use crate::shared::{
+    CameraNodeData, CameraRigData, MeshNodeData, Sprite2DData, Camera2DData,
+    UIPanelData, UILabelData, UIButtonData, UIImageData,
+};
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{
     CUBE, SPHERE, CYLINDER, SQUARE, LIGHTBULB, SUN, FLASHLIGHT,
-    VIDEO_CAMERA, GLOBE, SPEAKER_HIGH, TREE_STRUCTURE, DOTS_THREE_OUTLINE,
-    PLUS, TRASH, COPY, ARROW_SQUARE_OUT, PACKAGE, CODE, ATOM,
+    VIDEO_CAMERA, TREE_STRUCTURE, DOTS_THREE_OUTLINE,
+    PLUS, TRASH, COPY, ARROW_SQUARE_OUT, CODE,
     CARET_DOWN, CARET_RIGHT, CUBE_TRANSPARENT, FRAME_CORNERS, BROWSERS, FOLDER_SIMPLE,
-    CUBE_FOCUS, FILE_CODE, EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
+    EYE, EYE_SLASH, LOCK_SIMPLE, LOCK_SIMPLE_OPEN, STAR,
+    IMAGE, STACK, TEXTBOX, CURSOR_CLICK,
 };
+
+/// Queries for component-based icon inference in hierarchy
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct HierarchyComponentQueries<'w, 's> {
+    pub point_lights: Query<'w, 's, Entity, With<PointLight>>,
+    pub directional_lights: Query<'w, 's, Entity, With<DirectionalLight>>,
+    pub spot_lights: Query<'w, 's, Entity, With<SpotLight>>,
+    pub meshes: Query<'w, 's, Entity, With<Mesh3d>>,
+    pub cameras: Query<'w, 's, Entity, With<CameraNodeData>>,
+    pub camera_rigs: Query<'w, 's, Entity, With<CameraRigData>>,
+    pub mesh_data: Query<'w, 's, &'static MeshNodeData>,
+    pub sprites: Query<'w, 's, Entity, With<Sprite2DData>>,
+    pub cameras_2d: Query<'w, 's, Entity, With<Camera2DData>>,
+    pub ui_panels: Query<'w, 's, Entity, With<UIPanelData>>,
+    pub ui_labels: Query<'w, 's, Entity, With<UILabelData>>,
+    pub ui_buttons: Query<'w, 's, Entity, With<UIButtonData>>,
+    pub ui_images: Query<'w, 's, Entity, With<UIImageData>>,
+}
+
+/// Combined hierarchy queries including entities and component checks
+#[derive(bevy::ecs::system::SystemParam)]
+pub struct HierarchyQueries<'w, 's> {
+    pub entities: Query<'w, 's, (Entity, &'static EditorEntity, Option<&'static ChildOf>, Option<&'static Children>, Option<&'static SceneTabId>)>,
+    pub components: HierarchyComponentQueries<'w, 's>,
+}
 
 // Tree line constants
 const INDENT_SIZE: f32 = 20.0;
@@ -36,11 +66,11 @@ pub fn render_hierarchy(
     ctx: &egui::Context,
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
-    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&SceneRoot>, Option<&NodeTypeMarker>)>,
+    hierarchy_queries: &HierarchyQueries,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    node_registry: &NodeRegistry,
+    component_registry: &ComponentRegistry,
     active_tab: usize,
     stored_width: f32,
     plugin_host: &PluginHost,
@@ -53,9 +83,9 @@ pub fn render_hierarchy(
     let mut actual_width = stored_width;
     let mut scene_changed = false;
 
-    // Check if a scene file is being dragged
+    // Check if a scene file is being dragged (.ron format)
     let dragging_scene = assets.dragging_asset.as_ref()
-        .map(|p| p.extension().and_then(|e| e.to_str()).map(|e| e.to_lowercase() == "scene").unwrap_or(false))
+        .map(|p| p.to_string_lossy().to_lowercase().ends_with(".ron"))
         .unwrap_or(false);
 
     // Get plugin tabs for left panel
@@ -115,7 +145,7 @@ pub fn render_hierarchy(
                 }
             } else {
                 // Render normal hierarchy
-                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, entities, commands, meshes, materials, node_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history);
+                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history);
                 ui_events.extend(events);
                 scene_changed = changed;
             }
@@ -161,8 +191,8 @@ pub fn render_hierarchy(
                         let drag_count = hierarchy.drag_entities.len();
                         if drag_count == 1 {
                             // Single entity drag
-                            if let Ok((_, editor_entity, _, _, _, _, _)) = entities.get(hierarchy.drag_entities[0]) {
-                                let (icon, color) = get_node_icon(&editor_entity.name, None);
+                            if let Ok((_, editor_entity, _, _, _)) = hierarchy_queries.entities.get(hierarchy.drag_entities[0]) {
+                                let (icon, color) = get_entity_icon(hierarchy.drag_entities[0], &editor_entity.name, &hierarchy_queries.components);
                                 ui.horizontal(|ui| {
                                     ui.label(RichText::new(icon).color(color));
                                     ui.label(&editor_entity.name);
@@ -190,11 +220,11 @@ pub fn render_hierarchy_content(
     outer_ctx: &egui::Context,
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
-    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&SceneRoot>, Option<&NodeTypeMarker>)>,
+    hierarchy_queries: &HierarchyQueries,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    node_registry: &NodeRegistry,
+    component_registry: &ComponentRegistry,
     active_tab: usize,
     plugin_host: &PluginHost,
     assets: &mut AssetBrowserState,
@@ -206,15 +236,8 @@ pub fn render_hierarchy_content(
     let mut scene_changed = false;
     let ctx = ui.ctx().clone();
 
-    // Find the scene root for current tab
-    let scene_root_entity = entities
-        .iter()
-        .find(|(_, _, _, _, tab_id, scene_root, _)| {
-            scene_root.is_some() && tab_id.map_or(false, |t| t.0 == active_tab)
-        })
-        .map(|(entity, _, _, _, _, _, _)| entity);
-
-    let has_scene_root = scene_root_entity.is_some();
+    // Scene root is no longer required - entities can be root-level directly
+    let scene_root_entity: Option<Entity> = None;
 
     // Handle scene file drop on hierarchy panel
     if dragging_scene {
@@ -243,7 +266,7 @@ pub fn render_hierarchy_content(
     // Compact tab header
     ui.horizontal(|ui| {
         // Tab-style header
-        let tab_rect = ui.available_rect_before_wrap();
+        let _tab_rect = ui.available_rect_before_wrap();
         let tab_height = 24.0;
         let (rect, _) = ui.allocate_exact_size(Vec2::new(80.0, tab_height), egui::Sense::hover());
 
@@ -263,22 +286,20 @@ pub fn render_hierarchy_content(
             Color32::from_rgb(200, 200, 210),
         );
 
-        // Add Node button (compact, on the right)
-        if has_scene_root {
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                let add_response = ui.add(
-                    egui::Button::new(RichText::new(PLUS).size(14.0))
-                        .fill(Color32::from_rgb(51, 115, 191))
-                        .min_size(Vec2::new(24.0, 20.0)),
-                );
+        // Add Entity button (compact, on the right) - always visible
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            let add_response = ui.add(
+                egui::Button::new(RichText::new(PLUS).size(14.0))
+                    .fill(Color32::from_rgb(51, 115, 191))
+                    .min_size(Vec2::new(24.0, 20.0)),
+            );
 
-                egui::Popup::from_toggle_button_response(&add_response)
-                    .show(|ui| {
-                        ui.set_min_width(180.0);
-                        render_node_menu_as_submenus(ui, node_registry, commands, meshes, materials, scene_root_entity, selection, hierarchy);
-                    });
-            });
-        }
+            egui::Popup::from_toggle_button_response(&add_response)
+                .show(|ui| {
+                    ui.set_min_width(180.0);
+                    render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
+                });
+        });
     });
 
     ui.add_space(4.0);
@@ -286,16 +307,21 @@ pub fn render_hierarchy_content(
     // Scene tree
     egui::ScrollArea::vertical().show(ui, |ui| {
         // Collect root entities for current tab (only show entities with matching SceneTabId)
-        let root_entities: Vec<_> = entities
+        let root_entities: Vec<_> = hierarchy_queries.entities
             .iter()
-            .filter(|(_, _, parent, _, tab_id, _, _)| {
+            .filter(|(_, _, parent, _, tab_id)| {
                 parent.is_none() && tab_id.map_or(false, |t| t.0 == active_tab)
             })
             .collect();
 
         if root_entities.is_empty() {
-            // No scene root - show scene type selection
-            render_scene_type_selection(ui, commands, meshes, materials, selection, hierarchy, active_tab);
+            // Empty scene - show add entity prompt
+            ui.add_space(40.0);
+            ui.vertical_centered(|ui| {
+                ui.label(RichText::new("Empty Scene").size(14.0).color(Color32::from_rgb(150, 150, 160)));
+                ui.add_space(8.0);
+                ui.label(RichText::new("Use the + button above to add entities").size(12.0).weak());
+            });
         } else {
             // Clear drop target at start of frame
             hierarchy.drop_target = None;
@@ -305,22 +331,21 @@ pub fn render_hierarchy_content(
 
             let root_count = root_entities.len();
             let mut row_index: usize = 0;
-            for (i, (entity, editor_entity, _, children, _, _, type_marker)) in root_entities.into_iter().enumerate() {
+            for (i, (entity, editor_entity, _, children, _)) in root_entities.into_iter().enumerate() {
                 let is_last = i == root_count - 1;
                 let (events, changed) = render_tree_node(
                     ui,
                     &ctx,
                     selection,
                     hierarchy,
-                    entities,
+                    hierarchy_queries,
                     commands,
                     meshes,
                     materials,
-                    node_registry,
+                    component_registry,
                     entity,
                     editor_entity,
                     children,
-                    type_marker,
                     0,
                     is_last,
                     &mut Vec::new(), // No parent lines for root nodes
@@ -347,7 +372,7 @@ pub fn render_hierarchy_content(
                         let drag_set: std::collections::HashSet<Entity> = drag_entities.iter().copied().collect();
 
                         // Check if drop target is a descendant of any dragged entity (would create cycle)
-                        let is_descendant_of_drag = is_descendant_of_any(drop_target.entity, &drag_set, entities);
+                        let is_descendant_of_drag = is_descendant_of_any(drop_target.entity, &drag_set, &hierarchy_queries.entities);
 
                         if !is_descendant_of_drag {
                             // Find "root" entities in the selection - those whose parent is NOT also selected
@@ -360,7 +385,7 @@ pub fn render_hierarchy_content(
                                         return false;
                                     }
                                     // Check if this entity's parent is also being dragged
-                                    if let Ok((_, _, parent, _, _, _, _)) = entities.get(e) {
+                                    if let Ok((_, _, parent, _, _)) = hierarchy_queries.entities.get(e) {
                                         if let Some(parent) = parent {
                                             // If parent is in the drag set, this is not a root
                                             if drag_set.contains(&parent.0) {
@@ -374,7 +399,7 @@ pub fn render_hierarchy_content(
 
                             for drag_entity in root_drags {
                                 // Apply the drop and get entity to expand (if any)
-                                if let Some(expand_entity) = apply_hierarchy_drop(commands, drag_entity, drop_target, entities) {
+                                if let Some(expand_entity) = apply_hierarchy_drop(commands, drag_entity, drop_target, &hierarchy_queries.entities) {
                                     // Auto-expand parent when dropping as child
                                     hierarchy.expanded_entities.insert(expand_entity);
                                 }
@@ -415,15 +440,14 @@ fn render_tree_node(
     ctx: &egui::Context,
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
-    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&SceneRoot>, Option<&NodeTypeMarker>)>,
+    hierarchy_queries: &HierarchyQueries,
     commands: &mut Commands,
     meshes: &mut Assets<Mesh>,
     materials: &mut Assets<StandardMaterial>,
-    node_registry: &NodeRegistry,
+    component_registry: &ComponentRegistry,
     entity: Entity,
     editor_entity: &EditorEntity,
     children: Option<&Children>,
-    type_marker: Option<&NodeTypeMarker>,
     depth: usize,
     is_last: bool,
     parent_lines: &mut Vec<bool>, // true = draw vertical line at this depth
@@ -438,7 +462,7 @@ fn render_tree_node(
     let is_selected = selection.is_selected(entity);
     // Only count children that are EditorEntity (not internal Bevy children like mesh handles)
     let has_children = children.map_or(false, |c| {
-        c.iter().any(|child| entities.get(child).is_ok())
+        c.iter().any(|child| hierarchy_queries.entities.get(child).is_ok())
     });
     let is_expanded = hierarchy.expanded_entities.contains(&entity);
     let is_being_dragged = hierarchy.is_being_dragged(entity);
@@ -657,9 +681,8 @@ fn render_tree_node(
             ui.add_space(20.0);
         }
 
-        // Icon based on node type or name
-        let type_id = type_marker.map(|m| m.type_id);
-        let (icon, icon_color) = get_node_icon(&editor_entity.name, type_id);
+        // Icon based on components
+        let (icon, icon_color) = get_entity_icon(entity, &editor_entity.name, &hierarchy_queries.components);
         ui.label(RichText::new(icon).color(icon_color).size(15.0));
 
         // Show default camera indicator
@@ -720,7 +743,7 @@ fn render_tree_node(
             }
         } else {
             // Allocate space for the name and handle interactions manually
-            let text = RichText::new(&editor_entity.name).size(13.5);
+            let _text = RichText::new(&editor_entity.name).size(13.5);
             let galley = ui.fonts(|f| f.layout_no_wrap(
                 editor_entity.name.clone(),
                 egui::FontId::proportional(13.5),
@@ -792,7 +815,7 @@ fn render_tree_node(
 
                 // Add Child submenu with categories
                 ui.menu_button(RichText::new(format!("{} Add Child", PLUS)), |ui| {
-                    render_node_menu_as_submenus(ui, node_registry, commands, meshes, materials, Some(entity), selection, hierarchy);
+                    render_preset_menu(ui, commands, meshes, materials, component_registry, Some(entity), selection, hierarchy);
                 });
 
                 // Add Script
@@ -808,13 +831,13 @@ fn render_tree_node(
                 }
 
                 // Camera-specific options
-                if let Some(marker) = type_marker {
-                    if marker.type_id == "camera.camera3d" || marker.type_id == "camera.camera_rig" {
-                        ui.separator();
-                        if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
-                            hierarchy.pending_make_default_camera = Some(entity);
-                            ui.close();
-                        }
+                let is_camera = hierarchy_queries.components.cameras.get(entity).is_ok()
+                    || hierarchy_queries.components.camera_rigs.get(entity).is_ok();
+                if is_camera {
+                    ui.separator();
+                    if ui.button(format!("{} Make Default Camera", STAR)).clicked() {
+                        hierarchy.pending_make_default_camera = Some(entity);
+                        ui.close();
                     }
                 }
 
@@ -924,7 +947,7 @@ fn render_tree_node(
             let child_count = child_entities.len();
 
             for (i, child_entity) in child_entities.into_iter().enumerate() {
-                if let Ok((child, child_editor, _, grandchildren, _, _, child_type_marker)) = entities.get(child_entity) {
+                if let Ok((child, child_editor, _, grandchildren, _)) = hierarchy_queries.entities.get(child_entity) {
                     let child_is_last = i == child_count - 1;
 
                     // Update parent_lines for children
@@ -935,15 +958,14 @@ fn render_tree_node(
                         ctx,
                         selection,
                         hierarchy,
-                        entities,
+                        hierarchy_queries,
                         commands,
                         meshes,
                         materials,
-                        node_registry,
+                        component_registry,
                         child,
                         child_editor,
                         grandchildren,
-                        child_type_marker,
                         depth + 1,
                         child_is_last,
                         parent_lines,
@@ -1019,11 +1041,11 @@ fn render_plugin_context_menu_item(ui: &mut egui::Ui, item: &PluginMenuItem) -> 
 fn is_descendant_of_any(
     entity: Entity,
     ancestors: &std::collections::HashSet<Entity>,
-    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&SceneRoot>, Option<&NodeTypeMarker>)>,
+    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
 ) -> bool {
     // Walk up the parent chain and check if any parent is in the ancestors set
     let mut current = entity;
-    while let Ok((_, _, parent, _, _, _, _)) = entities.get(current) {
+    while let Ok((_, _, parent, _, _)) = entities.get(current) {
         if let Some(parent) = parent {
             if ancestors.contains(&parent.0) {
                 return true;
@@ -1042,13 +1064,13 @@ fn apply_hierarchy_drop(
     commands: &mut Commands,
     drag_entity: Entity,
     drop_target: HierarchyDropTarget,
-    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>, Option<&SceneRoot>, Option<&NodeTypeMarker>)>,
+    entities: &Query<(Entity, &EditorEntity, Option<&ChildOf>, Option<&Children>, Option<&SceneTabId>)>,
 ) -> Option<Entity> {
     // Get the target's parent
     let target_parent = entities
         .get(drop_target.entity)
         .ok()
-        .and_then(|(_, _, parent, _, _, _, _)| parent.map(|p| p.0));
+        .and_then(|(_, _, parent, _, _)| parent.map(|p| p.0));
 
     match drop_target.position {
         HierarchyDropPosition::Before | HierarchyDropPosition::After => {
@@ -1070,161 +1092,67 @@ fn apply_hierarchy_drop(
     }
 }
 
-/// Render scene type selection when no scene root exists
-fn render_scene_type_selection(
-    ui: &mut egui::Ui,
-    commands: &mut Commands,
-    meshes: &mut Assets<Mesh>,
-    materials: &mut Assets<StandardMaterial>,
-    selection: &mut SelectionState,
-    hierarchy: &mut HierarchyState,
-    active_tab: usize,
-) {
-    use crate::node_system::nodes::{SCENE3D, SCENE2D, UI_ROOT, OTHER_ROOT};
-    use crate::core::SceneTabId;
 
-    ui.add_space(20.0);
+/// Get an icon and color for an entity based on its components
+fn get_entity_icon(entity: Entity, name: &str, queries: &HierarchyComponentQueries) -> (&'static str, Color32) {
+    // Check components in priority order
 
-    ui.vertical_centered(|ui| {
-        ui.label(RichText::new("Create New Scene").size(16.0).strong());
-        ui.add_space(4.0);
-        ui.label(RichText::new("Choose a scene type to begin").weak());
-        ui.add_space(16.0);
-
-        let button_width = ui.available_width() - 40.0;
-        let button_height = 42.0;
-
-        // 3D Scene button
-        let scene3d_btn = ui.add_sized(
-            Vec2::new(button_width, button_height),
-            egui::Button::new(
-                RichText::new(format!("{}  3D Scene", CUBE_TRANSPARENT))
-                    .size(14.0)
-                    .color(Color32::from_rgb(140, 191, 242))
-            )
-        );
-        if scene3d_btn.clicked() {
-            let entity = (SCENE3D.spawn_fn)(commands, meshes, materials, None);
-            commands.entity(entity).insert(SceneTabId(active_tab));
-            selection.selected_entity = Some(entity);
-            hierarchy.expanded_entities.insert(entity);
-        }
-        ui.add_space(4.0);
-        ui.label(RichText::new("For 3D games and applications").weak().size(11.0));
-
-        ui.add_space(12.0);
-
-        // 2D Scene button
-        let scene2d_btn = ui.add_sized(
-            Vec2::new(button_width, button_height),
-            egui::Button::new(
-                RichText::new(format!("{}  2D Scene", FRAME_CORNERS))
-                    .size(14.0)
-                    .color(Color32::from_rgb(191, 140, 242))
-            )
-        );
-        if scene2d_btn.clicked() {
-            let entity = (SCENE2D.spawn_fn)(commands, meshes, materials, None);
-            commands.entity(entity).insert(SceneTabId(active_tab));
-            selection.selected_entity = Some(entity);
-            hierarchy.expanded_entities.insert(entity);
-        }
-        ui.add_space(4.0);
-        ui.label(RichText::new("For 2D games and sprites").weak().size(11.0));
-
-        ui.add_space(12.0);
-
-        // UI button
-        let ui_btn = ui.add_sized(
-            Vec2::new(button_width, button_height),
-            egui::Button::new(
-                RichText::new(format!("{}  UI", BROWSERS))
-                    .size(14.0)
-                    .color(Color32::from_rgb(242, 191, 140))
-            )
-        );
-        if ui_btn.clicked() {
-            let entity = (UI_ROOT.spawn_fn)(commands, meshes, materials, None);
-            commands.entity(entity).insert(SceneTabId(active_tab));
-            selection.selected_entity = Some(entity);
-            hierarchy.expanded_entities.insert(entity);
-        }
-        ui.add_space(4.0);
-        ui.label(RichText::new("For user interface layouts").weak().size(11.0));
-
-        ui.add_space(12.0);
-
-        // Other button
-        let other_btn = ui.add_sized(
-            Vec2::new(button_width, button_height),
-            egui::Button::new(
-                RichText::new(format!("{}  Other", FOLDER_SIMPLE))
-                    .size(14.0)
-                    .color(Color32::from_rgb(180, 180, 190))
-            )
-        );
-        if other_btn.clicked() {
-            let entity = (OTHER_ROOT.spawn_fn)(commands, meshes, materials, None);
-            commands.entity(entity).insert(SceneTabId(active_tab));
-            selection.selected_entity = Some(entity);
-            hierarchy.expanded_entities.insert(entity);
-        }
-        ui.add_space(4.0);
-        ui.label(RichText::new("Generic container for any content").weak().size(11.0));
-    });
-}
-
-/// Get an icon and color for a node based on its type_id and name
-fn get_node_icon(name: &str, type_id: Option<&str>) -> (&'static str, Color32) {
-    // First check type_id for accurate icon matching
-    if let Some(type_id) = type_id {
-        match type_id {
-            // Scene roots
-            "scene.3d" => return (CUBE_TRANSPARENT, Color32::from_rgb(140, 191, 242)),
-            "scene.2d" => return (FRAME_CORNERS, Color32::from_rgb(191, 140, 242)),
-            "scene.ui" => return (BROWSERS, Color32::from_rgb(242, 191, 140)),
-            "scene.other" => return (FOLDER_SIMPLE, Color32::from_rgb(180, 180, 190)),
-            // Scene instance (instanced scene reference)
-            "scene.instance" => return (FILE_CODE, Color32::from_rgb(140, 220, 191)),
-
-            // Mesh types
-            "mesh.instance" => return (CUBE_FOCUS, Color32::from_rgb(200, 180, 230)),
-            "mesh.cube" => return (CUBE, Color32::from_rgb(242, 166, 115)),
-            "mesh.sphere" => return (SPHERE, Color32::from_rgb(242, 166, 115)),
-            "mesh.cylinder" => return (CYLINDER, Color32::from_rgb(242, 166, 115)),
-            "mesh.plane" => return (SQUARE, Color32::from_rgb(242, 166, 115)),
-
-            // Lights
-            "light.point" => return (LIGHTBULB, Color32::from_rgb(255, 230, 140)),
-            "light.directional" => return (SUN, Color32::from_rgb(255, 230, 140)),
-            "light.spot" => return (FLASHLIGHT, Color32::from_rgb(255, 230, 140)),
-
-            // Physics bodies
-            "physics.rigidbody3d" => return (ATOM, Color32::from_rgb(166, 242, 200)),
-            "physics.staticbody3d" => return (ATOM, Color32::from_rgb(140, 220, 180)),
-            "physics.kinematicbody3d" => return (ATOM, Color32::from_rgb(120, 200, 160)),
-
-            // Collision shapes
-            "physics.collision_box" => return (CUBE, Color32::from_rgb(166, 242, 200)),
-            "physics.collision_sphere" => return (SPHERE, Color32::from_rgb(166, 242, 200)),
-            "physics.collision_capsule" => return (CYLINDER, Color32::from_rgb(166, 242, 200)),
-            "physics.collision_cylinder" => return (CYLINDER, Color32::from_rgb(166, 242, 200)),
-
-            // Environment
-            "env.world" => return (GLOBE, Color32::from_rgb(140, 217, 191)),
-            "env.audio_listener" => return (SPEAKER_HIGH, Color32::from_rgb(217, 140, 217)),
-
-            // Camera
-            "camera.3d" => return (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242)),
-
-            // Empty node
-            "node.empty" => return (DOTS_THREE_OUTLINE, Color32::from_rgb(180, 180, 190)),
-
-            _ => {} // Fall through to name-based detection
-        }
+    // Cameras (highest priority)
+    if queries.cameras.get(entity).is_ok() {
+        return (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242));
+    }
+    if queries.camera_rigs.get(entity).is_ok() {
+        return (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242));
+    }
+    if queries.cameras_2d.get(entity).is_ok() {
+        return (VIDEO_CAMERA, Color32::from_rgb(242, 140, 191));
     }
 
-    // Fallback to name-based detection
+    // Lights
+    if queries.point_lights.get(entity).is_ok() {
+        return (LIGHTBULB, Color32::from_rgb(255, 230, 140));
+    }
+    if queries.directional_lights.get(entity).is_ok() {
+        return (SUN, Color32::from_rgb(255, 230, 140));
+    }
+    if queries.spot_lights.get(entity).is_ok() {
+        return (FLASHLIGHT, Color32::from_rgb(255, 230, 140));
+    }
+
+    // 3D Meshes - check mesh data for specific type
+    if queries.meshes.get(entity).is_ok() {
+        if let Ok(mesh_data) = queries.mesh_data.get(entity) {
+            use crate::shared::MeshPrimitiveType;
+            return match mesh_data.mesh_type {
+                MeshPrimitiveType::Cube => (CUBE, Color32::from_rgb(242, 166, 115)),
+                MeshPrimitiveType::Sphere => (SPHERE, Color32::from_rgb(242, 166, 115)),
+                MeshPrimitiveType::Cylinder => (CYLINDER, Color32::from_rgb(242, 166, 115)),
+                MeshPrimitiveType::Plane => (SQUARE, Color32::from_rgb(242, 166, 115)),
+            };
+        }
+        return (CUBE, Color32::from_rgb(242, 166, 115));
+    }
+
+    // 2D Sprites
+    if queries.sprites.get(entity).is_ok() {
+        return (IMAGE, Color32::from_rgb(242, 140, 191));
+    }
+
+    // UI Elements
+    if queries.ui_panels.get(entity).is_ok() {
+        return (STACK, Color32::from_rgb(191, 166, 242));
+    }
+    if queries.ui_labels.get(entity).is_ok() {
+        return (TEXTBOX, Color32::from_rgb(191, 166, 242));
+    }
+    if queries.ui_buttons.get(entity).is_ok() {
+        return (CURSOR_CLICK, Color32::from_rgb(191, 166, 242));
+    }
+    if queries.ui_images.get(entity).is_ok() {
+        return (IMAGE, Color32::from_rgb(191, 166, 242));
+    }
+
+    // Fallback to name-based detection for scene roots and special cases
     let name_lower = name.to_lowercase();
 
     // Scene roots
@@ -1241,82 +1169,81 @@ fn get_node_icon(name: &str, type_id: Option<&str>) -> (&'static str, Color32) {
         return (FOLDER_SIMPLE, Color32::from_rgb(180, 180, 190));
     }
 
-    // Physics bodies (check before mesh types since some share words)
-    if name_lower.contains("rigidbody") || name_lower.contains("rigid") && name_lower.contains("body") {
-        return (ATOM, Color32::from_rgb(166, 242, 200));
-    }
-    if name_lower.contains("staticbody") || name_lower.contains("static") && name_lower.contains("body") {
-        return (ATOM, Color32::from_rgb(140, 220, 180));
-    }
-    if name_lower.contains("kinematicbody") || name_lower.contains("kinematic") {
-        return (ATOM, Color32::from_rgb(120, 200, 160));
-    }
-
-    // Collision shapes
-    if name_lower.contains("collision") || name_lower.contains("shape3d") {
-        if name_lower.contains("box") {
-            return (CUBE, Color32::from_rgb(166, 242, 200));
-        }
-        if name_lower.contains("sphere") {
-            return (SPHERE, Color32::from_rgb(166, 242, 200));
-        }
-        if name_lower.contains("capsule") {
-            return (CYLINDER, Color32::from_rgb(166, 242, 200));
-        }
-        if name_lower.contains("cylinder") {
-            return (CYLINDER, Color32::from_rgb(166, 242, 200));
-        }
-        // Generic collision shape
-        return (ATOM, Color32::from_rgb(166, 242, 200));
-    }
-
-    // Mesh types
-    if name_lower.contains("meshinstance") || (name_lower.contains("mesh") && name_lower.contains("instance")) {
-        return (PACKAGE, Color32::from_rgb(166, 217, 242));
-    }
-    if name_lower.contains("cube") {
-        return (CUBE, Color32::from_rgb(242, 166, 115));
-    }
-    if name_lower.contains("sphere") {
-        return (SPHERE, Color32::from_rgb(242, 166, 115));
-    }
-    if name_lower.contains("cylinder") {
-        return (CYLINDER, Color32::from_rgb(242, 166, 115));
-    }
-    if name_lower.contains("plane") {
-        return (SQUARE, Color32::from_rgb(242, 166, 115));
-    }
-
-    // Light types
-    if name_lower.contains("point") && name_lower.contains("light") {
-        return (LIGHTBULB, Color32::from_rgb(255, 230, 140));
-    }
-    if name_lower.contains("directional") || name_lower.contains("sun") {
-        return (SUN, Color32::from_rgb(255, 230, 140));
-    }
-    if name_lower.contains("spot") && name_lower.contains("light") {
-        return (FLASHLIGHT, Color32::from_rgb(255, 230, 140));
-    }
-
-    // Camera
-    if name_lower.contains("camera") {
-        return (VIDEO_CAMERA, Color32::from_rgb(140, 191, 242));
-    }
-
-    // Environment
-    if name_lower.contains("world") || name_lower.contains("environment") {
-        return (GLOBE, Color32::from_rgb(140, 217, 191));
-    }
-    if name_lower.contains("audio") || name_lower.contains("listener") {
-        return (SPEAKER_HIGH, Color32::from_rgb(217, 140, 217));
-    }
-
-    // 3D Models (gltf, obj, fbx imports)
-    if name_lower.contains("model") || name_lower.ends_with(".glb") || name_lower.ends_with(".gltf")
-        || name_lower.ends_with(".obj") || name_lower.ends_with(".fbx") {
-        return (CUBE_FOCUS, Color32::from_rgb(200, 180, 230));
-    }
-
-    // Default - generic node
+    // Default - empty entity
     (DOTS_THREE_OUTLINE, Color32::from_rgb(180, 180, 190))
+}
+
+/// Render the Create menu with presets organized by category
+fn render_preset_menu(
+    ui: &mut egui::Ui,
+    commands: &mut Commands,
+    meshes: &mut Assets<Mesh>,
+    materials: &mut Assets<StandardMaterial>,
+    registry: &ComponentRegistry,
+    parent: Option<Entity>,
+    selection: &mut SelectionState,
+    hierarchy: &mut HierarchyState,
+) {
+    for category in PresetCategory::all_in_order() {
+        // Skip Empty category at top level - we'll show it separately
+        if *category == PresetCategory::Empty {
+            continue;
+        }
+
+        let presets = get_presets_by_category(*category);
+        if presets.is_empty() {
+            continue;
+        }
+
+        let cat_icon = category.icon();
+        let cat_color = get_category_color(*category);
+        let label = format!("{} {}", cat_icon, category.display_name());
+
+        ui.menu_button(RichText::new(label).color(cat_color), |ui| {
+            ui.set_min_width(160.0);
+
+            for preset in presets {
+                let item_label = format!("{} {}", preset.icon, preset.display_name);
+
+                if ui.selectable_label(false, RichText::new(item_label).color(Color32::from_rgb(220, 220, 230))).clicked() {
+                    let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
+                    selection.selected_entity = Some(entity);
+                    if let Some(parent_entity) = parent {
+                        hierarchy.expanded_entities.insert(parent_entity);
+                    }
+                    ui.close();
+                }
+            }
+        });
+    }
+
+    ui.separator();
+
+    // Empty Entity at the bottom
+    let empty_presets = get_presets_by_category(PresetCategory::Empty);
+    for preset in empty_presets {
+        let item_label = format!("{} {}", preset.icon, preset.display_name);
+
+        if ui.selectable_label(false, RichText::new(item_label).color(Color32::from_rgb(180, 180, 190))).clicked() {
+            let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
+            selection.selected_entity = Some(entity);
+            if let Some(parent_entity) = parent {
+                hierarchy.expanded_entities.insert(parent_entity);
+            }
+            ui.close();
+        }
+    }
+}
+
+/// Get color for a preset category
+fn get_category_color(category: PresetCategory) -> Color32 {
+    match category {
+        PresetCategory::Empty => Color32::from_rgb(180, 180, 190),
+        PresetCategory::Objects3D => Color32::from_rgb(242, 166, 115),
+        PresetCategory::Lights => Color32::from_rgb(255, 230, 140),
+        PresetCategory::Cameras => Color32::from_rgb(140, 191, 242),
+        PresetCategory::Physics => Color32::from_rgb(166, 242, 200),
+        PresetCategory::Objects2D => Color32::from_rgb(242, 140, 191),
+        PresetCategory::UI => Color32::from_rgb(191, 166, 242),
+    }
 }

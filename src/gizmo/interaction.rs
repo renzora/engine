@@ -1,7 +1,9 @@
 use bevy::prelude::*;
+use bevy::picking::mesh_picking::ray_cast::{MeshRayCast, MeshRayCastSettings};
 
 use crate::commands::{CommandHistory, SetTransformCommand, queue_command};
 use crate::core::{EditorEntity, SceneNode, ViewportCamera, SelectionState, ViewportState, SceneManagerState};
+use crate::console_info;
 
 use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
@@ -24,8 +26,8 @@ pub fn gizmo_hover_system(
 
     gizmo.hovered_axis = None;
 
-    // Only check gizmo hover in Transform tool mode
-    if gizmo.tool != EditorTool::Transform {
+    // Only check gizmo hover in Transform tool mode, not in collider edit mode
+    if gizmo.tool != EditorTool::Transform || gizmo.collider_edit.is_active() {
         return;
     }
 
@@ -158,9 +160,11 @@ pub fn gizmo_interaction_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
-    mesh_query: Query<(Entity, &GlobalTransform, &EditorEntity)>,
+    editor_entities: Query<(Entity, &GlobalTransform, &EditorEntity)>,
     transforms: Query<&Transform, With<EditorEntity>>,
     parents: Query<&ChildOf, With<SceneNode>>,
+    parent_query: Query<&ChildOf>,
+    mut mesh_ray_cast: MeshRayCast,
     mut command_history: ResMut<CommandHistory>,
 ) {
     let shift_held = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
@@ -199,7 +203,7 @@ pub fn gizmo_interaction_system(
                 // Find all entities within the box
                 let mut entities_in_box = Vec::new();
 
-                for (entity, global_transform, editor_entity) in mesh_query.iter() {
+                for (entity, global_transform, editor_entity) in editor_entities.iter() {
                     if editor_entity.locked {
                         continue;
                     }
@@ -245,6 +249,9 @@ pub fn gizmo_interaction_system(
                     // Clear selection if dragging empty area without modifiers
                     selection.clear();
                 }
+            } else if !shift_held && !ctrl_held {
+                // Single click on empty space (not a drag) - clear selection
+                selection.clear();
             }
             gizmo.box_selection.active = false;
         }
@@ -267,6 +274,11 @@ pub fn gizmo_interaction_system(
 
     // Only process clicks
     if !mouse_button.just_pressed(MouseButton::Left) {
+        return;
+    }
+
+    // Skip if in collider edit mode - collider_edit_interaction_system handles clicks
+    if gizmo.collider_edit.is_active() {
         return;
     }
 
@@ -345,43 +357,46 @@ pub fn gizmo_interaction_system(
         }
     }
 
-    // Do object picking
+    // Do object picking using Bevy's mesh ray casting
     let Some(ray) = get_cursor_ray(&viewport, &windows, &camera_query) else {
         return;
     };
 
+    // Cast ray against all meshes
+    let hits = mesh_ray_cast.cast_ray(ray, &MeshRayCastSettings::default());
+
+    // Find the closest hit that belongs to an EditorEntity (or is a descendant of one)
     let mut closest_entity: Option<Entity> = None;
     let mut closest_distance = f32::MAX;
 
-    for (entity, transform, editor_entity) in mesh_query.iter() {
-        // Skip locked entities
-        if editor_entity.locked {
-            continue;
-        }
+    for (hit_entity, hit) in hits.iter() {
+        // Find the EditorEntity ancestor of this mesh
+        if let Some(editor_entity) = find_editor_entity_ancestor(*hit_entity, &editor_entities, &parent_query) {
+            // Check if this EditorEntity is locked
+            if let Ok((_, _, ee)) = editor_entities.get(editor_entity) {
+                if ee.locked {
+                    continue;
+                }
+            }
 
-        let mesh_pos = transform.translation();
-        let radius = 1.0;
-
-        let oc = ray.origin - mesh_pos;
-        let a = ray.direction.dot(*ray.direction);
-        let b = 2.0 * oc.dot(*ray.direction);
-        let c = oc.dot(oc) - radius * radius;
-        let discriminant = b * b - 4.0 * a * c;
-
-        if discriminant >= 0.0 {
-            let t = (-b - discriminant.sqrt()) / (2.0 * a);
-            if t > 0.0 && t < closest_distance {
-                closest_distance = t;
-                closest_entity = Some(entity);
+            if hit.distance < closest_distance {
+                closest_distance = hit.distance;
+                closest_entity = Some(editor_entity);
             }
         }
     }
 
     if let Some(clicked) = closest_entity {
-        // Check if clicked entity is a descendant of current selection
-        // If so, keep the current selection to avoid accidentally selecting children
-        let should_select = if let Some(current) = selection.selected_entity {
-            !is_descendant_of(clicked, current, &parents)
+        console_info!("Selection", "Clicked on entity {:?} (dist: {:.2})", clicked, closest_distance);
+
+        // In Transform mode, prevent selecting children to avoid accidental child selection while dragging
+        // In Select mode, always allow selecting any entity
+        let should_select = if gizmo.tool == EditorTool::Transform {
+            if let Some(current) = selection.selected_entity {
+                !is_descendant_of(clicked, current, &parents)
+            } else {
+                true
+            }
         } else {
             true
         };
@@ -400,9 +415,11 @@ pub fn gizmo_interaction_system(
             }
         }
     } else {
-        // No entity clicked - start box selection or clear selection
+        console_info!("Selection", "Clicked on empty space - clearing selection");
+
+        // No entity clicked
         if gizmo.tool == EditorTool::Select {
-            // Start box selection
+            // Start box selection in Select mode
             if let Some(window) = windows.iter().next() {
                 if let Some(cursor_pos) = window.cursor_position() {
                     gizmo.box_selection.active = true;
@@ -410,11 +427,38 @@ pub fn gizmo_interaction_system(
                     gizmo.box_selection.current_pos = [cursor_pos.x, cursor_pos.y];
                 }
             }
-        } else if !shift_held && !ctrl_held {
-            // Clear selection when clicking empty space without modifiers
+        }
+
+        // Always clear selection when clicking empty space without modifiers (in any mode)
+        if !shift_held && !ctrl_held && !gizmo.box_selection.active {
             selection.clear();
         }
     }
+}
+
+/// Find the EditorEntity ancestor of a mesh entity
+/// Meshes are typically children (or descendants) of EditorEntity nodes
+fn find_editor_entity_ancestor(
+    entity: Entity,
+    editor_entities: &Query<(Entity, &GlobalTransform, &EditorEntity)>,
+    parent_query: &Query<&ChildOf>,
+) -> Option<Entity> {
+    // Check if this entity itself is an EditorEntity
+    if editor_entities.get(entity).is_ok() {
+        return Some(entity);
+    }
+
+    // Walk up the parent chain to find an EditorEntity
+    let mut current = entity;
+    while let Ok(child_of) = parent_query.get(current) {
+        let parent = child_of.0;
+        if editor_entities.get(parent).is_ok() {
+            return Some(parent);
+        }
+        current = parent;
+    }
+
+    None
 }
 
 /// Check if an entity is a descendant of another entity

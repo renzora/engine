@@ -14,11 +14,10 @@ mod toolbar;
 mod viewport;
 
 pub use assets::render_assets;
-pub use console::render_console_content;
 pub use export::render_export_dialog;
-pub use hierarchy::render_hierarchy;
+pub use hierarchy::{render_hierarchy, HierarchyQueries};
 pub use inspector::{render_inspector, InspectorQueries, property_row};
-pub use plugin_ui::{render_plugin_menus, render_plugin_panels, render_plugin_toolbar, render_status_bar};
+pub use plugin_ui::{render_plugin_panels, render_status_bar};
 pub use scene_tabs::render_scene_tabs;
 pub use script_editor::{render_script_editor, open_script};
 pub use settings::render_settings_window;

@@ -1,0 +1,64 @@
+//! Environment entity spawning
+
+use bevy::prelude::*;
+
+use crate::core::{AudioListenerMarker, EditorEntity, SceneNode, WorldEnvironmentMarker};
+use crate::shared::WorldEnvironmentData;
+use super::{Category, EntityTemplate};
+
+pub static TEMPLATES: &[EntityTemplate] = &[
+    EntityTemplate { name: "World Environment", category: Category::Environment, spawn: spawn_world_environment },
+    EntityTemplate { name: "Audio Listener", category: Category::Environment, spawn: spawn_audio_listener },
+];
+
+pub fn spawn_world_environment(
+    commands: &mut Commands,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<StandardMaterial>,
+    parent: Option<Entity>,
+) -> Entity {
+    let mut entity_commands = commands.spawn((
+        Transform::default(),
+        Visibility::default(),
+        EditorEntity {
+            name: "World Environment".to_string(),
+            visible: true,
+            locked: false,
+        },
+        SceneNode,
+        WorldEnvironmentMarker {
+            data: WorldEnvironmentData::default(),
+        },
+    ));
+
+    if let Some(parent_entity) = parent {
+        entity_commands.insert(ChildOf(parent_entity));
+    }
+
+    entity_commands.id()
+}
+
+pub fn spawn_audio_listener(
+    commands: &mut Commands,
+    _meshes: &mut Assets<Mesh>,
+    _materials: &mut Assets<StandardMaterial>,
+    parent: Option<Entity>,
+) -> Entity {
+    let mut entity_commands = commands.spawn((
+        Transform::default(),
+        Visibility::default(),
+        EditorEntity {
+            name: "Audio Listener".to_string(),
+            visible: true,
+            locked: false,
+        },
+        SceneNode,
+        AudioListenerMarker,
+    ));
+
+    if let Some(parent_entity) = parent {
+        entity_commands.insert(ChildOf(parent_entity));
+    }
+
+    entity_commands.id()
+}
