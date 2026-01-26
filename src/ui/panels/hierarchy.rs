@@ -11,6 +11,7 @@ use crate::shared::{
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
+use super::render_panel_bar_with_action;
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{
@@ -103,6 +104,7 @@ pub fn render_hierarchy(
     egui::SidePanel::left("hierarchy")
         .exact_width(display_width)
         .resizable(false)
+        .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
 
             // Render tab bar if there are plugin tabs
@@ -152,7 +154,7 @@ pub fn render_hierarchy(
         });
 
     // Custom resize handle at the right edge of the panel (full height)
-    let resize_x = display_width - 2.0;
+    let resize_x = display_width - 3.0;
     let resize_height = ctx.screen_rect().height();
 
     egui::Area::new(egui::Id::new("hierarchy_resize"))
@@ -169,10 +171,11 @@ pub fn render_hierarchy(
                 ctx.set_cursor_icon(CursorIcon::ResizeHorizontal);
             }
 
+            // Use pointer position for smooth resizing
             if resize_response.dragged() {
-                let delta = resize_response.drag_delta().x;
-                // Only update actual_width when user resizes
-                actual_width = (display_width + delta).clamp(100.0, max_width);
+                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                    actual_width = pointer_pos.x.clamp(100.0, max_width);
+                }
             }
 
             // Invisible resize handle - just show cursor change
@@ -263,46 +266,30 @@ pub fn render_hierarchy_content(
         }
     }
 
-    // Compact tab header
-    ui.horizontal(|ui| {
-        // Tab-style header
-        let _tab_rect = ui.available_rect_before_wrap();
-        let tab_height = 24.0;
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(80.0, tab_height), egui::Sense::hover());
+    // Panel bar with add button
+    let (bar_response, add_clicked) = render_panel_bar_with_action(
+        ui,
+        TREE_STRUCTURE,
+        "Hierarchy",
+        PLUS,
+        Color32::from_rgb(100, 180, 255),
+    );
 
-        // Draw tab background
-        ui.painter().rect_filled(
-            rect,
-            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
-            Color32::from_rgb(45, 47, 53),
-        );
+    // Show add menu popup when button is clicked
+    let popup_id = ui.id().with("hierarchy_add_popup");
+    if add_clicked {
+        ui.memory_mut(|mem| mem.toggle_popup(popup_id));
+    }
 
-        // Tab text
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            format!("{} Hierarchy", TREE_STRUCTURE),
-            egui::FontId::proportional(12.0),
-            Color32::from_rgb(200, 200, 210),
-        );
-
-        // Add Entity button (compact, on the right) - always visible
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            let add_response = ui.add(
-                egui::Button::new(RichText::new(PLUS).size(14.0))
-                    .fill(Color32::from_rgb(51, 115, 191))
-                    .min_size(Vec2::new(24.0, 20.0)),
-            );
-
-            egui::Popup::from_toggle_button_response(&add_response)
-                .show(|ui| {
-                    ui.set_min_width(180.0);
-                    render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
-                });
-        });
+    egui::popup_below_widget(ui, popup_id, &bar_response, egui::PopupCloseBehavior::CloseOnClickOutside, |ui| {
+        ui.set_min_width(180.0);
+        render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
     });
 
-    ui.add_space(4.0);
+    // Content area with padding
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(4, 4))
+        .show(ui, |ui| {
 
     // Scene tree
     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -415,6 +402,8 @@ pub fn render_hierarchy_content(
             }
         }
     });
+
+    }); // End content frame
 
     // Swap the building order to visible order for next frame's click handling
     std::mem::swap(&mut hierarchy.visible_entity_order, &mut hierarchy.building_entity_order);

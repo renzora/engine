@@ -25,3 +25,127 @@ pub use splash::render_splash;
 pub use title_bar::{render_title_bar, handle_window_actions, TITLE_BAR_HEIGHT};
 pub use toolbar::render_toolbar;
 pub use viewport::render_viewport;
+
+use bevy_egui::egui::{self, Color32, Vec2};
+
+/// Panel bar height constant
+pub const PANEL_BAR_HEIGHT: f32 = 24.0;
+
+/// Renders a consistent panel bar/header with icon and title
+/// Returns the response for the bar area (can be used for drag, etc.)
+pub fn render_panel_bar(
+    ui: &mut egui::Ui,
+    icon: &str,
+    title: &str,
+) -> egui::Response {
+    let available_width = ui.available_width();
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(available_width, PANEL_BAR_HEIGHT),
+        egui::Sense::hover(),
+    );
+
+    // Draw bar background
+    ui.painter().rect_filled(
+        rect,
+        egui::CornerRadius::ZERO,
+        Color32::from_rgb(38, 40, 46),
+    );
+
+    // Draw bottom border
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.min.x, rect.max.y),
+            egui::pos2(rect.max.x, rect.max.y),
+        ],
+        egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+    );
+
+    // Draw icon and title
+    let text = format!("{} {}", icon, title);
+    ui.painter().text(
+        egui::pos2(rect.min.x + 10.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::FontId::proportional(12.0),
+        Color32::from_rgb(180, 182, 190),
+    );
+
+    response
+}
+
+/// Renders a panel bar with an action button on the right side
+pub fn render_panel_bar_with_action(
+    ui: &mut egui::Ui,
+    icon: &str,
+    title: &str,
+    action_icon: &str,
+    action_color: Color32,
+) -> (egui::Response, bool) {
+    let available_width = ui.available_width();
+    let _bar_rect = egui::Rect::from_min_size(
+        ui.cursor().min,
+        Vec2::new(available_width, PANEL_BAR_HEIGHT),
+    );
+
+    // Allocate the full bar
+    let (rect, bar_response) = ui.allocate_exact_size(
+        Vec2::new(available_width, PANEL_BAR_HEIGHT),
+        egui::Sense::hover(),
+    );
+
+    // Draw bar background
+    ui.painter().rect_filled(
+        rect,
+        egui::CornerRadius::ZERO,
+        Color32::from_rgb(38, 40, 46),
+    );
+
+    // Draw bottom border
+    ui.painter().line_segment(
+        [
+            egui::pos2(rect.min.x, rect.max.y),
+            egui::pos2(rect.max.x, rect.max.y),
+        ],
+        egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+    );
+
+    // Draw icon and title
+    let text = format!("{} {}", icon, title);
+    ui.painter().text(
+        egui::pos2(rect.min.x + 10.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        text,
+        egui::FontId::proportional(12.0),
+        Color32::from_rgb(180, 182, 190),
+    );
+
+    // Action button area (right side)
+    let button_size = 20.0;
+    let button_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.max.x - 16.0, rect.center().y),
+        Vec2::splat(button_size),
+    );
+
+    let button_response = ui.interact(button_rect, ui.id().with("panel_action"), egui::Sense::click());
+    let button_hovered = button_response.hovered();
+
+    // Draw button background on hover
+    if button_hovered {
+        ui.painter().rect_filled(
+            button_rect,
+            4.0,
+            Color32::from_rgb(55, 57, 65),
+        );
+    }
+
+    // Draw button icon
+    ui.painter().text(
+        button_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        action_icon,
+        egui::FontId::proportional(14.0),
+        if button_hovered { action_color } else { Color32::from_rgb(140, 142, 150) },
+    );
+
+    (bar_response, button_response.clicked())
+}

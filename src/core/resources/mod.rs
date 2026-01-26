@@ -28,4 +28,4 @@ pub use settings::{CollisionGizmoVisibility, EditorSettings, RenderToggles, Sett
 pub use thumbnails::{ThumbnailCache, supports_thumbnail};
 pub use viewport::{BottomPanelTab, ViewportState};
 pub use crate::viewport::ViewportMode;
-pub use window::WindowState;
+pub use window::{WindowState, ResizeEdge};

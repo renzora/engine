@@ -25,7 +25,7 @@ use bevy::render::{
     settings::{RenderCreation, WgpuSettings},
     RenderPlugin,
 };
-use bevy::window::WindowMode;
+use bevy::window::{WindowMode, WindowResizeConstraints};
 use bevy_egui::EguiPrimaryContextPass;
 
 use crate::core::AppState;
@@ -44,6 +44,12 @@ fn main() {
                         resolution: (800u32, 600u32).into(),
                         position: WindowPosition::Centered(MonitorSelection::Primary),
                         decorations: false,
+                        resizable: true,
+                        resize_constraints: WindowResizeConstraints {
+                            min_width: 800.0,
+                            min_height: 600.0,
+                            ..default()
+                        },
                         ..default()
                     }),
                     ..default()

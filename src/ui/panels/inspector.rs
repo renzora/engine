@@ -28,6 +28,7 @@ use crate::shared::{
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::scripting::{ScriptComponent, ScriptRegistry, RhaiScriptEngine};
 use crate::ui_api::{renderer::UiRenderer, UiEvent};
+use super::render_panel_bar;
 
 // Icon for inspector tab
 use egui_phosphor::regular::SLIDERS_HORIZONTAL;
@@ -50,9 +51,9 @@ pub fn property_row(ui: &mut egui::Ui, row_index: usize, add_contents: impl FnOn
 
     egui::Frame::new()
         .fill(bg_color)
-        .inner_margin(egui::Margin::symmetric(10, 5))
+        .inner_margin(egui::Margin::symmetric(6, 3))
         .show(ui, |ui| {
-            ui.set_min_width(available_width - 20.0);
+            ui.set_min_width(available_width - 12.0);
             add_contents(ui);
         });
 }
@@ -353,6 +354,7 @@ pub fn render_inspector(
     egui::SidePanel::right("inspector")
         .exact_width(display_width)
         .resizable(false)
+        .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
 
             // Render tab bar if there are plugin tabs
@@ -406,7 +408,7 @@ pub fn render_inspector(
         });
 
     // Custom resize handle at the left edge of the panel (full height)
-    let resize_x = screen_width - display_width - 4.0;
+    let resize_x = screen_width - display_width - 3.0;
     let resize_height = ctx.screen_rect().height();
 
     egui::Area::new(egui::Id::new("inspector_resize"))
@@ -423,10 +425,12 @@ pub fn render_inspector(
                 ctx.set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
             }
 
+            // Use pointer position for smooth resizing
             if resize_response.dragged() {
-                let delta = resize_response.drag_delta().x;
-                // Only update actual_width when user resizes
-                actual_width = (display_width - delta).clamp(100.0, max_width);
+                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                    let new_width = screen_width - pointer_pos.x;
+                    actual_width = new_width.clamp(100.0, max_width);
+                }
             }
 
             // Invisible resize handle - just show cursor change
@@ -460,29 +464,13 @@ pub fn render_inspector_content(
     let mut component_to_add: Option<&'static str> = None;
     let mut component_to_remove: Option<&'static str> = None;
 
-    // Compact tab header
-    ui.horizontal(|ui| {
-        let tab_height = 24.0;
-        let (rect, _) = ui.allocate_exact_size(Vec2::new(80.0, tab_height), egui::Sense::hover());
+    // Panel bar
+    render_panel_bar(ui, SLIDERS, "Inspector");
 
-        // Draw tab background
-        ui.painter().rect_filled(
-            rect,
-            egui::CornerRadius { nw: 4, ne: 4, sw: 0, se: 0 },
-            Color32::from_rgb(45, 47, 53),
-        );
-
-        // Tab text
-        ui.painter().text(
-            rect.center(),
-            egui::Align2::CENTER_CENTER,
-            format!("{} Inspector", SLIDERS),
-            egui::FontId::proportional(12.0),
-            Color32::from_rgb(200, 200, 210),
-        );
-    });
-
-    ui.add_space(4.0);
+    // Content area with padding
+    egui::Frame::new()
+        .inner_margin(egui::Margin::symmetric(6, 4))
+        .show(ui, |ui| {
 
     egui::ScrollArea::vertical().show(ui, |ui| {
         if let Some(selected) = selection.selected_entity {
@@ -864,6 +852,8 @@ pub fn render_inspector_content(
             });
         }
     });
+
+    }); // End content frame
 
     // Handle component addition
     if let (Some(type_id), Some(selected)) = (component_to_add, selection.selected_entity) {

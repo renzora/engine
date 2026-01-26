@@ -34,6 +34,9 @@ pub enum EditorAction {
     OpenScene,
     NewScene,
     OpenSettings,
+
+    // View operations
+    ToggleBottomPanel,
 }
 
 impl EditorAction {
@@ -60,6 +63,7 @@ impl EditorAction {
             EditorAction::OpenScene => "Open Scene",
             EditorAction::NewScene => "New Scene",
             EditorAction::OpenSettings => "Settings",
+            EditorAction::ToggleBottomPanel => "Toggle Bottom Panel",
         }
     }
 
@@ -88,6 +92,8 @@ impl EditorAction {
             | EditorAction::OpenScene
             | EditorAction::NewScene
             | EditorAction::OpenSettings => "File",
+
+            EditorAction::ToggleBottomPanel => "View",
         }
     }
 
@@ -120,6 +126,8 @@ impl EditorAction {
             EditorAction::OpenScene,
             EditorAction::NewScene,
             EditorAction::OpenSettings,
+            // View
+            EditorAction::ToggleBottomPanel,
         ]
     }
 }
@@ -216,6 +224,9 @@ impl Default for KeyBindings {
         bindings.insert(EditorAction::OpenScene, KeyBinding::new(KeyCode::KeyO).ctrl());
         bindings.insert(EditorAction::NewScene, KeyBinding::new(KeyCode::KeyN).ctrl());
         bindings.insert(EditorAction::OpenSettings, KeyBinding::new(KeyCode::Comma).ctrl());
+
+        // View defaults
+        bindings.insert(EditorAction::ToggleBottomPanel, KeyBinding::new(KeyCode::Backquote).ctrl());
 
         Self {
             bindings,

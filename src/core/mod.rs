@@ -17,7 +17,7 @@ pub use resources::{
     OrbitCameraState, PlayModeCamera, PlayModeState, PlayState, RenderToggles, SceneManagerState,
     SceneTab, ScriptError, SelectionState, SettingsTab, TabCameraState, TangentImportMethod,
     ThumbnailCache, supports_thumbnail,
-    ViewportMode, ViewportState, VisualizationMode, WindowState,
+    ViewportMode, ViewportState, VisualizationMode, WindowState, ResizeEdge,
 };
 
 // Re-export gizmo types from the gizmo module (they were moved there)

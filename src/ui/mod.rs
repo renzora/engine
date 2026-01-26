@@ -10,7 +10,7 @@ use crate::commands::CommandHistory;
 use crate::core::{
     AppState, AssetLoadingProgress, ConsoleState, DefaultCameraEntity, EditorEntity, ExportState, KeyBindings,
     SelectionState, HierarchyState, ViewportState, SceneManagerState, AssetBrowserState, EditorSettings, WindowState,
-    OrbitCameraState, PlayModeState, PlayState, ThumbnailCache,
+    OrbitCameraState, PlayModeState, PlayState, ThumbnailCache, ResizeEdge,
 };
 use crate::gizmo::GizmoState;
 use crate::viewport::Camera2DState;
@@ -159,6 +159,7 @@ pub fn editor_ui(
     viewport_image: Option<Res<ViewportImage>>,
     camera_preview_image: Option<Res<CameraPreviewImage>>,
     mut ui_renderer: Local<UiRenderer>,
+    keyboard: Res<ButtonInput<KeyCode>>,
 ) {
     // Only run in Editor state (run_if doesn't work with EguiPrimaryContextPass)
     if *app_state.get() != AppState::Editor {
@@ -242,7 +243,14 @@ pub fn editor_ui(
 
     let stored_hierarchy_width = if in_play_mode { 0.0 } else { editor.viewport.hierarchy_width };
     let stored_inspector_width = if in_play_mode { 0.0 } else { editor.viewport.inspector_width };
-    let stored_assets_height = if in_play_mode { 0.0 } else { editor.viewport.assets_height };
+    // Use actual panel height based on minimized state (bar height is 24px)
+    let stored_assets_height = if in_play_mode {
+        0.0
+    } else if editor.viewport.bottom_panel_minimized {
+        24.0
+    } else {
+        editor.viewport.assets_height
+    };
 
     // In play mode, skip scene tabs and panels
     let (scene_tabs_height, actual_hierarchy_width, actual_inspector_width) = if in_play_mode {
@@ -401,6 +409,22 @@ pub fn editor_ui(
             editor.settings.show_settings_window = !editor.settings.show_settings_window;
         }
 
+        // Handle toggle bottom panel shortcut (only if not rebinding)
+        if editor.keybindings.rebinding.is_none() {
+            use crate::core::EditorAction;
+            if editor.keybindings.just_pressed(EditorAction::ToggleBottomPanel, &keyboard) {
+                if editor.viewport.bottom_panel_minimized {
+                    // Restore
+                    editor.viewport.bottom_panel_minimized = false;
+                    editor.viewport.assets_height = editor.viewport.bottom_panel_prev_height;
+                } else {
+                    // Minimize
+                    editor.viewport.bottom_panel_prev_height = editor.viewport.assets_height;
+                    editor.viewport.bottom_panel_minimized = true;
+                }
+            }
+        }
+
         // Render settings window (floating)
         render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
 
@@ -415,6 +439,11 @@ pub fn editor_ui(
         // Render plugin-registered panels (floating windows only for now)
         let plugin_events = render_plugin_panels(ctx, &editor.plugin_host, &mut ui_renderer);
         all_ui_events.extend(plugin_events);
+    }
+
+    // Window resize edges (only in windowed mode, not maximized)
+    if !editor.window_state.is_maximized {
+        render_window_resize_edges(ctx, &mut editor.window_state);
     }
 
     // Handle file drops globally - route to assets panel (import) or viewport (spawn)
@@ -625,4 +654,128 @@ fn handle_global_file_drops(
         }
         // If dropped elsewhere, ignore
     }
+}
+
+/// Render invisible resize edges around the window for custom window resizing
+fn render_window_resize_edges(ctx: &bevy_egui::egui::Context, window_state: &mut WindowState) {
+    use bevy_egui::egui::{self, CursorIcon, Sense, Vec2, Id, Pos2};
+
+    let screen_rect = ctx.screen_rect();
+    let edge_size = 5.0;
+    let corner_size = 10.0;
+
+    // Helper to create resize area
+    let mut create_resize_area = |id: &str, rect: egui::Rect, edge: ResizeEdge, cursor: CursorIcon| {
+        egui::Area::new(Id::new(id))
+            .fixed_pos(rect.min)
+            .order(egui::Order::Foreground)
+            .interactable(true)
+            .show(ctx, |ui| {
+                let (_, response) = ui.allocate_exact_size(rect.size(), Sense::drag());
+
+                if response.hovered() || response.dragged() {
+                    ctx.set_cursor_icon(cursor);
+                }
+
+                if response.drag_started() {
+                    window_state.resize_edge = edge;
+                    window_state.is_resizing = true;
+                }
+
+                if response.drag_stopped() {
+                    window_state.resize_edge = ResizeEdge::None;
+                    window_state.is_resizing = false;
+                    window_state.resize_start_rect = None;
+                    window_state.resize_start_cursor = None;
+                }
+            });
+    };
+
+    // Bottom edge
+    create_resize_area(
+        "resize_bottom",
+        egui::Rect::from_min_size(
+            Pos2::new(corner_size, screen_rect.height() - edge_size),
+            Vec2::new(screen_rect.width() - corner_size * 2.0, edge_size),
+        ),
+        ResizeEdge::Bottom,
+        CursorIcon::ResizeVertical,
+    );
+
+    // Right edge
+    create_resize_area(
+        "resize_right",
+        egui::Rect::from_min_size(
+            Pos2::new(screen_rect.width() - edge_size, corner_size),
+            Vec2::new(edge_size, screen_rect.height() - corner_size * 2.0),
+        ),
+        ResizeEdge::Right,
+        CursorIcon::ResizeHorizontal,
+    );
+
+    // Left edge
+    create_resize_area(
+        "resize_left",
+        egui::Rect::from_min_size(
+            Pos2::new(0.0, corner_size),
+            Vec2::new(edge_size, screen_rect.height() - corner_size * 2.0),
+        ),
+        ResizeEdge::Left,
+        CursorIcon::ResizeHorizontal,
+    );
+
+    // Top edge (below title bar area)
+    create_resize_area(
+        "resize_top",
+        egui::Rect::from_min_size(
+            Pos2::new(corner_size, 0.0),
+            Vec2::new(screen_rect.width() - corner_size * 2.0, edge_size),
+        ),
+        ResizeEdge::Top,
+        CursorIcon::ResizeVertical,
+    );
+
+    // Corner: Bottom-Right
+    create_resize_area(
+        "resize_bottom_right",
+        egui::Rect::from_min_size(
+            Pos2::new(screen_rect.width() - corner_size, screen_rect.height() - corner_size),
+            Vec2::new(corner_size, corner_size),
+        ),
+        ResizeEdge::BottomRight,
+        CursorIcon::ResizeNwSe,
+    );
+
+    // Corner: Bottom-Left
+    create_resize_area(
+        "resize_bottom_left",
+        egui::Rect::from_min_size(
+            Pos2::new(0.0, screen_rect.height() - corner_size),
+            Vec2::new(corner_size, corner_size),
+        ),
+        ResizeEdge::BottomLeft,
+        CursorIcon::ResizeNeSw,
+    );
+
+    // Corner: Top-Right
+    create_resize_area(
+        "resize_top_right",
+        egui::Rect::from_min_size(
+            Pos2::new(screen_rect.width() - corner_size, 0.0),
+            Vec2::new(corner_size, corner_size),
+        ),
+        ResizeEdge::TopRight,
+        CursorIcon::ResizeNeSw,
+    );
+
+    // Corner: Top-Left
+    create_resize_area(
+        "resize_top_left",
+        egui::Rect::from_min_size(
+            Pos2::new(0.0, 0.0),
+            Vec2::new(corner_size, corner_size),
+        ),
+        ResizeEdge::TopLeft,
+        CursorIcon::ResizeNwSe,
+    );
 }

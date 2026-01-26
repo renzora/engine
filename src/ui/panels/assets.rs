@@ -17,7 +17,7 @@ use egui_phosphor::regular::{
     FOLDER, FILE, IMAGE, CUBE, SPEAKER_HIGH, FILE_RS, FILE_TEXT,
     GEAR, FILM_SCRIPT, FILE_CODE, DOWNLOAD, SCROLL, FOLDER_PLUS, CARET_RIGHT,
     MAGNIFYING_GLASS, LIST, SQUARES_FOUR, ARROW_LEFT, HOUSE, FOLDER_OPEN, TERMINAL,
-    PLUS, X, CHECK,
+    PLUS, X, CHECK, CARET_UP, CARET_DOWN,
 };
 use egui_phosphor::fill::FOLDER as FOLDER_FILL;
 
@@ -42,10 +42,17 @@ pub fn render_assets(
     thumbnail_cache: &mut ThumbnailCache,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
-    let panel_height = viewport.assets_height;
     let screen_height = ctx.screen_rect().height();
-    // Ensure bottom panel doesn't exceed safe limits (leave 300px min for viewport + toolbar)
-    let max_height = ((screen_height - 300.0) * 0.5).max(100.0).min(400.0);
+    // Ensure bottom panel doesn't exceed safe limits (max 50% of screen or 400px)
+    let max_height = (screen_height * 0.5).min(400.0).max(100.0);
+    let bar_height = 24.0;
+
+    // Determine actual panel height based on minimized state
+    let panel_height = if viewport.bottom_panel_minimized {
+        bar_height
+    } else {
+        viewport.assets_height
+    };
 
     // Get plugin tabs for bottom panel
     let api = plugin_host.api();
@@ -55,67 +62,238 @@ pub fn render_assets(
     let panel_response = egui::TopBottomPanel::bottom("bottom_panel")
         .exact_height(panel_height)
         .show_separator_line(false)
+        .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
-            // Custom resize handle at the top of the panel
-            let resize_height = 4.0;
-            let (resize_rect, resize_response) = ui.allocate_exact_size(
-                Vec2::new(ui.available_width(), resize_height),
-                Sense::drag(),
+            // Panel bar with tabs (resize handle integrated at top edge)
+            let resize_zone = 4.0; // Invisible resize zone at top of bar
+            let available_width = ui.available_width();
+            let (bar_rect, _) = ui.allocate_exact_size(
+                egui::Vec2::new(available_width, bar_height),
+                Sense::hover(),
             );
 
-            let resize_color = if resize_response.dragged() || resize_response.hovered() {
-                Color32::from_rgb(100, 149, 237)
-            } else {
-                Color32::from_rgb(50, 50, 58)
-            };
-            ui.painter().rect_filled(resize_rect, 0.0, resize_color);
+            // Resize handle - always available (expands panel if minimized)
+            let resize_rect = egui::Rect::from_min_size(
+                bar_rect.min,
+                egui::Vec2::new(available_width, resize_zone),
+            );
+            let resize_response = ui.interact(resize_rect, ui.id().with("bottom_resize"), Sense::drag());
 
             if resize_response.hovered() || resize_response.dragged() {
                 ctx.set_cursor_icon(CursorIcon::ResizeVertical);
             }
 
+            // Use pointer position for smooth resizing
             if resize_response.dragged() {
-                let delta = resize_response.drag_delta().y;
-                viewport.assets_height = (panel_height - delta).clamp(100.0, max_height);
-            }
-
-            ui.add_space(2.0);
-
-            // Tab bar
-            ui.horizontal(|ui| {
-                ui.add_space(4.0);
-
-                // Assets tab - selected if no plugin tab is active and bottom_panel_tab is Assets
-                let assets_selected = active_plugin_tab.is_none() && viewport.bottom_panel_tab == BottomPanelTab::Assets;
-                if render_tab_button(ui, FOLDER_OPEN, "Assets", assets_selected) {
-                    viewport.bottom_panel_tab = BottomPanelTab::Assets;
-                    ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
-                }
-
-                // Console tab with error indicator
-                let console_selected = active_plugin_tab.is_none() && viewport.bottom_panel_tab == BottomPanelTab::Console;
-                let error_count = console.entries.iter().filter(|e| e.level == LogLevel::Error).count();
-                let warning_count = console.entries.iter().filter(|e| e.level == LogLevel::Warning).count();
-
-                if render_tab_button_with_badge(ui, TERMINAL, "Console", console_selected, error_count, warning_count) {
-                    viewport.bottom_panel_tab = BottomPanelTab::Console;
-                    ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
-                }
-
-                // Plugin tabs
-                for tab in &plugin_tabs {
-                    let is_selected = active_plugin_tab == Some(tab.id.as_str());
-                    let tab_icon = tab.icon.as_deref().unwrap_or("");
-                    if render_tab_button(ui, tab_icon, &tab.title, is_selected) {
-                        ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: tab.id.clone() });
+                if let Some(pointer_pos) = ctx.pointer_interact_pos() {
+                    let new_height = screen_height - pointer_pos.y;
+                    viewport.assets_height = new_height.clamp(bar_height, max_height);
+                    // Auto-expand if dragging while minimized
+                    if viewport.bottom_panel_minimized && new_height > bar_height + 10.0 {
+                        viewport.bottom_panel_minimized = false;
                     }
                 }
-            });
+            }
 
-            ui.add_space(2.0);
+            // Draw bar background
+            ui.painter().rect_filled(
+                bar_rect,
+                CornerRadius::ZERO,
+                Color32::from_rgb(38, 40, 46),
+            );
 
-            // Tab content
-            if let Some(tab_id) = active_plugin_tab {
+            // Draw bottom border
+            ui.painter().line_segment(
+                [
+                    egui::pos2(bar_rect.min.x, bar_rect.max.y),
+                    egui::pos2(bar_rect.max.x, bar_rect.max.y),
+                ],
+                egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+            );
+
+            // Draw tabs inside the bar
+            let mut tab_x = bar_rect.min.x + 8.0;
+            let tab_y = bar_rect.min.y;
+            let tab_height = bar_height;
+
+            // Assets tab
+            let assets_selected = active_plugin_tab.is_none() && viewport.bottom_panel_tab == BottomPanelTab::Assets;
+            let assets_text = format!("{} Assets", FOLDER_OPEN);
+            let assets_width = 70.0;
+            let assets_rect = egui::Rect::from_min_size(
+                egui::pos2(tab_x, tab_y),
+                egui::Vec2::new(assets_width, tab_height),
+            );
+
+            let assets_response = ui.interact(assets_rect, ui.id().with("assets_tab"), Sense::click());
+            if assets_response.clicked() {
+                viewport.bottom_panel_tab = BottomPanelTab::Assets;
+                ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
+            }
+
+            let assets_bg = if assets_selected {
+                Color32::from_rgb(50, 52, 60)
+            } else if assets_response.hovered() {
+                Color32::from_rgb(45, 47, 55)
+            } else {
+                Color32::TRANSPARENT
+            };
+            if assets_bg != Color32::TRANSPARENT {
+                ui.painter().rect_filled(assets_rect, 0.0, assets_bg);
+            }
+            ui.painter().text(
+                assets_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &assets_text,
+                egui::FontId::proportional(12.0),
+                if assets_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+            );
+
+            tab_x += assets_width + 4.0;
+
+            // Console tab
+            let console_selected = active_plugin_tab.is_none() && viewport.bottom_panel_tab == BottomPanelTab::Console;
+            let error_count = console.entries.iter().filter(|e| e.level == LogLevel::Error).count();
+            let warning_count = console.entries.iter().filter(|e| e.level == LogLevel::Warning).count();
+
+            let console_text = if error_count > 0 {
+                format!("{} Console ({})", TERMINAL, error_count)
+            } else if warning_count > 0 {
+                format!("{} Console ({})", TERMINAL, warning_count)
+            } else {
+                format!("{} Console", TERMINAL)
+            };
+            let console_width = if error_count > 0 || warning_count > 0 { 95.0 } else { 75.0 };
+            let console_rect = egui::Rect::from_min_size(
+                egui::pos2(tab_x, tab_y),
+                egui::Vec2::new(console_width, tab_height),
+            );
+
+            let console_response = ui.interact(console_rect, ui.id().with("console_tab"), Sense::click());
+            if console_response.clicked() {
+                viewport.bottom_panel_tab = BottomPanelTab::Console;
+                ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: String::new() });
+            }
+
+            let console_bg = if console_selected {
+                Color32::from_rgb(50, 52, 60)
+            } else if console_response.hovered() {
+                Color32::from_rgb(45, 47, 55)
+            } else {
+                Color32::TRANSPARENT
+            };
+            if console_bg != Color32::TRANSPARENT {
+                ui.painter().rect_filled(console_rect, 0.0, console_bg);
+            }
+
+            let console_color = if error_count > 0 {
+                Color32::from_rgb(220, 100, 100)
+            } else if warning_count > 0 {
+                Color32::from_rgb(220, 180, 100)
+            } else if console_selected {
+                Color32::WHITE
+            } else {
+                Color32::from_rgb(160, 162, 170)
+            };
+            ui.painter().text(
+                console_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                &console_text,
+                egui::FontId::proportional(12.0),
+                console_color,
+            );
+
+            tab_x += console_width + 4.0;
+
+            // Plugin tabs
+            for tab in &plugin_tabs {
+                let is_selected = active_plugin_tab == Some(tab.id.as_str());
+                let tab_icon = tab.icon.as_deref().unwrap_or("");
+                let tab_text = format!("{} {}", tab_icon, tab.title);
+                let plugin_tab_width = 80.0;
+                let plugin_rect = egui::Rect::from_min_size(
+                    egui::pos2(tab_x, tab_y),
+                    egui::Vec2::new(plugin_tab_width, tab_height),
+                );
+
+                let plugin_response = ui.interact(plugin_rect, ui.id().with(&tab.id), Sense::click());
+                if plugin_response.clicked() {
+                    ui_events.push(UiEvent::PanelTabSelected { location: 2, tab_id: tab.id.clone() });
+                }
+
+                let plugin_bg = if is_selected {
+                    Color32::from_rgb(50, 52, 60)
+                } else if plugin_response.hovered() {
+                    Color32::from_rgb(45, 47, 55)
+                } else {
+                    Color32::TRANSPARENT
+                };
+                if plugin_bg != Color32::TRANSPARENT {
+                    ui.painter().rect_filled(plugin_rect, 0.0, plugin_bg);
+                }
+                ui.painter().text(
+                    plugin_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &tab_text,
+                    egui::FontId::proportional(12.0),
+                    if is_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                );
+
+                tab_x += plugin_tab_width + 4.0;
+            }
+            let _ = tab_x; // Suppress unused warning
+
+            // Toggle button on the right side of the bar
+            let toggle_size = 20.0;
+            let toggle_rect = egui::Rect::from_center_size(
+                egui::pos2(bar_rect.max.x - 16.0, bar_rect.center().y),
+                egui::Vec2::splat(toggle_size),
+            );
+
+            let toggle_response = ui.interact(toggle_rect, ui.id().with("bottom_toggle"), Sense::click());
+            let toggle_hovered = toggle_response.hovered();
+
+            // Draw toggle button background on hover
+            if toggle_hovered {
+                ui.painter().rect_filled(
+                    toggle_rect,
+                    4.0,
+                    Color32::from_rgb(55, 57, 65),
+                );
+            }
+
+            // Draw toggle icon (up arrow when expanded, down arrow when minimized)
+            let toggle_icon = if viewport.bottom_panel_minimized { CARET_UP } else { CARET_DOWN };
+            ui.painter().text(
+                toggle_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                toggle_icon,
+                egui::FontId::proportional(14.0),
+                if toggle_hovered { Color32::WHITE } else { Color32::from_rgb(140, 142, 150) },
+            );
+
+            // Handle toggle click
+            if toggle_response.clicked() {
+                if viewport.bottom_panel_minimized {
+                    // Restore previous height
+                    viewport.bottom_panel_minimized = false;
+                    viewport.assets_height = viewport.bottom_panel_prev_height;
+                } else {
+                    // Save current height and minimize
+                    viewport.bottom_panel_prev_height = viewport.assets_height;
+                    viewport.bottom_panel_minimized = true;
+                }
+            }
+
+            // Only show content when not minimized
+            if !viewport.bottom_panel_minimized {
+                // Content area with padding
+                egui::Frame::new()
+                    .inner_margin(egui::Margin::symmetric(4, 4))
+                    .show(ui, |ui| {
+
+                // Tab content
+                if let Some(tab_id) = active_plugin_tab {
                 // Render plugin tab content
                 if let Some(widgets) = api.get_tab_content(tab_id) {
                     egui::ScrollArea::vertical().show(ui, |ui| {
@@ -137,6 +315,9 @@ pub fn render_assets(
                     }
                 }
             }
+
+                }); // End content frame
+            } // End if !minimized
         });
 
     // Store the panel bounds for global file drop detection (in mod.rs)
@@ -153,82 +334,6 @@ pub fn render_assets(
     process_pending_file_imports(assets);
 
     ui_events
-}
-
-fn render_tab_button(ui: &mut egui::Ui, icon: &str, label: &str, selected: bool) -> bool {
-    let bg_color = if selected {
-        Color32::from_rgb(50, 50, 60)
-    } else {
-        Color32::TRANSPARENT
-    };
-
-    let text_color = if selected {
-        Color32::WHITE
-    } else {
-        Color32::from_rgb(150, 150, 160)
-    };
-
-    let response = ui.add(
-        egui::Button::new(
-            RichText::new(format!("{} {}", icon, label))
-                .size(12.0)
-                .color(text_color)
-        )
-        .fill(bg_color)
-        .corner_radius(CornerRadius::same(4))
-    );
-
-    response.clicked()
-}
-
-fn render_tab_button_with_badge(
-    ui: &mut egui::Ui,
-    icon: &str,
-    label: &str,
-    selected: bool,
-    error_count: usize,
-    warning_count: usize,
-) -> bool {
-    let bg_color = if selected {
-        Color32::from_rgb(50, 50, 60)
-    } else {
-        Color32::TRANSPARENT
-    };
-
-    let text_color = if selected {
-        Color32::WHITE
-    } else {
-        Color32::from_rgb(150, 150, 160)
-    };
-
-    let mut text = format!("{} {}", icon, label);
-
-    // Add badge for errors/warnings
-    if error_count > 0 {
-        text = format!("{} ({})", text, error_count);
-    } else if warning_count > 0 {
-        text = format!("{} ({})", text, warning_count);
-    }
-
-    let badge_color = if error_count > 0 {
-        Color32::from_rgb(220, 80, 80)
-    } else if warning_count > 0 {
-        Color32::from_rgb(230, 180, 80)
-    } else {
-        text_color
-    };
-
-    let response = ui.add(
-        egui::Button::new(
-            RichText::new(text)
-                .size(12.0)
-                .color(if error_count > 0 || warning_count > 0 { badge_color } else { text_color })
-        )
-        .fill(bg_color)
-        .corner_radius(CornerRadius::same(4))
-    );
-
-    response.clicked()
 }
 
 /// Render assets content (for use in docking)

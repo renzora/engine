@@ -27,6 +27,10 @@ pub struct ViewportState {
     pub bottom_panel_tab: BottomPanelTab,
     /// Current viewport mode (2D or 3D)
     pub viewport_mode: ViewportMode,
+    /// Whether the bottom panel is minimized (showing only the bar)
+    pub bottom_panel_minimized: bool,
+    /// Previous height before minimizing (for restore)
+    pub bottom_panel_prev_height: f32,
 }
 
 impl Default for ViewportState {
@@ -40,6 +44,8 @@ impl Default for ViewportState {
             assets_height: 200.0,
             bottom_panel_tab: BottomPanelTab::Assets,
             viewport_mode: ViewportMode::default(),
+            bottom_panel_minimized: false,
+            bottom_panel_prev_height: 200.0,
         }
     }
 }

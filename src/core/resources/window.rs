@@ -1,5 +1,20 @@
 use bevy::prelude::*;
 
+/// Which edge(s) of the window are being resized
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+pub enum ResizeEdge {
+    #[default]
+    None,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+
 /// Window management state for custom title bar
 #[derive(Resource, Default)]
 pub struct WindowState {
@@ -17,6 +32,14 @@ pub struct WindowState {
     pub is_being_dragged: bool,
     /// Drag offset for manual window dragging
     pub drag_offset: Option<(f32, f32)>,
+    /// Which edge is being resized
+    pub resize_edge: ResizeEdge,
+    /// Whether the window is currently being resized
+    pub is_resizing: bool,
+    /// Initial window rect when resize started
+    pub resize_start_rect: Option<(i32, i32, u32, u32)>, // x, y, width, height
+    /// Initial cursor position when resize started
+    pub resize_start_cursor: Option<(i32, i32)>,
 }
 
 impl WindowState {
