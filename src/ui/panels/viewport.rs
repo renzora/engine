@@ -697,14 +697,16 @@ fn calculate_ruler_tick_spacing(zoom: f32) -> f32 {
 fn world_to_screen_x(world_x: f32, camera2d_state: &Camera2DState, viewport: &ViewportState) -> f32 {
     let relative_x = world_x - camera2d_state.pan_offset.x;
     let screen_relative = relative_x * camera2d_state.zoom;
-    viewport.position[0] + RULER_SIZE + viewport.size[0] / 2.0 + screen_relative
+    // viewport.position already accounts for ruler offset
+    viewport.position[0] + viewport.size[0] / 2.0 + screen_relative
 }
 
 /// Convert world Y coordinate to screen Y coordinate
 fn world_to_screen_y(world_y: f32, camera2d_state: &Camera2DState, viewport: &ViewportState) -> f32 {
     let relative_y = world_y - camera2d_state.pan_offset.y;
     let screen_relative = -relative_y * camera2d_state.zoom; // Y is inverted in screen coords
-    viewport.position[1] + VIEWPORT_TABS_HEIGHT + RULER_SIZE + viewport.size[1] / 2.0 + screen_relative
+    // viewport.position already accounts for tabs and ruler offset
+    viewport.position[1] + viewport.size[1] / 2.0 + screen_relative
 }
 
 /// Render viewport content (for use in docking)

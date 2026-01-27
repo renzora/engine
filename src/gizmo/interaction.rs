@@ -10,7 +10,7 @@ use super::picking::{
     get_cursor_ray, ray_box_intersection, ray_circle_intersection_point, ray_plane_intersection,
     ray_quad_intersection, ray_to_axis_closest_point, ray_to_axis_distance, ray_to_circle_distance,
 };
-use super::{DragAxis, EditorTool, GizmoMode, GizmoState, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
+use super::{DragAxis, EditorTool, GizmoMode, GizmoState, SnapSettings, GIZMO_CENTER_SIZE, GIZMO_PICK_THRESHOLD, GIZMO_PLANE_OFFSET, GIZMO_PLANE_SIZE, GIZMO_SIZE};
 
 pub fn gizmo_hover_system(
     mut gizmo: ResMut<GizmoState>,
@@ -493,6 +493,7 @@ pub fn object_drag_system(
     viewport: Res<ViewportState>,
     modal: Res<ModalTransformState>,
     mouse_button: Res<ButtonInput<MouseButton>>,
+    keyboard: Res<ButtonInput<KeyCode>>,
     windows: Query<&Window>,
     camera_query: Query<(&Camera, &GlobalTransform), With<ViewportCamera>>,
     mut transforms: Query<&mut Transform, With<EditorEntity>>,
@@ -524,6 +525,23 @@ pub fn object_drag_system(
 
     let Ok((_, cam_global)) = camera_query.single() else {
         return;
+    };
+
+    // Check if Ctrl is held for grid snapping
+    let ctrl_held = keyboard.pressed(KeyCode::ControlLeft) || keyboard.pressed(KeyCode::ControlRight);
+
+    // Create effective snap settings - enable grid snap when Ctrl is held
+    let snap = if ctrl_held {
+        SnapSettings {
+            translate_enabled: true,
+            translate_snap: gizmo.snap.translate_snap.max(1.0), // Use configured snap or default to 1.0
+            rotate_enabled: true,
+            rotate_snap: gizmo.snap.rotate_snap.max(15.0), // Use configured snap or default to 15 degrees
+            scale_enabled: true,
+            scale_snap: gizmo.snap.scale_snap.max(0.25), // Use configured snap or default to 0.25
+        }
+    } else {
+        gizmo.snap
     };
 
     match gizmo.mode {
@@ -576,8 +594,8 @@ pub fn object_drag_system(
                 None => current_pos,
             };
 
-            // Apply position snapping
-            obj_transform.translation = gizmo.snap.snap_translate_vec3(new_pos);
+            // Apply position snapping (uses Ctrl-aware snap settings)
+            obj_transform.translation = snap.snap_translate_vec3(new_pos);
         }
         GizmoMode::Rotate => {
             let pos = obj_transform.translation;
@@ -597,8 +615,8 @@ pub fn object_drag_system(
                 let dot = start_dir.dot(to_hit);
                 let angle = cross.dot(axis_vec).atan2(dot);
 
-                // Apply rotation snapping
-                let snapped_angle = gizmo.snap.snap_rotate(angle);
+                // Apply rotation snapping (uses Ctrl-aware snap settings)
+                let snapped_angle = snap.snap_rotate(angle);
 
                 // Apply rotation relative to start rotation
                 let rotation_delta = Quat::from_axis_angle(axis_vec, snapped_angle);
@@ -616,21 +634,21 @@ pub fn object_drag_system(
                     let current_dist = (point - pos).dot(Vec3::X).abs();
                     let scale_factor = current_dist / start_dist;
                     let new_scale = (start_scale.x * scale_factor).max(0.01);
-                    obj_transform.scale.x = gizmo.snap.snap_scale(new_scale);
+                    obj_transform.scale.x = snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Y) => {
                     let point = ray_to_axis_closest_point(&ray, pos, Vec3::Y);
                     let current_dist = (point - pos).dot(Vec3::Y).abs();
                     let scale_factor = current_dist / start_dist;
                     let new_scale = (start_scale.y * scale_factor).max(0.01);
-                    obj_transform.scale.y = gizmo.snap.snap_scale(new_scale);
+                    obj_transform.scale.y = snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Z) => {
                     let point = ray_to_axis_closest_point(&ray, pos, Vec3::Z);
                     let current_dist = (point - pos).dot(Vec3::Z).abs();
                     let scale_factor = current_dist / start_dist;
                     let new_scale = (start_scale.z * scale_factor).max(0.01);
-                    obj_transform.scale.z = gizmo.snap.snap_scale(new_scale);
+                    obj_transform.scale.z = snap.snap_scale(new_scale);
                 }
                 Some(DragAxis::Free) => {
                     // Uniform scale - use camera plane
@@ -639,7 +657,7 @@ pub fn object_drag_system(
                         let current_dist = (point - pos).length();
                         let scale_factor = current_dist / start_dist;
                         let new_scale = (start_scale * scale_factor).max(Vec3::splat(0.01));
-                        obj_transform.scale = gizmo.snap.snap_scale_vec3(new_scale);
+                        obj_transform.scale = snap.snap_scale_vec3(new_scale);
                     }
                 }
                 _ => {}

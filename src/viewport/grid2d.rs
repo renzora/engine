@@ -40,7 +40,7 @@ pub fn draw_grid_2d(
 
     let center = camera2d_state.pan_offset;
 
-    // Snap grid to spacing to prevent "swimming"
+    // Calculate grid bounds snapped to world_spacing (anchored at origin)
     let start_x = ((center.x - half_width) / world_spacing).floor() * world_spacing;
     let end_x = ((center.x + half_width) / world_spacing).ceil() * world_spacing;
     let start_y = ((center.y - half_height) / world_spacing).floor() * world_spacing;
@@ -54,14 +54,21 @@ pub fn draw_grid_2d(
     let axis_color_x = Color::srgba(0.9, 0.2, 0.2, 0.9); // Red for X
     let axis_color_y = Color::srgba(0.2, 0.9, 0.2, 0.9); // Green for Y
 
+    // Use integer indices to avoid floating point accumulation errors
+    // This ensures grid lines are at exact multiples of world_spacing from origin
+    let start_i = (start_x / world_spacing).round() as i32;
+    let end_i = (end_x / world_spacing).round() as i32;
+    let start_j = (start_y / world_spacing).round() as i32;
+    let end_j = (end_y / world_spacing).round() as i32;
+
     // Draw vertical lines (varying X)
-    let mut x = start_x;
-    while x <= end_x {
-        let is_origin = x.abs() < world_spacing * 0.01;
-        let is_major = !is_origin && ((x / world_spacing).round() as i32 % 10 == 0);
+    for i in start_i..=end_i {
+        let x = i as f32 * world_spacing;
+        let is_origin = i == 0;
+        let is_major = !is_origin && (i % 10 == 0);
 
         let color = if is_origin {
-            axis_color_y // Y axis
+            axis_color_y // Y axis (vertical line at x=0)
         } else if is_major {
             grid_color_major
         } else {
@@ -73,17 +80,16 @@ pub fn draw_grid_2d(
             Vec3::new(x, end_y, 0.0),
             color,
         );
-        x += world_spacing;
     }
 
     // Draw horizontal lines (varying Y)
-    let mut y = start_y;
-    while y <= end_y {
-        let is_origin = y.abs() < world_spacing * 0.01;
-        let is_major = !is_origin && ((y / world_spacing).round() as i32 % 10 == 0);
+    for j in start_j..=end_j {
+        let y = j as f32 * world_spacing;
+        let is_origin = j == 0;
+        let is_major = !is_origin && (j % 10 == 0);
 
         let color = if is_origin {
-            axis_color_x // X axis
+            axis_color_x // X axis (horizontal line at y=0)
         } else if is_major {
             grid_color_major
         } else {
@@ -95,7 +101,6 @@ pub fn draw_grid_2d(
             Vec3::new(end_x, y, 0.0),
             color,
         );
-        y += world_spacing;
     }
 }
 

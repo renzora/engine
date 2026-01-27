@@ -56,17 +56,21 @@ pub fn setup_gizmo_meshes(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Create materials (unlit, emissive for visibility)
+    // Create materials - solid colors, unlit, with depth bias to render in front of scene
+    let gizmo_depth_bias = -1.0;
+
     let x_normal = materials.add(StandardMaterial {
         base_color: Color::srgb(0.9, 0.2, 0.2),
         emissive: LinearRgba::new(0.9, 0.2, 0.2, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
     let x_highlight = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 1.0, 0.3),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
 
@@ -74,12 +78,14 @@ pub fn setup_gizmo_meshes(
         base_color: Color::srgb(0.2, 0.9, 0.2),
         emissive: LinearRgba::new(0.2, 0.9, 0.2, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
     let y_highlight = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 1.0, 0.3),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
 
@@ -87,12 +93,14 @@ pub fn setup_gizmo_meshes(
         base_color: Color::srgb(0.2, 0.2, 0.9),
         emissive: LinearRgba::new(0.2, 0.2, 0.9, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
     let z_highlight = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 1.0, 0.3),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
 
@@ -100,40 +108,38 @@ pub fn setup_gizmo_meshes(
         base_color: Color::srgb(0.8, 0.8, 0.8),
         emissive: LinearRgba::new(0.8, 0.8, 0.8, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
     let center_highlight = materials.add(StandardMaterial {
         base_color: Color::srgb(1.0, 1.0, 0.3),
         emissive: LinearRgba::new(1.0, 1.0, 0.3, 1.0),
         unlit: true,
+        depth_bias: gizmo_depth_bias,
         ..default()
     });
 
-    // Dark outline material
+    // Outline material (not used but kept for resource)
     let outline = materials.add(StandardMaterial {
         base_color: Color::srgb(0.1, 0.1, 0.1),
-        emissive: LinearRgba::new(0.0, 0.0, 0.0, 1.0),
         unlit: true,
         ..default()
     });
 
     // Create meshes - main geometry
-    let shaft_mesh = meshes.add(Cylinder::new(0.04, GIZMO_SIZE - 0.4));
-    let cone_mesh = meshes.add(Cone { radius: 0.12, height: 0.4 });
-    let cube_mesh = meshes.add(Cuboid::new(0.2, 0.2, 0.2));
-
-    // Create outline meshes (slightly larger)
-    let outline_scale = 1.15;
-    let shaft_outline_mesh = meshes.add(Cylinder::new(0.04 * outline_scale, GIZMO_SIZE - 0.4));
-    let cone_outline_mesh = meshes.add(Cone { radius: 0.12 * outline_scale, height: 0.4 * outline_scale });
-    let cube_outline_mesh = meshes.add(Cuboid::new(0.2 * outline_scale, 0.2 * outline_scale, 0.2 * outline_scale));
+    let shaft_mesh = meshes.add(Cylinder::new(0.05, GIZMO_SIZE - 0.4));
+    let cone_mesh = meshes.add(Cone { radius: 0.15, height: 0.4 });
+    let cube_mesh = meshes.add(Cuboid::new(0.25, 0.25, 0.25));
 
     let render_layers = RenderLayers::layer(GIZMO_RENDER_LAYER);
 
     // Spawn gizmo root entity (parent for all gizmo parts)
     let gizmo_root = commands.spawn((
         Transform::default(),
+        GlobalTransform::default(),
         Visibility::Hidden,
+        InheritedVisibility::default(),
+        ViewVisibility::default(),
         GizmoRoot,
         render_layers.clone(),
     )).id();
@@ -144,6 +150,10 @@ pub fn setup_gizmo_meshes(
             Mesh3d(mesh),
             MeshMaterial3d(material),
             transform,
+            GlobalTransform::default(),
+            Visibility::Inherited,
+            InheritedVisibility::default(),
+            ViewVisibility::default(),
             GizmoMesh,
             part,
             render_layers.clone(),
@@ -151,28 +161,7 @@ pub fn setup_gizmo_meshes(
         )).id()
     };
 
-    // Helper to spawn an outline mesh (no GizmoPart, has GizmoOutline marker)
-    let spawn_outline = |commands: &mut Commands, mesh: Handle<Mesh>, material: Handle<StandardMaterial>, transform: Transform, render_layers: &RenderLayers, gizmo_root: Entity| {
-        commands.spawn((
-            Mesh3d(mesh),
-            MeshMaterial3d(material),
-            transform,
-            GizmoOutline,
-            render_layers.clone(),
-            ChildOf(gizmo_root),
-        ));
-    };
-
-    // Spawn X axis arrow with outline
-    spawn_outline(
-        &mut commands,
-        shaft_outline_mesh.clone(),
-        outline.clone(),
-        Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new((GIZMO_SIZE - 0.4) / 2.0, 0.0, 0.0)),
-        &render_layers,
-        gizmo_root,
-    );
+    // Spawn X axis arrow (no outline - cleaner look)
     let x_arrow_shaft = spawn_part(
         &mut commands,
         shaft_mesh.clone(),
@@ -184,15 +173,6 @@ pub fn setup_gizmo_meshes(
         gizmo_root,
     );
 
-    spawn_outline(
-        &mut commands,
-        cone_outline_mesh.clone(),
-        outline.clone(),
-        Transform::from_rotation(Quat::from_rotation_z(-std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(GIZMO_SIZE - 0.2, 0.0, 0.0)),
-        &render_layers,
-        gizmo_root,
-    );
     let x_arrow_head = spawn_part(
         &mut commands,
         cone_mesh.clone(),
@@ -204,15 +184,7 @@ pub fn setup_gizmo_meshes(
         gizmo_root,
     );
 
-    // Spawn Y axis arrow with outline
-    spawn_outline(
-        &mut commands,
-        shaft_outline_mesh.clone(),
-        outline.clone(),
-        Transform::from_translation(Vec3::new(0.0, (GIZMO_SIZE - 0.4) / 2.0, 0.0)),
-        &render_layers,
-        gizmo_root,
-    );
+    // Spawn Y axis arrow
     let y_arrow_shaft = spawn_part(
         &mut commands,
         shaft_mesh.clone(),
@@ -223,14 +195,6 @@ pub fn setup_gizmo_meshes(
         gizmo_root,
     );
 
-    spawn_outline(
-        &mut commands,
-        cone_outline_mesh.clone(),
-        outline.clone(),
-        Transform::from_translation(Vec3::new(0.0, GIZMO_SIZE - 0.2, 0.0)),
-        &render_layers,
-        gizmo_root,
-    );
     let y_arrow_head = spawn_part(
         &mut commands,
         cone_mesh.clone(),
@@ -241,16 +205,7 @@ pub fn setup_gizmo_meshes(
         gizmo_root,
     );
 
-    // Spawn Z axis arrow with outline
-    spawn_outline(
-        &mut commands,
-        shaft_outline_mesh.clone(),
-        outline.clone(),
-        Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(0.0, 0.0, (GIZMO_SIZE - 0.4) / 2.0)),
-        &render_layers,
-        gizmo_root,
-    );
+    // Spawn Z axis arrow
     let z_arrow_shaft = spawn_part(
         &mut commands,
         shaft_mesh.clone(),
@@ -262,15 +217,6 @@ pub fn setup_gizmo_meshes(
         gizmo_root,
     );
 
-    spawn_outline(
-        &mut commands,
-        cone_outline_mesh.clone(),
-        outline.clone(),
-        Transform::from_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2))
-            .with_translation(Vec3::new(0.0, 0.0, GIZMO_SIZE - 0.2)),
-        &render_layers,
-        gizmo_root,
-    );
     let z_arrow_head = spawn_part(
         &mut commands,
         cone_mesh.clone(),
@@ -282,15 +228,7 @@ pub fn setup_gizmo_meshes(
         gizmo_root,
     );
 
-    // Spawn center cube with outline
-    spawn_outline(
-        &mut commands,
-        cube_outline_mesh,
-        outline.clone(),
-        Transform::default(),
-        &render_layers,
-        gizmo_root,
-    );
+    // Spawn center cube
     let center_cube = spawn_part(
         &mut commands,
         cube_mesh,
