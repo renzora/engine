@@ -8,6 +8,7 @@ use bevy_egui::egui::{self, Color32, Id, Pos2, Rect, Ui, Vec2};
 
 use super::dock_tree::PanelId;
 use super::renderer::TAB_BAR_HEIGHT;
+use crate::theming::Theme;
 
 /// Context for rendering a panel within a docked area
 pub struct DockedPanelContext {
@@ -51,6 +52,7 @@ pub trait DockablePanel {
 pub fn render_panel_frame(
     ctx: &egui::Context,
     panel_ctx: &DockedPanelContext,
+    theme: &Theme,
     add_contents: impl FnOnce(&mut Ui),
 ) {
     // Only render if this is the active panel
@@ -69,11 +71,11 @@ pub fn render_panel_frame(
             ui.set_min_size(panel_ctx.content_rect.size());
             ui.set_max_size(panel_ctx.content_rect.size());
 
-            // Draw background (matches original panel background)
+            // Draw background using theme
             ui.painter().rect_filled(
                 panel_ctx.content_rect,
                 0.0,
-                Color32::from_rgb(30, 32, 36),
+                theme.surfaces.panel.to_color32(),
             );
 
             // Create a child UI for the content

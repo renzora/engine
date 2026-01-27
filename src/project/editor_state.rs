@@ -27,6 +27,14 @@ pub struct EditorStateConfig {
     /// Docking/window layout settings
     #[serde(default)]
     pub docking: DockingLayoutConfig,
+
+    /// Active theme name
+    #[serde(default = "default_theme_name")]
+    pub active_theme: String,
+}
+
+fn default_theme_name() -> String {
+    "Dark".to_string()
 }
 
 impl Default for EditorStateConfig {
@@ -37,6 +45,7 @@ impl Default for EditorStateConfig {
             asset_browser: AssetBrowserConfig::default(),
             viewport: ViewportConfig::default(),
             docking: DockingLayoutConfig::default(),
+            active_theme: default_theme_name(),
         }
     }
 }

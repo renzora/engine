@@ -5,6 +5,7 @@
 use super::dock_tree::{DockTree, PanelId, SplitDirection};
 use super::drag_drop::{detect_drop_zone, draw_drop_zone_overlay, DragState, DropTarget};
 use bevy_egui::egui::{self, Color32, CursorIcon, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2};
+use crate::theming::Theme;
 
 /// Height of the tab bar in dock leaves
 pub const TAB_BAR_HEIGHT: f32 = 28.0;
@@ -51,10 +52,11 @@ pub fn render_dock_tree(
     available_rect: Rect,
     drag_state: Option<&DragState>,
     base_id: Id,
+    theme: &Theme,
 ) -> DockRenderResult {
     let mut result = DockRenderResult::default();
 
-    render_node(ui, tree, available_rect, drag_state, base_id, &[], &mut result);
+    render_node(ui, tree, available_rect, drag_state, base_id, &[], &mut result, theme);
 
     // Draw drop zones if dragging
     if let Some(drag) = drag_state {
@@ -67,7 +69,7 @@ pub fn render_dock_tree(
                 }
 
                 if let Some(zone) = detect_drop_zone(cursor_pos, *rect) {
-                    draw_drop_zone_overlay(ui, zone, *rect);
+                    draw_drop_zone_overlay(ui, zone, *rect, theme);
 
                     // Update result with current drop target
                     result.drop_completed = Some(DropTarget {
@@ -92,6 +94,7 @@ fn render_node(
     base_id: Id,
     path: &[bool],
     result: &mut DockRenderResult,
+    theme: &Theme,
 ) {
     match node {
         DockTree::Split {
@@ -100,14 +103,14 @@ fn render_node(
             first,
             second,
         } => {
-            render_split(ui, *direction, *ratio, first, second, rect, drag_state, base_id, path, result);
+            render_split(ui, *direction, *ratio, first, second, rect, drag_state, base_id, path, result, theme);
         }
         DockTree::Leaf { tabs, active_tab } => {
-            render_leaf(ui, tabs, *active_tab, rect, drag_state, base_id, path, result);
+            render_leaf(ui, tabs, *active_tab, rect, drag_state, base_id, path, result, theme);
         }
         DockTree::Empty => {
             // Draw placeholder for empty node
-            ui.painter().rect_filled(rect, 0.0, Color32::from_gray(30));
+            ui.painter().rect_filled(rect, 0.0, theme.surfaces.extreme.to_color32());
         }
     }
 }
@@ -123,6 +126,7 @@ fn render_split(
     base_id: Id,
     path: &[bool],
     result: &mut DockRenderResult,
+    theme: &Theme,
 ) {
     let (first_rect, handle_rect, second_rect) = match direction {
         SplitDirection::Horizontal => {
@@ -164,11 +168,11 @@ fn render_split(
     // Render children
     let mut first_path = path.to_vec();
     first_path.push(false);
-    render_node(ui, first, first_rect, drag_state, base_id, &first_path, result);
+    render_node(ui, first, first_rect, drag_state, base_id, &first_path, result, theme);
 
     let mut second_path = path.to_vec();
     second_path.push(true);
-    render_node(ui, second, second_rect, drag_state, base_id, &second_path, result);
+    render_node(ui, second, second_rect, drag_state, base_id, &second_path, result, theme);
 
     // Create larger interactive area for easier grabbing
     let interact_rect = match direction {
@@ -229,6 +233,7 @@ fn render_leaf(
     base_id: Id,
     path: &[bool],
     result: &mut DockRenderResult,
+    theme: &Theme,
 ) {
     if tabs.is_empty() {
         return;
@@ -247,7 +252,7 @@ fn render_leaf(
     );
 
     // Draw tab bar background
-    ui.painter().rect_filled(tab_bar_rect, 0.0, Color32::from_rgb(38, 40, 46));
+    ui.painter().rect_filled(tab_bar_rect, 0.0, theme.panels.tab_inactive.to_color32());
 
     // Draw tabs
     let mut tab_x = rect.min.x + 2.0;
@@ -276,10 +281,12 @@ fn render_leaf(
 
         // Skip rendering if this tab is being dragged (show ghost)
         if is_being_dragged {
+            let ghost_color = theme.panels.tab_inactive.to_color32();
+            let [r, g, b, _] = ghost_color.to_array();
             ui.painter().rect_filled(
                 tab_rect,
                 egui::CornerRadius::ZERO,
-                Color32::from_rgba_unmultiplied(50, 52, 60, 100),
+                Color32::from_rgba_unmultiplied(r, g, b, 100),
             );
             tab_x += tab_width + 1.0;
             continue;
@@ -290,11 +297,11 @@ fn render_leaf(
 
         // Tab background - no border
         let bg_color = if is_active {
-            Color32::from_rgb(50, 52, 60)
+            theme.panels.tab_active.to_color32()
         } else if tab_response.hovered() {
-            Color32::from_rgb(45, 47, 55)
+            theme.panels.tab_hover.to_color32()
         } else {
-            Color32::from_rgb(40, 42, 50)
+            theme.panels.tab_inactive.to_color32()
         };
 
         ui.painter().rect_filled(tab_rect, egui::CornerRadius::ZERO, bg_color);
@@ -307,9 +314,9 @@ fn render_leaf(
             panel.icon(),
             egui::FontId::proportional(12.0),
             if is_active {
-                Color32::from_rgb(200, 202, 210)
+                theme.text.primary.to_color32()
             } else {
-                Color32::from_rgb(140, 142, 150)
+                theme.text.muted.to_color32()
             },
         );
 
@@ -323,7 +330,7 @@ fn render_leaf(
             if is_active {
                 Color32::WHITE
             } else {
-                Color32::from_rgb(180, 182, 190)
+                theme.text.secondary.to_color32()
             },
         );
 
@@ -337,11 +344,11 @@ fn render_leaf(
             let close_response = ui.interact(close_rect, close_id, Sense::click());
 
             let close_color = if close_response.hovered() {
-                Color32::from_rgb(255, 100, 100)
+                theme.panels.close_hover.to_color32()
             } else if is_active || tab_response.hovered() {
-                Color32::from_rgb(120, 122, 130)
+                theme.text.muted.to_color32()
             } else {
-                Color32::from_rgb(80, 82, 90)
+                theme.text.disabled.to_color32()
             };
 
             // Draw X
@@ -382,7 +389,7 @@ fn render_leaf(
             Pos2::new(rect.min.x, rect.min.y + TAB_BAR_HEIGHT),
             Pos2::new(rect.max.x, rect.min.y + TAB_BAR_HEIGHT),
         ],
-        Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+        Stroke::new(1.0, theme.widgets.border.to_color32()),
     );
 }
 

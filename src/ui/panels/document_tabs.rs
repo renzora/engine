@@ -1,6 +1,7 @@
 use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, Stroke, StrokeKind, Vec2};
 
 use crate::core::{DockingState, SceneManagerState, SceneTab, TabKind};
+use crate::theming::Theme;
 
 use egui_phosphor::regular::{FILM_SCRIPT, SCROLL, CUBE, TREE_STRUCTURE, CODE};
 
@@ -66,6 +67,7 @@ pub fn render_document_tabs(
     left_panel_width: f32,
     right_panel_width: f32,
     top_y: f32,
+    theme: &Theme,
 ) -> f32 {
     let screen_rect = ctx.screen_rect();
     let available_width = screen_rect.width() - left_panel_width - right_panel_width;
@@ -75,15 +77,15 @@ pub fn render_document_tabs(
         Vec2::new(available_width, TAB_HEIGHT + TOP_MARGIN),
     );
 
-    let bg_color = Color32::from_rgb(26, 26, 31);
-    let tab_bg = Color32::from_rgb(40, 40, 50);
-    let tab_active_bg = Color32::from_rgb(50, 50, 62);
-    let tab_hover_bg = Color32::from_rgb(45, 45, 55);
-    let text_color = Color32::from_rgb(180, 180, 190);
-    let text_active_color = Color32::WHITE;
-    let scene_accent_color = Color32::from_rgb(100, 160, 255);
-    let script_accent_color = Color32::from_rgb(140, 217, 191);
-    let drop_indicator_color = Color32::from_rgb(100, 160, 255);
+    let bg_color = theme.surfaces.extreme.to_color32();
+    let tab_bg = theme.widgets.inactive_bg.to_color32();
+    let tab_active_bg = theme.widgets.active_bg.to_color32();
+    let tab_hover_bg = theme.widgets.hovered_bg.to_color32();
+    let text_color = theme.text.secondary.to_color32();
+    let text_active_color = theme.text.primary.to_color32();
+    let scene_accent_color = theme.semantic.accent.to_color32();
+    let script_accent_color = theme.categories.scripting.accent.to_color32();
+    let drop_indicator_color = theme.semantic.accent.to_color32();
 
     let mut layout_to_switch: Option<&'static str> = None;
 
@@ -112,7 +114,7 @@ pub fn render_document_tabs(
                     Pos2::new(tab_bar_rect.min.x, tab_bar_rect.max.y),
                     Pos2::new(tab_bar_rect.max.x, tab_bar_rect.max.y),
                 ],
-                Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
+                Stroke::new(1.0, theme.widgets.border.to_color32()),
             );
 
             let mut x_offset = left_panel_width + 8.0;
@@ -133,7 +135,10 @@ pub fn render_document_tabs(
                             tab.name.clone()
                         };
                         let active = scene_state.active_script_tab.is_none() && *idx == scene_state.active_scene_tab;
-                        (text, active, FILM_SCRIPT, scene_accent_color, Color32::from_rgb(100, 140, 200))
+                        // Muted version of scene accent
+                        let [r, g, b, _] = scene_accent_color.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 75);
+                        (text, active, FILM_SCRIPT, scene_accent_color, inactive)
                     }
                     TabKind::Script(idx) => {
                         let script = &scene_state.open_scripts[*idx];
@@ -143,7 +148,10 @@ pub fn render_document_tabs(
                             script.name.clone()
                         };
                         let active = scene_state.active_script_tab == Some(*idx);
-                        (text, active, SCROLL, script_accent_color, Color32::from_rgb(100, 180, 160))
+                        // Muted version of script accent
+                        let [r, g, b, _] = script_accent_color.to_array();
+                        let inactive = Color32::from_rgb(r / 2 + 50, g / 2 + 50, b / 2 + 55);
+                        (text, active, SCROLL, script_accent_color, inactive)
                     }
                 };
 
@@ -236,11 +244,11 @@ pub fn render_document_tabs(
 
                 if can_close {
                     let close_color = if close_hovered {
-                        Color32::from_rgb(255, 100, 100)
+                        theme.semantic.error.to_color32()
                     } else if is_hovered || is_active {
-                        Color32::from_rgb(140, 140, 150)
+                        theme.text.muted.to_color32()
                     } else {
-                        Color32::from_rgb(80, 80, 90)
+                        theme.text.disabled.to_color32()
                     };
 
                     // Draw X

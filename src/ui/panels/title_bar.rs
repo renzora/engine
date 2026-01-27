@@ -6,6 +6,7 @@ use crate::commands::{CommandHistory, DeleteEntityCommand, queue_command};
 use crate::core::{AssetBrowserState, DockingState, EditorEntity, ExportState, SceneNode, SelectionState, ViewportState, WindowState, SceneManagerState, EditorSettings, ResizeEdge};
 use crate::plugin_core::{MenuLocation, MenuItem, PluginHost};
 use crate::scene::{spawn_primitive, PrimitiveType};
+use crate::theming::Theme;
 use crate::ui::docking::{builtin_layouts, PanelId};
 use crate::ui_api::UiEvent;
 
@@ -29,13 +30,14 @@ pub fn render_title_bar(
     command_history: &mut CommandHistory,
     docking_state: &mut DockingState,
     viewport_state: &mut ViewportState,
+    theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let is_maximized = window_state.is_maximized;
 
     egui::TopBottomPanel::top("title_bar")
         .exact_height(TITLE_BAR_HEIGHT)
-        .frame(egui::Frame::NONE.fill(Color32::from_rgb(30, 30, 36)))
+        .frame(egui::Frame::NONE.fill(theme.surfaces.window.to_color32()))
         .show(ctx, |ui| {
             let panel_rect = ui.max_rect();
             let painter = ui.painter();
@@ -49,13 +51,13 @@ pub fn render_title_bar(
             let title_galley = painter.layout_no_wrap(
                 title_text.clone(),
                 egui::FontId::proportional(13.0),
-                Color32::from_rgb(140, 140, 150),
+                theme.text.muted.to_color32(),
             );
             let title_pos = Pos2::new(
                 panel_rect.center().x - title_galley.size().x / 2.0,
                 panel_rect.center().y - title_galley.size().y / 2.0,
             );
-            painter.galley(title_pos, title_galley, Color32::from_rgb(140, 140, 150));
+            painter.galley(title_pos, title_galley, theme.text.muted.to_color32());
 
             // Draw bottom border
             painter.line_segment(
@@ -63,7 +65,7 @@ pub fn render_title_bar(
                     Pos2::new(panel_rect.left(), panel_rect.bottom() - 1.0),
                     Pos2::new(panel_rect.right(), panel_rect.bottom() - 1.0),
                 ],
-                Stroke::new(1.0, Color32::from_rgb(20, 20, 24)),
+                Stroke::new(1.0, theme.surfaces.extreme.to_color32()),
             );
 
             // Drag area (everything except window buttons) - interact with it FIRST
@@ -100,7 +102,7 @@ pub fn render_title_bar(
                 ui.add_space(8.0);
 
                 // Menu bar items
-                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, commands, meshes, materials, plugin_host, command_history, docking_state, viewport_state);
+                ui_events = render_menu_items(ui, selection, scene_state, settings, export_state, assets, commands, meshes, materials, plugin_host, command_history, docking_state, viewport_state, theme);
 
                 // Fill remaining space
                 ui.add_space(ui.available_width() - window_buttons_width);
@@ -109,20 +111,20 @@ pub fn render_title_bar(
                 ui.spacing_mut().item_spacing.x = 0.0;
 
                 // Minimize button
-                let min_resp = window_button(ui, MINUS, Color32::from_rgb(60, 60, 70), button_width);
+                let min_resp = window_button(ui, MINUS, theme.widgets.hovered_bg.to_color32(), button_width);
                 if min_resp.clicked() {
                     window_state.request_minimize = true;
                 }
 
                 // Maximize/Restore button
                 let max_icon = if is_maximized { SQUARES_FOUR } else { SQUARE };
-                let max_resp = window_button(ui, max_icon, Color32::from_rgb(60, 60, 70), button_width);
+                let max_resp = window_button(ui, max_icon, theme.widgets.hovered_bg.to_color32(), button_width);
                 if max_resp.clicked() {
                     window_state.request_toggle_maximize = true;
                 }
 
                 // Close button (red on hover)
-                let close_resp = window_button(ui, X, Color32::from_rgb(200, 60, 60), button_width);
+                let close_resp = window_button(ui, X, theme.panels.close_hover.to_color32(), button_width);
                 if close_resp.clicked() {
                     window_state.request_close = true;
                 }
@@ -298,6 +300,7 @@ fn render_menu_items(
     command_history: &mut CommandHistory,
     docking_state: &mut DockingState,
     viewport_state: &mut ViewportState,
+    theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
@@ -314,8 +317,8 @@ fn render_menu_items(
         .collect();
 
     ui.style_mut().visuals.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
-    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = Color32::from_rgb(50, 50, 60);
-    ui.style_mut().visuals.widgets.active.weak_bg_fill = Color32::from_rgb(60, 60, 70);
+    ui.style_mut().visuals.widgets.hovered.weak_bg_fill = theme.widgets.hovered_bg.to_color32();
+    ui.style_mut().visuals.widgets.active.weak_bg_fill = theme.widgets.active_bg.to_color32();
 
     ui.menu_button("File", |ui| {
         if ui.button("New Scene").clicked() {
@@ -778,12 +781,13 @@ fn window_button(ui: &mut egui::Ui, icon: &str, hover_color: Color32, width: f32
 pub fn render_splash_title_bar(
     ctx: &egui::Context,
     window_state: &mut WindowState,
+    theme: &Theme,
 ) {
     let is_maximized = window_state.is_maximized;
 
     egui::TopBottomPanel::top("splash_title_bar")
         .exact_height(TITLE_BAR_HEIGHT)
-        .frame(egui::Frame::NONE.fill(Color32::from_rgb(24, 24, 28)))
+        .frame(egui::Frame::NONE.fill(theme.surfaces.window.to_color32()))
         .show(ctx, |ui| {
             let panel_rect = ui.max_rect();
             let painter = ui.painter();
@@ -797,13 +801,13 @@ pub fn render_splash_title_bar(
             let title_galley = painter.layout_no_wrap(
                 title_text.clone(),
                 egui::FontId::proportional(13.0),
-                Color32::from_rgb(140, 140, 150),
+                theme.text.muted.to_color32(),
             );
             let title_pos = Pos2::new(
                 panel_rect.center().x - title_galley.size().x / 2.0,
                 panel_rect.center().y - title_galley.size().y / 2.0,
             );
-            painter.galley(title_pos, title_galley, Color32::from_rgb(140, 140, 150));
+            painter.galley(title_pos, title_galley, theme.text.muted.to_color32());
 
             // Draw bottom border
             painter.line_segment(
@@ -811,7 +815,7 @@ pub fn render_splash_title_bar(
                     Pos2::new(panel_rect.left(), panel_rect.bottom() - 1.0),
                     Pos2::new(panel_rect.right(), panel_rect.bottom() - 1.0),
                 ],
-                Stroke::new(1.0, Color32::from_rgb(16, 16, 20)),
+                Stroke::new(1.0, theme.surfaces.extreme.to_color32()),
             );
 
             // Drag area (everything except window buttons)
@@ -848,20 +852,20 @@ pub fn render_splash_title_bar(
                 ui.spacing_mut().item_spacing.x = 0.0;
 
                 // Minimize button
-                let min_resp = window_button(ui, MINUS, Color32::from_rgb(60, 60, 70), button_width);
+                let min_resp = window_button(ui, MINUS, theme.widgets.hovered_bg.to_color32(), button_width);
                 if min_resp.clicked() {
                     window_state.request_minimize = true;
                 }
 
                 // Maximize/Restore button
                 let max_icon = if is_maximized { SQUARES_FOUR } else { SQUARE };
-                let max_resp = window_button(ui, max_icon, Color32::from_rgb(60, 60, 70), button_width);
+                let max_resp = window_button(ui, max_icon, theme.widgets.hovered_bg.to_color32(), button_width);
                 if max_resp.clicked() {
                     window_state.request_toggle_maximize = true;
                 }
 
                 // Close button (red on hover)
-                let close_resp = window_button(ui, X, Color32::from_rgb(200, 60, 60), button_width);
+                let close_resp = window_button(ui, X, theme.panels.close_hover.to_color32(), button_width);
                 if close_resp.clicked() {
                     window_state.request_close = true;
                 }

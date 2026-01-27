@@ -3,13 +3,24 @@
 use bevy_egui::egui::{self, Color32, RichText, ScrollArea};
 
 use crate::core::{ConsoleState, LogLevel};
+use crate::theming::Theme;
 
 use egui_phosphor::regular::{
     TRASH, FUNNEL, INFO, CHECK_CIRCLE, WARNING, X_CIRCLE, MAGNIFYING_GLASS,
 };
 
 /// Render the console content
-pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
+pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState, theme: &Theme) {
+    // Get colors from theme
+    let muted_color = theme.text.muted.to_color32();
+    let disabled_color = theme.text.disabled.to_color32();
+
+    // Semantic colors from theme
+    let info_active = theme.semantic.accent.to_color32();
+    let success_active = theme.semantic.success.to_color32();
+    let warning_active = theme.semantic.warning.to_color32();
+    let error_active = theme.semantic.error.to_color32();
+
     // Toolbar
     ui.horizontal(|ui| {
         // Clear button
@@ -21,9 +32,9 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
 
         // Filter toggles
         let info_color = if console.show_info {
-            Color32::from_rgb(140, 180, 220)
+            info_active
         } else {
-            Color32::from_rgb(80, 80, 90)
+            disabled_color
         };
         if ui.add(egui::Button::new(
             RichText::new(INFO).color(info_color).size(14.0)
@@ -32,9 +43,9 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
         }
 
         let success_color = if console.show_success {
-            Color32::from_rgb(100, 200, 120)
+            success_active
         } else {
-            Color32::from_rgb(80, 80, 90)
+            disabled_color
         };
         if ui.add(egui::Button::new(
             RichText::new(CHECK_CIRCLE).color(success_color).size(14.0)
@@ -43,9 +54,9 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
         }
 
         let warning_color = if console.show_warnings {
-            Color32::from_rgb(230, 180, 80)
+            warning_active
         } else {
-            Color32::from_rgb(80, 80, 90)
+            disabled_color
         };
         if ui.add(egui::Button::new(
             RichText::new(WARNING).color(warning_color).size(14.0)
@@ -54,9 +65,9 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
         }
 
         let error_color = if console.show_errors {
-            Color32::from_rgb(220, 80, 80)
+            error_active
         } else {
-            Color32::from_rgb(80, 80, 90)
+            disabled_color
         };
         if ui.add(egui::Button::new(
             RichText::new(X_CIRCLE).color(error_color).size(14.0)
@@ -68,7 +79,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
 
         // Search box
         ui.add_space(4.0);
-        ui.label(RichText::new(MAGNIFYING_GLASS).size(12.0).color(Color32::from_rgb(120, 120, 130)));
+        ui.label(RichText::new(MAGNIFYING_GLASS).size(12.0).color(muted_color));
         ui.add(
             egui::TextEdit::singleline(&mut console.search_filter)
                 .hint_text("Search...")
@@ -77,7 +88,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
 
         // Category filter
         ui.add_space(8.0);
-        ui.label(RichText::new(FUNNEL).size(12.0).color(Color32::from_rgb(120, 120, 130)));
+        ui.label(RichText::new(FUNNEL).size(12.0).color(muted_color));
         ui.add(
             egui::TextEdit::singleline(&mut console.category_filter)
                 .hint_text("Category...")
@@ -94,7 +105,7 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
             ui.label(
                 RichText::new(format!("{}/{} entries", filtered.len(), total))
                     .size(11.0)
-                    .color(Color32::from_rgb(120, 120, 130))
+                    .color(muted_color)
             );
         });
     });
@@ -110,11 +121,13 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
         .auto_shrink([false, false])
         .stick_to_bottom(console.auto_scroll);
 
+    let text_color = theme.text.primary.to_color32();
+    let category_color = theme.text.hyperlink.to_color32();
     scroll_area.show(ui, |ui| {
         ui.set_min_width(ui.available_width());
 
         for entry in &filtered_entries {
-            render_log_entry(ui, entry);
+            render_log_entry(ui, entry, text_color, category_color, theme);
         }
 
         // Empty state
@@ -124,16 +137,21 @@ pub fn render_console_content(ui: &mut egui::Ui, console: &mut ConsoleState) {
                 ui.label(
                     RichText::new("No log entries")
                         .size(13.0)
-                        .color(Color32::from_rgb(100, 100, 110))
+                        .color(muted_color)
                 );
             });
         }
     });
 }
 
-fn render_log_entry(ui: &mut egui::Ui, entry: &crate::core::LogEntry) {
-    let [r, g, b] = entry.level.color();
-    let color = Color32::from_rgb(r, g, b);
+fn render_log_entry(ui: &mut egui::Ui, entry: &crate::core::LogEntry, text_color: Color32, category_color: Color32, theme: &Theme) {
+    // Get log level color from theme
+    let color = match entry.level {
+        LogLevel::Info => theme.semantic.accent.to_color32(),
+        LogLevel::Success => theme.semantic.success.to_color32(),
+        LogLevel::Warning => theme.semantic.warning.to_color32(),
+        LogLevel::Error => theme.semantic.error.to_color32(),
+    };
 
     ui.horizontal(|ui| {
         // Level icon
@@ -150,7 +168,7 @@ fn render_log_entry(ui: &mut egui::Ui, entry: &crate::core::LogEntry) {
             ui.label(
                 RichText::new(format!("[{}]", entry.category))
                     .size(11.0)
-                    .color(Color32::from_rgb(100, 140, 180))
+                    .color(category_color)
             );
         }
 
@@ -158,7 +176,7 @@ fn render_log_entry(ui: &mut egui::Ui, entry: &crate::core::LogEntry) {
         ui.label(
             RichText::new(&entry.message)
                 .size(12.0)
-                .color(Color32::from_rgb(200, 200, 210))
+                .color(text_color)
         );
     });
 }

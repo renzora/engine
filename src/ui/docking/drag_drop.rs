@@ -4,6 +4,7 @@
 
 use super::dock_tree::{DropZone, PanelId};
 use bevy_egui::egui::{self, Color32, Pos2, Rect, Stroke, StrokeKind};
+use crate::theming::Theme;
 
 /// State for an ongoing drag operation
 #[derive(Debug, Clone)]
@@ -111,11 +112,14 @@ pub fn get_drop_zone_rect(zone: DropZone, panel_rect: Rect) -> Rect {
 }
 
 /// Draw drop zone overlay for visual feedback during drag
-pub fn draw_drop_zone_overlay(ui: &egui::Ui, zone: DropZone, panel_rect: Rect) {
+pub fn draw_drop_zone_overlay(ui: &egui::Ui, zone: DropZone, panel_rect: Rect, theme: &Theme) {
     let drop_rect = get_drop_zone_rect(zone, panel_rect);
 
-    let fill_color = Color32::from_rgba_unmultiplied(80, 140, 220, 80);
-    let stroke_color = Color32::from_rgba_unmultiplied(100, 160, 255, 200);
+    // Use theme accent color for drop zone
+    let accent = theme.semantic.accent.to_color32();
+    let [r, g, b, _] = accent.to_array();
+    let fill_color = Color32::from_rgba_unmultiplied(r, g, b, 80);
+    let stroke_color = Color32::from_rgba_unmultiplied(r, g, b, 200);
 
     ui.painter().rect(
         drop_rect,
@@ -142,18 +146,22 @@ pub fn draw_drop_zone_overlay(ui: &egui::Ui, zone: DropZone, panel_rect: Rect) {
 }
 
 /// Draw the dragged tab preview following the cursor
-pub fn draw_drag_preview(ui: &egui::Ui, panel: &PanelId, cursor_pos: Pos2) {
+pub fn draw_drag_preview(ui: &egui::Ui, panel: &PanelId, cursor_pos: Pos2, theme: &Theme) {
     let text = format!("{} {}", panel.icon(), panel.title());
     let rect = Rect::from_center_size(
         cursor_pos + egui::vec2(10.0, 10.0),
         egui::vec2(120.0, 28.0),
     );
 
+    let popup_bg = theme.surfaces.popup.to_color32();
+    let [r, g, b, _] = popup_bg.to_array();
+    let bg_color = Color32::from_rgba_unmultiplied(r, g, b, 230);
+
     ui.painter().rect(
         rect,
         4.0,
-        Color32::from_rgba_unmultiplied(50, 55, 65, 230),
-        Stroke::new(1.0, Color32::from_rgb(100, 160, 255)),
+        bg_color,
+        Stroke::new(1.0, theme.semantic.accent.to_color32()),
         StrokeKind::Outside,
     );
 

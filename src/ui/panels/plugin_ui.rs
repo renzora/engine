@@ -12,6 +12,7 @@ use bevy_egui::egui::{self, Color32, RichText};
 use crate::core::{AssetLoadingProgress, format_bytes};
 use crate::plugin_core::{MenuLocation, MenuItem, PanelDefinition, PluginHost};
 use crate::ui_api::{renderer::UiRenderer, types::UiId, UiEvent, Widget};
+use crate::theming::Theme;
 
 /// Convert from editor_plugin_api UiId to internal UiId
 fn convert_ui_id(id: editor_plugin_api::ui::UiId) -> UiId {
@@ -231,7 +232,7 @@ pub fn render_plugin_toolbar(ui: &mut egui::Ui, plugin_host: &PluginHost) -> Vec
 }
 
 /// Render the status bar at the bottom of the screen
-pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_progress: &AssetLoadingProgress) {
+pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_progress: &AssetLoadingProgress, theme: &Theme) {
     use crate::plugin_core::StatusBarAlign;
 
     let api = plugin_host.api();
@@ -250,11 +251,14 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
     left_items.sort_by_key(|item| item.priority);
     right_items.sort_by_key(|item| -item.priority); // Reverse for right side
 
+    let text_color = theme.text.secondary.to_color32();
+    let accent_color = theme.semantic.accent.to_color32();
+
     egui::TopBottomPanel::bottom("status_bar")
         .exact_height(22.0)
         .frame(egui::Frame::NONE
-            .fill(Color32::from_rgb(30, 30, 36))
-            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(50, 50, 58))))
+            .fill(theme.surfaces.panel.to_color32())
+            .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32())))
         .show(ctx, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.spacing_mut().item_spacing.x = 16.0;
@@ -271,10 +275,10 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
                     };
 
                     // Spinner icon using egui's built-in spinner
-                    ui.add(egui::Spinner::new().size(14.0).color(Color32::from_rgb(100, 160, 255)));
+                    ui.add(egui::Spinner::new().size(14.0).color(accent_color));
 
                     // Download/loading icon
-                    ui.label(RichText::new("⬇").size(12.0).color(Color32::from_rgb(100, 160, 255)));
+                    ui.label(RichText::new("⬇").size(12.0).color(accent_color));
 
                     // Progress text with file count and sizes
                     let remaining = loading_progress.total.saturating_sub(loading_progress.loaded);
@@ -293,7 +297,7 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
                             if remaining == 1 { "" } else { "s" }
                         )
                     };
-                    ui.label(RichText::new(size_text).size(11.0).color(Color32::from_rgb(180, 180, 190)));
+                    ui.label(RichText::new(size_text).size(11.0).color(text_color));
 
                     // Progress bar based on total bytes
                     let bar_width = 120.0;
@@ -301,7 +305,7 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
                     let (rect, _) = ui.allocate_exact_size(egui::vec2(bar_width, bar_height), egui::Sense::hover());
 
                     // Background with rounded corners
-                    ui.painter().rect_filled(rect, 3.0, Color32::from_rgb(50, 50, 60));
+                    ui.painter().rect_filled(rect, 3.0, theme.widgets.inactive_bg.to_color32());
 
                     // Fill with rounded corners
                     if progress > 0.0 {
@@ -310,8 +314,8 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
                             rect.min,
                             egui::vec2(fill_width, rect.height()),
                         );
-                        // Use a gradient-like effect with brighter color
-                        ui.painter().rect_filled(fill_rect, 3.0, Color32::from_rgb(80, 140, 230));
+                        // Use accent color for progress fill
+                        ui.painter().rect_filled(fill_rect, 3.0, accent_color);
                     }
 
                     ui.add_space(8.0);
@@ -323,7 +327,7 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
 
                 // Left-aligned items
                 for item in &left_items {
-                    render_status_item(ui, item);
+                    render_status_item(ui, item, text_color);
                 }
 
                 // Spacer to push right items to the right
@@ -332,15 +336,13 @@ pub fn render_status_bar(ctx: &egui::Context, plugin_host: &PluginHost, loading_
 
                     // Right-aligned items (reversed order for right-to-left layout)
                     for item in right_items.iter().rev() {
-                        render_status_item(ui, item);
+                        render_status_item(ui, item, text_color);
                     }
                 });
             });
         });
 
-    fn render_status_item(ui: &mut egui::Ui, item: &crate::plugin_core::StatusBarItem) {
-        let text_color = Color32::from_rgb(180, 180, 190);
-
+    fn render_status_item(ui: &mut egui::Ui, item: &crate::plugin_core::StatusBarItem, text_color: Color32) {
         // Build display text with icon if present
         let display_text = if let Some(icon) = &item.icon {
             format!("{} {}", icon, item.text)

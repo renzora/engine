@@ -15,6 +15,7 @@ mod scene;
 mod scripting;
 mod shared;
 mod spawn;
+mod theming;
 mod thumbnail_cli;
 mod ui;
 mod ui_api;
@@ -370,6 +371,7 @@ fn load_editor_state(
     mut assets: ResMut<core::AssetBrowserState>,
     mut docking: ResMut<core::DockingState>,
     mut loaded_state: ResMut<project::LoadedEditorState>,
+    mut theme_manager: ResMut<theming::ThemeManager>,
 ) {
     let Some(project) = current_project else { return };
 
@@ -411,6 +413,10 @@ fn load_editor_state(
     // Apply docking/layout settings
     docking.load_from_config(state.docking.clone());
 
+    // Apply theme settings
+    theme_manager.set_project_path(&project.path);
+    theme_manager.load_theme(&state.active_theme);
+
     // Store loaded state for saving back
     loaded_state.0 = Some(state);
 
@@ -436,6 +442,7 @@ fn save_editor_state_periodic(
     settings: Res<core::EditorSettings>,
     assets: Res<core::AssetBrowserState>,
     docking: Res<core::DockingState>,
+    theme_manager: Res<theming::ThemeManager>,
     mut dirty: ResMut<project::EditorStateDirty>,
 ) {
     timer.0.tick(time.delta());
@@ -486,6 +493,7 @@ fn save_editor_state_periodic(
             },
         },
         docking: docking.save_to_config(),
+        active_theme: theme_manager.active_theme_name.clone(),
     };
 
     // Save to disk

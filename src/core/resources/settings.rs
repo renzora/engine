@@ -75,6 +75,7 @@ pub enum SettingsTab {
     General,
     Viewport,
     Shortcuts,
+    Theme,
 }
 
 /// Editor settings and preferences
@@ -106,6 +107,8 @@ pub struct EditorSettings {
     pub visualization_mode: VisualizationMode,
     /// Developer mode - enables plugin development tools
     pub dev_mode: bool,
+    /// Base font size in points
+    pub font_size: f32,
 }
 
 impl Default for EditorSettings {
@@ -124,6 +127,7 @@ impl Default for EditorSettings {
             render_toggles: RenderToggles::default(),
             visualization_mode: VisualizationMode::default(),
             dev_mode: false,
+            font_size: 13.0,
         }
     }
 }

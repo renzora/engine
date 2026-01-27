@@ -53,6 +53,7 @@ impl Plugin for CorePlugin {
             .init_resource::<ThumbnailCache>()
             .init_resource::<DockingState>()
             .init_resource::<InputFocusState>()
+            .init_resource::<crate::theming::ThemeManager>()
             .insert_resource(AnimationTimelineState::new())
             .add_systems(Update, (
                 apply_world_environment,

@@ -14,6 +14,7 @@ use crate::shared::{
     UIPanelData, UILabelData, UIButtonData, UIImageData,
 };
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
+use crate::theming::Theme;
 
 // Phosphor icons for hierarchy
 use egui_phosphor::regular::{
@@ -57,18 +58,13 @@ pub struct HierarchyQueries<'w, 's> {
 // Tree line constants
 const INDENT_SIZE: f32 = 18.0;
 const ROW_HEIGHT: f32 = 20.0;
-const TREE_LINE_COLOR: Color32 = Color32::from_rgb(60, 60, 70);
-const DROP_LINE_COLOR: Color32 = Color32::from_rgb(80, 140, 255);
 
 fn row_odd_bg() -> Color32 {
     Color32::from_rgba_unmultiplied(255, 255, 255, 6)
 }
 
-fn drop_child_color() -> Color32 {
-    Color32::from_rgba_unmultiplied(80, 140, 255, 50)
-}
-
 /// Returns (ui_events, actual_width, scene_changed)
+#[allow(dead_code)]
 pub fn render_hierarchy(
     ctx: &egui::Context,
     selection: &mut SelectionState,
@@ -85,6 +81,7 @@ pub fn render_hierarchy(
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
     ui_renderer: &mut UiRenderer,
+    theme: &Theme,
 ) -> (Vec<UiEvent>, f32, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
@@ -152,7 +149,7 @@ pub fn render_hierarchy(
                 }
             } else {
                 // Render normal hierarchy
-                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history);
+                let (events, changed) = render_hierarchy_content(ui, ctx, selection, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, active_tab, plugin_host, assets, dragging_scene, default_camera, command_history, theme);
                 ui_events.extend(events);
                 scene_changed = changed;
             }
@@ -239,10 +236,19 @@ pub fn render_hierarchy_content(
     dragging_scene: bool,
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
+    theme: &Theme,
 ) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
     let ctx = ui.ctx().clone();
+
+    // Get theme colors
+    let accent_color = theme.semantic.accent.to_color32();
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let error_color = theme.semantic.error.to_color32();
 
     // Scene root is no longer required - entities can be root-level directly
     let scene_root_entity: Option<Entity> = None;
@@ -256,7 +262,7 @@ pub fn render_hierarchy_content(
                 ui.painter().rect_stroke(
                     panel_rect.shrink(4.0),
                     4.0,
-                    Stroke::new(2.0, Color32::from_rgb(115, 191, 242)),
+                    Stroke::new(2.0, accent_color),
                     egui::StrokeKind::Inside,
                 );
 
@@ -285,10 +291,10 @@ pub fn render_hierarchy_content(
 
         // Add button with centered dropdown menu
         ui.menu_button(
-            RichText::new(format!("{} Add", PLUS)).color(Color32::from_rgb(100, 180, 255)),
+            RichText::new(format!("{} Add", PLUS)).color(accent_color),
             |ui| {
                 ui.set_min_width(180.0);
-                render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy);
+                render_preset_menu(ui, commands, meshes, materials, component_registry, scene_root_entity, selection, hierarchy, theme);
             }
         );
 
@@ -371,6 +377,7 @@ pub fn render_hierarchy_content(
                     &mut row_index,
                     default_camera,
                     command_history,
+                    theme,
                 );
                 ui_events.extend(events);
                 if changed {
@@ -475,6 +482,7 @@ fn render_tree_node(
     row_index: &mut usize,
     default_camera: &DefaultCameraEntity,
     command_history: &mut CommandHistory,
+    theme: &Theme,
 ) -> (Vec<UiEvent>, bool) {
     let mut ui_events = Vec::new();
     let mut scene_changed = false;
@@ -485,6 +493,13 @@ fn render_tree_node(
     });
     let is_expanded = hierarchy.expanded_entities.contains(&entity);
     let is_being_dragged = hierarchy.is_being_dragged(entity);
+
+    // Theme colors
+    let drop_line_color = theme.semantic.accent.to_color32();
+    let tree_line_color = theme.widgets.border.to_color32();
+    let selection_color = theme.semantic.selection.to_color32();
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
 
     // Track visible entity order for Shift+click range selection (building for next frame)
     hierarchy.building_entity_order.push(entity);
@@ -498,9 +513,13 @@ fn render_tree_node(
     }
     *row_index += 1;
 
+    // Selection highlight color with transparency
+    let [r, g, b, _] = selection_color.to_array();
+    let selection_bg = Color32::from_rgba_unmultiplied(r, g, b, 80);
+
     // Draw full-row selection highlight
     if is_selected {
-        painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(51, 115, 191, 80));
+        painter.rect_filled(rect, 0.0, selection_bg);
     } else if response.hovered() && hierarchy.drag_entities.is_empty() {
         painter.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(255, 255, 255, 15));
     }
@@ -595,7 +614,7 @@ fn render_tree_node(
                 let y = rect.min.y + 1.0;
                 fg_painter.line_segment(
                     [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
-                    Stroke::new(3.0, DROP_LINE_COLOR),
+                    Stroke::new(3.0, drop_line_color),
                 );
             }
             HierarchyDropPosition::After => {
@@ -603,7 +622,7 @@ fn render_tree_node(
                 let y = rect.max.y - 1.0;
                 fg_painter.line_segment(
                     [Pos2::new(rect.min.x, y), Pos2::new(rect.max.x, y)],
-                    Stroke::new(3.0, DROP_LINE_COLOR),
+                    Stroke::new(3.0, drop_line_color),
                 );
             }
             HierarchyDropPosition::AsChild => {
@@ -627,7 +646,7 @@ fn render_tree_node(
     }
 
     // Draw tree guide lines (draw before content so they appear behind)
-    let line_stroke = Stroke::new(1.5, TREE_LINE_COLOR); // Thicker lines for better visibility
+    let line_stroke = Stroke::new(1.5, tree_line_color); // Thicker lines for better visibility
     let line_x_offset = INDENT_SIZE / 2.0 - 1.0; // Center the line in the indent area
     let line_overlap = 3.0; // Larger overlap between rows to ensure seamless connections
 
@@ -876,7 +895,7 @@ fn render_tree_node(
 
             // Right-click context menu on name
             name_response.context_menu(|ui| {
-                render_hierarchy_context_menu(ui, entity, editor_entity, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, selection, plugin_host, &mut ui_events, &mut scene_changed, command_history);
+                render_hierarchy_context_menu(ui, entity, editor_entity, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, selection, plugin_host, &mut ui_events, &mut scene_changed, command_history, theme);
             });
         }
 
@@ -885,7 +904,7 @@ fn render_tree_node(
     // Right-click context menu on row background (only when not renaming)
     if hierarchy.renaming_entity != Some(entity) {
         response.context_menu(|ui| {
-            render_hierarchy_context_menu(ui, entity, editor_entity, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, selection, plugin_host, &mut ui_events, &mut scene_changed, command_history);
+            render_hierarchy_context_menu(ui, entity, editor_entity, hierarchy, hierarchy_queries, commands, meshes, materials, component_registry, selection, plugin_host, &mut ui_events, &mut scene_changed, command_history, theme);
         });
     }
 
@@ -905,6 +924,7 @@ fn render_tree_node(
         ui_events: &mut Vec<UiEvent>,
         scene_changed: &mut bool,
         command_history: &mut CommandHistory,
+        theme: &Theme,
     ) {
         ui.set_min_width(180.0);
 
@@ -920,7 +940,7 @@ fn render_tree_node(
 
         // Add Child Entity submenu with categories
         ui.menu_button(RichText::new(format!("{} Add Child Entity", PLUS)), |ui| {
-            render_preset_menu(ui, commands, meshes, materials, component_registry, Some(entity), selection, hierarchy);
+            render_preset_menu(ui, commands, meshes, materials, component_registry, Some(entity), selection, hierarchy, theme);
         });
 
         // Add Script
@@ -1027,6 +1047,7 @@ fn render_tree_node(
                         row_index,
                         default_camera,
                         command_history,
+                        theme,
                     );
                     ui_events.extend(child_events);
                     if child_changed {
@@ -1049,7 +1070,7 @@ fn render_tree_node(
             Pos2::new(rect.min.x, top),
             Pos2::new(rect.max.x, group_bottom),
         );
-        fg_painter.rect_stroke(group_rect, 2.0, Stroke::new(2.0, DROP_LINE_COLOR), egui::StrokeKind::Inside);
+        fg_painter.rect_stroke(group_rect, 2.0, Stroke::new(2.0, drop_line_color), egui::StrokeKind::Inside);
     }
 
     (ui_events, scene_changed)
@@ -1249,7 +1270,11 @@ fn render_preset_menu(
     parent: Option<Entity>,
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
+    theme: &Theme,
 ) {
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+
     for category in PresetCategory::all_in_order() {
         // Skip Empty category at top level - we'll show it separately
         if *category == PresetCategory::Empty {
@@ -1262,7 +1287,7 @@ fn render_preset_menu(
         }
 
         let cat_icon = category.icon();
-        let cat_color = get_category_color(*category);
+        let cat_color = get_category_color(*category, theme);
         let label = format!("{} {}", cat_icon, category.display_name());
 
         ui.menu_button(RichText::new(label).color(cat_color), |ui| {
@@ -1271,7 +1296,7 @@ fn render_preset_menu(
             for preset in presets {
                 let item_label = format!("{} {}", preset.icon, preset.display_name);
 
-                if ui.button(RichText::new(item_label).color(Color32::from_rgb(220, 220, 230))).clicked() {
+                if ui.button(RichText::new(item_label).color(text_primary)).clicked() {
                     let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
                     selection.selected_entity = Some(entity);
                     if let Some(parent_entity) = parent {
@@ -1290,7 +1315,7 @@ fn render_preset_menu(
     for preset in empty_presets {
         let item_label = format!("{} {}", preset.icon, preset.display_name);
 
-        if ui.button(RichText::new(item_label).color(Color32::from_rgb(180, 180, 190))).clicked() {
+        if ui.button(RichText::new(item_label).color(text_muted)).clicked() {
             let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
             selection.selected_entity = Some(entity);
             if let Some(parent_entity) = parent {
@@ -1312,7 +1337,11 @@ fn render_preset_menu_with_close(
     selection: &mut SelectionState,
     hierarchy: &mut HierarchyState,
     close_menu: &mut bool,
+    theme: &Theme,
 ) {
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+
     for category in PresetCategory::all_in_order() {
         if *category == PresetCategory::Empty {
             continue;
@@ -1324,7 +1353,7 @@ fn render_preset_menu_with_close(
         }
 
         let cat_icon = category.icon();
-        let cat_color = get_category_color(*category);
+        let cat_color = get_category_color(*category, theme);
         let label = format!("{} {}", cat_icon, category.display_name());
 
         ui.menu_button(RichText::new(label).color(cat_color), |ui| {
@@ -1333,7 +1362,7 @@ fn render_preset_menu_with_close(
             for preset in presets {
                 let item_label = format!("{} {}", preset.icon, preset.display_name);
 
-                if ui.button(RichText::new(item_label).color(Color32::from_rgb(220, 220, 230))).clicked() {
+                if ui.button(RichText::new(item_label).color(text_primary)).clicked() {
                     let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
                     selection.selected_entity = Some(entity);
                     if let Some(parent_entity) = parent {
@@ -1352,7 +1381,7 @@ fn render_preset_menu_with_close(
     for preset in empty_presets {
         let item_label = format!("{} {}", preset.icon, preset.display_name);
 
-        if ui.button(RichText::new(item_label).color(Color32::from_rgb(180, 180, 190))).clicked() {
+        if ui.button(RichText::new(item_label).color(text_muted)).clicked() {
             let entity = spawn_preset(commands, meshes, materials, registry, preset, parent);
             selection.selected_entity = Some(entity);
             if let Some(parent_entity) = parent {
@@ -1365,15 +1394,15 @@ fn render_preset_menu_with_close(
 }
 
 /// Get color for a preset category
-fn get_category_color(category: PresetCategory) -> Color32 {
+fn get_category_color(category: PresetCategory, theme: &Theme) -> Color32 {
     match category {
-        PresetCategory::Empty => Color32::from_rgb(180, 180, 190),
-        PresetCategory::Objects3D => Color32::from_rgb(242, 166, 115),
-        PresetCategory::Lights => Color32::from_rgb(255, 230, 140),
-        PresetCategory::Cameras => Color32::from_rgb(140, 191, 242),
-        PresetCategory::Physics => Color32::from_rgb(166, 242, 200),
-        PresetCategory::Objects2D => Color32::from_rgb(242, 140, 191),
-        PresetCategory::UI => Color32::from_rgb(191, 166, 242),
-        PresetCategory::Environment => Color32::from_rgb(140, 220, 180),
+        PresetCategory::Empty => theme.text.muted.to_color32(),
+        PresetCategory::Objects3D => theme.categories.rendering.accent.to_color32(),
+        PresetCategory::Lights => theme.categories.lighting.accent.to_color32(),
+        PresetCategory::Cameras => theme.categories.camera.accent.to_color32(),
+        PresetCategory::Physics => theme.categories.physics.accent.to_color32(),
+        PresetCategory::Objects2D => theme.categories.nodes_2d.accent.to_color32(),
+        PresetCategory::UI => theme.categories.ui.accent.to_color32(),
+        PresetCategory::Environment => theme.categories.environment.accent.to_color32(),
     }
 }

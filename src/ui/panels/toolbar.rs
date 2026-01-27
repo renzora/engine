@@ -7,6 +7,7 @@ use crate::spawn::{self, Category};
 use crate::plugin_core::PluginHost;
 use crate::ui_api::UiEvent;
 use crate::ui::docking::builtin_layouts;
+use crate::theming::Theme;
 
 // Phosphor icons for toolbar
 use egui_phosphor::regular::{
@@ -28,12 +29,16 @@ pub fn render_toolbar(
     hierarchy: &mut HierarchyState,
     play_mode: &mut PlayModeState,
     docking_state: &mut DockingState,
+    theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut events = Vec::new();
     let api = plugin_host.api();
 
     egui::TopBottomPanel::top("toolbar")
         .exact_height(toolbar_height)
+        .frame(egui::Frame::NONE
+            .fill(theme.surfaces.panel.to_color32())
+            .stroke(egui::Stroke::new(1.0, theme.widgets.border.to_color32())))
         .show(ctx, |ui| {
             let available_width = ui.available_width();
 
@@ -41,13 +46,13 @@ pub fn render_toolbar(
 
             // Horizontal layout with vertical centering
             ui.horizontal_centered(|ui| {
-                let active_color = Color32::from_rgb(66, 150, 250);
-                let inactive_color = Color32::from_rgb(46, 46, 56);
+                let active_color = theme.semantic.accent.to_color32();
+                let inactive_color = theme.widgets.inactive_bg.to_color32();
 
                 // === Add Object Dropdowns ===
-                let mesh_color = Color32::from_rgb(242, 166, 115);
-                let light_color = Color32::from_rgb(255, 230, 140);
-                let camera_color = Color32::from_rgb(140, 191, 242);
+                let mesh_color = theme.categories.rendering.accent.to_color32();
+                let light_color = theme.categories.lighting.accent.to_color32();
+                let camera_color = theme.categories.camera.accent.to_color32();
 
                 // Meshes dropdown
                 dropdown_button(ui, CUBE, "Mesh", mesh_color, inactive_color, |ui| {
@@ -83,10 +88,11 @@ pub fn render_toolbar(
                 });
 
                 // More objects dropdown
-                let more_color = Color32::from_rgb(160, 160, 175);
+                let more_color = theme.text.muted.to_color32();
+                let section_label_color = theme.text.muted.to_color32();
                 dropdown_button(ui, PLUS, "More", more_color, inactive_color, |ui| {
                     // 3D Nodes
-                    ui.label(RichText::new("Nodes").small().color(Color32::from_rgb(120, 120, 130)));
+                    ui.label(RichText::new("Nodes").small().color(section_label_color));
                     for template in spawn::templates_by_category(Category::Nodes3D) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
@@ -98,7 +104,7 @@ pub fn render_toolbar(
                     ui.separator();
 
                     // Physics
-                    ui.label(RichText::new("Physics").small().color(Color32::from_rgb(120, 120, 130)));
+                    ui.label(RichText::new("Physics").small().color(section_label_color));
                     for template in spawn::templates_by_category(Category::Physics) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
@@ -110,7 +116,7 @@ pub fn render_toolbar(
                     ui.separator();
 
                     // Environment
-                    ui.label(RichText::new("Environment").small().color(Color32::from_rgb(120, 120, 130)));
+                    ui.label(RichText::new("Environment").small().color(section_label_color));
                     for template in spawn::templates_by_category(Category::Environment) {
                         if menu_item(ui, template.name) {
                             let entity = (template.spawn)(commands, meshes, materials, None);
@@ -120,10 +126,10 @@ pub fn render_toolbar(
                     }
                 });
 
-                separator(ui);
+                separator(ui, theme);
 
                 // === Play Controls ===
-                let play_color = Color32::from_rgb(64, 166, 89);
+                let play_color = theme.semantic.success.to_color32();
                 let is_playing = play_mode.state == PlayState::Playing;
                 let is_paused = play_mode.state == PlayState::Paused;
                 let is_in_play_mode = play_mode.is_in_play_mode();
@@ -149,7 +155,7 @@ pub fn render_toolbar(
                 pause_resp.on_hover_text("Pause (F6)");
 
                 // Stop button - only enabled during play mode
-                let stop_color = if is_in_play_mode { Color32::from_rgb(200, 80, 80) } else { Color32::from_rgb(80, 80, 90) };
+                let stop_color = if is_in_play_mode { theme.semantic.error.to_color32() } else { theme.text.disabled.to_color32() };
                 let stop_resp = tool_button(ui, STOP, button_size, false, stop_color, inactive_color);
                 if stop_resp.clicked() && is_in_play_mode {
                     play_mode.request_stop = true;
@@ -158,7 +164,7 @@ pub fn render_toolbar(
 
                 // === Plugin Toolbar Items ===
                 if !api.toolbar_items.is_empty() {
-                    separator(ui);
+                    separator(ui, theme);
 
                     for (item, _plugin_id) in &api.toolbar_items {
                         let resp = tool_button(ui, &item.icon, button_size, false, active_color, inactive_color);
@@ -169,7 +175,7 @@ pub fn render_toolbar(
                     }
                 }
 
-                separator(ui);
+                separator(ui, theme);
 
                 // === Settings ===
                 let settings_resp = tool_button(ui, GEAR, button_size, settings.show_settings_window, active_color, inactive_color);
@@ -181,7 +187,7 @@ pub fn render_toolbar(
                 ui.add_space(4.0);
 
                 // === Layout Dropdown ===
-                let layout_color = Color32::from_rgb(160, 160, 180);
+                let layout_color = theme.text.secondary.to_color32();
                 let current_layout = docking_state.active_layout.clone();
                 layout_dropdown(ui, LAYOUT, &current_layout, layout_color, inactive_color, docking_state);
             });
@@ -193,12 +199,12 @@ pub fn render_toolbar(
     events
 }
 
-fn separator(ui: &mut egui::Ui) {
+fn separator(ui: &mut egui::Ui, theme: &Theme) {
     ui.add_space(8.0);
     let rect = ui.available_rect_before_wrap();
     ui.painter().line_segment(
         [Pos2::new(rect.left(), rect.top() + 6.0), Pos2::new(rect.left(), rect.bottom() - 6.0)],
-        egui::Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
+        egui::Stroke::new(1.0, theme.widgets.border.to_color32()),
     );
     ui.add_space(8.0);
 }
@@ -217,7 +223,9 @@ fn tool_button(
         let bg_color = if active {
             active_color
         } else if response.hovered() {
-            Color32::from_rgb(56, 56, 68)
+            // Use a slightly lighter inactive color for hover
+            let [r, g, b, _] = inactive_color.to_array();
+            Color32::from_rgb(r.saturating_add(15), g.saturating_add(15), b.saturating_add(18))
         } else {
             inactive_color
         };
@@ -250,7 +258,9 @@ fn dropdown_button(
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
         let fill = if hovered {
-            Color32::from_rgb(56, 56, 68)
+            // Use a slightly lighter inactive color for hover
+            let [r, g, b, _] = bg_color.to_array();
+            Color32::from_rgb(r.saturating_add(15), g.saturating_add(15), b.saturating_add(18))
         } else {
             bg_color
         };
@@ -266,13 +276,15 @@ fn dropdown_button(
             icon_color,
         );
 
-        // Caret
+        // Caret - use muted text color
+        let [r, g, b, _] = bg_color.to_array();
+        let caret_color = Color32::from_rgb(r.saturating_add(90), g.saturating_add(90), b.saturating_add(95));
         ui.painter().text(
             Pos2::new(rect.right() - 10.0, rect.center().y),
             egui::Align2::CENTER_CENTER,
             CARET_DOWN,
             egui::FontId::proportional(10.0),
-            Color32::from_rgb(140, 140, 150),
+            caret_color,
         );
     }
 
@@ -322,7 +334,9 @@ fn layout_dropdown(
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
         let fill = if hovered {
-            Color32::from_rgb(56, 56, 68)
+            // Use a slightly lighter inactive color for hover
+            let [r, g, b, _] = bg_color.to_array();
+            Color32::from_rgb(r.saturating_add(15), g.saturating_add(15), b.saturating_add(18))
         } else {
             bg_color
         };
@@ -344,21 +358,25 @@ fn layout_dropdown(
         } else {
             current_layout.to_string()
         };
+        // Text color - lighter than background
+        let [r, g, b, _] = bg_color.to_array();
+        let text_color = Color32::from_rgb(r.saturating_add(155), g.saturating_add(155), b.saturating_add(155));
         ui.painter().text(
             Pos2::new(rect.left() + 26.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             text,
             egui::FontId::proportional(11.0),
-            Color32::from_rgb(200, 200, 210),
+            text_color,
         );
 
-        // Caret
+        // Caret - use muted text color
+        let caret_color = Color32::from_rgb(r.saturating_add(90), g.saturating_add(90), b.saturating_add(95));
         ui.painter().text(
             Pos2::new(rect.right() - 10.0, rect.center().y),
             egui::Align2::CENTER_CENTER,
             CARET_DOWN,
             egui::FontId::proportional(10.0),
-            Color32::from_rgb(140, 140, 150),
+            caret_color,
         );
     }
 

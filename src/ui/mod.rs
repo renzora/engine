@@ -48,6 +48,7 @@ pub struct EditorResources<'w> {
     pub blueprint_editor: ResMut<'w, BlueprintEditorState>,
     pub blueprint_canvas: ResMut<'w, BlueprintCanvasState>,
     pub blueprint_nodes: Res<'w, BlueprintNodeRegistry>,
+    pub theme_manager: ResMut<'w, ThemeManager>,
 }
 use crate::component_system::{ComponentRegistry, AddComponentPopupState};
 use panels::HierarchyQueries;
@@ -72,7 +73,8 @@ use panels::{
     render_console_content, render_history_content,
 };
 pub use panels::{handle_window_actions, property_row};
-use style::{apply_editor_style, init_fonts};
+use style::{apply_editor_style_with_theme, init_fonts};
+use crate::theming::ThemeManager;
 
 /// Convert internal UiEvent to plugin API UiEvent
 fn convert_ui_event_to_api(event: InternalUiEvent) -> editor_plugin_api::events::UiEvent {
@@ -140,6 +142,7 @@ pub fn splash_ui(
     mut commands: Commands,
     mut next_state: ResMut<NextState<AppState>>,
     mut fonts_initialized: Local<bool>,
+    theme_manager: Res<ThemeManager>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else { return };
 
@@ -156,6 +159,7 @@ pub fn splash_ui(
         &mut app_config,
         &mut commands,
         &mut next_state,
+        &theme_manager.active_theme,
     );
 }
 
@@ -205,14 +209,14 @@ pub fn editor_ui(
     // Update input focus state - this lets other systems know if egui has keyboard focus
     input_focus.egui_wants_keyboard = ctx.wants_keyboard_input();
 
-    apply_editor_style(ctx);
+    apply_editor_style_with_theme(ctx, &editor.theme_manager.active_theme, editor.settings.font_size);
 
     // Check play mode state early
     let in_play_mode_early = editor.play_mode.is_in_play_mode();
 
     // Render status bar at bottom (must be rendered early to reserve space) - skip in play mode
     if !in_play_mode_early {
-        render_status_bar(ctx, &editor.plugin_host, &editor.loading_progress);
+        render_status_bar(ctx, &editor.plugin_host, &editor.loading_progress, &editor.theme_manager.active_theme);
     }
 
     // Collect all UI events to forward to plugins
@@ -234,6 +238,7 @@ pub fn editor_ui(
         &mut editor.command_history,
         &mut editor.docking,
         &mut editor.viewport,
+        &editor.theme_manager.active_theme,
     );
     all_ui_events.extend(title_bar_events);
 
@@ -254,6 +259,7 @@ pub fn editor_ui(
         &mut editor.hierarchy,
         &mut editor.play_mode,
         &mut editor.docking,
+        &editor.theme_manager.active_theme,
     );
     all_ui_events.extend(toolbar_events);
 
@@ -287,6 +293,7 @@ pub fn editor_ui(
             [1600.0, 900.0],
             central_height,
             viewport_texture_id,
+            &editor.theme_manager.active_theme,
         );
 
         // Render play mode overlay with info
@@ -302,6 +309,7 @@ pub fn editor_ui(
             0.0,  // No left margin - spans full width
             0.0,  // No right margin
             content_start_y,
+            &editor.theme_manager.active_theme,
         );
 
         // Calculate dock area (below scene tabs, above status bar)
@@ -329,6 +337,7 @@ pub fn editor_ui(
                     dock_rect,
                     drag_state.as_ref(),
                     bevy_egui::egui::Id::new("dock_tree"),
+                    &editor.theme_manager.active_theme,
                 )
             }).inner;
 
@@ -425,7 +434,7 @@ pub fn editor_ui(
 
             match panel_id {
                 PanelId::Hierarchy => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         // Check if a scene file is being dragged
                         let dragging_scene = editor.assets.dragging_asset.as_ref()
                             .map(|p| p.to_string_lossy().to_lowercase().ends_with(".ron"))
@@ -448,6 +457,7 @@ pub fn editor_ui(
                             dragging_scene,
                             &editor.default_camera,
                             &mut editor.command_history,
+                            &editor.theme_manager.active_theme,
                         );
                         all_ui_events.extend(events);
                         if changed {
@@ -457,7 +467,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::Inspector => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         let (events, changed) = render_inspector_content(
                             ui,
                             &editor.selection,
@@ -483,7 +493,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::Assets => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_assets_content(
                             ui,
                             current_project.as_deref(),
@@ -491,18 +501,19 @@ pub fn editor_ui(
                             &mut editor.scene_state,
                             &mut editor.thumbnail_cache,
                             &mut editor.model_preview_cache,
+                            &editor.theme_manager.active_theme,
                         );
                     });
                 }
 
                 PanelId::Console => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
-                        render_console_content(ui, &mut editor.console);
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
+                        render_console_content(ui, &mut editor.console, &editor.theme_manager.active_theme);
                     });
                 }
 
                 PanelId::History => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_history_content(ui, &mut editor.command_history);
                     });
                 }
@@ -540,12 +551,13 @@ pub fn editor_ui(
                             [content_rect.width(), content_rect.height()],
                             content_rect.height(),
                             viewport_texture_id,
+                            &editor.theme_manager.active_theme,
                         );
                     }
                 }
 
                 PanelId::Animation => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         ui.vertical_centered(|ui| {
                             ui.add_space(20.0);
                             ui.label(bevy_egui::egui::RichText::new("\u{f008}").size(32.0).color(bevy_egui::egui::Color32::from_gray(80)));
@@ -557,7 +569,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::ScriptEditor => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         render_script_editor_content(
                             ui,
                             ctx,
@@ -568,7 +580,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::Blueprint => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         panels::render_blueprint_panel(
                             ui,
                             ctx,
@@ -581,7 +593,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::NodeLibrary => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         panels::render_node_library_panel(
                             ui,
                             &mut editor.blueprint_editor,
@@ -592,7 +604,7 @@ pub fn editor_ui(
                 }
 
                 PanelId::Plugin(name) => {
-                    render_panel_frame(ctx, &panel_ctx, |ui| {
+                    render_panel_frame(ctx, &panel_ctx, &editor.theme_manager.active_theme, |ui| {
                         ui.label(format!("Plugin: {}", name));
                     });
                 }
@@ -670,10 +682,10 @@ pub fn editor_ui(
         }
 
         // Render settings window (floating)
-        render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings);
+        render_settings_window(ctx, &mut editor.settings, &mut editor.keybindings, &mut editor.theme_manager);
 
         // Render assets dialogs (create script, create folder, import)
-        render_assets_dialogs(ctx, &mut editor.assets);
+        render_assets_dialogs(ctx, &mut editor.assets, &editor.theme_manager.active_theme);
 
         // Render export dialog (floating)
         render_export_dialog(

@@ -4,6 +4,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, FontId, Pos2, Rect, RichText,
 use crate::core::{ViewportMode, ViewportState, AssetBrowserState, OrbitCameraState, GizmoState, PendingImageDrop, EditorSettings, VisualizationMode};
 use crate::gizmo::{EditorTool, GizmoMode, ModalTransformState, AxisConstraint, SnapSettings};
 use crate::viewport::Camera2DState;
+use crate::theming::Theme;
 
 use egui_phosphor::regular::{
     ARROWS_OUT_CARDINAL, ARROW_CLOCKWISE, ARROWS_OUT, CURSOR, MAGNET, CARET_DOWN,
@@ -34,6 +35,7 @@ pub fn render_viewport(
     _window_size: [f32; 2],
     content_height: f32,
     viewport_texture_id: Option<TextureId>,
+    theme: &Theme,
 ) {
     let screen_rect = ctx.screen_rect();
 
@@ -47,7 +49,7 @@ pub fn render_viewport(
     );
 
     // Render viewport mode tabs at the top (with tools)
-    render_viewport_tabs(ctx, viewport, gizmo, settings, full_viewport_rect);
+    render_viewport_tabs(ctx, viewport, gizmo, settings, full_viewport_rect, theme);
 
     // Calculate content rect (below tabs, accounting for rulers in 2D mode)
     let tabs_offset = VIEWPORT_TABS_HEIGHT;
@@ -94,14 +96,19 @@ fn render_viewport_tabs(
     gizmo: &mut GizmoState,
     settings: &mut EditorSettings,
     full_rect: Rect,
+    theme: &Theme,
 ) {
     let tabs_rect = Rect::from_min_size(
         full_rect.min,
         Vec2::new(full_rect.width(), VIEWPORT_TABS_HEIGHT),
     );
 
-    let active_color = Color32::from_rgb(66, 150, 250);
-    let inactive_color = Color32::from_rgb(46, 46, 56);
+    let active_color = theme.semantic.accent.to_color32();
+    let inactive_color = theme.widgets.inactive_bg.to_color32();
+    let hovered_color = theme.widgets.hovered_bg.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let text_color = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
     let button_size = Vec2::new(28.0, 20.0);
     let button_y = tabs_rect.min.y + (VIEWPORT_TABS_HEIGHT - button_size.y) / 2.0;
 
@@ -112,7 +119,7 @@ fn render_viewport_tabs(
             ui.set_clip_rect(tabs_rect);
 
             // Background
-            ui.painter().rect_filled(tabs_rect, 0.0, Color32::from_rgb(35, 35, 40));
+            ui.painter().rect_filled(tabs_rect, 0.0, theme.surfaces.panel.to_color32());
 
             let tab_height = VIEWPORT_TABS_HEIGHT - 4.0;
             let tab_y = tabs_rect.min.y + 2.0;
@@ -128,9 +135,9 @@ fn render_viewport_tabs(
             );
             let is_3d_active = viewport.viewport_mode == ViewportMode::Mode3D;
             let tab_3d_color = if is_3d_active {
-                Color32::from_rgb(60, 60, 70)
+                theme.widgets.active_bg.to_color32()
             } else {
-                Color32::from_rgb(45, 45, 50)
+                inactive_color
             };
             ui.painter().rect_filled(tab_3d_rect, 3.0, tab_3d_color);
             ui.painter().text(
@@ -138,7 +145,7 @@ fn render_viewport_tabs(
                 egui::Align2::CENTER_CENTER,
                 "3D",
                 FontId::proportional(11.0),
-                if is_3d_active { Color32::WHITE } else { Color32::from_rgb(150, 150, 160) },
+                if is_3d_active { text_color } else { text_muted },
             );
             x_pos += tab_width + 2.0;
 
@@ -149,9 +156,9 @@ fn render_viewport_tabs(
             );
             let is_2d_active = viewport.viewport_mode == ViewportMode::Mode2D;
             let tab_2d_color = if is_2d_active {
-                Color32::from_rgb(60, 60, 70)
+                theme.widgets.active_bg.to_color32()
             } else {
-                Color32::from_rgb(45, 45, 50)
+                inactive_color
             };
             ui.painter().rect_filled(tab_2d_rect, 3.0, tab_2d_color);
             ui.painter().text(
@@ -159,21 +166,21 @@ fn render_viewport_tabs(
                 egui::Align2::CENTER_CENTER,
                 "2D",
                 FontId::proportional(11.0),
-                if is_2d_active { Color32::WHITE } else { Color32::from_rgb(150, 150, 160) },
+                if is_2d_active { text_color } else { text_muted },
             );
             x_pos += tab_width + 8.0;
 
             // Separator
             ui.painter().line_segment(
                 [Pos2::new(x_pos, tab_y + 3.0), Pos2::new(x_pos, tab_y + tab_height - 3.0)],
-                Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
+                Stroke::new(1.0, border_color),
             );
             x_pos += 8.0;
 
             // === Selection Tool ===
             let is_select = gizmo.tool == EditorTool::Select;
             let select_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let select_resp = viewport_tool_button(ui, select_rect, CURSOR, is_select, active_color, inactive_color);
+            let select_resp = viewport_tool_button(ui, select_rect, CURSOR, is_select, active_color, inactive_color, hovered_color);
             if select_resp.clicked() {
                 gizmo.tool = EditorTool::Select;
             }
@@ -183,7 +190,7 @@ fn render_viewport_tabs(
             // === Transform Tools ===
             let is_translate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Translate;
             let translate_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let translate_resp = viewport_tool_button(ui, translate_rect, ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color);
+            let translate_resp = viewport_tool_button(ui, translate_rect, ARROWS_OUT_CARDINAL, is_translate, active_color, inactive_color, hovered_color);
             if translate_resp.clicked() {
                 gizmo.tool = EditorTool::Transform;
                 gizmo.mode = GizmoMode::Translate;
@@ -193,7 +200,7 @@ fn render_viewport_tabs(
 
             let is_rotate = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Rotate;
             let rotate_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let rotate_resp = viewport_tool_button(ui, rotate_rect, ARROW_CLOCKWISE, is_rotate, active_color, inactive_color);
+            let rotate_resp = viewport_tool_button(ui, rotate_rect, ARROW_CLOCKWISE, is_rotate, active_color, inactive_color, hovered_color);
             if rotate_resp.clicked() {
                 gizmo.tool = EditorTool::Transform;
                 gizmo.mode = GizmoMode::Rotate;
@@ -203,7 +210,7 @@ fn render_viewport_tabs(
 
             let is_scale = gizmo.tool == EditorTool::Transform && gizmo.mode == GizmoMode::Scale;
             let scale_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let scale_resp = viewport_tool_button(ui, scale_rect, ARROWS_OUT, is_scale, active_color, inactive_color);
+            let scale_resp = viewport_tool_button(ui, scale_rect, ARROWS_OUT, is_scale, active_color, inactive_color, hovered_color);
             if scale_resp.clicked() {
                 gizmo.tool = EditorTool::Transform;
                 gizmo.mode = GizmoMode::Scale;
@@ -214,28 +221,28 @@ fn render_viewport_tabs(
             // === Snap Dropdown ===
             let any_snap_enabled = gizmo.snap.translate_enabled || gizmo.snap.rotate_enabled || gizmo.snap.scale_enabled;
             let snap_color = if any_snap_enabled {
-                Color32::from_rgb(140, 191, 242)
+                active_color
             } else {
-                Color32::from_rgb(140, 140, 150)
+                text_muted
             };
             let snap_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
-            viewport_snap_dropdown(ui, ctx, snap_rect, MAGNET, snap_color, inactive_color, &mut gizmo.snap);
+            viewport_snap_dropdown(ui, ctx, snap_rect, MAGNET, snap_color, inactive_color, hovered_color, text_muted, &mut gizmo.snap, theme);
             x_pos += 36.0 + 8.0;
 
             // Separator
             ui.painter().line_segment(
                 [Pos2::new(x_pos, tab_y + 3.0), Pos2::new(x_pos, tab_y + tab_height - 3.0)],
-                Stroke::new(1.0, Color32::from_rgb(60, 60, 70)),
+                Stroke::new(1.0, border_color),
             );
             x_pos += 8.0;
 
             // === Render Toggles ===
-            let toggle_on_color = Color32::from_rgb(66, 150, 250);
-            let toggle_off_color = Color32::from_rgb(60, 60, 70);
+            let toggle_on_color = active_color;
+            let toggle_off_color = inactive_color;
 
             // Textures toggle
             let tex_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let tex_resp = viewport_tool_button(ui, tex_rect, IMAGE, settings.render_toggles.textures, toggle_on_color, toggle_off_color);
+            let tex_resp = viewport_tool_button(ui, tex_rect, IMAGE, settings.render_toggles.textures, toggle_on_color, toggle_off_color, hovered_color);
             if tex_resp.clicked() {
                 settings.render_toggles.textures = !settings.render_toggles.textures;
             }
@@ -244,7 +251,7 @@ fn render_viewport_tabs(
 
             // Wireframe toggle
             let wire_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let wire_resp = viewport_tool_button(ui, wire_rect, POLYGON, settings.render_toggles.wireframe, toggle_on_color, toggle_off_color);
+            let wire_resp = viewport_tool_button(ui, wire_rect, POLYGON, settings.render_toggles.wireframe, toggle_on_color, toggle_off_color, hovered_color);
             if wire_resp.clicked() {
                 settings.render_toggles.wireframe = !settings.render_toggles.wireframe;
             }
@@ -253,7 +260,7 @@ fn render_viewport_tabs(
 
             // Lighting toggle
             let light_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let light_resp = viewport_tool_button(ui, light_rect, SUN, settings.render_toggles.lighting, toggle_on_color, toggle_off_color);
+            let light_resp = viewport_tool_button(ui, light_rect, SUN, settings.render_toggles.lighting, toggle_on_color, toggle_off_color, hovered_color);
             if light_resp.clicked() {
                 settings.render_toggles.lighting = !settings.render_toggles.lighting;
             }
@@ -262,7 +269,7 @@ fn render_viewport_tabs(
 
             // Shadows toggle
             let shadow_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), button_size);
-            let shadow_resp = viewport_tool_button(ui, shadow_rect, CLOUD, settings.render_toggles.shadows, toggle_on_color, toggle_off_color);
+            let shadow_resp = viewport_tool_button(ui, shadow_rect, CLOUD, settings.render_toggles.shadows, toggle_on_color, toggle_off_color, hovered_color);
             if shadow_resp.clicked() {
                 settings.render_toggles.shadows = !settings.render_toggles.shadows;
             }
@@ -271,8 +278,8 @@ fn render_viewport_tabs(
 
             // === Visualization Mode Dropdown ===
             let viz_rect = Rect::from_min_size(Pos2::new(x_pos, button_y), Vec2::new(36.0, button_size.y));
-            let viz_color = Color32::from_rgb(180, 180, 200);
-            viewport_viz_dropdown(ui, ctx, viz_rect, EYE, viz_color, inactive_color, settings);
+            let viz_color = theme.text.secondary.to_color32();
+            viewport_viz_dropdown(ui, ctx, viz_rect, EYE, viz_color, inactive_color, hovered_color, text_muted, settings);
 
             // Handle 3D/2D tab clicks
             if ctx.input(|i| i.pointer.any_click()) {
@@ -295,6 +302,7 @@ fn viewport_tool_button(
     active: bool,
     active_color: Color32,
     inactive_color: Color32,
+    hovered_color: Color32,
 ) -> egui::Response {
     let response = ui.allocate_rect(rect, Sense::click());
 
@@ -302,7 +310,7 @@ fn viewport_tool_button(
         let bg_color = if active {
             active_color
         } else if response.hovered() {
-            Color32::from_rgb(56, 56, 68)
+            hovered_color
         } else {
             inactive_color
         };
@@ -328,7 +336,10 @@ fn viewport_snap_dropdown(
     icon: &str,
     icon_color: Color32,
     bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
     snap: &mut SnapSettings,
+    theme: &Theme,
 ) {
     let button_id = ui.make_persistent_id("viewport_snap_dropdown");
     let response = ui.allocate_rect(rect, Sense::click());
@@ -336,7 +347,7 @@ fn viewport_snap_dropdown(
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
         let fill = if hovered {
-            Color32::from_rgb(56, 56, 68)
+            hovered_color
         } else {
             bg_color
         };
@@ -358,7 +369,7 @@ fn viewport_snap_dropdown(
             egui::Align2::CENTER_CENTER,
             CARET_DOWN,
             FontId::proportional(8.0),
-            Color32::from_rgb(140, 140, 150),
+            caret_color,
         );
     }
 
@@ -366,6 +377,10 @@ fn viewport_snap_dropdown(
         #[allow(deprecated)]
         ui.memory_mut(|mem| mem.toggle_popup(button_id));
     }
+
+    let active_btn_color = theme.semantic.accent.to_color32();
+    let inactive_btn_color = theme.widgets.inactive_bg.to_color32();
+    let label_color = theme.text.muted.to_color32();
 
     #[allow(deprecated)]
     egui::popup_below_widget(
@@ -377,7 +392,7 @@ fn viewport_snap_dropdown(
             ui.set_min_width(180.0);
             ui.style_mut().spacing.item_spacing.y = 4.0;
 
-            ui.label(RichText::new("Snapping").small().color(Color32::from_rgb(140, 140, 150)));
+            ui.label(RichText::new("Snapping").small().color(label_color));
             ui.add_space(4.0);
 
             // Position snap
@@ -385,7 +400,7 @@ fn viewport_snap_dropdown(
                 let pos_active = snap.translate_enabled;
                 if ui.add(
                     egui::Button::new(RichText::new("Position").size(12.0))
-                        .fill(if pos_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
+                        .fill(if pos_active { active_btn_color } else { inactive_btn_color })
                         .min_size(Vec2::new(70.0, 20.0))
                 ).clicked() {
                     snap.translate_enabled = !snap.translate_enabled;
@@ -404,7 +419,7 @@ fn viewport_snap_dropdown(
                 let rot_active = snap.rotate_enabled;
                 if ui.add(
                     egui::Button::new(RichText::new("Rotation").size(12.0))
-                        .fill(if rot_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
+                        .fill(if rot_active { active_btn_color } else { inactive_btn_color })
                         .min_size(Vec2::new(70.0, 20.0))
                 ).clicked() {
                     snap.rotate_enabled = !snap.rotate_enabled;
@@ -424,7 +439,7 @@ fn viewport_snap_dropdown(
                 let scale_active = snap.scale_enabled;
                 if ui.add(
                     egui::Button::new(RichText::new("Scale").size(12.0))
-                        .fill(if scale_active { Color32::from_rgb(51, 85, 115) } else { Color32::from_rgb(45, 47, 53) })
+                        .fill(if scale_active { active_btn_color } else { inactive_btn_color })
                         .min_size(Vec2::new(70.0, 20.0))
                 ).clicked() {
                     snap.scale_enabled = !snap.scale_enabled;
@@ -451,6 +466,8 @@ fn viewport_viz_dropdown(
     icon: &str,
     icon_color: Color32,
     bg_color: Color32,
+    hovered_color: Color32,
+    caret_color: Color32,
     settings: &mut EditorSettings,
 ) {
     let button_id = ui.make_persistent_id("viewport_viz_dropdown");
@@ -459,7 +476,7 @@ fn viewport_viz_dropdown(
     if ui.is_rect_visible(rect) {
         let hovered = response.hovered();
         let fill = if hovered {
-            Color32::from_rgb(56, 56, 68)
+            hovered_color
         } else {
             bg_color
         };
@@ -481,7 +498,7 @@ fn viewport_viz_dropdown(
             egui::Align2::CENTER_CENTER,
             CARET_DOWN,
             FontId::proportional(8.0),
-            Color32::from_rgb(140, 140, 150),
+            caret_color,
         );
     }
 

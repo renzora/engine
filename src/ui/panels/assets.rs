@@ -13,6 +13,7 @@ use crate::viewport::ModelPreviewCache;
 use crate::plugin_core::{PluginHost, TabLocation};
 use crate::project::CurrentProject;
 use crate::ui_api::{UiEvent, renderer::UiRenderer};
+use crate::theming::Theme;
 use super::console::render_console_content;
 
 // Icon constants from phosphor
@@ -44,6 +45,7 @@ pub fn render_assets(
     ui_renderer: &mut UiRenderer,
     thumbnail_cache: &mut ThumbnailCache,
     model_preview_cache: &mut ModelPreviewCache,
+    theme: &Theme,
 ) -> Vec<UiEvent> {
     let mut ui_events = Vec::new();
     let screen_height = ctx.screen_rect().height();
@@ -63,10 +65,22 @@ pub fn render_assets(
     let plugin_tabs = api.get_tabs_for_location(TabLocation::Bottom);
     let active_plugin_tab = api.get_active_tab(TabLocation::Bottom);
 
+    // Theme colors for panel
+    let panel_bg = theme.surfaces.panel.to_color32();
+    let bar_bg = theme.widgets.noninteractive_bg.to_color32();
+    let border_color = theme.widgets.border.to_color32();
+    let tab_selected = theme.panels.tab_active.to_color32();
+    let tab_hover = theme.panels.tab_hover.to_color32();
+    let text_active = theme.text.primary.to_color32();
+    let text_inactive = theme.text.muted.to_color32();
+    let error_color = theme.semantic.error.to_color32();
+    let warning_color = theme.semantic.warning.to_color32();
+    let toggle_hover_bg = theme.widgets.hovered_bg.to_color32();
+
     let panel_response = egui::TopBottomPanel::bottom("bottom_panel")
         .exact_height(panel_height)
         .show_separator_line(false)
-        .frame(egui::Frame::new().fill(Color32::from_rgb(30, 32, 36)).inner_margin(egui::Margin::ZERO))
+        .frame(egui::Frame::new().fill(panel_bg).inner_margin(egui::Margin::ZERO))
         .show(ctx, |ui| {
             // Panel bar with tabs (resize handle integrated at top edge)
             let resize_zone = 4.0; // Invisible resize zone at top of bar
@@ -103,7 +117,7 @@ pub fn render_assets(
             ui.painter().rect_filled(
                 bar_rect,
                 CornerRadius::ZERO,
-                Color32::from_rgb(38, 40, 46),
+                bar_bg,
             );
 
             // Draw bottom border
@@ -112,7 +126,7 @@ pub fn render_assets(
                     egui::pos2(bar_rect.min.x, bar_rect.max.y),
                     egui::pos2(bar_rect.max.x, bar_rect.max.y),
                 ],
-                egui::Stroke::new(1.0, Color32::from_rgb(50, 52, 58)),
+                egui::Stroke::new(1.0, border_color),
             );
 
             // Draw tabs inside the bar
@@ -136,9 +150,9 @@ pub fn render_assets(
             }
 
             let assets_bg = if assets_selected {
-                Color32::from_rgb(50, 52, 60)
+                tab_selected
             } else if assets_response.hovered() {
-                Color32::from_rgb(45, 47, 55)
+                tab_hover
             } else {
                 Color32::TRANSPARENT
             };
@@ -150,7 +164,7 @@ pub fn render_assets(
                 egui::Align2::CENTER_CENTER,
                 &assets_text,
                 egui::FontId::proportional(12.0),
-                if assets_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                if assets_selected { text_active } else { text_inactive },
             );
 
             tab_x += assets_width + 4.0;
@@ -180,9 +194,9 @@ pub fn render_assets(
             }
 
             let console_bg = if console_selected {
-                Color32::from_rgb(50, 52, 60)
+                tab_selected
             } else if console_response.hovered() {
-                Color32::from_rgb(45, 47, 55)
+                tab_hover
             } else {
                 Color32::TRANSPARENT
             };
@@ -191,13 +205,13 @@ pub fn render_assets(
             }
 
             let console_color = if error_count > 0 {
-                Color32::from_rgb(220, 100, 100)
+                error_color
             } else if warning_count > 0 {
-                Color32::from_rgb(220, 180, 100)
+                warning_color
             } else if console_selected {
-                Color32::WHITE
+                text_active
             } else {
-                Color32::from_rgb(160, 162, 170)
+                text_inactive
             };
             ui.painter().text(
                 console_rect.center(),
@@ -226,9 +240,9 @@ pub fn render_assets(
                 }
 
                 let plugin_bg = if is_selected {
-                    Color32::from_rgb(50, 52, 60)
+                    tab_selected
                 } else if plugin_response.hovered() {
-                    Color32::from_rgb(45, 47, 55)
+                    tab_hover
                 } else {
                     Color32::TRANSPARENT
                 };
@@ -240,7 +254,7 @@ pub fn render_assets(
                     egui::Align2::CENTER_CENTER,
                     &tab_text,
                     egui::FontId::proportional(12.0),
-                    if is_selected { Color32::WHITE } else { Color32::from_rgb(160, 162, 170) },
+                    if is_selected { text_active } else { text_inactive },
                 );
 
                 tab_x += plugin_tab_width + 4.0;
@@ -262,7 +276,7 @@ pub fn render_assets(
                 ui.painter().rect_filled(
                     toggle_rect,
                     4.0,
-                    Color32::from_rgb(55, 57, 65),
+                    toggle_hover_bg,
                 );
             }
 
@@ -273,7 +287,7 @@ pub fn render_assets(
                 egui::Align2::CENTER_CENTER,
                 toggle_icon,
                 egui::FontId::proportional(14.0),
-                if toggle_hovered { Color32::WHITE } else { Color32::from_rgb(140, 142, 150) },
+                if toggle_hovered { text_active } else { text_inactive },
             );
 
             // Handle toggle click
@@ -306,21 +320,21 @@ pub fn render_assets(
                         }
                     });
                 } else {
-                    ui.label(RichText::new("No content").color(Color32::GRAY));
+                    ui.label(RichText::new("No content").color(theme.text.muted.to_color32()));
                 }
             } else {
                 // Render built-in tabs
                 match viewport.bottom_panel_tab {
                     BottomPanelTab::Assets => {
-                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache, model_preview_cache);
+                        render_assets_content(ui, current_project, assets, scene_state, thumbnail_cache, model_preview_cache, theme);
                     }
                     BottomPanelTab::Console => {
-                        render_console_content(ui, console);
+                        render_console_content(ui, console, theme);
                     }
                     BottomPanelTab::Animation => {
                         // Animation tab placeholder - content is rendered separately
                         ui.centered_and_justified(|ui| {
-                            ui.label(RichText::new("Animation timeline coming soon").color(Color32::GRAY));
+                            ui.label(RichText::new("Animation timeline coming soon").color(theme.text.muted.to_color32()));
                         });
                     }
                 }
@@ -337,7 +351,7 @@ pub fn render_assets(
     // Dialogs (only for assets tab)
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
-    render_import_dialog(ctx, assets);
+    render_import_dialog(ctx, assets, theme);
     handle_import_request(assets);
 
     // Process any pending file imports (files dropped into assets panel)
@@ -348,10 +362,10 @@ pub fn render_assets(
 
 /// Render asset dialogs (create script, create folder, import)
 /// Call this after render_assets_content to ensure dialogs work
-pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+pub fn render_assets_dialogs(ctx: &egui::Context, assets: &mut AssetBrowserState, theme: &Theme) {
     render_create_script_dialog(ctx, assets);
     render_create_folder_dialog(ctx, assets);
-    render_import_dialog(ctx, assets);
+    render_import_dialog(ctx, assets, theme);
     handle_import_request(assets);
     process_pending_file_imports(assets);
 }
@@ -364,13 +378,20 @@ pub fn render_assets_content(
     scene_state: &mut SceneManagerState,
     thumbnail_cache: &mut ThumbnailCache,
     model_preview_cache: &mut ModelPreviewCache,
+    theme: &Theme,
 ) {
     let ctx = ui.ctx().clone();
     let available_width = ui.available_width();
     let is_compact = available_width < 250.0;
 
+    // Theme colors
+    let text_primary = theme.text.primary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_disabled = theme.text.disabled.to_color32();
+    let _accent_color = theme.semantic.accent.to_color32();
+
     // Toolbar with breadcrumb and import
-    render_toolbar(ui, &ctx, assets, current_project);
+    render_toolbar(ui, &ctx, assets, current_project, theme);
 
     ui.add_space(2.0);
 
@@ -405,10 +426,10 @@ pub fn render_assets_content(
 
                 match assets.view_mode {
                     AssetViewMode::Grid => {
-                        render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache);
+                        render_grid_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, theme);
                     }
                     AssetViewMode::List => {
-                        render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, project);
+                        render_list_view(ui, &ctx, assets, scene_state, &filtered_items, thumbnail_cache, model_preview_cache, project, theme);
                     }
                 }
 
@@ -422,9 +443,9 @@ pub fn render_assets_content(
             } else {
                 ui.add_space(20.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(RichText::new(FOLDER).size(32.0).color(Color32::from_rgb(80, 80, 90)));
+                    ui.label(RichText::new(FOLDER).size(32.0).color(text_disabled));
                     ui.add_space(4.0);
-                    ui.label(RichText::new("No project loaded").size(11.0).color(Color32::from_rgb(120, 120, 130)));
+                    ui.label(RichText::new("No project loaded").size(11.0).color(text_muted));
                 });
             }
         });
@@ -445,14 +466,14 @@ pub fn render_assets_content(
 
             // View mode toggle
             let grid_color = if assets.view_mode == AssetViewMode::Grid {
-                Color32::WHITE
+                text_primary
             } else {
-                Color32::from_rgb(100, 100, 110)
+                text_disabled
             };
             let list_color = if assets.view_mode == AssetViewMode::List {
-                Color32::WHITE
+                text_primary
             } else {
-                Color32::from_rgb(100, 100, 110)
+                text_disabled
             };
 
             if ui.small_button(RichText::new(LIST).size(14.0).color(list_color))
@@ -476,6 +497,7 @@ fn render_toolbar(
     _ctx: &egui::Context,
     assets: &mut AssetBrowserState,
     current_project: Option<&CurrentProject>,
+    theme: &Theme,
 ) {
     let available_width = ui.available_width();
 
@@ -563,19 +585,23 @@ fn render_toolbar(
                         parts
                     };
 
+                    let breadcrumb_muted = theme.text.disabled.to_color32();
+                    let breadcrumb_normal = theme.text.muted.to_color32();
+                    let breadcrumb_active = theme.text.primary.to_color32();
+
                     for (i, (name, path)) in display_parts.iter().enumerate() {
                         if i > 0 {
-                            ui.label(RichText::new(CARET_RIGHT).size(10.0).color(Color32::from_rgb(100, 100, 110)));
+                            ui.label(RichText::new(CARET_RIGHT).size(10.0).color(breadcrumb_muted));
                         }
 
                         if name == "..." {
-                            ui.label(RichText::new("...").size(11.0).color(Color32::from_rgb(100, 100, 110)));
+                            ui.label(RichText::new("...").size(11.0).color(breadcrumb_muted));
                         } else {
                             let is_current = Some(path) == assets.current_folder.as_ref();
                             let text_color = if is_current {
-                                Color32::WHITE
+                                breadcrumb_active
                             } else {
-                                Color32::from_rgb(150, 150, 160)
+                                breadcrumb_normal
                             };
 
                             let display_name = if is_compact && name.len() > 8 {
@@ -592,7 +618,7 @@ fn render_toolbar(
                         }
                     }
                 } else {
-                    ui.label(RichText::new(project_name).size(11.0).color(Color32::from_rgb(150, 150, 160)));
+                    ui.label(RichText::new(project_name).size(11.0).color(theme.text.muted.to_color32()));
                 }
             }
         }
@@ -698,8 +724,17 @@ fn render_grid_view(
     items: &[&AssetItem],
     thumbnail_cache: &mut ThumbnailCache,
     model_preview_cache: &mut ModelPreviewCache,
+    theme: &Theme,
 ) {
     let available_width = ui.available_width();
+
+    // Theme colors for grid items
+    let item_bg = theme.panels.item_bg.to_color32();
+    let item_hover = theme.panels.item_hover.to_color32();
+    let selection_bg = theme.semantic.selection.to_color32();
+    let selection_stroke = theme.semantic.selection_stroke.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let accent_color = theme.semantic.accent.to_color32();
 
     // Responsive tile sizing
     let base_tile_size = if available_width < 150.0 {
@@ -735,11 +770,11 @@ fn render_grid_view(
 
             // Background
             let bg_color = if is_selected {
-                Color32::from_rgb(60, 90, 140)
+                selection_bg
             } else if is_hovered {
-                Color32::from_rgb(50, 50, 60)
+                item_hover
             } else {
-                Color32::from_rgb(38, 38, 45)
+                item_bg
             };
 
             ui.painter().rect_filled(rect, 6.0, bg_color);
@@ -749,7 +784,7 @@ fn render_grid_view(
                 ui.painter().rect_stroke(
                     rect,
                     6.0,
-                    egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 220)),
+                    egui::Stroke::new(2.0, selection_stroke),
                     egui::StrokeKind::Inside,
                 );
             }
@@ -830,7 +865,7 @@ fn render_grid_view(
                     ui.painter().circle_stroke(
                         spinner_rect.center(),
                         4.0,
-                        egui::Stroke::new(2.0, Color32::from_rgb(100, 150, 220)),
+                        egui::Stroke::new(2.0, accent_color),
                     );
                 }
             }
@@ -852,7 +887,7 @@ fn render_grid_view(
                 egui::Align2::CENTER_CENTER,
                 &truncated_name,
                 egui::FontId::proportional(font_size),
-                Color32::from_rgb(200, 200, 210),
+                text_secondary,
             );
 
             // Handle interactions
@@ -869,8 +904,9 @@ fn render_grid_view(
 /// Draw a checkerboard pattern for transparent image backgrounds
 fn draw_checkerboard(painter: &egui::Painter, rect: egui::Rect) {
     let check_size = 8.0;
-    let light = Color32::from_rgb(60, 60, 65);
-    let dark = Color32::from_rgb(45, 45, 50);
+    // Use subtle variations for checkerboard
+    let light = Color32::from_rgb(55, 55, 60);
+    let dark = Color32::from_rgb(40, 40, 45);
 
     let cols = (rect.width() / check_size).ceil() as i32;
     let rows = (rect.height() / check_size).ceil() as i32;
@@ -896,13 +932,14 @@ fn render_list_view(
     thumbnail_cache: &mut ThumbnailCache,
     _model_preview_cache: &mut ModelPreviewCache,
     project: &CurrentProject,
+    theme: &Theme,
 ) {
     // Remove vertical spacing between rows
     ui.style_mut().spacing.item_spacing.y = 0.0;
 
     // For tree view, start from current folder or project root
     let root_folder = assets.current_folder.clone().unwrap_or_else(|| project.path.clone());
-    render_tree_node(ui, ctx, assets, scene_state, &root_folder, 0, thumbnail_cache);
+    render_tree_node(ui, ctx, assets, scene_state, &root_folder, 0, thumbnail_cache, theme);
 }
 
 fn render_tree_node(
@@ -913,9 +950,17 @@ fn render_tree_node(
     folder_path: &PathBuf,
     depth: usize,
     thumbnail_cache: &mut ThumbnailCache,
+    theme: &Theme,
 ) {
     let indent = depth as f32 * 14.0;
     let thumbnail_size = 14.0;
+
+    // Theme colors for tree items
+    let selection_bg = theme.semantic.selection.to_color32();
+    let item_hover = theme.panels.item_hover.to_color32();
+    let text_secondary = theme.text.secondary.to_color32();
+    let text_muted = theme.text.muted.to_color32();
+    let text_disabled = theme.text.disabled.to_color32();
 
     // Read directory contents
     let Ok(entries) = std::fs::read_dir(folder_path) else {
@@ -978,9 +1023,9 @@ fn render_tree_node(
 
         // Background
         let bg_color = if is_selected {
-            Color32::from_rgb(60, 90, 140)
+            selection_bg
         } else if is_hovered {
-            Color32::from_rgb(45, 45, 55)
+            item_hover
         } else {
             Color32::TRANSPARENT
         };
@@ -1004,7 +1049,7 @@ fn render_tree_node(
             egui::Align2::CENTER_CENTER,
             arrow_icon,
             egui::FontId::proportional(9.0),
-            if arrow_response.hovered() { Color32::WHITE } else { Color32::from_rgb(120, 120, 130) },
+            if arrow_response.hovered() { text_secondary } else { text_muted },
         );
 
         // Folder icon
@@ -1023,7 +1068,7 @@ fn render_tree_node(
             egui::Align2::LEFT_CENTER,
             name,
             egui::FontId::proportional(11.0),
-            Color32::from_rgb(200, 200, 210),
+            text_secondary,
         );
 
         // Handle interactions
@@ -1041,7 +1086,7 @@ fn render_tree_node(
 
         // Render children if expanded
         if is_expanded {
-            render_tree_node(ui, ctx, assets, scene_state, &folder_path, depth + 1, thumbnail_cache);
+            render_tree_node(ui, ctx, assets, scene_state, &folder_path, depth + 1, thumbnail_cache, theme);
         }
     }
 
@@ -1064,16 +1109,16 @@ fn render_tree_node(
         let is_hovered = response.hovered();
 
         // Background
-        let bg_color = if is_selected {
-            Color32::from_rgb(60, 90, 140)
+        let file_bg_color = if is_selected {
+            selection_bg
         } else if is_hovered {
-            Color32::from_rgb(45, 45, 55)
+            item_hover
         } else {
             Color32::TRANSPARENT
         };
 
-        if bg_color != Color32::TRANSPARENT {
-            ui.painter().rect_filled(rect, 2.0, bg_color);
+        if file_bg_color != Color32::TRANSPARENT {
+            ui.painter().rect_filled(rect, 2.0, file_bg_color);
         }
 
         // Icon position (indented, no arrow space needed for files but align with folder names)
@@ -1116,7 +1161,7 @@ fn render_tree_node(
             egui::Align2::LEFT_CENTER,
             name,
             egui::FontId::proportional(11.0),
-            Color32::from_rgb(200, 200, 210),
+            text_secondary,
         );
 
         // File extension on the right
@@ -1126,7 +1171,7 @@ fn render_tree_node(
                 egui::Align2::RIGHT_CENTER,
                 ext.to_uppercase(),
                 egui::FontId::proportional(9.0),
-                Color32::from_rgb(100, 100, 110),
+                text_disabled,
             );
         }
 
@@ -1387,13 +1432,19 @@ fn import_files_directly(paths: &[PathBuf], target_folder: &PathBuf) {
 }
 
 /// Render the model import settings dialog
-fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
+fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState, theme: &Theme) {
     if !assets.show_import_dialog {
         return;
     }
 
     let mut open = true;
     let mut should_import = false;
+
+    // Theme colors for dialog
+    let hint_color = theme.text.muted.to_color32();
+    let frame_bg = theme.surfaces.faint.to_color32();
+    let model_icon_color = theme.categories.rendering.accent.to_color32();
+    let file_icon_color = theme.text.muted.to_color32();
 
     egui::Window::new(format!("{} Import Settings", DOWNLOAD))
         .open(&mut open)
@@ -1410,7 +1461,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                 .default_open(true)
                 .show(ui, |ui| {
                     egui::Frame::new()
-                        .fill(Color32::from_rgb(30, 30, 38))
+                        .fill(frame_bg)
                         .corner_radius(4.0)
                         .inner_margin(8.0)
                         .show(ui, |ui| {
@@ -1424,9 +1475,9 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                                         let is_model = is_model_file(filename);
                                         let icon = if is_model { CUBE } else { FILE };
                                         let color = if is_model {
-                                            Color32::from_rgb(242, 166, 115)
+                                            model_icon_color
                                         } else {
-                                            Color32::from_rgb(150, 150, 160)
+                                            file_icon_color
                                         };
                                         ui.horizontal(|ui| {
                                             ui.label(RichText::new(icon).color(color));
@@ -1519,7 +1570,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                             });
 
                             if assets.import_settings.mesh_handling == MeshHandling::ExtractMeshes {
-                                ui.label(RichText::new("  Each mesh will be saved as a separate .glb file").color(Color32::GRAY).small());
+                                ui.label(RichText::new("  Each mesh will be saved as a separate .glb file").color(hint_color).small());
                             }
 
                             ui.checkbox(&mut assets.import_settings.combine_meshes, "Combine meshes with same material");
@@ -1602,7 +1653,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                                     ui.label("Subfolder:");
                                     ui.text_edit_singleline(&mut assets.import_settings.texture_subfolder);
                                 });
-                                ui.label(RichText::new("  Embedded textures will be extracted to this subfolder").color(Color32::GRAY).small());
+                                ui.label(RichText::new("  Embedded textures will be extracted to this subfolder").color(hint_color).small());
                             });
                         });
 
@@ -1615,7 +1666,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                             ui.checkbox(&mut assets.import_settings.import_as_skeletal, "Import as Skeletal Mesh");
 
                             if assets.import_settings.import_as_skeletal {
-                                ui.label(RichText::new("  Mesh will be set up for skeletal animation").color(Color32::GRAY).small());
+                                ui.label(RichText::new("  Mesh will be set up for skeletal animation").color(hint_color).small());
                             }
                         });
 
@@ -1624,7 +1675,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                         .default_open(false)
                         .show(ui, |ui| {
                             ui.checkbox(&mut assets.import_settings.draco_compression, "Enable Draco Compression");
-                            ui.label(RichText::new("Draco compresses mesh geometry for smaller file sizes (glTF/glb)").color(Color32::GRAY).small());
+                            ui.label(RichText::new("Draco compresses mesh geometry for smaller file sizes (glTF/glb)").color(hint_color).small());
 
                             ui.add_enabled_ui(assets.import_settings.draco_compression, |ui| {
                                 ui.add_space(4.0);
@@ -1632,7 +1683,7 @@ fn render_import_dialog(ctx: &egui::Context, assets: &mut AssetBrowserState) {
                                     ui.label("Compression Level:");
                                     ui.add(egui::Slider::new(&mut assets.import_settings.draco_compression_level, 0..=10));
                                 });
-                                ui.label(RichText::new("  Higher = smaller file, slower encoding").color(Color32::GRAY).small());
+                                ui.label(RichText::new("  Higher = smaller file, slower encoding").color(hint_color).small());
 
                                 ui.add_space(4.0);
                                 ui.label("Quantization Bits (higher = better quality):");

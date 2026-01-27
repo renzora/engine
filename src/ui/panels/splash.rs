@@ -3,6 +3,7 @@ use bevy_egui::egui::{self, Color32, CornerRadius, Pos2, RichText, Stroke, Strok
 
 use crate::core::{AppState, WindowState, EditorSettings};
 use crate::project::{create_project, open_project, AppConfig, CurrentProject};
+use crate::theming::Theme;
 
 use super::title_bar::{render_splash_title_bar, TITLE_BAR_HEIGHT};
 
@@ -198,13 +199,14 @@ pub fn render_splash(
     app_config: &mut AppConfig,
     commands: &mut Commands,
     next_state: &mut NextState<AppState>,
+    theme: &Theme,
 ) {
     ctx.request_repaint();
 
-    render_splash_title_bar(ctx, window_state);
+    render_splash_title_bar(ctx, window_state, theme);
 
     egui::CentralPanel::default()
-        .frame(egui::Frame::NONE.fill(Color32::from_rgb(18, 18, 22)))
+        .frame(egui::Frame::NONE.fill(theme.surfaces.extreme.to_color32()))
         .show(ctx, |ui| {
             let screen_rect = ui.max_rect();
             let screen_size = Vec2::new(screen_rect.width(), screen_rect.height() + TITLE_BAR_HEIGHT);
